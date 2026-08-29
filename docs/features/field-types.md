@@ -34,6 +34,44 @@ across ports — a `field.currency` is integer minor units everywhere; a
 | `@filterable` | bool | Field appears in the generated server-side filter allowlist. |
 | `@sortable` | bool | Field appears in the server-side sort allowlist (defaults to `@filterable`). |
 
+## Column naming — `@column` and `columnNamingStrategy`
+
+A field has **two names**: the one your code calls it (`createdAt`, the metadata
+`name`, and what every port's generated property/attribute is called) and the one the
+database calls it. `@column` sets the second. It never changes the first.
+
+With no `@column`, the physical name comes from the project's **column-naming
+strategy** — `literal` (the field name verbatim), `snake_case`, or `kebab-case`. That
+is CONFIG, not metadata, on purpose: the same model has to be able to drive a
+snake_case Postgres schema and a literal-column one.
+
+**The defaults are not the same everywhere, and that is the thing to know:**
+
+| Where | Default | How to set it |
+|---|---|---|
+| `meta migrate` (schema, every port — ADR-0015) | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts` |
+| TypeScript codegen + `ObjectManager` | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts`; `columnNamingStrategy` option on `ObjectManager` |
+| C# (`dotnet meta gen`) | `literal` | `--column-naming snake_case` |
+| Python (codegen + `ObjectManager`) | `literal` | `GenConfig(column_naming=...)`; `ObjectManager(..., column_naming=...)` |
+| Java (`ObjectManagerDB`) | `literal` | `SimpleMappingHandlerDB.setColumnNaming(...)` |
+| Kotlin (Exposed table codegen) | `snake_case` | `<args><columnNaming>literal</columnNaming></args>` in the pom |
+
+**So a polyglot project must do one of two things** for any field whose name has a
+case boundary, or the generated data access will address a column the migration did
+not create:
+
+1. **Declare `@column`** — one line on the field, and it cannot drift from a build
+   config. This is what `examples/showcase/` does.
+2. **Set the strategy in every port** to the one that matches the database.
+
+```json
+{ "field.timestamp": { "name": "createdAt", "@column": "created_at" } }
+```
+
+That declares the column `created_at`. The TypeScript property is still `createdAt`,
+the C# property `CreatedAt`, the Python model field `createdAt` — the language-level
+name follows the metadata `name` in every port, always.
+
 ## Currency
 
 `field.currency` declares "this column stores money as integer minor units"

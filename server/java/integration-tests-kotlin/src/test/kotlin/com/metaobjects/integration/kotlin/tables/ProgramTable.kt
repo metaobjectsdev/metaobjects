@@ -34,7 +34,10 @@ object ProgramTable : Table("programs") {
     // `datetime` → Postgres TIMESTAMP (no TZ), returned as java.time.LocalDateTime;
     // matches the wall-clock literal shape (`'2026-05-01T10:00:00'`) used in the
     // corpus seed-data + normalization contract (`yyyy-MM-ddTHH:mm:ss`, no zone).
-    val createdAt = datetime("createdAt")
+    // `created_ts` comes from the field's explicit `@column`, and is deliberately NOT
+    // the snake_case of `createdAt` — that coincidence is what let the generator ignore
+    // `@column` entirely without any corpus noticing.
+    val createdAt = datetime("created_ts")
 
     override val primaryKey = PrimaryKey(id)
 }

@@ -15,7 +15,7 @@ class Subscriber(BaseModel):
     email: str = Field(max_length=320)
     name: str | None = None
     status: Literal["active", "paused", "cancelled"]
-    created_at: datetime.datetime | None = None
+    createdAt: datetime.datetime | None = None
 
 
 class SubscriberCreate(BaseModel):

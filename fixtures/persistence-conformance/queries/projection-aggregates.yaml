@@ -19,7 +19,7 @@ description: |
   numbers; AVG over INTEGER is NUMERIC and uses the no-trailing-zeros string
   rule, so an integer-valued avg is safe here), min 30, max 90.
 seed-data: |
-  INSERT INTO "programs" ("id","title","priceCents","status","createdAt") VALUES
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00');
   INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
     (10, 1, 'Week 1', 30),

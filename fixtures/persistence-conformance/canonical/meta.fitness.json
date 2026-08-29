@@ -10,7 +10,7 @@
           { "field.string":   { "name": "title", "@required": true, "@maxLength": 200 } },
           { "field.currency": { "name": "priceCents", "@required": true, "@currency": "USD" } },
           { "field.enum":     { "name": "status",     "@required": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
-          { "field.timestamp": { "name": "createdAt", "@required": true, "@localTime": true } },
+          { "field.timestamp": { "name": "createdAt", "@column": "created_ts", "@required": true, "@localTime": true } },
           { "relationship.composition": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } },
           { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
           { "identity.secondary": { "name": "byTitle", "@fields": "title" } },

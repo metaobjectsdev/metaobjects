@@ -129,6 +129,53 @@ preserved the wire shape exactly. Everything below is what went wrong on the way
   `"type": "commonjs"` explicitly — false on the dominant first-touch path. (Introduced by
   `0.24.4`'s own fix to that same line, which corrected the tense and got the premise wrong.)
 
+### Fixed — `@column` is the physical column name, and four ports could not choose one
+
+**A field has two names** — the one your code calls it and the one the database calls
+it — and `@column` sets the second. The byte-gated registry prose has always said the
+first comes *"via columnNamingStrategy"*. Four of five ports could not set that
+strategy, one port used `@column` for the wrong name entirely, and one ignored it.
+
+- **Python's read model renamed itself to `@column`.** `<Entity>`'s Pydantic field was
+  `@column or field.name` while its own `<Entity>Create` / `<Entity>Patch`, its
+  generated router (which stamps `dto["createdAt"]`) and its runtime all key by
+  `field.name` — `ObjectManager` builds `{_column_of(f): f.name}` on every read and
+  RETURNING clause, commented *"for cross-port row-shape parity"*. So one generated
+  module disagreed with itself, and the read model's stated reason ("the Python model
+  field IS the column, so it binds straight to the row") was never true of that
+  runtime. It also leaked a free-form name: `callPurpose` + `@column: purpose_code`
+  emitted a field `purpose_code`, neither the wire name nor derived from the field
+  name. **The read model now keys by `field.name`, like every other surface in every
+  other port.** Idiomatic snake_case for a Python consumer is a real goal and its lever
+  is the strategy below, applied to `field.name`.
+- **Kotlin's Exposed generator ignored `@column` outright**, hardcoding
+  `camelToSnake(field.name)` at every column site — so a field declaring one bound the
+  WRONG column at runtime, silently, with no error anywhere and no escape hatch. It
+  also made Kotlin the only port hardcoding snake_case while Java's `getColumnRef`
+  resolved literal: **one model, two column names, one JVM.** Both now go through a
+  shared `com.metaobjects.database.ColumnNaming`.
+- **`columnNamingStrategy` is now selectable in the four ports that lacked it** —
+  `dotnet meta gen --column-naming`, Python `GenConfig(column_naming=…)` /
+  `ObjectManager(…, column_naming=…)`, Java `SimpleMappingHandlerDB.setColumnNaming(…)`,
+  Kotlin's `<columnNaming>` generator arg. **No default moves** (TS/Kotlin-codegen
+  `snake_case`, C#/Python/Java `literal`): a default that moved would silently
+  re-point live queries at columns that do not exist. An unknown value is refused
+  rather than falling back, because a typo would otherwise bind a whole schema to the
+  wrong columns and report success. Why it matters: schema is Node-owned (ADR-0015)
+  and `meta migrate` defaults to `snake_case`, so a C# or Python adopter with a
+  multi-word field name generated data access against a column the migration never
+  created — and until now could only fix it by declaring `@column` on every field.
+  Documented, with the per-port default table, in `docs/features/field-types.md`.
+- **The persistence corpus could not see any of it, and now can.** Its canonical schema
+  is pinned to `literal` and no fixture carried a `@column`, so every field's column
+  name equalled its field name and nothing could tell a port that resolves `@column`
+  from one that ignores it. `Program.createdAt` now declares `@column: created_ts` —
+  deliberately NOT the snake_case of the field name, which is what a snake_case
+  strategy would produce anyway and would have proven nothing. Adding it turned up
+  **three** live defects at once: the Kotlin generator above, plus the Kotlin and C#
+  scenario runners both keying result rows by physical column instead of field name.
+  All five ports' lanes pass against the de-blinded corpus.
+
 ### Fixed — two ports scattering or skipping work while reporting success (Maven, NuGet)
 
 Found the same way as the eight above, by a different exercise: generating ONE small model

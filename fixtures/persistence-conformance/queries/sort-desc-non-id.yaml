@@ -8,7 +8,7 @@ description: |
   differs from insertion order (1,2,3,4), from id desc (4,3,2,1), and from
   priceCents asc (4,3,1,2) — each wrong behavior yields a different row order.
 seed-data: |
-  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "created_ts") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
     (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
     (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00'),

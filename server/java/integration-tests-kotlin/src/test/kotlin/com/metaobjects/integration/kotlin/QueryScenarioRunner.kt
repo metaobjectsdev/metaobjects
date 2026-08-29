@@ -2,6 +2,7 @@ package com.metaobjects.integration.kotlin
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.metaobjects.MetaRoot
+import com.metaobjects.database.ColumnNaming
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.MetaRelationship
@@ -145,13 +146,19 @@ object QueryScenarioRunner {
         val isTphBase: Boolean = entityMeta?.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false) == true
         val projectFields: Set<String>? =
             if (tph != null || isTphBase) entityMeta?.metaFields?.map { it.name }?.toSet() else null
+        // Physical column -> declaring field name, so a row is keyed the way every other
+        // port keys it (and the way the shared `expect:` blocks are written). Empty when
+        // the entity is not in the loaded model — then column == field by construction.
+        val columnToField: Map<String, String> =
+            entityMeta?.metaFields?.associate { ColumnNaming.resolve(it, ColumnNaming.LITERAL) to it.name }
+                ?: emptyMap()
 
         // op:roundtrip — WRITE the insert row through Exposed, read back by PK, drop PK.
-        if (spec.op == "roundtrip") return dispatchRoundtrip(spec, table)
+        if (spec.op == "roundtrip") return dispatchRoundtrip(spec, table, columnToField)
         // op:create — INSERT a row (TPH: discriminator injected from the entity), read back by PK (PK retained).
-        if (spec.op == "create") return dispatchCreate(spec, table, tph, projectFields)
+        if (spec.op == "create") return dispatchCreate(spec, table, tph, projectFields, columnToField)
         // op:update — PATCH a row through the Exposed write path, read back by PK (PK retained).
-        if (spec.op == "update") return dispatchUpdate(spec, table, tph, projectFields, entityMeta)
+        if (spec.op == "update") return dispatchUpdate(spec, table, tph, projectFields, entityMeta, columnToField)
         // op:delete — DELETE a row by PK through the Exposed write path; boolean outcome.
         if (spec.op == "delete") return dispatchDelete(spec, table, tph)
 
@@ -167,7 +174,7 @@ object QueryScenarioRunner {
                 applyBy(q, table, spec.by)
                 scope(q, table, tph)
                 val row = q.singleOrNull()
-                row?.let { rowToMap(it, table, projectFields) }
+                row?.let { rowToMap(it, table, projectFields, columnToField) }
             }
             "list" -> {
                 val q = table.selectAll()
@@ -175,7 +182,7 @@ object QueryScenarioRunner {
                 scope(q, table, tph)
                 applySort(q, table, spec.sort)
                 spec.limit?.let { q.limit(it, (spec.offset ?: 0).toLong()) }
-                q.map { rowToMap(it, table, projectFields) }
+                q.map { rowToMap(it, table, projectFields, columnToField) }
             }
             else -> error("Unsupported op '${spec.op}' for ${spec.name}")
         }
@@ -219,7 +226,10 @@ object QueryScenarioRunner {
      * project to the entity's fields (the create `expect` block retains the id).
      */
     @Suppress("UNCHECKED_CAST")
-    private fun dispatchCreate(spec: QuerySpec, table: Table, tph: TphSubtype?, projectFields: Set<String>?): Map<String, Any?>? {
+    private fun dispatchCreate(
+        spec: QuerySpec, table: Table, tph: TphSubtype?, projectFields: Set<String>?,
+        columnToField: Map<String, String>,
+    ): Map<String, Any?>? {
         val data = spec.data
             ?: error("op:create / ${spec.name}: a `data` block (the row to write) is required")
         val pkCol = table.primaryKey?.columns?.singleOrNull()
@@ -240,7 +250,7 @@ object QueryScenarioRunner {
             ?: error("op:create / ${spec.name}: insert did not yield a primary key value")
         val q = table.selectAll()
         q.adjustWhere { buildEq(pkCol, pkValue) }
-        return q.singleOrNull()?.let { rowToMap(it, table, projectFields) } // PK retained
+        return q.singleOrNull()?.let { rowToMap(it, table, projectFields, columnToField) } // PK retained
     }
 
     /**
@@ -283,7 +293,9 @@ object QueryScenarioRunner {
      * round-trip on the write path too.
      */
     @Suppress("UNCHECKED_CAST")
-    private fun dispatchRoundtrip(spec: QuerySpec, table: Table): Map<String, Any?>? {
+    private fun dispatchRoundtrip(
+        spec: QuerySpec, table: Table, columnToField: Map<String, String>,
+    ): Map<String, Any?>? {
         val insertRow = spec.insert
             ?: error("op:roundtrip / ${spec.name}: an `insert` block (the row to write) is required")
         val pkCol = table.primaryKey?.columns?.singleOrNull()
@@ -305,7 +317,7 @@ object QueryScenarioRunner {
         // 3. Read back BY PK (fresh SELECT → the read codec runs).
         val q = table.selectAll()
         q.adjustWhere { buildEq(pkCol, pkValue) }
-        val row = q.singleOrNull()?.let { rowToMap(it, table) } ?: return null
+        val row = q.singleOrNull()?.let { rowToMap(it, table, null, columnToField) } ?: return null
 
         // 4. Drop the (server-generated) PK — it's non-deterministic, not part of the expectation.
         return row - pkCol.name
@@ -322,6 +334,7 @@ object QueryScenarioRunner {
     @Suppress("UNCHECKED_CAST")
     private fun dispatchUpdate(
         spec: QuerySpec, table: Table, tph: TphSubtype?, projectFields: Set<String>?, entityMeta: MetaObject?,
+        columnToField: Map<String, String>,
     ): Map<String, Any?>? {
         val patch = spec.data
             ?: error("op:update / ${spec.name}: a `data` block (the patch to write) is required")
@@ -351,7 +364,7 @@ object QueryScenarioRunner {
             }
             val q = table.selectAll()
             q.adjustWhere { scoped() }
-            return q.singleOrNull()?.let { rowToMap(it, table, projectFields) }
+            return q.singleOrNull()?.let { rowToMap(it, table, projectFields, columnToField) }
         }
 
         // UPDATE the row by PK, setting each patched column through the WRITE codec.
@@ -365,7 +378,7 @@ object QueryScenarioRunner {
         // Read back BY PK (fresh SELECT → the read codec runs); PK retained for the update expect.
         val q = table.selectAll()
         q.adjustWhere { buildEq(pkCol, pkValue) }
-        return q.singleOrNull()?.let { rowToMap(it, table) }
+        return q.singleOrNull()?.let { rowToMap(it, table, null, columnToField) }
     }
 
     /**
@@ -631,14 +644,31 @@ object QueryScenarioRunner {
     // Row materialization + assertion
     // -----------------------------------------------------------------------
 
-    private fun rowToMap(row: ResultRow, table: Table, projectFields: Set<String>? = null): Map<String, Any?> {
+    /**
+     * Materialize a row keyed by METADATA FIELD NAME, never by physical column.
+     *
+     * *columnToField* maps each physical column back to the field that declares it. Every
+     * other port does this — Python's `ObjectManager` builds the same
+     * `{column: field.name}` map "for cross-port row-shape parity" — and this runner did
+     * not, emitting `col.name` directly. It went unnoticed for as long as no corpus field
+     * had a column name differing from its own: the moment `Program.createdAt` declared
+     * `@column: created_ts`, eight scenarios returned `created_ts` where the shared
+     * `expect:` block says `createdAt`.
+     */
+    private fun rowToMap(
+        row: ResultRow,
+        table: Table,
+        projectFields: Set<String>? = null,
+        columnToField: Map<String, String> = emptyMap(),
+    ): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>(table.columns.size)
         for (col in table.columns) {
+            val fieldName = columnToField[col.name] ?: col.name
             // FR-017 TPH: project to the ENTITY's own fields (base reads base columns; a subtype adds
             // its own column) — the single physical table also carries the other subtypes' columns,
             // which must not leak into a row the entity doesn't declare. Non-TPH entities pass null
             // (every column is the entity's own column).
-            if (projectFields != null && col.name !in projectFields) continue
+            if (projectFields != null && fieldName !in projectFields) continue
             var v: Any? = row[col]
             // Temporal columns must preserve their TZ-discriminator all the way to
             // Normalization, which emits the TIMESTAMPTZ `…Z` suffix iff the value is an
@@ -670,7 +700,7 @@ object QueryScenarioRunner {
             if (v != null && col.columnType.sqlType().lowercase().contains("jsonb")) {
                 v = JSON.readValue(v.toString(), Any::class.java)
             }
-            out[col.name] = v
+            out[fieldName] = v
         }
         return out
     }

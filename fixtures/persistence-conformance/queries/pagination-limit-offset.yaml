@@ -10,7 +10,7 @@ description: |
   (1,2), ignored limit yields 3+ rows. priceCents is deliberately misaligned
   with id so the desc+offset query cannot be satisfied by an id-ordered scan.
 seed-data: |
-  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "created_ts") VALUES
     (1, 'Alpha',   3000, 'PUBLISHED', '2026-05-01T10:00:00'),
     (2, 'Bravo',   1000, 'PUBLISHED', '2026-05-02T10:00:00'),
     (3, 'Charlie', 5000, 'DRAFT',     '2026-05-03T10:00:00'),

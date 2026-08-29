@@ -24,6 +24,6 @@ public class Program
     public long PriceCents { get; set; }
     [Column("status")]
     public ProgramStatus Status { get; set; }
-    [Column("createdAt")]
+    [Column("created_ts")]
     public DateTime CreatedAt { get; set; }
 }

@@ -10,7 +10,7 @@ CREATE TABLE "programs" (
   "title" VARCHAR(200) NOT NULL,
   "priceCents" BIGINT NOT NULL,
   "status" TEXT NOT NULL,
-  "createdAt" TIMESTAMP NOT NULL,
+  "created_ts" TIMESTAMP NOT NULL,
   CONSTRAINT "programs_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "programs_status_chk" CHECK ("status" IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))
 );

@@ -302,6 +302,24 @@ adapters and `runtime-ts`' `compileFilter` to grow it first.
 
 ## Result format
 
+**Rows are keyed by metadata FIELD name, never by physical column.** Those are
+different axes: `Program.createdAt` declares `@column: created_ts`, so the seed SQL
+addresses `"created_ts"` while every `expect:` block says `createdAt`. A runner that
+emits column names produces `created_ts` and fails.
+
+That one attribute exists to keep this corpus HONEST. Every other field's column name
+happens to equal its field name — the canonical schema is pinned to the `literal`
+strategy (see `canonical-schema.ts`) — so before it, no fixture could tell a port that
+resolves `@column` from one that ignores it, or a runner that maps columns back to
+fields from one that does not. It was not hypothetical: adding it turned up **three**
+live defects at once — the Kotlin Exposed generator ignoring `@column` outright, and
+both the Kotlin and C# runners keying rows by column. The column name is deliberately
+NOT the snake_case of the field name, because `created_at` is what a snake_case
+strategy would produce anyway and would have proven nothing.
+
+Keep it that way. If a change makes `created_ts` inconvenient, the fix is to teach the
+port, not to align the column with the field name.
+
 `expect` is the **already-normalized** value. The per-port runner reads its
 result rows, applies the [normalization](./normalization.md) rules, and asserts
 byte-equality (after JSON canonicalization) against `expect`. Failure prints the

@@ -5,7 +5,7 @@ description: |
   number (it's stored as BIGINT minor units; the runtime layer surfaces it as
   is). The enum value round-trips as its declared symbol.
 seed-data: |
-  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "created_ts") VALUES
     (1, 'Foundations', 4999,  'PUBLISHED', '2026-05-01T10:00:00'),
     (2, 'Strength',    7999,  'PUBLISHED', '2026-05-02T10:00:00'),
     (3, 'Mobility',    2999,  'DRAFT',     '2026-05-03T10:00:00');

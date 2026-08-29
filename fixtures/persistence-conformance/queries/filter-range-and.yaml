@@ -6,7 +6,7 @@ description: |
   query-builder takes only the first op, while a naive C# adapter would AND
   both. The DSL pins one shape: explicit `and: [...]`.
 seed-data: |
-  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "created_ts") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
     (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
     (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00'),

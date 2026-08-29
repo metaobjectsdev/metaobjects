@@ -5,7 +5,7 @@ description: |
   which is always false in three-valued logic) and that `{ isNull: false }`
   surfaces the complementary row set.
 seed-data: |
-  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "created_ts") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00');
   INSERT INTO "weeks" ("id", "programId", "label", "durationMinutes") VALUES
     (1, 1, 'Week 1', 30),
