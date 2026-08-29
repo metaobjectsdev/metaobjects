@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -105,6 +105,55 @@ describe("init() — happy path", () => {
   test("does NOT create legacy .meta/ directory", async () => {
     await init({ cwd });
     expect(existsSync(join(cwd, ".meta"))).toBe(false);
+  });
+});
+
+// FR-040 fix round 1, Finding 1 — writeOwnedGenerators() used to loop over ALL of
+// @metaobjectsdev/codegen-ts's REFERENCE_GENERATOR_NAMES unconditionally, so when an
+// earlier task on this branch registered "routes-hono" there, `meta init` silently
+// started scaffolding a fifth, unwired file: nothing in the scaffolded
+// metaobjects.config.ts imports routesFileHono. This pins the exact set — a future
+// template registered in REFERENCE_GENERATOR_NAMES must NOT silently join init's eager
+// scaffold; it stays reachable only via `meta eject <name>` until a human decides
+// otherwise.
+describe("init() — owned generator scaffold set (FR-040 fix round 1, Finding 1)", () => {
+  test("copies exactly the four generators the scaffolded config wires — not routes-hono", async () => {
+    const result = await init({ cwd });
+    const dir = join(cwd, "codegen", "generators");
+    const files = readdirSync(dir).sort();
+    expect(files).toEqual(["barrel.ts", "entity.ts", "queries.ts", "routes.ts"]);
+    expect(existsSync(join(dir, "routes-hono.ts"))).toBe(false);
+
+    for (const rel of [
+      "codegen/generators/entity.ts",
+      "codegen/generators/queries.ts",
+      "codegen/generators/routes.ts",
+      "codegen/generators/barrel.ts",
+    ]) {
+      expect(result.created).toContain(rel);
+    }
+    expect(result.created).not.toContain("codegen/generators/routes-hono.ts");
+  });
+
+  test("--print-only forecasts the same four-file set, not routes-hono", async () => {
+    const result = await init({ cwd, printOnly: true });
+    expect(result.created).toContain("codegen/generators/entity.ts");
+    expect(result.created).toContain("codegen/generators/queries.ts");
+    expect(result.created).toContain("codegen/generators/routes.ts");
+    expect(result.created).toContain("codegen/generators/barrel.ts");
+    expect(result.created).not.toContain("codegen/generators/routes-hono.ts");
+  });
+
+  test("routes-hono is still reachable via `meta eject` — not scaffolded eagerly, but not missing", async () => {
+    await init({ cwd });
+    // Not written by init...
+    expect(existsSync(join(cwd, "codegen", "generators", "routes-hono.ts"))).toBe(false);
+    // ...but eject can still copy it on demand (proves it wasn't deregistered, only
+    // moved off the eager path).
+    const { ejectGenerator } = await import("../src/commands/eject.js");
+    const ejectResult = await ejectGenerator({ cwd, name: "routes-hono" });
+    expect(ejectResult.status).toBe("created");
+    expect(existsSync(join(cwd, "codegen", "generators", "routes-hono.ts"))).toBe(true);
   });
 });
 
