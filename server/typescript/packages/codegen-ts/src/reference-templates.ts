@@ -30,12 +30,12 @@ function isReferenceRoot(dir: string, sentinel: string): boolean {
  * install (module runs from `dist/`, templates at `../src/reference/`, since `src/` ships
  * alongside `dist/`). Walks up checking both layouts at each level.
  */
-export function makeReferenceReader(moduleUrl: string, names: readonly string[]) {
-  const rawSentinel = names[0];
-  if (!rawSentinel) throw new Error("makeReferenceReader: `names` must not be empty.");
-  // Re-bound to a definitely-`string` const: `noUncheckedIndexedAccess` narrows `names[0]`
-  // only in this scope, not inside the closures below that capture it.
-  const sentinel: string = rawSentinel;
+export function makeReferenceReader(moduleUrl: string, names: readonly [string, ...string[]]) {
+  // A non-empty tuple type, so `names[0]` is `string` outright — this used to need a
+  // runtime empty-check plus a re-bound const, because `noUncheckedIndexedAccess`
+  // narrowing does not survive into the closures below. Every call site already passes
+  // an `as const` tuple or an array literal, so the type costs nothing and deletes both.
+  const sentinel: string = names[0];
 
   function resolveReferenceRoot(): string {
     let dir = dirname(fileURLToPath(moduleUrl));
@@ -55,8 +55,23 @@ export function makeReferenceReader(moduleUrl: string, names: readonly string[])
 
   return {
     resolveReferenceRoot,
-    readReferenceTemplate: (name: string): string =>
-      readFileSync(join(resolveReferenceRoot(), `${name}.ts`), "utf8"),
+    /**
+     * Read one template by name. The name is checked against `names` FIRST: this is a
+     * public export, so `name` is an untrusted `string` at runtime (the per-package
+     * wrappers narrow to a literal union, but types are erased). Without the check it
+     * interpolates straight into a path, so any caller threading a CLI argument through
+     * reads whatever file the string points at. The allowlist is already a parameter —
+     * enforcing it here makes the guarantee structural instead of something every call
+     * site has to remember, and it is the reason `meta eject` needs no check of its own.
+     */
+    readReferenceTemplate: (name: string): string => {
+      if (!names.includes(name)) {
+        throw new Error(
+          `unknown reference template "${name}". Available: ${names.join(", ")}.`,
+        );
+      }
+      return readFileSync(join(resolveReferenceRoot(), `${name}.ts`), "utf8");
+    },
   };
 }
 

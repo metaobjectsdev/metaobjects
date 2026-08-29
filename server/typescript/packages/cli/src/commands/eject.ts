@@ -18,51 +18,38 @@ import { log } from "../lib/log.js";
 // and the two call sites have no other state in common worth coupling over one string.
 const OWNED_GENERATORS_DIR = "codegen/generators";
 
-/**
- * Bridges a CLI-supplied `string` to a package's own literal-union template-name type
- * with a real runtime check the compiler can narrow on — never an unchecked `as any` /
- * `as never` cast. `N` is inferred from the `names` array actually passed (each
- * package's own `REFERENCE_GENERATOR_NAMES` `as const` tuple), so the narrowing lines
- * up exactly with what that package's `readReferenceTemplate` expects.
- */
-function assertKnownName<N extends string>(names: readonly N[], name: string): asserts name is N {
-  if (!(names as readonly string[]).includes(name)) {
-    throw new Error(`"${name}" is not one of: ${names.join(", ")}`);
-  }
-}
-
 interface TemplateSource {
   packageName: string;
   names: readonly string[];
-  read: (name: string) => string;
+  /** That package's own `src/reference/` directory. */
+  root: () => string;
 }
 
-// One registry, three readers — a package that gains templates later registers itself
+// One registry, three packages — a package that gains templates later registers itself
 // here and `meta eject` picks it up with no other change.
+//
+// Each entry exposes its reference ROOT rather than a read function. The packages' own
+// `readReferenceTemplate` narrows its parameter to a literal union, so calling it with
+// a CLI-supplied `string` used to need a generic `asserts name is N` helper — ~20 lines
+// to re-establish, for the compiler, a fact `resolveSource` has ALREADY established at
+// runtime by selecting this entry via `names.includes(name)`. Reading from the root
+// deletes that machinery without weakening anything: membership is still checked, once,
+// where the untrusted value enters.
 const SOURCES: TemplateSource[] = [
   {
     packageName: "@metaobjectsdev/codegen-ts",
     names: coreTpl.REFERENCE_GENERATOR_NAMES,
-    read: (name) => {
-      assertKnownName(coreTpl.REFERENCE_GENERATOR_NAMES, name);
-      return coreTpl.readReferenceTemplate(name);
-    },
+    root: coreTpl.resolveReferenceRoot,
   },
   {
     packageName: "@metaobjectsdev/codegen-ts-react",
     names: reactTpl.REFERENCE_GENERATOR_NAMES,
-    read: (name) => {
-      assertKnownName(reactTpl.REFERENCE_GENERATOR_NAMES, name);
-      return reactTpl.readReferenceTemplate(name);
-    },
+    root: reactTpl.resolveReferenceRoot,
   },
   {
     packageName: "@metaobjectsdev/codegen-ts-tanstack",
     names: tanstackTpl.REFERENCE_GENERATOR_NAMES,
-    read: (name) => {
-      assertKnownName(tanstackTpl.REFERENCE_GENERATOR_NAMES, name);
-      return tanstackTpl.readReferenceTemplate(name);
-    },
+    root: tanstackTpl.resolveReferenceRoot,
   },
 ];
 
@@ -198,7 +185,7 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
     );
   }
 
-  const templateSource = source.read(opts.name);
+  const templateSource = await readFile(join(source.root(), `${opts.name}.ts`), "utf8");
   const importLine = extractImportLine(templateSource, opts.name);
   const exportName = extractExportName(importLine, opts.name);
   const rel = `${OWNED_GENERATORS_DIR}/${opts.name}.ts`;
