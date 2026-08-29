@@ -45,7 +45,7 @@
 |---|---|
 | `markers.ts` | `extractMarkedRegion(source, id)` |
 | `subsequence.ts` | `matchSubsequence(inline, full)`, `renderWithElisions(inline, positions, fullLength)` |
-| `highlight-metadata.ts` | `loadVocabulary(registryPath)`, `highlightMetadata(yaml, vocab)` |
+| `highlight-metadata.ts` | `loadVocabulary(registryPath, specDir?)`, `highlightMetadata(yaml, vocab, onUnknown?)` — tolerant: reports an unplaceable key, never throws (the loader is the vocabulary gate) |
 | `highlight-code.ts` | `highlightCode(source, lang)` |
 | `transcript.ts` | `captureTranscript(argv, cwd)`, `normalizeTranscript(text, repoRoot)` |
 | `payload.ts` | `buildPayload(opts)` — assembles everything, runs the payload-build gates |

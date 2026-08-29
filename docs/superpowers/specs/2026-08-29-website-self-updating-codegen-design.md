@@ -229,6 +229,17 @@ untouched and the page looks as it does now. Two highlighters:
 - **Generated code and transcripts** — a library highlighter at build time, its token scopes
   mapped onto the same classes. No client JS.
 
+> **Corrected during implementation (Task 4).** This is a REPORT, not a failure. A
+> closed-world key check cannot be written: `attr.properties` is a chartered arbitrary
+> bag (ADR-0023) and `attr.expression`/`attr.filter` carry their own node grammars whose
+> inner keys are not registry attrs. Against the real corpora a throwing version produced
+> 8 false failures. The vocabulary gate is the LOADER — strictly stronger, no false
+> positives, and already run by both corpora's drift gates. Vocabulary also comes from
+> `spec/metamodel/*.json` as well as `expected-registry.json`, because the cross-port
+> manifest omits TS-side provider subtypes (`view.image`, `view.textarea`) that a shipped
+> example uses.
+
+
 **Palette unification.** `index.html` uses `comment` / `keyword` / `key` / `string`;
 `requirements.html` and `prompts-are-code.html` use `tok-cmt` / `tok-key` / `tok-val` / `tok-ok` /
 `tok-err`. The payload emits one set — the `index.html` names plus `ok` / `err` for terminal
@@ -295,7 +306,7 @@ templating it changes an adopter-facing artifact and deserves its own decision.
 |---|---|---|
 | Excerpt subsequence | release preflight | An excerpt that no longer appears in real output |
 | Showcase freshness (`regen-showcase`, no diff) | release preflight | Committed output stale vs current codegen |
-| Registry-driven highlight | payload build | A site example using retired vocabulary |
+| Registry-driven highlight (**report**) | payload build | An unplaceable key surfaced; vocabulary itself is gated by the loader |
 | Placeholder ↔ payload bijection | release preflight + deploy | Empty blocks; silently dropped examples |
 | Per-port showcase drift | port lanes (release tags) | A port's codegen changing shape |
 | Drift fixture still fails | payload build | A transcript block gone quietly green — a stale error on the page |
