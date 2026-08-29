@@ -38,6 +38,21 @@ describe("renderRequirementTest", () => {
     expect(src).not.toContain("expect.unreachable");
   });
 
+  test("a RETIRED stub is skipped — the capability was deliberately removed", () => {
+    // 0.24.0 retired `abandoned` and `superseded`; 0.24.2 restored `retired` in
+    // their place. The skip set was never moved across, so it skipped two statuses
+    // the loader now REFUSES and failed on the one that replaced them — emitting a
+    // permanently red stub for a capability nobody intends to rebuild, which is the
+    // exact noise the set exists to prevent. Found by authoring the first real
+    // retired entries outside a conformance fixture.
+    const src = renderRequirementTest({
+      ...base,
+      view: { ...base.view, status: "retired" },
+    });
+    expect(src).toContain("test.skip");
+    expect(src).not.toContain("expect.unreachable");
+  });
+
   test("a PARTIAL stub fails like live, and carries its disposition and tracking", () => {
     const src = renderRequirementTest({
       ...base,

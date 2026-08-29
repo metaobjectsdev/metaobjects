@@ -10,6 +10,10 @@
 // claims the capability works, so an empty green test asserts the opposite of the
 // claim — the original defect recreated in a new place.
 
+import {
+  REQUIREMENT_STATUSES,
+  REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
+} from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
 import type { RequirementView, ResolvedClaim } from "../requirement-walk.js";
 
@@ -27,21 +31,22 @@ export interface RequirementTestArgs {
  * Statuses whose stub is SKIPPED rather than failing.
  *
  * The rule is "does this entry claim the capability works right now?" — only `live`
- * and `partial` do. `planned` is intended-not-built; `abandoned` and `superseded`
- * describe a capability deliberately retired, whose `@implementedBy` is SUPPOSED to
- * dangle. Emitting a failing stub for any of the three reddens an application's suite
- * forever for something nobody intends to build, which is the noise an app silences
- * wholesale — taking the `live` stubs with it.
+ * and `partial` do. `planned` is intended-not-built; `retired` is built-then-
+ * deliberately-removed. Emitting a failing stub for either reddens an application's
+ * suite forever for something nobody intends to build, which is the noise an app
+ * silences wholesale — taking the `live` stubs with it.
  *
- * (FR-038 §4 proposes retiring `abandoned`/`superseded` from the vocabulary entirely.
- * Until that breaking cut lands they are legal `@status` values, so the renderer has
- * to handle them.)
+ * This set is derived from the LOADER's enum, not restated from it. It used to be a
+ * literal naming `abandoned` and `superseded`, and when 0.24.0 retired both and
+ * 0.24.2 put `retired` in their place, the set was left behind: it skipped two
+ * statuses the loader had begun REFUSING and failed on the one that replaced them,
+ * so every retired entry emitted a permanently red stub — the exact noise this set
+ * exists to prevent. Deriving it means the next status move cannot leave it behind:
+ * a status that is neither live nor partial is skipped by construction.
  */
-const SKIPPED_STATUSES: ReadonlySet<string> = new Set([
-  "planned",
-  "abandoned",
-  "superseded",
-]);
+const SKIPPED_STATUSES: ReadonlySet<string> = new Set(
+  REQUIREMENT_STATUSES.filter((s) => !REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s)),
+);
 
 /**
  * Escape an author-supplied value for a double-quoted TS string literal.
