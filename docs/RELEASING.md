@@ -13,12 +13,15 @@
 > - **NuGet** → keyless OIDC via the `publish-csharp.yml` workflow: `gh workflow run
 >   publish-csharp.yml` (or push a `csharp-v<version>` tag).
 >
-> Run network commands via the sandbox-disabled shell. **Single shared patch number (standing
-> policy since 0.20.13):** every release cuts ALL FOUR registries at the same `minor.patch` —
-> npm / PyPI / NuGet on `0.<m>.<p>`, Maven on `7.<m>.<p>` (only the major differs, for historical
-> continuity). A registry with no changed product file publishes a **version-parity bump**
-> (identical content at the new version) rather than sitting the release out. The rest of this doc
-> is the per-registry procedure.
+> Run network commands via the sandbox-disabled shell. **Publish what changed; converge the
+> number when you do (standing policy since 0.24.5, replacing the version-parity rule of
+> 0.20.13):** a registry publishes only when it has a changed product file, and when it does it
+> adopts the **current shared `minor.patch`** — skipping the numbers it sat out. npm / PyPI /
+> NuGet on `0.<m>.<p>`, Maven on `7.<m>.<p>` (only the major differs, for historical continuity).
+> Two carve-outs: the **14 npm packages still move atomically with each other** (they
+> cross-depend — that is intra-npm lockstep and it is unchanged), and a change to
+> `expected-registry.json` / `metamodelVersion` **forces all four**, because that is the
+> cross-port contract. The rest of this doc is the per-registry procedure.
 
 ## Step 0 (all registries): scan for unmerged work before you cut
 
@@ -167,7 +170,8 @@ bytes**, not "did output change."
 | **Breaking** metamodel-vocabulary change (retire an attr/subtype/type; narrow what is permitted) | FR-037 `@readOnly`, FR-038 `@verifiedBy`, ADR-0052 `@promptStyle` re-homing | **MINOR** (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR**, package MINOR (ADR-0035 Am. 2) |
 | Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR** (Metamodel 2.0) + package MINOR — see the two-contracts rule below |
 | Wire behavior fixed to match the documented/conformance contract | 0.19.1 `@min` clamp | PATCH | PATCH |
-| No changed product file in a port | PyPI/NuGet/Maven at 0.20.14 | **Version-parity bump at the shared patch number** — publish identical content at the new version; never skip a registry (single-shared-patch policy, standing since 0.20.13) | same |
+| No changed product file in a port | PyPI/NuGet/Maven at 0.24.4 while npm cuts 0.24.5 | **Do not publish that registry.** It sits the release out and keeps its current version. When it next has a changed file it adopts the shared `minor.patch` then current, skipping the numbers between (publish-what-changed policy, standing since 0.24.5) | same |
+| A change to `expected-registry.json` / `metamodelVersion` | any vocabulary move | **All four registries publish**, changed file or not — the metamodel is the cross-port contract and every port byte-matches the manifest | same |
 
 ### The two-contracts rule (post-1.0; ADR-0035 Amendment 2)
 
@@ -634,14 +638,34 @@ maintainer's GPG key.
 > If all are `200`, the release is out — the error was just the response parse. Bump the plugin to
 > ≥`0.7.0` to stop the crash on the next release.
 
-**The `minor.patch` IS unified across languages** (standing policy since 0.20.13): npm, PyPI and
-NuGet share `0.<m>.<p>`, and Maven Central ships the same `minor.patch` on its historical major `7`.
-Every release bumps all four registries, with version-parity bumps where a port has no changed
-file. The cross-language *behavior* contract
-is the **conformance corpus + [`fixtures/conformance/CAPABILITIES.json`](../fixtures/conformance/CAPABILITIES.json)**:
+**The `minor.patch` is CONVERGENT across languages, not lockstepped** (standing policy since
+0.24.5): npm, PyPI and NuGet use `0.<m>.<p>` and Maven Central the same `minor.patch` on its
+historical major `7` — but a registry only takes a number when it actually publishes. A port with
+no changed product file sits the release out and keeps its current version; the next time it ships,
+it adopts whatever `minor.patch` is current and skips the gap.
+
+This used to read *"every release bumps all four registries, with version-parity bumps where a port
+has no changed file"* — which contradicted the very next sentence. The cross-language *behavior*
+contract is the **conformance corpus + [`fixtures/conformance/CAPABILITIES.json`](../fixtures/conformance/CAPABILITIES.json)**:
 each release states which capabilities/conformance level it satisfies, and *that* manifest — not a
-shared version — is the coordination point. (Generated code runs without any MetaObjects runtime, so
-a language only publishes the libraries it actually ships: runtime helpers, and codegen where it exists.)
+shared version — is the coordination point. If the shared version is not the coordination point,
+then publishing byte-identical content to three registries to keep that version aligned buys
+nothing, and the phrase "version-parity bump" appeared ten times in `CHANGELOG.md` paying for it.
+(Generated code runs without any MetaObjects runtime, so a language only publishes the libraries it
+actually ships: runtime helpers, and codegen where it exists.)
+
+**A lagging version is now information.** PyPI at `0.24.4` while npm is at `0.24.7` says PyPI has
+had no product change since `0.24.4`. Under version-parity that was unreadable, because every
+registry carried the same number whether or not anything in it had moved.
+
+**One thing this breaks, and it must ship with the rule.** The JVM agent-context staleness nudge
+(`AgentContextScaffold.stalenessAcrossVersionLines`) reduces both sides to the release they name
+and compares them EXACTLY. Its own contract says it is *"correct while the four registries share a
+`minor.patch` … a CONVENTION rather than a gate: if lockstep ever breaks, this reports in-sync
+across a real gap."* Convergent publishing breaks that premise, and the failure mode inverts from
+[#347](https://github.com/metaobjectsdev/metaobjects/issues/347)'s permanently-loud false positive
+to a **silent false negative**. Promote the convention to a gate before relying on this rule in
+anger.
 
 ## Public-repo hygiene
 

@@ -5,6 +5,8 @@
 //   node scripts/release-verify.mjs --preflight        # can we publish at all?
 //   node scripts/release-verify.mjs 0.24.0             # is 0.24.0 actually live, everywhere?
 //   node scripts/release-verify.mjs 0.24.0 --smoke     # ...plus a real external install
+//   node scripts/release-verify.mjs 0.24.5 --registries=npm,maven
+//                                                      # ...only the registries this cut published
 //
 // WHY THIS EXISTS. The 0.24.0 cut was verified by a dozen throwaway shell scripts written
 // as it went, which is how two avoidable things happened: the auth check was improvised as
@@ -25,6 +27,29 @@ const VERSION = args.find((a) => /^\d+\.\d+\.\d+$/.test(a));
 const PREFLIGHT = args.includes("--preflight");
 const SMOKE = args.includes("--smoke");
 const MVN = VERSION && `7.${VERSION.split(".").slice(1).join(".")}`;
+
+// ── which registries this cut actually published ───────────────────────────────────────
+// Since 0.24.5 a registry publishes ONLY when it has a changed product file, and adopts the
+// then-current shared `minor.patch` when it does (docs/RELEASING.md). So "PyPI does not have
+// 0.24.7" is the CORRECT state for a cut PyPI sat out — verifying all four unconditionally
+// would report a red ✗ for a port behaving exactly as the rule requires, and a gate that
+// fails on correct behaviour is one people learn to run with their eyes closed.
+//
+// Default stays ALL FOUR: a coordinated cut (any `expected-registry.json` / metamodelVersion
+// move) publishes everywhere, and defaulting to "everything" means forgetting the flag
+// over-checks rather than under-checks. Under-checking is the silent half.
+const ALL_REGISTRIES = ["npm", "pypi", "nuget", "maven"];
+const registriesArg = args.find((a) => a.startsWith("--registries="))?.split("=")[1]
+  ?? (args.includes("--registries") ? args[args.indexOf("--registries") + 1] : undefined);
+const REGISTRIES = registriesArg
+  ? registriesArg.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  : ALL_REGISTRIES;
+const unknownRegistries = REGISTRIES.filter((x) => !ALL_REGISTRIES.includes(x));
+if (unknownRegistries.length) {
+  console.error(`unknown registry: ${unknownRegistries.join(", ")}`
+    + `  (expected any of ${ALL_REGISTRIES.join(", ")})`);
+  process.exit(2);
+}
 
 const NPM_PKGS = [
   "metadata", "render", "codegen-ts", "runtime-ts", "migrate-ts", "sdk", "docs-site",
@@ -149,11 +174,26 @@ function smoke() {
 
 if (PREFLIGHT) await preflight();
 if (VERSION) {
-  await verifyNpm(); await verifyPypi(); await verifyNuget(); await verifyMaven();
-  if (SMOKE) smoke();
+  const skipped = ALL_REGISTRIES.filter((x) => !REGISTRIES.includes(x));
+  // Say what was NOT checked, every time. A scoped run that prints only ✓s reads exactly
+  // like a full one, and "all checks passed" over a third of the registries is the report
+  // that gets believed and shouldn't be.
+  if (skipped.length) {
+    console.log(`\n  \x1b[33m!\x1b[0m not verified this run: ${skipped.join(", ")}`
+      + `  — declared as sitting ${VERSION} out (docs/RELEASING.md, publish-what-changed)`);
+  }
+  if (REGISTRIES.includes("npm")) await verifyNpm();
+  if (REGISTRIES.includes("pypi")) await verifyPypi();
+  if (REGISTRIES.includes("nuget")) await verifyNuget();
+  if (REGISTRIES.includes("maven")) await verifyMaven();
+  if (SMOKE) {
+    if (REGISTRIES.includes("npm")) smoke();
+    else w("smoke skipped — it installs from npm, which is not in --registries");
+  }
 }
 if (!PREFLIGHT && !VERSION) {
-  console.error("usage: release-verify.mjs [--preflight] [<version>] [--smoke]");
+  console.error("usage: release-verify.mjs [--preflight] [<version>] [--smoke]"
+    + " [--registries=npm,pypi,nuget,maven]");
   process.exit(2);
 }
 
