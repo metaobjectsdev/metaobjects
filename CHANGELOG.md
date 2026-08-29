@@ -119,6 +119,20 @@ findings survived re-scoring, and they are what shipped.
   procedure"** section in the `metaobjects-codegen` skill, which is the general answer the
   per-framework recipes were standing in for.
 
+- **`clientDirective` — the `"use client"` knob.** Set it and the four generated client
+  artifacts (form, hooks, columns, grid-hook) get the directive React Server Components
+  frameworks require; leave it off (the default) and output is byte-identical to before.
+  It is **config, never a metadata attribute**: the directive is a fact about the
+  adopter's bundler topology, not about the entity, and registering it would give every
+  non-TS port vocabulary it can never dispatch on — the `source.rdb @role` mistake that
+  retired four members in `0.21.0`. It defaults **off** because the directive is only
+  *required* under RSC and is inert-but-warned-about elsewhere; the asymmetry that would
+  argue for defaulting on (a runtime error for RSC adopters versus a build warning for
+  everyone else) is precisely what the rest of this release removes — before it, an RSC
+  adopter had no seam at all. `<Entity>.meta.ts` is deliberately excluded: it is plain
+  data imported *by* a client component, and in RSC the boundary is the importing
+  component, not everything it reaches.
+
 **Docs stop promising what the project does not intend to ship.** `AGENTS.md` and the port
 docs described a first-party package per framework as the way to reach a new framework; that
 was never the plan and is now stated as the ownership move it actually is. The agent-facing
