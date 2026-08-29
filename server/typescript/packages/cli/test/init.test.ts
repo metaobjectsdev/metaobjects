@@ -26,6 +26,28 @@ const PROBE_ENTITY = JSON.stringify({
 import { init, initCommand, nextStepsBlock } from "../src/commands/init.js";
 import { saveConfig, ConfigSchema } from "@metaobjectsdev/sdk";
 
+// A scaffolded project that will run `meta gen` must live INSIDE this package, never in
+// the OS tmpdir. `gen` loads metaobjects.config.ts, whose scaffolded generators import
+// `@metaobjectsdev/codegen-ts`, and node resolution walks UP from the project directory.
+// Under `test/fixtures/__tmp__/` that reaches cli's own node_modules — the workspace
+// copies, plus the real deps the generated routes import (fastify, drizzle-orm, zod,
+// runtime-ts) — the way an installed project resolves them. Under `/tmp` it reaches
+// `/tmp/node_modules`, which on a developer box may hold a PUBLISHED @metaobjectsdev
+// install left by a smoke test. Codegen then runs from that copy, and a second physical
+// copy of `metadata` gives the loader's source guards a different class identity, so a
+// `source.rdb` entity silently emits no queries and no routes — the test fails for a
+// reason that has nothing to do with what it checks, and only on the boxes that have
+// ever smoke-tested a published CLI.
+// `__tmp__` is also the ONE gitignored slot for this (root .gitignore has `__tmp__/`):
+// placed bare under `test/`, a dir surviving a crash or Ctrl-C — the `finally` never
+// runs — puts a whole scaffolded project into `git status` and into this package's own
+// typecheck, which compiles everything under `test/`.
+function mkGenProjectDir(prefix: string): string {
+  const tmpRoot = join(import.meta.dirname, "fixtures", "__tmp__");
+  mkdirSync(tmpRoot, { recursive: true });
+  return mkdtempSync(join(tmpRoot, prefix));
+}
+
 let cwd: string;
 beforeEach(() => {
   cwd = mkdtempSync(join(tmpdir(), "metaobjects-init-"));
@@ -512,15 +534,21 @@ describe("init() — scaffolded config.ts honesty", () => {
   test("meta gen still succeeds against the scaffolded config for an entity with a source.rdb", async () => {
     // Regression pin for the near-miss above: the scaffold's dbImport must stay
     // functional (routesFile() genuinely needs it), not just present-with-a-comment.
-    expect(await initCommand([], cwd)).toBe(0);
-    writeFileSync(
-      join(cwd, "metaobjects", "meta.common.json"),
-      PROBE_ENTITY,
-    );
-    const { genCommand } = await import("../src/commands/gen.js");
-    expect(await genCommand([], cwd)).toBe(0);
-    const routes = readFileSync(join(cwd, "src", "generated", "Author.routes.ts"), "utf8");
-    expect(routes).toContain('import { db } from "../db.js"');
+    // Runs `gen`, so it needs an in-package project dir — see mkGenProjectDir.
+    const dir = mkGenProjectDir("dbimport-gen-");
+    try {
+      expect(await initCommand([], dir)).toBe(0);
+      writeFileSync(
+        join(dir, "metaobjects", "meta.common.json"),
+        PROBE_ENTITY,
+      );
+      const { genCommand } = await import("../src/commands/gen.js");
+      expect(await genCommand([], dir)).toBe(0);
+      const routes = readFileSync(join(dir, "src", "generated", "Author.routes.ts"), "utf8");
+      expect(routes).toContain('import { db } from "../db.js"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -601,19 +629,10 @@ describe("init() — dbImport throwing stub (Task 15)", () => {
   // step further: it actually type-checks the generated output + the scaffolded
   // stub with the real TypeScript compiler this repo depends on, under the same
   // nodenext options a stock `tsc --init` project resolves relative imports
-  // with. The temp dir is placed INSIDE the cli package (not the OS tmpdir) so
-  // node module resolution for fastify/drizzle-orm/zod/@metaobjectsdev/runtime-ts
-  // — real deps the generated routes import — walks up to cli's own
-  // node_modules, the same way a real installed project would resolve them.
-  // ...and under `test/fixtures/__tmp__/`, the ONE gitignored slot for this (root
-  // .gitignore has `__tmp__/`, and every sibling temp-using test uses it). Placed bare
-  // under `test/` it survives a crash or Ctrl-C — the `finally` never runs — and then
-  // `tsconfig.typecheck.json`'s `test/**/*` compiles a whole scaffolded project into
-  // this package's own typecheck, with dozens of untracked files in `git status`.
+  // with. Like the pin above it runs `gen`, so the project dir is in-package —
+  // see mkGenProjectDir for why the OS tmpdir is wrong for both of them.
   test("end to end: init -> author a source.rdb entity -> gen -> tsc resolves dbImport with no unresolved-module error", async () => {
-    const tmpRoot = join(import.meta.dirname, "fixtures", "__tmp__");
-    mkdirSync(tmpRoot, { recursive: true });
-    const dir = mkdtempSync(join(tmpRoot, "dbstub-tsc-"));
+    const dir = mkGenProjectDir("dbstub-tsc-");
     try {
       expect(await initCommand([], dir)).toBe(0);
       writeFileSync(
