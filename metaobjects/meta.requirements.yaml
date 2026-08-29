@@ -14,6 +14,16 @@
 # Levels are PROBLEM-DOMAIN (the level attribute's byte-gated description: "L1-L3 are
 # levels of abstraction and ownership in the problem domain, NOT of code structure").
 # No node at L1-L3 may name a package, port, module or deployable.
+#
+# DEPTH. L1-L3 are the problem domain. L4 is one node per concrete subtype, named
+# so the link DERIVES from the name (`fieldCurrency` -> `field.currency`) — see
+# scripts/check-requirements-vocabulary.ts, which checks the correspondence in both
+# directions. L5 is deliberately NOT one node per attribute: an attribute whose
+# meaning is the same on every subtype carrying it (required, filterable, column,
+# default, mutability) is a promise about the TIER, which its L3 already makes, and
+# restating it 17 times would measure diligence rather than say anything. An L5 is
+# authored exactly when the attribute's meaning is specific to the subtype it sits
+# on — where the promise would be false, or absent, one subtype over.
 metadata.root:
   package: metaobjects
   children:
@@ -73,6 +83,35 @@ metadata.root:
                             Text accepted at a length nothing downstream can
                             store, found when the insert fails rather than
                             when it was typed.
+                          children:
+                            - requirement.functional:
+                                name: maxLength
+                                title: Maximum length
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A maximum length bounds a text value
+                                  everywhere it is checked, and where a
+                                  separate length rule also applies, the
+                                  stricter of the two wins.
+                                counterexample: >-
+                                  One limit on the field and a longer one as a
+                                  rule, with generated code enforcing
+                                  whichever it happened to read last.
+                            - requirement.functional:
+                                name: stringFormat
+                                title: Recognised text format
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A string format constrains text that has a
+                                  recognised shape but no behaviour of its own
+                                  — the residue left once everything with a
+                                  native type became its own field type.
+                                counterexample: >-
+                                  A value with real behaviour validated as a
+                                  format string, so nothing downstream knows
+                                  what it is.
                       - requirement.functional:
                           name: fieldInt
                           title: Whole number
@@ -179,6 +218,35 @@ metadata.root:
                           counterexample: >-
                             Two events whose recorded order changes when a
                             server moves region.
+                          children:
+                            - requirement.functional:
+                                name: localTime
+                                title: Naive local-time opt-out
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The local-time flag is the opt-out from
+                                  instant semantics: absent, the value is an
+                                  instant; present, it is a wall-clock reading
+                                  carrying no zone.
+                                counterexample: >-
+                                  A wall-clock opening time shifted by an
+                                  hour, because it was stored as an instant in
+                                  a zone nobody declared.
+                            - requirement.functional:
+                                name: autoSet
+                                title: Server-stamped
+                                level: 5
+                                status: live
+                                statement: >-
+                                  An auto-set timestamp is stamped by the tier
+                                  that writes it, on create or on update as
+                                  declared, and a value the caller supplies is
+                                  ignored rather than honoured.
+                                counterexample: >-
+                                  A caller setting a record's creation time to
+                                  whatever suits them, so the audit trail
+                                  records what the client claimed.
                       - requirement.functional:
                           name: fieldObject
                           title: Embedded object
@@ -191,6 +259,34 @@ metadata.root:
                           counterexample: >-
                             A structured value kept as opaque text, so nothing
                             can query inside it and nothing checks its shape.
+                          children:
+                            - requirement.functional:
+                                name: storage
+                                title: Physical storage form
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The storage attribute says how an embedded
+                                  object is physically kept — spread across
+                                  columns, as one queryable document, or as a
+                                  nested record.
+                                counterexample: >-
+                                  A nested value spread into columns by one
+                                  port and kept as a document by another, so
+                                  neither can read the other's rows.
+                            - requirement.functional:
+                                name: objectRef
+                                title: Value-object target
+                                level: 5
+                                status: live
+                                statement: >-
+                                  An object reference names the value object a
+                                  field holds, and that target must be a shape
+                                  — never something carrying its own identity.
+                                counterexample: >-
+                                  A field declaring it holds a shape, pointed
+                                  at an entity, and generated code embedding a
+                                  whole table's row inside another.
                       - requirement.functional:
                           name: fieldMap
                           title: Map
@@ -215,6 +311,19 @@ metadata.root:
                           counterexample: >-
                             A price held as a binary fraction, where adding a
                             hundred of them is off by a cent.
+                          children:
+                            - requirement.functional:
+                                name: currency
+                                title: Currency code
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The currency attribute names which currency
+                                  an amount is in, and fixes what one minor
+                                  unit of it means for that field.
+                                counterexample: >-
+                                  A yen amount divided by a hundred because
+                                  whoever read it assumed two decimal places.
                       - requirement.functional:
                           name: fieldEnum
                           title: Enumeration
@@ -228,6 +337,47 @@ metadata.root:
                           counterexample: >-
                             A stored value that is no declared member, handed
                             back as though it were one.
+                          children:
+                            - requirement.functional:
+                                name: values
+                                title: Member set
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The member list IS the legal set, and
+                                  nothing outside it is a legal value at any
+                                  tier.
+                                counterexample: >-
+                                  A member added to a database constraint and
+                                  not to the model, so one path accepts it and
+                                  every other refuses it.
+                            - requirement.functional:
+                                name: intValueMap
+                                title: Explicit integer coding
+                                level: 5
+                                status: live
+                                statement: >-
+                                  An integer coding fixes each member's stored
+                                  number EXPLICITLY, so reordering the members
+                                  cannot re-label rows already written.
+                                counterexample: >-
+                                  A member inserted into the middle of the
+                                  list, and every stored row now meaning the
+                                  member after the one it meant yesterday.
+                            - requirement.functional:
+                                name: normalize
+                                title: Incoming-value normalisation
+                                level: 5
+                                status: live
+                                statement: >-
+                                  Normalisation says how loosely an incoming
+                                  spelling may match a member before it is
+                                  accepted.
+                                counterexample: >-
+                                  Two members whose symbols differ only by a
+                                  separator, where a delimited value silently
+                                  matches the wrong one and is reported as
+                                  extracted rather than malformed.
                       - requirement.functional:
                           name: fieldUuid
                           title: Unique identifier
@@ -252,6 +402,20 @@ metadata.root:
                           counterexample: >-
                             A relative path accepted into a field that
                             everything downstream will try to dereference.
+                          children:
+                            - requirement.functional:
+                                name: lenient
+                                title: Strictness opt-out
+                                level: 5
+                                status: live
+                                statement: >-
+                                  Leniency is the declared opt-out from
+                                  requiring an absolute, scheme-bearing
+                                  address. Without it strictness is not a per-
+                                  port judgement call.
+                                counterexample: >-
+                                  One port accepting a relative address and
+                                  another refusing it, from one declaration.
                       - requirement.functional:
                           name: fieldInet
                           title: IP address
@@ -272,6 +436,21 @@ metadata.root:
                             value then depended on DNS at the moment of
                             writing, which is not a property of the
                             declaration at all.
+                          children:
+                            - requirement.functional:
+                                name: lenient
+                                title: Strictness opt-out
+                                level: 5
+                                status: live
+                                statement: >-
+                                  Leniency on an address field opts out of
+                                  requiring a literal AND changes the column
+                                  it is stored in, so it is a schema decision
+                                  rather than a validation preference.
+                                counterexample: >-
+                                  A field relaxed to accept anything, still
+                                  typed as an address underneath, refusing the
+                                  very values it was relaxed for.
 
                 - requirement.functional:
                     name: objectTaxonomy
@@ -327,6 +506,21 @@ metadata.root:
                             A view that starts returning a column nobody
                             listed, because the table underneath it gained
                             one.
+                          children:
+                            - requirement.functional:
+                                name: filter
+                                title: Row scope
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A projection's row filter declares which
+                                  rows the projection exposes at all, as part
+                                  of the projection rather than as something
+                                  every caller must remember to add.
+                                counterexample: >-
+                                  A view meant to show active records showing
+                                  every record, because scoping was left to
+                                  each query.
 
                 - requirement.functional:
                     name: attributeValueTypes
@@ -511,6 +705,62 @@ metadata.root:
                           counterexample: >-
                             A model that only reveals which engine it assumed
                             when a migration fails against a different one.
+                          children:
+                            - requirement.functional:
+                                name: kind
+                                title: Kind of place
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The kind attribute says what sort of place
+                                  data lives in, and read-only-ness is DERIVED
+                                  from it rather than declared a second time
+                                  alongside it.
+                                counterexample: >-
+                                  A view marked writable, so generated code
+                                  offers an update the database will refuse.
+                            - requirement.functional:
+                                name: role
+                                title: Read or write role
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The role attribute separates the one place
+                                  an object is written from the places it is
+                                  read, and exactly one source is the primary.
+                                counterexample: >-
+                                  Two sources both claiming to be where writes
+                                  go, and a row landing in whichever the code
+                                  reached first.
+                            - requirement.functional:
+                                name: unmanaged
+                                title: Not ours to change
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The unmanaged marker declares that a
+                                  database object is not the toolchain's to
+                                  create or alter, so a migration proposes
+                                  nothing for it.
+                                counterexample: >-
+                                  A hand-maintained view rewritten by a
+                                  migration that assumed it owned it.
+                            - requirement.functional:
+                                name: sql
+                                title: Hand-written body
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A hand-written body declares SQL the model
+                                  cannot express, and taking that escape hatch
+                                  means owning the result: nothing derives it
+                                  and nothing checks it back against the
+                                  model.
+                                counterexample: >-
+                                  A hand-written view whose columns no longer
+                                  match the projection naming it, with every
+                                  generated artifact still built from the
+                                  projection.
                       - requirement.functional:
                           name: identityPrimary
                           title: Primary key
@@ -522,6 +772,30 @@ metadata.root:
                           counterexample: >-
                             Two rows nothing can tell apart, because nothing
                             declared what makes one row one row.
+                          children:
+                            - requirement.functional:
+                                name: generation
+                                title: Key generation
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The generation attribute says where a new
+                                  row's key comes from — the database, the
+                                  writer, or nowhere, which means the caller
+                                  must supply it.
+                                counterexample: >-
+                                  A key the caller must supply, treated as
+                                  optional by the create shape, so the insert
+                                  reaches the database with nothing in it.
+                                notes: >-
+                                  The counterexample shipped. An entity whose
+                                  key carried no generation had its create
+                                  shape read the key's optionality off the
+                                  required flag like any other field, so a
+                                  body carrying no primary key at all was
+                                  accepted and failed at the database. Every
+                                  model in this repository generates its keys,
+                                  which is why no gate could see it.
                       - requirement.functional:
                           name: identitySecondary
                           title: Alternate key
@@ -547,6 +821,58 @@ metadata.root:
                           counterexample: >-
                             A parent deleted and its children left pointing at
                             nothing, because the reference declared no action.
+                          children:
+                            - requirement.functional:
+                                name: references
+                                title: Reference target
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A reference names the object and key it
+                                  points at, and that target is resolved when
+                                  the model loads rather than when a query
+                                  runs.
+                                counterexample: >-
+                                  A foreign key pointing at something renamed
+                                  months ago, discovered at the first insert.
+                            - requirement.functional:
+                                name: onDelete
+                                title: Delete action
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The delete action declares what becomes of a
+                                  referencing row when what it references
+                                  goes, and an unconfigured reference does
+                                  nothing rather than whatever the framework
+                                  underneath would have chosen.
+                                counterexample: >-
+                                  A parent deleted and its children silently
+                                  deleted with it, because a framework
+                                  supplied a cascade nobody declared.
+                                notes: >-
+                                  An absent configuration is not a neutral
+                                  default. One port's generated model emitted
+                                  no foreign keys at all, so the action was
+                                  inert; another's framework treated a
+                                  required reference as an implicit cascade.
+                                  Both are the counterexample, reached from
+                                  opposite directions.
+                            - requirement.functional:
+                                name: enforce
+                                title: Constraint or navigation
+                                level: 5
+                                status: live
+                                statement: >-
+                                  Enforcement declares whether a reference is
+                                  a database constraint or a navigational
+                                  fact, so a shape can point at an entity
+                                  without acquiring a foreign key.
+                                counterexample: >-
+                                  A message referring to an order by its
+                                  number, given a foreign key, so the message
+                                  cannot be stored before the order it
+                                  describes.
                       - requirement.functional:
                           name: indexLookup
                           title: Lookup index
@@ -560,6 +886,22 @@ metadata.root:
                             A retrieval index that silently enforces
                             uniqueness, so the second row with the same value
                             is refused.
+                          children:
+                            - requirement.functional:
+                                name: expr
+                                title: Expression key
+                                level: 5
+                                status: live
+                                statement: >-
+                                  An expression index declares that what is
+                                  indexed is computed rather than stored, and
+                                  it is EXCLUSIVE with naming fields — one key
+                                  or the other, never a silent half.
+                                counterexample: >-
+                                  An index declaring both a field list and an
+                                  expression, where half of it is quietly
+                                  discarded and the index built is not the
+                                  index described.
 
                 - requirement.functional:
                     name: relationships
@@ -586,6 +928,34 @@ metadata.root:
                           counterexample: >-
                             Deleting a category taking every product in it,
                             because a reference was modelled as ownership.
+                          children:
+                            - requirement.functional:
+                                name: cardinality
+                                title: Cardinality
+                                level: 5
+                                status: live
+                                statement: >-
+                                  Cardinality says whether one side reaches
+                                  one row or many, and it is what decides the
+                                  shape of everything generated from the
+                                  relationship.
+                                counterexample: >-
+                                  A one-to-many read as one-to-one, so a
+                                  customer's second order is unreachable.
+                            - requirement.functional:
+                                name: through
+                                title: Junction entity
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A through-entity names the junction a many-
+                                  to-many passes over, and the relationship's
+                                  keys are DERIVED from that junction's own
+                                  references rather than restated here.
+                                counterexample: >-
+                                  A join table's key direction stated twice —
+                                  once on the junction, once on the
+                                  relationship — and the two disagreeing.
                       - requirement.functional:
                           name: relationshipAggregation
                           title: Aggregation
@@ -646,6 +1016,33 @@ metadata.root:
                             A number carried through as text because the two
                             ends disagreed about its type, with nothing saying
                             so.
+                          children:
+                            - requirement.functional:
+                                name: from
+                                title: Source of the value
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The from attribute names the value this one
+                                  IS, on the object it comes from.
+                                counterexample: >-
+                                  A field that looks like a copy and is a re-
+                                  implementation, so the two drift apart and
+                                  nothing compares them.
+                            - requirement.functional:
+                                name: convert
+                                title: Deliberate type change
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The convert flag is the explicit
+                                  acknowledgement that a passthrough changes
+                                  type. Without it a mismatch across the hop
+                                  fails the load rather than being coerced.
+                                counterexample: >-
+                                  A number carried through into a text field
+                                  with nothing recording that anyone meant it
+                                  to convert.
                       - requirement.functional:
                           name: originAggregate
                           title: Aggregate
@@ -658,6 +1055,63 @@ metadata.root:
                           counterexample: >-
                             A count kept in a column and maintained by hand,
                             disagreeing with the rows it counts.
+                          children:
+                            - requirement.functional:
+                                name: agg
+                                title: Aggregation
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The aggregation says what is computed over
+                                  the related rows — a count, a sum, an
+                                  extreme, a whole-row rollup — and the result
+                                  is derived, never stored.
+                                counterexample: >-
+                                  A total maintained by application code,
+                                  drifting from the rows it totals with
+                                  nothing to notice.
+                            - requirement.functional:
+                                name: of
+                                title: What is aggregated
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The of attribute names what is aggregated;
+                                  omitting it on a collecting aggregate means
+                                  each related row is collected AS the
+                                  carrying field's declared value object.
+                                counterexample: >-
+                                  A rollup returning the whole entity where
+                                  the declaration asked for a curated shape,
+                                  because the target was inferred instead of
+                                  read.
+                            - requirement.functional:
+                                name: via
+                                title: Path to the rows
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The via attribute names the path from the
+                                  base object to what is aggregated, and may
+                                  be left out only when exactly one single-hop
+                                  relationship leads there.
+                                counterexample: >-
+                                  Two relationships reaching the same object
+                                  and the aggregate silently picking one of
+                                  them.
+                            - requirement.functional:
+                                name: filter
+                                title: Aggregate scope
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A scoping filter narrows which related rows
+                                  an aggregate counts, as declared structure
+                                  rather than as a fragment of query language.
+                                counterexample: >-
+                                  An open-orders count that includes the
+                                  closed ones, because the scoping lived in a
+                                  hand-written view nobody regenerated.
                       - requirement.functional:
                           name: originComputed
                           title: Computed value
@@ -730,6 +1184,21 @@ metadata.root:
                             wrote. An implicit floor that overrides an
                             explicit statement is not a default, it is a
                             contradiction.
+                          children:
+                            - requirement.functional:
+                                name: min
+                                title: Minimum length
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A declared minimum is authoritative and is
+                                  never widened by an implicit floor, so zero
+                                  means provided-and-possibly-empty and is
+                                  able to say so.
+                                counterexample: >-
+                                  A minimum of zero raised to one behind the
+                                  author's back, making required-but-empty
+                                  inexpressible.
                       - requirement.functional:
                           name: validatorRegex
                           title: Pattern
@@ -835,6 +1304,21 @@ metadata.root:
                           counterexample: >-
                             A table that gains a column every time the model
                             does, including the ones nobody meant to show.
+                          children:
+                            - requirement.functional:
+                                name: columns
+                                title: Shown columns
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The column list declares what a tabular view
+                                  shows and in what order, INCLUSIVELY — so a
+                                  field added to the model does not appear in
+                                  a grid by having been added.
+                                counterexample: >-
+                                  An internal field appearing in a customer-
+                                  facing table the day it was added to the
+                                  model.
                       - requirement.functional:
                           name: viewCurrency
                           title: Money display
@@ -847,6 +1331,21 @@ metadata.root:
                           counterexample: >-
                             An amount formatted once on the server for one
                             locale and shown to a reader in another.
+                          children:
+                            - requirement.functional:
+                                name: locale
+                                title: Formatting locale
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The locale says which conventions an amount
+                                  is formatted in, and formatting happens
+                                  where the value is read rather than where it
+                                  is stored.
+                                counterexample: >-
+                                  An amount formatted once on the server for
+                                  one reader's conventions and shown to
+                                  another's.
                       - requirement.functional:
                           name: viewText
                           title: Single-line text
@@ -1038,6 +1537,49 @@ metadata.root:
                             A prompt whose payload is assembled somewhere
                             else, so nothing can tell whether a renamed field
                             still reaches it.
+                          children:
+                            - requirement.functional:
+                                name: payloadRef
+                                title: Declared payload
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A payload reference names the declared shape
+                                  a prompt sends, which is what makes what-it-
+                                  sends a fact about the model and payload
+                                  growth a diff.
+                                counterexample: >-
+                                  A prompt assembling its payload from
+                                  whatever the caller passed, so nobody can
+                                  say what it sends without running it.
+                            - requirement.functional:
+                                name: responseRef
+                                title: Declared response
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A response reference is what makes a prompt
+                                  a RESPONDING prompt: it declares the shape a
+                                  reply must take, and the parser, the
+                                  tolerant extractor and the response-format
+                                  fragment all key off it.
+                                counterexample: >-
+                                  A reply parsed against a shape the prompt
+                                  never asked for.
+                            - requirement.functional:
+                                name: textRef
+                                title: External prompt text
+                                level: 5
+                                status: live
+                                statement: >-
+                                  A text reference keeps a prompt's words
+                                  outside the model and resolved by the
+                                  provider, so changing what a prompt SAYS is
+                                  not a change to the model.
+                                counterexample: >-
+                                  Prompt wording embedded in the declaration,
+                                  making every rewording a metadata change and
+                                  a regeneration.
                       - requirement.functional:
                           name: templateOutput
                           title: Output template
@@ -1094,6 +1636,34 @@ metadata.root:
                           counterexample: >-
                             A capability everyone believes is there, that
                             nothing builds and no check misses.
+                          children:
+                            - requirement.functional:
+                                name: implementedBy
+                                title: Link to the model
+                                level: 5
+                                status: live
+                                statement: >-
+                                  The implementedBy attribute names the model
+                                  nodes realising a requirement, and is legal
+                                  only where a requirement addresses the model
+                                  at all — at an object or one of its members,
+                                  never at an organisational tier.
+                                counterexample: >-
+                                  A solution-level entry holding a list of
+                                  every entity, so the tier that exists to
+                                  delegate is also the tier that holds every
+                                  link.
+                                notes: >-
+                                  This ledger omits the attribute on every
+                                  node, which is why it can promise something
+                                  about it without using it. The subject here
+                                  is a metamodel, so there are no model nodes
+                                  to name; the link from a requirement to the
+                                  vocabulary it promises something about is
+                                  derived from the requirement's NAME instead.
+                                  Same ruling that retired verifiedBy: a link
+                                  the author types is a link the author can
+                                  get wrong.
                       - requirement.functional:
                           name: requirementArchitectural
                           title: Architectural requirement
