@@ -46,12 +46,19 @@ describe("meta init — ESM package type", () => {
     // the imperative survived; this pins the tense.
     expect(warned).toContain("for you");
     expect(warned).not.toMatch(/^meta: set `"type"/m);
+    // …and it must report what the manifest ACTUALLY said. `npm init -y` writes
+    // `"type": "commonjs"` explicitly, so the first phrasing of this fix — "declared no
+    // module system" — was false on the dominant first-touch path.
+    expect(warned).toContain('declared "type": "commonjs"');
+    expect(warned).not.toContain("declared no module system");
   });
 
-  test("sets it when the manifest has no type field at all", async () => {
+  test("sets it when the manifest has no type field at all — and says THAT", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", version: "1.0.0" }, null, 2) + "\n");
-    await init({ cwd: dir, quiet: true });
+    const result = await init({ cwd: dir, quiet: true });
     expect(readPkg().type).toBe("module");
+    // The other arm: here "declared no module system" is the TRUE statement.
+    expect(result.warnings.join("\n")).toContain("declared no module system");
   });
 
   test("leaves an already-ESM project alone, and says nothing about it", async () => {

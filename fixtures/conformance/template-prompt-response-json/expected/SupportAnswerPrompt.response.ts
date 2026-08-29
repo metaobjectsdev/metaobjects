@@ -9,7 +9,7 @@ import { extractObject } from "@metaobjectsdev/runtime-ts";
 
 const SupportAnswerPromptSchema = z.object({
   text: z.string(),
-  confidence: z.unknown(),
+  confidence: z.enum(["HIGH", "OK", "LOW"]),
   note: z.string().optional(),
 });
 

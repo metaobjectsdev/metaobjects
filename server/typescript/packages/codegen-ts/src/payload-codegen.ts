@@ -41,6 +41,7 @@ import {
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import { enumValues } from "./enum-meta.js";
+import { templateSymbolBase } from "./naming.js";
 import { enumUnionAliasName, enumUnionString } from "./templates/inferred-types.js";
 import { assignEmittedNames } from "./naming/collision-names.js";
 
@@ -258,9 +259,9 @@ export function generatePayloadInterfacesBatch(
   return out.length === 0 ? "" : out.join("\n\n") + "\n";
 }
 
-function pascal(s: string): string {
-  return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
-}
+// Delegates to the shared authority so this emitter cannot drift from the parser and
+// render-helper again (naming.ts / templateSymbolBase).
+const pascal = templateSymbolBase;
 
 /** Emit a typed render handle binding a template's @textRef + @format and typing its payload. */
 export function generateRenderHandle(root: MetaData, templateName: string): string {

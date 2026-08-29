@@ -949,9 +949,16 @@ export async function verifyCommand(
     if (result.changes.length === 0) return [];
 
     return [
+      // `meta migrate --from-db` is NOT the repair: it writes a snapshot only when it has
+      // changes to EMIT, so on a database that already matches the metadata it reports
+      // "no schema changes / nothing to do", writes nothing, and leaves the stale snapshot
+      // exactly as it was — so this gate fails again, identically, with the user having
+      // been told everything is in sync. `baseline --from-db` rewrites it unconditionally,
+      // which is the whole point of the subcommand.
       `the committed schema snapshot disagrees with ${displayUrl} ` +
         `(${result.changes.length} difference(s)) — the next 'meta migrate' would emit DDL from it ` +
-        `and fail at apply. Re-derive it with 'meta migrate --from-db --db <url> --dialect ${dialect}'.`,
+        `and fail at apply. Re-derive it with ` +
+        `'meta migrate baseline --from-db --db <url> --dialect ${dialect}'.`,
       ...summarizeDrift(result.changes),
     ];
   }

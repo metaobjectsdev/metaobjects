@@ -17,6 +17,7 @@
 // API-contract corpus.
 
 import type { Hono, Context } from "hono";
+import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
 import { eq, count, and } from "drizzle-orm";
 import qs from "qs";
@@ -227,7 +228,17 @@ export function mountCreateRoute(opts: VerbOptions): void {
     if (!parsed.success) {
       return c.json({ error: "validation", issues: parsed.error.issues }, 400);
     }
-    const result = await opts.db.insert(opts.table).values(parsed.data).returning();
+    // Same redaction contract as the Fastify mount: a constraint the DB enforces must not
+    // come back as a 500 carrying the SQL and its bound parameters. Both mounts are
+    // required to emit byte-identical responses (docs/features/api-contract.md).
+    let result: unknown;
+    try {
+      result = await opts.db.insert(opts.table).values(parsed.data).returning();
+    } catch (err) {
+      const f = classifyConstraintError(err);
+      if (f === undefined) { logAndRedact(err); throw new RedactedDatabaseError(); }
+      return c.json(f.body, f.status as 400 | 409);
+    }
     const row = (result as unknown[])[0];
     // Echo the row through the replica view so derived columns are present (#214).
     return c.json(await reReadThroughView(opts, row), 201);
@@ -246,11 +257,18 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     // LOOKING id on a TEXT pk would otherwise UPDATE the wrong row.
     const idValue = coerceIdForColumn(opts.table.id, id);
     if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
-    const result = await opts.db
-      .update(opts.table)
-      .set(parsed.data)
-      .where(eq(opts.table.id, idValue))
-      .returning();
+    let result: unknown;
+    try {
+      result = await opts.db
+        .update(opts.table)
+        .set(parsed.data)
+        .where(eq(opts.table.id, idValue))
+        .returning();
+    } catch (err) {
+      const f = classifyConstraintError(err);
+      if (f === undefined) { logAndRedact(err); throw new RedactedDatabaseError(); }
+      return c.json(f.body, f.status as 400 | 409);
+    }
     const row = (result as unknown[])[0];
     return row ? c.json(await reReadThroughView(opts, row)) : c.json({ error: "not_found" }, 404);
   };
@@ -269,9 +287,15 @@ export function mountDeleteRoute(opts: VerbOptions): void {
     // LOOKING id on a TEXT pk would otherwise DELETE the wrong row (data loss).
     const idValue = coerceIdForColumn(opts.table.id, id);
     if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
-    const result = await opts.db
-      .delete(opts.table)
-      .where(eq(opts.table.id, idValue));
+    // A child row still referencing this one makes DELETE a 409, not a 500.
+    let result: unknown;
+    try {
+      result = await opts.db.delete(opts.table).where(eq(opts.table.id, idValue));
+    } catch (err) {
+      const f = classifyConstraintError(err);
+      if (f === undefined) { logAndRedact(err); throw new RedactedDatabaseError(); }
+      return c.json(f.body, f.status as 400 | 409);
+    }
     const affected = extractRowCount(result);
     if (affected > 0) {
       // 204 No Content — body must be empty.

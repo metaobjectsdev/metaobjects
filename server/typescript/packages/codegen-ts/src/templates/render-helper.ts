@@ -52,6 +52,7 @@ import {
   type PayloadField,
   type VerifyError,
 } from "@metaobjectsdev/render";
+import { templateSymbolBase } from "../naming.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 // ADR-0042: package-local — resolveObjectRef binds a bare @objectRef in `referrerPkg` first (else root-level), an FQN exactly.
@@ -175,7 +176,8 @@ export function renderRenderHelper(
 
   const fields = derivePayloadFieldTree(root, payloadRef, tmplPkg);
   const ft = fieldTreeLiteral(fields);
-  const fnName = `render${templateName}`;
+  // Same base as promptRender()'s handle and outputParser()'s symbols (naming.ts).
+  const fnName = `render${templateSymbolBase(templateName)}`;
   // @payloadRef may arrive package-qualified (FQN) once resolved — a bare
   // `::`-free name is required everywhere it's emitted as a TS identifier /
   // import specifier below (mirrors the same stripPackage() call every other

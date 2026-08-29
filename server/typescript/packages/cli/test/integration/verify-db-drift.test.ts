@@ -223,6 +223,50 @@ describe("meta verify --db — the committed schema snapshot (#292)", () => {
     }
   });
 
+  // The gate was right about the problem and wrong about the cure. It named
+  // `meta migrate --from-db`, which writes a snapshot only when it has changes to EMIT —
+  // so against a database already matching the metadata it printed "no schema changes /
+  // nothing to do", wrote nothing, and left the stale snapshot in place. The user
+  // followed the instruction, was told everything was in sync, and the gate that sent
+  // them there failed identically: a loop with no exit.
+  //
+  // This test does not assert the TEXT of the remedy — that is what let the wrong command
+  // sit there. It PARSES the command out of the message, RUNS it, and requires the gate to
+  // pass afterwards. Any future edit that names a command which does not actually repair
+  // the snapshot fails here, whatever it says.
+  test("the remedy the gate PRINTS actually repairs the snapshot", async () => {
+    const { repo, dbUrl } = scaffold(true);
+    try {
+      await materialize(repo, dbUrl);
+      staleSnapshot(repo, "widgets", "color");
+      out = [];
+      err = [];
+      expect(await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"])).toBe(1);
+
+      const message = [...out, ...err].join("\n");
+      const quoted = /'(meta migrate[^']+)'/.exec(message);
+      expect(quoted).not.toBeNull();
+
+      // Run exactly what it told the user to run.
+      const argv = quoted![1]!
+        .split(/\s+/)
+        .slice(1)                                   // drop the "meta" binary name
+        .map((a) => (a === "<url>" ? dbUrl : a));
+      out = [];
+      err = [];
+      expect(await run([...argv, "--cwd", repo])).toBe(0);
+
+      // …and the gate must now be satisfied. Pre-fix this was still 1.
+      out = [];
+      err = [];
+      const after = await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"]);
+      expect([...out, ...err].join("\n")).not.toContain("snapshot disagrees");
+      expect(after).toBe(0);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   test("no snapshot on disk → silent, not a failure (fail open)", async () => {
     const { repo, dbUrl } = scaffold(true);
     try {

@@ -1,4 +1,5 @@
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
+import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
@@ -365,6 +366,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // surface it on every generator's ctx.config so api-docs documents the Hono
   // CRUD surface it actually emits (rather than silently omitting it).
   const includeHonoRoutes = config.generators.some((g) => g.emitsHonoRoutes === true);
+
+  // A declared template.prompt with no prompt generator wired emits nothing and, before
+  // this, said nothing — while `meta verify` reported the template "clean". See
+  // prompt-generator-gate.ts. Self-extinguishing; warning only.
+  warnMissingPromptGenerators(root, config.generators, (m) => warnings.push(m));
 
   // 4. Run each generator with a per-target render context; collect with full path.
   const emitted: { fullPath: string; content: string; generatedBy: string }[] = [];

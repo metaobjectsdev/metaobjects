@@ -12,6 +12,7 @@
 // `require("fastify")`.
 
 import type { FastifyInstance } from "fastify";
+import { withConstraintMapping } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
 import qs from "qs";
 import type { ObjectManager } from "../object-manager.js";
@@ -179,8 +180,15 @@ export function mountCreateRoute(opts: SingleVerbOptions): void {
     // Zod returns `unknown` for parsed.data; the schema is authored from the
     // same metadata that drives ObjectManager, so the shape is guaranteed
     // compatible — cast at the trust boundary.
-    const row = await (await opts.om()).create(opts.entity, parsed.data as Row);
-    return reply.code(201).send(row);
+    // A declared constraint the DB enforces (a foreign key from identity.reference,
+    // a unique index) must not surface as a 500 echoing the SQL and its bound params.
+    return withConstraintMapping(
+      async () => {
+        const row = await (await opts.om()).create(opts.entity, parsed.data as Row);
+        return reply.code(201).send(row);
+      },
+      (f) => reply.code(f.status).send(f.body),
+    );
   });
 }
 
@@ -200,10 +208,15 @@ export function mountUpdateRoute(opts: SingleVerbOptions): void {
     // (consistent with mountDeleteRoute). ObjectManager's default behavior
     // throws NotFoundError, which Fastify would surface as 500.
     // Raw id — ObjectManager coerces per PK metadata (see mountGetRoute).
-    const row = await (await opts.om()).update(opts.entity, id, parsed.data as Row, {
-      ifMissing: "ignore",
-    });
-    return row ?? reply.code(404).send({ error: "not_found" });
+    return withConstraintMapping(
+      async () => {
+        const row = await (await opts.om()).update(opts.entity, id, parsed.data as Row, {
+          ifMissing: "ignore",
+        });
+        return row ?? reply.code(404).send({ error: "not_found" });
+      },
+      (f) => reply.code(f.status).send(f.body),
+    );
   };
   const path = `${opts.path}/:id`;
   const ro = routeOpts(opts);
@@ -220,8 +233,13 @@ export function mountDeleteRoute(opts: SingleVerbOptions): void {
     const { id } = req.params as { id: string };
     // Raw id — ObjectManager coerces per PK metadata (see mountGetRoute).
     // Pre-coercing conflated '0123' with 123 on a string pk: wrong-row DELETE.
-    const deleted = await (await opts.om()).delete(opts.entity, id);
-    return deleted ? reply.code(204).send() : reply.code(404).send({ error: "not_found" });
+    return withConstraintMapping(
+      async () => {
+        const deleted = await (await opts.om()).delete(opts.entity, id);
+        return deleted ? reply.code(204).send() : reply.code(404).send({ error: "not_found" });
+      },
+      (f) => reply.code(f.status).send(f.body),
+    );
   });
 }
 

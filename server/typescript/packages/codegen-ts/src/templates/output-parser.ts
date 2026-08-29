@@ -15,11 +15,15 @@ import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_PROMPT,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
   TEMPLATE_ATTR_RESPONSE_REF,
   RESPONSE_FORMAT_XML,
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
+import type { MetaField } from "@metaobjectsdev/metadata";
+import { enumValues, zodEnumExpr } from "../enum-meta.js";
+import { templateSymbolBase } from "../naming.js";
 import { responseShape } from "./find-inbound.js";
 import { isRequired } from "./fr010-field-mapping.js";
 import {
@@ -32,6 +36,29 @@ import {
 } from "./extract-delegate-emitter.js";
 import type { RenderContext } from "../render-context.js";
 
+/**
+ * Wire-shape validators per field subtype, for a JSON reply from a model.
+ *
+ * This map used to hold only the nine entries above `uuid`, so EVERY other subtype fell
+ * through the `?? "z.unknown()"` below — enum, uuid, date, time, timestamp, decimal,
+ * currency, uri and inet. `z.unknown()` accepts anything, including `null` on a `@required`
+ * field, so a declared response payload of eleven fields validated three of them. It
+ * mapped `class`, `short` and `byte` — the three subtypes this project CUT as
+ * non-functional registration-only stubs — while missing `currency` and `uuid`, which are
+ * exactly where a hallucinated value costs money or corrupts an identifier.
+ *
+ * The inversion is what makes it serious: validation was strongest on the payload we
+ * control and absent on the reply we do not, in the tier whose entire name is
+ * parser-on-receipt. The tolerant extractor in this same generated file reads the live
+ * metadata and DOES reject a non-member; so did Python's `FieldSpec.enum_field`. Only this
+ * strict path — the one called `parse<Name>`, documented `@throws on validation failure`,
+ * and the first one an adopter reaches for — threw the domain away.
+ *
+ * Temporal and numeric subtypes stay STRING-shaped on the wire deliberately: these
+ * validate raw JSON, where a timestamp is an ISO string and a decimal is a string to
+ * avoid float loss (the same reasoning as `zod-validators.ts`'s `z.coerce.date()` note).
+ * Coercion into native types is the caller's job, after the shape is known good.
+ */
 const SCALAR_ZOD: Record<string, string> = {
   string: "z.string()",
   class: "z.string()",
@@ -42,6 +69,17 @@ const SCALAR_ZOD: Record<string, string> = {
   double: "z.number()",
   float: "z.number()",
   boolean: "z.boolean()",
+  uuid: "z.string().uuid()",
+  date: "z.string()",
+  time: "z.string()",
+  timestamp: "z.string()",
+  // A decimal crosses the wire as a string precisely so it does not become a float;
+  // accepting a number here would re-admit the loss the subtype exists to prevent.
+  decimal: "z.string()",
+  // Integer minor units — the wire contract every port shares. Never a float.
+  currency: "z.number().int()",
+  uri: "z.string()",
+  inet: "z.string()",
 };
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
@@ -84,6 +122,12 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
       const inner = findObject(root, refName, field.parent?.package ?? field.parent?.fileDefaultPackage ?? "");
       base = inner ? renderObjectSchema(inner, root, new Set(seen).add(refName), depth + 1) : "z.unknown()";
     }
+  } else if (field.subType === FIELD_SUBTYPE_ENUM) {
+    // The members are declared, resolving (so an `extends`-inherited @values is seen),
+    // and already reachable — the send-side type in prompts.ts is built from them. The
+    // one closed domain in an untrusted reply is the one worth checking hardest.
+    const values = enumValues(field as MetaField);
+    base = values !== undefined && values.length > 0 ? zodEnumExpr(values) : "z.unknown()";
   } else {
     base = SCALAR_ZOD[field.subType] ?? "z.unknown()";
   }
@@ -137,11 +181,14 @@ export function renderOutputParser(root: MetaData, templateName: string, ctx?: R
   const { vo, ref: payloadRef } = shape;
 
   const schema = renderObjectSchema(vo, root, new Set([payloadRef]), 0);
-  const schemaName = `${templateName}Schema`;
-  const dataName = `${templateName}Data`;
-  const errorName = `${templateName}ValidationError`;
-  const parseName = `parse${templateName}`;
-  const safeParseName = `safeParse${templateName}`;
+  // One base for every symbol in this file, shared with promptRender()'s handle — the
+  // three template emitters used to spell the same node three ways (see naming.ts).
+  const base = templateSymbolBase(templateName);
+  const schemaName = `${base}Schema`;
+  const dataName = `${base}Data`;
+  const errorName = `${base}ValidationError`;
+  const parseName = `parse${base}`;
+  const safeParseName = `safeParse${base}`;
 
   // FR-010: emit the tolerant extract() API alongside the strict Zod parser.
   //
@@ -209,8 +256,8 @@ export function ${safeParseName}(
   // Unconditional since ADR-0052: a declared @responseRef IS the request for the
   // tolerant path, and @responseFormat is a closed json|xml set, so there is no
   // longer a third case to gate on.
-  const extractedName = `${templateName}Extracted`;
-  const extractLenientWithName = `extractLenient${templateName}WithLoader`;
+  const extractedName = `${templateSymbolBase(templateName)}Extracted`;
+  const extractLenientWithName = `extractLenient${templateSymbolBase(templateName)}WithLoader`;
   const payloadFqnConst = `${templateName.toUpperCase()}_PAYLOAD_NAME`;
   const formatEnum = format === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
 

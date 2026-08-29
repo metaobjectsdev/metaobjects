@@ -7,6 +7,72 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — eight defects found by adopting the product from scratch, twice
+
+Two adoption runs against the published `0.24.4`, docs followed literally and nothing fixed
+mid-run: a greenfield app built with MetaObjects, and a realistic hand-written app
+(Drizzle + Zod + Fastify + string-concatenated prompts, a populated three-table database)
+migrated onto it. What the two runs proved out is worth stating first — the drift gate found
+a **real pre-existing bug** in the hand-written app the moment its prompt was declared
+(a `book.status` reference surviving a rename to `shelf_state`, invisible to `tsc`), the
+filter layer was correct throughout, and swapping hand-written routes for generated ones
+preserved the wire shape exactly. Everything below is what went wrong on the way.
+
+- **BLOCKER — adopting an existing SQLite database emitted a migration the tool could not
+  apply.** Any rebuilt table that another *populated* table references failed with
+  `SQLITE_CONSTRAINT_FOREIGNKEY: FOREIGN KEY constraint failed` — which is most real
+  schemas, on the scaffold's default dialect, along the documented adoption path. The
+  `0.21.4` fix was present and on this path, rewriting the file's `PRAGMA foreign_keys = OFF`
+  to `PRAGMA defer_foreign_keys = ON` because the former is a no-op inside a transaction.
+  **Deferral is not a substitute for this recipe:** `DROP TABLE`'s implicit delete records a
+  deferred violation per referencing row, the repair is `ALTER TABLE … RENAME TO` — a rename,
+  never an insert — so the counter never decrements and COMMIT fails. Proven with a
+  controlled pair on identical database copies. The pragma is now issued *outside* the
+  transaction, which is SQLite's own documented procedure, and restored in a `finally`;
+  `PRAGMA foreign_key_check` is lifted out to run after commit, where its rows are no longer
+  discarded. Every existing rebuild test was blind to this because they all rebuild a table
+  nothing references.
+- **The schema-snapshot gate's printed remedy was a no-op.** It named
+  `meta migrate --from-db`, which writes a snapshot only when it has changes to emit — so on
+  a database already matching the metadata it reported "nothing to do", wrote nothing, and
+  the gate failed again identically. The user follows the instruction, is told everything is
+  in sync, and is stuck in a loop. It now names `meta migrate baseline --from-db`, and the
+  new test *parses the command out of the message, runs it, and requires the gate to pass* —
+  so any future edit naming a command that does not repair fails, whatever it says.
+- **The strict response parser validated 3 of 11 field subtypes.** `enum`, `uuid`, `date`,
+  `time`, `timestamp`, `decimal`, `currency`, `uri` and `inet` all fell through to
+  `z.unknown()`, which accepts anything — including `null` on a `@required` field. The map
+  carried `class`, `short` and `byte`, the three subtypes this project cut as non-functional
+  stubs, and missed `currency` and `uuid`. This inverted the pillar: validation was strongest
+  on the payload we control and absent on the reply we do not. It was an internal
+  contradiction, not a gap — the tolerant extractor in the *same generated file* rejects a
+  non-member, and so does Python's `FieldSpec.enum_field`; only the path named `parse<Name>`
+  and documented `@throws on validation failure` threw the domain away.
+- **A declared `template.prompt` with no prompt generator wired emitted nothing and said
+  nothing**, while `meta verify` reported the template "clean". The payload value objects
+  *are* emitted (they are `object.value` nodes), so the run looks like it worked. `meta gen`
+  now warns, naming the templates and distinguishing the missing send side from the missing
+  receive side — self-extinguishing, following the `layout.dataGrid` precedent (#287).
+- **A constraint violation returned 500 with the SQL and its bound parameter values in the
+  response body.** Wrong status for a client error, and on a POST carrying PII or a token
+  that is user data reflected to an unauthenticated caller out of generated code. Now a 409
+  (`{"error":"constraint_violation","constraint":"foreign_key"}`) with no query text;
+  unrecognised driver errors are logged in full and rethrown redacted. Classification walks
+  the `cause` chain, because Drizzle wraps every driver error in a `DrizzleQueryError` whose
+  own message is the query — reading only the top level matched nothing at all, which the
+  first cut of this fix did until it was run against a live server.
+- **Three generators spelled the same template three ways** — `renderTriageTicket`,
+  `parsetriageTicket`, `type triageTicketData` — because one applied a private `pascal()` and
+  two concatenated the raw name. A single `templateSymbolBase()` in `naming.ts` now owns it.
+  **Adopter-visible:** a template whose name begins lower-case (the spelling the prompts
+  skill's own examples use) gets renamed generated symbols; an UpperCamel name is unchanged.
+- **The prompts reference's config example moved you off the owned generators**, importing
+  `entityFile`/`queriesFile`/`barrel` from the ADR-0034-deprecated package path.
+- **`meta init` claimed the manifest "declared no module system"** when `npm init -y` writes
+  `"type": "commonjs"` explicitly — false on the dominant first-touch path. (Introduced by
+  `0.24.4`'s own fix to that same line, which corrected the tense and got the premise wrong.)
+
+
 ## [0.24.4] — 2026-08-28
 
 _A coordinated PATCH across all four registries (npm `0.24.4` · PyPI `0.24.4` · NuGet `0.24.4` ·

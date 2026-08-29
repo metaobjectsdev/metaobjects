@@ -39,3 +39,12 @@ export {
 export { Format } from "@metaobjectsdev/render";
 export { LlmCallDbRecorder, NullRecorder, recordLlmCall, buildLlmCallRow, persistLlmCallRow, truncateRow } from "./llm-recorder.js";
 export type { LlmRecorder, LlmCallRow, LlmCallInput, RecordLlmCallOptions, RecordLlmCallResult, LlmCallDbRecorderOpts } from "./llm-recorder.js";
+
+// Constraint-violation mapping for generated write routes — never echoes the query.
+export {
+  classifyConstraintError,
+  withConstraintMapping,
+  RedactedDatabaseError,
+  type ConstraintKind,
+  type ConstraintFailure,
+} from "./constraint-errors.js";

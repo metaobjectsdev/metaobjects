@@ -15,6 +15,7 @@
 //   DELETE {path}/:id  delete, 204 on success, 404 if missing
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
+import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
 import { eq, count, and, asc } from "drizzle-orm";
 import qs from "qs";
@@ -250,7 +251,16 @@ export function mountCreateRoute(opts: VerbOptions): void {
     const values = opts.discriminator
       ? { ...(parsed.data as Record<string, unknown>), [opts.discriminator.column]: opts.discriminator.value }
       : parsed.data;
-    const result = await opts.db.insert(opts.table).values(values).returning();
+    // A constraint the DB enforces (a foreign key from identity.reference, a unique
+    // index) must not surface as a 500 echoing the SQL and its bound parameters.
+    let result: unknown;
+    try {
+      result = await opts.db.insert(opts.table).values(values).returning();
+    } catch (e) {
+      const f = classifyConstraintError(e);
+      if (f === undefined) { logAndRedact(e); throw new RedactedDatabaseError(); }
+      return reply.code(f.status).send(f.body);
+    }
     const row = (result as unknown[])[0];
     // #214 — read-your-writes: re-read through the replica view so the response
     // carries derived (origin.passthrough) columns the base table excludes.
@@ -283,11 +293,18 @@ export function mountUpdateRoute(opts: VerbOptions): void {
       return reply.code(400).send({ error: "invalid_id" });
     }
     const idCond = eq(opts.table.id, idValue);
-    const result = await opts.db
-      .update(opts.table)
-      .set(data)
-      .where(discCond ? and(idCond, discCond) : idCond)
-      .returning();
+    let result: unknown;
+    try {
+      result = await opts.db
+        .update(opts.table)
+        .set(data)
+        .where(discCond ? and(idCond, discCond) : idCond)
+        .returning();
+    } catch (e) {
+      const f = classifyConstraintError(e);
+      if (f === undefined) { logAndRedact(e); throw new RedactedDatabaseError(); }
+      return reply.code(f.status).send(f.body);
+    }
     const row = (result as unknown[])[0];
     if (row == null) return reply.code(404).send({ error: "not_found" });
     // #214 — re-read through the replica view so the response carries derived columns.
@@ -323,9 +340,17 @@ export function mountDeleteRoute(opts: VerbOptions): void {
       return reply.code(400).send({ error: "invalid_id" });
     }
     const idCond = eq(opts.table.id, idValue);
-    const result = await opts.db
-      .delete(opts.table)
-      .where(discCond ? and(idCond, discCond) : idCond);
+    // A child row still referencing this one makes DELETE a 409, not a 500.
+    let result: unknown;
+    try {
+      result = await opts.db
+        .delete(opts.table)
+        .where(discCond ? and(idCond, discCond) : idCond);
+    } catch (e) {
+      const f = classifyConstraintError(e);
+      if (f === undefined) { logAndRedact(e); throw new RedactedDatabaseError(); }
+      return reply.code(f.status).send(f.body);
+    }
     // Both libsql and pg drivers expose a rows-affected counter, in different
     // shapes. Treat anything > 0 as "found and deleted."
     const affected = extractRowCount(result);

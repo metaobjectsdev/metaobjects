@@ -598,6 +598,7 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
     return;
   }
 
+  const declaredType = pkg.type;   // read BEFORE the mutation below overwrites it
   pkg.type = "module";
   const added = addScaffoldDevDependencies(pkg);
   // Preserve the file's existing indentation rather than reformatting someone's manifest.
@@ -606,9 +607,16 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
   // Past tense, deliberately: this reports an edit already made. The imperative
   // ("set `\"type\": \"module\"`") read as a TODO on the one line a newcomer sees
   // last, so a scaffold that had just done the right thing looked like it had failed.
+  //
+  // And it must not claim the manifest was SILENT on the point: `npm init -y` writes
+  // `"type": "commonjs"` explicitly (npm 11.x), which is the dominant first-touch path,
+  // so "declared no module system" was false exactly where it is read most. Report what
+  // was actually there.
+  const previous = typeof declaredType === "string" ? declaredType : undefined;
   result.warnings.push(
-    'package.json declared no module system — set `"type": "module"` for you, because ' +
-      "MetaObjects scaffolds and generates ESM, which a CommonJS project cannot compile.",
+    `package.json ${previous === undefined ? "declared no module system" : `declared "type": "${previous}"`} — ` +
+      'set `"type": "module"` for you, because MetaObjects scaffolds and generates ESM, ' +
+      "which a CommonJS project cannot compile.",
   );
   if (added.length > 0) {
     result.warnings.push(

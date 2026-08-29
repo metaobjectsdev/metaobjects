@@ -191,5 +191,28 @@ export function routesHandlerName(entityName: string): string {
   return `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
 }
 
+
+/**
+ * The PascalCase base every generated symbol for a `template.*` node is built from —
+ * `render<Base>`, `parse<Base>`, `safeParse<Base>`, `<Base>Schema`, `<Base>Data`,
+ * `<Base>ValidationError`, `extractLenient<Base>WithLoader`.
+ *
+ * Kept here, and used by ALL of the template emitters, because they disagreed. Three
+ * generators named the same node three ways: `promptRender()`'s handle applied a private
+ * `pascal()` (`renderTriageTicket`), while `outputParser()` and the render-helper
+ * concatenated the raw name (`parsetriageTicket`, `type triageTicketData`). One `meta gen`
+ * run, one template, two conventions — and the skill's own examples use the lower-camel
+ * spelling that triggers it, so following the documentation is what produced it.
+ *
+ * An UpperCamel template name is unaffected (`pascal("TriageTicket") === "TriageTicket"`),
+ * so this only moves symbols for lower-camel names, which are exactly the ones that were
+ * spelled inconsistently.
+ */
+export function templateSymbolBase(templateName: string): string {
+  return templateName.length > 0
+    ? templateName[0]!.toUpperCase() + templateName.slice(1)
+    : templateName;
+}
+
 // Re-exported here for callers that import from codegen-ts's naming module.
 export { toKebabCase };

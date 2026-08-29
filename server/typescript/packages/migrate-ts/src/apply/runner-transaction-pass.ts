@@ -34,13 +34,33 @@ import { splitSqlStatements } from "../sql/split-statements.js";
  * <h3>What it does</h3>
  * 1. **Drops transaction control** (`BEGIN`/`COMMIT`/`ROLLBACK`/`SAVEPOINT`/`RELEASE`).
  *    The runner's transaction supplies the atomicity the file was asking for.
- * 2. **Rewrites `PRAGMA foreign_keys = OFF` to `PRAGMA defer_foreign_keys = ON`.** This is
- *    not cosmetic: `foreign_keys` is a **no-op inside a transaction**, so the rebuild would
- *    lose its FK protection precisely where it needs it (dropping a referenced table).
- *    `defer_foreign_keys` is the in-transaction equivalent — enforcement is deferred to
- *    commit — and is exactly what the D1 cascade emitter uses for the same reason.
- * 3. **Drops the matching `PRAGMA foreign_keys = ON`**, whose only job was to undo (1);
- *    `defer_foreign_keys` resets itself at commit.
+ * 2. **Reports `PRAGMA foreign_keys = OFF` to the caller as `requiresForeignKeysOff`**
+ *    instead of executing it, because the pragma is a **no-op inside a transaction** and
+ *    must be issued BEFORE the transaction opens. That is SQLite's own documented
+ *    recreate-and-copy procedure, and it is the only form that works.
+ *
+ *    This used to rewrite it to `PRAGMA defer_foreign_keys = ON`, reasoning that deferral
+ *    is "the in-transaction equivalent". **It is not, for this recipe.** Deferral makes
+ *    COMMIT check the violations rather than skipping them, and the rebuild's repair step
+ *    is `ALTER TABLE __new_x RENAME TO x` — a RENAME, not an INSERT. `DROP TABLE x`'s
+ *    implicit delete records one deferred violation per referencing row, nothing ever
+ *    decrements that counter, and COMMIT fails:
+ *
+ *        SQLITE_CONSTRAINT_FOREIGNKEY: FOREIGN KEY constraint failed
+ *
+ *    So ANY rebuild of a table another populated table references — a CHECK added by
+ *    adopting a `field.enum`, an evolved `@values`, a column type change — was
+ *    un-appliable on the scaffold's default dialect. Found by adopting MetaObjects into an
+ *    existing three-table app (`authors <- books <- reviews`), which is the documented
+ *    migration path. Proven with a controlled pair on identical database copies: deferral
+ *    fails, `foreign_keys = OFF` outside the transaction applies cleanly with every row
+ *    preserved. (D1 cannot do this — its implicit transaction owns the connection — which
+ *    is why D1 needed the full referrer cascade of #241 instead.)
+ * 3. **Drops the matching `PRAGMA foreign_keys = ON`.** Restoring it is the caller's job,
+ *    since the caller is now the one that turned it off.
+ * 4. **Lifts `PRAGMA foreign_key_check` out** as `postTransactionChecks`. Run inside the
+ *    transaction its result set was simply discarded, so the file's own safety net never
+ *    caught anything; the caller now runs it after commit and fails on any row.
  *
  * Postgres migrations contain none of these constructs, so this is a no-op for them —
  * which is why it keys on statement text rather than needing the dialect threaded in.
@@ -50,15 +70,26 @@ export interface RunnerTransactionPassResult {
   statements: string[];
   /** Human-readable adaptations made, for `--verbose`/diagnostics. Empty when untouched. */
   notes: string[];
+  /**
+   * The file asked for FK enforcement to be off. The caller MUST issue
+   * `PRAGMA foreign_keys = OFF` before opening its transaction and restore it after —
+   * inside a transaction the pragma does nothing (see the class doc).
+   */
+  requiresForeignKeysOff: boolean;
+  /** Statements to run AFTER the transaction commits; any returned row is a failure. */
+  postTransactionChecks: string[];
 }
 
 const TRANSACTION_CONTROL = /^\s*(BEGIN|COMMIT|END\s+TRANSACTION|ROLLBACK|SAVEPOINT|RELEASE)\b/i;
 const FK_OFF = /^\s*PRAGMA\s+foreign_keys\s*=\s*(OFF|0|false)\s*$/i;
 const FK_ON = /^\s*PRAGMA\s+foreign_keys\s*=\s*(ON|1|true)\s*$/i;
+const FK_CHECK = /^\s*PRAGMA\s+foreign_key_check\s*$/i;
 
 export function prepareForRunnerTransaction(sqlText: string): RunnerTransactionPassResult {
   const notes: string[] = [];
   const statements: string[] = [];
+  const postTransactionChecks: string[] = [];
+  let requiresForeignKeysOff = false;
 
   for (const stmt of splitSqlStatements(sqlText)) {
     if (TRANSACTION_CONTROL.test(stmt)) {
@@ -66,20 +97,25 @@ export function prepareForRunnerTransaction(sqlText: string): RunnerTransactionP
       continue;
     }
     if (FK_OFF.test(stmt)) {
-      // Preserve the INTENT. A bare foreign_keys pragma does nothing inside a
-      // transaction, so keeping it verbatim would silently drop FK protection.
-      statements.push("PRAGMA defer_foreign_keys = ON");
-      notes.push("rewrote `PRAGMA foreign_keys = OFF` to `PRAGMA defer_foreign_keys = ON` (the in-transaction equivalent)");
+      // Hand the INTENT to the caller rather than executing it here. The pragma is a
+      // no-op inside a transaction, and deferral is not a substitute for this recipe.
+      requiresForeignKeysOff = true;
+      notes.push("lifted `PRAGMA foreign_keys = OFF` out of the transaction (it is a no-op inside one)");
       continue;
     }
     if (FK_ON.test(stmt)) {
-      notes.push("dropped `PRAGMA foreign_keys = ON` (defer_foreign_keys resets at commit)");
+      notes.push("dropped `PRAGMA foreign_keys = ON` (the caller restores what the caller disabled)");
+      continue;
+    }
+    if (FK_CHECK.test(stmt)) {
+      postTransactionChecks.push(stmt);
+      notes.push("deferred `PRAGMA foreign_key_check` to after commit (its rows are discarded inside a transaction)");
       continue;
     }
     statements.push(stmt);
   }
 
-  return { statements, notes };
+  return { statements, notes, requiresForeignKeysOff, postTransactionChecks };
 }
 
 function firstWords(stmt: string): string {

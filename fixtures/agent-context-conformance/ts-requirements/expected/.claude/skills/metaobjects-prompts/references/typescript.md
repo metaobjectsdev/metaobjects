@@ -22,7 +22,16 @@ provider/LLM-call layer — you compose the call yourself.
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, barrel, promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
+// The entity trio + barrel come from the OWNED copies `meta init` scaffolded into
+// ./codegen/generators/ (ADR-0034). Importing them from the package instead is the
+// deprecated path, and quietly hands their shape back to the package — so keep these
+// lines as `meta init` wrote them and add only the prompt pair below.
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { barrel } from "./codegen/generators/barrel.js";
+// promptRender / outputParser are NOT in the ownable set — the render and parse engines
+// are upstream-owned, so importing them from the package is the supported pattern.
+import { promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",

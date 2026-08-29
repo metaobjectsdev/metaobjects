@@ -304,13 +304,43 @@ async function runSqlFileWithLedgerMutation(
   // rejects a nested BEGIN, which made table-rebuild migrations un-appliable on the
   // scaffold's default dialect) and its own `PRAGMA foreign_keys = OFF`, which is a
   // no-op inside a transaction. See runner-transaction-pass.ts for the full rationale.
-  const { statements } = prepareForRunnerTransaction(sqlText);
-  await db.transaction().execute(async (trx) => {
-    for (const stmt of statements) {
-      await sql.raw(stmt).execute(trx);
+  const { statements, requiresForeignKeysOff, postTransactionChecks } =
+    prepareForRunnerTransaction(sqlText);
+
+  // OUTSIDE the transaction, deliberately: `PRAGMA foreign_keys` is a no-op inside one,
+  // and `defer_foreign_keys` cannot stand in for it here — `DROP TABLE`'s implicit delete
+  // records a deferred violation per referencing row that the repairing RENAME never
+  // decrements, so COMMIT fails. See runner-transaction-pass.ts.
+  if (requiresForeignKeysOff) {
+    await sql.raw("PRAGMA foreign_keys = OFF").execute(db);
+  }
+  try {
+    await db.transaction().execute(async (trx) => {
+      for (const stmt of statements) {
+        await sql.raw(stmt).execute(trx);
+      }
+      await mutateLedger(trx);
+    });
+  } finally {
+    // Restore before anything else touches this connection, even if the migration threw.
+    if (requiresForeignKeysOff) {
+      await sql.raw("PRAGMA foreign_keys = ON").execute(db);
     }
-    await mutateLedger(trx);
-  });
+  }
+
+  // The file's own safety net, finally able to report. Running it inside the transaction
+  // discarded its rows, so a rebuild that DID strand a reference passed silently.
+  for (const check of postTransactionChecks) {
+    const result = await sql.raw(check).execute(db);
+    const rows = (result as { rows?: unknown[] }).rows ?? [];
+    if (rows.length > 0) {
+      throw new Error(
+        `migration left ${rows.length} dangling foreign-key reference(s): ${check} reported ` +
+          `${JSON.stringify(rows.slice(0, 5))}. The database is NOT consistent — restore from ` +
+          `backup rather than continuing.`,
+      );
+    }
+  }
 }
 
 async function discoverMigrations(dir: string): Promise<DiscoveredMigration[]> {
