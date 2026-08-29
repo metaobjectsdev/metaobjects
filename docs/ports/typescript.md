@@ -319,8 +319,11 @@ import { defineConfig } from "@metaobjectsdev/cli";
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { barrel } from "./codegen/generators/barrel.js";
-// Hono routes have no reference template yet — still imported from the package.
-import { routesFileHono } from "@metaobjectsdev/codegen-ts/generators";
+// Hono routes are NOT scaffolded eagerly by `meta init` (the default emit targets
+// Fastify) but have the same reference template + ownership route as entity/queries/
+// routes/barrel — take it with `meta eject routes-hono`, which copies it to
+// codegen/generators/routes-hono.ts.
+import { routesFileHono } from "./codegen/generators/routes-hono.js";
 
 export default defineConfig({
   outDir: "src/generated",

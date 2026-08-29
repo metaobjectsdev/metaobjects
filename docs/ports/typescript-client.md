@@ -79,12 +79,11 @@ fetch URLs (browser-side):
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  barrel,
-} from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { routesFile } from "./codegen/generators/routes.js";
+import { barrel } from "./codegen/generators/barrel.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/codegen-ts-tanstack";
 
