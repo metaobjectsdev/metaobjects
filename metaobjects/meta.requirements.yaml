@@ -41,6 +41,202 @@ metadata.root:
               counterexample: >-
                 A model fact restated inside a generator, a migration or a
                 hand-written type because the metadata cannot say it.
+              children:
+                - requirement.functional:
+                    name: typedFieldVocabulary
+                    title: Typed field vocabulary
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every value a model can hold has a declared field type that fixes
+                      its native type, its storage and its wire form together, so the
+                      three cannot disagree.
+                    counterexample: >-
+                      A price stored as a floating-point number, where adding 0.1 and
+                      0.2 does not give 0.3.
+                    notes: >-
+                      The behaviour-over-storage test is ADR-0037's: ask what a value
+                      DOES, not whether it is a string. url and ip became field.uri and
+                      field.inet because they carry native types and behaviour; email
+                      and hostname stayed plain validated strings.
+
+                - requirement.functional:
+                    name: objectTaxonomy
+                    title: The object taxonomy
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every declared object is exactly one of three kinds — it owns its
+                      data, it is a pure shape, or it is derived — and the kind decides
+                      what the object is allowed to carry.
+                    counterexample: >-
+                      A shape meant only for transport that has acquired its own primary
+                      key and a writable table.
+                    description: >-
+                      Covers which kinds exist and what each may hold. How a kind's data
+                      is physically stored is persistenceMapping.
+
+                - requirement.functional:
+                    name: attributeValueTypes
+                    title: Attribute value types
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every attribute a declaration carries has a declared value type,
+                      and a closed set of members where the set is closed, so a wrong
+                      value is refused where it was written.
+                    counterexample: >-
+                      A misspelled status accepted as an ordinary string, silently
+                      disabling the check that was supposed to read it.
+                    notes: >-
+                      Where the members of a closed set are policed decides how many
+                      ports can be wrong at once. The requirement status enum is
+                      enforced by the loader rather than by a checker precisely so a
+                      typo fails to load in every language, instead of passing silently
+                      in four of them and being caught in the fifth.
+
+                - requirement.functional:
+                    name: persistenceMapping
+                    title: Persistence mapping
+                    level: 3
+                    status: live
+                    statement: >-
+                      A declaration says where its data lives and which values identify
+                      one row of it, in terms that do not presume a particular database.
+                    counterexample: >-
+                      An entity whose rows cannot be addressed one at a time, because
+                      nothing in the declaration says which values identify one.
+                    description: >-
+                      Covers the placement of a collection and the identity of a row.
+                      How one value is typed and stored is typedFieldVocabulary; which
+                      engine the result is emitted for is a codegen concern.
+
+                - requirement.functional:
+                    name: relationships
+                    title: Relationships
+                    level: 3
+                    status: live
+                    statement: >-
+                      A relationship between two objects is declared once, and
+                      everything that follows from it — the keys, the join, the
+                      traversal — is derived from that one declaration.
+                    counterexample: >-
+                      The same association stated on both sides, with the two statements
+                      disagreeing about which side holds the key.
+
+                - requirement.functional:
+                    name: derivation
+                    title: Derivation
+                    level: 3
+                    status: live
+                    statement: >-
+                      A value that comes from somewhere else declares where from, and is
+                      therefore read-only everywhere it appears.
+                    counterexample: >-
+                      A stored total that can be written directly, so the total and the
+                      rows it sums stop agreeing and nothing notices.
+                    description: >-
+                      Covers where a derived value comes from and what that makes it.
+                      How two objects are connected in the first place is relationships.
+
+                - requirement.functional:
+                    name: constraints
+                    title: Constraints
+                    level: 3
+                    status: live
+                    statement: >-
+                      A rule about what a value may be is declared on the model, so the
+                      same rule holds at every point a value can arrive.
+                    counterexample: >-
+                      A value the form refuses and the endpoint behind it accepts.
+                    notes: >-
+                      Not hypothetical. Until 0.16.0 two ports described their declared
+                      constraints and did not enforce them at the wire tier, so a
+                      required value could be omitted over HTTP and fail later at the
+                      database. Declared-but-decorative is the failure mode this entry
+                      exists to forbid.
+
+                - requirement.functional:
+                    name: presentation
+                    title: Presentation
+                    level: 3
+                    status: live
+                    statement: >-
+                      How a value should be shown to a person is declared beside the
+                      value, in terms no particular user interface owns.
+                    counterexample: >-
+                      A declaration that has to be edited because the interface reading
+                      it was rebuilt, even though nothing about the data changed.
+                    description: >-
+                      Covers what the model may say about presenting a value. What is
+                      actually rendered from that is webClient.
+
+                - requirement.functional:
+                    name: declaredPrompts
+                    title: Declared prompts
+                    level: 3
+                    status: live
+                    statement: >-
+                      What a prompt sends to a model is a declared typed shape, so what
+                      it sends is a fact about the model rather than a property of the
+                      code that assembled it.
+                    counterexample: >-
+                      A prompt whose payload has doubled in size with no diff showing
+                      it, because its fields were gathered by walking an object at run
+                      time.
+                    description: >-
+                      Covers declaring the payload and the response shape. Rendering
+                      them and reading a reply back are under promptConstruction.
+
+                - requirement.functional:
+                    name: governanceVocabulary
+                    title: Governance vocabulary
+                    level: 3
+                    status: live
+                    statement: >-
+                      A capability the solution itself provides can be declared,
+                      levelled and checked by the same loader as everything else in the
+                      model.
+                    counterexample: >-
+                      A list of what the product does, kept in a document, that no build
+                      reads and that nothing fails when it goes stale.
+                    notes: >-
+                      This entry is the one being exercised as it is written: the file
+                      it sits in is MetaObjects' own ledger, loaded by the shipped
+                      loader under the strict registry. If the capability were not real
+                      the entry could not exist.
+
+                - requirement.functional:
+                    name: inheritanceAndReferences
+                    title: Inheritance and references
+                    level: 3
+                    status: live
+                    statement: >-
+                      A declaration can build on another and name one anywhere in the
+                      model unambiguously, and what a name resolves to never depends on
+                      the order the declarations were read.
+                    counterexample: >-
+                      One model resolving a name two different ways on two machines,
+                      because the declarations happened to be read in a different order.
+                    notes: >-
+                      The counterexample is an observed defect, not an invented one: a
+                      dotted reference to an inherited member resolved or failed
+                      depending on directory-listing order, so the same sources behaved
+                      differently under two runtimes. Order-independence is a property
+                      of the resolver, which is why it is stated as a promise here.
+
+                - requirement.functional:
+                    name: authoringFrontEnds
+                    title: Authoring front-ends
+                    level: 3
+                    status: live
+                    statement: >-
+                      A model can be authored in a form a person is willing to write by
+                      hand, and lowered to the one interchange form every port reads by
+                      a lowering with exactly one answer.
+                    counterexample: >-
+                      Two authors writing the same model in the friendlier form and
+                      getting two different interchange documents out of it.
 
           - requirement.functional:
               name: codegen
