@@ -211,6 +211,16 @@ gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-
 # claims anything). Offline; one YAML file.
 gate_requirements_ledger() { bun scripts/check-requirements-ledger.ts && bun scripts/test-requirements-ledger.ts; }
 
+# ── every registered subtype has an authored requirement ──────────────────────
+# Phase 2's half of the ledger. The link from a requirement to the vocabulary it
+# promises something about is DERIVED from the requirement's name (`fieldCurrency`
+# -> `field.currency`), never declared — the same ruling that retired @verifiedBy:
+# a link the author types is a link the author can get wrong. The check is
+# bidirectional, so a new subtype that nobody promised fails here, and so does a
+# requirement naming vocabulary that no longer exists. Population is the UNION of
+# the cross-port manifest and spec/metamodel — 72 concrete subtypes.
+gate_requirements_vocabulary() { bun scripts/check-requirements-vocabulary.ts && bun scripts/test-requirements-vocabulary.ts; }
+
 # ── conformance.yml — fixture lint + workspace typecheck ──────────────────────
 gate_fixture_lint() {
   bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
@@ -436,6 +446,7 @@ if want gates; then step    "metamodel-version bump"           gate_metamodel_ve
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
+if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see
 # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,

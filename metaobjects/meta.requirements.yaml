@@ -59,6 +59,219 @@ metadata.root:
                       DOES, not whether it is a string. url and ip became field.uri and
                       field.inet because they carry native types and behaviour; email
                       and hostname stayed plain validated strings.
+                    children:
+                      - requirement.functional:
+                          name: fieldString
+                          title: Text
+                          level: 4
+                          status: live
+                          statement: >-
+                            A text field holds characters up to a declared
+                            maximum length, and attaches no meaning to what
+                            they spell beyond what a validator adds.
+                          counterexample: >-
+                            Text accepted at a length nothing downstream can
+                            store, found when the insert fails rather than
+                            when it was typed.
+                      - requirement.functional:
+                          name: fieldInt
+                          title: Whole number
+                          level: 4
+                          status: live
+                          statement: >-
+                            A whole-number field holds a signed 32-bit
+                            integer, in every port and on the wire.
+                          counterexample: >-
+                            A count that wraps to a negative number on one
+                            port and not on another.
+                      - requirement.functional:
+                          name: fieldLong
+                          title: Large whole number
+                          level: 4
+                          status: live
+                          statement: >-
+                            A large whole-number field holds a signed 64-bit
+                            integer and crosses the wire without a floating-
+                            point conversion in between.
+                          counterexample: >-
+                            An identifier above two to the fifty-third
+                            arriving in a browser rounded to a different
+                            identifier.
+                      - requirement.functional:
+                          name: fieldDouble
+                          title: Double-precision number
+                          level: 4
+                          status: live
+                          statement: >-
+                            A double-precision field holds a binary floating-
+                            point number, with the inexactness that implies
+                            stated rather than discovered.
+                          counterexample: >-
+                            A running total accumulated in one, where the sum
+                            of the parts no longer equals the whole.
+                      - requirement.functional:
+                          name: fieldFloat
+                          title: Single-precision number
+                          level: 4
+                          status: live
+                          statement: >-
+                            A single-precision field holds a narrower binary
+                            floating-point number, for values whose provenance
+                            is already single-precision.
+                          counterexample: >-
+                            A value stored at one precision and read back at
+                            another, reported as changed by a check that
+                            compared the two.
+                      - requirement.functional:
+                          name: fieldDecimal
+                          title: Exact decimal
+                          level: 4
+                          status: live
+                          statement: >-
+                            An exact-decimal field holds a base-10 number of
+                            declared precision and scale, and never passes
+                            through binary floating point to get there.
+                          counterexample: >-
+                            A tax figure that differs by a cent depending on
+                            which language computed it.
+                      - requirement.functional:
+                          name: fieldBoolean
+                          title: Boolean
+                          level: 4
+                          status: live
+                          statement: >-
+                            A boolean field holds exactly true or false, and
+                            never a third state standing in for absent.
+                          counterexample: >-
+                            An unanswered question stored as false, so nobody
+                            can tell it apart from an answer of no.
+                      - requirement.functional:
+                          name: fieldDate
+                          title: Calendar date
+                          level: 4
+                          status: live
+                          statement: >-
+                            A date field holds a day on a calendar — no time,
+                            no zone.
+                          counterexample: >-
+                            A birthday that lands on the previous day for a
+                            reader in another region.
+                      - requirement.functional:
+                          name: fieldTime
+                          title: Time of day
+                          level: 4
+                          status: live
+                          statement: >-
+                            A time field holds a time of day with no date
+                            attached to it.
+                          counterexample: >-
+                            An opening hour that cannot be declared without
+                            inventing a date to hang it on.
+                      - requirement.functional:
+                          name: fieldTimestamp
+                          title: Instant
+                          level: 4
+                          status: live
+                          statement: >-
+                            A timestamp field holds an instant, unambiguous
+                            across zones, and holds a naive local reading only
+                            where the declaration says so.
+                          counterexample: >-
+                            Two events whose recorded order changes when a
+                            server moves region.
+                      - requirement.functional:
+                          name: fieldObject
+                          title: Embedded object
+                          level: 4
+                          status: live
+                          statement: >-
+                            An object field holds a declared value object,
+                            stored flattened, as a JSON document, or as a
+                            subdocument, according to the declaration.
+                          counterexample: >-
+                            A structured value kept as opaque text, so nothing
+                            can query inside it and nothing checks its shape.
+                      - requirement.functional:
+                          name: fieldMap
+                          title: Map
+                          level: 4
+                          status: live
+                          statement: >-
+                            A map field holds key-to-value pairs whose keys
+                            are not known when the model is written.
+                          counterexample: >-
+                            An open-ended set of properties modelled as one
+                            column per key anyone thought of, so adding a key
+                            is a migration.
+                      - requirement.functional:
+                          name: fieldCurrency
+                          title: Money
+                          level: 4
+                          status: live
+                          statement: >-
+                            A money field holds an amount as a whole number of
+                            the minor units of a declared currency, and is
+                            never handled as a fraction.
+                          counterexample: >-
+                            A price held as a binary fraction, where adding a
+                            hundred of them is off by a cent.
+                      - requirement.functional:
+                          name: fieldEnum
+                          title: Enumeration
+                          level: 4
+                          status: live
+                          statement: >-
+                            An enumeration field holds one member of a closed
+                            declared set, and the member symbol is what the
+                            wire and the runtime see whatever the column
+                            stores.
+                          counterexample: >-
+                            A stored value that is no declared member, handed
+                            back as though it were one.
+                      - requirement.functional:
+                          name: fieldUuid
+                          title: Unique identifier
+                          level: 4
+                          status: live
+                          statement: >-
+                            A unique-identifier field holds a UUID as a value
+                            in its own right, not as text that happens to be
+                            shaped like one.
+                          counterexample: >-
+                            Two rows differing only in the letter case of
+                            their identifier, treated as two different rows.
+                      - requirement.functional:
+                          name: fieldUri
+                          title: URI
+                          level: 4
+                          status: live
+                          statement: >-
+                            A URI field holds an absolute, scheme-bearing
+                            address, unless the declaration explicitly relaxes
+                            that.
+                          counterexample: >-
+                            A relative path accepted into a field that
+                            everything downstream will try to dereference.
+                      - requirement.functional:
+                          name: fieldInet
+                          title: IP address
+                          level: 4
+                          status: live
+                          statement: >-
+                            An address field holds an IP address literal, and
+                            a name is never resolved into one on its behalf.
+                          counterexample: >-
+                            A hostname turned into an address by a lookup
+                            while the request was being served, so what got
+                            stored depends on when it was stored.
+                          notes: >-
+                            Observed, and fixed as a defect rather than a
+                            preference: two ports resolved a hostname into
+                            this field with a blocking lookup on the request
+                            path and rewrote the value silently. The stored
+                            value then depended on DNS at the moment of
+                            writing, which is not a property of the
+                            declaration at all.
 
                 - requirement.functional:
                     name: objectTaxonomy
@@ -75,6 +288,45 @@ metadata.root:
                     description: >-
                       Covers which kinds exist and what each may hold. How a kind's data
                       is physically stored is persistenceMapping.
+                    children:
+                      - requirement.functional:
+                          name: objectEntity
+                          title: Entity
+                          level: 4
+                          status: live
+                          statement: >-
+                            An entity owns its data: it has its own identity,
+                            a writable place for that data to live, and a
+                            lifecycle.
+                          counterexample: >-
+                            A record that cannot be updated, because nothing
+                            declares where it lives or which values identify
+                            one of it.
+                      - requirement.functional:
+                          name: objectValue
+                          title: Value object
+                          level: 4
+                          status: live
+                          statement: >-
+                            A value object is pure shape — never its own
+                            identity, never its own source — constructed by
+                            whoever embeds it rather than fetched.
+                          counterexample: >-
+                            A transport shape that has acquired a primary key,
+                            so two copies of one message are now two records.
+                      - requirement.functional:
+                          name: objectProjection
+                          title: Projection
+                          level: 4
+                          status: live
+                          statement: >-
+                            A projection is a derived read-only representation
+                            whose declared field set IS its exposure: an
+                            inclusive list that fails closed.
+                          counterexample: >-
+                            A view that starts returning a column nobody
+                            listed, because the table underneath it gained
+                            one.
 
                 - requirement.functional:
                     name: attributeValueTypes
@@ -94,6 +346,142 @@ metadata.root:
                       enforced by the loader rather than by a checker precisely so a
                       typo fails to load in every language, instead of passing silently
                       in four of them and being caught in the fifth.
+                    children:
+                      - requirement.functional:
+                          name: attrString
+                          title: Text attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            A text attribute carries characters on a
+                            declaration and is checked as text when the model
+                            loads.
+                          counterexample: >-
+                            A number written where a name belongs, coerced to
+                            text, and emitted into generated code as a name.
+                      - requirement.functional:
+                          name: attrInt
+                          title: Whole-number attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            A whole-number attribute carries a signed 32-bit
+                            integer on a declaration.
+                          counterexample: >-
+                            A length limit written as text, so a limit of 128
+                            compares as smaller than a limit of 64.
+                      - requirement.functional:
+                          name: attrLong
+                          title: Large whole-number attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            A large whole-number attribute carries a signed
+                            64-bit integer on a declaration.
+                          counterexample: >-
+                            A bound above the 32-bit range quietly narrowed at
+                            load, so the declaration means less than it says.
+                      - requirement.functional:
+                          name: attrDouble
+                          title: Fractional attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            A fractional attribute carries a non-integer
+                            number on a declaration.
+                          counterexample: >-
+                            A ratio written as a fraction and read as a whole
+                            number, so a half becomes nothing.
+                      - requirement.functional:
+                          name: attrBoolean
+                          title: Boolean attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            A boolean attribute carries exactly true or false,
+                            and text that merely looks like one is not one.
+                          counterexample: >-
+                            The word false read as a value that is present, so
+                            a flag written to switch something off switches it
+                            on.
+                      - requirement.functional:
+                          name: attrClass
+                          title: Type-name attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            A type-name attribute carries the name of a type
+                            to be bound when code is generated, never resolved
+                            by reflection while running.
+                          counterexample: >-
+                            A type looked up from a string at run time, so the
+                            model works under one runtime and fails under a
+                            compiled one.
+                      - requirement.functional:
+                          name: attrProperties
+                          title: Free-form properties
+                          level: 4
+                          status: partial
+                          statement: >-
+                            A free-form properties attribute carries author-
+                            supplied key-value data that the metamodel
+                            deliberately does not interpret, so a project can
+                            record something of its own without inventing
+                            vocabulary.
+                          counterexample: >-
+                            A project needing one note of its own on a
+                            declaration and having to choose between an
+                            attribute the loader refuses and switching the
+                            refusal off.
+                          notes: >-
+                            Partial, and the gap is that the type is
+                            registered while the attribute that would carry it
+                            is registered on NO type — so the chartered escape
+                            hatch is unreachable from every node, including
+                            this one. No disposition: nobody has ruled on
+                            whether to project it onto a wildcard, scope it to
+                            a few types, or withdraw the charter. It is
+                            recorded here undecided rather than quietly
+                            described as working.
+                      - requirement.functional:
+                          name: attrFilter
+                          title: Filter attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            A filter attribute carries a declared predicate as
+                            structure, not as a fragment of query language.
+                          counterexample: >-
+                            A scoping condition written as a string of SQL,
+                            meaning one thing on one engine and failing to
+                            parse on another.
+                      - requirement.functional:
+                          name: attrExpression
+                          title: Expression attribute
+                          level: 4
+                          status: live
+                          statement: >-
+                            An expression attribute carries an expression
+                            whose text is the author's and whose placement in
+                            the model is the metamodel's.
+                          counterexample: >-
+                            A derived column's formula living inside a
+                            generator instead of the model, so changing it
+                            regenerates nothing.
+                      - requirement.functional:
+                          name: attrIntMap
+                          title: Symbol-to-integer map
+                          level: 4
+                          status: live
+                          statement: >-
+                            A symbol-to-integer map attribute carries an
+                            explicit mapping from declared symbols to numbers,
+                            so the correspondence survives the symbols being
+                            reordered.
+                          counterexample: >-
+                            A set of members mapped to storage by position,
+                            where inserting one member silently re-labels
+                            every row already written.
 
                 - requirement.functional:
                     name: persistenceMapping
@@ -110,6 +498,68 @@ metadata.root:
                       Covers the placement of a collection and the identity of a row.
                       How one value is typed and stored is typedFieldVocabulary; which
                       engine the result is emitted for is a codegen concern.
+                    children:
+                      - requirement.functional:
+                          name: sourceRdb
+                          title: Relational source
+                          level: 4
+                          status: live
+                          statement: >-
+                            A relational source says where an object's data
+                            lives, in what kind of place, and in what role,
+                            without naming a database engine.
+                          counterexample: >-
+                            A model that only reveals which engine it assumed
+                            when a migration fails against a different one.
+                      - requirement.functional:
+                          name: identityPrimary
+                          title: Primary key
+                          level: 4
+                          status: live
+                          statement: >-
+                            A primary key declares which values identify one
+                            row and how a new row gets its identifier.
+                          counterexample: >-
+                            Two rows nothing can tell apart, because nothing
+                            declared what makes one row one row.
+                      - requirement.functional:
+                          name: identitySecondary
+                          title: Alternate key
+                          level: 4
+                          status: live
+                          statement: >-
+                            An alternate key declares a second unique way to
+                            address a row; its uniqueness comes from being
+                            that type, never from an attribute somebody
+                            remembered to set.
+                          counterexample: >-
+                            Two customers sharing an email address, because
+                            the index meant to prevent it was never unique.
+                      - requirement.functional:
+                          name: identityReference
+                          title: Reference
+                          level: 4
+                          status: live
+                          statement: >-
+                            A reference declares that a value points at
+                            another object's key, and what becomes of it when
+                            that object goes.
+                          counterexample: >-
+                            A parent deleted and its children left pointing at
+                            nothing, because the reference declared no action.
+                      - requirement.functional:
+                          name: indexLookup
+                          title: Lookup index
+                          level: 4
+                          status: live
+                          statement: >-
+                            A lookup index declares a non-unique retrieval
+                            path. Uniqueness lives in the TYPE, so an index
+                            cannot claim it by accident.
+                          counterexample: >-
+                            A retrieval index that silently enforces
+                            uniqueness, so the second row with the same value
+                            is refused.
 
                 - requirement.functional:
                     name: relationships
@@ -123,6 +573,50 @@ metadata.root:
                     counterexample: >-
                       The same association stated on both sides, with the two statements
                       disagreeing about which side holds the key.
+                    children:
+                      - requirement.functional:
+                          name: relationshipAssociation
+                          title: Association
+                          level: 4
+                          status: live
+                          statement: >-
+                            An association declares that two objects refer to
+                            one another, with neither owning the other's
+                            lifetime.
+                          counterexample: >-
+                            Deleting a category taking every product in it,
+                            because a reference was modelled as ownership.
+                      - requirement.functional:
+                          name: relationshipAggregation
+                          title: Aggregation
+                          level: 4
+                          status: live
+                          statement: >-
+                            An aggregation declares that one object groups
+                            others which outlive it.
+                          counterexample: >-
+                            A team disbanded and its members deleted along
+                            with it.
+                      - requirement.functional:
+                          name: relationshipComposition
+                          title: Composition
+                          level: 4
+                          status: live
+                          statement: >-
+                            A composition declares that one object owns
+                            another's lifetime, so the parent going takes the
+                            children with it.
+                          counterexample: >-
+                            An order deleted and its lines left behind,
+                            referenced by nothing and still counted by every
+                            report.
+                          notes: >-
+                            The parent side of this contributed no referential
+                            action for several releases, so the documented
+                            cascade never fired and deleting a parent failed
+                            at the database. A relationship that states
+                            ownership and emits nothing is the counterexample
+                            above, reached by a different route.
 
                 - requirement.functional:
                     name: derivation
@@ -138,6 +632,55 @@ metadata.root:
                     description: >-
                       Covers where a derived value comes from and what that makes it.
                       How two objects are connected in the first place is relationships.
+                    children:
+                      - requirement.functional:
+                          name: originPassthrough
+                          title: Passthrough
+                          level: 4
+                          status: live
+                          statement: >-
+                            A passthrough declares that a value IS a value on
+                            another object, and must keep its type across the
+                            hop.
+                          counterexample: >-
+                            A number carried through as text because the two
+                            ends disagreed about its type, with nothing saying
+                            so.
+                      - requirement.functional:
+                          name: originAggregate
+                          title: Aggregate
+                          level: 4
+                          status: live
+                          statement: >-
+                            An aggregate declares a value computed over
+                            related rows, optionally scoped, and derived
+                            rather than stored.
+                          counterexample: >-
+                            A count kept in a column and maintained by hand,
+                            disagreeing with the rows it counts.
+                      - requirement.functional:
+                          name: originComputed
+                          title: Computed value
+                          level: 4
+                          status: live
+                          statement: >-
+                            A computed value declares a value produced by a
+                            declared expression over the row it sits on.
+                          counterexample: >-
+                            A derived figure written directly, so it stops
+                            matching the inputs it was derived from.
+                      - requirement.functional:
+                          name: originFirst
+                          title: First of many
+                          level: 4
+                          status: live
+                          statement: >-
+                            A first-of-many declares a value taken from one
+                            related row, chosen by a declared order rather
+                            than by chance.
+                          counterexample: >-
+                            A latest value that is whichever row the database
+                            happened to return.
 
                 - requirement.functional:
                     name: constraints
@@ -155,6 +698,115 @@ metadata.root:
                       required value could be omitted over HTTP and fail later at the
                       database. Declared-but-decorative is the failure mode this entry
                       exists to forbid.
+                    children:
+                      - requirement.functional:
+                          name: validatorRequired
+                          title: Required
+                          level: 4
+                          status: live
+                          statement: >-
+                            A required rule says a value must be provided, and
+                            for text that emptiness is not providing it.
+                          counterexample: >-
+                            An empty string accepted for a name, so a record
+                            exists with nobody's name on it.
+                      - requirement.functional:
+                          name: validatorLength
+                          title: Length bounds
+                          level: 4
+                          status: live
+                          statement: >-
+                            A length rule bounds how long a value may be, and
+                            an explicitly declared bound is authoritative over
+                            any implicit floor.
+                          counterexample: >-
+                            A declared minimum of zero raised to one behind
+                            the author's back, so provided-but-empty becomes
+                            inexpressible.
+                          notes: >-
+                            The counterexample is the shipped behaviour until
+                            0.19.1: every port clamped an authored minimum
+                            with max(min, 1) and discarded what the author
+                            wrote. An implicit floor that overrides an
+                            explicit statement is not a default, it is a
+                            contradiction.
+                      - requirement.functional:
+                          name: validatorRegex
+                          title: Pattern
+                          level: 4
+                          status: live
+                          statement: >-
+                            A pattern rule constrains a value to a declared
+                            expression, matched in FULL rather than anywhere
+                            within it.
+                          counterexample: >-
+                            A pattern meant to accept a postcode accepting any
+                            text that contains one.
+                      - requirement.functional:
+                          name: validatorNumeric
+                          title: Numeric bounds
+                          level: 4
+                          status: live
+                          statement: >-
+                            A numeric rule bounds the range a number may take.
+                          counterexample: >-
+                            A negative quantity accepted, so an order adds to
+                            stock instead of taking from it.
+                      - requirement.functional:
+                          name: validatorArray
+                          title: Element count
+                          level: 4
+                          status: live
+                          statement: >-
+                            An element-count rule bounds how many entries a
+                            repeated value may hold.
+                          counterexample: >-
+                            An unbounded list accepted into a field whose
+                            reader only ever looks at the first few.
+                      - requirement.functional:
+                          name: validatorComparison
+                          title: Comparison
+                          level: 4
+                          status: live
+                          statement: >-
+                            A comparison rule relates one declared value to
+                            another on the same object.
+                          counterexample: >-
+                            An end date before its start date, stored, and
+                            every report that spans them silently empty.
+                      - requirement.functional:
+                          name: validatorRequiredWhen
+                          title: Conditionally required
+                          level: 4
+                          status: live
+                          statement: >-
+                            A conditional-requirement rule makes a value
+                            mandatory only in a declared circumstance.
+                          counterexample: >-
+                            A cancellation reason demanded on every order, or
+                            on none of them.
+                      - requirement.functional:
+                          name: validatorPresentIff
+                          title: Present together
+                          level: 4
+                          status: live
+                          statement: >-
+                            A present-together rule ties two values so that
+                            either both are given or neither is.
+                          counterexample: >-
+                            A latitude stored with no longitude, and a point
+                            that cannot be placed.
+                      - requirement.functional:
+                          name: validatorAtLeastOne
+                          title: At least one
+                          level: 4
+                          status: live
+                          statement: >-
+                            An at-least-one rule requires that some member of
+                            a declared group is given.
+                          counterexample: >-
+                            A contact saved with neither an email address nor
+                            a phone number, and no way to reach them.
 
                 - requirement.functional:
                     name: presentation
@@ -170,6 +822,182 @@ metadata.root:
                     description: >-
                       Covers what the model may say about presenting a value. What is
                       actually rendered from that is webClient.
+                    children:
+                      - requirement.functional:
+                          name: layoutDataGrid
+                          title: Data grid
+                          level: 4
+                          status: live
+                          statement: >-
+                            A data grid declares which of an object's fields a
+                            tabular view shows, in what order, and how it is
+                            sorted and paged before anyone touches it.
+                          counterexample: >-
+                            A table that gains a column every time the model
+                            does, including the ones nobody meant to show.
+                      - requirement.functional:
+                          name: viewCurrency
+                          title: Money display
+                          level: 4
+                          status: live
+                          statement: >-
+                            A money display declares that an amount is shown
+                            in the conventions of a declared locale, formatted
+                            where it is read and never on the server.
+                          counterexample: >-
+                            An amount formatted once on the server for one
+                            locale and shown to a reader in another.
+                      - requirement.functional:
+                          name: viewText
+                          title: Single-line text
+                          level: 4
+                          status: live
+                          statement: >-
+                            A single-line text control declares that a value
+                            is edited as one line.
+                          counterexample: >-
+                            A short label given a box the height of a
+                            paragraph, because the interface had only the type
+                            to guess from.
+                      - requirement.functional:
+                          name: viewTextarea
+                          title: Multi-line text
+                          level: 4
+                          status: live
+                          statement: >-
+                            A multi-line text control declares that a value is
+                            edited across several lines, to a declared visible
+                            height.
+                          counterexample: >-
+                            A paragraph edited through a one-line control, so
+                            the author cannot see what they have written.
+                      - requirement.functional:
+                          name: viewDate
+                          title: Date picker
+                          level: 4
+                          status: live
+                          statement: >-
+                            A date control declares that a value is chosen
+                            from a calendar.
+                          counterexample: >-
+                            A date typed as free text, so every reader invents
+                            their own format and half of them are ambiguous.
+                      - requirement.functional:
+                          name: viewMonth
+                          title: Month picker
+                          level: 4
+                          status: live
+                          statement: >-
+                            A month control declares that a value is chosen as
+                            a month within a year, with no day.
+                          counterexample: >-
+                            A billing period entered as a full date, so twelve
+                            possible values become three hundred and sixty-
+                            five.
+                      - requirement.functional:
+                          name: viewHotlink
+                          title: Link
+                          level: 4
+                          status: live
+                          statement: >-
+                            A link control declares that a value is shown as a
+                            link to whatever it addresses.
+                          counterexample: >-
+                            An address displayed as text nobody can follow
+                            without selecting and copying it.
+                      - requirement.functional:
+                          name: viewDropdown
+                          title: Dropdown
+                          level: 4
+                          status: live
+                          statement: >-
+                            A dropdown declares that a value is chosen from
+                            its declared members in a collapsed list.
+                          counterexample: >-
+                            A closed set of members offered as free text, so a
+                            typo silently becomes a new value.
+                      - requirement.functional:
+                          name: viewRadio
+                          title: Radio group
+                          level: 4
+                          status: live
+                          statement: >-
+                            A radio group declares that a value is chosen from
+                            its declared members with every option visible at
+                            once.
+                          counterexample: >-
+                            A three-way choice hidden behind a control that
+                            shows one option until someone opens it.
+                      - requirement.functional:
+                          name: viewCheckbox
+                          title: Checkbox
+                          level: 4
+                          status: live
+                          statement: >-
+                            A checkbox declares that a boolean is set by a
+                            single on-or-off control.
+                          counterexample: >-
+                            A yes-or-no answer offered as a text box, so y,
+                            yes and true all arrive and all mean the same
+                            thing.
+                      - requirement.functional:
+                          name: viewNumber
+                          title: Number input
+                          level: 4
+                          status: live
+                          statement: >-
+                            A number control declares that a value is entered
+                            as a number rather than as text that must later
+                            parse.
+                          counterexample: >-
+                            A quantity typed with a thousands separator and
+                            refused by the server instead of by the field.
+                      - requirement.functional:
+                          name: viewPassword
+                          title: Masked input
+                          level: 4
+                          status: live
+                          statement: >-
+                            A masked control declares that a value is entered
+                            without being displayed.
+                          counterexample: >-
+                            A secret typed in plain sight and left legible in
+                            a screen recording.
+                      - requirement.functional:
+                          name: viewHidden
+                          title: Hidden value
+                          level: 4
+                          status: live
+                          statement: >-
+                            A hidden control declares that a value travels
+                            with a form without being shown or edited.
+                          counterexample: >-
+                            A value the form has to carry, re-fetched on
+                            submit because there was no way to carry it.
+                      - requirement.functional:
+                          name: viewWeb
+                          title: Rich content
+                          level: 4
+                          status: live
+                          statement: >-
+                            A rich-content control declares that a value is
+                            edited as formatted web content rather than as
+                            plain text.
+                          counterexample: >-
+                            Formatted content edited as plain text, so its
+                            markup is shown to the author instead of applied.
+                      - requirement.functional:
+                          name: viewImage
+                          title: Image upload
+                          level: 4
+                          status: live
+                          statement: >-
+                            An image control declares that a value is an image
+                            a person uploads and crops, stored as an opaque
+                            key so no image bytes ever cross the model.
+                          counterexample: >-
+                            A record carrying its own image bytes, so every
+                            list of records carries every picture in it.
 
                 - requirement.functional:
                     name: declaredPrompts
@@ -195,6 +1023,46 @@ metadata.root:
                       LLM host still has to be told by hand what exists. Everything a
                       prompt is declared FROM ships in all five ports. Deferred rather
                       than accepted — it is wanted, it is not scheduled.
+                    children:
+                      - requirement.functional:
+                          name: templatePrompt
+                          title: Prompt template
+                          level: 4
+                          status: live
+                          statement: >-
+                            A prompt template declares an outbound message to
+                            a model: the payload it carries, and — when it
+                            expects a structured reply — the shape that reply
+                            must take.
+                          counterexample: >-
+                            A prompt whose payload is assembled somewhere
+                            else, so nothing can tell whether a renamed field
+                            still reaches it.
+                      - requirement.functional:
+                          name: templateOutput
+                          title: Output template
+                          level: 4
+                          status: live
+                          statement: >-
+                            An output template declares a rendering that only
+                            ever goes outward. Its axis is DIRECTION, so it
+                            has no inbound tier and emits no parser.
+                          counterexample: >-
+                            An outbound-only template given a parser for a
+                            response it will never receive.
+                      - requirement.functional:
+                          name: templateToolcall
+                          title: Tool call template
+                          level: 4
+                          status: live
+                          statement: >-
+                            A tool-call template declares a tool a model may
+                            invoke by name, with a declared payload and a
+                            declared budget for the call.
+                          counterexample: >-
+                            A tool a model can call whose arguments nothing
+                            declares, so a wrong shape is discovered by the
+                            tool itself.
 
                 - requirement.functional:
                     name: governanceVocabulary
@@ -213,6 +1081,32 @@ metadata.root:
                       it sits in is MetaObjects' own ledger, loaded by the shipped
                       loader under the strict registry. If the capability were not real
                       the entry could not exist.
+                    children:
+                      - requirement.functional:
+                          name: requirementFunctional
+                          title: Functional requirement
+                          level: 4
+                          status: live
+                          statement: >-
+                            A functional requirement states a capability that
+                            must EXIST, and its check is existence: it fails
+                            when nothing implements it.
+                          counterexample: >-
+                            A capability everyone believes is there, that
+                            nothing builds and no check misses.
+                      - requirement.functional:
+                          name: requirementArchitectural
+                          title: Architectural requirement
+                          level: 4
+                          status: live
+                          statement: >-
+                            An architectural requirement states a policy that
+                            must hold UNIVERSALLY, and its check is
+                            universality: it fails when something is outside
+                            it.
+                          counterexample: >-
+                            A rule declared once, applied to nothing, with
+                            every gate reporting green.
 
                 - requirement.functional:
                     name: inheritanceAndReferences
@@ -232,6 +1126,20 @@ metadata.root:
                       depending on directory-listing order, so the same sources behaved
                       differently under two runtimes. Order-independence is a property
                       of the resolver, which is why it is stated as a promise here.
+                    children:
+                      - requirement.functional:
+                          name: metadataRoot
+                          title: Model document
+                          level: 4
+                          status: live
+                          statement: >-
+                            A model document is what declarations are written
+                            in. It names the package they belong to, which is
+                            what lets a bare reference bind locally and a
+                            qualified one bind exactly.
+                          counterexample: >-
+                            One name declared in two packages and a reference
+                            to it binding to whichever was read first.
 
                 - requirement.functional:
                     name: authoringFrontEnds
