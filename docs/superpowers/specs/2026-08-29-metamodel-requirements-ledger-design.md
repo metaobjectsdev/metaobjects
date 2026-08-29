@@ -51,15 +51,50 @@ Five phases. Each is independently valuable; each gets its own plan.
   promise-bearing attributes only. The requirement-to-metamodel link is **derived** from the
   node's dotted path, and a repo-local `verify` checks each requirement is implemented in
   `spec/metamodel/*.json`.
-- **Phase 3 - forward scaffolding.** A new requirement scaffolds a new `spec/metamodel`
-  entry, which is then hand-edited: the MetaObjects pattern applied one level up, with the
-  "generated artifact" being the metamodel JSON instead of code.
-- **Phase 4 - generate what is hand-coded.** The ports' provider-registration code becomes
-  generated output. `scripts/generate-embedded-metamodel.ts` already does this for
-  TypeScript; the other four ports follow.
-- **Phase 5 - the harness.** Per-port test scaffolds generated from the ledger.
+- **Phase 3 - forward scaffolding. SHIPPED.** A new requirement scaffolds a new
+  `spec/metamodel` entry, which is then hand-edited: the MetaObjects pattern applied one
+  level up, with the "generated artifact" being the metamodel JSON instead of code.
+  `scripts/scaffold-metamodel-entry.ts`. The stub refuses to invent the three prose
+  fields - copying the requirement's `statement` into `description` would be one line and
+  is exactly the failure mode, since a plausible prefilled sentence is the one nobody
+  rewrites.
+- **Phase 4 - generate what is hand-coded. NOT ATTEMPTED; assessed below.** The ports'
+  provider-registration code becomes generated output.
+- **Phase 5 - the harness. SHIPPED.** Per-port test scaffolds generated from the ledger -
+  109 slots x 5 ports, drift-gated, TypeScript executed in CI.
+  `scripts/generate-requirement-harness.ts`, output in `fixtures/requirement-harness/`.
 
 Phase 1 stands alone. Nothing below it is committed by shipping it.
+
+### Phase 4, assessed rather than attempted
+
+The one-line framing above - *"`scripts/generate-embedded-metamodel.ts` already does this
+for TypeScript; the other four ports follow"* - understates it, and the measurement is the
+argument.
+
+The TypeScript generator turns `spec/metamodel/*.json` into **data**: nine embedded
+`ProviderDefinition` object literals, each gated by a deep-equal drift test that was
+verified to fire. The other four ports do not register data. The JVM alone carries **105
+`registerType(...)` calls across 72 files**, and every one of them BINDS A CONCRETE CLASS -
+`registry.registerType(CurrencyField.class, def -> ...)`. There is no data-shaped thing to
+emit; the registration and the class it binds are the same act.
+
+So Phase 4 is one of two rewrites, not a generator:
+
+1. Emit registration bodies INTO 72 hand-written classes - partial-file codegen against the
+   JVM core, the artifact every other port's conformance is measured against.
+2. Move registration OUT of those classes into a generated registrar - a structural change
+   to how the registry is populated in three languages.
+
+Either moves `expected-registry.json` if anything shifts by a byte, and neither can be
+validated without the five-port conformance matrix, which is release-tag and dispatch-only
+CI. It is its own program with its own spec and plan.
+
+**It is also not on the critical path for what this one is for.** The stated purpose is
+dogfooding, and the ledger now states what every registered subtype must DO and gives every
+port a named slot to check it in. Generating the registration code would remove
+hand-written *repetition*; it would not add a single statement about behaviour. Recorded
+here so the next session does not re-derive the measurement.
 
 ## Phase 1 design
 
