@@ -1107,6 +1107,26 @@ git commit -m "feat(showcase): committed TS excerpts, gated as real output"
 
 ### Task 8: Generate the CLI ports (TypeScript, Python, C#)
 
+> **DONE** (`feat(showcase): generate and gate the CLI ports`). What differed from the plan:
+> - **Python and C# needed NO project scaffolding.** Both are flag-only
+>   (`gen <metadataDir> --out <dir>`), so neither got any. Step 1's "create the minimum
+>   scaffolding each CLI requires" turned out to be zero.
+> - **SQL has no offline path.** `meta migrate` refuses without a schema snapshot, so the
+>   documented greenfield flow runs against a THROWAWAY sqlite file. Its emitted directory
+>   is `<timestamp>-init/`, which no rebuild reproduces, so only the SQL bodies are
+>   committed, under a fixed `init/`.
+> - **A fourth snippet kind, `whole`.** `up.sql` is eight lines and every one carries
+>   something the model declared, so there is no line to cut; the excerpt test's
+>   "genuinely SHORTER" assertion cannot be satisfied honestly. `whole` publishes the file
+>   entire (a stricter guarantee than any subsequence gate), bounded at 25 lines.
+> - **The model declares `column: created_at`.** Port defaults genuinely differ — TS and
+>   migrate snake_case a field with no `@column`, the C# EF generator takes the name
+>   verbatim — so without it the generated C# entity binds `[Column("createdAt")]` against
+>   a database `meta migrate` created with `created_at`.
+> - Two port defects fell out of running this and were fixed in place: the C# CLI anchoring
+>   its hash manifest on cwd, and the Maven plugin loading nothing from a `<sourceDir>`
+>   that names no `<sources>`.
+
 Three of the five ports expose a real CLI. Java and Kotlin do not, and they are Task 8b.
 
 **Files:**
@@ -1233,6 +1253,23 @@ git commit -m "feat(showcase): generate and gate the CLI ports"
 ---
 
 ### Task 8b: Generate the JVM ports (Java, Kotlin)
+
+> **DONE** (`feat(showcase): generate and gate the JVM ports`). The stop-and-re-decide bar
+> was NOT met: a ~60-line `examples/showcase/jvm/pom.xml` is enough, and it is the honest
+> adopter path rather than test code calling generator classes directly. Two consequences
+> the later tasks inherit:
+> - **The JVM port needs the artifacts resolvable** — from Maven Central at a released
+>   version, or from `cd server/java && mvn install` while the reactor is on a -SNAPSHOT.
+>   It is skipped by name, never assumed present.
+> - **`--bun-only` exists and Task 10 must use it.** Maven alone costs ~20s, more than
+>   every other port together, and the gates lane is `step_if bun` — guarded on bun alone
+>   and included in `--quick`, the documented pre-PR command. So `bun test scripts/site`
+>   checks ts + sql and NAMES the three it left out; `--all-ports` (the release preflight)
+>   refuses to leave any out. Task 10's step 1 says the gate "deliberately does NOT run
+>   regen-showcase --check" — it now runs the bun-only half, for the same reason.
+> - The pom pins the plugin through a `<metaobjects.version>` PROPERTY and sits outside the
+>   reactor, so `scripts/check-pom-versions.sh` gates it and `docs/RELEASING-java.md` names
+>   it in both bump passes.
 
 **Java and Kotlin have no CLI that generates against a project directory.** The Maven plugin needs a full `pom.xml` carrying `<loader>`, `<generators>` and `<globals><output>` blocks (see `server/java/maven-plugin/src/test/resources/mojo/pom.xml`) *and* `com.metaobjects:metaobjects-maven-plugin` installed to the local repo at the current version — which means building the whole Java tree first.
 
