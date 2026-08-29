@@ -183,6 +183,51 @@ quiet failure mode is a config that keeps running the PACKAGED generator while y
 the ejected file — and never named the dependency the ejected file imports, so the
 adopter's own `tsc` reported TS2307 on the file the CLI had just said they owned.
 
+**Second review round.** Seven more findings, and the two worth naming share a shape with
+the first round's: a change that was RIGHT drew its line one notch too wide, and nothing
+could see the difference. **The retargeting split took four ports' `own*()` guidance with
+it.** Moving `meta eject` and the `metaobjects.config.ts` keys out of the port-agnostic
+`SKILL.md` was correct — a Python project runs `metaobjects gen` and has no eject command,
+so those adopters' agents were being handed a procedure their toolchain cannot execute.
+But the same move carried off the ADR-0039 section, whose per-port own↔resolving **table
+is port-agnostic by construction**: its entire content is the OTHER ports' accessor names,
+including the trap that TS `attr()` resolves while Python `attr()` is own. It landed in
+`references/typescript.md`, the one page a Java, Python or C# adopter never installs,
+while `metaobjects-authoring` still told them to go read it there. And `SKILL.md` closed
+by sending every reader to "this skill's `references/` fragment for your server language",
+which for four of the five contains no retargeting content at all — a pointer to nothing,
+where before the split there had at least been a procedure (a wrong one, which is what the
+split fixed). The three port-agnostic sections are back in `SKILL.md`, and the closing
+pointer now says what is true per port, including that the other ports have **no** eject
+command and owning a generator there means implementing that port's generator interface.
+
+**`meta init` claimed a stub it had just decided not to write.** Its next-steps block was
+one static string describing the scaffolded `src/db.ts` in the imperative, printed on every
+run — including the `meta init --force` in a project keeping its own config, where the
+write is deliberately skipped. Worse was the silence beside it: `wroteScaffoldedConfig` is
+only *"no config existed"*, so it is false for the config `init` itself wrote one command
+earlier, and a scaffolded project whose `src/db.ts` is deleted lands in the same branch as
+a project that owns its config — nothing written, nothing preserved, **nothing said**, and
+the next `tsc` reporting `TS2307` on a file the command had just chosen not to restore. It
+warns now rather than writing, because dropping a file into a project that owns its config
+is the unilateral host-project touch FR-040 §4.4 lists as a defect.
+
+Also from the round: `meta eject` **stated which import a project currently has**, which
+it never checks and which is wrong for exactly the four `meta init` scaffolds — the
+`--force` re-sync case — so it names the goal and the three branches instead; its
+dependency notes could not see a subpath import and reported a **peer-declared package as
+missing**, advice that if followed adds the competing physical copy this repo has been
+bitten by twice; and **nothing gated `clientDirective` on the generated form**, the one
+client artifact the RSC story centres on. That last one is the round's own theme again,
+and the proof is sharper than the finding: with the directive dropped from a reference
+template alone — the two halves genuinely different — `reference-byte-identical` stays
+**green**, because it generates with the knob off, where the call is a no-op and removing
+it changes no byte it compares. The equivalence gate cannot see that defect in either
+direction. Both UI packages now run the knob against the built-in and the reference
+template, and each package's template coverage is a `Record` keyed by ejectable name whose
+keys are the proof and whose values are the wiring — so a tenth template is a **compile**
+error, not a hand-maintained list that can be edited to claim a gate nobody wrote.
+
 ### Fixed — eight defects found by adopting the product from scratch, twice
 
 Two adoption runs against the published `0.24.4`, docs followed literally and nothing fixed
