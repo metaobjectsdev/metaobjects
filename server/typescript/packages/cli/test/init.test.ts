@@ -558,6 +558,31 @@ describe("init() — dbImport throwing stub (Task 15)", () => {
     expect(readFileSync(join(cwd, "src", "db.ts"), "utf8")).toBe(realDb);
   });
 
+  // Fix round 2. DB_STUB_REL_PATH is derived from the SCAFFOLD's own outDir/dbImport,
+  // so it describes where the SCAFFOLDED config points and nowhere else. Re-running
+  // init in a project that already has its own config preserves that config — and must
+  // not then drop a src/db.ts answering a question the adopter already answered
+  // differently. A stray unreferenced file in application source is exactly the
+  // unilateral host-project touch FR-040 §4.4 lists as a defect.
+  test("writes no db stub when the project keeps its own config", async () => {
+    writeFileSync(
+      join(cwd, "metaobjects.config.ts"),
+      [
+        `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+        `export default defineConfig({ outDir: "packages/db/src/generated",`,
+        `  dbImport: "../../conn", dialect: "sqlite", generators: [] });`,
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await init({ cwd, force: true });
+
+    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
+    expect(result.created).not.toContain("src/db.ts");
+    // Nor may it CLAIM to have preserved one — there is no such file to preserve.
+    expect(result.preserved).not.toContain("src/db.ts");
+  });
+
   test("dry run (--print) reports src/db.ts as a would-be-created file", async () => {
     const result = await init({ cwd, printOnly: true });
     expect(result.created).toContain("src/db.ts");

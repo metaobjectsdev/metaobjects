@@ -108,7 +108,12 @@ import { barrel } from "./codegen/generators/barrel.js";
 
 export default defineConfig({
   outDir:    "${SCAFFOLD_OUT_DIR}",
-  extStyle:  "js",   // ".js"-extensioned relative imports — safe under Node ESM / tsc nodenext AND bundlers
+  extStyle:  "js",   // ".js"-extensioned relative imports — correct for Node ESM and \`tsc\` with
+                     // nodenext, which is what a fresh project has. BUNDLERS DISAGREE: this fails
+                     // outright under Turbopack (even between two generated files, so the whole
+                     // generated tree goes unresolvable), while Vite and esbuild accept it and
+                     // webpack needs \`resolve.extensionAlias\`. If a generated import fails to
+                     // resolve, set "none" and retest — do not assume this line covers your bundler.
   dbImport:  "${SCAFFOLD_DB_IMPORT}",   // routesFile() below emits \`import { db } from …\` — meta init
                         // scaffolded ${DB_STUB_REL_PATH} as a THROWING STUB (types clean, no
                         // driver chosen) so meta gen and tsc pass; replace it with your real
@@ -158,8 +163,8 @@ const DB_STUB_BODY = [
   '//   export const db = drizzle(new Database("dev.sqlite"));',
   "//",
   "// (swap the driver import for your dialect — see",
-  "// docs/recipes/wiring-generated-queries.md for SQLite/libsql, Cloudflare D1,",
-  "// Postgres and multi-tenant setups.)",
+  "// https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/wiring-generated-queries.md",
+  "// for SQLite/libsql, Cloudflare D1, Postgres and multi-tenant setups.)",
   "",
   "const UNWIRED_MESSAGE =",
   '  "src/db.ts is still the scaffolded stub meta init wrote — it cannot choose " +',
@@ -187,6 +192,10 @@ const DB_STUB_BODY = [
 const NEXT_STEPS = `
 Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 Codegen generators copied to codegen/generators/ — they're YOURS to edit (ADR-0034 scaffold-and-own).
+Also scaffolded ${DB_STUB_REL_PATH}: a THROWING STUB standing in for your database
+connection, so the generated routes' \`db\` import resolves and the first tsc is clean.
+Replace it with a real connection before running the app — until you do, the first
+request that touches \`db\` throws with instructions.
 
 Next steps:
   0. Everything here is ESM — package.json needs "type": "module" (init sets it
@@ -606,7 +615,8 @@ export async function init(opts: InitOptions): Promise<InitResult> {
 
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
-  if (!(await fileExists(forgeConfigPath))) {
+  const wroteScaffoldedConfig = !(await fileExists(forgeConfigPath));
+  if (wroteScaffoldedConfig) {
     await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite"), "utf8");
     result.created.push("metaobjects.config.ts");
   }
@@ -616,12 +626,23 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // (same "write once" precedent as writeOwnedGenerators above). Without this, the
   // scaffolded config declares `dbImport: "../db"` pointing at a module `meta init`
   // never creates, and a fresh project's FIRST `tsc` fails to resolve it.
+  //
+  // Gated on having just WRITTEN that config, not merely on the stub being absent.
+  // DB_STUB_REL_PATH is derived from SCAFFOLD_OUT_DIR + SCAFFOLD_DB_IMPORT — the
+  // scaffold's own constants — so it describes where the SCAFFOLDED config points and
+  // nowhere else. Re-running `meta init` in a project that already has a config with
+  // its own `outDir`/`dbImport` preserves that config (above) and would otherwise still
+  // drop a src/db.ts that nothing in the project references: a stray file, in the
+  // adopter's application source, answering a question they had already answered.
   const dbStubPath = join(opts.cwd, DB_STUB_REL_PATH);
-  if (!(await fileExists(dbStubPath))) {
+  const dbStubExists = await fileExists(dbStubPath);
+  if (wroteScaffoldedConfig && !dbStubExists) {
     await mkdir(dirname(dbStubPath), { recursive: true });
     await writeFile(dbStubPath, DB_STUB_BODY, "utf8");
     result.created.push(DB_STUB_REL_PATH);
-  } else {
+  } else if (dbStubExists) {
+    // "preserved" means a file we would have written was left alone. Skipping because
+    // this project keeps its own config is not preservation — there is nothing there.
     result.preserved.push(DB_STUB_REL_PATH);
   }
 
