@@ -35,13 +35,13 @@
  * statement about portability, not a licence to leave the vocabulary unpromised — an
  * adopter can author `view.textarea` today, so something must say what it is for.
  */
-import { MetaDataLoader } from "../server/typescript/packages/metadata/src/index.js";
 import { collectAddressedRequirements } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
 import {
   DEFAULT_LEDGER_DIR,
   LEVEL_ATTR,
   LEVEL_SUBTYPE,
   derivationProblems,
+  loadLedgerOrReport,
   participatesInVocabularyLink,
   population,
   splitName,
@@ -65,17 +65,14 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const { root, errors } = await MetaDataLoader.fromDirectory(LEDGER_DIR, { strict: true });
-  if (errors.length > 0 || root === undefined) {
-    console.error("requirements-vocabulary: the ledger does not load.\n");
-    for (const e of errors) console.error(`  ${e.code ?? ""} ${e.message}`);
-    return 1;
-  }
+  const root = await loadLedgerOrReport(LEDGER_DIR, "requirements-vocabulary");
+  if (root === undefined) return 1;
 
   const claimed = new Map<string, string>();      // type.subType -> requirement address
   const problems: string[] = [];
+  const addressed = collectAddressedRequirements(root);
 
-  for (const { node, path } of collectAddressedRequirements(root)) {
+  for (const { node, path } of addressed) {
     // Architectural requirements are object-independent and name no subtype (0.23.0
     // made them levellable, so one can legally sit at L4).
     if (!participatesInVocabularyLink(node)) continue;
@@ -127,7 +124,7 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const l5 = collectAddressedRequirements(root)
+  const l5 = addressed
     .filter((r) => participatesInVocabularyLink(r.node) && r.node.level() === LEVEL_ATTR).length;
   console.log(
     `requirements-vocabulary: OK — ${pop.size} registered subtype(s), each promised by exactly ` +

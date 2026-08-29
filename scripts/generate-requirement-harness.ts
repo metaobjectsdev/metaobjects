@@ -36,13 +36,13 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { MetaDataLoader } from "../server/typescript/packages/metadata/src/index.js";
 import { collectAddressedRequirements } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
 import {
   DEFAULT_LEDGER_DIR,
   LEVEL_ATTR,
   LEVEL_SUBTYPE,
   REPO_ROOT,
+  loadLedgerOrReport,
   participatesInVocabularyLink,
 } from "./lib/requirement-vocabulary.js";
 
@@ -188,12 +188,8 @@ const renderers: Record<string, { file: string; render: (ps: Promise_[]) => stri
 
 async function main(): Promise<number> {
   const check = process.argv.includes("--check");
-  const { root, errors } = await MetaDataLoader.fromDirectory(DEFAULT_LEDGER_DIR, { strict: true });
-  if (errors.length > 0 || root === undefined) {
-    console.error("requirement-harness: the ledger does not load.\n");
-    for (const e of errors) console.error(`  ${e.code ?? ""} ${e.message}`);
-    return 1;
-  }
+  const root = await loadLedgerOrReport(DEFAULT_LEDGER_DIR, "requirement-harness");
+  if (root === undefined) return 1;
   const promises = collect(root);
   if (promises.length === 0) {
     console.error("requirement-harness: the ledger declares no L4 or L5 promise — nothing to scaffold.\n");

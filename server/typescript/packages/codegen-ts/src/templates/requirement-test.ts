@@ -124,15 +124,20 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
   // to write it "when this becomes live" instructs them to revive the capability —
   // inverting the one guardrail 0.24.2 restored `retired` for. The repo's own harness
   // generator already branches here; the shipped renderer now does too.
-  const body = skipped
-    ? a.view.status === REQUIREMENT_STATUS_RETIRED
-      ? `  // Retired: this capability was deliberately removed and must not be rebuilt.\n` +
-        `  // If you assert anything here, assert that it STAYS removed.`
-      : `  // Intended, not built. Write the assertion when this becomes live.`
-    : `  expect.unreachable(\n` +
+  let body: string;
+  if (!skipped) {
+    body =
+      `  expect.unreachable(\n` +
       `    "unimplemented requirement stub: ${testName} — " +\n` +
       `    "replace this with an assertion that fails when: ${forStringLiteral(a.counterexample)}",\n` +
       `  );`;
+  } else if (a.view.status === REQUIREMENT_STATUS_RETIRED) {
+    body =
+      `  // Retired: this capability was deliberately removed and must not be rebuilt.\n` +
+      `  // If you assert anything here, assert that it STAYS removed.`;
+  } else {
+    body = `  // Intended, not built. Write the assertion when this becomes live.`;
+  }
 
   return (
     `// ${GENERATED_HEADER}.\n` +

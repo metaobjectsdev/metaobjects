@@ -79,13 +79,9 @@ metadata.root:
 `;
 
 let failures = 0;
-function expect(label: string, condition: boolean, detail: string): void {
-  if (condition) {
-    console.log(`  ok   ${label}`);
-  } else {
-    console.error(`  FAIL ${label}\n${detail}`);
-    failures++;
-  }
+function expect(label: string, ok: boolean, detail: string): void {
+  if (ok) console.log(`  ok   ${label}`);
+  else { console.error(`  FAIL ${label}\n${detail}`); failures++; }
 }
 
 console.log("test-requirements-ledger:");

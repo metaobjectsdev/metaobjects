@@ -9,6 +9,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+import { MetaDataLoader, type MetaRoot } from "../../server/typescript/packages/metadata/src/index.js";
 import {
   REQUIREMENT_SUBTYPE_ARCHITECTURAL,
 } from "../../server/typescript/packages/metadata/src/core/requirement/requirement-constants.js";
@@ -26,6 +27,31 @@ export const DEFAULT_LEDGER_DIR = join(REPO_ROOT, "metaobjects");
 /** The level at which a requirement addresses a subtype, and the one below it. */
 export const LEVEL_SUBTYPE = 4;
 export const LEVEL_ATTR = 5;
+
+/**
+ * Load the ledger under `dir` in strict mode, reporting load errors the same way
+ * everywhere and returning `undefined` so the caller can exit non-zero.
+ *
+ * Repeated identically (down to the `errors.length > 0 || root === undefined` guard)
+ * across `check-requirements-vocabulary.ts`, `scaffold-metamodel-entry.ts` and
+ * `generate-requirement-harness.ts` before this was pulled out — the same duplication
+ * this module already exists to close for `population()`. `gate` names the caller for
+ * the printed message; `detail` is one caller's extra clause ("; fix it before
+ * scaffolding from it") appended before the trailing period.
+ */
+export async function loadLedgerOrReport(
+  dir: string,
+  gate: string,
+  detail = "",
+): Promise<MetaRoot | undefined> {
+  const { root, errors } = await MetaDataLoader.fromDirectory(dir, { strict: true });
+  if (errors.length > 0 || root === undefined) {
+    console.error(`${gate}: the ledger does not load${detail}.\n`);
+    for (const e of errors) console.error(`  ${e.code ?? ""} ${e.message}`);
+    return undefined;
+  }
+  return root;
+}
 
 export interface Entry { key: string; attrs: Set<string> }
 

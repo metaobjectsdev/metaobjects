@@ -32,13 +32,13 @@
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { MetaDataLoader } from "../server/typescript/packages/metadata/src/index.js";
 import { collectAddressedRequirements } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
 import {
   DEFAULT_LEDGER_DIR,
   DEFAULT_MANIFEST,
   DEFAULT_SPEC_DIR,
   LEVEL_SUBTYPE,
+  loadLedgerOrReport,
   participatesInVocabularyLink,
   population,
   splitName,
@@ -65,7 +65,6 @@ function parseArgs(argv: string[]): Args {
   };
 }
 
-
 /**
  * Append one entry to a provider file's `types` array by editing TEXT, not by
  * re-serialising the document. Returns undefined when the array's end cannot be
@@ -89,12 +88,8 @@ async function main(): Promise<number> {
   const pop = population(specDir, manifest);
   const types = typeAxis(pop);
 
-  const { root, errors } = await MetaDataLoader.fromDirectory(ledgerDir, { strict: true });
-  if (errors.length > 0 || root === undefined) {
-    console.error("scaffold-metamodel: the ledger does not load; fix it before scaffolding from it.\n");
-    for (const e of errors) console.error(`  ${e.code ?? ""} ${e.message}`);
-    return 1;
-  }
+  const root = await loadLedgerOrReport(ledgerDir, "scaffold-metamodel", "; fix it before scaffolding from it");
+  if (root === undefined) return 1;
 
   // A requirement naming vocabulary nothing registers is the SIGNAL, not an error.
   const wanted: { key: string; path: string; title: string }[] = [];

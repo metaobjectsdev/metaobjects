@@ -26,8 +26,8 @@
 // it needs a machine-readable verify output, which is a product change and out
 // of scope for this ledger.
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "./lib/requirement-vocabulary.js";
 
 /** The one diagnostic code this ledger is expected to emit, and why. */
 const EXPECTED_WARNING = "WARN_REQUIREMENT_NOTHING_IMPLEMENTS";
@@ -76,11 +76,11 @@ function expectedWarnings(argv: readonly string[]): number {
 
 const EXPECTED_WARNING_COUNT = expectedWarnings(process.argv.slice(2));
 
-// Resolved against THIS FILE, not the working directory: the self-test runs the
-// gate from a temp directory holding a throwaway ledger, so a cwd-relative path
-// to the CLI would resolve to nothing there and every case would "fail" for the
-// wrong reason.
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// REPO_ROOT (shared with the sibling gates, resolved against THAT FILE rather than the
+// working directory) is what makes this safe to resolve here too: the self-test runs
+// the gate from a temp directory holding a throwaway ledger, so a cwd-relative path to
+// the CLI would resolve to nothing there and every case would "fail" for the wrong
+// reason.
 const CLI = resolve(REPO_ROOT, "server/typescript/packages/cli/bin/meta.ts");
 
 function main(): number {
