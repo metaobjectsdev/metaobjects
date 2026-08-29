@@ -108,9 +108,12 @@ their paths as a literal, so with `apiPrefix: "/api"` the emitted route is `/api
 them at `/api/api/authors`. Keep the two in agreement: whatever folder the catch-all
 lives in is what `apiPrefix` must say.
 
-The optional-catch-all `[[...route]]` (double brackets) rather than `[...route]` is what
-lets the collection endpoint `/api/authors` and the item endpoint `/api/authors/123` both
-reach the same handler.
+Either catch-all form works for the generated routes — a required `[...route]` already
+matches one or more segments, so `/api/authors` and `/api/authors/123` both reach the
+handler. `[[...route]]` (double brackets, optional) additionally matches `/api` itself
+with no segments, which is what you want if the Hono app also serves something at the
+prefix root — a health check, an OpenAPI document, a 404 you would rather own than let
+Next render.
 
 Adding an entity means adding a `register…Routes` line. That file is yours; it is not
 generated, and nothing regenerates over it.
