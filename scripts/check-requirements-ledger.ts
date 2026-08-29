@@ -97,7 +97,9 @@ function main(): number {
   }
 
   // Every diagnostic code the run mentioned, in first-seen order.
-  const codes = [...output.matchAll(/\b(ERR_[A-Z0-9_]+|WARN_[A-Z0-9_]+)\b/g)].map((m) => m[1]);
+  const codes = [...output.matchAll(/\b(ERR_[A-Z0-9_]+|WARN_[A-Z0-9_]+)\b/g)]
+    .map((m) => m[1])
+    .filter((c): c is string => c !== undefined);
   const errors = codes.filter((c) => c.startsWith("ERR_"));
   if (errors.length > 0) {
     console.error(`requirements-ledger: ${errors.length} error(s): ${[...new Set(errors)].join(", ")}\n`);

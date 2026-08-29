@@ -1,0 +1,144 @@
+{
+  "//": [
+    "Typecheck for scripts/ \u2014 the repo-root tooling that no package tsconfig covers.",
+    "",
+    "`bun test` transpiles per file and never typechecks, and `bun run --filter '*'",
+    "typecheck` walks WORKSPACE PACKAGES only, so every script here was unchecked. Two",
+    "defects in one session came straight out of that gap: `node.title` read as an",
+    "accessor that does not exist (always undefined, silently reporting the wrong",
+    "field) and the same class again in the harness generator.",
+    "",
+    "`paths` maps every @metaobjectsdev specifier to the workspace SOURCE, which is what",
+    "bun resolves to at runtime once `bun install` has run. Without it tsc sees a bare",
+    "import and a relative import to the same files as two separate class declarations",
+    "\u2014 the type-level shadow of the cross-package `instanceof` defect."
+  ],
+  "extends": "./server/typescript/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@metaobjectsdev/angular": [
+        "./client/web/packages/angular/src/index.ts"
+      ],
+      "@metaobjectsdev/angular/*": [
+        "./client/web/packages/angular/src/*"
+      ],
+      "@metaobjectsdev/react": [
+        "./client/web/packages/react/src/index.ts"
+      ],
+      "@metaobjectsdev/react/*": [
+        "./client/web/packages/react/src/*"
+      ],
+      "@metaobjectsdev/runtime-web": [
+        "./client/web/packages/runtime-web/src/index.ts"
+      ],
+      "@metaobjectsdev/runtime-web/*": [
+        "./client/web/packages/runtime-web/src/*"
+      ],
+      "@metaobjectsdev/tanstack": [
+        "./client/web/packages/tanstack/src/index.ts"
+      ],
+      "@metaobjectsdev/tanstack/*": [
+        "./client/web/packages/tanstack/src/*"
+      ],
+      "@metaobjectsdev/ai-runtime": [
+        "./server/typescript/packages/ai-runtime/src/index.ts"
+      ],
+      "@metaobjectsdev/ai-runtime/*": [
+        "./server/typescript/packages/ai-runtime/src/*"
+      ],
+      "@metaobjectsdev/cli": [
+        "./server/typescript/packages/cli/src/index.ts"
+      ],
+      "@metaobjectsdev/cli/*": [
+        "./server/typescript/packages/cli/src/*"
+      ],
+      "@metaobjectsdev/codegen-ts-angular": [
+        "./server/typescript/packages/codegen-ts-angular/src/index.ts"
+      ],
+      "@metaobjectsdev/codegen-ts-angular/*": [
+        "./server/typescript/packages/codegen-ts-angular/src/*"
+      ],
+      "@metaobjectsdev/codegen-ts-react": [
+        "./server/typescript/packages/codegen-ts-react/src/index.ts"
+      ],
+      "@metaobjectsdev/codegen-ts-react/*": [
+        "./server/typescript/packages/codegen-ts-react/src/*"
+      ],
+      "@metaobjectsdev/codegen-ts-tanstack": [
+        "./server/typescript/packages/codegen-ts-tanstack/src/index.ts"
+      ],
+      "@metaobjectsdev/codegen-ts-tanstack/*": [
+        "./server/typescript/packages/codegen-ts-tanstack/src/*"
+      ],
+      "@metaobjectsdev/codegen-ts": [
+        "./server/typescript/packages/codegen-ts/src/index.ts"
+      ],
+      "@metaobjectsdev/codegen-ts/*": [
+        "./server/typescript/packages/codegen-ts/src/*"
+      ],
+      "@metaobjectsdev/conformance": [
+        "./server/typescript/packages/conformance/src/index.ts"
+      ],
+      "@metaobjectsdev/conformance/*": [
+        "./server/typescript/packages/conformance/src/*"
+      ],
+      "@metaobjectsdev/docs-site": [
+        "./server/typescript/packages/docs-site/src/index.ts"
+      ],
+      "@metaobjectsdev/docs-site/*": [
+        "./server/typescript/packages/docs-site/src/*"
+      ],
+      "@metaobjectsdev/forge": [
+        "./server/typescript/packages/forge/src/index.ts"
+      ],
+      "@metaobjectsdev/forge/*": [
+        "./server/typescript/packages/forge/src/*"
+      ],
+      "@metaobjectsdev/integration-tests": [
+        "./server/typescript/packages/integration-tests/src/index.ts"
+      ],
+      "@metaobjectsdev/integration-tests/*": [
+        "./server/typescript/packages/integration-tests/src/*"
+      ],
+      "@metaobjectsdev/metadata": [
+        "./server/typescript/packages/metadata/src/index.ts"
+      ],
+      "@metaobjectsdev/metadata/*": [
+        "./server/typescript/packages/metadata/src/*"
+      ],
+      "@metaobjectsdev/migrate-ts": [
+        "./server/typescript/packages/migrate-ts/src/index.ts"
+      ],
+      "@metaobjectsdev/migrate-ts/*": [
+        "./server/typescript/packages/migrate-ts/src/*"
+      ],
+      "@metaobjectsdev/render": [
+        "./server/typescript/packages/render/src/index.ts"
+      ],
+      "@metaobjectsdev/render/*": [
+        "./server/typescript/packages/render/src/*"
+      ],
+      "@metaobjectsdev/runtime-ts": [
+        "./server/typescript/packages/runtime-ts/src/index.ts"
+      ],
+      "@metaobjectsdev/runtime-ts/*": [
+        "./server/typescript/packages/runtime-ts/src/*"
+      ],
+      "@metaobjectsdev/sdk": [
+        "./server/typescript/packages/sdk/src/index.ts"
+      ],
+      "@metaobjectsdev/sdk/*": [
+        "./server/typescript/packages/sdk/src/*"
+      ]
+    }
+  },
+  "include": [
+    "scripts/**/*.ts"
+  ]
+}

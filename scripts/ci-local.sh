@@ -201,6 +201,16 @@ gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
 # partial fragment stays quiet. The self-test replays all three incidents.
 gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-examples.ts; }
 
+# ── repo-root scripts/ typechecks ─────────────────────────────────────────────
+# `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
+# typecheck` walks WORKSPACE PACKAGES only — so every script here, including every
+# gate in this lane, was checked by nothing. Two accessor defects came straight out
+# of that gap in one session: a property read that does not exist on the type, so it
+# was always undefined and the tool silently reported the wrong field. The 14
+# pre-existing errors in scripts/site/ are PINNED rather than excluded, so the gate
+# cannot read as full coverage while covering less.
+gate_scripts_typecheck() { bun_install && bun scripts/check-scripts-typecheck.ts; }
+
 # ── MetaObjects' own requirements ledger must load and verify ─────────────────
 # The requirement feature ships in all five ports and this repository did not use
 # it. The ledger is the dogfood, on the hardest available subject: this repo
@@ -477,6 +487,7 @@ if want gates; then step    "script-name hook collisions"      gate_script_name_
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
+if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
 if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi

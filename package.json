@@ -4,7 +4,10 @@
   "private": true,
   "description": "MetaObjects — cross-language metadata standard. Repo-root JS/TS workspace.",
   "type": "module",
-  "workspaces": ["server/typescript/packages/*", "client/web/packages/*"],
+  "workspaces": [
+    "server/typescript/packages/*",
+    "client/web/packages/*"
+  ],
   "scripts": {
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
@@ -15,6 +18,7 @@
     "prerelease:publish": "bun scripts/prerelease.mjs"
   },
   "devDependencies": {
+    "bun-types": "latest",
     "highlight.js": "^11.11.0",
     "typescript": "^5.6.0"
   },

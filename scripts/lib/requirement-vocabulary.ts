@@ -9,7 +9,21 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { MetaDataLoader, type MetaRoot } from "../../server/typescript/packages/metadata/src/index.js";
+// RELATIVE, and it has to be: `scripts/` sits outside the bun workspace, so a bare
+// `@metaobjectsdev/*` specifier does not resolve from here at all — bun walks up from
+// this file and finds no workspace link. (Switching these to bare typechecked fine and
+// reddened all four gates at runtime, which is what the lane is for.)
+//
+// The dual-identity problem a relative import used to cause — TypeScript seeing the
+// bare import inside `requirement-check.ts` and this one as two separate declarations
+// of the same class, so `MetaRoot` was not assignable to `MetaData` over a private
+// field — is closed by `tsconfig.scripts.json`'s `paths`, which maps every
+// @metaobjectsdev specifier onto these same source files. One identity, without
+// needing an import bun cannot follow.
+import {
+  MetaDataLoader,
+  type MetaRoot,
+} from "../../server/typescript/packages/metadata/src/index.js";
 import {
   REQUIREMENT_SUBTYPE_ARCHITECTURAL,
 } from "../../server/typescript/packages/metadata/src/core/requirement/requirement-constants.js";
@@ -27,6 +41,20 @@ export const DEFAULT_LEDGER_DIR = join(REPO_ROOT, "metaobjects");
 /** The level at which a requirement addresses a subtype, and the one below it. */
 export const LEVEL_SUBTYPE = 4;
 export const LEVEL_ATTR = 5;
+
+/**
+ * The loader's `code` off an error the type system says is a plain `Error`.
+ *
+ * `LoadResult.errors` is `Error[]`, but what the loader actually puts there carries a
+ * `code` (`ParseError` sets `ERR_*`). Narrowed through `unknown` rather than reached
+ * for directly, because an unchecked property access reads as though the type had
+ * promised the field — and a report that silently loses its diagnostic codes still
+ * looks like a report.
+ */
+function errorCode(e: Error): string {
+  const c = (e as unknown as { code?: unknown }).code;
+  return typeof c === "string" ? c : "";
+}
 
 /**
  * Load the ledger under `dir` in strict mode, reporting load errors the same way
@@ -47,7 +75,10 @@ export async function loadLedgerOrReport(
   const { root, errors } = await MetaDataLoader.fromDirectory(dir, { strict: true });
   if (errors.length > 0 || root === undefined) {
     console.error(`${gate}: the ledger does not load${detail}.\n`);
-    for (const e of errors) console.error(`  ${e.code ?? ""} ${e.message}`);
+    // The loader's errors are typed `Error` and carry a `code` at RUNTIME
+    // (ParseError sets ERR_*). Narrowed rather than reached for blindly: an
+    // unchecked property access reads as though the type promised it.
+    for (const e of errors) console.error(`  ${errorCode(e)} ${e.message}`);
     return undefined;
   }
   return root;
