@@ -221,6 +221,15 @@ gate_requirements_ledger() { bun scripts/check-requirements-ledger.ts && bun scr
 # the cross-port manifest and spec/metamodel — 72 concrete subtypes.
 gate_requirements_vocabulary() { bun scripts/check-requirements-vocabulary.ts && bun scripts/test-requirements-vocabulary.ts; }
 
+# ── forward scaffolding: a requirement may come BEFORE its vocabulary ──────────
+# Phase 3. Author the promise and the counterexample first, then scaffold the
+# spec/metamodel entry it implies. The gate half is that the scaffolder proposes
+# NOTHING on a repository whose ledger already covers the registry — a scaffolder
+# that quietly wanted to write something would mean a requirement had drifted off
+# the vocabulary. The self-test manufactures the state the repo is never in and
+# asserts the stub refuses to invent the three prose fields.
+gate_scaffold_metamodel() { bun scripts/scaffold-metamodel-entry.ts && bun scripts/test-scaffold-metamodel-entry.ts; }
+
 # ── conformance.yml — fixture lint + workspace typecheck ──────────────────────
 gate_fixture_lint() {
   bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
@@ -447,6 +456,7 @@ if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
+if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see
 # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
