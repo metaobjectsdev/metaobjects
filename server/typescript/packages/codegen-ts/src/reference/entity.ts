@@ -7,9 +7,12 @@
 // reach for `Bun.*` globals here; they are undefined and take the whole run down with
 // `Bun is not defined`. Use `node:` builtins instead.
 // targets:       Drizzle ORM + Zod. The emitted module is a Drizzle table plus Zod
-//                insert/update schemas; the column mapping follows `dialect`. To emit for
-//                a different ORM or validator, replace the `renderEntityFile` call — the
-//                metadata walk that feeds it is ORM-neutral.
+//                insert/update schemas; the column mapping follows `dialect`. On the
+//                default (vanilla) path, replace the `renderDrizzleSchema` /
+//                `renderZodValidators` calls to target a different ORM or validator — the
+//                metadata walk that feeds them is ORM-neutral. (The `isWriteThrough`
+//                branch calls `renderEntityFile` instead — a narrow #214 read-view case,
+//                not the default.)
 // use-when:      ALWAYS — this is the entity-module generator. It owns the shape of each
 //                generated <Entity>.ts (the Drizzle table, Zod schemas, inferred types,
 //                constants, filter allowlists). Start here and adapt the assembly.
