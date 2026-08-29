@@ -1475,16 +1475,29 @@ metadata.root:
                             submit because there was no way to carry it.
                       - requirement.functional:
                           name: viewWeb
-                          title: Rich content
+                          title: Web-rendered view base
                           level: 4
                           status: live
                           statement: >-
-                            A rich-content control declares that a value is
-                            edited as formatted web content rather than as
-                            plain text.
+                            An abstract base groups the views that render in a
+                            browser, so what they share is declared once rather
+                            than on each of them.
                           counterexample: >-
-                            Formatted content edited as plain text, so its
-                            markup is shown to the author instead of applied.
+                            A property common to every browser-rendered view
+                            restated on each one, where adding a view means
+                            remembering to restate it again.
+                          notes: >-
+                            First authored as a rich-content control, which is
+                            wrong, and the mistake is recorded because nothing
+                            could have caught it. Two shipped artifacts call this
+                            an abstract base — its own registry description and
+                            the constant naming it — while a third counts it
+                            among the generic view controls, and STRUCTURALLY it
+                            is indistinguishable from a concrete one: no entry in
+                            this provider carries an abstract flag, so a base and
+                            a control differ only in prose. The coverage gate
+                            checks that a name derives a registered subtype and
+                            can never check what the requirement SAYS about it.
                       - requirement.functional:
                           name: viewImage
                           title: Image upload

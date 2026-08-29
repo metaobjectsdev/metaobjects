@@ -377,8 +377,8 @@ def test_declare_presentation_viewText():
 def test_declare_presentation_viewTextarea():
     """metaobjects.declare.presentation.viewTextarea"""
 
-# Rich content — A rich-content control declares that a value is edited as formatted web content rather than as plain text.
-@pytest.mark.skip(reason="unfilled slot — write an assertion that fails when: Formatted content edited as plain text, so its markup is shown to the author instead of applied.")
+# Web-rendered view base — An abstract base groups the views that render in a browser, so what they share is declared once rather than on each of them.
+@pytest.mark.skip(reason="unfilled slot — write an assertion that fails when: A property common to every browser-rendered view restated on each one, where adding a view means remembering to restate it again.")
 def test_declare_presentation_viewWeb():
     """metaobjects.declare.presentation.viewWeb"""
 

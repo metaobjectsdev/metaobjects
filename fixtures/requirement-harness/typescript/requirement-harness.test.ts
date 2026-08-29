@@ -377,9 +377,9 @@ test.skip("metaobjects.declare.presentation.viewTextarea", () => {
   // unfilled slot — write an assertion that fails when: A paragraph edited through a one-line control, so the author cannot see what they have written.
 });
 
-// Rich content — A rich-content control declares that a value is edited as formatted web content rather than as plain text.
+// Web-rendered view base — An abstract base groups the views that render in a browser, so what they share is declared once rather than on each of them.
 test.skip("metaobjects.declare.presentation.viewWeb", () => {
-  // unfilled slot — write an assertion that fails when: Formatted content edited as plain text, so its markup is shown to the author instead of applied.
+  // unfilled slot — write an assertion that fails when: A property common to every browser-rendered view restated on each one, where adding a view means remembering to restate it again.
 });
 
 // Aggregation — An aggregation declares that one object groups others which outlive it.
