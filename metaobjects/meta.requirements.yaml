@@ -602,3 +602,97 @@ metadata.root:
           ISO/IEC 25010:2023 product quality characteristics it actually bears.
         counterexample: >-
           A quality claim in a README that no gate, corpus or test can falsify.
+        notes: >-
+          Organised by ISO/IEC 25010:2023's product quality characteristics. Two of
+          the nine are deliberately absent: functional suitability, because the
+          functional capability map is that characteristic in full; and safety,
+          because nothing in scope can cause physical harm. The tree shape follows
+          the arc42 / ATAM quality tree, whose leaves are concrete falsifiable
+          scenarios — which is what statement plus counterexample already is.
+        children:
+          - requirement.architectural:
+              name: compatibility
+              title: Compatibility
+              level: 2
+              status: live
+              statement: >-
+                One declaration produces the same meaning in every language port and on
+                every wire, so a consumer can change ports without changing behaviour.
+              counterexample: >-
+                One attribute meaning three different things in three ports while every
+                gate reports green.
+              notes: >-
+                The dominant characteristic for this project and the one the entire
+                conformance apparatus exists to defend. Author its children first.
+
+          - requirement.architectural:
+              name: maintainability
+              title: Maintainability
+              level: 2
+              status: live
+              statement: >-
+                Every element of the vocabulary, and every place code names one, is
+                declared and reachable by one route, so a change can be made without
+                hunting for what else knew about it.
+              counterexample: >-
+                A construct written as a bare string in one place and as a named
+                constant in another, where renaming it still compiles and fails at run
+                time.
+
+          - requirement.architectural:
+              name: flexibility
+              title: Flexibility
+              level: 2
+              status: live
+              statement: >-
+                An adopter can take what MetaObjects produced and keep working without
+                it.
+              counterexample: >-
+                A generated artifact that stops compiling the moment the toolchain is
+                uninstalled.
+
+          - requirement.architectural:
+              name: reliability
+              title: Reliability
+              level: 2
+              status: live
+              statement: >-
+                When something is ambiguous or wrong the system refuses rather than
+                proceeding, and every step that destroys something has a way back.
+              counterexample: >-
+                A name that could mean two things, resolved by taking one of them,
+                with the choice depending on which was read first.
+
+          - requirement.architectural:
+              name: security
+              title: Security
+              level: 2
+              status: live
+              statement: >-
+                An input nobody declared cannot widen what a caller is able to reach.
+              counterexample: >-
+                A parameter nobody declared reaching the database, because it was on no
+                list that would have refused it.
+
+          - requirement.architectural:
+              name: performance
+              title: Performance efficiency
+              level: 2
+              status: live
+              statement: >-
+                The cost of using MetaObjects where it runs is bounded, and does not
+                grow with the size of the model.
+              counterexample: >-
+                A browser paying to download code that only ever runs on a server.
+
+          - requirement.architectural:
+              name: interaction
+              title: Interaction capability
+              level: 2
+              status: live
+              statement: >-
+                A person or an agent that gets something wrong is told what was wrong,
+                where, and what would fix it.
+              counterexample: >-
+                A refusal naming a code and not the thing refused, so the next step is
+                to go and read the source of the tool.
