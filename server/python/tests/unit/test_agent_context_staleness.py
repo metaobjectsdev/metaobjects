@@ -62,3 +62,41 @@ def test_installed_version_is_a_string() -> None:
     v = installed_metaobjects_version()
     assert isinstance(v, str)
     assert v  # non-empty
+
+
+# ── the context is AHEAD of the install (publish-what-changed, docs/RELEASING.md) ──
+# A registry publishes only when it has a changed product file, so Python legitimately
+# sits behind npm — and ``meta agent-docs`` (npm, canonical for every port) stamps the
+# NEWER version. Nudging there is #347's shape: the remedy re-stamps the same newer
+# version, so the advisory can never be satisfied and fires forever on a correct setup.
+def test_context_from_a_newer_release_is_silent() -> None:
+    assert agent_context_staleness({"generatedBy": "0.24.7"}, "0.24.4") is None
+
+
+def test_context_newer_only_in_the_patch_is_silent() -> None:
+    assert agent_context_staleness({"generatedBy": "0.24.5"}, "0.24.4") is None
+
+
+def test_context_older_than_the_install_still_nudges() -> None:
+    msg = agent_context_staleness({"generatedBy": "0.24.4"}, "0.24.7")
+    assert msg is not None
+    assert "0.24.4" in msg
+    assert "0.24.7" in msg
+
+
+# The suppression is deliberately narrow: anything not orderable as a plain release
+# still nudges, preserving the documented "ANY drift nudges" property.
+def test_prerelease_context_still_nudges() -> None:
+    assert agent_context_staleness({"generatedBy": "0.24.5-rc.1"}, "0.24.4") is not None
+
+
+def test_build_metadata_still_nudges() -> None:
+    assert agent_context_staleness({"generatedBy": "0.24.5+abc"}, "0.24.4") is not None
+
+
+def test_unresolved_install_never_asserts_in_sync() -> None:
+    assert agent_context_staleness({"generatedBy": "0.24.7"}, "0.0.0") is not None
+
+
+def test_non_numeric_version_still_nudges() -> None:
+    assert agent_context_staleness({"generatedBy": "dev"}, "0.24.4") is not None

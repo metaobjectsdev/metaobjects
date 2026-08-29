@@ -73,6 +73,47 @@ public sealed class AgentContextStalenessTests
         Assert.False(string.IsNullOrEmpty(v));
     }
 
+
+    // ── the context is AHEAD of the install (publish-what-changed, docs/RELEASING.md) ──
+    // A registry publishes only when it has a changed product file, so C# legitimately sits
+    // behind npm — and `meta agent-docs` (npm, canonical for every port) stamps the NEWER
+    // version. Nudging there is #347's shape: the remedy re-stamps the same newer version,
+    // so the advisory can never be satisfied and fires forever on a correct setup.
+    [Fact]
+    public void Context_from_a_newer_release_is_silent()
+        => Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.7"), "0.24.4"));
+
+    [Fact]
+    public void Context_newer_only_in_the_patch_is_silent()
+        => Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.5"), "0.24.4"));
+
+    [Fact]
+    public void Context_older_than_the_install_still_nudges()
+    {
+        var msg = AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.4"), "0.24.7");
+        Assert.NotNull(msg);
+        Assert.Contains("0.24.4", msg);
+        Assert.Contains("0.24.7", msg);
+    }
+
+    // The suppression is deliberately narrow: anything not orderable as a plain release
+    // still nudges, preserving the documented "ANY drift nudges" property.
+    [Fact]
+    public void Prerelease_context_still_nudges()
+        => Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.5-rc.1"), "0.24.4"));
+
+    [Fact]
+    public void Build_metadata_still_nudges()
+        => Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.5+abc"), "0.24.4"));
+
+    [Fact]
+    public void Unresolved_install_never_asserts_in_sync()
+        => Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.7"), "0.0.0"));
+
+    [Fact]
+    public void Non_numeric_version_still_nudges()
+        => Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("dev"), "0.24.4"));
+
     // ---- helper -------------------------------------------------------------
 
     private static AgentContextScaffold.Manifest ManifestWith(string? generatedBy) =>

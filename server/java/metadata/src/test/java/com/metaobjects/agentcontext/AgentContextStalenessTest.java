@@ -114,4 +114,60 @@ public class AgentContextStalenessTest {
         assertTrue("should name the agent-docs refresh goal",
                 msg.contains("npx meta agent-docs --server java"));
     }
+
+    // ── the context is AHEAD of the install (publish-what-changed, docs/RELEASING.md) ──
+    // A registry publishes only when it has a changed product file, so the JVM legitimately
+    // sits behind npm — and `meta agent-docs` (npm, canonical for every port) stamps the
+    // NEWER version. Nudging there is #347's shape: the remedy re-stamps the same newer
+    // version, so the advisory can never be satisfied and fires forever on a correct setup.
+    @Test
+    public void contextFromNewerReleaseIsSilent() {
+        assertNull(AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.24.7"), "7.24.4"));
+    }
+
+    @Test
+    public void contextNewerOnlyInPatchIsSilent() {
+        assertNull(AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.24.5"), "7.24.4"));
+    }
+
+    @Test
+    public void contextOlderThanInstallStillNudges() {
+        String msg = AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.24.4"), "7.24.7");
+        assertNotNull("an older context is what the advisory exists for", msg);
+        assertTrue(msg.contains("0.24.4"));
+        assertTrue(msg.contains("7.24.7"));
+    }
+
+    @Test
+    public void matchingCoordinateAcrossLinesStaysSilent() {
+        assertNull(AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.24.4"), "7.24.4"));
+    }
+
+    // The suppression is deliberately narrow: anything not orderable as a plain release
+    // still nudges, preserving the documented "ANY drift nudges" property.
+    @Test
+    public void prereleaseContextStillNudges() {
+        assertNotNull(AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.24.5-rc.1"), "7.24.4"));
+    }
+
+    @Test
+    public void buildMetadataStillNudges() {
+        assertNotNull(AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.24.5+abc"), "7.24.4"));
+    }
+
+    @Test
+    public void unknownInstalledVersionNeverAssertsInSync() {
+        assertNotNull(AgentContextScaffold.stalenessAcrossVersionLines(
+                manifest("0.24.7"), AgentContextScaffold.UNKNOWN_VERSION));
+    }
+
+    @Test
+    public void nonNumericVersionStillNudges() {
+        assertNotNull(AgentContextScaffold.stalenessAcrossVersionLines(manifest("dev"), "7.24.4"));
+    }
+
+    @Test
+    public void legacyManifestWithoutGeneratedByStillNudgesAcrossLines() {
+        assertNotNull(AgentContextScaffold.stalenessAcrossVersionLines(manifest(null), "7.24.4"));
+    }
 }

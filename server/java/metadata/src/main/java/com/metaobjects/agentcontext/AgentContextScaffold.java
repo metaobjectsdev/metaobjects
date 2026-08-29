@@ -111,12 +111,23 @@ public final class AgentContextScaffold {
      * not instead relax {@link #staleness} into a semver compare; its javadoc forbids that, and
      * it is right.
      *
-     * <p>Correct while the four registries share a {@code minor.patch}, which is the documented
-     * lockstep rule and is already relied on by the release tooling
-     * ({@code scripts/prerelease.mjs} and {@code scripts/release-verify.mjs} both construct the
-     * Maven version as {@code 7.} + npm's remainder). It is a CONVENTION rather than a gate: if
-     * lockstep ever breaks, this reports in-sync across a real gap. That is the accepted trade,
-     * and it is strictly better than a check that can never match.
+     * <p>The four registries NO LONGER share a {@code minor.patch}. Under publish-what-changed
+     * (docs/RELEASING.md) a registry publishes only when it has a changed product file, so a
+     * port legitimately sits behind npm — and this method's premise, which used to read
+     * <em>"correct while the four registries share a minor.patch … a CONVENTION rather than a
+     * gate"</em>, is now false BY DESIGN rather than by accident. Both of its failure modes
+     * became live: a JVM install at {@code 7.24.4} whose context was scaffolded by npm
+     * {@code 0.24.7} reduced to {@code 24.4} vs {@code 24.7} and nudged forever (the remedy
+     * re-stamps {@code 0.24.7}, so the advisory could never be satisfied — #347's exact shape),
+     * while a JVM sitting at {@code 24.4} across several npm releases reported in-sync across a
+     * real gap.
+     *
+     * <p>{@link #contextIsAheadOfInstall} closes the first, which is the one this rule created:
+     * a context stamped by a STRICTLY NEWER release is not stale and must stay silent. The
+     * second is narrowed but not closed — equal coordinates still assert in-sync, and only
+     * hashing the shipped context could settle it, which this artifact cannot do because the
+     * JVM ships no agent-context content (npm {@code meta agent-docs} is the canonical
+     * scaffolder for every port).
      *
      * @param manifest       the parsed prior manifest, or {@code null} if none on disk.
      * @param currentVersion the installed version, on this port's own line.
@@ -131,9 +142,75 @@ public final class AgentContextScaffold {
         if (stamped != null && stamped.equals(releaseCoordinate(currentVersion))) {
             return null;
         }
+        if (contextIsAheadOfInstall(manifest.generatedBy(), currentVersion)) {
+            return null;
+        }
         // Message construction lives in ONE place; this only decides whether to ask for it.
         // The delegate cannot return null here: the coordinates differ, so the versions do.
         return staleness(manifest, currentVersion);
+    }
+
+    /**
+     * Ordered release coordinate {@code [minor, patch]}, or {@code null} when not orderable.
+     *
+     * <p>The MAJOR is deliberately dropped — it is a per-registry constant, not information:
+     * npm/PyPI/NuGet ship {@code 0.<m>.<p>} and Maven Central the same {@code <m>.<p>} on its
+     * historical major {@code 7}, so minor.patch IS the shared release coordinate. This is the
+     * same reduction {@link #releaseCoordinate} makes for equality, parsed for ordering.
+     *
+     * <p>{@code null} means "not orderable, so nudge", and deliberately covers prereleases
+     * ({@code 0.24.5-rc.1}), build metadata ({@code 0.24.5+abc}) and {@link #UNKNOWN_VERSION}.
+     * Each must keep nudging: an RC-scaffolded context against a final release is still worth
+     * refreshing, and an unresolved install must never assert "in sync".
+     */
+    static int[] releaseSeries(String version) {
+        if (version == null) {
+            return null;
+        }
+        String v = version.trim();
+        if (UNKNOWN_VERSION.equals(v)) {
+            return null;
+        }
+        String[] parts = v.split("\\.", -1);
+        if (parts.length != 3) {
+            return null;
+        }
+        for (String p : parts) {
+            if (p.isEmpty()) {
+                return null;
+            }
+            for (int i = 0; i < p.length(); i++) {
+                if (p.charAt(i) < '0' || p.charAt(i) > '9') {
+                    return null;
+                }
+            }
+        }
+        try {
+            return new int[] { Integer.parseInt(parts[1]), Integer.parseInt(parts[2]) };
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * True when the manifest was stamped by a release STRICTLY NEWER than the install.
+     *
+     * <p>The one exemption from "any drift nudges". See
+     * {@link #stalenessAcrossVersionLines} for why publish-what-changed makes it necessary.
+     *
+     * <p>KNOWN BOUND, stated rather than hidden: ordering on minor.patch assumes both versions
+     * sit in the same release SERIES. That holds for every release to date and after the
+     * 1.0/8.0 cut, but not ACROSS it — there a {@code 0.24.x} context against a {@code 1.0.0}
+     * install reads as "ahead" and the nudge is suppressed once. A missed advisory, never a
+     * wrong action, and re-scaffolding at 1.0 is part of that cut anyway.
+     */
+    static boolean contextIsAheadOfInstall(String generatedBy, String currentVersion) {
+        int[] stamped = releaseSeries(generatedBy);
+        int[] installed = releaseSeries(currentVersion);
+        if (stamped == null || installed == null) {
+            return false; // not orderable → nudge
+        }
+        return stamped[0] > installed[0] || (stamped[0] == installed[0] && stamped[1] > installed[1]);
     }
 
     /**
