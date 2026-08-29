@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { resolveCollection } from "@metaobjectsdev/sdk";
+import { declaredDependencyNames, readPackageManifest } from "./package-manifest.js";
 import {
   detectStack, detectConcerns, makeStack,
   type ServerLang, type ClientFramework, type Stack, type ProjectProbe,
@@ -8,17 +9,9 @@ import {
 } from "@metaobjectsdev/sdk/agent-context";
 
 function depNames(cwd: string): Set<string> {
-  const out = new Set<string>();
-  const pkgPath = join(cwd, "package.json");
-  if (existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, Record<string, string>>;
-      for (const key of ["dependencies", "devDependencies", "peerDependencies"]) {
-        for (const name of Object.keys(pkg[key] ?? {})) out.add(name);
-      }
-    } catch { /* unreadable manifest — treat as no deps */ }
-  }
-  return out;
+  // An unreadable or absent manifest reads as no deps, which is what stack detection
+  // wants: it probes, it does not require.
+  return declaredDependencyNames(readPackageManifest(cwd) ?? {});
 }
 
 // Cheap substring probe, not a metamodel load: matches both canonical JSON's

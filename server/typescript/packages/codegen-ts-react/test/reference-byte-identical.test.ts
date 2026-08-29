@@ -26,6 +26,7 @@ import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import type { Generator } from "@metaobjectsdev/codegen-ts";
 import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile as builtinForm, REFERENCE_GENERATOR_NAMES } from "../src/index.js";
+import type { ReferenceGeneratorName } from "../src/index.js";
 import { formFile as refForm } from "../src/reference/form.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -76,15 +77,23 @@ async function gen(generators: Generator[], root: Parameters<typeof runGen>[0]["
   }
 }
 
-// The names this file actually puts under the equivalence gate below.
-const COVERED = ["form"] as const;
+// Per ejectable name, the pair this file runs. Keyed by name and typed as a Record over
+// the name union, so coverage is STRUCTURAL rather than a parallel list asserted equal:
+// adding a template to REFERENCE_GENERATOR_NAMES makes this object fail to COMPILE until
+// its pair is supplied, and the pair IS the wiring. A hand-maintained `COVERED` array
+// could be satisfied by editing one line without adding any verification — proving the
+// list was touched, not that the generator was tested. Degenerate at one entry today;
+// the point is the SECOND one, which is where the old form would have gone wrong.
+const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () => Generator }> = {
+  form: { builtin: builtinForm, ref: refForm },
+};
 
 describe("ADR-0034 — the react reference template is byte-identical to the built-in", () => {
   // The gap this whole file was written to close is "a template ships with no gate",
   // so the gate has to notice its own coverage shrinking. Without this, a second
   // template added here is silently unverified — the way `form` itself was.
   test("every ejectable template in this package is covered", () => {
-    expect([...COVERED].sort()).toEqual([...REFERENCE_GENERATOR_NAMES].sort());
+    expect(Object.keys(PAIRS).sort()).toEqual([...REFERENCE_GENERATOR_NAMES].sort());
   });
 
   const cases: Array<[string, () => Promise<Parameters<typeof runGen>[0]["metadata"]>]> = [
@@ -105,8 +114,8 @@ describe("ADR-0034 — the react reference template is byte-identical to the bui
       const root = await load();
       // entityFile rides along on both sides so the form renders in the context a real
       // run gives it (its entity-module import resolves), and is identical either way.
-      const a = await gen([entityFile(), builtinForm()], root);
-      const b = await gen([entityFile(), refForm()], root);
+      const a = await gen([entityFile(), ...Object.values(PAIRS).map((p) => p.builtin())], root);
+      const b = await gen([entityFile(), ...Object.values(PAIRS).map((p) => p.ref())], root);
 
       // Same set of files: catches a drifted FILTER (an entity that stops emitting).
       expect(Object.keys(b).sort()).toEqual(Object.keys(a).sort());

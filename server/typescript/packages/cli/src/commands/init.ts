@@ -11,6 +11,7 @@ import { resolveStack } from "../lib/detect-stack.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { cliVersion } from "../lib/version.js";
+import { declaredDependencyNames, type PackageManifest } from "../lib/package-manifest.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 import { readReferenceTemplate, type ReferenceGeneratorName } from "@metaobjectsdev/codegen-ts";
 
@@ -794,10 +795,17 @@ function addScaffoldDevDependencies(pkg: Record<string, unknown>): string[] {
     "@metaobjectsdev/metadata": `^${version}`,
   };
   const dev = (pkg.devDependencies ?? {}) as Record<string, string>;
-  const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+  // "Already declared" spans all four dependency fields — the shared rule, so this
+  // cannot drift from what `meta eject` means by the same words. It used to ask only
+  // dependencies + devDependencies, which meant a project declaring codegen-ts as a
+  // PEER dependency (correct for a library whose consumer supplies the version) got it
+  // added to devDependencies as well: the same package pinned twice in one manifest,
+  // and a second physical copy is the class-identity split this repo has been bitten
+  // by twice.
+  const declared = declaredDependencyNames(pkg as PackageManifest);
   const added: string[] = [];
   for (const [name, range] of Object.entries(wanted)) {
-    if (dev[name] !== undefined || deps[name] !== undefined) continue;
+    if (declared.has(name)) continue;
     dev[name] = range;
     added.push(name);
   }

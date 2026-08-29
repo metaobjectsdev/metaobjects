@@ -11,6 +11,7 @@ import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackTpl from "@metaobjectsdev/codegen-ts-tanstack";
 import { parseEjectArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
+import { declaredDependencyNames, readPackageManifest } from "../lib/package-manifest.js";
 
 // Mirrors `OWNED_GENERATORS_DIR` in init.ts's `writeOwnedGenerators` — same directory,
 // same never-clobber-without-consent contract. Kept as its own local constant rather
@@ -159,29 +160,12 @@ export async function dependencyNotesForTemplate(cwd: string, templateSource: st
   const required = requiredPackages(templateSource);
   if (required.length === 0) return [];
 
-  let declared: Set<string>;
-  try {
-    const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8")) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-      peerDependencies?: Record<string, string>;
-      optionalDependencies?: Record<string, string>;
-    };
-    // All four fields, because the question is "will this resolve and will their tsc be
-    // happy", not "is it in one particular field". A library that consumes MetaObjects
-    // through `peerDependencies` (the correct declaration for a package whose consumer
-    // supplies the version) had every one of them reported as missing, and was told to
-    // install what it already had — advice that, followed, adds a competing copy.
-    declared = new Set([
-      ...Object.keys(pkg.dependencies ?? {}),
-      ...Object.keys(pkg.devDependencies ?? {}),
-      ...Object.keys(pkg.peerDependencies ?? {}),
-      ...Object.keys(pkg.optionalDependencies ?? {}),
-    ]);
-  } catch {
+  const pkg = readPackageManifest(cwd);
+  if (pkg === undefined) {
     // No readable manifest — say what the file needs and let the adopter place it.
     return [`This file imports: ${required.join(", ")}. Make sure each is installed.`];
   }
+  const declared = declaredDependencyNames(pkg);
 
   const missing = required.filter((p) => !declared.has(p));
   if (missing.length === 0) return [];

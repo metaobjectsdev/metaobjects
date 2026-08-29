@@ -27,6 +27,7 @@ import {
   tanstackGridHook as builtinGridHook,
 } from "../src/index.js";
 import { REFERENCE_GENERATOR_NAMES } from "../src/index.js";
+import type { ReferenceGeneratorName } from "../src/index.js";
 import { tanstackQuery as refHooks } from "../src/reference/hooks.js";
 import { tanstackGrid as refGrid } from "../src/reference/grid.js";
 import { tanstackGridHook as refGridHook } from "../src/reference/grid-hook.js";
@@ -65,14 +66,23 @@ async function gen(generators: Generator[], root: Parameters<typeof runGen>[0]["
 }
 
 // The names this file actually puts under the equivalence gate above.
-const COVERED = ["hooks", "grid", "grid-hook"] as const;
+// Per ejectable name, the pair this file runs. Keyed by name and typed as a Record over
+// the name union, so coverage is STRUCTURAL rather than a parallel list asserted equal:
+// adding a template to REFERENCE_GENERATOR_NAMES makes this object fail to COMPILE until
+// its pair is supplied, and the pair IS the wiring. A hand-maintained `COVERED` array
+// could be satisfied by editing one line without adding any verification.
+const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () => Generator }> = {
+  hooks: { builtin: builtinHooks, ref: refHooks },
+  grid: { builtin: builtinGrid, ref: refGrid },
+  "grid-hook": { builtin: builtinGridHook, ref: refGridHook },
+};
 
 describe("ADR-0034 — tanstack reference templates are byte-identical to built-ins", () => {
   // The gap this whole file was written to close is "a template ships with no gate",
   // so the gate has to notice its own coverage shrinking. Without this, adding a
   // tenth template is silently unverified — the same way the five FR-040 added were.
   test("every ejectable template in this package is covered", () => {
-    expect([...COVERED].sort()).toEqual([...REFERENCE_GENERATOR_NAMES].sort());
+    expect(Object.keys(PAIRS).sort()).toEqual([...REFERENCE_GENERATOR_NAMES].sort());
   });
 
   for (const fixture of FIXTURES) {
@@ -86,11 +96,11 @@ describe("ADR-0034 — tanstack reference templates are byte-identical to built-
       // rendered in the same context a real run gives them (imports resolve against
       // an entity module that actually exists), and are identical on both sides.
       const a = await gen(
-        [entityFile(), queriesFile(), builtinHooks(), builtinGrid(), builtinGridHook()],
+        [entityFile(), queriesFile(), ...Object.values(PAIRS).map((p) => p.builtin())],
         root,
       );
       const b = await gen(
-        [entityFile(), queriesFile(), refHooks(), refGrid(), refGridHook()],
+        [entityFile(), queriesFile(), ...Object.values(PAIRS).map((p) => p.ref())],
         root,
       );
 

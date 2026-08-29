@@ -77,10 +77,12 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       };
       return [metaFile, {
         path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),
+        // Outside formatTs deliberately: the directive must stay the module's first
+        // token, and a formatter is entitled to move a leading string expression.
         content: withClientDirective(
-        await formatTs(renderHooksFile(entity, ctx.renderContext)),
-        ctx.renderContext.clientDirective,
-      ),
+          await formatTs(renderHooksFile(entity, ctx.renderContext)),
+          ctx.renderContext.clientDirective,
+        ),
       }];
     }),
   };

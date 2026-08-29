@@ -66,11 +66,15 @@ function gatedPackages(): Array<{ name: string; srcDir: string; distFile: string
  *
  * Call once per FILE (`beforeAll`), not per test.
  */
+/** The one staleness rule both gates below ask. Stated once for the same reason the
+ *  package LIST is: two copies of "is this dist stale" can disagree, and then the two
+ *  gates disagree about whether the same tree is safe to run the built CLI against. */
+function isStale({ srcDir, distFile }: { srcDir: string; distFile: string }): boolean {
+  return !existsSync(distFile) || newestSrcMtime(srcDir) > statSync(distFile).mtimeMs;
+}
+
 export function requireFreshDist(): void {
-  const stale = gatedPackages().filter(
-    ({ srcDir, distFile }) =>
-      !existsSync(distFile) || newestSrcMtime(srcDir) > statSync(distFile).mtimeMs,
-  );
+  const stale = gatedPackages().filter(isStale);
   if (stale.length === 0) return;
   throw new Error(
     `${stale.map((s) => s.name).join(", ")}: dist is missing or older than src. This gate runs ` +
@@ -90,14 +94,13 @@ export function requireFreshDist(): void {
  * {@link requireFreshDist}.
  */
 export function ensureFreshDist(): void {
-  for (const { name, srcDir, distFile } of gatedPackages()) {
+  for (const pkg of gatedPackages()) {
+    const { name, distFile } = pkg;
     const pkgRoot = dirname(distFile).endsWith("bin") ? CLI_ROOT : dirname(dirname(distFile));
-    const stale = (): boolean =>
-      !existsSync(distFile) || newestSrcMtime(srcDir) > statSync(distFile).mtimeMs;
-    if (!stale()) continue;
+    if (!isStale(pkg)) continue;
     console.error(`[built-cli gate] ${name} dist is stale — rebuilding in ${pkgRoot}`);
     const build = Bun.spawnSync(["bun", "run", "build"], { cwd: pkgRoot, stdout: "pipe", stderr: "pipe" });
-    if (build.exitCode !== 0 || stale()) {
+    if (build.exitCode !== 0 || isStale(pkg)) {
       throw new Error(
         `${name} dist is missing or older than its src and the in-place rebuild did not fix it — ` +
           `this gate runs the built CLI under node; run: bun run --filter '*' build\n${build.stderr.toString()}`,

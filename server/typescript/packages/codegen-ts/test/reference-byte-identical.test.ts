@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig, REFERENCE_GENERATOR_NAMES } from "../src/index.js";
+import type { ReferenceGeneratorName, Generator } from "../src/index.js";
 import {
   entityFile as builtinEntity,
   queriesFile as builtinQueries,
@@ -45,15 +46,26 @@ async function gen(dir: string, generators: ReturnType<typeof builtinEntity>[], 
   return out;
 }
 
-// The names this file actually puts under the equivalence gate below.
-const COVERED = ["entity", "queries", "routes", "routes-hono", "barrel"] as const;
+// Per ejectable name, the pair this file runs. Keyed by name and typed as a Record over
+// the name union, so coverage is STRUCTURAL rather than a parallel list asserted equal:
+// adding a template to REFERENCE_GENERATOR_NAMES makes this object fail to COMPILE until
+// its pair is supplied, and the pair IS the wiring. A hand-maintained `COVERED` array
+// could be satisfied by editing one line without adding any verification — proving the
+// list was touched, not that the generator was tested.
+const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () => Generator }> = {
+  entity: { builtin: builtinEntity, ref: refEntity },
+  queries: { builtin: builtinQueries, ref: refQueries },
+  routes: { builtin: builtinRoutes, ref: refRoutes },
+  "routes-hono": { builtin: builtinRoutesHono, ref: refRoutesHono },
+  barrel: { builtin: builtinBarrel, ref: refBarrel },
+};
 
 describe("ADR-0034 — reference templates are byte-identical to built-ins", () => {
   // The gate has to notice its own coverage shrinking. FR-040 added `routes-hono`
   // here and four more across the UI packages, and every one of them shipped
   // unverified because nothing required this list to stay complete.
   test("every ejectable template in this package is covered", () => {
-    expect([...COVERED].sort()).toEqual([...REFERENCE_GENERATOR_NAMES].sort());
+    expect(Object.keys(PAIRS).sort()).toEqual([...REFERENCE_GENERATOR_NAMES].sort());
   });
 
   for (const fixture of FIXTURES) {
@@ -67,8 +79,8 @@ describe("ADR-0034 — reference templates are byte-identical to built-ins", () 
       try {
         // routes-hono emits `<Entity>.routes.hono.ts`, so it does not collide with
         // routesFile()'s `<Entity>.routes.ts` and both ride the same run.
-        const a = await gen(aDir, [builtinEntity(), builtinQueries(), builtinRoutes(), builtinRoutesHono(), builtinBarrel()], result.root);
-        const b = await gen(bDir, [refEntity(), refQueries(), refRoutes(), refRoutesHono(), refBarrel()], result.root);
+        const a = await gen(aDir, Object.values(PAIRS).map((p) => p.builtin()), result.root);
+        const b = await gen(bDir, Object.values(PAIRS).map((p) => p.ref()), result.root);
         const aKeys = Object.keys(a).sort();
         const bKeys = Object.keys(b).sort();
         // same set of files

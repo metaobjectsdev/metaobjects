@@ -18,3 +18,6 @@ export { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.j
 // FR-040 §4.1 — the copyable reference generators this package ships in
 // `src/reference/`, and the reader `meta init`/`meta eject` use to read them.
 export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "./reference-templates.js";
+// The name union travels with the names array — codegen-ts exports both, and a
+// consumer keying anything by ejectable name needs the type as much as the values.
+export type { ReferenceGeneratorName } from "./reference-templates.js";
