@@ -616,14 +616,14 @@ describe("init() — dbImport throwing stub (Task 15)", () => {
       });
       const diagnostics = ts.getPreEmitDiagnostics(program);
       // TS2307 = "Cannot find module" — the exact class of error the missing
-      // src/db.ts used to produce. Scoped to this one code (rather than
-      // asserting zero diagnostics overall) because this repo's own dev
-      // dependency graph carries an unrelated, pre-existing `fastify` version
-      // skew (the `cli` package's devDependency vs `runtime-ts`'s peer range)
-      // that surfaces as a structural type mismatch under a real compiler —
-      // orthogonal to the dbImport defect this gate exists to catch, and not
-      // something a fresh external install (a single resolved fastify version)
-      // would ever see.
+      // src/db.ts used to produce. Scoped to this one code, rather than asserting
+      // zero diagnostics overall, so this gate stays about the dbImport defect it
+      // exists to catch and not about every diagnostic a real compiler could ever
+      // emit here. (This repo's own `cli` devDependency on `fastify` used to skew
+      // against `runtime-ts`'s peer range and surface as an unrelated structural
+      // TS2740 under this exact compile — fixed by aligning the devDependency to
+      // the peer range, FR-040 fix round 1 Item 4; confirmed empirically that this
+      // compile now produces zero diagnostics of any code, not just none at 2307.)
       const unresolvedModules = diagnostics
         .filter((d) => d.code === 2307)
         .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
