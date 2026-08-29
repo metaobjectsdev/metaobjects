@@ -1,0 +1,42 @@
+# MetaObjects' own requirements ledger.
+#
+# This is stock metadata: `requirement.functional` and `requirement.architectural`
+# as shipped, loaded by the same loader, under the same strict registry, as any
+# adopter's. No custom attributes, no `strict: false`.
+#
+# `implementedBy` is omitted on every node, deliberately. Its referent is a MODEL
+# node and this repository declares no `object.entity` at all — the ledger's subject
+# is the solution itself. Omitting it is legal (min=0) and dangle-free, and it is
+# why `meta verify` reports WARN_REQUIREMENT_NOTHING_IMPLEMENTS on every live
+# functional node. That warning is expected and pinned by
+# scripts/check-requirements-ledger.ts. Do not silence it.
+#
+# Levels are PROBLEM-DOMAIN (the level attribute's byte-gated description: "L1-L3 are
+# levels of abstraction and ownership in the problem domain, NOT of code structure").
+# No node at L1-L3 may name a package, port, module or deployable.
+metadata.root:
+  package: metaobjects
+  children:
+    - requirement.functional:
+        name: metaobjects
+        title: MetaObjects
+        level: 1
+        status: live
+        statement: >-
+          One typed declaration of a domain model drives code, runtime behaviour and
+          drift checks across five languages, and what it generates keeps working with
+          MetaObjects uninstalled.
+        counterexample: >-
+          A model that has to be restated by hand in each language, or generated code
+          that stops compiling once the toolchain is removed.
+
+    - requirement.architectural:
+        name: quality
+        title: Quality obligations
+        level: 1
+        status: live
+        statement: >-
+          MetaObjects meets stated, checkable quality obligations, organised by the
+          ISO/IEC 25010:2023 product quality characteristics it actually bears.
+        counterexample: >-
+          A quality claim in a README that no gate, corpus or test can falsify.

@@ -201,6 +201,16 @@ gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
 # partial fragment stays quiet. The self-test replays all three incidents.
 gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-examples.ts; }
 
+# ── MetaObjects' own requirements ledger must load and verify ─────────────────
+# The requirement feature ships in all five ports and this repository did not use
+# it. The ledger is the dogfood, on the hardest available subject: this repo
+# declares no object.entity at all, so a feature designed for domain models is
+# exercised against a solution. The gate pins the diagnostic SET rather than the
+# exit code, because `meta verify` exits 0 on warnings — and this ledger emits a
+# known one by construction (implementedBy is omitted, so no functional subtree
+# claims anything). Offline; one YAML file.
+gate_requirements_ledger() { bun scripts/check-requirements-ledger.ts && bun scripts/test-requirements-ledger.ts; }
+
 # ── conformance.yml — fixture lint + workspace typecheck ──────────────────────
 gate_fixture_lint() {
   bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
@@ -425,6 +435,7 @@ if want gates; then step    "script-name hook collisions"      gate_script_name_
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
+if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see
 # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
