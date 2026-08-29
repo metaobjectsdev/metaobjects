@@ -230,6 +230,19 @@ gate_requirements_vocabulary() { bun scripts/check-requirements-vocabulary.ts &&
 # asserts the stub refuses to invent the three prose fields.
 gate_scaffold_metamodel() { bun scripts/scaffold-metamodel-entry.ts && bun scripts/test-scaffold-metamodel-entry.ts; }
 
+# ── the requirement harness tracks the ledger ─────────────────────────────────
+# Phase 5. One test slot per authored promise, in every port, so a promise nobody
+# checks is visible as a slot nobody filled. The stubs are SKIPPED deliberately —
+# 545 red tests would claim nothing is verified, which is false, and a suite red
+# for a false reason gets silenced wholesale. The DRIFT half is what has teeth: a
+# promise added to the ledger must appear as a slot in all five ports. The
+# TypeScript one is also EXECUTED here, so the shape is proven by a port that runs
+# it rather than asserted by a generator that wrote it.
+gate_requirement_harness() {
+  bun scripts/generate-requirement-harness.ts --check \
+    && bun test fixtures/requirement-harness/typescript/requirement-harness.test.ts
+}
+
 # ── conformance.yml — fixture lint + workspace typecheck ──────────────────────
 gate_fixture_lint() {
   bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
@@ -457,6 +470,7 @@ if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
 if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
+if want gates; then step_if bun "requirement harness"       gate_requirement_harness;    fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see
 # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
