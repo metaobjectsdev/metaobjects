@@ -58,7 +58,7 @@ afterEach(() => {
 
 describe("init() — next-steps message (S1)", () => {
   test("presents `meta gen` and `meta docs` as working steps, not as unshipped 'later sub-projects'", () => {
-    const block = nextStepsBlock();
+    const block = nextStepsBlock(true);
     // gen + docs work TODAY — they must be shown as actionable next steps.
     expect(block).toContain("meta gen");
     expect(block).toContain("meta docs");
@@ -66,6 +66,21 @@ describe("init() — next-steps message (S1)", () => {
     // (only ingest/serve/install-hooks are actually unshipped — matches `meta --help`).
     expect(block).not.toMatch(/later sub-projects[\s\S]*meta gen\b/);
     expect(block).not.toMatch(/later sub-projects[\s\S]*meta docs\b/);
+  });
+
+  // The block used to be ONE static string, so it claimed the db stub on every run —
+  // including `meta init --force` in a project that keeps its own metaobjects.config.ts,
+  // where the stub is deliberately not written. Asserted on the message rather than on
+  // the run, because it is the message that was lying.
+  test("claims the src/db.ts stub only when this run actually wrote it", () => {
+    expect(nextStepsBlock(true)).toContain("src/db.ts");
+    expect(nextStepsBlock(false)).not.toContain("src/db.ts");
+    // Everything else is unconditional — a run that skipped the stub still gets the
+    // scaffold summary and the numbered steps.
+    for (const written of [true, false]) {
+      expect(nextStepsBlock(written)).toContain("codegen/generators/");
+      expect(nextStepsBlock(written)).toContain("meta gen");
+    }
   });
 });
 
@@ -615,6 +630,31 @@ describe("init() — dbImport throwing stub (Task 15)", () => {
     expect(result.created).not.toContain("src/db.ts");
     // Nor may it CLAIM to have preserved one — there is no such file to preserve.
     expect(result.preserved).not.toContain("src/db.ts");
+    // ...but it must not be SILENT about it either — see the test below.
+    expect(result.warnings.join("\n")).toContain("src/db.ts");
+  });
+
+  // Fix round 3. The rule above ("keeps its own config ⇒ write nothing") is right, but
+  // `wroteScaffoldedConfig` is only "no metaobjects.config.ts existed" — so it is FALSE
+  // for the config `meta init` itself just wrote. A scaffolded project whose src/db.ts
+  // is later deleted or moved therefore hits the same branch: init writes nothing, and
+  // used to report nothing either, while the scaffolded `dbImport: "../db"` and the
+  // generated routes' `import { db } from "../db.js"` still point at it. The adopter met
+  // that as a TS2307 from `tsc`, with no word from the command that could have said so.
+  test("warns rather than going silent when a scaffolded project has lost its src/db.ts", async () => {
+    await init({ cwd });
+    rmSync(join(cwd, "src", "db.ts"));
+
+    const result = await init({ cwd, force: true });
+
+    // Still no write — a project owning its config owns its database module.
+    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
+    expect(result.created).not.toContain("src/db.ts");
+    expect(result.preserved).not.toContain("src/db.ts");
+    // But the run has to SAY so, naming the path and what breaks.
+    const warned = result.warnings.find((w) => w.includes("src/db.ts"));
+    expect(warned).toBeDefined();
+    expect(warned).toContain("dbImport");
   });
 
   test("dry run (--print) reports src/db.ts as a would-be-created file", async () => {

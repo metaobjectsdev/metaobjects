@@ -189,14 +189,23 @@ const DB_STUB_BODY = [
   "",
 ].join("\n");
 
-const NEXT_STEPS = `
-Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
-Codegen generators copied to codegen/generators/ — they're YOURS to edit (ADR-0034 scaffold-and-own).
-Also scaffolded ${DB_STUB_REL_PATH}: a THROWING STUB standing in for your database
+// Printed only when the stub was ACTUALLY written this run. It is gated on having just
+// written the scaffolded config (see the db-stub block in `init`), so a re-run in a
+// project that keeps its own config writes nothing — and a block claiming otherwise is
+// the same "asserting things about its own scaffold that aren't true" defect the rest of
+// this file was corrected for.
+const DB_STUB_NOTE = `Also scaffolded ${DB_STUB_REL_PATH}: a THROWING STUB standing in for your database
 connection, so the generated routes' \`db\` import resolves and the first tsc is clean.
 Replace it with a real connection before running the app — until you do, the first
 request that touches \`db\` throws with instructions.
+`;
 
+const SCAFFOLD_SUMMARY = `
+Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
+Codegen generators copied to codegen/generators/ — they're YOURS to edit (ADR-0034 scaffold-and-own).
+`;
+
+const NEXT_STEPS = `
 Next steps:
   0. Everything here is ESM — package.json needs "type": "module" (init sets it
      unless the project has CommonJS sources; without it the first tsc fails).
@@ -644,6 +653,23 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     // "preserved" means a file we would have written was left alone. Skipping because
     // this project keeps its own config is not preservation — there is nothing there.
     result.preserved.push(DB_STUB_REL_PATH);
+  } else {
+    // Neither written nor preserved: this project keeps its own config AND has no stub.
+    // Usually correct — its `dbImport` points at a real module somewhere else. But it is
+    // ALSO what a scaffolded project looks like after someone deletes or moves src/db.ts,
+    // and `meta init --force` cannot tell those apart: `wroteScaffoldedConfig` is only
+    // "no config existed", so it is false for the config init itself wrote. Silently
+    // doing nothing there leaves the scaffolded `dbImport: "../db"` and the generated
+    // routes' `import { db } from "../db.js"` pointing at nothing, and the adopter meets
+    // it as a TS2307 from `tsc` with no word from the command that could have said so.
+    // Say it here rather than writing: dropping a file into a project that owns its
+    // config is what the branch above deliberately refuses.
+    result.warnings.push(
+      `${DB_STUB_REL_PATH} was not scaffolded — this project has its own ` +
+      "metaobjects.config.ts, so init leaves the database module to it. If that config's " +
+      `\`dbImport\` resolves to ${DB_STUB_REL_PATH}, create it or the generated routes will ` +
+      "not resolve.",
+    );
   }
 
   // Scaffold a minimal root .gitignore ONLY when the project has none — never
@@ -822,8 +848,18 @@ function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
   return block;
 }
 
-export function nextStepsBlock(): string {
-  return NEXT_STEPS;
+/**
+ * The post-init message.
+ *
+ * @param dbStubWritten whether THIS run wrote {@link DB_STUB_REL_PATH}. Required rather
+ *   than defaulted, because a default would silently restore the bug this parameter
+ *   exists to close: the note used to be part of one static string and so claimed the
+ *   stub on every run, including the `meta init --force` in a project keeping its own
+ *   `metaobjects.config.ts`, where the stub is deliberately not written. Callers pass
+ *   `result.created.includes(DB_STUB_REL_PATH)` — the same list the message describes.
+ */
+export function nextStepsBlock(dbStubWritten: boolean): string {
+  return SCAFFOLD_SUMMARY + (dbStubWritten ? DB_STUB_NOTE : "") + NEXT_STEPS;
 }
 
 async function dirExists(p: string): Promise<boolean> {
@@ -888,7 +924,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         }
         for (const w of result.warnings) log.warn(w);
       } else {
-        log.info(nextStepsBlock());
+        log.info(nextStepsBlock(result.created.includes(DB_STUB_REL_PATH)));
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context
         // discovery warning) — these are otherwise dropped on the normal init path.
         for (const w of result.warnings) log.warn(w);

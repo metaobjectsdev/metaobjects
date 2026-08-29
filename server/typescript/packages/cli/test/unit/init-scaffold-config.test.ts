@@ -36,7 +36,7 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(body).not.toContain("apiDocsFile");
     expect(body).toContain("docs:");
     expect(body).toContain("surfaces:");
-    expect(nextStepsBlock()).toContain("meta docs");
+    expect(nextStepsBlock(true)).toContain("meta docs");
   });
 
   test("does not overwrite an existing metaobjects.config.ts on subsequent runs", async () => {
