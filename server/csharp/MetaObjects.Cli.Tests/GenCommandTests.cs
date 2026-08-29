@@ -39,4 +39,28 @@ public sealed class GenCommandTests : IDisposable
         Assert.Contains("public class Subscriber", File.ReadAllText(Path.Combine(OutDir, "Subscriber.g.cs")));
         Assert.Contains(outcome.Result!.Files, f => f.Status == "written");
     }
+
+    /// <summary>
+    /// The hash manifest belongs to the PROJECT — the directory holding
+    /// <c>metaobjects/</c> — not to whatever directory the process happens to sit in.
+    /// It used to be anchored on <c>Directory.GetCurrentDirectory()</c>, so generating
+    /// from anywhere but the project root scattered a stray <c>.metaobjects/</c> into
+    /// the caller's cwd and left the real project with no record of what was written —
+    /// which is the whole point of committing the manifest. The Python port already
+    /// anchors on the metadata dir's parent for exactly this reason.
+    /// </summary>
+    [Fact]
+    public void Gen_writes_the_hash_manifest_beside_the_metadata_not_in_cwd()
+    {
+        var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
+
+        Assert.True(
+            File.Exists(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes.json")),
+            "expected the manifest beside the project's metaobjects/ dir");
+        Assert.False(
+            File.Exists(Path.Combine(
+                Directory.GetCurrentDirectory(), ".metaobjects", ".gen-state", ".hashes.json")),
+            "gen must not scatter .metaobjects/ into the current working directory");
+    }
 }

@@ -101,10 +101,19 @@ static int RunGen(string[] rest)
     // `_pending`-excluded file list (MetaDataLoader.FromUris) — never a second
     // FromDirectory walk of resolvedMeta.Directory, which would both duplicate
     // the walk ResolveMetadataDirOrExit already did AND silently include `_pending`.
+    // Where the `.gen-state/.hashes.json` manifest goes. An explicit <metadataDir>
+    // anchors on its parent — the directory holding `metaobjects/`. With it omitted,
+    // the `.metaobjects/config.json` ladder above resolved everything relative to cwd,
+    // so cwd IS the project. Never cwd unconditionally: that scattered a stray
+    // `.metaobjects/` into any directory this ran from.
+    var projectRoot = metadataDir is not null
+        ? GenCommand.ProjectRootFor(metadataDir)
+        : Directory.GetCurrentDirectory();
+
     var outcome = resolvedMeta.Files is { } files
         ? GenCommand.Run(
             MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList()),
-            outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath)
+            outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot)
         : GenCommand.Run(
             resolvedMeta.Directory, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath);
     if (!outcome.Ok)
