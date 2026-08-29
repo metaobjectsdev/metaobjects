@@ -35,84 +35,34 @@
  * statement about portability, not a licence to leave the vocabulary unpromised — an
  * adopter can author `view.textarea` today, so something must say what it is for.
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { MetaDataLoader } from "../server/typescript/packages/metadata/src/index.js";
 import { collectAddressedRequirements } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
+import {
+  DEFAULT_LEDGER_DIR,
+  LEVEL_ATTR,
+  LEVEL_SUBTYPE,
+  derivationProblems,
+  participatesInVocabularyLink,
+  population,
+  splitName,
+  typeAxis,
+} from "./lib/requirement-vocabulary.js";
 
-const REPO_ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 // Overridable by a positional argument for ONE caller — the self-test, which drives
 // this gate against throwaway ledgers. CI invokes it bare.
-const LEDGER_DIR = process.argv[2] ?? join(REPO_ROOT, "metaobjects");
-const MANIFEST = join(REPO_ROOT, "fixtures/registry-conformance/expected-registry.json");
-const SPEC_DIR = join(REPO_ROOT, "spec/metamodel");
-
-/** The L4 level. Below it a requirement addresses a member, above it, nothing in the model. */
-const LEVEL_SUBTYPE = 4;
-const LEVEL_ATTR = 5;
-
-interface Entry { key: string; attrs: Set<string> }
-
-/** Every concrete `type.subType` the loader accepts, with the attributes it carries. */
-function population(): Map<string, Entry> {
-  const out = new Map<string, Entry>();
-  const add = (type: string, subType: string, attrs: string[]): void => {
-    const key = `${type}.${subType}`;
-    const e = out.get(key) ?? { key, attrs: new Set<string>() };
-    for (const a of attrs) e.attrs.add(a);
-    out.set(key, e);
-  };
-
-  const manifest = JSON.parse(readFileSync(MANIFEST, "utf8")) as {
-    types: { type: string; subType: string; attrs?: { name: string }[] }[];
-  };
-  for (const t of manifest.types) {
-    if (t.subType === "base") continue; // abstract: nothing authors it directly
-    add(t.type, t.subType, (t.attrs ?? []).map((a) => a.name));
-  }
-
-  for (const f of readdirSync(SPEC_DIR).filter((f) => f.endsWith(".json"))) {
-    const m = JSON.parse(readFileSync(join(SPEC_DIR, f), "utf8")) as {
-      types?: { type?: string; subType: string; abstract?: boolean; attrs?: { name: string }[] }[];
-    };
-    for (const t of m.types ?? []) {
-      const type = t.type ?? f.replace(/\.json$/, "");
-      // `*.*` is the common-attribute wildcard, not a subtype anyone authors.
-      if (t.abstract === true || t.subType === "base" || type === "*" || t.subType === "*") continue;
-      add(type, t.subType, (t.attrs ?? []).map((a) => a.name));
-    }
-  }
-  return out;
-}
-
-/** Split `fieldCurrency` into `field.currency` against the CLOSED type axis. */
-function splitName(name: string, types: string[]): string | undefined {
-  for (const t of types) {
-    if (!name.startsWith(t) || name.length === t.length) continue;
-    const rest = name.slice(t.length);
-    if (rest[0] !== rest[0]?.toUpperCase()) continue; // `fieldset` must not match `field`
-    return `${t}.${rest[0]!.toLowerCase()}${rest.slice(1)}`;
-  }
-  return undefined;
-}
+const LEDGER_DIR = process.argv[2] ?? DEFAULT_LEDGER_DIR;
 
 async function main(): Promise<number> {
   const pop = population();
-  const types = [...new Set([...pop.keys()].map((k) => k.split(".")[0]!))].sort(
-    (a, b) => b.length - a.length, // longest first, so a longer type wins a shared prefix
-  );
+  const types = typeAxis(pop);
 
-  // The prefix-free assumption, asserted rather than trusted.
-  for (const a of types) {
-    for (const b of types) {
-      if (a !== b && b.startsWith(a) && b[a.length] === b[a.length]?.toUpperCase()) {
-        console.error(
-          `requirements-vocabulary: type axis is no longer prefix-free — '${a}' prefixes '${b}'.\n` +
-          `The camelCase name derivation cannot stay unambiguous. Change the derivation, not this check.\n`,
-        );
-        return 1;
-      }
-    }
+  // The derivation is only a safe link while every subtype's implied name reads back
+  // as that subtype. Checked, not assumed — the previous form of this could not fire.
+  const ambiguous = derivationProblems(pop);
+  if (ambiguous.length > 0) {
+    console.error("requirements-vocabulary: the camelCase name derivation is ambiguous.\n");
+    for (const a of ambiguous) console.error(a);
+    return 1;
   }
 
   const { root, errors } = await MetaDataLoader.fromDirectory(LEDGER_DIR, { strict: true });
@@ -126,6 +76,9 @@ async function main(): Promise<number> {
   const problems: string[] = [];
 
   for (const { node, path } of collectAddressedRequirements(root)) {
+    // Architectural requirements are object-independent and name no subtype (0.23.0
+    // made them levellable, so one can legally sit at L4).
+    if (!participatesInVocabularyLink(node)) continue;
     const level = node.level();
     if (level === LEVEL_SUBTYPE) {
       const key = splitName(node.name, types);
@@ -174,7 +127,8 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const l5 = collectAddressedRequirements(root).filter((r) => r.node.level() === LEVEL_ATTR).length;
+  const l5 = collectAddressedRequirements(root)
+    .filter((r) => participatesInVocabularyLink(r.node) && r.node.level() === LEVEL_ATTR).length;
   console.log(
     `requirements-vocabulary: OK — ${pop.size} registered subtype(s), each promised by exactly ` +
     `one L4 requirement; ${l5} L5 attribute requirement(s), each naming an attribute its subtype carries.`,

@@ -30,60 +30,64 @@
  * vocabulary is never a side effect. Nothing runs this automatically — it is
  * `--apply` or it prints what it would do.
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader } from "../server/typescript/packages/metadata/src/index.js";
 import { collectAddressedRequirements } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
-
-const REPO_ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
-const MANIFEST = join(REPO_ROOT, "fixtures/registry-conformance/expected-registry.json");
-const LEVEL_SUBTYPE = 4;
+import {
+  DEFAULT_LEDGER_DIR,
+  DEFAULT_MANIFEST,
+  DEFAULT_SPEC_DIR,
+  LEVEL_SUBTYPE,
+  participatesInVocabularyLink,
+  population,
+  splitName,
+  typeAxis,
+} from "./lib/requirement-vocabulary.js";
 
 /** Placeholder the gates must reject, so a scaffold cannot be mistaken for a decision. */
 const TODO = "TODO — write this by hand. See the requirement that asked for this type.";
 
-interface Args { apply: boolean; ledgerDir: string; specDir: string }
+interface Args { apply: boolean; ledgerDir: string; specDir: string; manifest: string }
 
 function parseArgs(argv: string[]): Args {
   const apply = argv.includes("--apply");
   const rest = argv.filter((a) => a !== "--apply");
   return {
     apply,
-    ledgerDir: rest[0] ?? join(REPO_ROOT, "metaobjects"),
-    specDir: rest[1] ?? join(REPO_ROOT, "spec/metamodel"),
+    ledgerDir: rest[0] ?? DEFAULT_LEDGER_DIR,
+    specDir: rest[1] ?? DEFAULT_SPEC_DIR,
+    // Parameterised alongside specDir: pinning it to the real repo made the
+    // self-test's "throwaway provider tree" not a throwaway at all — all 69 real
+    // manifest rows stayed in scope, so its cases passed or failed on repository
+    // state no assertion named.
+    manifest: rest[2] ?? DEFAULT_MANIFEST,
   };
 }
 
-/** Every `type.subType` already registered anywhere, and the closed type axis. */
-function known(specDir: string): { keys: Set<string>; types: string[] } {
-  const keys = new Set<string>();
-  const manifest = JSON.parse(readFileSync(MANIFEST, "utf8")) as {
-    types: { type: string; subType: string }[];
-  };
-  for (const t of manifest.types) keys.add(`${t.type}.${t.subType}`);
-  for (const f of readdirSync(specDir).filter((f) => f.endsWith(".json"))) {
-    const m = JSON.parse(readFileSync(join(specDir, f), "utf8")) as {
-      types?: { type?: string; subType: string }[];
-    };
-    for (const t of m.types ?? []) keys.add(`${t.type ?? f.replace(/\.json$/, "")}.${t.subType}`);
-  }
-  const types = [...new Set([...keys].map((k) => k.split(".")[0]!))].sort((a, b) => b.length - a.length);
-  return { keys, types };
-}
 
-function splitName(name: string, types: string[]): string | undefined {
-  for (const t of types) {
-    if (!name.startsWith(t) || name.length === t.length) continue;
-    const rest = name.slice(t.length);
-    if (rest[0] !== rest[0]?.toUpperCase()) continue;
-    return `${t}.${rest[0]!.toLowerCase()}${rest.slice(1)}`;
-  }
-  return undefined;
+/**
+ * Append one entry to a provider file's `types` array by editing TEXT, not by
+ * re-serialising the document. Returns undefined when the array's end cannot be
+ * located, so the caller refuses rather than guessing.
+ */
+function appendType(raw: string, stub: unknown): string | undefined {
+  const close = raw.lastIndexOf("]");
+  if (close === -1) return undefined;
+  const before = raw.slice(0, close).replace(/\s+$/, "");
+  const indent = "    ";
+  const body = JSON.stringify(stub, null, 2)
+    .split("\n")
+    .map((l) => `${indent}${l}`)
+    .join("\n");
+  const sep = before.endsWith("[") ? "" : ",";
+  return `${before}${sep}\n${body}\n  ${raw.slice(close)}`;
 }
 
 async function main(): Promise<number> {
-  const { apply, ledgerDir, specDir } = parseArgs(process.argv.slice(2));
-  const { keys, types } = known(specDir);
+  const { apply, ledgerDir, specDir, manifest } = parseArgs(process.argv.slice(2));
+  const pop = population(specDir, manifest);
+  const types = typeAxis(pop);
 
   const { root, errors } = await MetaDataLoader.fromDirectory(ledgerDir, { strict: true });
   if (errors.length > 0 || root === undefined) {
@@ -95,7 +99,8 @@ async function main(): Promise<number> {
   // A requirement naming vocabulary nothing registers is the SIGNAL, not an error.
   const wanted: { key: string; path: string; title: string }[] = [];
   for (const { node, path } of collectAddressedRequirements(root)) {
-    if (node.level() !== LEVEL_SUBTYPE) continue;
+    // Architectural requirements name no subtype — see participatesInVocabularyLink.
+    if (!participatesInVocabularyLink(node) || node.level() !== LEVEL_SUBTYPE) continue;
     const key = splitName(node.name, types);
     if (key === undefined) {
       console.error(
@@ -104,7 +109,11 @@ async function main(): Promise<number> {
       );
       return 1;
     }
-    if (!keys.has(key)) wanted.push({ key, path, title: node.title ?? node.name });
+    // `attr()` RESOLVES and is the accessor that exists — `node.title` is not a
+    // property of MetaData at all, so the old read was always undefined and this
+    // silently reported the node's NAME where it meant the authored title.
+    const title = node.attr("title");
+    if (!pop.has(key)) wanted.push({ key, path, title: typeof title === "string" ? title : node.name });
   }
 
   if (wanted.length === 0) {
@@ -123,7 +132,15 @@ async function main(): Promise<number> {
       );
       return 1;
     }
-    const doc = JSON.parse(readFileSync(file, "utf8")) as { types: unknown[] };
+    const raw = readFileSync(file, "utf8");
+    const doc = JSON.parse(raw) as { types?: unknown };
+    if (!Array.isArray(doc.types)) {
+      console.error(
+        `scaffold-metamodel: spec/metamodel/${type}.json has no 'types' array to append to.\n` +
+        `Refusing rather than creating one — the file shape is a provider contract.\n`,
+      );
+      return 1;
+    }
     const stub = {
       type,
       subType,
@@ -135,14 +152,35 @@ async function main(): Promise<number> {
     };
     console.log(`  ${apply ? "write" : "would write"}  ${key}  ← ${path}  (${title})`);
     if (apply) {
-      doc.types.push(stub);
-      writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`);
+      // APPENDED textually, never re-serialised. `JSON.stringify(JSON.parse(x), null, 2)`
+      // is not a round trip for 12 of the 18 shipped provider files — it reflows key
+      // spacing, unicode escapes and wrapping — so writing the whole document back
+      // would bury the one stub under a whole-file diff, in artifacts whose prose is
+      // byte-gated across five ports, immediately before check-metamodel-version
+      // demands a bump for it.
+      const written = appendType(raw, stub);
+      if (written === undefined) {
+        console.error(
+          `scaffold-metamodel: could not locate the end of the 'types' array in ` +
+          `spec/metamodel/${type}.json to append to. Refusing rather than rewriting the file.\n`,
+        );
+        return 1;
+      }
+      writeFileSync(file, written);
     }
   }
 
   if (!apply) {
-    console.log(`\nscaffold-metamodel: ${wanted.length} stub(s) to write. Re-run with --apply.`);
-    return 0;
+    // NON-ZERO deliberately. ci-local.sh runs this bare as a gate whose claim is that
+    // nothing needs scaffolding; returning 0 here made that claim unfalsifiable — the
+    // lane stayed green while the tool printed the drift it had just found, and the
+    // self-test pinned the zero. A proposal IS the drift: a requirement is naming
+    // vocabulary that exists nowhere.
+    console.error(
+      `\nscaffold-metamodel: ${wanted.length} requirement(s) name vocabulary that exists nowhere.\n` +
+      `Write the entries with --apply, then fill in the prose by hand.\n`,
+    );
+    return 1;
   }
   console.log(
     `\nscaffold-metamodel: ${wanted.length} stub(s) written with placeholder prose.\n` +

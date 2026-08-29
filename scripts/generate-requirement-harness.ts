@@ -38,11 +38,15 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader } from "../server/typescript/packages/metadata/src/index.js";
 import { collectAddressedRequirements } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
+import {
+  DEFAULT_LEDGER_DIR,
+  LEVEL_ATTR,
+  LEVEL_SUBTYPE,
+  REPO_ROOT,
+  participatesInVocabularyLink,
+} from "./lib/requirement-vocabulary.js";
 
-const REPO_ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const OUT_DIR = join(REPO_ROOT, "fixtures/requirement-harness");
-const LEVEL_SUBTYPE = 4;
-const LEVEL_ATTR = 5;
 
 interface Promise_ {
   /** The requirement's dotted address — stable, unique, and the link. */
@@ -62,11 +66,35 @@ function reason(p: Promise_): string {
   return `unfilled slot — write an assertion that fails when: ${p.counterexample}`;
 }
 
-const esc = (s: string): string => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
+/**
+ * Make an author's prose safe to interpolate anywhere in a generated file.
+ *
+ * Applied to EVERY interpolation, including the ones that land in a `//` or `#`
+ * comment rather than a string literal — a folded YAML scalar keeps a newline wherever
+ * the author left a blank line, and one of those in a single-line comment drops the
+ * rest of the sentence into class or module scope, which does not compile in four of
+ * the five ports and is an IndentationError in the fifth. Escaping only what looks
+ * like a string literal leaves that hole one line down, which is the same mistake the
+ * shipped renderer's own escaping comment warns about.
+ *
+ * `$` is escaped too, for Kotlin alone in effect but harmlessly everywhere: an
+ * unescaped `$value` inside a Kotlin string is a template reference, so a
+ * counterexample containing one fails to compile against an unresolved name.
+ */
+const esc = (s: string): string =>
+  s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, "\\$")
+    .replace(/[\r\n]+/g, " ");
 
 function collect(root: unknown): Promise_[] {
   const out: Promise_[] = [];
   for (const { node, path } of collectAddressedRequirements(root as never)) {
+    // Architectural requirements are object-independent: they name no subtype and
+    // have nothing to assert at the grain of one. 0.23.0 made them levellable, so one
+    // can legally sit at L4 — without this it would get a bogus slot in five ports.
+    if (!participatesInVocabularyLink(node)) continue;
     const level = node.level();
     if (level !== LEVEL_SUBTYPE && level !== LEVEL_ATTR) continue;
     // `attr()` RESOLVES — it reads through `extends`. The own-only accessors would
@@ -107,7 +135,7 @@ const renderers: Record<string, { file: string; render: (ps: Promise_[]) => stri
     render: (ps) =>
       `${BANNER("TypeScript", ps.length, "//")}import { test } from "bun:test";\n\n` +
       ps.map((p) =>
-        `// ${p.title} — ${p.statement}\n` +
+        `// ${esc(p.title)} — ${esc(p.statement)}\n` +
         `test.skip("${esc(p.path)}", () => {\n  // ${esc(reason(p))}\n});\n`,
       ).join("\n"),
   },
@@ -116,7 +144,7 @@ const renderers: Record<string, { file: string; render: (ps: Promise_[]) => stri
     render: (ps) =>
       `${BANNER("Python", ps.length, "#")}import pytest\n\n` +
       ps.map((p) =>
-        `# ${p.title} — ${p.statement}\n` +
+        `# ${esc(p.title)} — ${esc(p.statement)}\n` +
         `@pytest.mark.skip(reason="${esc(reason(p))}")\n` +
         `def test_${p.ident}():\n    """${esc(p.path)}"""\n\n`,
       ).join(""),
@@ -128,7 +156,7 @@ const renderers: Record<string, { file: string; render: (ps: Promise_[]) => stri
       `import org.junit.jupiter.api.Disabled;\nimport org.junit.jupiter.api.Test;\n\n` +
       `class RequirementHarnessTest {\n\n` +
       ps.map((p) =>
-        `    // ${p.title} — ${p.statement}\n` +
+        `    // ${esc(p.title)} — ${esc(p.statement)}\n` +
         `    @Test\n    @Disabled("${esc(reason(p))}")\n` +
         `    void ${p.ident}() { /* ${esc(p.path)} */ }\n\n`,
       ).join("") + `}\n`,
@@ -140,7 +168,7 @@ const renderers: Record<string, { file: string; render: (ps: Promise_[]) => stri
       `import org.junit.jupiter.api.Disabled\nimport org.junit.jupiter.api.Test\n\n` +
       `class RequirementHarnessTest {\n\n` +
       ps.map((p) =>
-        `    // ${p.title} — ${p.statement}\n` +
+        `    // ${esc(p.title)} — ${esc(p.statement)}\n` +
         `    @Test\n    @Disabled("${esc(reason(p))}")\n` +
         `    fun ${p.ident}() { /* ${esc(p.path)} */ }\n\n`,
       ).join("") + `}\n`,
@@ -151,7 +179,7 @@ const renderers: Record<string, { file: string; render: (ps: Promise_[]) => stri
       `${BANNER("C#", ps.length, "//")}using Xunit;\n\nnamespace MetaObjects.Requirements;\n\n` +
       `public class RequirementHarnessTests\n{\n\n` +
       ps.map((p) =>
-        `    // ${p.title} — ${p.statement}\n` +
+        `    // ${esc(p.title)} — ${esc(p.statement)}\n` +
         `    [Fact(Skip = "${esc(reason(p))}")]\n` +
         `    public void ${p.ident}() { /* ${esc(p.path)} */ }\n\n`,
       ).join("") + `}\n`,
@@ -160,7 +188,7 @@ const renderers: Record<string, { file: string; render: (ps: Promise_[]) => stri
 
 async function main(): Promise<number> {
   const check = process.argv.includes("--check");
-  const { root, errors } = await MetaDataLoader.fromDirectory(join(REPO_ROOT, "metaobjects"), { strict: true });
+  const { root, errors } = await MetaDataLoader.fromDirectory(DEFAULT_LEDGER_DIR, { strict: true });
   if (errors.length > 0 || root === undefined) {
     console.error("requirement-harness: the ledger does not load.\n");
     for (const e of errors) console.error(`  ${e.code ?? ""} ${e.message}`);

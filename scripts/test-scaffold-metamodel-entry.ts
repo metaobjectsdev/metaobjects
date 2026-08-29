@@ -46,9 +46,12 @@ metadata.root:
   if (opts.withFieldProvider !== false) {
     writeFileSync(join(dir, "spec", "field.json"), JSON.stringify({ provider: "test", types: [] }, null, 2));
   }
+  // A throwaway MANIFEST too, or the tree is not a throwaway: with the real one in
+  // scope every case passes or fails on repository state no assertion names.
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify({ types: [{ type: "field", subType: "string" }] }));
   const args = [SCAFFOLD];
   if (opts.apply === true) args.push("--apply");
-  args.push(join(dir, "metaobjects"), join(dir, "spec"));
+  args.push(join(dir, "metaobjects"), join(dir, "spec"), join(dir, "manifest.json"));
   const r = spawnSync("bun", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return {
     status: r.status ?? 1,
@@ -73,26 +76,33 @@ expect(
   `${real.stdout}${real.stderr}`,
 );
 
+// A proposal is DRIFT, so the bare run must FAIL — ci-local.sh runs it as a gate
+// whose whole claim is that nothing needs scaffolding.
 const dry = run("fieldSomethingNew");
 expect(
-  "a requirement for unregistered vocabulary is a dry-run proposal",
-  dry.status === 0 && dry.output.includes("would write") && dry.output.includes("field.somethingNew"),
+  "a requirement for unregistered vocabulary FAILS the bare run",
+  dry.status !== 0 && dry.output.includes("would write") && dry.output.includes("field.somethingNew"),
   dry.output,
 );
-rmSync(dry.dir, { recursive: true, force: true });
-
-const dryWrote = readFileSync(run("fieldSomethingNew").specFile, "utf8");
 expect(
-  "a dry run writes nothing",
-  !dryWrote.includes("somethingNew"),
-  dryWrote,
+  "the proposal names the authored TITLE, not the node name",
+  dry.output.includes("A new thing"),
+  dry.output,
 );
+const dryWrote = readFileSync(dry.specFile, "utf8");
+expect("a dry run writes nothing", !dryWrote.includes("somethingNew"), dryWrote);
+rmSync(dry.dir, { recursive: true, force: true });
 
 const applied = run("fieldSomethingNew", { apply: true });
 const written = readFileSync(applied.specFile, "utf8");
 expect(
+  "--apply exits 0 once the stub is written",
+  applied.status === 0,
+  applied.output,
+);
+expect(
   "--apply writes the stub into the right provider file",
-  applied.status === 0 && written.includes('"subType": "somethingNew"'),
+  written.includes('"subType": "somethingNew"'),
   written,
 );
 expect(
@@ -102,6 +112,42 @@ expect(
   written,
 );
 rmSync(applied.dir, { recursive: true, force: true });
+
+// A levelled requirement.architectural at L4 is VALID metadata (0.23.0) and names no
+// subtype — object-independence is what architectural MEANS. Every one of these
+// scripts convicted it before the filter went in.
+const archDir = mkdtempSync(join(tmpdir(), "mo-scaffold-arch-"));
+mkdirSync(join(archDir, "metaobjects"), { recursive: true });
+mkdirSync(join(archDir, "spec"), { recursive: true });
+writeFileSync(join(archDir, "spec", "field.json"), JSON.stringify({ provider: "test", types: [] }, null, 2));
+writeFileSync(join(archDir, "manifest.json"), JSON.stringify({ types: [{ type: "field", subType: "string" }] }));
+writeFileSync(join(archDir, "metaobjects", "meta.requirements.yaml"), `
+metadata.root:
+  package: metaobjects
+  children:
+    - requirement.architectural:
+        name: quality
+        level: 3
+        status: live
+        statement: "Everything holds."
+        counterexample: "Something does not."
+        children:
+          - requirement.architectural:
+              name: inputValidation
+              level: 4
+              status: live
+              statement: "Every input is validated."
+              counterexample: "One input is not."
+`);
+const arch = spawnSync("bun", [SCAFFOLD, join(archDir, "metaobjects"), join(archDir, "spec"), join(archDir, "manifest.json")], {
+  encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+});
+expect(
+  "a levelled architectural L4 is ignored, not convicted",
+  (arch.status ?? 1) === 0 && `${arch.stdout}`.includes("nothing to scaffold"),
+  `${arch.stdout}${arch.stderr}`,
+);
+rmSync(archDir, { recursive: true, force: true });
 
 const noProvider = run("fieldSomethingNew", { apply: true, withFieldProvider: false });
 expect(

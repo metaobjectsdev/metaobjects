@@ -21,7 +21,7 @@ function runAgainst(yaml: string, expectWarnings = 1): { status: number; output:
   try {
     mkdirSync(join(dir, "metaobjects"), { recursive: true });
     writeFileSync(join(dir, "metaobjects", "meta.requirements.yaml"), yaml);
-    const run = spawnSync("bun", [join(REPO, CHECK), String(expectWarnings)], {
+    const run = spawnSync("bun", [join(REPO, CHECK), `--expect-warnings=${expectWarnings}`], {
       cwd: dir,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -112,6 +112,18 @@ expect(
   "a wrong warning count is caught",
   miscounted.status !== 0 && miscounted.output.includes("expected 2"),
   miscounted.output,
+);
+
+// The sibling gate in the same lane takes a ledger DIRECTORY as its first positional
+// argument. Passing one here used to become Number("metaobjects") — NaN — and the gate
+// failed reporting "expected NaN" instead of saying the argument was wrong.
+const stray = spawnSync("bun", [join(REPO, CHECK), "metaobjects"], {
+  encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+});
+expect(
+  "a positional argument is refused, not silently read as a count",
+  (stray.status ?? 0) === 2 && `${stray.stderr}`.includes("unexpected argument"),
+  `${stray.stdout}${stray.stderr}`,
 );
 
 if (failures > 0) {

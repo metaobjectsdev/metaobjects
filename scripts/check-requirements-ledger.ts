@@ -40,14 +40,41 @@ const EXPECTED_WARNING = "WARN_REQUIREMENT_NOTHING_IMPLEMENTS";
  *  this pin exists to prevent. Retired, planned and architectural nodes do not
  *  contribute.
  *
- *  Overridable by a positional argument for ONE caller — the self-test, which
- *  drives this gate against throwaway ledgers of a few nodes. CI invokes the
- *  gate bare, so the pin is what runs against the real ledger; there is no env
- *  var and nothing to set accidentally. */
+ *  Overridable by `--expect-warnings=<n>` for ONE caller — the self-test, which
+ *  drives this gate against throwaway ledgers of a few nodes. CI invokes the gate
+ *  bare, so the pin is what runs against the real ledger.
+ *
+ *  A NAMED flag, not a positional one. The sibling gate beside this in the same lane
+ *  reads its first POSITIONAL argument as a ledger directory, so
+ *  `check-requirements-ledger.ts metaobjects` — the invocation a reader infers from
+ *  the neighbour — became `Number("metaobjects")`, i.e. NaN. Every comparison against
+ *  NaN is unequal, so the gate failed reporting "expected NaN" and a remedy paragraph
+ *  about updating the pin. */
 const DEFAULT_EXPECTED_WARNING_COUNT = 148;
-const EXPECTED_WARNING_COUNT = process.argv[2] !== undefined
-  ? Number(process.argv[2])
-  : DEFAULT_EXPECTED_WARNING_COUNT;
+
+function expectedWarnings(argv: readonly string[]): number {
+  const flag = argv.find((a) => a.startsWith("--expect-warnings="));
+  if (flag === undefined) {
+    const stray = argv.find((a) => !a.startsWith("--"));
+    if (stray !== undefined) {
+      console.error(
+        `requirements-ledger: unexpected argument '${stray}'. This gate takes only\n` +
+        `--expect-warnings=<n>, and does NOT take a ledger directory — that is\n` +
+        `check-requirements-vocabulary.ts, which sits beside it in the same lane.\n`,
+      );
+      process.exit(2);
+    }
+    return DEFAULT_EXPECTED_WARNING_COUNT;
+  }
+  const n = Number(flag.slice("--expect-warnings=".length));
+  if (!Number.isInteger(n) || n < 0) {
+    console.error(`requirements-ledger: --expect-warnings must be a non-negative integer, got '${flag}'.\n`);
+    process.exit(2);
+  }
+  return n;
+}
+
+const EXPECTED_WARNING_COUNT = expectedWarnings(process.argv.slice(2));
 
 // Resolved against THIS FILE, not the working directory: the self-test runs the
 // gate from a temp directory holding a throwaway ledger, so a cwd-relative path

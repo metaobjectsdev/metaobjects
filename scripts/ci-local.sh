@@ -209,7 +209,16 @@ gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-
 # exit code, because `meta verify` exits 0 on warnings — and this ledger emits a
 # known one by construction (implementedBy is omitted, so no functional subtree
 # claims anything). Offline; one YAML file.
-gate_requirements_ledger() { bun scripts/check-requirements-ledger.ts && bun scripts/test-requirements-ledger.ts; }
+# bun_install FIRST on all four requirement gates. They reach
+# cli/src/lib/requirement-check.ts, which imports the BARE specifier
+# `@metaobjectsdev/metadata`. On a fresh CI checkout there is no node_modules, and bun
+# AUTO-INSTALLS a bare specifier from the registry (verified) — so the gate would have
+# verified the ledger against the PUBLISHED package while MetaDataLoader came from the
+# working tree via a relative import: two physical copies of the metamodel in one
+# process, and any unreleased vocabulary change gated by a stale loader. The lane's
+# only other install is gate_fixture_lint, which runs AFTER all four. The sibling
+# gate_doc_examples got away with no install because it imports relative paths only.
+gate_requirements_ledger() { bun_install && bun scripts/check-requirements-ledger.ts && bun scripts/test-requirements-ledger.ts; }
 
 # ── every registered subtype has an authored requirement ──────────────────────
 # Phase 2's half of the ledger. The link from a requirement to the vocabulary it
@@ -219,7 +228,7 @@ gate_requirements_ledger() { bun scripts/check-requirements-ledger.ts && bun scr
 # bidirectional, so a new subtype that nobody promised fails here, and so does a
 # requirement naming vocabulary that no longer exists. Population is the UNION of
 # the cross-port manifest and spec/metamodel — 72 concrete subtypes.
-gate_requirements_vocabulary() { bun scripts/check-requirements-vocabulary.ts && bun scripts/test-requirements-vocabulary.ts; }
+gate_requirements_vocabulary() { bun_install && bun scripts/check-requirements-vocabulary.ts && bun scripts/test-requirements-vocabulary.ts; }
 
 # ── forward scaffolding: a requirement may come BEFORE its vocabulary ──────────
 # Phase 3. Author the promise and the counterexample first, then scaffold the
@@ -228,7 +237,7 @@ gate_requirements_vocabulary() { bun scripts/check-requirements-vocabulary.ts &&
 # that quietly wanted to write something would mean a requirement had drifted off
 # the vocabulary. The self-test manufactures the state the repo is never in and
 # asserts the stub refuses to invent the three prose fields.
-gate_scaffold_metamodel() { bun scripts/scaffold-metamodel-entry.ts && bun scripts/test-scaffold-metamodel-entry.ts; }
+gate_scaffold_metamodel() { bun_install && bun scripts/scaffold-metamodel-entry.ts && bun scripts/test-scaffold-metamodel-entry.ts; }
 
 # ── the requirement harness tracks the ledger ─────────────────────────────────
 # Phase 5. One test slot per authored promise, in every port, so a promise nobody
@@ -239,7 +248,8 @@ gate_scaffold_metamodel() { bun scripts/scaffold-metamodel-entry.ts && bun scrip
 # TypeScript one is also EXECUTED here, so the shape is proven by a port that runs
 # it rather than asserted by a generator that wrote it.
 gate_requirement_harness() {
-  bun scripts/generate-requirement-harness.ts --check \
+  bun_install \
+    && bun scripts/generate-requirement-harness.ts --check \
     && bun test fixtures/requirement-harness/typescript/requirement-harness.test.ts
 }
 
