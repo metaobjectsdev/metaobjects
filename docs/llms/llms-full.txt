@@ -237,13 +237,14 @@ The project config (`metaobjects.config.ts`) wires up the generators and target 
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  // formFile,   // opt-in: emit React form components (from @metaobjectsdev/codegen-ts-react)
-  barrel,
-} from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own) — these files are
+// copied into YOUR repo and are yours to edit. The default emit targets Fastify on Node;
+// retarget it by editing these, not by switching tools. `meta eject <name>` takes ownership
+// of any other generator.
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { routesFile } from "./codegen/generators/routes.js";
+import { barrel } from "./codegen/generators/barrel.js";
 
 export default defineConfig({
   outDir:    "./src/db",
