@@ -1,0 +1,7 @@
+  priceCents: {
+    name: "priceCents",
+    label: "Price Cents",
+    view: "currency",
+    currency: "USD",
+    locale: "en-US",
+  },

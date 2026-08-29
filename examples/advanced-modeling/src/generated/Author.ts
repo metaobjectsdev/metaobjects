@@ -8,16 +8,27 @@ import { z } from "zod";
 export const authors = pgTable("authors", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 120 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  bio: varchar("bio", { length: 2000 }),
 });
 export type Author = InferSelectModel<typeof authors>;
 export type AuthorInsert = InferInsertModel<typeof authors>;
 export type AuthorUpdate = Partial<AuthorInsert>;
 export const AuthorInsertSchema = z.object({
   name: z.string().min(1).max(120),
+  email: z.string().min(1).max(320).regex(new RegExp("^(?:[^@]+@[^@]+)$")),
+  bio: z.string().max(500).optional(),
 });
 
 export const AuthorUpdateSchema = z.object({
   name: z.string().min(1).max(120).optional(),
+  email: z
+    .string()
+    .min(1)
+    .max(320)
+    .regex(new RegExp("^(?:[^@]+@[^@]+)$"))
+    .optional(),
+  bio: z.string().max(500).optional().nullable(),
 });
 
 /** Typed patch shape for Author: every settable field, optional (FR-035 PATCH). A
@@ -51,6 +62,27 @@ export const Author = {
     rules: {
       required: "Name is required",
       maxLength: { value: 120, message: "Must be 120 characters or fewer" },
+    },
+  },
+  email: {
+    name: "email",
+    label: "Email",
+    view: "text",
+    htmlType: "text",
+    rules: {
+      pattern: { value: /[^@]+@[^@]+/, message: "Invalid format" },
+      required: "Email is required",
+      maxLength: { value: 320, message: "Must be 320 characters or fewer" },
+    },
+  },
+  bio: {
+    name: "bio",
+    label: "Bio",
+    view: "text",
+    htmlType: "text",
+    rules: {
+      minLength: { value: 0, message: "Must be at least 0 characters" },
+      maxLength: { value: 500, message: "Must be 500 characters or fewer" },
     },
   },
 } as const;

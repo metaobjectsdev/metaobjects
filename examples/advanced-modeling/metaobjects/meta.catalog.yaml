@@ -9,6 +9,7 @@
 metadata:
   package: acme::learn
   children:
+    # >>> snippet: deep-model
     # -- Author — minimal identity entity; exists so ProgramSummary has a real
     #    cross-entity edge to demonstrate `origin.passthrough` over a join. --
     - object.entity:
@@ -17,7 +18,25 @@ metadata:
           - source.rdb: { table: authors }
           - field.uuid: { name: id }
           - field.string: { name: name, required: true, maxLength: 120 }
+          # A field carries VALIDATORS as child metadata, not just a column type.
+          # These generate Zod refinements in TS and the equivalent constraint
+          # annotations in every other port — nothing is hand-wired.
+          - field.string:
+              name: email
+              required: true
+              maxLength: 320
+              children:
+                # UNANCHORED on purpose: validator.regex @pattern is FULL-MATCH
+                # (FR-036), so codegen wraps this in ^(?:…)$ itself. Adding
+                # anchors here emits ^(?:^…$)$.
+                - validator.regex: { name: emailFmt, pattern: "[^@]+@[^@]+" }
+          - field.string:
+              name: bio
+              maxLength: 2000
+              children:
+                - validator.length: { name: bioLen, min: 0, max: 500 }
           - identity.primary: { name: id, fields: id, generation: uuid }
+    # <<<
 
     # -- Program — the sellable/published unit. Exercises every view.* control
     #    family the series teaches: enum->select, textarea+rows, currency,
