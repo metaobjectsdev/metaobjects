@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MetaObjects Metamodel — Providers | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Concern-provider ownership index — which provider owns each type and contributes each attribute.
+     Regenerate with: meta docs --metamodel --><h1>MetaObjects Metamodel — Providers</h1>
+<p>The metamodel is composed from concern providers. Each <strong>owns</strong> the
+type/subtypes it registers and may <strong>contribute</strong> attributes to types another
+provider owns. This is the ownership lens over the same vocabulary
+<a href="index.html">INDEX.md</a> lists by type.</p>
+<h2>metaobjects-core-types</h2>
+<p>Core metaobjects metamodel types and subtypes.</p>
+<p><strong>Owns (registers):</strong> <code>attr.base</code>, <code>attr.boolean</code>, <code>attr.class</code>, <code>attr.double</code>, <code>attr.expression</code>, <code>attr.filter</code>, <code>attr.int</code>, <code>attr.intMap</code>, <code>attr.long</code>, <code>attr.properties</code>, <code>attr.string</code>, <code>field.base</code>, <code>field.boolean</code>, <code>field.currency</code>, <code>field.date</code>, <code>field.decimal</code>, <code>field.double</code>, <code>field.enum</code>, <code>field.float</code>, <code>field.inet</code>, <code>field.int</code>, <code>field.long</code>, <code>field.map</code>, <code>field.object</code>, <code>field.string</code>, <code>field.time</code>, <code>field.timestamp</code>, <code>field.uri</code>, <code>field.uuid</code>, <code>identity.primary</code>, <code>identity.reference</code>, <code>identity.secondary</code>, <code>layout.base</code>, <code>layout.dataGrid</code>, <code>object.base</code>, <code>object.entity</code>, <code>object.projection</code>, <code>object.value</code>, <code>origin.aggregate</code>, <code>origin.base</code>, <code>origin.computed</code>, <code>origin.first</code>, <code>origin.passthrough</code>, <code>relationship.aggregation</code>, <code>relationship.association</code>, <code>relationship.base</code>, <code>relationship.composition</code>, <code>source.base</code>, <code>source.rdb</code>, <code>template.base</code>, <code>template.output</code>, <code>template.prompt</code>, <code>template.toolcall</code>, <code>validator.array</code>, <code>validator.atLeastOne</code>, <code>validator.base</code>, <code>validator.comparison</code>, <code>validator.length</code>, <code>validator.numeric</code>, <code>validator.presentIff</code>, <code>validator.regex</code>, <code>validator.required</code>, <code>validator.requiredWhen</code>, <code>view.base</code>, <code>view.currency</code></p>
+<p><strong>Contributes attributes:</strong></p>
+<ul>
+<li><code>field.base</code>: <code>@default</code>, <code>@mutability</code>, <code>@required</code>, <code>@unique</code></li>
+<li><code>field.currency</code>: <code>@currency</code></li>
+<li><code>field.decimal</code>: <code>@precision</code>, <code>@scale</code></li>
+<li><code>field.enum</code>: <code>@intValueMap</code>, <code>@provided</code>, <code>@values</code></li>
+<li><code>field.inet</code>: <code>@lenient</code></li>
+<li><code>field.map</code>: <code>@objectRef</code>, <code>@valueType</code></li>
+<li><code>field.object</code>: <code>@objectRef</code></li>
+<li><code>field.string</code>: <code>@maxLength</code>, <code>@stringFormat</code></li>
+<li><code>field.uri</code>: <code>@lenient</code></li>
+<li><code>identity.primary</code>: <code>@fields</code>, <code>@generation</code></li>
+<li><code>identity.reference</code>: <code>@enforce</code>, <code>@fields</code>, <code>@references</code></li>
+<li><code>identity.secondary</code>: <code>@fields</code></li>
+<li><code>object.entity</code>: <code>@discriminator</code>, <code>@discriminatorValue</code></li>
+<li><code>object.projection</code>: <code>@filter</code></li>
+<li><code>origin.aggregate</code>: <code>@agg</code>, <code>@distinct</code>, <code>@filter</code>, <code>@of</code>, <code>@orderBy</code>, <code>@via</code></li>
+<li><code>origin.computed</code>: <code>@expr</code></li>
+<li><code>origin.first</code>: <code>@filter</code>, <code>@of</code>, <code>@orderBy</code>, <code>@via</code></li>
+<li><code>origin.passthrough</code>: <code>@convert</code>, <code>@from</code>, <code>@via</code></li>
+<li><code>relationship.aggregation</code>: <code>@cardinality</code>, <code>@objectRef</code>, <code>@onDelete</code>, <code>@onUpdate</code>, <code>@sourceRefField</code>, <code>@symmetric</code>, <code>@through</code></li>
+<li><code>relationship.association</code>: <code>@cardinality</code>, <code>@objectRef</code>, <code>@onDelete</code>, <code>@onUpdate</code>, <code>@sourceRefField</code>, <code>@symmetric</code>, <code>@through</code></li>
+<li><code>relationship.base</code>: <code>@cardinality</code>, <code>@objectRef</code>, <code>@onDelete</code>, <code>@onUpdate</code>, <code>@sourceRefField</code>, <code>@symmetric</code>, <code>@through</code></li>
+<li><code>relationship.composition</code>: <code>@cardinality</code>, <code>@objectRef</code>, <code>@onDelete</code>, <code>@onUpdate</code>, <code>@sourceRefField</code>, <code>@symmetric</code>, <code>@through</code></li>
+<li><code>template.output</code>: <code>@format</code>, <code>@htmlBodyRef</code>, <code>@kind</code>, <code>@maxChars</code>, <code>@owner</code>, <code>@payloadRef</code>, <code>@requiredTags</code>, <code>@since</code>, <code>@subjectRef</code>, <code>@textBodyRef</code>, <code>@textRef</code></li>
+<li><code>template.prompt</code>: <code>@format</code>, <code>@maxChars</code>, <code>@maxTokens</code>, <code>@model</code>, <code>@owner</code>, <code>@payloadRef</code>, <code>@promptStyle</code>, <code>@requiredSlots</code>, <code>@requiredTags</code>, <code>@responseFormat</code>, <code>@responseRef</code>, <code>@since</code>, <code>@textRef</code></li>
+<li><code>template.toolcall</code>: <code>@maxTokens</code>, <code>@owner</code>, <code>@payloadRef</code>, <code>@since</code>, <code>@toolName</code></li>
+<li><code>validator.array</code>: <code>@max</code>, <code>@min</code></li>
+<li><code>validator.atLeastOne</code>: <code>@fields</code></li>
+<li><code>validator.base</code>: <code>@max</code>, <code>@min</code></li>
+<li><code>validator.comparison</code>: <code>@left</code>, <code>@op</code>, <code>@right</code></li>
+<li><code>validator.length</code>: <code>@max</code>, <code>@min</code></li>
+<li><code>validator.numeric</code>: <code>@max</code>, <code>@min</code></li>
+<li><code>validator.presentIff</code>: <code>@equals</code>, <code>@field</code>, <code>@when</code></li>
+<li><code>validator.regex</code>: <code>@max</code>, <code>@min</code>, <code>@pattern</code></li>
+<li><code>validator.requiredWhen</code>: <code>@equals</code>, <code>@field</code>, <code>@when</code></li>
+</ul>
+<h2>metaobjects-db</h2>
+<p>DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @storage on field.object, @autoSet on temporal fields, @table/@kind/@role/@schema on source.rdb.</p>
+<p><strong>Contributes attributes:</strong></p>
+<ul>
+<li><code>field.base</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.boolean</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.currency</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.date</code>: <code>@autoSet</code>, <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.decimal</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.double</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.enum</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.float</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.inet</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.int</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.long</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.map</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.object</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code>, <code>@storage</code></li>
+<li><code>field.string</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.time</code>: <code>@autoSet</code>, <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.timestamp</code>: <code>@autoSet</code>, <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code>, <code>@localTime</code></li>
+<li><code>field.uri</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.uuid</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>identity.reference</code>: <code>@constraintName</code>, <code>@onDelete</code>, <code>@onUpdate</code></li>
+<li><code>identity.secondary</code>: <code>@expr</code>, <code>@orders</code>, <code>@using</code>, <code>@where</code></li>
+<li><code>index.lookup</code>: <code>@expr</code>, <code>@orders</code>, <code>@using</code>, <code>@where</code></li>
+<li><code>source.rdb</code>: <code>@function</code>, <code>@kind</code>, <code>@materializedView</code>, <code>@parameterRef</code>, <code>@proc</code>, <code>@role</code>, <code>@schema</code>, <code>@sql</code>, <code>@table</code>, <code>@unmanaged</code>, <code>@view</code></li>
+</ul>
+<h2>metaobjects-documentation</h2>
+<p>Universal documentation common attrs (description / title / notes / deprecated / replacedBy / seeAlso / aliases) accepted on every metatype.</p>
+<p><strong>Universal attributes (every node):</strong> <code>@aliases</code>, <code>@deprecated</code>, <code>@description</code>, <code>@notes</code>, <code>@replacedBy</code>, <code>@seeAlso</code>, <code>@summary</code>, <code>@title</code></p>
+<h2>metaobjects-prompt</h2>
+<p>Prompt / AI + serialization domain — @xmlText / @example / @instruction field markers on every field subtype, the @enumAlias/@enumDoc/@coerceDefault/@normalize tolerant-extract overlays on field.enum, and the object-level @normalize default on object.value.</p>
+<p><strong>Contributes attributes:</strong></p>
+<ul>
+<li><code>field.base</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.boolean</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.currency</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.date</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.decimal</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.double</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.enum</code>: <code>@coerceDefault</code>, <code>@enumAlias</code>, <code>@enumDoc</code>, <code>@example</code>, <code>@instruction</code>, <code>@normalize</code>, <code>@xmlText</code></li>
+<li><code>field.float</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.inet</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.int</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.long</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.map</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.object</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.string</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.time</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.timestamp</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.uri</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>field.uuid</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
+<li><code>object.value</code>: <code>@normalize</code></li>
+</ul>
+<h2>metaobjects-ui</h2>
+<p>UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder field markers driving generated CRUD filter + sort allowlists (Project D).</p>
+<p><strong>Contributes attributes:</strong></p>
+<ul>
+<li><code>field.base</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.boolean</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.currency</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.date</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.decimal</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.double</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.enum</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.float</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.inet</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.int</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.long</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.map</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.object</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.string</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.time</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.timestamp</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.uri</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>field.uuid</code>: <code>@filterable</code>, <code>@formExclude</code>, <code>@sortable</code>, <code>@sortableDefaultOrder</code></li>
+<li><code>layout.dataGrid</code>: <code>@columns</code>, <code>@defaultSortField</code>, <code>@defaultSortOrder</code>, <code>@filter</code>, <code>@filterable</code>, <code>@pageSize</code></li>
+<li><code>view.currency</code>: <code>@locale</code></li>
+</ul>
+<h2>metaobjects-ui-web</h2>
+<p>TS-web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Applied only in TypeScript; the non-TS ports mirror the spec file but never apply this provider (the view subtypes are TS-web presentation-only).</p>
+<p><strong>Contributes attributes:</strong></p>
+<ul>
+<li><code>view.image</code>: <code>@accept</code>, <code>@aspectRatio</code>, <code>@maxBytes</code>, <code>@maxEdge</code>, <code>@store</code></li>
+<li><code>view.textarea</code>: <code>@rows</code></li>
+</ul>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

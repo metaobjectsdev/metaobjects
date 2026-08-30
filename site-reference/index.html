@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MetaObjects Metamodel — Index | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb">Metamodel reference · <a href="/reference/example/">see a real project documented by <code>meta docs</code></a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel vocabulary index — every type.subType, its one-line description, and a link to its type page.
+     Regenerate with: meta docs --metamodel --><h1>MetaObjects Metamodel — Index</h1>
+<p>This documents the <strong>metamodel itself</strong> — the type / subtype / attribute
+vocabulary the loader accepts — generated from the strict registry. It is
+NOT documentation of a user&#39;s entities (that is <code>meta docs --model</code>).</p>
+<p>Follow a link into <code>types/&lt;family&gt;.md</code> for the full attribute table, allowed
+children, and cardinality of a subtype. Universal documentation attributes
+(<code>@description</code>/<code>@title</code>/…) apply to every node and are listed once in
+<a href="providers.html">providers.md</a> under <code>metaobjects-documentation</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Type.subType</th>
+<th>Description</th>
+<th>Page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>attr.base</code></td>
+<td>Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field&#39;s @default, whose value-type follows the owning field&#39;s subtype).</td>
+<td><a href="types/attr.html#attrbase">types/attr.md#attrbase</a></td>
+</tr>
+<tr>
+<td><code>attr.boolean</code></td>
+<td>A boolean-valued metadata attribute. Coerces to and validates as true/false.</td>
+<td><a href="types/attr.html#attrboolean">types/attr.md#attrboolean</a></td>
+</tr>
+<tr>
+<td><code>attr.class</code></td>
+<td>A class-/type-reference-valued metadata attribute. String-backed (a fully-qualified class or type name) used by binding facets.</td>
+<td><a href="types/attr.html#attrclass">types/attr.md#attrclass</a></td>
+</tr>
+<tr>
+<td><code>attr.double</code></td>
+<td>A double-precision floating-point-valued metadata attribute. Coerces to and validates as a number.</td>
+<td><a href="types/attr.html#attrdouble">types/attr.md#attrdouble</a></td>
+</tr>
+<tr>
+<td><code>attr.expression</code></td>
+<td>A structured expression tree over a base entity&#39;s own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159.</td>
+<td><a href="types/attr.html#attrexpression">types/attr.md#attrexpression</a></td>
+</tr>
+<tr>
+<td><code>attr.filter</code></td>
+<td>A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse).</td>
+<td><a href="types/attr.html#attrfilter">types/attr.md#attrfilter</a></td>
+</tr>
+<tr>
+<td><code>attr.int</code></td>
+<td>A 32-bit-integer-valued metadata attribute. Coerces to and validates as a number.</td>
+<td><a href="types/attr.html#attrint">types/attr.md#attrint</a></td>
+</tr>
+<tr>
+<td><code>attr.intMap</code></td>
+<td>An object-shaped attribute whose values are all integers (e.g. field.enum&#39;s @intValueMap: {memberSymbol: int}). Generic shape check only; a consumer field type layers its own semantic rules (key-set membership, uniqueness) in its own content-rule validation.</td>
+<td><a href="types/attr.html#attrintmap">types/attr.md#attrintmap</a></td>
+</tr>
+<tr>
+<td><code>attr.long</code></td>
+<td>A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number.</td>
+<td><a href="types/attr.html#attrlong">types/attr.md#attrlong</a></td>
+</tr>
+<tr>
+<td><code>attr.properties</code></td>
+<td>A key/value map attribute (a bag of arbitrary author-supplied properties). Object-shaped value; the registered escape hatch for author-supplied properties (exempt from the strict-attr check, ADR-0023).</td>
+<td><a href="types/attr.html#attrproperties">types/attr.md#attrproperties</a></td>
+</tr>
+<tr>
+<td><code>attr.string</code></td>
+<td>A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray).</td>
+<td><a href="types/attr.html#attrstring">types/attr.md#attrstring</a></td>
+</tr>
+<tr>
+<td><code>field.base</code></td>
+<td>Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).</td>
+<td><a href="types/field.html#fieldbase">types/field.md#fieldbase</a></td>
+</tr>
+<tr>
+<td><code>field.boolean</code></td>
+<td>True/false flag. Binds to the native boolean type; DB column is BOOLEAN.</td>
+<td><a href="types/field.html#fieldboolean">types/field.md#fieldboolean</a></td>
+</tr>
+<tr>
+<td><code>field.currency</code></td>
+<td>Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.</td>
+<td><a href="types/field.html#fieldcurrency">types/field.md#fieldcurrency</a></td>
+</tr>
+<tr>
+<td><code>field.date</code></td>
+<td>Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.</td>
+<td><a href="types/field.html#fielddate">types/field.md#fielddate</a></td>
+</tr>
+<tr>
+<td><code>field.decimal</code></td>
+<td>Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.</td>
+<td><a href="types/field.html#fielddecimal">types/field.md#fielddecimal</a></td>
+</tr>
+<tr>
+<td><code>field.double</code></td>
+<td>Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.</td>
+<td><a href="types/field.html#fielddouble">types/field.md#fielddouble</a></td>
+</tr>
+<tr>
+<td><code>field.enum</code></td>
+<td>String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.</td>
+<td><a href="types/field.html#fieldenum">types/field.md#fieldenum</a></td>
+</tr>
+<tr>
+<td><code>field.float</code></td>
+<td>Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money.</td>
+<td><a href="types/field.html#fieldfloat">types/field.md#fieldfloat</a></td>
+</tr>
+<tr>
+<td><code>field.inet</code></td>
+<td>An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IPv4-or-IPv6 literal validator (a Zod regex union in TS — z.string().ip() was removed in Zod 4 — native IP-type parsing in the other ports); add @lenient to bind a plain string with no validator. v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4|ipv6 value-constraint.</td>
+<td><a href="types/field.html#fieldinet">types/field.md#fieldinet</a></td>
+</tr>
+<tr>
+<td><code>field.int</code></td>
+<td>32-bit signed integer. Binds to the native int type; DB column is INTEGER.</td>
+<td><a href="types/field.html#fieldint">types/field.md#fieldint</a></td>
+</tr>
+<tr>
+<td><code>field.long</code></td>
+<td>64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.</td>
+<td><a href="types/field.html#fieldlong">types/field.md#fieldlong</a></td>
+</tr>
+<tr>
+<td><code>field.map</code></td>
+<td>An open-keyed map (Record&lt;string,V&gt; / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).</td>
+<td><a href="types/field.html#fieldmap">types/field.md#fieldmap</a></td>
+</tr>
+<tr>
+<td><code>field.object</code></td>
+<td>A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).</td>
+<td><a href="types/field.html#fieldobject">types/field.md#fieldobject</a></td>
+</tr>
+<tr>
+<td><code>field.string</code></td>
+<td>Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).</td>
+<td><a href="types/field.html#fieldstring">types/field.md#fieldstring</a></td>
+</tr>
+<tr>
+<td><code>field.time</code></td>
+<td>Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME.</td>
+<td><a href="types/field.html#fieldtime">types/field.md#fieldtime</a></td>
+</tr>
+<tr>
+<td><code>field.timestamp</code></td>
+<td>Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.</td>
+<td><a href="types/field.html#fieldtimestamp">types/field.md#fieldtimestamp</a></td>
+</tr>
+<tr>
+<td><code>field.uri</code></td>
+<td>A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native URI type, same as field.uuid); other ports bind to their native URI type (Java java.net.URI, C# System.Uri, Python urllib.parse, Kotlin java.net.URI) and parse scheme/authority/path. DB column is text (Postgres has no uri type). Codegen emits a URL/URI validator (TS Zod z.string().url()). v1 ships WITHOUT @kind — the native type subsumes url/urn; @kind is reserved for a later url|urn value-constraint.</td>
+<td><a href="types/field.html#fielduri">types/field.md#fielduri</a></td>
+</tr>
+<tr>
+<td><code>field.uuid</code></td>
+<td>Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.</td>
+<td><a href="types/field.html#fielduuid">types/field.md#fielduuid</a></td>
+</tr>
+<tr>
+<td><code>identity.primary</code></td>
+<td>The primary key — one per entity; @fields names its column(s), @generation the value strategy.</td>
+<td><a href="types/identity.html#identityprimary">types/identity.md#identityprimary</a></td>
+</tr>
+<tr>
+<td><code>identity.reference</code></td>
+<td>A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).</td>
+<td><a href="types/identity.html#identityreference">types/identity.md#identityreference</a></td>
+</tr>
+<tr>
+<td><code>identity.secondary</code></td>
+<td>A secondary unique index on one or more fields. Always enforces uniqueness — use index.lookup for non-unique query-performance indexes.</td>
+<td><a href="types/identity.html#identitysecondary">types/identity.md#identitysecondary</a></td>
+</tr>
+<tr>
+<td><code>index.lookup</code></td>
+<td>A non-unique lookup index on one or more fields. Use for query-performance indexes that do NOT enforce uniqueness — declare identity.secondary for unique constraints instead.</td>
+<td><a href="types/index.html#indexlookup">types/index.md#indexlookup</a></td>
+</tr>
+<tr>
+<td><code>layout.base</code></td>
+<td>Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs.</td>
+<td><a href="types/layout.html#layoutbase">types/layout.md#layoutbase</a></td>
+</tr>
+<tr>
+<td><code>layout.dataGrid</code></td>
+<td>A metadata-driven data grid attached to an object: declares the displayed columns, page size, default sort, and an optional preset filter the generated grid renders.</td>
+<td><a href="types/layout.html#layoutdatagrid">types/layout.md#layoutdatagrid</a></td>
+</tr>
+<tr>
+<td><code>metadata.root</code></td>
+<td>Root metadata document</td>
+<td><a href="types/metadata.html#metadataroot">types/metadata.md#metadataroot</a></td>
+</tr>
+<tr>
+<td><code>object.base</code></td>
+<td>Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly.</td>
+<td><a href="types/object.html#objectbase">types/object.md#objectbase</a></td>
+</tr>
+<tr>
+<td><code>object.entity</code></td>
+<td>An object that owns its data: own identity, writable sources, and lifecycle. The default object subtype — a bare <code>object:</code> key resolves to entity. May co-locate templates (template.prompt and friends) with the owning entity.</td>
+<td><a href="types/object.html#objectentity">types/object.md#objectentity</a></td>
+</tr>
+<tr>
+<td><code>object.projection</code></td>
+<td>A derived read-only representation of entities. Its fields are extends-bound / origin-derived / self-declared-under-external-assembly, all read-only at the subtype level. Identity is optional and MUST extend an entity identity; sources are restricted to read-only @kinds. The declared field set IS the exposure (inclusive, fail-closed).</td>
+<td><a href="types/object.html#objectprojection">types/object.md#objectprojection</a></td>
+</tr>
+<tr>
+<td><code>object.value</code></td>
+<td>A value object — pure shape with NO identity and NO source, ever. Constructed (by caller / embedding), never populated from a store. May <code>extends</code> an entity&#39;s fields to reuse shape. Equality is by content.</td>
+<td><a href="types/object.html#objectvalue">types/object.md#objectvalue</a></td>
+</tr>
+<tr>
+<td><code>origin.aggregate</code></td>
+<td>A value reduced from the related row-set reached along a relationship path (@via) from the base entity: count/sum/avg/min/max over a column (@of); any/all predicate quantifiers over a @filter; or collect (an array rollup — of the @of column, or of the carrying field.object&#39;s declared @objectRef value object when @of is omitted).</td>
+<td><a href="types/origin.html#originaggregate">types/origin.md#originaggregate</a></td>
+</tr>
+<tr>
+<td><code>origin.base</code></td>
+<td>Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.</td>
+<td><a href="types/origin.html#originbase">types/origin.md#originbase</a></td>
+</tr>
+<tr>
+<td><code>origin.computed</code></td>
+<td>A row-level value computed from the base entity&#39;s own fields via a structured expression tree (@expr). No related rows, no @via. Read-only; the expression&#39;s inferred type must equal the field&#39;s declared subType.</td>
+<td><a href="types/origin.html#origincomputed">types/origin.md#origincomputed</a></td>
+</tr>
+<tr>
+<td><code>origin.first</code></td>
+<td>The single related row selected by @orderBy along @via, projecting its @of column (argmax then project). Latest = @orderBy desc. Read-only; empty related set (after @filter) → null, so the field must not be @required.</td>
+<td><a href="types/origin.html#originfirst">types/origin.md#originfirst</a></td>
+</tr>
+<tr>
+<td><code>origin.passthrough</code></td>
+<td>A cross-entity field reference: this projection field passes a source entity&#39;s value straight through (@from), optionally reached via a relationship path (@via).</td>
+<td><a href="types/origin.html#originpassthrough">types/origin.md#originpassthrough</a></td>
+</tr>
+<tr>
+<td><code>relationship.aggregation</code></td>
+<td>A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null).</td>
+<td><a href="types/relationship.html#relationshipaggregation">types/relationship.md#relationshipaggregation</a></td>
+</tr>
+<tr>
+<td><code>relationship.association</code></td>
+<td>A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict).</td>
+<td><a href="types/relationship.html#relationshipassociation">types/relationship.md#relationshipassociation</a></td>
+</tr>
+<tr>
+<td><code>relationship.base</code></td>
+<td>Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly.</td>
+<td><a href="types/relationship.html#relationshipbase">types/relationship.md#relationshipbase</a></td>
+</tr>
+<tr>
+<td><code>relationship.composition</code></td>
+<td>An owned containment — the parent owns the target&#39;s lifecycle; deleting the parent deletes the children (default @onDelete cascade).</td>
+<td><a href="types/relationship.html#relationshipcomposition">types/relationship.md#relationshipcomposition</a></td>
+</tr>
+<tr>
+<td><code>requirement.architectural</code></td>
+<td>How the system is built, applied uniformly across the model. Its check is UNIVERSALITY: it fails when something VIOLATES it, which is the opposite polarity to a functional requirement. Flat by default and object-independent; it may optionally sit in a levelled tree when a quality taxonomy is being used to organise non-functional requirements.</td>
+<td><a href="types/requirement.html#requirementarchitectural">types/requirement.md#requirementarchitectural</a></td>
+</tr>
+<tr>
+<td><code>requirement.functional</code></td>
+<td>What the product does for a user, stated as one violable claim. Its check is EXISTENCE: it fails when nothing implements it. Hierarchy is nesting — an L1 solution contains its L2 segments, which contain L3 services, and so on down to the levels that reference the model.</td>
+<td><a href="types/requirement.html#requirementfunctional">types/requirement.md#requirementfunctional</a></td>
+</tr>
+<tr>
+<td><code>source.base</code></td>
+<td>Abstract base source — the shared root subtype for declaring where an object&#39;s data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider.</td>
+<td><a href="types/source.html#sourcebase">types/source.md#sourcebase</a></td>
+</tr>
+<tr>
+<td><code>source.rdb</code></td>
+<td>The relational-database paradigm source (ADR-0007): binds an object to a physical relational object. Its physical name is the @table attr (not the structural <code>name</code>), and read-only-ness is DERIVED from @kind — table is writable; view, materializedView, storedProc, and tableFunction are read-only. The @table/@kind/@role/@schema/@parameterRef attrs are contributed by the db domain provider, not by core-types.</td>
+<td><a href="types/source.html#sourcerdb">types/source.md#sourcerdb</a></td>
+</tr>
+<tr>
+<td><code>template.base</code></td>
+<td>Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs.</td>
+<td><a href="types/template.html#templatebase">types/template.md#templatebase</a></td>
+</tr>
+<tr>
+<td><code>template.output</code></td>
+<td>An output / serialization template (FR-004): every rendered artifact other than an LLM prompt — a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs and the @kind + email part-refs. OUTBOUND ONLY (ADR-0052) — it renders, and generates no parser.</td>
+<td><a href="types/template.html#templateoutput">types/template.md#templateoutput</a></td>
+</tr>
+<tr>
+<td><code>template.prompt</code></td>
+<td>An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef. A prompt declaring @responseRef also owns the INBOUND half (ADR-0052): the parser-on-receipt, the FR-010 response-format fragment (@promptStyle), and the reply syntax (@responseFormat).</td>
+<td><a href="types/template.html#templateprompt">types/template.md#templateprompt</a></td>
+</tr>
+<tr>
+<td><code>template.toolcall</code></td>
+<td>A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has NO renderable text body — the body IS the structured output schema resolved via @payloadRef. This is why toolcall is its own subtype rather than template.output + @toolName. Does NOT inherit the generic attrs.</td>
+<td><a href="types/template.html#templatetoolcall">types/template.md#templatetoolcall</a></td>
+</tr>
+<tr>
+<td><code>validator.array</code></td>
+<td>Bounds the element count of an array-valued field via @min/@max.</td>
+<td><a href="types/validator.html#validatorarray">types/validator.md#validatorarray</a></td>
+</tr>
+<tr>
+<td><code>validator.atLeastOne</code></td>
+<td>Cardinality of presence: at least one of the named fields (@fields) must be present (NOT NULL). Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*).</td>
+<td><a href="types/validator.html#validatoratleastone">types/validator.md#validatoratleastone</a></td>
+</tr>
+<tr>
+<td><code>validator.base</code></td>
+<td>Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.</td>
+<td><a href="types/validator.html#validatorbase">types/validator.md#validatorbase</a></td>
+</tr>
+<tr>
+<td><code>validator.comparison</code></td>
+<td>Cross-field ordering: requires two sibling fields of the owning entity stand in a relational order (@left @op @right), e.g. current_hp &lt;= max_hp or expires_at &gt; created_at. Entity-scoped; references fields by name. Backends derive the rule (CHECK constraint, cross-field assertion) — no raw expression is stored.</td>
+<td><a href="types/validator.html#validatorcomparison">types/validator.md#validatorcomparison</a></td>
+</tr>
+<tr>
+<td><code>validator.length</code></td>
+<td>Bounds string length / collection size via @min/@max.</td>
+<td><a href="types/validator.html#validatorlength">types/validator.md#validatorlength</a></td>
+</tr>
+<tr>
+<td><code>validator.numeric</code></td>
+<td>Bounds a numeric value&#39;s magnitude via @min/@max.</td>
+<td><a href="types/validator.html#validatornumeric">types/validator.md#validatornumeric</a></td>
+</tr>
+<tr>
+<td><code>validator.presentIff</code></td>
+<td>Biconditional presence: the target field (@field) is present (NOT NULL) if and only if the gating field (@when) equals @equals. Models paired flag/companion-column invariants, e.g. used_at present iff is_used=true. Entity-scoped; references fields by name.</td>
+<td><a href="types/validator.html#validatorpresentiff">types/validator.md#validatorpresentiff</a></td>
+</tr>
+<tr>
+<td><code>validator.regex</code></td>
+<td>Requires the value match a regular expression (@pattern).</td>
+<td><a href="types/validator.html#validatorregex">types/validator.md#validatorregex</a></td>
+</tr>
+<tr>
+<td><code>validator.required</code></td>
+<td>Fails when the value is null (NOT NULL). Equivalent to @required on the owning field: on a non-array string, generated wire-tier input validation also rejects the empty string by default unless an explicit validator.length @min: 0 opts back to presence-only.</td>
+<td><a href="types/validator.html#validatorrequired">types/validator.md#validatorrequired</a></td>
+</tr>
+<tr>
+<td><code>validator.requiredWhen</code></td>
+<td>One-directional conditional presence: when the gating field (@when) equals @equals, the target field (@field) must be present (NOT NULL); otherwise @field is unconstrained. Mirrors JSON Schema dependentRequired / Rails validates_presence_of :x, if:. Entity-scoped; references fields by name.</td>
+<td><a href="types/validator.html#validatorrequiredwhen">types/validator.md#validatorrequiredwhen</a></td>
+</tr>
+<tr>
+<td><code>view.base</code></td>
+<td>Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field&#39;s value is rendered or edited; the base carries no attrs of its own.</td>
+<td><a href="types/view.html#viewbase">types/view.md#viewbase</a></td>
+</tr>
+<tr>
+<td><code>view.currency</code></td>
+<td>Currency display formatting (locale-aware via @locale).</td>
+<td><a href="types/view.html#viewcurrency">types/view.md#viewcurrency</a></td>
+</tr>
+</tbody></table>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

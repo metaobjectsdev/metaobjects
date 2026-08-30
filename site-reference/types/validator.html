@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `validator` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `validator` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta docs --metamodel --><h1>Metamodel — <code>validator</code> types</h1>
+<p>Each section below is one <code>validator.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>validator.array</h3>
+<p>Bounds the element count of an array-valued field via @min/@max.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> Bound the element count of an array field. Use @min/@max instead of a hand-written length check.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@max</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Maximum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+<tr>
+<td><code>@min</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Minimum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.atLeastOne</h3>
+<p>Cardinality of presence: at least one of the named fields (@fields) must be present (NOT NULL). Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> @fields names two or more fields of the owning entity. Satisfied when any one of them is non-null.</p>
+<p><strong>When to use:</strong> At least one of several fields must be present (email or phone). Declare it instead of hand-written OR-presence checks.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@fields</code></td>
+<td>string[]</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Names of the candidate fields; at least one must be present.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.base</h3>
+<p>Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@max</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Maximum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+<tr>
+<td><code>@min</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Minimum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.comparison</h3>
+<p>Cross-field ordering: requires two sibling fields of the owning entity stand in a relational order (@left @op @right), e.g. current_hp &lt;= max_hp or expires_at &gt; created_at. Entity-scoped; references fields by name. Backends derive the rule (CHECK constraint, cross-field assertion) — no raw expression is stored.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> @left and @right must name fields of the owning entity. @op is one of gt/gte/lt/lte/ne/eq. The comparison is null-tolerant where the backend&#39;s relational operator is (SQL: a NULL operand yields no violation).</p>
+<p><strong>When to use:</strong> Two sibling fields must stand in an order (start &lt;= end, currentHp &lt;= maxHp). Declare it instead of hand-writing the cross-field assertion.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@left</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name of the left-hand field of the owning entity.</td>
+</tr>
+<tr>
+<td><code>@op</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td><code>gt</code>, <code>gte</code>, <code>lt</code>, <code>lte</code>, <code>ne</code>, <code>eq</code></td>
+<td>metaobjects-core-types</td>
+<td>Relational operator: gt (&gt;), gte (&gt;=), lt (&lt;), lte (&lt;=), ne (&lt;&gt;), eq (=).</td>
+</tr>
+<tr>
+<td><code>@right</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name of the right-hand field of the owning entity.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.length</h3>
+<p>Bounds string length / collection size via @min/@max.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> Bound a string&#39;s length or a collection&#39;s size. Use @min/@max instead of hand-written guards.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@max</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Maximum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+<tr>
+<td><code>@min</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Minimum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.numeric</h3>
+<p>Bounds a numeric value&#39;s magnitude via @min/@max.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> Bound a number&#39;s magnitude. Use @min/@max instead of hand-written range checks.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@max</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Maximum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+<tr>
+<td><code>@min</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Minimum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.presentIff</h3>
+<p>Biconditional presence: the target field (@field) is present (NOT NULL) if and only if the gating field (@when) equals @equals. Models paired flag/companion-column invariants, e.g. used_at present iff is_used=true. Entity-scoped; references fields by name.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> @field and @when must name fields of the owning entity. @equals is rendered per @when&#39;s field subtype. Stricter than requiredWhen — also forbids @field when the condition is false.</p>
+<p><strong>When to use:</strong> A field must be present exactly when a condition holds, absent otherwise (biconditional). Declare it instead of hand-written presence logic.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@equals</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The gating value; @field is present exactly when @when equals this.</td>
+</tr>
+<tr>
+<td><code>@field</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name of the field whose presence is governed by the condition.</td>
+</tr>
+<tr>
+<td><code>@when</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name of the gating field.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.regex</h3>
+<p>Requires the value match a regular expression (@pattern).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A string must match a pattern (email, slug, code). Set @pattern instead of hand-writing the regex test.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@max</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Maximum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+<tr>
+<td><code>@min</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Minimum allowed value (length, numeric value, or array element count depending on the validator subtype).</td>
+</tr>
+<tr>
+<td><code>@pattern</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Regular expression the value must match.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.required</h3>
+<p>Fails when the value is null (NOT NULL). Equivalent to @required on the owning field: on a non-array string, generated wire-tier input validation also rejects the empty string by default unless an explicit validator.length @min: 0 opts back to presence-only.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A field must be present (NOT NULL). Declare it instead of hand-writing a presence check.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>validator.requiredWhen</h3>
+<p>One-directional conditional presence: when the gating field (@when) equals @equals, the target field (@field) must be present (NOT NULL); otherwise @field is unconstrained. Mirrors JSON Schema dependentRequired / Rails validates_presence_of :x, if:. Entity-scoped; references fields by name.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> @field and @when must name fields of the owning entity. @equals is the gating value, compared against @when&#39;s value (rendered per @when&#39;s field subtype — boolean true/false, enum/string literal, numeric literal).</p>
+<p><strong>When to use:</strong> A field becomes required only when another field has a given value. Declare it instead of conditional validation code.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@equals</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The gating value; when @when equals this, @field must be present.</td>
+</tr>
+<tr>
+<td><code>@field</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name of the field that becomes required when the condition holds.</td>
+</tr>
+<tr>
+<td><code>@when</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name of the gating field whose value triggers the requirement.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

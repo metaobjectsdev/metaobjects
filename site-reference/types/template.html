@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `template` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `template` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta docs --metamodel --><h1>Metamodel — <code>template</code> types</h1>
+<p>Each section below is one <code>template.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>template.base</h3>
+<p>Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> A single MetaTemplate node class backs every template subtype (no subType→class dispatch); the subtype selects which reserved-attr set applies. @format (a closed-enum ATTRIBUTE, never a subtype) drives the render engine&#39;s escaper/whitespace behavior, so a new format costs one escaper + one enum value rather than a new subtype + cross-language port.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>template.output</h3>
+<p>An output / serialization template (FR-004): every rendered artifact other than an LLM prompt — a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs and the @kind + email part-refs. OUTBOUND ONLY (ADR-0052) — it renders, and generates no parser.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> output is either a document (@kind=&quot;document&quot; or absent → renders @textRef in @format to one string) or an email (@kind=&quot;email&quot; → renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader&#39;s validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine&#39;s escaper. template.output is OUTBOUND ONLY (ADR-0052): it emits a render helper and nothing that reads a model&#39;s reply — the parser-on-receipt, the tolerant extract and the FR-010 response-format fragment all belong to template.prompt @responseRef.</p>
+<p><strong>When to use:</strong> You render a document/email/serialized output from typed data. Declare an output template so the {{fields}} are drift-checked against the payload VO at build time. To parse a model&#39;s reply instead, declare @responseRef on the template.prompt that elicits it — never a template.output.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@format</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>text</code></td>
+<td><code>text</code>, <code>html</code>, <code>xml</code>, <code>csv</code>, <code>json</code>, <code>markdown</code>, <code>spreadsheet</code></td>
+<td>metaobjects-core-types</td>
+<td>Output format; drives the render engine&#39;s escaping/whitespace behavior.</td>
+</tr>
+<tr>
+<td><code>@htmlBodyRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Email only: 2-layer logical reference (group/source) to the HTML body text. Required when @kind=&quot;email&quot;.</td>
+</tr>
+<tr>
+<td><code>@kind</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>document</code></td>
+<td><code>document</code>, <code>email</code></td>
+<td>metaobjects-core-types</td>
+<td>Output shape: &#39;document&#39; (renders @textRef in @format → one string) or &#39;email&#39; (renders subject + html + optional text → a structured EmailDocument).</td>
+</tr>
+<tr>
+<td><code>@maxChars</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Size budget for the rendered output, in characters.</td>
+</tr>
+<tr>
+<td><code>@owner</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Governance: the owner of this template.</td>
+</tr>
+<tr>
+<td><code>@payloadRef</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Reference to the payload (a view-object / projection) this template renders against.</td>
+</tr>
+<tr>
+<td><code>@requiredTags</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Output tags the rendered text must contain (drives the verify output-tag check).</td>
+</tr>
+<tr>
+<td><code>@since</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Governance: the version this template was introduced in.</td>
+</tr>
+<tr>
+<td><code>@subjectRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Email only: 2-layer logical reference (group/source) to the subject-line text. Required when @kind=&quot;email&quot;.</td>
+</tr>
+<tr>
+<td><code>@textBodyRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Email only: 2-layer logical reference (group/source) to the optional plain-text alternative body.</td>
+</tr>
+<tr>
+<td><code>@textRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>2-layer logical reference (group/source) to the body text, resolved by a provider at render time.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>template.prompt</h3>
+<p>An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef. A prompt declaring @responseRef also owns the INBOUND half (ADR-0052): the parser-on-receipt, the FR-010 response-format fragment (@promptStyle), and the reply syntax (@responseFormat).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time — enforced in the loader&#39;s validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is the syntax of the rendered PROMPT body, a closed enum keyed by the render engine&#39;s escaper; @responseFormat (ADR-0053) is the syntax of the model&#39;s REPLY. @responseRef (optional) names the response value-object the prompt expects, drives typed LLM-call trace derivation, and is the sole gate on the inbound codegen tier — which keys on its presence, never on a format value.</p>
+<p><strong>When to use:</strong> You are sending text to an LLM. Declare a prompt template with a typed payload so the prompt is versioned, drift-checked against its fields, and cache-stable — instead of string-building it in code. Add @responseRef when you also want the reply parsed into a typed shape.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@format</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>text</code></td>
+<td><code>text</code>, <code>html</code>, <code>xml</code>, <code>csv</code>, <code>json</code>, <code>markdown</code>, <code>spreadsheet</code></td>
+<td>metaobjects-core-types</td>
+<td>Output format; drives the render engine&#39;s escaping/whitespace behavior.</td>
+</tr>
+<tr>
+<td><code>@maxChars</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Size budget for the rendered output, in characters.</td>
+</tr>
+<tr>
+<td><code>@maxTokens</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Token budget for the rendered prompt (LLM-specific).</td>
+</tr>
+<tr>
+<td><code>@model</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Target model id (LLM-specific).</td>
+</tr>
+<tr>
+<td><code>@owner</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Governance: the owner of this template.</td>
+</tr>
+<tr>
+<td><code>@payloadRef</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Reference to the payload (a view-object / projection) this template renders against.</td>
+</tr>
+<tr>
+<td><code>@promptStyle</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>guide</code></td>
+<td><code>guide</code>, <code>inline</code>, <code>exampleOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-010 response-format fragment presentation: &#39;guide&#39; (prose list + example), &#39;inline&#39; (inline placeholders / enum choices), or &#39;exampleOnly&#39; (filled skeleton). Guidance is never emitted as comments.</td>
+</tr>
+<tr>
+<td><code>@requiredSlots</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Slots that must resolve at render time (drives the verify check).</td>
+</tr>
+<tr>
+<td><code>@requiredTags</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Output tags the rendered text must contain (drives the verify output-tag check).</td>
+</tr>
+<tr>
+<td><code>@responseFormat</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>json</code></td>
+<td><code>json</code>, <code>xml</code></td>
+<td>metaobjects-core-types</td>
+<td>ADR-0053: the syntax of the model&#39;s REPLY, read by the parser-on-receipt and the FR-010 response-format fragment. Distinct from @format, which is the syntax of the rendered PROMPT body. Two members because two is what every shipping consumer dispatches on; the other @format members are reserved-not-registered.</td>
+</tr>
+<tr>
+<td><code>@responseRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation). Its presence is the sole gate on the inbound codegen tier (ADR-0052): parser-on-receipt, tolerant extract, and the FR-010 response-format fragment.</td>
+</tr>
+<tr>
+<td><code>@since</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Governance: the version this template was introduced in.</td>
+</tr>
+<tr>
+<td><code>@textRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>2-layer logical reference (group/source) to the body text, resolved by a provider at render time.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>template.toolcall</h3>
+<p>A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has NO renderable text body — the body IS the structured output schema resolved via @payloadRef. This is why toolcall is its own subtype rather than template.output + @toolName. Does NOT inherit the generic attrs.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> toolcall requires @toolName (the wire tool name surfaced to the LLM) AND @payloadRef (the output value-object the tool produces). @textRef is intentionally absent — a tool-call has no renderable text. Core keeps toolcall vendor-agnostic; vendor wire details (retry semantics, fallback shapes, parallel invocation, cache hints) are added by consumer providers via registry.extend(TYPE_TEMPLATE, &quot;toolcall&quot;, { attributes: [...] }). The LLM-facing tool description reuses the @description documentation common attr (added to every type by docProvider), so it is not redeclared here.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@maxTokens</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Per-call token budget for the tool-call&#39;s structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237).</td>
+</tr>
+<tr>
+<td><code>@owner</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Governance: the owner of this toolcall.</td>
+</tr>
+<tr>
+<td><code>@payloadRef</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Output value-object the tool produces (resolved against the metamodel).</td>
+</tr>
+<tr>
+<td><code>@since</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Governance: the version this toolcall was introduced in.</td>
+</tr>
+<tr>
+<td><code>@toolName</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Wire tool name surfaced to the LLM (vendor-specific format).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

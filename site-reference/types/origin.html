@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `origin` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `origin` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta docs --metamodel --><h1>Metamodel — <code>origin</code> types</h1>
+<p>Each section below is one <code>origin.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>origin.aggregate</h3>
+<p>A value reduced from the related row-set reached along a relationship path (@via) from the base entity: count/sum/avg/min/max over a column (@of); any/all predicate quantifiers over a @filter; or collect (an array rollup — of the @of column, or of the carrying field.object&#39;s declared @objectRef value object when @of is omitted).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> @via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly. @of is required for count/sum/avg/min/max and forbidden for any/all (which quantify over rows via @filter, not a column). @filter is required for any/all. The field must be isArray:true for collect and isArray:false for every other @agg. @distinct and @orderBy are collect-only. On @agg:collect @of is OPTIONAL: omitting it declares a WHOLE-OBJECT rollup, which collects each related row as the carrying field&#39;s declared @objectRef value object instead of one scalar column. A whole-object rollup requires a field.object carrying @objectRef, requires that @objectRef to name an object.value, requires an explicit @via (there is no @of entity to infer the path from), and refuses @distinct. Its @orderBy keys resolve against the @via TERMINAL entity, not the head or a middle hop. Its value-object members bind to the terminal entity&#39;s fields BY NAME — member name == terminal field name, deliberately NOT extends, so one value object stays collectable from two different entities — and every member must match a terminal field agreeing on BOTH field.<subType> and array-ness.</p>
+<p><strong>When to use:</strong> A projection needs a value derived by reducing related rows — a count/sum/avg/min/max, a &#39;did any/every related row match&#39; flag, or an array of collected values. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@agg</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td><code>count</code>, <code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, <code>any</code>, <code>all</code>, <code>collect</code></td>
+<td>metaobjects-core-types</td>
+<td>The reducing function applied over the related row-set: count/sum/avg/min/max (numeric/ordinal reduces over @of); any/all (predicate quantifiers over @filter — @of forbidden; empty set → any=false, all=true); collect (array rollup — of the @of column, or of the carrying field.object&#39;s declared @objectRef value object when @of is omitted; the field must be isArray).</td>
+</tr>
+<tr>
+<td><code>@distinct</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Set (collect-only) to dedupe collected values (set semantics). Not supported on a whole-object collect (@of omitted): it is a guaranteed no-op whenever the value object carries the primary key, and a silent no-op is worse than a refusal.</td>
+</tr>
+<tr>
+<td><code>@filter</code></td>
+<td>filter</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view).</td>
+</tr>
+<tr>
+<td><code>@of</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Dotted Entity.field reference identifying the column being aggregated (e.g. &#39;Week.durationMinutes&#39;). Required for count/sum/avg/min/max; OPTIONAL for collect, where absent means a whole-object rollup of the field&#39;s declared @objectRef value object; forbidden for any/all (which quantify over rows via @filter, not a column).</td>
+</tr>
+<tr>
+<td><code>@orderBy</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Ordering keys as &#39;field[:asc|desc]&#39; (default asc) over the related entity&#39;s fields; nulls sort last. On @agg:collect sets element order (non-distinct only); on origin.first (required) selects the row. Semantic — carries no SQL syntax.</td>
+</tr>
+<tr>
+<td><code>@via</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Dotted relationship path from the base entity to the aggregated rows (e.g. &#39;Program.weeks&#39; or &#39;Program.weeks.workouts&#39;). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>origin.base</h3>
+<p>Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>origin.computed</h3>
+<p>A row-level value computed from the base entity&#39;s own fields via a structured expression tree (@expr). No related rows, no @via. Read-only; the expression&#39;s inferred type must equal the field&#39;s declared subType.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A projection field is a cheap derived value over the base row itself (e.g. &#39;payload IS NOT NULL&#39; to avoid shipping a heavy column). Declare the expression tree instead of hand-writing the derived SELECT column.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@expr</code></td>
+<td>expression</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The structured expression tree computing this field&#39;s value from the base entity&#39;s own fields (closed node grammar; shares the filter op vocabulary). Its inferred root type must equal the field&#39;s declared subType (ERR_COMPUTED_TYPE_MISMATCH).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>origin.first</h3>
+<p>The single related row selected by @orderBy along @via, projecting its @of column (argmax then project). Latest = @orderBy desc. Read-only; empty related set (after @filter) → null, so the field must not be @required.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> @via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). The related entity&#39;s primary key ascending is always appended as the final ordering tie-breaker so the selection is deterministic.</p>
+<p><strong>When to use:</strong> A projection needs one related row&#39;s column chosen by an ordering — &#39;the latest child&#39;s status&#39;, &#39;the earliest event&#39;s timestamp&#39;. Declare @via + @of + @orderBy instead of hand-writing the correlated ORDER BY … LIMIT 1 subquery.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@filter</code></td>
+<td>filter</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time.</td>
+</tr>
+<tr>
+<td><code>@of</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Dotted Entity.field reference identifying the column projected from the selected row (e.g. &#39;ChildA.label&#39;). Type-preserving: the field&#39;s declared subType must equal this column&#39;s subType (#185 doctrine).</td>
+</tr>
+<tr>
+<td><code>@orderBy</code></td>
+<td>string[]</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Ordering keys as &#39;field[:asc|desc]&#39; (default asc) over the related entity&#39;s fields; nulls sort last. Selects the single row (the first after ordering). The related PK ascending is appended as the deterministic tie-breaker. Semantic — carries no SQL syntax.</td>
+</tr>
+<tr>
+<td><code>@via</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Dotted relationship path from the base entity to the related rows (e.g. &#39;Parent.childAs&#39;). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>origin.passthrough</h3>
+<p>A cross-entity field reference: this projection field passes a source entity&#39;s value straight through (@from), optionally reached via a relationship path (@via).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A projection field just surfaces a field from a related entity. Declare the cross-entity passthrough instead of re-joining and re-selecting it by hand.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@convert</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Acknowledges that this field&#39;s declared type deliberately differs from its @from source field&#39;s type (#185). Absent/false (the default), a passthrough is type-preserving — a differing field.<subType> or array-ness fails with ERR_PASSTHROUGH_TYPE_MISMATCH. Set true to opt out. This is an acknowledgement only: it does NOT generate a cast — the value flows through unchanged and the consumer owns any coercion. Real type-converting projections are origin.expression&#39;s job (#159).</td>
+</tr>
+<tr>
+<td><code>@from</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Dotted Entity.field reference identifying the source value this projection field passes through (e.g. &#39;Program.title&#39;).</td>
+</tr>
+<tr>
+<td><code>@via</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional dotted relationship path used to reach the source entity (e.g. &#39;Program.weeks&#39;).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

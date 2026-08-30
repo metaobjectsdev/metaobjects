@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `source` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `source` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta docs --metamodel --><h1>Metamodel — <code>source</code> types</h1>
+<p>Each section below is one <code>source.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>source.base</h3>
+<p>Abstract base source — the shared root subtype for declaring where an object&#39;s data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>source.rdb</h3>
+<p>The relational-database paradigm source (ADR-0007): binds an object to a physical relational object. Its physical name is the @table attr (not the structural <code>name</code>), and read-only-ness is DERIVED from @kind — table is writable; view, materializedView, storedProc, and tableFunction are read-only. The @table/@kind/@role/@schema/@parameterRef attrs are contributed by the db domain provider, not by core-types.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> ADR-0007: source declares where an object&#39;s data lives; rdb is the relational paradigm subtype. An object may declare multiple sources, distinguished by @role, with exactly ONE @role: &quot;primary&quot; per object (write-through CQRS: a writable table for writes plus a read-only view for reads). The physical name is the @table attr (or the @kind-matching alias), never the structural <code>name</code>. Read-only-ness is derived from @kind (table → writable; view / materializedView / storedProc / tableFunction → read-only). The pre-v2 dbTable / dbView subtypes are retired.</p>
+<p><strong>When to use:</strong> The entity is backed by a relational table or view. Set @table/@kind — the default persistence source for any entity.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@function</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical SQL table-function name for source.rdb @kind: &quot;tableFunction&quot;. Same internal slot as @table.</td>
+</tr>
+<tr>
+<td><code>@kind</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>table</code>, <code>view</code>, <code>materializedView</code>, <code>storedProc</code>, <code>tableFunction</code></td>
+<td>metaobjects-db</td>
+<td>The kind of database object this source represents: table (default, writable), view, materializedView, storedProc, or tableFunction. Non-table kinds are read-only.</td>
+</tr>
+<tr>
+<td><code>@materializedView</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical SQL materialized-view name for source.rdb @kind: &quot;materializedView&quot;. Same internal slot as @table.</td>
+</tr>
+<tr>
+<td><code>@parameterRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>FR-015: name or FQN of an object.value describing the input shape of this source&#39;s callable interface. Permitted on @kind: &quot;storedProc&quot; / &quot;tableFunction&quot;; rejected on non-callable kinds (table / view / materializedView). Field children of the referenced object.value become the call-site parameter list in declaration order. Symmetric with template.@payloadRef in FR-004 — the typed-input pattern reuses object.value rather than minting a new parameter.* node type.</td>
+</tr>
+<tr>
+<td><code>@proc</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical SQL stored-procedure name for source.rdb @kind: &quot;storedProc&quot;. Same internal slot as @table.</td>
+</tr>
+<tr>
+<td><code>@role</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>primary</code>, <code>replica</code></td>
+<td>metaobjects-db</td>
+<td>Role this source plays when an object has multiple sources: primary (default, system of record) or replica. The former members index, cache, publish and mirror are reserved-not-registered (ADR-0007 Amendment 2): a role member enters the registry only when a shipping consumer dispatches on it.</td>
+</tr>
+<tr>
+<td><code>@schema</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Optional database schema name (e.g. &#39;catalog&#39;, &#39;public&#39;). Postgres defaults to &#39;public&#39;; SQLite rejects any non-default value.</td>
+</tr>
+<tr>
+<td><code>@sql</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>FR-024/#208 escape valve — a hand-written SQL body the tool REGISTERS + fingerprints + drift-checks but never authors or parses. The body goes INSIDE <code>CREATE &lt;kind&gt; &lt;physicalName&gt; AS …</code> (never the CREATE wrapper, never the object name). Legal only on a read-only kind (not @kind: table); migrate lowers it on @kind: view (matview/proc/tableFunction: registered but not yet migrate-managed). Mutually exclusive with @unmanaged; forbids origin.* children (two sources of truth).</td>
+</tr>
+<tr>
+<td><code>@table</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical SQL table name for source.rdb @kind: &quot;table&quot; (default). FR-016: Defaults from the source&#39;s bare structural <code>name</code> via the project&#39;s columnNamingStrategy when omitted, then from the owning entity&#39;s name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias.</td>
+</tr>
+<tr>
+<td><code>@unmanaged</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>FR-024/#208 escape valve — this DB object is managed elsewhere (Flyway / a hand-migration owns its DDL). meta migrate does NOT create, drop, or drift-check it; verify --db reports it as external (declared). Legal on any @kind including table (the externally-managed-entity case). Mutually exclusive with @sql.</td>
+</tr>
+<tr>
+<td><code>@view</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical SQL view name for source.rdb @kind: &quot;view&quot;. Same internal slot as @table.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

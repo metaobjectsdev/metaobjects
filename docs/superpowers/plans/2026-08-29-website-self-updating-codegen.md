@@ -2290,7 +2290,7 @@ git add server/typescript/packages/cli && git commit -m "fix(docs): --metamodel 
 **Interfaces:**
 - Produces: `renderReference(mdDir: string): Record<string, string>` — repo-relative HTML path → page HTML.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 describe("renderReference", () => {
@@ -2317,11 +2317,11 @@ describe("renderReference", () => {
 });
 ```
 
-- [ ] **Step 2: Run it to see it fail, then implement**
+- [x] **Step 2: Run it to see it fail, then implement**
 
 Generate the markdown with `meta docs --metamodel` into a temp dir, render each page with the markdown library into the site's header/footer shell, and rewrite intra-doc `.md` links to `.html`.
 
-- [ ] **Step 3: Add the deploy step**
+- [x] **Step 3: Add the deploy step**
 
 In the clone the Task 13 step already made — **do not clone twice**:
 
@@ -2329,7 +2329,7 @@ In the clone the Task 13 step already made — **do not clone twice**:
         node scripts/site-render-reference.mjs --out "$GITHUB_WORKSPACE/www/reference"
 ```
 
-- [ ] **Step 4: Verify live, then commit**
+- [~] **Step 4: Verify live, then commit**
 
 `/reference` must show the metamodel index — all 69 `type.subType` pairs — and `types/field.html` must show the attribute table.
 
@@ -2342,21 +2342,62 @@ They are still worth publishing: a self-referential metamodel page cannot show t
 **Files:**
 - Modify (site repo): `.github/workflows/deploy.yml`, `www/index.html` (nav)
 
-- [ ] **Step 1: Repoint the existing generation step**
+- [x] **Step 1: Repoint the existing generation step**
 
 The existing "Generate wizardsofodd reference docs" step writes to `www/reference/`. Change its destination to `www/reference/example/` and rename the step to say what it is — *a real project documented by `meta docs`*, not "reference docs".
 
 Order matters: it must run **after** Task 17's step, or the metamodel render will clear `www/reference/` and take the example with it. The existing step does `rm -rf "$GITHUB_WORKSPACE/www/reference"` — narrow that `rm` to its own subdirectory.
 
-- [ ] **Step 2: Fix the site navigation**
+- [x] **Step 2: Fix the site navigation**
 
 Any nav link labelled "Reference" now points at the metamodel. Add a link to the example from the reference index, labelled as what it is.
 
-- [ ] **Step 3: Verify both live, then commit**
+- [~] **Step 3: Verify both live, then commit**
 
 `/reference` = the metamodel; `/reference/example` = the adopter model. Both must render, and no nav link may 404.
 
 ---
+
+> **DONE 2026-08-30 except the two live verifications, which wait on the next release.**
+> Monorepo: `scripts/site/reference.ts`, `scripts/site/reference.test.ts`,
+> `scripts/build-site-reference.ts`, the committed `site-reference/`, a `gates` lane entry
+> and a `site:reference` script. Site repo: `deploy.yml`, `.gitignore`, `www/index.html`
+> nav — **committed, NOT pushed**, alongside Task 15.
+>
+> **The plan's step 3 could not work as written, and the fix is the interesting part.**
+> It has the deploy run `node scripts/site-render-reference.mjs`, and a markdown renderer
+> is a dependency — but the deploy's metaobjects clone gets NO install step, deliberately
+> (Task 13). So the rendering moved into this repo: `bun run site:reference` writes
+> `site-reference/`, the release tag carries it, and the deploy copies. That is the same
+> shape as `site-payload.json`, it keeps `marked` a repo devDependency, and it is why
+> Task 16 could refuse rather than grow an HTML renderer inside a published package.
+>
+> **Committed generated HTML is only safe with a freshness gate**, so `--check`
+> regenerates into a temp dir and byte-compares. It fails on a DIFFERENCE and on an
+> ORPHAN — a retired type family leaves a page nothing generates, and it would keep being
+> served. Both halves proven by breaking them.
+>
+> **Three things the plan's tests would have got wrong.**
+> - The index is `INDEX.md`; `/reference/` resolves to `index.html` over HTTP. Mapped in
+>   one place, because a second copy of that rule 404s the reference root while every test
+>   naming a page explicitly keeps passing.
+> - `not.toMatch(/href="[^"]*\.md"/)` fails on CORRECT output: the shell's footer links to
+>   the roadmap on GitHub, a real `.md` URL. The assertion is scoped to relative links.
+> - Importing a helper from `build-site-reference.ts` RAN the build, writing
+>   `site-reference/` as a side effect of a test. `generateMarkdown` moved into the module;
+>   a script does its work at import time, so a shared function cannot live in one.
+>
+> **Link rewriting happens on the rendered HTML, not the markdown source.** These pages
+> document a tool whose output is markdown files, so a source-level `.md` → `.html` pass
+> would rewrite the strings inside fenced code blocks too.
+>
+> **Task 18's ordering hazard is real and closed.** The example step runs first and the
+> metamodel copy second, so the copy must never `rm -rf www/reference` — that would delete
+> the example on every deploy. The example's own `rm` is narrowed to its subdirectory for
+> the mirror-image reason. Simulated: with `www/reference/example/` populated, the copy
+> lands the reference and the example survives. The nav link is relabelled from "Reference
+> docs" to "Reference" (same URL, different content now), and the reference index links to
+> `/reference/example/` so an old link lands somewhere that explains the split.
 
 ## Done when
 

@@ -1,0 +1,2966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `field` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `field` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta docs --metamodel --><h1>Metamodel — <code>field</code> types</h1>
+<p>Each section below is one <code>field.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>field.base</h3>
+<p>Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.boolean</h3>
+<p>True/false flag. Binds to the native boolean type; DB column is BOOLEAN.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A true/false flag.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.currency</h3>
+<p>Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.</p>
+<p><strong>When to use:</strong> A column holds money. Use currency so it stores integer minor-units and the client formats it — never floats or hand-rolled cents math.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@currency</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>USD</code></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>ISO 4217 currency code for a currency-subtype field. Storage is integer minor units; defaults to &#39;USD&#39; when omitted.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.date</h3>
+<p>Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A column is a calendar date with no time-of-day. Use date instead of a string.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@autoSet</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>onCreate</code>, <code>onUpdate</code></td>
+<td>metaobjects-db</td>
+<td>Auto-set semantics for timestamp-like fields: &#39;onCreate&#39; stamps on insert, &#39;onUpdate&#39; stamps on every write.</td>
+</tr>
+<tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.decimal</h3>
+<p>Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).</p>
+<p><strong>When to use:</strong> A value needs exact precision (money amounts, rates, quantities). Use decimal with @precision/@scale — never double, which loses precision.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@precision</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Total number of significant digits for decimal-typed fields.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@scale</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Number of digits to the right of the decimal point for decimal-typed fields.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.double</h3>
+<p>Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> An approximate floating-point number where exactness is not required. For money/precision use decimal.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.enum</h3>
+<p>String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).</p>
+<p><strong>When to use:</strong> A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don&#39;t hand-roll constants + checks.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@coerceDefault</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>Fallback enum member used by tolerant extract when a present value cannot be coerced; must be one of the field&#39;s @values.</td>
+</tr>
+<tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@enumAlias</code></td>
+<td>properties</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant extract alias-fold.</td>
+</tr>
+<tr>
+<td><code>@enumDoc</code></td>
+<td>properties</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>Map of enum member to a human-readable description; shown per-member in the FR-010 &#39;guide&#39;-style prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@intValueMap</code></td>
+<td>intMap</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional per-member int values ({member: int}) switching this enum field&#39;s DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@normalize</code></td>
+<td>string</td>
+<td>no</td>
+<td><code>strip</code></td>
+<td><code>none</code>, <code>collapse</code>, <code>strip</code></td>
+<td>metaobjects-prompt</td>
+<td>ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object&#39;s enum fields.</td>
+</tr>
+<tr>
+<td><code>@provided</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>FR-019: marks an abstract package-level field.enum as externally provided — codegen references the type (resolved via per-port codegen config) instead of materializing it. Default false. Not a field attr — it lives on the type declaration.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@values</code></td>
+<td>string[]</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.float</h3>
+<p>Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.inet</h3>
+<p>An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IPv4-or-IPv6 literal validator (a Zod regex union in TS — z.string().ip() was removed in Zod 4 — native IP-type parsing in the other ports); add @lenient to bind a plain string with no validator. v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4|ipv6 value-constraint.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A field holds an IPv4 or IPv6 address. Use it for a native Postgres inet column + IP validation instead of a plain string.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@lenient</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>#234: opt this field out of strict well-formedness enforcement. When true, codegen binds a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a text column, not the native inet type) so a not-strictly-valid value round-trips unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.int</h3>
+<p>32-bit signed integer. Binds to the native int type; DB column is INTEGER.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A whole number within +/-2^31. Use long instead if values can exceed that.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.long</h3>
+<p>64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A whole number that may exceed 32 bits (ids, counters, epoch millis).</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.map</h3>
+<p>An open-keyed map (Record&lt;string,V&gt; / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> Keys are always strings. Set exactly one of @valueType (a scalar value subtype: string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid) or @objectRef (a value-object name or FQN). Stored as a single jsonb column holding the JSON object — never a native array; isArray does not apply.</p>
+<p><strong>When to use:</strong> A field is an open-keyed map of values (Record&lt;string,V&gt;). Use it for dynamic keys instead of an untyped jsonb string.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@objectRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name (or FQN) of the value-object for a value-object-valued map. Mutually exclusive with @valueType; exactly one of the two must be set.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@valueType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Scalar value subtype for a scalar-valued map (string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). Mutually exclusive with @objectRef; exactly one of the two must be set.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.object</h3>
+<p>A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Rules:</strong> Set @objectRef to the nested object&#39;s name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.</p>
+<p><strong>When to use:</strong> A field holds a nested structured value (or an array of them). Set @objectRef + @storage so the shape is typed and persisted (flattened/jsonb) instead of an untyped blob.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@objectRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@storage</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>flattened</code>, <code>jsonb</code>, <code>subdocument</code></td>
+<td>metaobjects-db</td>
+<td>Storage strategy for an object-typed field (set with @objectRef). &quot;flattened&quot; expands the nested value into prefixed columns on the parent table. &quot;jsonb&quot; stores the structured value in a single jsonb column (supports isArray=true for arrays of values). &quot;subdocument&quot; is a hint for document-store codegen targets and emits no Postgres column.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.string</h3>
+<p>Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> Plain variable-length text. Set @maxLength to size the column. The default for textual data.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@maxLength</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Maximum character length for string-typed fields (drives VARCHAR(n)).</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@stringFormat</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>email</code>, <code>hostname</code></td>
+<td>metaobjects-core-types</td>
+<td>ADR-0036/0037: a closed validation format for a plain string field that has NO native type or behavior of its own — email | hostname. The field stays a plain string (native binding + DB column unchanged); codegen emits the matching validator (Zod z.email() / a hostname check; PG CHECK where appropriate). The canonical matcher per format lives in each port&#39;s codegen, NOT author validator.regex (cross-language regex engines diverge). Named @stringFormat (not @format) to avoid colliding with template.* @format (output format). Concepts WITH a native type or behavior are subtypes instead (uuid → field.uuid, url/uri → field.uri, ip → field.inet).</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.time</h3>
+<p>Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@autoSet</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>onCreate</code>, <code>onUpdate</code></td>
+<td>metaobjects-db</td>
+<td>Auto-set semantics for timestamp-like fields: &#39;onCreate&#39; stamps on insert, &#39;onUpdate&#39; stamps on every write.</td>
+</tr>
+<tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.timestamp</h3>
+<p>Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A column records an instant (created/updated at). Use timestamp so it serializes ISO-8601 with timezone consistently.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@autoSet</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>onCreate</code>, <code>onUpdate</code></td>
+<td>metaobjects-db</td>
+<td>Auto-set semantics for timestamp-like fields: &#39;onCreate&#39; stamps on insert, &#39;onUpdate&#39; stamps on every write.</td>
+</tr>
+<tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@localTime</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, the timestamp is a naive wall-clock value with no timezone (Postgres <code>timestamp without time zone</code>); absent/false (the default) = an absolute instant (<code>timestamptz</code>). ADR-0036 Wave 2 — replaces the retired @dbColumnType: timestamp_with_tz escape hatch.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.uri</h3>
+<p>A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native URI type, same as field.uuid); other ports bind to their native URI type (Java java.net.URI, C# System.Uri, Python urllib.parse, Kotlin java.net.URI) and parse scheme/authority/path. DB column is text (Postgres has no uri type). Codegen emits a URL/URI validator (TS Zod z.string().url()). v1 ships WITHOUT @kind — the native type subsumes url/urn; @kind is reserved for a later url|urn value-constraint.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A field holds a URL or URI. Use it for a typed URI column + URL validation instead of a plain string.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@lenient</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>#234: opt this field out of strict well-formedness enforcement. When true, codegen binds a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a text column, not the native inet type) so a not-strictly-valid value round-trips unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+<h3>field.uuid</h3>
+<p>Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A key or external identifier is a UUID. Use it for a typed UUID column instead of a plain string.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Default sort direction applied when this field is the default sort field.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

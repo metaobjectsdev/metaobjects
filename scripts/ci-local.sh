@@ -232,6 +232,16 @@ gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-
 # refuses to leave a port out.
 gate_site_payload() { bun_install && bun test scripts/site && bun scripts/build-site-payload.ts --check; }
 
+# ── the published metamodel reference tracks the registry ─────────────────────
+# site-reference/ is rendered HTML the site COPIES at deploy — the deploy has no install
+# step for this repo, so the rendering happens here and the release tag carries the pages.
+# Committed output is only trustworthy with a freshness gate: this regenerates into a temp
+# dir and byte-compares, so a registry change that nobody re-rendered fails the build
+# instead of publishing a reference that documents the previous vocabulary. Orphans count
+# too — a retired type family leaves a page nothing generates any more, and it would keep
+# being served.
+gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --check; }
+
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
 # typecheck` walks WORKSPACE PACKAGES only — so every script here, including every
@@ -520,6 +530,7 @@ if want gates; then step    "metamodel-version bump"           gate_metamodel_ve
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
 if want gates; then step_if bun "site payload is true"         gate_site_payload;           fi
+if want gates; then step_if bun "site reference is fresh"     gate_site_reference;         fi
 if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi

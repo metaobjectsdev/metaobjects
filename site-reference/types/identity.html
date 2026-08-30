@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `identity` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `identity` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta docs --metamodel --><h1>Metamodel — <code>identity</code> types</h1>
+<p>Each section below is one <code>identity.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>identity.primary</h3>
+<p>The primary key — one per entity; @fields names its column(s), @generation the value strategy.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> Every entity needs exactly one — names the primary-key field(s) and how the value is generated. Always declare it.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@fields</code></td>
+<td>string[]</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite.</td>
+</tr>
+<tr>
+<td><code>@generation</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>increment</code>, <code>uuid</code>, <code>assigned</code></td>
+<td>metaobjects-core-types</td>
+<td>Primary-key value generation strategy: &#39;increment&#39; (auto-increment), &#39;uuid&#39;, or &#39;assigned&#39; (caller-supplied).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>identity.reference</h3>
+<p>A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> This entity holds a foreign key to another. Declare it to generate the FK constraint + typed navigation, instead of a loose id field you join on by hand.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical foreign-key constraint name override. Absent → the backend&#39;s auto-derived default (e.g. <code>&lt;table&gt;_&lt;firstFkColumn&gt;_fk</code>). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@enforce</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true (default), the backend physically enforces the reference (SQL FK constraint, document validation rule, graph edge guarantee). Set false to declare a logical reference for navigation/typing/codegen only — the value may dangle at the backend level.</td>
+</tr>
+<tr>
+<td><code>@fields</code></td>
+<td>string[]</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite.</td>
+</tr>
+<tr>
+<td><code>@onDelete</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>cascade</code>, <code>set-null</code>, <code>restrict</code>, <code>no-action</code></td>
+<td>metaobjects-db</td>
+<td>Referential action on parent delete, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Precedence: this attr → a correlated relationship&#39;s @onDelete (declared on either side of the FK) → the relationship&#39;s subtype default. Use for a reference-only FK (no relationship), an M:N junction&#39;s FK sides, or a per-FK override; prefer declaring the action on the relationship otherwise. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@onUpdate</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>cascade</code>, <code>set-null</code>, <code>restrict</code>, <code>no-action</code></td>
+<td>metaobjects-db</td>
+<td>Referential action on key update, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Same precedence as @onDelete; when only a correlated relationship is present, @onUpdate defaults to cascade. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@references</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Target of the reference. Bare entity name (e.g. &#39;Program&#39;) resolves to that entity&#39;s primary identity. Dotted forms (&#39;Program.id&#39; or &#39;Program.fieldA,fieldB&#39;) target an explicit field set on the entity.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>identity.secondary</h3>
+<p>A secondary unique index on one or more fields. Always enforces uniqueness — use index.lookup for non-unique query-performance indexes.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A column or set of columns must be unique (e.g. email, slug, composite business key). For a plain non-unique index, use index.lookup instead.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@expr</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Raw key EXPRESSION for a functional/expression index (e.g. &quot;lower(email)&quot;). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@fields</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint. Required UNLESS @expr is present — a unique index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX.</td>
+</tr>
+<tr>
+<td><code>@orders</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-db</td>
+<td>Physical index-key sort direction, positional to @fields (&#39;asc&#39; | &#39;desc&#39;). Omit for all-ascending (the default); a shorter array leaves trailing keys ascending. Drives DESC-ordered index keys (e.g. a recency index on a timestamp). RDB-physical — contributed by the db provider, not core identity.</td>
+</tr>
+<tr>
+<td><code>@using</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Index access method (e.g. &quot;gin&quot;, &quot;gist&quot;, &quot;hash&quot;); default &quot;btree&quot; (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@where</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Partial-index predicate (raw SQL, e.g. &quot;delivered_at IS NULL&quot;). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
