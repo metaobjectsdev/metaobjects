@@ -1,7 +1,9 @@
 # Name constants and magic-string elimination — design
 
 **Date:** 2026-08-30
-**Status:** proposed — not yet approved for implementation
+**Status:** proposed — not yet approved for implementation. **Corrected 2026-08-30** after
+measurement refuted Program B's founding premise (§B1) and Program A gained its consumption
+half (§A6); open questions 2 and 5 are closed.
 **Scope:** all five ports (TypeScript, C#, Java, Kotlin, Python), the agent-context skills,
 and the metaobjects.dev codegen snippets. Three programs; they can be planned and shipped
 independently, and Program A has a hard prerequisite (§A4).
@@ -14,10 +16,14 @@ different consumers, and different risk profiles:
 - **Program A — data names.** Generate, per declared object, the physical database names
   (table / view / materialized view / stored proc / table function, schema) and per field
   the logical name and physical column name, as constants a hand-written consumer can
-  reference instead of a string literal.
-- **Program B — metamodel vocabulary names.** Generate, per port, constants for every
-  registered type name, subtype name and attribute name, so that no code in this repo or
-  in an adopter's provider/tooling spells `"object.entity"` or `"@column"` as a literal.
+  reference instead of a string literal — **and make the port's own generated code read
+  them**, so the artifact is load-bearing rather than decorative (§A6). Ships in all five
+  ports.
+- **Program B — metamodel vocabulary names.** *Gate* — in both directions — that every
+  registered type, subtype and attribute has a named constant in every port, and that no
+  code spells one as a literal. Measurement during design found the constants already
+  exist (113–115 of 115 attributes per port); what is missing is the gate, one attribute,
+  and ~16 call sites. **Nothing is generated.** See §B1.
 - **Program C — a read-only startup schema validator**, per port, closing the one link in
   the chain that no build-time gate can reach: whether the database *this running process is
   actually connected to* matches the metadata it just loaded.
@@ -60,12 +66,14 @@ already subtly wrong, and already inconsistently taught.**
    contain a view or stored-proc name. Any new artifact must carry `{ kind, name }` rather
    than kind-specific keys.
 
-4. **Program B is hand-maintained in one port and absent in two.** TypeScript carries
-   **485** hand-written constants across 14 per-concern `*-constants.ts` modules, barreled
-   into a browser-safe `@metaobjectsdev/metadata/constants` entry. Java has scattered,
-   partial `*Constants.java` files. **C# and Python have no metamodel-constants file at
-   all.** The registered surface is 14 type names, 69 `type.subtype` pairs, 107 distinct
-   attribute names and 422 attribute registrations.
+4. **Program B is already built in every port — and gated in none.** This replaces an
+   earlier claim in this document that C# and Python "have no metamodel-constants file at
+   all." That was measured and is **false**; the corrected numbers are in §B1. TypeScript
+   carries 327 `export const` across 16 per-concern `*-constants.ts` modules, barreled into
+   a browser-safe `@metaobjectsdev/metadata/constants` entry; C# has 16 `*Constants.cs`,
+   Python 20 constants modules, Java 7 `*Constants.java` plus constants on the domain
+   classes themselves. The registered surface is 14 type names, 69 `type.subtype` pairs
+   over 54 distinct subtype names, and 115 distinct attribute names.
 
 5. **The doctrine is TypeScript-only and already drifting.** "Use the generated constants.
    Never use magic strings" lives solely in `sdk/src/agent-docs/body.ts`, which teaches
@@ -153,8 +161,14 @@ dividing test puts target-language source at Tier 1 (per-port, idiomatic), and t
 cross-port codegen-output corpus was **formally rejected** (FR-007, `fixtures/codegen-conformance/README.md`,
 rejected 2026-05-26, re-confirmed 2026-05-31: "each port's catalog is idiomatic-divergent by
 design"). Consequence, stated plainly: **this artifact gets no cross-port conformance
-protection.** Nothing generated reads it, so no behaviour corpus can catch drift in it.
-Per-port goldens are the only gate, and the design must budget for them.
+protection** *of its own*. Per-port goldens are the only direct gate, and the design must
+budget for them.
+
+The original version of this paragraph continued "nothing generated reads it, so no
+behaviour corpus can catch drift in it." **§A6 removes that**: the port's own generated
+code reads the artifact, so every existing behaviour test — the persistence corpus, the
+api-contract corpus, the real-Postgres round-trips — exercises these names by construction.
+A wrong column constant stops being an unread string and becomes a failing query.
 
 ### A2. Content
 
@@ -221,16 +235,85 @@ same functionality.
 
 ---
 
+### A6. The generated code consumes the artifact
+
+**Decision: the names artifact is the single definition of each physical name in a port's
+generated output, and every other generated file references it.**
+
+Without this, Program A ships a file that only hand-written code reads. That is the
+weakness A1 concedes, and it has a second cost: two independent spellings of the same name
+in the same generation run — `text("created_at")` in the entity file and `column:
+"created_at"` in the names file — held together by nothing but both calling the same
+resolver. A3 makes them agree *today*; nothing keeps them agreeing.
+
+Where the literals actually are, verified in the showcase output: `sqliteTable("subscribers", …)`
+and `createdAt: text("created_at")` in the entity file, and the `$table` / per-field `name`
+keys in the descriptor. Those become references to the names artifact.
+
+**Scope it to positions where a name is a name.** The ORM/table binding, the query layer,
+the route paths, and the descriptor. Not string interpolation inside generated SQL text or
+comments, where a constant reference is less readable than the name it replaces and buys
+nothing.
+
+**Why this is the half that pays for the program.** Nothing in this design is protected by
+the cross-port codegen corpus, because FR-007 rejected one. But the *behaviour* corpora are
+not idiomatic-divergent: `fixtures/persistence-conformance` executes real queries against
+Testcontainers Postgres in all five ports, and `fixtures/api-contract-conformance` boots
+each port's generated API. Once the generated code reads the names artifact, a wrong name
+fails those, in every port, with no new corpus written. That converts A1's stated blind
+spot into full coverage using gates that already exist.
+
+**Cost, stated plainly.** Every generated file that adopts a reference changes bytes, so
+every golden moves in the same change, and `verify --codegen` fails for adopters until they
+regenerate — the same standing cost A5 already names, now applying to entity/query/route
+goldens rather than to one new file. That is the price of the constants being real.
+
+---
+
 ## Program B — metamodel vocabulary constants
 
-### B1. The problem
+### B1. The problem — measured, not assumed
 
-`AGENTS.md` already states the rule — "named constants in `packages/metadata/src/constants.ts`.
-Never inline metamodel strings as literals in code" — and it is honoured in exactly one port.
-TypeScript hand-maintains 485 constants; Java is partial and scattered; **C# and Python have
-none**. Any adopter writing a metadata provider, a custom generator, or tooling against
-MetaObjects in those languages has no choice but to spell `"object.entity"` and `"@column"`
-as literals.
+The rule is honoured in **all four** ports. Matching each constant's NAME to its VALUE
+across every port's whole source tree (a bare `"string"` literal is not evidence; the
+constant's own name must say TYPE / SUBTYPE / ATTR):
+
+| port | constants | types | subTypes | attrs |
+|---|---|---|---|---|
+| TypeScript | 311 | 14/14 | 54/54 | **115/115** |
+| C# | 329 | 14/14 | 54/54 | 114/115 |
+| Java | 717 | 14/14 | 54/54 | 113/115 |
+| Python | 304 | 14/14 | 54/54 | 114/115 |
+
+**The entire coverage gap is one attribute: `formExclude`.** It is registered on `field.*`,
+TypeScript has it in `field-constants.ts`, C# and Python carry it only inside their
+`ui.json` registration data — never as a code constant — and Java has it nowhere at all.
+It is the *newest* cross-port attribute (registered in 0.18.0), which is exactly the drift
+§B4 exists to catch: the vocabulary added most recently is the one that did not get
+constants. Java's other apparent miss, `localTime`, is covered by a constant named
+`LOCAL_TIME` — a naming-convention miss, not a coverage one (§B5).
+
+**Usage is a separate claim from existence, and it is the one the ledger makes.**
+`requirement.architectural namedMetamodelConstants` says *"every **reference** to
+vocabulary from code goes through a named constant."* Counting literals in the codegen
+consumers — dotted `"object.entity"` pairs, `"@attr"` literals, bare subType comparisons
+anchored on the accessor, and attrs fetched by literal name:
+
+| form | count |
+|---|---|
+| dotted `type.subType` literals | 8 |
+| `"@attr"` literals | 0 |
+| bare subType comparisons | 6 |
+| attr fetched by literal name | 2 (Python) |
+
+≈16 sites, in `codegen-ts/src/templates/queries.ts` (`"long"`, `"int"`, `"boolean"`),
+`generators/api-model.ts` (`"value"`), `migrate-ts/src/expected-schema.ts`,
+`runtime-ts/src/drizzle-fastify/filter-parser.ts`, and two in the Python codegen. **C#
+`MetaObjects.Codegen` and Java `codegen-spring` are clean on every pattern tested.**
+
+**16 is a floor, not a total.** The patterns are anchored on accessors to keep false
+positives out, so switch arms, dictionary keys and string-built names are not counted. The
+true set only falls out of the gate itself, which is the point of building it.
 
 ### B2. Source of truth
 
@@ -239,27 +322,27 @@ already emits and byte-matches. It is the only artifact in the repo that is *pro
 agree with all five registries, which makes it the correct input and makes generation safe
 by construction.
 
-### B3. Generate or hand-code-and-verify?
+### B3. Generate or gate?
 
-**Decision: generate in the ports that have no curated set (C#, Python, Kotlin, Java);
-verify coverage in TypeScript, where a curated set already exists and is a published export
-surface.**
+**Decision: gate. Generate nothing.**
 
-The reasoning is that the two halves are answering different questions:
+The earlier decision here was to generate constants in C#, Python, Kotlin and Java and
+verify coverage only in TypeScript. Its justification was that "107 attribute names and 69
+`type.subtype` pairs is not a set anyone will hand-maintain correctly in four languages."
+The measurement in §B1 refutes it: they demonstrably have, to 113–115 of 115.
 
-- Where nothing exists, generation is strictly better: 107 attribute names and 69
-  `type.subtype` pairs is not a set anyone will hand-maintain correctly in four languages,
-  and the drift record in TS (`body.ts` teaching `$apiPrefix`-less constants) shows what
-  hand-maintenance costs even in the port that cares most.
-- In TypeScript the 485 constants are **semantically named and publicly exported**
-  (`FIELD_ATTR_MAX_LENGTH`, `VIEW_SUBTYPE_TEXT`). Their names are curated, not mechanical.
-  Regenerating them would either break the export surface or require reproducing hand-made
-  naming decisions in a generator. The right gate there is **coverage**: prove every
-  registered vocabulary member has a constant, and fail the build when a new one is
-  registered without one.
+Generating now would be actively harmful. It would churn four working, curated, per-concern
+constant sets, and C#'s `public const string` members are a **public API** — regenerating
+them either breaks adopters or requires a generator that reproduces hand-made naming
+decisions in four languages. The whole benefit on offer is one missing constant.
 
-`scripts/check-metamodel-version.mjs --set` is the precedent for a script that writes into
-all four port constant files at once.
+What was never built is the part that keeps any of it true: **a gate**. Every set here was
+hand-maintained into near-completeness and then drifted at exactly the point a gate would
+have caught — the newest attribute. So the program is the gate, plus the one constant it
+would immediately report.
+
+`scripts/check-metamodel-version.mjs --set` remains the precedent for a script that writes
+into all four port constant files at once, should a future member ever need seeding.
 
 ### B4. The gate
 
@@ -267,13 +350,30 @@ A new check, modelled directly on `metadata/src/registry-coverage.ts`, which alr
 the manifest and reports registered-but-unexercised vocabulary. Same mechanism, different
 right-hand side: **registered vocabulary vs. constants that exist**, per port.
 
+It runs in **two directions**, because "a constant exists" and "the constant is used" are
+different claims and only the second is what the ledger promises:
+
+**Existence — every registered member has a constant.**
 - Fails when a registered type, subtype or attribute has no constant in a port.
 - Fails when a constant's *value* disagrees with the manifest.
-- Runs in the `gates` lane, which is offline and already reads this manifest.
 
-This is the piece that makes the whole thing durable. Without it, four newly-generated
-constant sets rot the first time vocabulary is added — which is exactly how TypeScript's
-own curated set drifted.
+**Usage — nothing spells a member as a literal.**
+- Fails when a consumer outside the defining constants module spells a registered
+  `type.subType` pair, an `@attr` name, or a bare subType in a vocabulary position
+  (a `subType` comparison, an attr fetched by name) as a string literal.
+- Scoped to files that are not themselves the definition, so the constants modules are
+  exempt by construction.
+- Lands in **warn mode first**, listing every site. The floor is ~16 (§B1) but the true
+  set is unknown until this runs, and a gate that fails a build on an unbounded set the
+  day it lands gets switched off rather than fixed. It flips to failing once the reported
+  set is empty.
+
+Both directions run in the `gates` lane, which is offline and already reads this manifest.
+
+This is the piece that makes the whole thing durable, and by §B3 it is now the *only*
+piece. Four hand-maintained sets reached 113–115 of 115 without it and then drifted at the
+first new attribute (`formExclude`, 0.18.0) — which is the whole argument: the sets are not
+the problem, the absence of anything holding them there is.
 
 ### B5. Naming rule
 
@@ -286,6 +386,12 @@ knows one port can predict the others:
 
 These match the TypeScript names already in use, which is why TS is the reference and not
 the exception.
+
+**The gate matches on VALUE, and treats the name as a warning.** Java covers `localTime`
+with a constant named `LOCAL_TIME` rather than `FIELD_ATTR_LOCAL_TIME`. Coverage is the
+property that matters — the literal is not in the code either way — and these are published
+`public static final` members, so renaming one is a breaking change for any adopter that
+imported it. A convention warning names the drift without holding a build hostage to it.
 
 ---
 
@@ -383,6 +489,12 @@ comment already says why.
 Getting rid of magic strings is the point; the constants are only the mechanism. The
 highest-leverage work is the part that reaches adopters:
 
+- **`AGENTS.md` must stop naming a file that does not hold the constants.** Lines 514 and
+  554 both state the rule as "constants live in `packages/metadata/src/constants.ts`" — a
+  file with **zero** `export const`. The real home is 16 per-concern `*-constants.ts`
+  modules, barreled into `@metaobjectsdev/metadata/constants`. The canonical statement of
+  the doctrine currently points at the wrong place, which is the cheapest possible fix in
+  this whole document and the one most likely to be read.
 - **All six `metaobjects-*` skills** must teach it, in every language — not just
   `metaobjects-codegen`. Today the doctrine exists only in `sdk/src/agent-docs/body.ts`,
   which is TypeScript-only.
@@ -417,10 +529,10 @@ highest-leverage work is the part that reaches adopters:
    name exists in the generated Python surface. The counter-argument is that Python has no
    compiler, so enforcement is a type-checker catch at best, making it the lowest-payoff
    port. Worth a second look before implementation.
-2. **Whether Program B should also generate the TypeScript set** rather than gating its
-   coverage. Recommended as coverage-only above, but if the curated names turn out to be
-   mechanically derivable after all, one generator for five ports is simpler than a
-   generator plus an exception.
+2. ~~**Whether Program B should also generate the TypeScript set**~~ — **CLOSED.** Nothing
+   is generated in any port. The measurement in §B1 showed all four sets are already
+   near-complete, so the question inverted: not "generate TS too" but "generate nowhere."
+   See §B3.
 3. **Program C's failure mode and depth** — see §C4. Warn-by-default with opt-in
    fail-fast is the likely answer, but boot-time behaviour deserves its own decision rather
    than inheriting CI's.
@@ -428,11 +540,27 @@ highest-leverage work is the part that reaches adopters:
    are blind at runtime today) and could be specced separately. It is here because it closes
    the last link in the same source-of-truth chain, which is only visible when all three are
    read together.
-5. **Whether the motivating adopter code is TypeScript-only.** If it is, Program A's
-   "separate artifact in five ports" arithmetic collapses and merging into the existing TS
-   descriptor becomes the cheaper right answer — it was verified safe (see below).
+5. ~~**Whether the motivating adopter code is TypeScript-only.**~~ — **CLOSED.** It is not.
+   Program A ships the separate per-port artifact in all five ports as §A1 describes, and
+   the generated code in each port reads it (§A6). The TS-descriptor merge, though verified
+   safe, is not taken: it would make TypeScript the odd port out on the axis this project
+   protects hardest.
 
 ## Verified during design
+- **Program B's founding premise was wrong, and was corrected here (2026-08-30).** The
+  claim that C# and Python "have no metamodel-constants file at all" was measured and is
+  false: C# has 16 `*Constants.cs` and Python 20 constants modules, and every port covers
+  14/14 types, 54/54 subtypes and 113–115/115 attributes. The lesson is the repo's own
+  standing rule — *a claim in a document I wrote is a hypothesis; re-derive its premise* —
+  and it is recorded rather than quietly edited out, because the original claim had already
+  shaped Program B's entire shape into "generate four constant sets."
+- **`AGENTS.md` names a location that no longer holds the constants.** Lines 514 and 554
+  both point the rule at `packages/metadata/src/constants.ts`; that file contains **zero**
+  `export const`. The constants live in 16 per-concern `*-constants.ts` modules. Corrected
+  as part of this program's doctrine half (§"The doctrine, and where it is taught").
+- **The `formExclude` gap is one attribute, and it is the newest one.** Registered on
+  `field.*` in 0.18.0; present in TS, absent as a code constant in C#, Python and Java.
+
 
 - Adding a per-field key to the TS descriptor is **safe**: `use-entity-form.tsx:120-131`
   skips `$`-prefixed keys and then builds input props by explicit allowlist

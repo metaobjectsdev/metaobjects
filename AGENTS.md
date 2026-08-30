@@ -511,7 +511,7 @@ Preserve the following contracts exactly across all language ports:
 **D1 is TS-only.** Cloudflare D1 is a peer of `sqlite`/`postgres` in TS's `dialect` vocabulary. It is SQLite at the SQL level — Java/Python/C# don't have an analogue (Cloudflare Workers run JS). When adding cross-language vocabulary, D1 doesn't constrain anything: its uniqueness is wrangler-CLI transport + Wrangler-native file layout (`migrations/<seq>_<slug>.sql`), both of which are TS-only concerns.
 
 **Constants discipline:**
-- TS: named constants in `packages/metadata/src/constants.ts`. Never inline metamodel strings as literals in code.
+- TS: named constants, imported from `@metaobjectsdev/metadata/constants` (defined in 16 per-concern `*-constants.ts` modules under `packages/metadata/src/`, e.g. `core/field/field-constants.ts`, `persistence/db/db-constants.ts`). Never inline metamodel strings as literals in code.
 - New type or subtype names: add to TS constants first; add the parallel in other language implementations.
 
 **Two contracts, two numbers — `metamodelVersion` moves when the metamodel does (ADR-0035 Amendment 2).**
@@ -551,7 +551,7 @@ These are the load-bearing principles that have emerged through implementation. 
 
 ## Coding discipline (TS)
 
-- **Named constants for metamodel strings — always.** Type names, subtype names, reserved JSON keys, special attribute names, structural separators, and wildcards live in `packages/metadata/src/constants.ts` — import and use them. Gets you compile-time typo safety.
+- **Named constants for metamodel strings — always.** Type names, subtype names, reserved JSON keys, special attribute names, structural separators, and wildcards live in per-concern `*-constants.ts` modules under `packages/metadata/src/`, barreled into the browser-safe `@metaobjectsdev/metadata/constants` entry — import from there and use them. Gets you compile-time typo safety. (This rule used to name a single `packages/metadata/src/constants.ts`; that file holds no constants and has not for some time.)
 - **Use `as const` arrays + type unions** for closed sets (e.g., `FIELD_SUBTYPES = [...] as const; type FieldSubType = (typeof FIELD_SUBTYPES)[number]`).
 - **String literals OK only for**: error message text, instance/entity names that are user data, and test data values that aren't metamodel-level concepts.
 - **No backwards-compat hacks.**

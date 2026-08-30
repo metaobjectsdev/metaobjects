@@ -2249,13 +2249,28 @@ metadata.root:
                     name: namedMetamodelConstants
                     title: Named vocabulary constants
                     level: 3
-                    status: live
+                    status: partial
                     statement: >-
                       Every reference to vocabulary from code goes through a named
                       constant, so a typo fails to compile instead of failing to match.
                     counterexample: >-
                       A misspelled construct name in a comparison that therefore never
                       matches, and a branch that silently never runs.
+                    notes: >-
+                      Measured 2026-08-30 and demoted from live. The constants
+                      themselves are effectively complete: every port covers 14/14
+                      types and 54/54 subtypes, and 113-115 of 115 attribute names,
+                      the sole gap being formExclude in C#, Java and Python. But this
+                      statement is about REFERENCES, not existence, and roughly 16
+                      call sites still spell vocabulary as a literal - bare subType
+                      comparisons in the TypeScript codegen and migrate/runtime
+                      layers, and two attrs fetched by literal name in the Python
+                      codegen. Sixteen is a floor from targeted patterns, not a
+                      total. No disposition is recorded because neither accepted nor
+                      deferred is true: the gap is being closed by Program B of
+                      docs/superpowers/specs/2026-08-30-name-constants-and-magic-string-elimination-design.md,
+                      whose bidirectional gate reports the real set and then holds it
+                      at zero. This returns to live when that gate fails closed.
 
           - requirement.architectural:
               name: flexibility
