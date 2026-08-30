@@ -499,3 +499,50 @@ describe("#195 projection read-schema nullability (any/all/collect non-null; fir
     expect(code).not.toContain("id: z.number().int().nullable()");
   });
 });
+
+// §A4 — the coverage gap that hid the bug: a @column that DIFFERS from what the naming
+// strategy would produce. Every pre-existing fixture used a @column equal to the
+// strategy's answer, so the wrong resolver returned the right string by coincidence.
+test("a projection field's dbCol honours @column, not just the naming strategy", async () => {
+  const json = JSON.stringify({
+    "metadata.root": {
+      package: "test",
+      children: [
+        {
+          "object.entity": {
+            name: "Author",
+            children: [
+              { "source.rdb": { "@table": "authors" } },
+              { "field.int": { name: "id" } },
+              // snake_case of "firstName" is "first_name"; @column deliberately is NOT that.
+              { "field.string": { name: "firstName", "@column": "given_name" } },
+              { "identity.primary": { name: "id", "@fields": "id" } },
+            ],
+          },
+        },
+        {
+          "object.projection": {
+            name: "AuthorSummary",
+            children: [
+              { "source.rdb": { "@kind": "view", "@table": "v_author_summary" } },
+              { "field.int": { name: "id", extends: "Author.id" } },
+              { "field.string": { name: "firstName", extends: "Author.firstName" } },
+              { "identity.primary": { name: "id", extends: "Author.id" } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+  expect(result.errors).toEqual([]);
+  const proj = result.root.children().find((c) => c.name === "AuthorSummary") as MetaObject;
+
+  const out = renderProjectionDecl(proj, result.root, {
+    dialect: "postgres",
+    columnNamingStrategy: "snake_case",
+  });
+
+  expect(out).toContain(`dbCol: "given_name"`);
+  expect(out).not.toContain(`dbCol: "first_name"`);
+});

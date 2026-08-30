@@ -10,10 +10,10 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import {
   MetaField, MetaObject, type MetaRoot, isMetaObject,
-  FIELD_ATTR_OBJECT_REF, stripPackage,
+  FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
-import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
+import { toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
@@ -138,7 +138,11 @@ export function renderProjectionDecl(
   for (const f of projection.ownFields()) allFields.push(f);
 
   const constFieldLines: string[] = allFields.map((f) => {
-    const dbCol = columnNameFromField(f.name, columnNamingStrategy);
+    // §A4: resolveColumnName, NOT columnNameFromField — the latter takes a string and so
+    // cannot read @column, silently substituting the naming strategy's answer for a
+    // declared or inherited physical name. ADR-0039: resolving accessor, so a projection
+    // field inheriting @column through `extends` resolves it.
+    const dbCol = resolveColumnName(f, columnNamingStrategy);
     const view = inferViewKind(f);
     const label = labelFor(f);
     const baseEntry = `name: ${JSON.stringify(f.name)}, label: ${JSON.stringify(label)}, view: ${JSON.stringify(view)}, dbCol: ${JSON.stringify(dbCol)}`;
