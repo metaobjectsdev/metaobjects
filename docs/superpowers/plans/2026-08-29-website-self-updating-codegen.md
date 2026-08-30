@@ -2423,6 +2423,10 @@ Any nav link labelled "Reference" now points at the metamodel. Add a link to the
 > reference + example) go out immediately after the next release, which `finish-release.mjs`
 > now guarantees will carry both the renderer output and fresh llms mirrors.
 >
+> **That claim was FALSE when written and is true now.** Code review found gate 4 listed
+> only the injector entrypoint and the payload — not `site-reference/`, and not
+> `scripts/site/inject.mjs` which the entrypoint imports. Both are gated as of `49ee43508`.
+>
 > **What this program added that the plan did not ask for, all forced by the same
 > constraint** — the deploy pins to a release tag and installs nothing:
 > - `scripts/finish-release.mjs`, because the tag was cut in the MIDDLE of a coordinated
