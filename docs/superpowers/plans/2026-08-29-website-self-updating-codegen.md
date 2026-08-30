@@ -2197,7 +2197,7 @@ A flag the CLI accepts and silently ignores. This ships to adopters and is worth
 - Modify: `server/typescript/packages/cli/src/commands/docs.ts:213`
 - Test: `server/typescript/packages/cli/test/docs-metamodel-site.test.ts`
 
-- [ ] **Step 1: Confirm the defect**
+- [x] **Step 1: Confirm the defect**
 
 ```bash
 cd examples/advanced-modeling
@@ -2208,7 +2208,7 @@ find /tmp/x -name '*.md'   | wc -l     # 16
 
 `--metamodel` returns at `docs.ts:213-214`, before the `--site` branch at ~349. The flag is parsed, accepted, and dropped.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```ts
 import { describe, test, expect } from "bun:test";
@@ -2228,7 +2228,7 @@ describe("meta docs --metamodel --site", () => {
 });
 ```
 
-- [ ] **Step 3: Implement the refusal**
+- [x] **Step 3: Implement the refusal**
 
 ```ts
 if (flags.metamodel) {
@@ -2248,7 +2248,7 @@ if (flags.metamodel) {
 
 **Deliberately not building HTML into the CLI.** Doing so would add a markdown-renderer dependency to a published package for one surface. The website renders it instead (Task 17), keeping that dependency in `scripts/`, dev-only — and giving the pages the metaobjects.dev look rather than the docs-site adopter theme. If adopters later ask to render it locally, that is a scoped follow-on with a reason to exist.
 
-- [ ] **Step 4: Run the tests, then commit**
+- [x] **Step 4: Run the tests, then commit**
 
 ```bash
 cd server/typescript/packages/cli && bun test test/docs-metamodel-site.test.ts
@@ -2256,6 +2256,28 @@ git add server/typescript/packages/cli && git commit -m "fix(docs): --metamodel 
 ```
 
 ---
+
+> **DONE 2026-08-30.** Defect confirmed exactly as written: exit 0, 16 markdown, 0 HTML.
+>
+> **Two corrections to the plan's own text, both found by running it.**
+> - The plan's test imports `run` from `../src/index.js`. That module IS importable, but
+>   the test calls `docsCommand` directly — a narrower seam, and it avoids the trap that
+>   `src/index.ts` is a module rather than the entry point (`bin/meta.ts` is).
+> - The plan asserts `readdirSync(join(TMP2, "metamodel"))`. **An explicit `--out` is the
+>   whole destination** — the pages land directly in it (`INDEX.md`, `providers.md`,
+>   `types/*.md`), with no added `metamodel/` segment; that segment is part of the DEFAULT
+>   (`./docs/metamodel`). `docs.ts`'s own comment says "under `<out>/metamodel/`", which
+>   reads as an added segment and is misleading. The test asserts what the command does.
+>   **Note for Task 17: the index page is `INDEX.md`, not `index.md`** — the plan's
+>   `renderReference` test expects `index.html`, so the renderer has to map the name.
+>
+> **Two assertions the plan did not have, each closing a way the fix could be hollow.**
+> - **The refusal writes NOTHING.** A refusal that still emitted the sixteen files leaves
+>   the same misleading directory behind for a script that checks output exists rather
+>   than the exit code — which is the reader the original defect fooled.
+> - **`--site` alone is untouched**, asserted on the MESSAGE, not the exit code: `--site`
+>   in a scratch directory fails for its own reason (no model), so an exit-code assertion
+>   would pass for the wrong reason.
 
 ### Task 17: `/reference` becomes the metamodel reference
 
