@@ -5,6 +5,28 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+### Fixed — `meta docs --metamodel --site` accepted `--site` and dropped it
+
+The flag parsed, the command printed *"wrote 16 page(s)"*, exited **0**, and produced
+**zero HTML**. `--metamodel` returns before the `--site` branch is ever reached, so asking
+for a site got a success message and a directory of markdown. Same shape as the four
+defects in `0.24.4`: the tool saying something untrue about work it had just done.
+
+It now **refuses** — exit 2, naming where the rendered form lives — and writes nothing,
+because a refusal that still emitted the sixteen files would leave the same misleading
+directory behind for any script that checks output exists rather than the exit code.
+
+**Deliberately not implemented as HTML.** `--site` builds pages from a MODEL, through
+docs-site's loader and templates over your metadata; the metamodel surface is a different
+renderer over the registry and it emits markdown. Bridging them means putting a
+markdown-rendering dependency into a published package for one surface. The website
+renders it instead, which keeps that dependency dev-only. If adopters want it locally,
+that is a scoped follow-on with a reason to exist rather than a flag quietly growing one.
+
+`--site` on its own is untouched, and the guard is pinned to the combination.
+
 ## [0.24.5] — npm `0.24.5` · PyPI `0.24.5` · NuGet `0.24.5` · Maven `7.24.5` — 2026-08-30
 
 _All four registries publish, and **not one of them is a version-parity bump** — each carries a

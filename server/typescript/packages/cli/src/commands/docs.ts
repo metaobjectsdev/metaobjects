@@ -211,6 +211,23 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // NEITHER a user's metadata NOR a config — there is nothing to load. It writes
   // the renderer's files under <out>/metamodel/ (default ./docs/metamodel).
   if (flags.metamodel) {
+    // `--site` builds HTML from a MODEL — docs-site's own loader and templates over the
+    // user's metadata. The metamodel surface is a different renderer entirely, over the
+    // registry, and it emits markdown; there is no renderer here to bridge them. The flag
+    // used to be parsed, accepted and then dropped by this very return: the command wrote
+    // sixteen markdown files, printed a success line and exited 0, so asking for a site
+    // produced no site and no complaint.
+    //
+    // It refuses rather than growing an HTML renderer, which would put a markdown-
+    // rendering dependency into a published package for one surface. The website renders
+    // it instead, keeping that dependency dev-only and giving the pages the metaobjects.dev
+    // look rather than the docs-site adopter theme.
+    if (flags.site) {
+      log.error(
+        "docs: --site is not supported with --metamodel. The metamodel reference is " +
+        "markdown; the rendered form is published at https://metaobjects.dev/reference");
+      return 2;
+    }
     return metamodelDocsCommand(cwd, flags.out);
   }
 
