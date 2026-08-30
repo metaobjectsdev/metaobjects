@@ -219,13 +219,18 @@ gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-
 # SCOPED to `scripts/site` — a bare `bun test` at the repo root walks java/python/
 # csharp/fixtures and takes many minutes.
 #
+# It also checks the COMMITTED payload — `examples/showcase/site-payload.json`, the
+# single artifact the site renders. Committing it is what makes the site's deploy
+# build-step-free and its content reviewable in a diff, and that is only worth anything
+# while the committed bytes match a fresh build. Building it re-runs four gates of its
+# own (subsequence, drift-fixture-still-fails, requirements-resolve, no-home-path), so
+# `--check` is both a freshness check and a re-assertion of every claim the site makes.
+#
 # Deliberately does NOT run the other four ports: that shells out to mvn/dotnet/uv,
 # and this lane is `step_if bun` — guarded on bun alone and included in `--quick`, the
 # documented pre-PR command. The release preflight runs `--check --all-ports`, which
-# refuses to leave a port out. The site PAYLOAD half of this gate joins here when the
-# payload builder lands (plan task 9); today there is no payload to check, and naming
-# the gate for one would be a gate reading as more coverage than it has.
-gate_site_snippets() { bun_install && bun test scripts/site; }
+# refuses to leave a port out.
+gate_site_payload() { bun_install && bun test scripts/site && bun scripts/build-site-payload.ts --check; }
 
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
@@ -514,7 +519,7 @@ if want gates; then step    "script-name hook collisions"      gate_script_name_
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
-if want gates; then step_if bun "site snippets are true"       gate_site_snippets;          fi
+if want gates; then step_if bun "site payload is true"         gate_site_payload;           fi
 if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi

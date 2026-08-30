@@ -135,11 +135,12 @@ ok(`lockstep set @ ${current}: ${set.length} packages → ${VERSION}`);
 // out; the ci-local gate deliberately runs the bun-only half.
 try {
   sh("bun scripts/regen-showcase.ts --check --all-ports", { quiet: true });
-  ok("showcase: committed output matches a pristine regen on all five ports");
+  sh("bun scripts/build-site-payload.ts --check", { quiet: true });
+  ok("site payload: showcase fresh on all five ports, payload fresh");
 } catch (e) {
-  die("showcase output is stale, or a port's toolchain is missing — the site would\n" +
-      "  publish a stale claim. Run `bun scripts/regen-showcase.ts --all-ports`, review\n" +
-      "  the diff, and commit before releasing.\n\n" +
+  die("the site payload is stale, or a port's toolchain is missing — the site would\n" +
+      "  publish a stale claim. Run `bun scripts/regen-showcase.ts --all-ports` and\n" +
+      "  `bun run site:payload`, review the diff, and commit before releasing.\n\n" +
       `${e.stdout ?? ""}${e.stderr ?? ""}`);
 }
 

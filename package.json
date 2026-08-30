@@ -13,6 +13,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "test": "cd server/typescript && bun test",
     "regen:showcase": "bun scripts/regen-showcase.ts",
+    "site:payload": "bun scripts/build-site-payload.ts",
     "clean": "rm -rf server/typescript/packages/*/dist server/typescript/packages/*/*.tsbuildinfo client/web/packages/*/dist client/web/packages/*/*.tsbuildinfo",
     "release": "bun scripts/release.mjs",
     "prerelease:publish": "bun scripts/prerelease.mjs"
