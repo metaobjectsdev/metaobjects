@@ -3,7 +3,8 @@
 **Date:** 2026-08-30
 **Status:** proposed — not yet approved for implementation
 **Scope:** all five ports (TypeScript, C#, Java, Kotlin, Python), the agent-context skills,
-and the metaobjects.dev codegen snippets.
+and the metaobjects.dev codegen snippets. Three programs; they can be planned and shipped
+independently, and Program A has a hard prerequisite (§A4).
 
 ## Summary
 
@@ -17,6 +18,9 @@ different consumers, and different risk profiles:
 - **Program B — metamodel vocabulary names.** Generate, per port, constants for every
   registered type name, subtype name and attribute name, so that no code in this repo or
   in an adopter's provider/tooling spells `"object.entity"` or `"@column"` as a literal.
+- **Program C — a read-only startup schema validator**, per port, closing the one link in
+  the chain that no build-time gate can reach: whether the database *this running process is
+  actually connected to* matches the metadata it just loaded.
 
 They share one goal — **eliminate magic strings** — and one doctrinal home: the
 `metaobjects-*` skills must teach it in every language, which today they do not.
@@ -285,6 +289,95 @@ the exception.
 
 ---
 
+## Program C — read-only startup schema validation
+
+### C1. Why this is not a revival of what ADR-0015 removed
+
+The Java port once shipped `MetaClassDBValidatorService`: it verified each MetaObject's
+table/view mapping against the live database **and created what was missing** — tables,
+sequences, indexes, foreign keys, views — under an `autoCreate` flag
+(`docs/superpowers/specs/2026-05-22-fr-003-…-design.md:17`).
+
+[ADR-0015](../../../spec/decisions/ADR-0015-single-shared-migrate-engine.md) removed it, and
+the ADR names exactly what it removed: "Java's OMDB runtime schema **auto-create** path
+(`MetaClassDBValidatorService` + the drivers' `createTable`/`createIndex`/`createForeignKey`/
+`createSequence` DDL) was **also removed** — OMDB is now pure data-access." Every deleted
+capability is a **write**. The read half went with it only because the two were one service
+behind one flag.
+
+ADR-0015 is about schema **authority** — who is allowed to emit DDL, and the answer is the
+TypeScript toolchain alone. A validator that only introspects and compares claims no
+authority. **Program C is read-only by hard rule: it emits no DDL, ever, under any flag.**
+That is the line that keeps ADR-0015 intact, and it is not a soft guideline — an
+`autoCreate` option must not exist, because its existence is what made the last one
+removable.
+
+### C2. The gap it closes
+
+The existing gates are build-time and, for the schema link, Node-only:
+
+| Gate | When | Which ports | What it proves |
+|---|---|---|---|
+| `verify --codegen` | build | all five | generated code and constants match the metadata |
+| `verify --db` | build / CI | **Node only** | metadata matches the DB *the developer or CI* pointed at |
+| `verify --replay` / `--replay-snapshot` | build | Node only | the committed migration chain applies and rebuilds the recorded snapshot |
+| **Program C** | **process start** | **the port the service runs in** | the DB **this process is connected to** matches the model it just loaded |
+
+The failure classes only Program C can see: the deployed artifact pointed at the wrong
+database; a migration that never ran in *this* environment; a hand-patched production table;
+a read replica behind on schema; two services sharing one database where one shipped a newer
+model.
+
+The strongest form of the argument is a direct consequence of ADR-0015: **the four ports that
+cannot run `verify --db` are the four that most need this.** A Java, Kotlin, C# or Python
+service runs against a schema it does not own and today has no mechanism at all for detecting
+that the schema disagrees with the metadata it loaded. Centralising schema authority in Node
+was right; leaving the other four ports blind at runtime was its unpriced cost.
+
+### C3. Compare against the committed snapshot, not against metadata
+
+The obvious implementation — each port diffs live introspection against loaded metadata — is
+wrong, because it re-forks the diff engine ADR-0015 consolidated into one place, in four
+languages, and that is the exact failure the ADR was written to end.
+
+Instead: **each port compares live introspection against the committed schema snapshot** that
+the TypeScript toolchain already produces and that `verify` has gated since
+[#292](https://github.com/metaobjectsdev/metaobjects/issues/292). Each port then needs only
+(a) dialect-specific introspection queries and (b) a comparison of two schema descriptions —
+never a diff engine, never a notion of what the schema *should* be derived independently.
+
+This also completes the chain, and is why the three programs belong in one spec. Each link is
+checked somewhere, by something already built:
+
+```
+metadata --(verify --codegen)--> generated code + name constants   [every port, build]
+metadata --(verify --db, #292)--> committed schema snapshot          [Node, build]
+snapshot --(verify --replay-snapshot)--> migration chain             [Node, build]
+snapshot --(Program C)--> the live DB this process uses              [every port, boot]
+```
+
+A wrong physical name in a generated constant would have to survive all four to reach
+production, and it cannot, because every link is anchored to the same metadata.
+
+**Where the chain genuinely breaks, stated honestly:** column naming is *config*, not
+metadata (`KotlinExposedTableGenerator.kt:44-56`). Two ports generating against one database
+with different `columnNaming` settings each pass their own `verify --codegen` while
+disagreeing with each other. The composition therefore holds only while the naming config
+agrees across ports — which is a strong argument for **declaring `@column` explicitly**, since
+a declared physical name is config-independent. The showcase model already does this, and its
+comment already says why.
+
+### C4. Open shape questions
+
+- **Fail-fast or warn?** A startup gate that hard-fails takes down a fleet on a false
+  positive, and the schema-drift engine has a false-positive history (the D1 phantom-drift
+  batch in 0.20.2). Boot is a worse place to be wrong than CI. Likely: warn by default, fail
+  on an explicit opt-in, never silent.
+- **How deep?** Table/view presence, column presence, nullability and a coarse type class is
+  probably the whole valuable set. Full type fidelity re-creates the diff engine by degrees.
+- **Cost.** Dialect-specific introspection (`information_schema`/`pg_catalog`,
+  `PRAGMA table_info`, …) × four ports. Scope discipline decides whether this is small.
+
 ## The doctrine, and where it is taught
 
 Getting rid of magic strings is the point; the constants are only the mechanism. The
@@ -312,6 +405,9 @@ highest-leverage work is the part that reaches adopters:
 - **No removal of `$table` / `dbCol` / the existing descriptor keys.** Additive only.
 - **Not a runtime metadata API.** These are compile-time constants; the reflective routes
   each ORM already offers are unaffected and, where they are typed handles, preferred.
+- **No DDL from Program C, under any flag.** No `autoCreate`, no create-if-missing, no
+  "just for dev". Schema authority stays with the TypeScript toolchain (ADR-0015). The
+  option's *existence* is what made the previous validator removable.
 
 ---
 
@@ -325,7 +421,14 @@ highest-leverage work is the part that reaches adopters:
    coverage. Recommended as coverage-only above, but if the curated names turn out to be
    mechanically derivable after all, one generator for five ports is simpler than a
    generator plus an exception.
-3. **Whether the motivating adopter code is TypeScript-only.** If it is, Program A's
+3. **Program C's failure mode and depth** — see §C4. Warn-by-default with opt-in
+   fail-fast is the likely answer, but boot-time behaviour deserves its own decision rather
+   than inheriting CI's.
+4. **Whether Program C is one FR or three.** It has an independent justification (four ports
+   are blind at runtime today) and could be specced separately. It is here because it closes
+   the last link in the same source-of-truth chain, which is only visible when all three are
+   read together.
+5. **Whether the motivating adopter code is TypeScript-only.** If it is, Program A's
    "separate artifact in five ports" arithmetic collapses and merging into the existing TS
    descriptor becomes the cheaper right answer — it was verified safe (see below).
 
