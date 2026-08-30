@@ -23,7 +23,7 @@
   <properties>
     <!-- Kept in lockstep with server/java/pom.xml by scripts/check-pom-versions.sh:
          this project is OUTSIDE the reactor, so `mvn versions:set` never touches it. -->
-    <metaobjects.version>7.24.4</metaobjects.version>
+    <metaobjects.version>7.24.5</metaobjects.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 

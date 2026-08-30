@@ -1,9 +1,9 @@
 {
   "registries": {
     "npm": "0.24.5",
-    "pypi": "0.24.4",
-    "nuget": "0.24.4",
-    "maven": "7.24.4",
+    "pypi": "0.24.5",
+    "nuget": "0.24.5",
+    "maven": "7.24.5",
     "metamodel": "0.13"
   },
   "snippets": {
