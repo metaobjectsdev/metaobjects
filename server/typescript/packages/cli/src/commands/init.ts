@@ -11,12 +11,33 @@ import { resolveStack } from "../lib/detect-stack.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { cliVersion } from "../lib/version.js";
+import { declaredDependencyNames, type PackageManifest } from "../lib/package-manifest.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
-import { readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "@metaobjectsdev/codegen-ts";
+import { readReferenceTemplate, type ReferenceGeneratorName } from "@metaobjectsdev/codegen-ts";
 
 // ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
 // the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
 const OWNED_GENERATORS_DIR = "codegen/generators";
+
+// The FOUR reference generators `meta init` copies EAGERLY — deliberately an explicit
+// literal, not derived from @metaobjectsdev/codegen-ts's REFERENCE_GENERATOR_NAMES (the
+// full list of everything `meta eject` can copy). Looping over that array unconditionally
+// used to mean init scaffolded whatever it contained: when a later task registered
+// "routes-hono" there, init started writing an unwired Hono generator nothing in the
+// scaffolded config imports, on every fresh project, silently. This constant is the
+// scaffolded metaobjects.config.ts's import list (buildMetaobjectsConfigBody below) made
+// explicit and checkable — anything else is eject-on-demand via `meta eject <name>`, which
+// exists exactly so eager copying isn't the only way to take ownership of a template.
+const SCAFFOLDED_GENERATOR_NAMES: readonly ReferenceGeneratorName[] = ["entity", "queries", "routes", "barrel"];
+
+// The scaffolded config's outDir + dbImport, as named constants so the throwing-stub
+// path below is DERIVED from the same values the config template embeds rather than
+// duplicated as a second literal that could drift from it.
+const SCAFFOLD_OUT_DIR = "src/generated";
+const SCAFFOLD_DB_IMPORT = "../db";
+// "src/generated" + "../db" -> "src/db" -> "src/db.ts" (dbImport resolves relative
+// to outDir, same as the module specifier a generated route file emits).
+const DB_STUB_REL_PATH = `${join(SCAFFOLD_OUT_DIR, SCAFFOLD_DB_IMPORT)}.ts`;
 
 const META_COMMON_JSON = JSON.stringify(
   {
@@ -87,9 +108,18 @@ import { routesFile } from "./codegen/generators/routes.js";
 import { barrel } from "./codegen/generators/barrel.js";
 
 export default defineConfig({
-  outDir:    "src/generated",
-  extStyle:  "js",   // ".js"-extensioned relative imports — safe under Node ESM / tsc nodenext AND bundlers
-  dbImport:  "../db",
+  outDir:    "${SCAFFOLD_OUT_DIR}",
+  extStyle:  "js",   // ".js"-extensioned relative imports — correct for Node ESM and \`tsc\` with
+                     // nodenext, which is what a fresh project has. BUNDLERS DISAGREE: this fails
+                     // outright under Turbopack (even between two generated files, so the whole
+                     // generated tree goes unresolvable), while Vite and esbuild accept it and
+                     // webpack needs \`resolve.extensionAlias\`. If a generated import fails to
+                     // resolve, set "none" and retest — do not assume this line covers your bundler.
+  dbImport:  "${SCAFFOLD_DB_IMPORT}",   // routesFile() below emits \`import { db } from …\` — meta init
+                        // scaffolded ${DB_STUB_REL_PATH} as a THROWING STUB (types clean, no
+                        // driver chosen) so meta gen and tsc pass; replace it with your real
+                        // Drizzle connection before running the app.
+                        // (queriesFile() takes db as a parameter and never reads this.)
   dialect:   "${dialect}",
   apiPrefix: "",     // set to "/api" if your routes mount under /api
   generators: [
@@ -107,10 +137,76 @@ export default defineConfig({
 `;
 }
 
-const NEXT_STEPS = `
+// The throwing-stub scaffolded at `dbImport`'s resolved path (DB_STUB_REL_PATH,
+// "src/db.ts" by default). It exists so `meta gen` and a fresh project's FIRST
+// `tsc` both succeed with no driver chosen and no dependency added — deliberately
+// NOT a real connection. Every generated route only ever passes `db` straight
+// through to `mountCrudRoutes(...)`; nothing reads a property off it at import
+// time, so a value typed `unknown` (not `any`) satisfies every call site while
+// making a genuine runtime use (mountCrudRoutes calling `db.select()` etc.) throw
+// immediately with an actionable message instead of failing to resolve at all.
+// Built as an array of plain single-quoted lines (not a template literal) so the
+// backticks and quotes inside the comment/message need no escaping.
+const DB_STUB_BODY = [
+  "// `meta init` scaffolded this file because the generated Fastify routes",
+  '// `import { db } from "../db.js"` (see `dbImport` in metaobjects.config.ts) —',
+  "// a module that has to exist for `meta gen` and `tsc` to succeed. MetaObjects",
+  "// cannot fill it in for real without choosing a database driver on your",
+  "// behalf (better-sqlite3 vs @libsql/client vs pg vs postgres.js) and adding a",
+  "// dependency you may not want, so this is a STUB, not a connection.",
+  "//",
+  "// It type-checks and satisfies every generated import, but throws the first",
+  "// time anything actually touches `db` at runtime. Replace the export below",
+  "// with your real Drizzle connection, e.g.:",
+  "//",
+  '//   import { drizzle } from "drizzle-orm/better-sqlite3";',
+  '//   import Database from "better-sqlite3";',
+  '//   export const db = drizzle(new Database("dev.sqlite"));',
+  "//",
+  "// (swap the driver import for your dialect — see",
+  "// https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/wiring-generated-queries.md",
+  "// for SQLite/libsql, Cloudflare D1, Postgres and multi-tenant setups.)",
+  "",
+  "const UNWIRED_MESSAGE =",
+  '  "src/db.ts is still the scaffolded stub meta init wrote — it cannot choose " +',
+  "  \"a database driver for you. Replace 'export const db = ...' below with \" +",
+  '  "your real Drizzle connection, e.g.:\\n\\n" +',
+  "  \"  import { drizzle } from 'drizzle-orm/better-sqlite3';\\n\" +",
+  "  \"  import Database from 'better-sqlite3';\\n\" +",
+  "  \"  export const db = drizzle(new Database('dev.sqlite'));\\n\";",
+  "",
+  "function unwired(): never {",
+  "  throw new Error(UNWIRED_MESSAGE);",
+  "}",
+  "",
+  "/**",
+  " * Stand-in for your real Drizzle database connection. Generated code only",
+  " * ever passes `db` straight through to `mountCrudRoutes(...)` — it never",
+  " * reads a property off it at import time — so this typechecks everywhere",
+  " * `db` is used, and throws the message above the first time anything really",
+  " * touches it.",
+  " */",
+  "export const db: unknown = new Proxy({}, { get: unwired });",
+  "",
+].join("\n");
+
+// Printed only when the stub was ACTUALLY written this run. It is gated on having just
+// written the scaffolded config (see the db-stub block in `init`), so a re-run in a
+// project that keeps its own config writes nothing — and a block claiming otherwise is
+// the same "asserting things about its own scaffold that aren't true" defect the rest of
+// this file was corrected for.
+const DB_STUB_NOTE = `Also scaffolded ${DB_STUB_REL_PATH}: a THROWING STUB standing in for your database
+connection, so the generated routes' \`db\` import resolves and the first tsc is clean.
+Replace it with a real connection before running the app — until you do, the first
+request that touches \`db\` throws with instructions.
+`;
+
+const SCAFFOLD_SUMMARY = `
 Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 Codegen generators copied to codegen/generators/ — they're YOURS to edit (ADR-0034 scaffold-and-own).
+`;
 
+const NEXT_STEPS = `
 Next steps:
   0. Everything here is ESM — package.json needs "type": "module" (init sets it
      unless the project has CommonJS sources; without it the first tsc fails).
@@ -329,11 +425,16 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
  * `codegen/generators/<name>.ts` so they own them. Each file is written only if absent,
  * so a re-run with --force never clobbers a hand-edited generator. The scaffolded
  * metaobjects.config.ts imports these local copies (not the package `/generators` export).
+ *
+ * Copies SCAFFOLDED_GENERATOR_NAMES only — the four the scaffolded config actually
+ * wires — not every name @metaobjectsdev/codegen-ts happens to register. Anything else
+ * (routes-hono, and any UI-tier template from codegen-ts-react/-tanstack) is reached with
+ * `meta eject <name>`, not by eager copying.
  */
 async function writeOwnedGenerators(opts: InitOptions, result: InitResult): Promise<void> {
   const dir = join(opts.cwd, OWNED_GENERATORS_DIR);
   await mkdir(dir, { recursive: true });
-  for (const name of REFERENCE_GENERATOR_NAMES) {
+  for (const name of SCAFFOLDED_GENERATOR_NAMES) {
     const rel = `${OWNED_GENERATORS_DIR}/${name}.ts`;
     const abs = join(dir, `${name}.ts`);
     if (await fileExists(abs)) {
@@ -475,8 +576,8 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       `.metaobjects/${PACKAGE_MANIFEST_FILE}`,
     );
     result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
-    for (const name of REFERENCE_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);
-    result.created.push("metaobjects.config.ts", ".gitignore");
+    for (const name of SCAFFOLDED_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);
+    result.created.push("metaobjects.config.ts", DB_STUB_REL_PATH, ".gitignore");
     return result;
   }
 
@@ -524,9 +625,52 @@ export async function init(opts: InitOptions): Promise<InitResult> {
 
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
-  if (!(await fileExists(forgeConfigPath))) {
+  const wroteScaffoldedConfig = !(await fileExists(forgeConfigPath));
+  if (wroteScaffoldedConfig) {
     await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite"), "utf8");
     result.created.push("metaobjects.config.ts");
+  }
+
+  // Scaffold the `dbImport` throwing stub at DB_STUB_REL_PATH ("src/db.ts" by
+  // default) — ONLY if absent, so a re-run never clobbers a user's real db module
+  // (same "write once" precedent as writeOwnedGenerators above). Without this, the
+  // scaffolded config declares `dbImport: "../db"` pointing at a module `meta init`
+  // never creates, and a fresh project's FIRST `tsc` fails to resolve it.
+  //
+  // Gated on having just WRITTEN that config, not merely on the stub being absent.
+  // DB_STUB_REL_PATH is derived from SCAFFOLD_OUT_DIR + SCAFFOLD_DB_IMPORT — the
+  // scaffold's own constants — so it describes where the SCAFFOLDED config points and
+  // nowhere else. Re-running `meta init` in a project that already has a config with
+  // its own `outDir`/`dbImport` preserves that config (above) and would otherwise still
+  // drop a src/db.ts that nothing in the project references: a stray file, in the
+  // adopter's application source, answering a question they had already answered.
+  const dbStubPath = join(opts.cwd, DB_STUB_REL_PATH);
+  const dbStubExists = await fileExists(dbStubPath);
+  if (wroteScaffoldedConfig && !dbStubExists) {
+    await mkdir(dirname(dbStubPath), { recursive: true });
+    await writeFile(dbStubPath, DB_STUB_BODY, "utf8");
+    result.created.push(DB_STUB_REL_PATH);
+  } else if (dbStubExists) {
+    // "preserved" means a file we would have written was left alone. Skipping because
+    // this project keeps its own config is not preservation — there is nothing there.
+    result.preserved.push(DB_STUB_REL_PATH);
+  } else {
+    // Neither written nor preserved: this project keeps its own config AND has no stub.
+    // Usually correct — its `dbImport` points at a real module somewhere else. But it is
+    // ALSO what a scaffolded project looks like after someone deletes or moves src/db.ts,
+    // and `meta init --force` cannot tell those apart: `wroteScaffoldedConfig` is only
+    // "no config existed", so it is false for the config init itself wrote. Silently
+    // doing nothing there leaves the scaffolded `dbImport: "../db"` and the generated
+    // routes' `import { db } from "../db.js"` pointing at nothing, and the adopter meets
+    // it as a TS2307 from `tsc` with no word from the command that could have said so.
+    // Say it here rather than writing: dropping a file into a project that owns its
+    // config is what the branch above deliberately refuses.
+    result.warnings.push(
+      `${DB_STUB_REL_PATH} was not scaffolded — this project has its own ` +
+      "metaobjects.config.ts, so init leaves the database module to it. If that config's " +
+      `\`dbImport\` resolves to ${DB_STUB_REL_PATH}, create it or the generated routes will ` +
+      "not resolve.",
+    );
   }
 
   // Scaffold a minimal root .gitignore ONLY when the project has none — never
@@ -651,10 +795,17 @@ function addScaffoldDevDependencies(pkg: Record<string, unknown>): string[] {
     "@metaobjectsdev/metadata": `^${version}`,
   };
   const dev = (pkg.devDependencies ?? {}) as Record<string, string>;
-  const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+  // "Already declared" spans all four dependency fields — the shared rule, so this
+  // cannot drift from what `meta eject` means by the same words. It used to ask only
+  // dependencies + devDependencies, which meant a project declaring codegen-ts as a
+  // PEER dependency (correct for a library whose consumer supplies the version) got it
+  // added to devDependencies as well: the same package pinned twice in one manifest,
+  // and a second physical copy is the class-identity split this repo has been bitten
+  // by twice.
+  const declared = declaredDependencyNames(pkg as PackageManifest);
   const added: string[] = [];
   for (const [name, range] of Object.entries(wanted)) {
-    if (dev[name] !== undefined || deps[name] !== undefined) continue;
+    if (declared.has(name)) continue;
     dev[name] = range;
     added.push(name);
   }
@@ -705,8 +856,18 @@ function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
   return block;
 }
 
-export function nextStepsBlock(): string {
-  return NEXT_STEPS;
+/**
+ * The post-init message.
+ *
+ * @param dbStubWritten whether THIS run wrote {@link DB_STUB_REL_PATH}. Required rather
+ *   than defaulted, because a default would silently restore the bug this parameter
+ *   exists to close: the note used to be part of one static string and so claimed the
+ *   stub on every run, including the `meta init --force` in a project keeping its own
+ *   `metaobjects.config.ts`, where the stub is deliberately not written. Callers pass
+ *   `result.created.includes(DB_STUB_REL_PATH)` — the same list the message describes.
+ */
+export function nextStepsBlock(dbStubWritten: boolean): string {
+  return SCAFFOLD_SUMMARY + (dbStubWritten ? DB_STUB_NOTE : "") + NEXT_STEPS;
 }
 
 async function dirExists(p: string): Promise<boolean> {
@@ -771,7 +932,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         }
         for (const w of result.warnings) log.warn(w);
       } else {
-        log.info(nextStepsBlock());
+        log.info(nextStepsBlock(result.created.includes(DB_STUB_REL_PATH)));
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context
         // discovery warning) — these are otherwise dropped on the normal init path.
         for (const w of result.warnings) log.warn(w);

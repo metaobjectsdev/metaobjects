@@ -184,8 +184,8 @@ meta migrate --dialect d1                                        # Cloudflare D1
 
 ### Typecheck the generated code
 
-Two prerequisites first, because the printed hint names neither and a cold run
-hits both:
+One prerequisite first, because the printed hint doesn't name it and a cold run
+hits it:
 
 ```bash
 npm install --save-dev typescript      # `npx tsc` without it hits npm's guard
@@ -194,17 +194,15 @@ npm install --save-dev typescript      # `npx tsc` without it hits npm's guard
                                        # installs brings a compiler.
 ```
 
-…and **wire `src/db.ts` first** (the "Use" section below). The default
-`routesFile()` generator emits `import { db } from "../db.js"` — the module named
-by `dbImport` in `metaobjects.config.ts`, which `meta init` scaffolds but does not
-create. Typechecking before it exists reports a real missing module on a project
-with nothing wrong:
+The default `routesFile()` generator emits `import { db } from "../db.js"` — the
+module named by `dbImport` in `metaobjects.config.ts`. `meta init` scaffolds that
+module too, at `src/db.ts`, so this typechecks on a fresh project with no extra
+step. It is a *throwing stub*, not a real connection: it satisfies the import and
+picks no driver, but calling anything on `db` at runtime throws a clear error
+naming what to do. Typecheck first, wire the real connection before you run the
+app (see the "Use" section below) — `npx tsc` doesn't need it in order.
 
-```
-src/generated/Author.routes.ts(4,20): error TS2307: Cannot find module '../db.js'
-```
-
-With both in place, `npx tsc` (the hint every `meta gen`/`meta migrate` prints)
+With that, `npx tsc` (the hint every `meta gen`/`meta migrate` prints)
 works out of the box with a stock `tsc --init` tsconfig: the generated code emits
 `.js`-extensioned relative imports (`import { Author } from "./Author.js"`),
 which resolve correctly under **both** Node's native ESM resolution
@@ -228,8 +226,8 @@ Zod + Fastify are direct user-app deps. With the default (flat)
 
 The generated `Author.routes.ts` and `Author.queries.ts` files import a
 module-level `db` singleton from the path configured by `dbImport` in
-`metaobjects.config.ts` (`meta init` scaffolds `dbImport: "../db"`); wire it up
-once at `src/db.ts` — see
+`metaobjects.config.ts` (`meta init` scaffolds `dbImport: "../db"`); replace the
+scaffolded throwing stub at `src/db.ts` with a real connection — see
 [`docs/recipes/wiring-generated-queries.md`](../recipes/wiring-generated-queries.md)
 for the per-dialect setup (SQLite/libsql, Cloudflare D1, Postgres, multi-tenant):
 
@@ -321,8 +319,11 @@ import { defineConfig } from "@metaobjectsdev/cli";
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { barrel } from "./codegen/generators/barrel.js";
-// Hono routes have no reference template yet — still imported from the package.
-import { routesFileHono } from "@metaobjectsdev/codegen-ts/generators";
+// Hono routes are NOT scaffolded eagerly by `meta init` (the default emit targets
+// Fastify) but have the same reference template + ownership route as entity/queries/
+// routes/barrel — take it with `meta eject routes-hono`, which copies it to
+// codegen/generators/routes-hono.ts.
+import { routesFileHono } from "./codegen/generators/routes-hono.js";
 
 export default defineConfig({
   outDir: "src/generated",

@@ -150,18 +150,25 @@ don't silently churn the existing code.
 
 ## Write your own generators — the built-ins rarely fit an app exactly
 
-The built-in generators (entity, queries, routes, form, grid, barrel) cover the
-common shape, but **real apps routinely need output the built-ins don't emit as-is**
-— a bespoke REST contract, custom DTO/response shapes, an app-specific service or
-repository layer, a UI the defaults don't produce. When that happens the model-first
-move is **not** to abandon metadata and hand-write the layer. Write a **custom
-generator** that reads the same metadata and emits *your* app's shape.
+The built-in generators (entity, queries, routes, routes-hono, barrel, form, hooks,
+grid, grid-hook) cover the common shape, but **real apps routinely need output the
+built-ins don't emit as-is** — a bespoke REST contract, custom DTO/response shapes,
+an app-specific service or repository layer, a UI the defaults don't produce. When
+that happens the model-first move is **not** to abandon metadata and hand-write the
+layer. Write a **custom generator** that reads the same metadata and emits *your*
+app's shape.
 
 Treat this as a first-class, expected activity — not an escape hatch. A custom
 generator is still model-first: it derives from the metadata spine, so it
 regenerates on change and stays consistent across every entity — the leverage you'd
 forfeit by hand-writing. Hand-rolling *away from* metadata is the anti-pattern;
 generating *your own shape from* metadata is the point.
+
+This is for when the *shape* itself needs to change. If a built-in's shape is
+already right and only the *target* is wrong — a different framework than the
+shipped reference emits for — take ownership of that generator instead of writing
+one from scratch; see "Your framework isn't the default" below, and your language
+reference for the command that does it.
 
 The plugin interface is small (`@metaobjectsdev/codegen-ts`): a `Generator` is
 `{ name, filter?, generate }`, where `generate(ctx)` returns `EmittedFile[]`
@@ -189,6 +196,31 @@ ctx) => …)` is the one-shot variant (a barrel, an app-config). Add your genera
 the `generators` array in `metaobjects.config.ts` next to the built-ins — it runs in
 the same pass, writes under the same target rules, and carries the `@generated`
 header so it round-trips like any other.
+
+## Your framework isn't the default — the retargeting procedure
+
+If the shipped templates do not emit for your stack, retargeting is the **normal first
+move** — not a workaround and not a sign of a bug. Owning a generator is the supported
+path to any framework; MetaObjects does not ship a codegen package per framework and is
+not waiting to.
+
+The doctrine, in order of what to try:
+
+1. **Check config first.** Several apparent codegen failures are one config value
+   (module-specifier style, output directory, dialect, API prefix). Change it and retest
+   before writing any code.
+2. **Own the generator, not the renderer.** Take a copy of the reference template for the
+   artifact that is wrong and edit the one step your framework disagrees about. Each
+   template's header names what its emit is coupled to and which call to swap.
+3. **Compose, do not fork.** Call the exported render function and wrap its result where
+   you can, so you keep receiving upstream fixes. Forking a whole renderer is the thing
+   to avoid — not owning the generator.
+4. **Server-tier output is usually already portable.** The entity module and the query
+   helpers carry no HTTP-framework coupling; retargeting is usually only needed at the
+   routes and UI tiers.
+
+Hand-rolling *away from* metadata is the anti-pattern. Generating *your own shape from*
+metadata is the point.
 
 ### Never read metadata through an `own*()` accessor (ADR-0039) — top bug source
 
@@ -238,6 +270,18 @@ entity** (the scale win); a one-off edit when it's genuinely one file.
 output/template · doesn't fit → write a generator that emits your shape *from the
 metadata* · only the genuinely un-modelable (business algorithms, external calls) is
 hand-written outside codegen — and it still imports the generated types.
+
+**The commands and config keys that implement the steps above differ per port, and the
+ports differ in how much is written down.** TypeScript has the whole procedure as a
+documented one — `meta eject`, the `metaobjects.config.ts` keys, the exported `render*`
+functions — in this skill's `references/typescript.md`. **The other ports have no eject
+command.** There, owning a generator means implementing that port's generator interface
+— `com.metaobjects.generator.Generator` (Java / Kotlin),
+`metaobjects.codegen.generator.Generator` (Python), `MetaObjects.Codegen.IGenerator`
+(C#) — and registering it with the build tool that runs codegen for your port. Their
+`references/` fragments document what each built-in emits, which is what you compare
+your own emit against; they do not carry a step-by-step retargeting procedure, so do
+not go looking for one.
 
 ## Dialects
 

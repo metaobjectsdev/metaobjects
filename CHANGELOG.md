@@ -64,6 +64,170 @@ port parked at `24.4` across several npm releases is not told its context has mo
 needs the shipped context hashed rather than its version compared, and the JVM ships no
 agent-context content — only the manifest reader.
 
+### Added — FR-040: codegen ownership is the framework story
+
+**MetaObjects does not need a codegen package per framework. It needs the ownership doctrine
+it already publishes to be true all the way down** — and in three places it was not. A codegen
+library cannot chase frameworks: there are more of them than any library can carry, they turn
+over faster than a release line, and each one added is a permanent liability the metamodel —
+the actual durable asset — gains nothing from. The shipped agent context already says the
+right thing ("treat this as a first-class, expected activity — not an escape hatch"). This is
+the release that makes it true. **The bar is not "Next.js works": it is that an agent adopting
+onto a stack nobody wrote a recipe for — Svelte, Nuxt, Qwik — reaches a working generator
+unaided, and treats having done so as normal.**
+
+**How it was found, and the framing error worth recording.** A cold adoption probe ran the
+documented TypeScript quickstart against published `0.24.4` inside a Next.js 16 / React 19 app
+on Turbopack with a real Postgres. Its substantive result was **positive and is not in
+dispute**: the schema and server tiers work on that stack unmodified — `queriesFile()` takes
+`db` as a parameter, so a Server Component calls it with no HTTP hop; `routesFileHono()` is
+deps-injected, the shape an App Router Route Handler wants; the full cross-port API contract
+held. The probe then reported eight "findings", and **most were mis-framed as defects.** The
+default templates target Fastify on Node; that they do not emit Next.js output is the
+templates doing what they say. Recording that error is the point — a report that reads a
+template mismatch as a product failure will keep proposing framework packages forever. Three
+findings survived re-scoring, and they are what shipped.
+
+- **`meta eject <generator>` — the ownership move is now a command.** ADR-0034 had `meta init`
+  eagerly copy four generators (`entity`, `queries`, `routes`, `barrel`) into
+  `codegen/generators/` and own them. The other five could be *used* but never *owned*: there
+  was no supported way to get one's source, at init time or after. `meta eject` is that same
+  copy operation generalised to every ejectable name in every package, callable at any time —
+  for a generator you skipped at init, or one a package gained since. `meta eject --list`
+  names all nine grouped by package (`entity`, `queries`, `routes`, `routes-hono`, `barrel`
+  from `codegen-ts`; `form` from `codegen-ts-react`; `hooks`, `grid`, `grid-hook` from
+  `codegen-ts-tanstack`). It never clobbers without `--force`, matching `init`'s rule, and it
+  reports the import line to paste by **parsing it out of the template's own header** rather
+  than re-deriving it from the file name — a generator's exported symbol does not follow its
+  file name (`hooks.ts` exports `tanstackQuery`, `routes-hono.ts` exports `routesFileHono`),
+  so a derived map would drift from what the template already tells a human to paste.
+- **The UI tier became ownable at all.** It was the gap with no workaround: an RSC app needs
+  `"use client"` at the top of generated form/hook files, and there was no seam to add it —
+  the choice was use the package's output verbatim or hand-write the tier and leave metadata
+  behind. Four new reference templates (`form`, `hooks`, `grid`, `grid-hook`) plus a new
+  `routes-hono`, and the render layer is **promoted to public API** — `renderFormFile`,
+  `renderHooksFile`, `renderColumnsFile`, `renderGridHookFile`, each a stable
+  `(entity, ctx) => string` — so an owned generator composes the engine and replaces only the
+  step its framework disagrees about, instead of copying ~600 lines of package internals out.
+  `codegen-ts` already exported `renderRoutesFile`; this applies the same pattern to the UI
+  packages. The reference-template reader is now a per-package factory, so a package that
+  gains templates later is picked up by `meta eject` with no other change.
+- **Every reference template documents its own swap point.** A `targets:` header block on all
+  nine states what the template targets, when to use it, what it emits, where to change it,
+  and what it composes with — so an agent retargeting reads the seam out of the file rather
+  than inferring it. Paired with a new **"Your framework isn't the default — the retargeting
+  procedure"** section in the `metaobjects-codegen` skill, which is the general answer the
+  per-framework recipes were standing in for.
+
+- **`clientDirective` — the `"use client"` knob.** Set it and the four generated client
+  artifacts (form, hooks, columns, grid-hook) get the directive React Server Components
+  frameworks require; leave it off (the default) and output is byte-identical to before.
+  It is **config, never a metadata attribute**: the directive is a fact about the
+  adopter's bundler topology, not about the entity, and registering it would give every
+  non-TS port vocabulary it can never dispatch on — the `source.rdb @role` mistake that
+  retired four members in `0.21.0`. It defaults **off** because the directive is only
+  *required* under RSC and is inert-but-warned-about elsewhere; the asymmetry that would
+  argue for defaulting on (a runtime error for RSC adopters versus a build warning for
+  everyone else) is precisely what the rest of this release removes — before it, an RSC
+  adopter had no seam at all. `<Entity>.meta.ts` is deliberately excluded: it is plain
+  data imported *by* a client component, and in RSC the boundary is the importing
+  component, not everything it reaches.
+
+**Docs stop promising what the project does not intend to ship.** `AGENTS.md` and the port
+docs described a first-party package per framework as the way to reach a new framework; that
+was never the plan and is now stated as the ownership move it actually is. The agent-facing
+quickstart in `docs/llms/` had been teaching the **deprecated** `@metaobjectsdev/codegen-ts/generators`
+import path, and the ownership one-liner samples in the docs did not type-check — both fixed,
+with the samples now compiled.
+
+**`meta init` scaffold honesty.** Four fixes where the scaffold said something untrue about
+its own output, the same class the `0.24.4` line was cut for: it stopped eagerly scaffolding
+an unwired `routes-hono.ts` (a file nothing imported, presented as if it were live); it now
+scaffolds a **throwing** `src/db.ts` stub, so the module the default `routesFile()` imports
+exists and fails with an instruction rather than `TS2307`; it names the `.gen-state` manifest
+and explains `dbImport` instead of leaving both as unexplained config; and its `fastify`
+devDependency is aligned to `runtime-ts`'s peer range, which it contradicted. Separately, the
+**TanStack Table v8 requirement is now discoverable** — `@metaobjectsdev/tanstack` bounds the
+peer at v8, but nothing told an adopter installing `@tanstack/react-table` themselves.
+
+**One recipe, explicitly a convenience.** [`docs/recipes/nextjs-vercel.md`](docs/recipes/nextjs-vercel.md)
+walks the Next.js App Router + Vercel path — the `extStyle: "none"` / `clientDirective: true`
+config delta, `routesFileHono()` mounted at `app/api/[[...route]]/route.ts` via `hono/vercel`,
+and generated query helpers called straight from a Server Component. It changes no package
+file, and it opens by saying the general procedure lives in the `metaobjects-codegen` skill:
+it is a shortcut past reasoning an agent could do unaided, which is the only relationship
+FR-040 permits it to have. Two of its notes exist because the failure is SILENT — a Server
+Component reading the database is not a dynamic signal, so the page prerenders at build and
+serves build-time rows forever while looking correct in `next dev`; and `apiPrefix` is baked
+into the emitted route path, so a Hono `basePath` on top double-prefixes it.
+
+Design: `docs/superpowers/specs/2026-08-29-fr-040-framework-agnostic-codegen-ownership-design.md`.
+Amends [ADR-0034](spec/decisions/ADR-0034-codegen-scaffold-and-own.md).
+
+**Review round.** Five of the fixes above are review findings on FR-040's own first
+draft, and one is worth naming because it is the shape this project keeps convicting
+itself of: **the five new templates shipped with no equivalence gate.** ADR-0034 makes a
+copyable template safe by running it *and* the built-in it was copied from over a fixture
+corpus and requiring byte-identical output — and that gate covered only the four
+`meta init` scaffolds. Since `src/reference` is excluded from tsconfig, the five new ones
+were imported by nothing, executed by nothing and type-checked by nothing: a renamed
+engine export, or a drifted `filter` deciding WHICH entities emit, would have reached an
+adopter running `meta eject` before it reached a red lane. The tsconfig comment even
+asserted the coverage, having been copy-pasted into the two UI packages from the one
+where it was true. Every template is now gated in every package, the file SET is
+compared as well as the contents (a drifted filter changes what is emitted, not how), and
+each gate asserts its own coverage equals `REFERENCE_GENERATOR_NAMES` so the tenth
+template cannot repeat this. Also fixed from that round: `meta eject` told you to *paste*
+an import that collides with the package import already in the documented config — whose
+quiet failure mode is a config that keeps running the PACKAGED generator while you edit
+the ejected file — and never named the dependency the ejected file imports, so the
+adopter's own `tsc` reported TS2307 on the file the CLI had just said they owned.
+
+**Second review round.** Seven more findings, and the two worth naming share a shape with
+the first round's: a change that was RIGHT drew its line one notch too wide, and nothing
+could see the difference. **The retargeting split took four ports' `own*()` guidance with
+it.** Moving `meta eject` and the `metaobjects.config.ts` keys out of the port-agnostic
+`SKILL.md` was correct — a Python project runs `metaobjects gen` and has no eject command,
+so those adopters' agents were being handed a procedure their toolchain cannot execute.
+But the same move carried off the ADR-0039 section, whose per-port own↔resolving **table
+is port-agnostic by construction**: its entire content is the OTHER ports' accessor names,
+including the trap that TS `attr()` resolves while Python `attr()` is own. It landed in
+`references/typescript.md`, the one page a Java, Python or C# adopter never installs,
+while `metaobjects-authoring` still told them to go read it there. And `SKILL.md` closed
+by sending every reader to "this skill's `references/` fragment for your server language",
+which for four of the five contains no retargeting content at all — a pointer to nothing,
+where before the split there had at least been a procedure (a wrong one, which is what the
+split fixed). The three port-agnostic sections are back in `SKILL.md`, and the closing
+pointer now says what is true per port, including that the other ports have **no** eject
+command and owning a generator there means implementing that port's generator interface.
+
+**`meta init` claimed a stub it had just decided not to write.** Its next-steps block was
+one static string describing the scaffolded `src/db.ts` in the imperative, printed on every
+run — including the `meta init --force` in a project keeping its own config, where the
+write is deliberately skipped. Worse was the silence beside it: `wroteScaffoldedConfig` is
+only *"no config existed"*, so it is false for the config `init` itself wrote one command
+earlier, and a scaffolded project whose `src/db.ts` is deleted lands in the same branch as
+a project that owns its config — nothing written, nothing preserved, **nothing said**, and
+the next `tsc` reporting `TS2307` on a file the command had just chosen not to restore. It
+warns now rather than writing, because dropping a file into a project that owns its config
+is the unilateral host-project touch FR-040 §4.4 lists as a defect.
+
+Also from the round: `meta eject` **stated which import a project currently has**, which
+it never checks and which is wrong for exactly the four `meta init` scaffolds — the
+`--force` re-sync case — so it names the goal and the three branches instead; its
+dependency notes could not see a subpath import and reported a **peer-declared package as
+missing**, advice that if followed adds the competing physical copy this repo has been
+bitten by twice; and **nothing gated `clientDirective` on the generated form**, the one
+client artifact the RSC story centres on. That last one is the round's own theme again,
+and the proof is sharper than the finding: with the directive dropped from a reference
+template alone — the two halves genuinely different — `reference-byte-identical` stays
+**green**, because it generates with the knob off, where the call is a no-op and removing
+it changes no byte it compares. The equivalence gate cannot see that defect in either
+direction. Both UI packages now run the knob against the built-in and the reference
+template, and each package's template coverage is a `Record` keyed by ejectable name whose
+keys are the proof and whose values are the wiring — so a tenth template is a **compile**
+error, not a hand-maintained list that can be edited to claim a gate nobody wrote.
+
 ### Fixed — eight defects found by adopting the product from scratch, twice
 
 Two adoption runs against the published `0.24.4`, docs followed literally and nothing fixed

@@ -110,7 +110,7 @@ export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-
 
 // ADR-0034 scaffold-and-own — reader for the copyable reference generators in
 // `src/reference/*.ts`. `meta init` uses this to copy them into the consumer's repo.
-export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "./reference-templates.js";
+export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES, makeReferenceReader } from "./reference-templates.js";
 export type { ReferenceGeneratorName } from "./reference-templates.js";
 
 // ts-poet composition primitives, re-exported from THIS package's own ts-poet
@@ -161,6 +161,7 @@ export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-a
 export { renderEntityConstants, resourcePath } from "./templates/entity-constants.js";
 export { renderQueriesFile } from "./templates/queries-file.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
+export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
 export { renderValueObjectFile } from "./templates/value-object-file.js";
 export { renderProjectionDecl } from "./templates/projection-decl.js";
 export type { ProjectionDeclOpts } from "./templates/projection-decl.js";
@@ -251,3 +252,7 @@ export type {
   SweepOrphansArgs,
   SweepOrphansResult,
 } from "./orphan-sweep.js";
+
+// FR-040 §6.4 — the client-component directive for generated CLIENT artifacts.
+// Public so an OWNED generator applies it the same way the built-ins do.
+export { withClientDirective, CLIENT_DIRECTIVE } from "./client-directive.js";

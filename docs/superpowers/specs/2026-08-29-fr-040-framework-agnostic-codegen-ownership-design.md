@@ -288,14 +288,61 @@ the agent could have done itself — which is the correct relationship.
 2. **Does `meta eject` need import rewriting beyond the config line?** The thin
    templates import only their package's engine, so probably not — but this must be
    verified per template rather than assumed, since the UI templates are new.
-3. **Should `verify --codegen` know about ejected generators?** An ejected generator is
-   the adopter's source, so drift detection against it is presumably still correct, but
-   the interaction with the three-way merge base deserves an explicit answer.
-4. **Is `"use client"` ever right to emit by default?** Emitting it unconditionally is
-   harmless in non-RSC bundlers but provokes module-level-directive warnings in Rollup.
-   The §4.2 position is that the adopter owns this decision — but if the overwhelming
-   majority of React adopters want it, a default with an opt-out may serve better. Left
-   open deliberately; §4.2 does not depend on the answer.
+3. ~~**Should `verify --codegen` know about ejected generators?**~~ **ANSWERED: no —
+   and the answer is now pinned rather than assumed.** The gate re-runs the same
+   `runGen` over the same loaded config, and a generator's provenance (a
+   `@metaobjectsdev/*` import, or a local `./codegen/generators/` one) is invisible to
+   both, so "what a fresh regen would produce" already means "what the ADOPTER'S
+   generator would produce". Ejecting is therefore not drift; editing the owned
+   generator is; and the printed remedy converges, because the discriminator is
+   `.gen-state/.hashes.json` — a record of what the GENERATOR WROTE — so `meta gen`
+   writes through the new generator and re-records the hash. That last point is not
+   free: it is exactly where the 0.24.3 hand-edit loop lived, and the two cases must
+   not be conflated — a hand edit in a generated FILE is preserved and forgiven, while
+   a change to the GENERATOR is real drift until regenerated. Both hold together (a
+   preserved hand edit beside a regenerated generator change). None of the nine
+   reference templates does project-relative IO, so the temp-tree regen's
+   `projectRoot` remapping does not reach them.
+   Gate: `cli/test/integration/verify-codegen-ejected-generator.test.ts`. It runs the
+   built CLI in a SUBPROCESS per command deliberately — in-process it reports a FALSE
+   PASS, because the config is re-read under a fresh temp name each load while the
+   `./codegen/generators/entity.js` it imports keeps its stable path in the module
+   cache, so the second load silently re-uses the pre-edit generator.
+4. ~~**Is `"use client"` ever right to emit by default?**~~ **ANSWERED: a config knob,
+   `clientDirective`, defaulted OFF — and never a metamodel attribute.**
+
+   *Not metadata.* ADR-0037's step 0 settles it before "subtype or attribute?" — the
+   directive is a fact about the adopter's BUNDLER TOPOLOGY, not about the entity, and
+   nothing in the metamodel could derive it. Registered, every non-TS port would carry
+   vocabulary it can never dispatch on, which is exactly the `source.rdb @role` mistake
+   that retired four members in 0.21.0. It belongs beside `extStyle` and
+   `pluralizeCollections`, whose own doc comment states the rule: a per-port codegen
+   concern (ADR-0001) is config, not a metadata attribute, and carries no cross-port
+   conformance cost.
+
+   *Off by default.* The generated form/hook/grid modules genuinely ARE client
+   components, so the directive is a true statement about them — but it is only
+   REQUIRED under RSC, and elsewhere it is inert and warned about, so defaulting it on
+   would put noise in every generated UI file for the majority to save the minority one
+   line. The asymmetry that argued for defaulting on — a runtime error for RSC adopters
+   versus a build warning for everyone else — is **what FR-040 itself removed**: the
+   question was open because an RSC adopter had no seam at all. Now they have this flag,
+   or `meta eject form` and a one-line prepend. The open question answers itself once the
+   escape hatch exists.
+
+   *Flipping the default needs evidence, not a majority estimate.* The standard is
+   `extStyle` in 0.20.1, where the default moved because the documented quickstart
+   provably failed under a stock `tsc --init`. The equivalent trigger here would be the
+   quickstart failing on a default Next.js app.
+
+   Scope: one boolean, not per-generator granularity — all four current UI generators
+   emit genuinely client-only modules, and §6.1's "defer finer seams until an adopter
+   needs one" applies equally. `<Entity>.meta.ts` is deliberately NOT included: it is
+   plain data imported BY a client component, and in RSC the boundary is the importing
+   component, not everything it reaches. Applied via the exported `withClientDirective`
+   so an owned generator does it the same way; gated by
+   `codegen-ts-tanstack/test/client-directive.test.ts`, which asserts both halves —
+   OFF is byte-identical to omitted, ON is first-token and exactly once.
 
 ## 7. Process note
 

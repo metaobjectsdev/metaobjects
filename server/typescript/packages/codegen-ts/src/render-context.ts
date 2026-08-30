@@ -52,6 +52,13 @@ export interface RenderContext {
    * doc comment on `MetaobjectsGenConfig.timestampMode` in metaobjects-config.ts.
    */
   timestampMode: "date" | "string";
+  /**
+   * Prepend `"use client";` to generated CLIENT artifacts (forms, hooks, grid
+   * columns, grid hooks). Defaults to false. A bundler-topology fact the adopter
+   * declares — see `MetaobjectsGenConfig.clientDirective` for why it is config
+   * rather than metadata, and why the default is off. FR-040 §6.4.
+   */
+  clientDirective: boolean;
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
   apiPrefix: string;
   /** Whether abstract entities emit their shape artifact (type-only interface / value-object file). Defaults to true. Instance/write artifacts are never emitted for abstract entities regardless. */
@@ -101,11 +108,12 @@ export interface RenderContext {
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). `collectionName` is built from `pluralizeCollections` + `collectionNameOverrides` (both default to always-pluralize). */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "packageOf" | "valueObjectNames" | "valueObjectEmittedName" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "packageOf" | "valueObjectNames" | "valueObjectEmittedName" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
   timestampMode?: "date" | "string";
+  clientDirective?: boolean;
   apiPrefix?: string;
   emitAbstractShapes?: boolean;
   outputLayout?: OutputLayout;
@@ -184,6 +192,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     // a unit test or a generator invoked outside `runGen`, must get the same
     // safe-no-op guarantee). See MetaobjectsGenConfig.timestampMode's doc comment.
     timestampMode: opts.dialect === "sqlite" ? "string" : (opts.timestampMode ?? "string"),
+    clientDirective: opts.clientDirective ?? false,
     apiPrefix: opts.apiPrefix ?? "",
     emitAbstractShapes: opts.emitAbstractShapes ?? true,
     outputLayout,

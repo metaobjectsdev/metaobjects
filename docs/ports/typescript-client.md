@@ -45,8 +45,10 @@ Two disjoint dependency trees. The codegen packages live under
 packages live under `client/web/packages/` and have zero Node-only deps.
 
 Angular follows the same two-package pattern and exists in-repo, source-only
-by decision — see ["Angular 18"](#angular-18) below. Future framework
-integrations (Svelte, React Native) will follow the same pattern.
+by decision — see ["Angular 18"](#angular-18) below. The two-package split is
+the shape a first-party integration takes when there is one — it is not a
+commitment to add more. Reaching another framework is an ownership move, not
+a roadmap item: eject the generator and retarget its emit (FR-040).
 
 ## Browser runtime packages
 
@@ -77,12 +79,11 @@ fetch URLs (browser-side):
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  barrel,
-} from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { routesFile } from "./codegen/generators/routes.js";
+import { barrel } from "./codegen/generators/barrel.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -147,6 +148,20 @@ export function App() {
 The URL grammar this fetcher must speak is defined in
 [`features/api-contract.md`](../features/api-contract.md) — `GET /api/author?...`,
 `POST /api/author`, etc.
+
+> **These generators are yours.** `formFile()`, `tanstackQuery()`, `tanstackGrid()` and
+> `tanstackGridHook()` are ordinary generators with reference templates you can take ownership of:
+> `meta eject form` (or `hooks` / `grid` / `grid-hook`) copies one into `codegen/generators/`.
+>
+> If your framework compiles server and client from one tree and resolves each half under different
+> export conditions — React Server Components, Angular universal, Qwik — an emitted client artifact
+> may need a marker directive. That is a one-line change in the generator you own: inside its
+> existing `if (!ctx.renderContext) throw …` guard (every reference template has one — `ctx.renderContext`
+> is optional on the raw context), change only the `content:` line to
+> `content: '"use client";\n' + renderFormFile(entity, ctx.renderContext)`. A resolution error in
+> that situation often names a package that IS installed; read it as a boundary problem, not a
+> missing dependency. Full procedure: the `metaobjects-codegen` skill, "Your framework isn't the
+> default".
 
 ## Generated React forms
 

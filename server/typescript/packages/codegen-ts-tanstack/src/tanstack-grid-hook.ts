@@ -1,5 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID,
+  withClientDirective,
+} from "@metaobjectsdev/codegen-ts";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
 import { renderGridHookFile } from "./templates/grid-hook-file.js";
 
@@ -55,7 +57,10 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
         entity.package,
         `${entity.name}.grid.ts`,
       ),
-      content: await formatTs(renderGridHookFile(entity, ctx.renderContext)),
+      content: withClientDirective(
+        await formatTs(renderGridHookFile(entity, ctx.renderContext)),
+        ctx.renderContext.clientDirective,
+      ),
     }];
   });
   const generator: Generator = {

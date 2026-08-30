@@ -5,5 +5,6 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "test", "node_modules"]
+  "// src/reference": "ADR-0034 copyable reference templates — scaffold ASSETS, not package source. They import '@metaobjectsdev/codegen-ts' and '@metaobjectsdev/codegen-ts-react' (the consumer's view), so they are excluded from the package build and verified separately against the built public API — by test/reference-byte-identical.test.ts, which runs every template AND the built-in it was copied from and requires byte-identical output, file set included. Excluding a file from tsc means nothing else compiles or executes it, so that gate is the ONLY thing standing between a renamed engine export and an adopter's broken eject; a template added here without a line in it is unverified.",
+  "exclude": ["dist", "test", "node_modules", "src/reference"]
 }

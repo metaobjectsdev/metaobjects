@@ -109,6 +109,34 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    */
   collectionNameOverrides?: Record<string, string>;
   /**
+   * Prepend a module-level client-component directive — `"use client";` — to every
+   * generated CLIENT artifact (forms, hooks, grid columns, grid hooks). Defaults to
+   * `false`. FR-040 §6.4.
+   *
+   * **Why this is config and not a metadata attribute.** It is a fact about the
+   * adopter's BUNDLER TOPOLOGY, not about the entity — the metamodel contains nothing
+   * that could derive it, and every non-TS port would carry a registration it can never
+   * dispatch on, which is the `source.rdb @role` mistake that retired four members in
+   * 0.21.0. It sits here beside `extStyle` and `columnNamingStrategy` for the same
+   * reason `pluralizeCollections` does: a per-port codegen concern (ADR-0001), so
+   * config, and no cross-port conformance cost.
+   *
+   * **Why it defaults to `false`.** The generated form and hook modules genuinely ARE
+   * client components, so the directive is a true statement about them — but it is only
+   * REQUIRED by frameworks that compile server and client from one tree (React Server
+   * Components). Elsewhere it is inert and provokes module-level-directive warnings in
+   * some bundlers, so defaulting it on would put noise in every generated UI file for
+   * the majority to save the minority one line. The asymmetry that would argue for
+   * defaulting on — a runtime error for RSC adopters versus a build warning for
+   * everyone else — is what FR-040 itself removed: before it, an RSC adopter had no
+   * seam at all; now it is this flag, or `meta eject form` and a one-line prepend.
+   *
+   * Flipping the default needs EVIDENCE, not a guess about majorities — the standard
+   * `extStyle` was held to in 0.20.1, where the default moved because the documented
+   * quickstart provably failed under a stock `tsc --init`.
+   */
+  clientDirective?: boolean;
+  /**
    * Drizzle timestamp column mode. "string" (default) types timestamp columns as
    * ISO-8601 strings (matches the generated Zod + cross-port wire contract); "date"
    * uses drizzle's native JS-Date mode (for consumers whose hand-written code works
@@ -186,6 +214,7 @@ export interface NormalizedMetaobjectsGenConfig
   pluralizeCollections: boolean;
   collectionNameOverrides: Record<string, string>;
   timestampMode: "date" | "string";
+  clientDirective: boolean;
   apiPrefix: string;
   emitAbstractShapes: boolean;
   outputLayout: OutputLayout;
@@ -322,6 +351,7 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     // normalize to "string" on sqlite/D1 at this one choke point so the option
     // can never silently emit a non-compiling column + a disagreeing Zod schema.
     timestampMode: dialect === "sqlite" ? "string" : (config.timestampMode ?? "string"),
+    clientDirective: config.clientDirective ?? false,
     apiPrefix: config.apiPrefix ?? "",
     emitAbstractShapes: config.emitAbstractShapes ?? true,
     outputLayout: config.outputLayout ?? "flat",

@@ -1115,6 +1115,243 @@ file changes."
 
 ---
 
+### Task 11: `AGENTS.md` — stop promising per-framework packages
+
+Found by the FR-040 content audit. This is the project's own architecture/context document
+(`CLAUDE.md` is a **symlink** to it), and it currently commits to the exact model FR-040 rejects.
+
+**Files:**
+- Modify: `AGENTS.md:153` and `AGENTS.md:178`
+- Test: none (prose). Verified by the grep in Step 4.
+
+**Interfaces:**
+- Consumes: Tasks 1–9 (the ownership model must actually work before the doc describes it).
+- Produces: nothing importable.
+
+- [ ] **Step 1: Read both sites and confirm the wording**
+
+Run: `grep -n "Future" AGENTS.md | head`
+Expect line 153 (`- Future: \`angular/\`, \`svelte/\`, \`react-native/\`.`) and line 178
+(`Future framework integrations (Angular, Svelte, React Native) follow the same two-package pattern.`).
+
+**CRITICAL:** `CLAUDE.md` is a symlink to `AGENTS.md`. Edit **`AGENTS.md`**. Never edit `CLAUDE.md`,
+and never use `sed -i` on either — it replaces the symlink with a regular file and breaks the link.
+Use the Edit tool.
+
+- [ ] **Step 2: Replace line 153's bullet**
+
+The list is of client-side package directories. Replace the `Future:` bullet with a statement of the
+policy rather than a roadmap promise:
+
+```
+- MetaObjects does not add a first-party package per framework. React ships a codegen+runtime pair;
+  Angular ships source-only (ADR-0048's promotion bar). Any other framework is reached by owning and
+  retargeting the generators (FR-040), not by waiting for an official package.
+```
+
+- [ ] **Step 3: Replace line 178's sentence**
+
+Replace `Future framework integrations (Angular, Svelte, React Native) follow the same two-package
+pattern.` with:
+
+```
+The two-package split is the shape a first-party integration takes when there is one — it is not a
+commitment to add more. Reaching another framework is an ownership move, not a roadmap item: eject
+the generator and retarget its emit (FR-040).
+```
+
+- [ ] **Step 4: Verify the promise is gone and the symlink survived**
+
+Run: `grep -n "svelte\|react-native\|React Native\|Svelte" AGENTS.md`
+Expected: no line presenting them as planned first-party packages. A mention inside the new
+"retarget it yourself" framing is correct and may remain.
+
+Run: `test -L CLAUDE.md && echo "symlink intact" || echo "SYMLINK BROKEN — restore it"`
+Expected: `symlink intact`. If broken, restore with `ln -sf AGENTS.md CLAUDE.md` before committing.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add AGENTS.md
+git commit -m "docs: stop promising a package per framework (FR-040 1)
+
+The architecture doc committed to future first-party codegen+runtime pairs
+for Svelte and React Native — the per-framework-package model FR-040 exists
+to reject, stated in the project's own context file. It was also stale:
+Angular was listed as future while it already ships source-only (ADR-0048).
+
+Replaced with the policy: another framework is reached by owning and
+retargeting a generator, not by waiting for a package."
+```
+
+---
+
+### Task 12: `docs/ports/typescript-client.md` — the UI-tier doc an RSC adopter reads
+
+**Files:**
+- Modify: `docs/ports/typescript-client.md` (the generator sections, and lines 47–49)
+
+**Interfaces:**
+- Consumes: Tasks 4 (UI reference templates), 5 (`meta eject`), 7 (the skill section this links to).
+- Produces: nothing importable.
+
+- [ ] **Step 1: Read the file and locate the three edit points**
+
+Run: `grep -n "Future framework\|formFile\|tanstackQuery\|Generated React forms" docs/ports/typescript-client.md | head -20`
+
+- [ ] **Step 2: Fix the "future frameworks" sentence at lines 47–49**
+
+Apply the same correction as Task 11 Step 3, worded for this page. Do not promise Svelte or
+React Native packages.
+
+- [ ] **Step 3: Add the ownership + module-graph note near the generator sections**
+
+Insert once, above the "Generated React forms" section:
+
+```markdown
+> **These generators are yours.** `formFile()`, `tanstackQuery()`, `tanstackGrid()` and
+> `tanstackGridHook()` are ordinary generators with reference templates you can take ownership of:
+> `meta eject form` (or `hooks` / `grid` / `grid-hook`) copies one into `codegen/generators/`.
+>
+> If your framework compiles server and client from one tree and resolves each half under different
+> export conditions — React Server Components, Angular universal, Qwik — an emitted client artifact
+> may need a marker directive. That is a one-line change in the generator you own:
+> `content = '"use client";\n' + renderFormFile(entity, ctx)`. A resolution error in that situation
+> often names a package that IS installed; read it as a boundary problem, not a missing dependency.
+> Full procedure: the `metaobjects-codegen` skill, "Your framework isn't the default".
+```
+
+- [ ] **Step 4: Verify no framework is presented as a supported target**
+
+Run: `grep -n -i "next\.js\|nuxt\|qwik\|svelte" docs/ports/typescript-client.md`
+Expected: matches only inside the category-example phrasing above (RSC / Angular universal / Qwik),
+never as "MetaObjects supports X".
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/ports/typescript-client.md
+git commit -m "docs(ports): the UI tier is ownable, and it has a module-graph boundary (FR-040 3.1)
+
+This is the page an adopter reads before hitting the RSC resolution failure.
+It documented the four UI generators purely as things to wire, never said
+they were ownable, and had no client/server module-graph content at all."
+```
+
+---
+
+### Task 13: UI codegen package READMEs
+
+**Files:**
+- Modify: `server/typescript/packages/codegen-ts-react/README.md`
+- Modify: `server/typescript/packages/codegen-ts-tanstack/README.md`
+
+**Interfaces:**
+- Consumes: Tasks 1, 4, 5.
+- Produces: nothing importable.
+
+- [ ] **Step 1: Add one paragraph to each, near "Usage"**
+
+For `codegen-ts-react/README.md`:
+
+```markdown
+### The generator is yours
+
+`formFile()` has a reference template: `meta eject form` copies it into `codegen/generators/form.ts`
+for you to own. The emitted component is React with react-hook-form — if your framework needs a
+marker directive or a different import shape, compose the exported renderer and change that one
+step: `content = '"use client";\n' + renderFormFile(entity, ctx)`.
+```
+
+For `codegen-ts-tanstack/README.md`, the same paragraph naming `meta eject hooks` / `grid` /
+`grid-hook` and `renderHooksFile` / `renderColumnsFile` / `renderGridHookFile`.
+
+- [ ] **Step 2: Verify the constraint**
+
+Run: `grep -n -i "next\.js\|nuxt\|svelte\|qwik" server/typescript/packages/codegen-ts-react/README.md server/typescript/packages/codegen-ts-tanstack/README.md`
+Expected: **no matches.** These are shipped packages — the Global Constraint forbids naming a
+framework as a target here, so the paragraph above deliberately names none.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add server/typescript/packages/codegen-ts-react/README.md \
+        server/typescript/packages/codegen-ts-tanstack/README.md
+git commit -m "docs: the UI generators are ejectable and composable (FR-040 4.1/4.2)
+
+First page an adopter reads on install; neither mentioned ownership."
+```
+
+---
+
+### Task 14: `docs/llms/*` — the agent-facing quickstart teaches the deprecated import
+
+The highest-severity content finding. These two files are what the website mirrors and what the
+project tells AI assistants to read first, and their quickstart imports generators from the path
+this repo documents as deprecated, never mentioning that `meta init` copies them into the adopter's
+own repo.
+
+**Files:**
+- Modify: `docs/llms/llms-full.txt` (the config example around line 246)
+- Modify: `docs/llms/llms.txt` (line 70)
+
+**Interfaces:**
+- Consumes: Tasks 1–9.
+- Produces: the corrected source that the site's `www/llms*.txt` are copied from wholesale.
+
+- [ ] **Step 1: Confirm both defects**
+
+Run: `grep -n "codegen-ts/generators" docs/llms/llms-full.txt docs/llms/llms.txt`
+Expected: `llms-full.txt:246` (inside the config example) and `llms.txt:70`.
+
+- [ ] **Step 2: Fix the `llms-full.txt` quickstart**
+
+Change the import block so it imports the OWNED local copies, matching what `meta init` actually
+scaffolds and what `metaobjects.config.ts` in this repo's own docs shows:
+
+```ts
+import { defineConfig } from "@metaobjectsdev/cli";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own) — these files are
+// copied into YOUR repo and are yours to edit. The default emit targets Fastify on Node;
+// retarget it by editing these, not by switching tools. `meta eject <name>` takes ownership
+// of any other generator.
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { routesFile } from "./codegen/generators/routes.js";
+import { barrel } from "./codegen/generators/barrel.js";
+```
+
+Keep the surrounding `defineConfig({...})` body unchanged.
+
+- [ ] **Step 3: Fix `llms.txt:70`**
+
+Replace the clause naming the deprecated path with one describing ownership. The generators
+"come from `codegen/generators/` in your own repo, copied there by `meta init` (ADR-0034); the
+shipped defaults target Fastify/Drizzle and are retargeted by editing them."
+
+- [ ] **Step 4: Verify**
+
+Run: `grep -n "codegen-ts/generators" docs/llms/llms-full.txt docs/llms/llms.txt`
+Expected: **no matches.**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/llms/llms-full.txt docs/llms/llms.txt
+git commit -m "docs(llms): the agent-facing quickstart taught the deprecated import (FR-040 3.3)
+
+These are the files the project tells an AI assistant to read first, and the
+site mirrors them verbatim. Their quickstart imported generators from
+@metaobjectsdev/codegen-ts/generators — the path this repo documents as
+deprecated — and never mentioned that meta init copies them into the
+adopter's own repo to own and retarget.
+
+The site's www/llms*.txt are copied wholesale from these; do not hand-patch
+the site copies or the two drift."
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage:**
@@ -1136,7 +1373,7 @@ No gaps.
 
 **Deliberate red states:** Task 2 Step 6 leaves the name-loop test failing on `routes-hono` until Task 3 ships the asset; Task 3 Step 6 skips the header-contract test until Task 6 completes it. Both are called out in their steps with instructions not to weaken the assertion. **Tasks 2, 3 and 6 must therefore land in order.** Tasks 8 and 9 are independent and may be done at any point.
 
-**Open questions carried from the spec:** §6.1 (how small the exported render surface can be) is answered conservatively by Task 1 — four whole-file renderers, no sub-steps — deferring finer seams until an adopter needs one. §6.2 (import rewriting) is tested in Task 4 Step 1. §6.3 (`verify --codegen` vs ejected generators) is **not** addressed by any task and should be resolved before release. §6.4 (`"use client"` by default) is deliberately left to the adopter per §4.2.
+**Open questions carried from the spec:** §6.1 (how small the exported render surface can be) is answered conservatively by Task 1 — four whole-file renderers, no sub-steps — deferring finer seams until an adopter needs one. §6.2 (import rewriting) is tested in Task 4 Step 1. §6.3 (`verify --codegen` vs ejected generators) was **not** addressed by any task; it has since been resolved — the gate needs no knowledge of ejection, and the round trip (eject → edit the owned generator → drift → `meta gen` → clean, with a hand edit surviving throughout) is pinned by `cli/test/integration/verify-codegen-ejected-generator.test.ts`. See the spec's §6.3 for the full answer, including why that gate must run in a subprocess. §6.4 (`"use client"` by default) is deliberately left to the adopter per §4.2.
 
 ---
 

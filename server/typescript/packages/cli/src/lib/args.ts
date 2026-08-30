@@ -490,3 +490,37 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     applyPending,
   };
 }
+
+// ---------------------------------------------------------------------------
+// eject flags — FR-040 §4.2(a)
+// ---------------------------------------------------------------------------
+
+export interface EjectFlags {
+  /** The generator name to eject; undefined when only --list was given. */
+  name: string | undefined;
+  list: boolean;
+  /** Overwrite an already-ejected file; default false — eject never clobbers. */
+  force: boolean;
+}
+
+export function parseEjectArgs(argv: string[]): EjectFlags {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: {
+      "list": { type: "boolean", default: false },
+      "force": { type: "boolean", default: false },
+    },
+    strict: true,
+    allowPositionals: true,
+  });
+
+  if (positionals.length > 1) {
+    throw new Error(`meta eject takes at most one generator name; got: ${positionals.join(", ")}`);
+  }
+
+  return {
+    name: positionals[0],
+    list: !!values.list,
+    force: !!values.force,
+  };
+}

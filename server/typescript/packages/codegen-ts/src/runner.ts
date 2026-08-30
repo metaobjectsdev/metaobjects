@@ -417,6 +417,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       pluralizeCollections: config.pluralizeCollections,
       collectionNameOverrides: config.collectionNameOverrides,
       timestampMode: config.timestampMode,
+      clientDirective: config.clientDirective,
       apiPrefix: config.apiPrefix,
       emitAbstractShapes: config.emitAbstractShapes,
       outputLayout: selfTarget.outputLayout,

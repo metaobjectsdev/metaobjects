@@ -61,6 +61,17 @@ describe("meta init — ESM package type", () => {
     expect(result.warnings.join("\n")).toContain("declared no module system");
   });
 
+  test("the notice names the file it modified", async () => {
+    // A cold adoption probe found `init` mutates a framework-owned manifest without
+    // naming what it changed, which is surprising when a framework (not MetaObjects)
+    // owns package.json.
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", version: "1.0.0" }, null, 2) + "\n");
+    const result = await init({ cwd: dir, quiet: true });
+    const notice = result.warnings.find((w) => w.includes('"type": "module"'));
+    expect(notice).toBeDefined();
+    expect(notice).toContain("package.json");
+  });
+
   test("leaves an already-ESM project alone, and says nothing about it", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", type: "module" }, null, 2) + "\n");
     const result = await init({ cwd: dir, quiet: true });

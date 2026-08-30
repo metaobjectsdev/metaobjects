@@ -6,6 +6,11 @@
 // shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
 // reach for `Bun.*` globals here; they are undefined and take the whole run down with
 // `Bun is not defined`. Use `node:` builtins instead.
+// targets:       Fastify. The emitted file imports `mountCrudRoutes` from
+//                `@metaobjectsdev/runtime-ts/drizzle-fastify` and binds a
+//                module-singleton `db`. THIS is the file to retarget for another HTTP
+//                framework; see also the routes-hono template, whose deps-injected shape
+//                ports more easily to hosts that hand you a request.
 // use-when:      you want generated Fastify REST routes per entity. Drop it and hand-write routes
 //                if you need bespoke endpoints — or keep it and add handlers via <Entity>.extra.ts.
 // emits:         <target>/<Entity>.routes.ts — full CRUD for write-through entities, read-only

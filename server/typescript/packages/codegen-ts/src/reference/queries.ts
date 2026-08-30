@@ -6,6 +6,11 @@
 // shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
 // reach for `Bun.*` globals here; they are undefined and take the whole run down with
 // `Bun is not defined`. Use `node:` builtins instead.
+// targets:       Drizzle. Emitted helpers take `db` as a PARAMETER rather than importing
+//                a module singleton, so they compose with any caller that already holds a
+//                connection — including a server-rendered component. Swap the
+//                `render<Verb>Fn` primitives (findById/list/create/update/deleteById) and
+//                the inline `Db` type block above them to emit for another query builder.
 // use-when:      you want generated typed CRUD finders (find<E>ById, list<E>s, create/update/delete)
 //                over Drizzle. Drop it if you hand-write your data access.
 // emits:         <target>/<Entity>.queries.ts per source-backed object (any source.rdb kind,
