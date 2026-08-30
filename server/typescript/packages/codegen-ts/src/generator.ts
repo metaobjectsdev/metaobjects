@@ -63,6 +63,11 @@ export interface Generator {
    *  that Hono routes are actually being emitted and document them — rather than
    *  silently omitting the Hono CRUD registrars whenever the variant is wired. */
   emitsHonoRoutes?: boolean;
+  /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
+   *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
+   *  entity generator reads to decide whether it may reference those constants.
+   *  Same mechanism as emitsHonoRoutes/includeHonoRoutes. */
+  emitsNames?: boolean;
 }
 
 export type GeneratorFactory<TOpts = void> = TOpts extends void
