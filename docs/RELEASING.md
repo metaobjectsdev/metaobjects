@@ -168,15 +168,26 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    bun scripts/finish-release.mjs <version> --check    # gates only
    ```
 
-   It refuses to tag a tree that does not state the release: dirty or unpushed tree, a tag
-   that already exists (never move one — a moved tag silently changes what the site
-   deploys), payload coordinates that disagree with what shipped, a missing injector or
-   payload, or a tag the deploy's own filter would not resolve. A registry that genuinely
-   **sat out** the release under publish-what-changed is declared explicitly
-   (`--sat-out pypi,nuget`) rather than guessed — guessing "sat out" ships the stale
-   number, and guessing "published" blocks a correct lagging registry. **npm can never sit
-   out:** `<version>` *is* the npm version, so a mismatch there always means
+   It refuses to tag a tree that does not state the release: a dirty or unpushed tree, a
+   **failed `git fetch`** (which makes the sync claim unverifiable, so it is a refusal
+   rather than a tick), a tag that already exists (never move one — a moved tag silently
+   changes what the site deploys), payload coordinates that disagree with what shipped, a
+   missing injector / payload / `site-reference/`, **llms mirrors naming a version this
+   release did not ship on any line that makes a registry claim**, or a tag the deploy's
+   own filter would not resolve.
+
+   A registry that genuinely **sat out** the release under publish-what-changed is declared
+   (`--sat-out pypi,nuget`) rather than guessed — guessing "sat out" ships the stale number,
+   and guessing "published" blocks a correct lagging registry. **npm can never sit out:**
+   `<version>` *is* the npm version, so a mismatch there always means
    `bun run site:payload` was not re-run.
+
+   **`--sat-out` is corroborated, not believed.** A registry that truly sat out has an
+   UNMOVED manifest (`pyproject.toml`, `Directory.Build.props`, the reactor pom); a payload
+   that was simply not rebuilt sits beside a manifest that DID move, and declaring that one
+   `--sat-out` is refused with the manifest quoted back. This matters because an earlier
+   version printed the flag as a ready-made remedy for any mismatch — which would have
+   waived the exact defect the gate exists to catch.
 
    **A second effect, and it is an improvement rather than a cost.** `conformance.yml` and
    `integration-tests.yml` are the heavy gates that run on a `v*` tag and nowhere else.
