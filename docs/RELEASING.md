@@ -178,6 +178,13 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    out:** `<version>` *is* the npm version, so a mismatch there always means
    `bun run site:payload` was not re-run.
 
+   **A second effect, and it is an improvement rather than a cost.** `conformance.yml` and
+   `integration-tests.yml` are the heavy gates that run on a `v*` tag and nowhere else.
+   Cutting the tag last means they now run against the FINAL coordinated tree — all four
+   registries bumped, docs refreshed, payload true — instead of the npm-only commit, which
+   is a tree that never actually shipped. `publish-npm.yml` triggers on `npm-v*`, not `v*`,
+   so moving the tag does not re-trigger a publish.
+
 ## Versioning policy
 
 **The version number's only mechanical meaning today is npm's caret rule.** For
