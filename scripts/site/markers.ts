@@ -26,7 +26,9 @@ export function extractMarkedRegion(source: string, id: string): string {
   // Trim blank LINES, never whitespace: `.trim()` would strip the first line's
   // remaining indent whenever it is not the least-indented line, destroying the
   // relative structure the dedent exists to preserve.
-  while (body.length && !body[0].trim()) body.shift();
-  while (body.length && !body[body.length - 1].trim()) body.pop();
+  // Read through `?.` rather than a `.length` guard tsc cannot connect to the index:
+  // on an empty array the access is `undefined`, which is not `""`, so the loop ends.
+  while (body[0]?.trim() === "") body.shift();
+  while (body[body.length - 1]?.trim() === "") body.pop();
   return body.join("\n");
 }

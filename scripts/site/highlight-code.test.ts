@@ -6,8 +6,10 @@ import { highlightCode, PALETTE } from "./highlight-code.js";
 const REPO = resolve(import.meta.dirname, "../..");
 const real = (p: string) => readFileSync(resolve(REPO, p), "utf8");
 
-const classesIn = (html: string) =>
-  [...html.matchAll(/class="([^"]+)"/g)].map((m) => m[1]);
+const classesIn = (html: string): string[] =>
+  [...html.matchAll(/class="([^"]+)"/g)]
+    .map((m) => m[1])
+    .filter((c): c is string => c !== undefined);
 
 /** Strip spans and reverse every entity the highlighters emit. &amp; must be LAST. */
 const unhighlight = (html: string) =>
@@ -23,7 +25,11 @@ describe("highlightCode", () => {
     const html = highlightCode(real("examples/showcase/generated/ts/Subscriber.ts"), "ts");
     const classes = classesIn(html);
     expect(classes.length).toBeGreaterThan(10);
-    for (const c of classes) expect(PALETTE).toContain(c);
+    // Widened, not asserted: `PALETTE` is a const tuple, so `toContain` narrows its
+    // argument to the six literals — which makes the one thing this test exists to
+    // ask ("is this class the site emitted one of them?") unaskable.
+    const palette: readonly string[] = PALETTE;
+    for (const c of classes) expect(palette).toContain(c);
   });
 
   test("leaks no raw hljs- class, which the site's CSS does not define", () => {

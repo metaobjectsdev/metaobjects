@@ -13,27 +13,26 @@
  * emitting 109 empty slots and reporting success. Both are one `tsc` run away from
  * being impossible.
  *
- * ── The pre-existing debt is PINNED, not excluded ───────────────────────────────
+ * ── The debt this gate landed with is GONE ──────────────────────────────────────
  *
- * `scripts/site/` carries 14 errors that predate this gate, all `noUncheckedIndexedAccess`
- * index-access narrowing in real matching and highlighting logic. Fixing them means
- * understanding invariants tsc cannot see, and a careless `!` there would mask a real
- * bug — so it is its own task.
+ * `scripts/site/` carried 14 pre-existing `noUncheckedIndexedAccess` errors in real
+ * subsequence-matching and highlighting logic. They were PINNED rather than excluded —
+ * excluding the directory would have made the gate read as full coverage while
+ * silently covering less, which is the failure this repository has a rule against.
  *
- * Excluding that directory would have made the gate read as full coverage while
- * silently covering less, which is the failure this repository has a rule against. So
- * the debt is pinned instead: everything outside `scripts/site/` must be CLEAN, and
- * `scripts/site/` may carry at most the known count. New errors fail wherever they
- * land, the debt can only shrink, and when it shrinks the gate says so and asks for
- * the pin to be tightened.
+ * They are all fixed, so the pin is gone with them. Every one was closed by removing
+ * the possibility (`?.` over a `.length` guard tsc cannot connect to the index, an
+ * `entries()` walk over a manual counter, one checked accessor for two mandatory regex
+ * groups) rather than by asserting it away — a careless `!` there would have masked a
+ * real bug, which is why it was its own task. Byte-identical output was proven against
+ * the 97 real YAML corpora plus a 10k-case fuzz before the pin came down.
+ *
+ * `scripts/` is now clean, full stop. There is deliberately no mechanism to admit new
+ * debt: an error fails wherever it lands.
  */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-
-/** Pre-existing, all in `scripts/site/`. Lower this when you fix some; never raise it. */
-const KNOWN_SITE_ERRORS = 14;
-const DEBT_DIR = "scripts/site/";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -46,10 +45,9 @@ function main(): number {
   const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
   const errors = output.split("\n").filter((l) => /error TS\d+:/.test(l));
 
-  const fresh = errors.filter((l) => !l.startsWith(DEBT_DIR));
-  if (fresh.length > 0) {
-    console.error(`scripts-typecheck: ${fresh.length} type error(s) outside the known debt:\n`);
-    for (const e of fresh) console.error(`  ${e}`);
+  if (errors.length > 0) {
+    console.error(`scripts-typecheck: ${errors.length} type error(s):\n`);
+    for (const e of errors) console.error(`  ${e}`);
     console.error(
       `\nscripts/ is not covered by any package tsconfig, which is how two accessor\n` +
       `defects shipped in one session. Fix the error; do not widen this gate.\n`,
@@ -57,27 +55,7 @@ function main(): number {
     return 1;
   }
 
-  const debt = errors.length - fresh.length;
-  if (debt > KNOWN_SITE_ERRORS) {
-    console.error(
-      `scripts-typecheck: ${DEBT_DIR} now has ${debt} type error(s), up from the pinned ` +
-      `${KNOWN_SITE_ERRORS}.\nThe pre-existing debt may shrink, never grow.\n`,
-    );
-    for (const e of errors) console.error(`  ${e}`);
-    return 1;
-  }
-  if (debt < KNOWN_SITE_ERRORS) {
-    console.error(
-      `scripts-typecheck: ${DEBT_DIR} is down to ${debt} error(s) from ${KNOWN_SITE_ERRORS}. ` +
-      `Lower KNOWN_SITE_ERRORS in this file to lock the improvement in.\n`,
-    );
-    return 1;
-  }
-
-  console.log(
-    `scripts-typecheck: OK — scripts/ is clean outside ${DEBT_DIR}, which holds ` +
-    `${debt} pinned pre-existing error(s).`,
-  );
+  console.log("scripts-typecheck: OK — scripts/ typechecks clean.");
   return 0;
 }
 

@@ -33,10 +33,10 @@ export function splitLines(text: string): string[] {
 export function matchSubsequence(inline: string[], full: string[]): MatchResult {
   const positions: number[] = [];
   let cursor = 0;
-  for (let i = 0; i < inline.length; i++) {
-    const want = inline[i].trim();
+  for (const [i, line] of inline.entries()) {
+    const want = line.trim();
     const at = full.findIndex((l, j) => j >= cursor && l.trim() === want);
-    if (at === -1) return { ok: false, failedAt: i, line: inline[i] };
+    if (at === -1) return { ok: false, failedAt: i, line };
     positions.push(at);
     cursor = at + 1;
   }
@@ -52,11 +52,16 @@ export function renderWithElisions(
   inline: string[], positions: number[], fullLength: number,
 ): string[] {
   const out: string[] = [];
-  if (positions.length && positions[0] > 0) out.push("…");
-  for (let i = 0; i < inline.length; i++) {
-    out.push(inline[i]);
+  // `positions` is parallel to `inline` by construction — it is what matchSubsequence
+  // returned for these very lines — so every read below is checked rather than
+  // asserted, and a short array simply elides nothing instead of arithmetic on NaN.
+  const first = positions[0];
+  if (first !== undefined && first > 0) out.push("…");
+  for (const [i, line] of inline.entries()) {
+    out.push(line);
+    const here = positions[i];
     const next = positions[i + 1];
-    if (next !== undefined && next > positions[i] + 1) out.push("…");
+    if (here !== undefined && next !== undefined && next > here + 1) out.push("…");
   }
   const last = positions[positions.length - 1];
   if (last !== undefined && last < fullLength - 1) out.push("…");

@@ -103,6 +103,21 @@ function classify(key: string, vocab: Vocabulary, onUnknown: (k: string) => void
   return "key";
 }
 
+/**
+ * Both key regexes capture exactly two MANDATORY groups: everything the match consumes
+ * before the key, and the key itself. `noUncheckedIndexedAccess` cannot see that, so
+ * they are read through one checked accessor instead of asserted at each use — a
+ * missing group means a regex above changed, and that should fail loudly rather than
+ * widen `undefined` into the span arithmetic and silently mis-colour a line.
+ */
+function keyGroups(m: RegExpMatchArray): { before: string; key: string } {
+  const [, before, key] = m;
+  if (before === undefined || key === undefined) {
+    throw new Error(`highlight-metadata: key regex lost a group in ${JSON.stringify(m[0])}`);
+  }
+  return { before, key };
+}
+
 function highlightLine(line: string, vocab: Vocabulary, onUnknown: (k: string) => void): string {
   if (/^\s*#/.test(line)) return `<span class="comment">${esc(line)}</span>`;
 
@@ -112,7 +127,7 @@ function highlightLine(line: string, vocab: Vocabulary, onUnknown: (k: string) =
   // scanning, so a `#` or `:` inside a regex pattern cannot be misread.
   const quoted: [number, number][] = [];
   for (const m of line.matchAll(QUOTED)) {
-    const start = m.index!;
+    const start = m.index;
     quoted.push([start, start + m[0].length]);
     spans.push({ start, end: start + m[0].length, cls: "string" });
   }
@@ -120,14 +135,16 @@ function highlightLine(line: string, vocab: Vocabulary, onUnknown: (k: string) =
 
   const lead = LEAD_KEY.exec(line);
   if (lead) {
-    const start = lead[1].length;
-    spans.push({ start, end: start + lead[2].length, cls: classify(lead[2], vocab, onUnknown) });
+    const { before, key } = keyGroups(lead);
+    const start = before.length;
+    spans.push({ start, end: start + key.length, cls: classify(key, vocab, onUnknown) });
   }
 
   for (const m of line.matchAll(FLOW_KEY)) {
-    const start = m.index! + m[1].length;
+    const { before, key } = keyGroups(m);
+    const start = m.index + before.length;
     if (inQuote(start)) continue;
-    spans.push({ start, end: start + m[2].length, cls: classify(m[2], vocab, onUnknown) });
+    spans.push({ start, end: start + key.length, cls: classify(key, vocab, onUnknown) });
   }
 
   const hash = [...line].findIndex((c, i) => c === "#" && !inQuote(i));

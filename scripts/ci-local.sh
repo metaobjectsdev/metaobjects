@@ -207,8 +207,9 @@ gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-
 # gate in this lane, was checked by nothing. Two accessor defects came straight out
 # of that gap in one session: a property read that does not exist on the type, so it
 # was always undefined and the tool silently reported the wrong field. The 14
-# pre-existing errors in scripts/site/ are PINNED rather than excluded, so the gate
-# cannot read as full coverage while covering less.
+# pre-existing errors this gate landed with — all in scripts/site/ — were PINNED
+# rather than excluded, so it could never read as full coverage while covering less;
+# they are now fixed and the pin is gone. scripts/ must typecheck clean, full stop.
 gate_scripts_typecheck() { bun_install && bun scripts/check-scripts-typecheck.ts; }
 
 # ── MetaObjects' own requirements ledger must load and verify ─────────────────
