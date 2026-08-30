@@ -16,6 +16,8 @@
   "extends": "./server/typescript/tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
@@ -139,6 +141,7 @@
     }
   },
   "include": [
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "scripts/site/*.mjs"
   ]
 }

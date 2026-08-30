@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { injectSnippets, collectPlaceholderIds, assertBijection } from "./inject.js";
+import { injectSnippets, collectPlaceholderIds, assertBijection } from "./inject.mjs";
 import type { SitePayload } from "./payload.js";
 
 const payload = {

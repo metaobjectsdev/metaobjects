@@ -1811,7 +1811,7 @@ Do **not** push yet — the pages render empty until Task 13 lands the deploy st
 - Modify (this repo): `scripts/release.mjs` (extend Task 10's preflight)
 - Test: `scripts/site-bijection.test.ts` — **deliberately NOT under `scripts/site/`**, because `gate_site_payload` runs `bun test scripts/site`, which globs that directory, and this test reaches the network. The gates lane must stay offline-safe.
 
-- [ ] **Step 1: Add the deploy step**
+- [x] **Step 1: Add the deploy step**
 
 In `deploy.yml`, **before** "Setup Pages", following the existing reference-docs step's comment style:
 
@@ -1840,7 +1840,7 @@ Three things here are load-bearing, each from a real failure:
 - **Filter the tag line.** Verified: `git tag -l 'v*' | sort -V | tail -1` = `v7.20.12`. Unfiltered, the site pins to a June tree with no `examples/showcase/` in it, forever.
 - **`git ls-remote`/`git tag -l`, never `git fetch --all`** — `--all` deletes local release tags, and this project has been bitten by that.
 
-- [ ] **Step 2: Add the CI injector entry point (this repo)**
+- [x] **Step 2: Add the CI injector entry point (this repo)**
 
 `scripts/site-inject-ci.mjs` reads `examples/showcase/site-payload.json`, walks the given `www/` tree, and writes in place. **Plain Node ESM, zero dependencies** — the deploy runner has Node and nothing else. `inject.ts`'s only import is `import type`, which is erased, so the logic ports directly; keep the two in sync by having the `.mjs` be the sole implementation and `inject.ts` re-export from it, rather than two copies.
 
@@ -1851,7 +1851,7 @@ Three things here are load-bearing, each from a real failure:
 
 Running the bidirectional check here would make *every* site deploy fail — including unrelated prose edits — from the moment someone adds a placeholder until the next metaobjects release. That inverts D4's whole rationale: the tag pin exists to keep deploy risk OFF release day, not to hand it to every site edit. The bidirectional check belongs in the release preflight (Step 3), where it is fixable before anything publishes.
 
-- [ ] **Step 3: Write the failing cross-repo preflight test**
+- [x] **Step 3: Write the failing cross-repo preflight test**
 
 Because a failed Pages deploy is expensive to recover, the bijection is also checked here, **before the tag**:
 
@@ -1898,17 +1898,17 @@ describe("payload ↔ live site bijection", () => {
 > than hardcoding it — a hand-maintained list of pages is the same defect class as the
 > hand-maintained snippet ids this program exists to remove.
 
-- [ ] **Step 4: Wire it into the release preflight**
+- [x] **Step 4: Wire it into the release preflight**
 
 Extend Task 10's `release.mjs` block with `bun test scripts/site-bijection.test.ts`. It reaches the network, so it belongs in the release preflight and **not** in `ci-local.sh`'s gates lane, which must stay offline-safe.
 
-- [ ] **Step 5: Push the site repo, then verify live**
+- [~] **Step 5: Push the site repo, then verify live**
 
 Push the site repo. Watch the Pages deploy. **Never re-run a failed Pages deploy** — fix forward and push again.
 
 Then verify against the live site: the blocks render, `<details>` expands, and `view-source` shows no `<script>`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/site-inject-ci.mjs scripts/site-bijection.test.ts scripts/release.mjs
@@ -1916,6 +1916,46 @@ git commit -m "feat(site): deploy-time injection pinned to the release tag"
 ```
 
 ---
+
+
+> **DONE 2026-08-30 except step 5, which is BLOCKED — and the block is a deadlock the plan
+> did not anticipate.** Monorepo `scripts/site-inject-ci.mjs`, `scripts/site-bijection.test.ts`,
+> `scripts/site/inject.mjs`, `scripts/release.mjs`; site repo `deploy.yml` (committed, still
+> unpushed alongside Task 12).
+>
+> **The latest release tag has neither the injector nor the payload.** Verified: `v0.24.4`
+> carries `examples/advanced-modeling` only — no `examples/showcase/site-payload.json`, no
+> `scripts/site-inject-ci.mjs`. So the deploy step as originally written would clone
+> `v0.24.4`, fail to find the injector, and take down the entire Pages deploy. And step 4's
+> preflight requires the LIVE site to carry the placeholders — which needs a working deploy —
+> which needs a release — which the preflight would then block. Two gates each waiting on the
+> other.
+>
+> Broken in two places, both self-extinguishing:
+> 1. **`deploy.yml` skips with a `::warning::`** when the pinned tag predates injection,
+>    rather than failing. A hard failure there would take down every deploy — unrelated prose
+>    edits included — until the next release.
+> 2. **`site-bijection.test.ts` passes when the live site references ZERO placeholders.**
+>    That is "not adopted yet", which is a different fact from "adopted and mismatched". It
+>    can only be true before the first adopting push and stops being true the moment one
+>    placeholder lands.
+>
+> **So step 5 resequences: the site repo pushes AFTER the next release**, not now. Order is
+> release (ships injector + payload) → push site (deploy clones the new tag, injection works)
+> → every later release enforces the full bijection.
+>
+> Two things landed that the plan did not call for, both forced by the same constraint:
+> - **`scripts/site/inject.ts` became `inject.mjs`**, JSDoc-typed, and is now the SOLE
+>   implementation — the plan asked for this ("keep the two in sync by having the `.mjs` be
+>   the sole implementation") but not for what it costs: `tsconfig.scripts.json` includes
+>   `scripts/**/*.ts` only, so the move would have taken ~100 lines of load-bearing logic
+>   OUT of the typecheck gate. The tsconfig now sets `allowJs`/`checkJs` and includes
+>   `scripts/site/*.mjs`. Proven by deliberately breaking it: the gate reported
+>   `inject.mjs(54,22) TS2339` and went green on restore.
+> - **`inject-ci.test.ts`** pins the deploy-time asymmetry directly (unfillable placeholder →
+>   exit 1; unreferenced payload entry → warn, exit 0), because that asymmetry is a design
+>   decision and nothing else asserted it. It runs `node`, not `bun`, so it exercises the
+>   runtime CI actually uses.
 
 ### Task 14: A — the version payload
 

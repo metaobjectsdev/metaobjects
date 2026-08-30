@@ -5,19 +5,31 @@
  * Two copies would drift, and a preview that renders differently from the deploy is
  * worse than no preview: it makes the wrong thing look verified.
  *
+ * **This file is plain ESM (.mjs), deliberately.** The site's Pages workflow runs it
+ * directly — its only toolchain step is `actions/setup-node@v4`, so there is no `bun`
+ * and no build step on that runner. Making the `.mjs` the SOLE implementation, rather
+ * than porting a second copy for CI, is what keeps the deploy and the local preview
+ * from rendering differently: a preview that disagrees with the deploy is worse than
+ * no preview, because it makes the wrong thing look verified. It is typechecked —
+ * `tsconfig.scripts.json` includes `scripts/site/*.mjs` under `checkJs`, so moving it
+ * out of `.ts` did not move it out of the gate.
+ *
  * A placeholder is a `<pre>` carrying `data-snippet="<id>"`. The injector replaces its
  * contents and, for a snippet that ships its whole file, appends a `<details>` after it.
  * Everything emitted is plain HTML — the site has zero `<script>` tags and keeps it that
  * way, so expand-to-view is a `<details>`, not a click handler.
  */
-import type { SitePayload } from "./payload.js";
+/**
+ * @typedef {import("./payload.js").SitePayload} SitePayload
+ */
 
 /**
  * Ids come out of the page's own HTML, so they are UNTRUSTED regex input. An unescaped
  * `.` over-matches an id differing only there, and a `(` or `[` throws SyntaxError — at
  * deploy time, which is the run nobody is watching.
  */
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** @type {(s: string) => string} */
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * A placeholder plus anything the last run appended to it.
@@ -26,20 +38,30 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * `<pre>`, so without matching it here a second run would append a second copy, and the
  * deploy runs on every push.
  */
-const BLOCK = (id: string) => new RegExp(
+/** @type {(id: string) => RegExp} */
+const BLOCK = (id) => new RegExp(
   `(<pre[^>]*data-snippet="${escapeRe(id)}"[^>]*>)[\\s\\S]*?(</pre>)` +
   `(\\s*<details[^>]*>[\\s\\S]*?</details>)?`, "g");
 
 const PLACEHOLDER = /<pre[^>]*data-snippet="([^"]+)"/g;
 
 /** Every id the page references, in document order, repeats included. */
-export function collectPlaceholderIds(html: string): string[] {
+/**
+ * @param {string} html
+ * @returns {string[]}
+ */
+export function collectPlaceholderIds(html) {
   return [...html.matchAll(PLACEHOLDER)]
     .map((m) => m[1])
-    .filter((id): id is string => id !== undefined);
+    .filter((id) => id !== undefined);
 }
 
-export function injectSnippets(html: string, payload: SitePayload): string {
+/**
+ * @param {string} html
+ * @param {SitePayload} payload
+ * @returns {string}
+ */
+export function injectSnippets(html, payload) {
   let out = html;
   for (const id of new Set(collectPlaceholderIds(html))) {
     const s = payload.snippets[id];
@@ -59,7 +81,7 @@ export function injectSnippets(html: string, payload: SitePayload): string {
     // A function replacer, deliberately: the snippet is highlighted code and routinely
     // contains `$` (template literals, shell vars). A string replacement would interpret
     // `$&`/`$1` inside it and corrupt the published block.
-    out = out.replace(BLOCK(id), (_m, open: string, close: string) =>
+    out = out.replace(BLOCK(id), (/** @type {string} */ _m, /** @type {string} */ open, /** @type {string} */ close) =>
       `${open}<code>${s.inline}</code>${close}${details}`);
   }
   return out;
@@ -78,11 +100,16 @@ export function injectSnippets(html: string, payload: SitePayload): string {
  * id in a page set this small is far more likely a copy-paste than an intent. If a page
  * ever genuinely needs the same snippet twice, this is the one place to relax it.
  */
-export function assertBijection(
-  htmlById: Record<string, string>, payload: SitePayload,
-): void {
-  const seen = new Map<string, string[]>();          // id -> files naming it
-  const duplicates: string[] = [];                   // "id (file)"
+/**
+ * @param {Record<string, string>} htmlById
+ * @param {SitePayload} payload
+ * @returns {void}
+ */
+export function assertBijection(htmlById, payload) {
+  /** @type {Map<string, string[]>} */
+  const seen = new Map();                            // id -> files naming it
+  /** @type {string[]} */
+  const duplicates = [];                             // "id (file)"
   for (const [file, html] of Object.entries(htmlById)) {
     const ids = collectPlaceholderIds(html);
     for (const id of new Set(ids)) {

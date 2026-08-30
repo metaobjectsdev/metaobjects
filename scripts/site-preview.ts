@@ -22,7 +22,7 @@
 import { cpSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { injectSnippets, collectPlaceholderIds, assertBijection } from "./site/inject.js";
+import { injectSnippets, collectPlaceholderIds, assertBijection } from "./site/inject.mjs";
 import type { SitePayload } from "./site/payload.js";
 
 const REPO = resolve(import.meta.dirname, "..");

@@ -144,6 +144,28 @@ try {
       `${e.stdout ?? ""}${e.stderr ?? ""}`);
 }
 
+// The bidirectional payload <-> site check, against the LIVE site.
+//
+// The deploy-time injector deliberately checks only ONE direction (a placeholder the
+// payload cannot fill), because running the bidirectional check there would fail every
+// unrelated site edit -- prose included -- from the moment a placeholder lands until the
+// next release. The other direction is enforced HERE instead: this is the last moment a
+// mismatch is fixable before a tag exists, and a failed Pages deploy is expensive to
+// recover (never re-run one; fix forward).
+//
+// It reaches the NETWORK, which is why it lives in scripts/ rather than scripts/site/ --
+// `gate_site_payload` globs that directory and the gates lane must stay offline-safe.
+try {
+  sh("bun test scripts/site-bijection.test.ts", { quiet: true });
+  ok("site bijection: every payload snippet is on a live page, and vice versa");
+} catch (e) {
+  die("the committed payload and the LIVE site disagree. A snippet the site does not\n" +
+      "  reference is dead weight; a placeholder the payload cannot fill would deploy as\n" +
+      "  an empty code block. Fix the site repo (or the snippet registry) and push it\n" +
+      "  BEFORE tagging -- the deploy pins to the release tag.\n\n" +
+      `${e.stdout ?? ""}${e.stderr ?? ""}`);
+}
+
 if (PREFLIGHT_ONLY) {
   ok("--preflight-only: Phase 0 passed; stopping before the version bump");
   process.exit(0);
