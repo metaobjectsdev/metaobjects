@@ -1834,6 +1834,21 @@ describe("payload ↔ live site bijection", () => {
 });
 ```
 
+> **VERIFIED 2026-08-30, and one correction.** The three empirical claims above hold at
+> `51d3fc462`: `git tag -l 'v*' | sort -V | tail -1` really is `v7.20.12`; the filtered
+> form gives `v0.24.4`; and `v7.20.12` carries `examples/advanced-modeling` but **no**
+> `examples/showcase`, so an unfiltered pin would break forever exactly as described.
+>
+> **The `PAGES` list above is wrong and will rot.** The site has SIX pages —
+> `www/{index,getting-started,story,requirements,videos}.html` and
+> `www/articles/prompts-are-code.html` — and the list names three. A placeholder added to
+> `story.html`, `getting-started.html` or `videos.html` would be invisible to the
+> bidirectional check: the "payload entry on no page" half would report an orphan that is
+> not one, and the "page id with no payload entry" half would miss it entirely. Derive the
+> list by walking the fetched tree (or fetch the site's file list) rather than hardcoding
+> it — a hand-maintained list of pages is the same defect class as the hand-maintained
+> snippet ids this whole program exists to remove.
+
 - [ ] **Step 4: Wire it into the release preflight**
 
 Extend Task 10's `release.mjs` block with `bun test scripts/site-bijection.test.ts`. It reaches the network, so it belongs in the release preflight and **not** in `ci-local.sh`'s gates lane, which must stay offline-safe.
