@@ -96,10 +96,13 @@ describe("payload ↔ live site bijection", () => {
       // Only this direction. A coordinate no page displays is not a defect: the payload
       // carries all five because they are one fact about the release, and showing four of
       // them is editorial. That is the opposite of a snippet, which is BUILT for a page.
+      // Filtered BEFORE formatting. Formatting first and recovering the key with
+      // `s.split(" ")[0]` re-parses information it already had, and truncates any key
+      // containing a space to a prefix that might coincide with a real coordinate —
+      // silencing the finding. Nothing else in this area makes that assumption.
       const known = new Set(Object.keys(payload.registries));
       const unfillable = [...new Set(Object.entries(htmlById).flatMap(([file, html]) =>
-        collectRegistryKeys(html).map((k) => `${k} (${file})`)))]
-        .filter((s) => !known.has(s.split(" ")[0] ?? ""));
+        collectRegistryKeys(html).filter((k) => !known.has(k)).map((k) => `${k} (${file})`)))];
       expect(unfillable).toEqual([]);
     },
     // Six pages plus a tree listing, over the network, from a release preflight.

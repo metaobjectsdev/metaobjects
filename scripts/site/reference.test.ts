@@ -10,7 +10,7 @@
 // (`build-site-reference.ts --check`), so a rendering bug and a staleness bug cannot fail
 // the same test.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { generateMarkdown, outputPath, renderReference } from "./reference.js";
@@ -100,8 +100,21 @@ describe("renderReference", () => {
     expect(html).toContain("<td>");
   });
 
-  test("refuses a directory with no INDEX rather than shipping a 404", () => {
-    expect(() => renderReference(resolve(REPO, "scripts/site")))
-      .toThrow(/no INDEX\.md|no markdown/);
+  test("refuses an empty directory", () => {
+    expect(() => renderReference(resolve(REPO, "scripts/site"))).toThrow(/no markdown/);
+  });
+
+  test("refuses a directory with markdown but no INDEX rather than shipping a 404", () => {
+    // This used to point at `scripts/site`, which holds NO .md at all — so it exercised
+    // the empty-directory branch, and its regex accepted either message. The INDEX guard
+    // could have been deleted with the test still green. It needs a directory that has
+    // markdown and lacks the index.
+    const d = mkdtempSync(join(tmpdir(), "mo-no-index-"));
+    try {
+      writeFileSync(join(d, "providers.md"), "# Providers\n");
+      expect(() => renderReference(d)).toThrow(/no INDEX\.md/);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
   });
 });

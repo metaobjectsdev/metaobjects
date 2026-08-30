@@ -62,4 +62,28 @@ describe("meta docs --metamodel --site", () => {
     }
     expect(said.join("\n")).not.toContain("--site is not supported with --metamodel");
   });
+
+  test("--scaffold-site is refused too — the other flag that writes files", () => {
+    // Found by review after the --site fix shipped: the same early return dropped
+    // --scaffold-site identically (16 markdown pages, no theme scaffolded, exit 0).
+    // Fixing one of a matched pair leaves the defect wearing a different flag name.
+    const out = scratch();
+    return docsCommand(["--metamodel", "--scaffold-site", "--out", out], out).then((exit) => {
+      expect(exit).not.toBe(0);
+      expect(readdirSync(out)).toEqual([]);
+    });
+  });
+
+  test("both flags at once are named in one message", async () => {
+    const out = scratch();
+    const said: string[] = [];
+    const real = console.error;
+    console.error = (...a: unknown[]) => { said.push(a.join(" ")); };
+    try {
+      await docsCommand(["--metamodel", "--site", "--scaffold-site", "--out", out], out);
+    } finally {
+      console.error = real;
+    }
+    expect(said.join("\n")).toContain("--site and --scaffold-site");
+  });
 });

@@ -222,10 +222,20 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     // rendering dependency into a published package for one surface. The website renders
     // it instead, keeping that dependency dev-only and giving the pages the metaobjects.dev
     // look rather than the docs-site adopter theme.
-    if (flags.site) {
+    // `--scaffold-site` is here for the same reason and was missed the first time: it is
+    // the OTHER flag that asks for files to be written, and this same early return dropped
+    // it identically — `--metamodel --scaffold-site` wrote 16 markdown pages, scaffolded no
+    // theme anywhere, and exited 0. Fixing one of a matched pair leaves the defect wearing
+    // a different flag name.
+    const dropped = [
+      ...(flags.site ? ["--site"] : []),
+      ...(flags.scaffoldSite ? ["--scaffold-site"] : []),
+    ];
+    if (dropped.length > 0) {
       log.error(
-        "docs: --site is not supported with --metamodel. The metamodel reference is " +
-        "markdown; the rendered form is published at https://metaobjects.dev/reference");
+        `docs: ${dropped.join(" and ")} ${dropped.length > 1 ? "are" : "is"} not supported ` +
+        "with --metamodel. The metamodel reference is markdown; the rendered form is " +
+        "published at https://metaobjects.dev/reference");
       return 2;
     }
     return metamodelDocsCommand(cwd, flags.out);

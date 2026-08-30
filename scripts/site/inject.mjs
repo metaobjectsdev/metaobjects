@@ -154,9 +154,26 @@ export function injectRegistries(html, payload) {
     }
     // A function replacer for the same reason injectSnippets uses one: a version is
     // tame today, but `$&` in a replacement string is a trap that only fires on the
-    // one value that contains it.
-    out = out.replace(COORD(key), (/** @type {string} */ _m, /** @type {string} */ open, /** @type {string} */ _tag, /** @type {string} */ close) =>
-      `${open}${v}${close}`);
+    // one value that contains it. It also COUNTS, which is the point below.
+    let hits = 0;
+    out = out.replace(COORD(key), (/** @type {string} */ _m, /** @type {string} */ open, /** @type {string} */ _tag, /** @type {string} */ close) => {
+      hits += 1;
+      return `${open}${v}${close}`;
+    });
+
+    // A key can be COLLECTED and yet not REPLACED, because the two patterns disagree.
+    // `COORD_KEY` reads the opening tag alone; `COORD` additionally demands `[^<]*`
+    // content and a backreferenced closer. So `<span data-registry="npm"><code>0.24.5
+    // </code></span>` and `<span data-registry="npm"/>` both collect and neither fills —
+    // and the page keeps its hand-typed version while the caller, which counts KEYS
+    // rather than replacements, prints a tick. A stale version that reports as injected
+    // is worse than one that was never wired up, because nothing will look at it again.
+    if (hits === 0) {
+      throw new Error(
+        `site inject: data-registry="${key}" was found but could not be filled. A ` +
+        `coordinate placeholder must wrap TEXT and close with its own tag — ` +
+        `<span data-registry="${key}">${v}</span>, not nested markup or a self-closing tag.`);
+    }
   }
   return out;
 }

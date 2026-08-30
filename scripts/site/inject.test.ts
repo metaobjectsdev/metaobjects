@@ -171,4 +171,18 @@ describe("injectRegistries", () => {
     expect(collectRegistryKeys(`<code data-registry="npm">a</code><b data-registry="maven">c</b>`))
       .toEqual(["npm", "maven"]);
   });
+
+  // M6: a key can be COLLECTED and not REPLACED — the two patterns disagree. Before this,
+  // the page silently kept its hand-typed version and the caller printed a tick, because
+  // both callers count KEYS not replacements.
+  test("nested markup inside a coordinate is a hard failure, not a silent no-op", () => {
+    expect(() => injectRegistries(
+      `<span data-registry="npm"><code>0.19.0</code></span>`, payload))
+      .toThrow(/could not be filled/);
+  });
+
+  test("a self-closing coordinate is a hard failure too", () => {
+    expect(() => injectRegistries(`<span data-registry="npm"/>`, payload))
+      .toThrow(/could not be filled/);
+  });
 });
