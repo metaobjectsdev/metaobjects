@@ -5,7 +5,14 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [0.24.5] — 2026-08-29
+## [0.24.5] — npm `0.24.5` · PyPI `0.24.5` · NuGet `0.24.5` · Maven `7.24.5` — 2026-08-30
+
+_All four registries publish, and **not one of them is a version-parity bump** — each carries a
+changed product file of its own (npm: FR-040 + the eight-defect batch; PyPI/NuGet/Maven:
+`columnNamingStrategy`, `@column`, the Maven `<sourceDir>` fix, the C# hash-manifest anchor, and
+the agent-context staleness nudge in every port). That the first release under publish-what-changed
+publishes everything is a coincidence of what landed, not the rule reasserting itself.
+`metamodelVersion` stays `0.13`: no registered vocabulary changed._
 
 **A registry now publishes only when it changed.** The version-parity rule standing since
 `0.20.13` is retired, and this is the first release cut under its replacement — so the four
@@ -373,6 +380,33 @@ untrue about work it had just done.
   `.metaobjects/config.json` ladder has already resolved relative to cwd, so cwd is the
   project. **Not a behaviour change for the documented invocation** — only the
   cwd-is-not-the-project case moves, and that case was broken.
+
+### Fixed — a retired requirement's generated test stub failed forever, then told you to revive it
+
+The `requirement-test` renderer decides skip-versus-fail from a set of statuses, and that set
+was **a literal the vocabulary moved out from under.** `0.24.0` retired `abandoned` and
+`superseded`; `0.24.2` put `retired` in their place. The set was never moved across, so it
+skipped two statuses the loader had begun REFUSING and failed on the one that replaced them:
+every `@status: retired` entry emitted a stub asserting `expect.unreachable` forever,
+reddening an application's suite for a capability nobody intends to rebuild. That is the noise
+a suite gets silenced wholesale for — taking the `live` stubs with it — and it is the exact
+outcome the set exists to prevent, stated in its own comment.
+
+The set is now **derived from the loader's own enum**: a status that is neither `live` nor
+`partial` is skipped by construction, so the next status move cannot leave it behind.
+Restating a closed set next to the closed set is what produced this.
+
+**The second half was found by fixing the first.** The two skipped statuses mean opposite
+things and were sharing one body — *"Intended, not built. Write the assertion when this becomes
+live."* On a `retired` entry that instructs the reader to **revive the capability**, inverting
+the one guardrail `0.24.2` restored `retired` for. A retired stub now states that the capability
+was deliberately removed and must not be rebuilt, and that anything asserted there should assert
+it STAYS removed.
+
+Found by authoring the first real `retired` entries outside a conformance fixture. Every
+existing test in the file passed throughout, because none of them used a status the vocabulary
+had changed. **TypeScript-only** — the requirement-test renderer ships in `codegen-ts` and has
+no counterpart in the other four ports.
 
 
 ## [0.24.4] — 2026-08-28
