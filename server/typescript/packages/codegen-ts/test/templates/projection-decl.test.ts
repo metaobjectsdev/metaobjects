@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
 import { renderProjectionDecl } from "../../src/templates/projection-decl.js";
 
 // ---------------------------------------------------------------------------
