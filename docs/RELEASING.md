@@ -139,6 +139,16 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    version against **every** package in the set (it used to check only the cli), and
    `bun run prerelease:publish` skips burned numbers when choosing an iteration.
 
+6. **Any commit that bumps a version must regenerate the site payload: `bun run site:payload`.**
+   `examples/showcase/site-payload.json` embeds all five coordinates — npm, PyPI, NuGet, Maven
+   and `metamodelVersion` — so a bump changes it, and `gate_site_payload` in the `gates` lane
+   compares the committed bytes against a fresh build on every push to `main`. A coordinated cut
+   lands as **two** commits and both touch coordinates: `scripts/release.mjs` regenerates and
+   stages the payload for the TypeScript one automatically, but the
+   `chore(release): … PyPI, NuGet and Maven Central` commit is written by hand and must do it
+   too. Forget it and `main` goes red on the next push; once the site injection lands, the page
+   would publish the previous release's versions.
+
 ## Versioning policy
 
 **The version number's only mechanical meaning today is npm's caret rule.** For

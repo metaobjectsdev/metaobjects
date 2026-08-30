@@ -187,6 +187,19 @@ if (/## \[Unreleased\]\s*\n\s*\n## /.test(cl)) {
   ok(`CHANGELOG promoted → [${VERSION}]`);
 }
 
+// --- refresh the site payload, which EMBEDS the versions Phase 1 just changed ------
+// Phase 0 checked the payload against the OLD versions; Phase 1 then rewrote
+// cli/package.json, which is one of the five coordinates the payload carries. Without
+// this the release commit lands with a payload naming the previous version, `gates` goes
+// red on main at the very next push, and once the site injection lands the page would
+// publish stale coordinates. Regenerated BEFORE the confirm below so a failure happens
+// before anyone is asked to publish.
+//
+// The PyPI/NuGet/Maven bump is a SEPARATE commit and changes three more coordinates —
+// it must run `bun run site:payload` too. See docs/RELEASING.md.
+sh("bun scripts/build-site-payload.ts", { quiet: true });
+ok("site payload regenerated for the new version");
+
 // --- PHASE 6: STOP — confirm before the irreversible publish --------------
 console.log(`\n\x1b[1mReady to publish ${VERSION} to npm \`latest\` (IRREVERSIBLE).\x1b[0m`);
 console.log(`  packages: ${set.length}  |  packed deps: pinned  |  build: clean`);
@@ -199,7 +212,7 @@ if (!YES) {
 }
 
 // --- commit the release ---------------------------------------------------
-sh("git add server/typescript/packages/*/package.json client/web/packages/*/package.json bun.lock CHANGELOG.md");
+sh("git add server/typescript/packages/*/package.json client/web/packages/*/package.json bun.lock CHANGELOG.md examples/showcase/site-payload.json");
 sh(`git commit -q -m "chore(release): @metaobjectsdev TypeScript packages ${VERSION}"`);
 ok("committed");
 
@@ -230,4 +243,6 @@ if (!v.includes(VERSION)) die(`smoke FAILED: clean install reports ${v}, expecte
 ok(`smoke: clean external install → meta --version = ${v}`);
 
 console.log(`\n\x1b[32m\x1b[1m✅ ${VERSION} is live on npm latest.\x1b[0m`);
-console.log(`   Docs/site version refs are NOT auto-bumped (low-value churn for a patch); batch them when convenient.\n`);
+console.log(`   Docs version refs are NOT auto-bumped (low-value churn for a patch); batch them when convenient.`);
+console.log(`   The site payload IS auto-bumped and committed here — but only its npm coordinate.`);
+console.log(`   The PyPI/NuGet/Maven bump commit must run \`bun run site:payload\` or gates goes red on main.\n`);

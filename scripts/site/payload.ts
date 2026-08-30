@@ -62,11 +62,42 @@ const PROMPTS_ARGS = ["--prompts", "templates"];
 
 const read = (repoRoot: string, rel: string) => readFileSync(resolve(repoRoot, rel), "utf8");
 
-/** First capture of `re` in a file, or a throw naming what was being looked for. */
-function readVersion(repoRoot: string, rel: string, re: RegExp, what: string): string {
-  const m = re.exec(read(repoRoot, rel));
-  const v = m?.[1];
+/**
+ * Read one version, refusing an AMBIGUOUS read.
+ *
+ * Four of the five sources carry exactly one match today, so demanding exactly one turns
+ * any future ambiguity — a dependency block gaining a `version`, a second `<Version>` —
+ * into a loud failure instead of a silently wrong number on a public page.
+ */
+function readSoleVersion(repoRoot: string, rel: string, re: RegExp, what: string): string {
+  const g = new RegExp(re.source, `${re.flags.replace(/g/g, "")}g`);
+  const all = [...read(repoRoot, rel).matchAll(g)];
+  if (all.length !== 1) {
+    throw new Error(
+      `site payload: expected exactly one ${what} version in ${rel}, found ${all.length}. ` +
+      `Taking the first would publish a number nobody chose.`);
+  }
+  const v = all[0]?.[1];
   if (v === undefined) throw new Error(`site payload: could not read the ${what} version from ${rel}`);
+  return v;
+}
+
+/**
+ * Maven cannot use the sole-match rule: the reactor root lists a `<version>` per module —
+ * 39 of them — and its OWN version is the FIRST. That is true only while the file has no
+ * `<parent>`, which is the same precondition `scripts/check-pom-versions.sh` relies on.
+ * Here it is ASSERTED rather than assumed: add a parent POM and this throws, instead of
+ * publishing the parent's version as the project's.
+ */
+function readMavenVersion(repoRoot: string, rel: string): string {
+  const text = read(repoRoot, rel);
+  if (/<parent>/.test(text)) {
+    throw new Error(
+      `site payload: ${rel} now has a <parent> block, so its first <version> is no longer ` +
+      `the project's own. Read the project version explicitly before trusting it.`);
+  }
+  const v = /<version>([^<]+)<\/version>/.exec(text)?.[1];
+  if (v === undefined) throw new Error(`site payload: could not read the Maven version from ${rel}`);
   return v;
 }
 
@@ -79,15 +110,14 @@ function readVersion(repoRoot: string, rel: string, re: RegExp, what: string): s
  */
 function readRegistries(repoRoot: string): Registries {
   return {
-    npm: readVersion(repoRoot, "server/typescript/packages/cli/package.json",
+    npm: readSoleVersion(repoRoot, "server/typescript/packages/cli/package.json",
       /"version":\s*"([^"]+)"/, "npm"),
-    pypi: readVersion(repoRoot, "server/python/pyproject.toml",
+    pypi: readSoleVersion(repoRoot, "server/python/pyproject.toml",
       /^version\s*=\s*"([^"]+)"/m, "PyPI"),
-    nuget: readVersion(repoRoot, "server/csharp/Directory.Build.props",
+    nuget: readSoleVersion(repoRoot, "server/csharp/Directory.Build.props",
       /<Version>([^<]+)<\/Version>/, "NuGet"),
-    maven: readVersion(repoRoot, "server/java/pom.xml",
-      /<version>([^<]+)<\/version>/, "Maven"),
-    metamodel: readVersion(repoRoot, REGISTRY_MANIFEST,
+    maven: readMavenVersion(repoRoot, "server/java/pom.xml"),
+    metamodel: readSoleVersion(repoRoot, REGISTRY_MANIFEST,
       /"metamodelVersion":\s*"([^"]+)"/, "metamodel"),
   };
 }
@@ -172,9 +202,20 @@ function transcriptSnippet(repoRoot: string, id: string,
       `  It is published as a demonstration of \`meta ${src.argv.join(" ")}\` catching drift.\n` +
       `  A passing fixture means the page would show an error that no longer happens.`);
   }
+  const normalized = normalizeTranscript(text, repoRoot);
+  // A non-zero exit is not enough. The page shows this transcript to demonstrate ONE
+  // diagnostic; a fixture that starts failing for an unrelated reason still exits 1, and
+  // the published block would quietly become a screenshot of a different bug.
+  if (!normalized.includes(src.expect)) {
+    throw new Error(
+      `site payload: the "${id}" fixture fails, but not with ${src.expect}.\n` +
+      `  The page publishes this transcript as a demonstration of that specific\n` +
+      `  diagnostic, so a different failure would misrepresent what the tool caught.\n\n` +
+      normalized);
+  }
   return {
     lang: "console",
-    inline: highlightCode(normalizeTranscript(text, repoRoot), "console"),
+    inline: highlightCode(normalized, "console"),
     full: null,
     lineCount: null,
   };
@@ -197,6 +238,33 @@ function assertRequirementsResolve(repoRoot: string): void {
   }
 }
 
+/**
+ * Final sweep. HOME_PATH is IMPORTED, never respelled here: two spellings of one rule is
+ * how the weaker one ends up being the one that runs. normalizeTranscript already applies
+ * it to captured output; this catches a leak arriving by any other route — an absolute
+ * path baked into a committed excerpt, say.
+ *
+ * It walks the STRING VALUES rather than `JSON.stringify(payload)`, and that is the whole
+ * point: stringify doubles backslashes, so a Windows user path serializes with TWO of
+ * them and HOME_PATH's Windows branch — which matches ONE — could never fire against
+ * the serialized form. Measured: the pattern matches the raw string and not its
+ * stringified form, so sweeping the blob silently checked POSIX paths only.
+ */
+export function assertNoHomePath(value: unknown): void {
+  if (typeof value === "string") {
+    const leak = HOME_PATH.exec(value);
+    if (leak) {
+      throw new Error(
+        `site payload: absolute home path ${leak[0]} — this repository is public and the ` +
+        `payload publishes to a public site. Refusing to emit it.`);
+    }
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const child of Object.values(value)) assertNoHomePath(child);
+  }
+}
+
 export function buildPayload(repoRoot: string): SitePayload {
   const vocab = loadVocabulary(resolve(repoRoot, REGISTRY_MANIFEST));
 
@@ -214,15 +282,6 @@ export function buildPayload(repoRoot: string): SitePayload {
 
   const payload: SitePayload = { registries: readRegistries(repoRoot), snippets };
 
-  // Final sweep. HOME_PATH is IMPORTED, never respelled here: two spellings of one rule
-  // is how the weaker one ends up being the one that runs. normalizeTranscript already
-  // applies it to captured output; this catches a leak arriving by any other route —
-  // an absolute path baked into a committed excerpt, say.
-  const leak = HOME_PATH.exec(JSON.stringify(payload));
-  if (leak) {
-    throw new Error(
-      `site payload: absolute home path ${leak[0]} — this repository is public and the ` +
-      `payload publishes to a public site. Refusing to emit it.`);
-  }
+  assertNoHomePath(payload);
   return payload;
 }

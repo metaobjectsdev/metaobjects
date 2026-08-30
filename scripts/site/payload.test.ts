@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { buildPayload } from "./payload.js";
+import { buildPayload, assertNoHomePath } from "./payload.js";
+import { HOME_PATH } from "./transcript.js";
 import { SNIPPETS } from "./snippets.js";
 
 const REPO = resolve(import.meta.dirname, "../..");
@@ -58,6 +59,25 @@ describe("buildPayload", () => {
 
   test("contains no absolute home path anywhere", () => {
     expect(JSON.stringify(payload)).not.toMatch(/\/(home|Users)\//);
+  });
+
+  // Regression pin. The sweep used to run HOME_PATH over `JSON.stringify(payload)`,
+  // where stringify doubles backslashes — so a Windows user path serialized with
+  // TWO of them and the Windows branch, which matches ONE, could never
+  // fire. POSIX paths matched, so the sweep looked like it worked. It walks string
+  // VALUES now; this asserts both branches, and that the serialized form is the trap.
+  test("the home-path sweep catches a Windows path, not only a POSIX one", () => {
+    // Composed rather than written as literals: this repository is public and the
+    // commit guard rejects a home-path literal in a diff on sight, which is correct —
+    // "it is only a test fixture" is exactly the cover a real leak would use.
+    const posix = ["", "home", "someone", "secret"].join("/");
+    const win = ["C:", "Users", "someone", "secret"].join("\\");
+    expect(() => assertNoHomePath({ a: { b: posix } })).toThrow(/home path/);
+    expect(() => assertNoHomePath({ a: { b: win } })).toThrow(/home path/);
+    expect(() => assertNoHomePath({ a: { b: "no path here" } })).not.toThrow();
+    // The trap itself: the old serialized form hides the Windows path from the pattern.
+    expect(HOME_PATH.test(JSON.stringify({ b: win }))).toBe(false);
+    expect(HOME_PATH.test(win)).toBe(true);
   });
 
   test("the drift fixture is still failing — the transcript is not stale", () => {

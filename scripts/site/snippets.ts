@@ -17,7 +17,9 @@ import type { Lang } from "./highlight-code.js";
  *               file, which is a stricter guarantee than any excerpt can make.
  *               Use it only when cutting would drop something load-bearing; an
  *               8-line CREATE TABLE has no line to spare.
- *   transcript  live CLI output, captured by running the tool
+ *   transcript  live CLI output, captured by running the tool. Carries `expect`: the
+ *               diagnostic the run must produce, so the block cannot silently become a
+ *               screenshot of a different failure.
  *
  * Paths are repo-relative.
  */
@@ -25,7 +27,8 @@ export type SnippetSource =
   | { kind: "marker"; file: string; lang: Lang }
   | { kind: "excerpt"; inline: string; full: string; lang: Lang }
   | { kind: "whole"; file: string; lang: Lang }
-  | { kind: "transcript"; cwd: string; argv: string[] };
+  /** `expect`: a token the captured output MUST contain — see the transcript gate. */
+  | { kind: "transcript"; cwd: string; argv: string[]; expect: string };
 
 const SHOWCASE = "examples/showcase";
 const ADVANCED = "examples/advanced-modeling";
@@ -93,6 +96,10 @@ export const SNIPPETS: Record<string, SnippetSource> = {
     // and this fixture's text lives in templates/, so omitting it yields
     // ERR_PARTIAL_UNRESOLVED instead of the payload-drift error the page is about.
     argv: ["verify", "--templates", "--prompts", "templates"],
+    // The page publishes this block to demonstrate THIS diagnostic. A non-zero exit
+    // alone would let a fixture failing for an unrelated reason keep publishing, so the
+    // builder asserts the code appears.
+    expect: "ERR_VAR_NOT_ON_PAYLOAD",
   },
 
   // ── "The metamodel goes deep": advanced-modeling ───────────────────────────
