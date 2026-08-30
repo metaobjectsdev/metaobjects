@@ -289,14 +289,20 @@ for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
   // historical ("retired in `0.24.0`"), which is the false-failure this deliberately
   // avoids — an earlier blanket rule tripped on exactly that sentence.
   const CLAIM = /\b(npm|PyPI|NuGet|Maven Central)\b/;
-  const NPM_VER = /\b0\.\d+\.\d+\b/g;
-  const MVN_VER = /\b7\.\d+\.\d+\b/g;
+  // ANY three-part version, checked against the two coordinates this release shipped.
+  //
+  // This deliberately does not scan for the `0.x.y` and `7.x.y` FAMILIES the pre-1.0
+  // lines happen to use. Those two literals are the same hardcoded 7 that MAVEN_MAJOR
+  // above exists to avoid: at 1.0.0 the coordinates become `1.0.0` and `8.0.0`, a
+  // family-scoped scan matches neither, and the gate goes silently blind on the release
+  // whose mirrors have the most to get wrong. Widening it costs nothing here — the two
+  // mirrors name no third-party version anywhere, so the only three-part strings in them
+  // are MetaObjects' own coordinates, and a claim line may only name what shipped.
+  const VER = /\b\d+\.\d+\.\d+\b/g;
+  const SHIPPED = new Set([VERSION, MAVEN_VERSION]);
   const bad = [];
   for (const line of [summary, ...text.split("\n").filter((l) => l !== summary && CLAIM.test(l))]) {
-    const stale = [
-      ...[...line.matchAll(NPM_VER)].map((m) => m[0]).filter((v) => v !== VERSION),
-      ...[...line.matchAll(MVN_VER)].map((m) => m[0]).filter((v) => v !== MAVEN_VERSION),
-    ];
+    const stale = [...line.matchAll(VER)].map((m) => m[0]).filter((v) => !SHIPPED.has(v));
     if (stale.length > 0) bad.push(`${stale.join(", ")}  in: ${line.trim().slice(0, 100)}`);
   }
   if (bad.length > 0) {

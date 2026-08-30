@@ -10,7 +10,8 @@
 // (`build-site-reference.ts --check`), so a rendering bug and a staleness bug cannot fail
 // the same test.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { generateMarkdown, outputPath, renderReference } from "./reference.js";
@@ -116,5 +117,95 @@ describe("renderReference", () => {
     } finally {
       rmSync(d, { recursive: true, force: true });
     }
+  });
+});
+
+// ── the freshness GATE, not the renderer ──────────────────────────────────────
+//
+// `bun scripts/build-site-reference.ts --check` is what stands between a registry change
+// nobody re-rendered and 16 published pages documenting the previous vocabulary. It had
+// no test, and it could not have had one: its target was hardcoded to the repository's
+// own `site-reference/`, so the only state it was ever exercised in was the state the
+// repository is already in — fresh. Its "differs", "orphan" and "missing" branches were
+// reachable by nothing. `--out` exists so they are reachable by this.
+//
+// The script is SPAWNED rather than imported. It does its work at import time, so an
+// `import` of it would silently run the build and rewrite `site-reference/` as a side
+// effect of collecting the test file.
+describe("build-site-reference --check", () => {
+  const SCRIPT = resolve(REPO, "scripts/build-site-reference.ts");
+  const dirs: string[] = [];
+  afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
+
+  function run(...args: string[]) {
+    const r = spawnSync("bun", [SCRIPT, ...args], { cwd: REPO, encoding: "utf8" });
+    return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  }
+
+  /** A freshly rendered reference tree, somewhere disposable. */
+  function rendered(): string {
+    const d = join(mkdtempSync(join(tmpdir(), "mo-ref-out-")), "site-reference");
+    dirs.push(resolve(d, ".."));
+    const r = run("--out", d);
+    expect(r.code).toBe(0);
+    return d;
+  }
+
+  test("a freshly rendered tree checks clean", () => {
+    const r = run("--check", "--out", rendered());
+    expect(r.out).toContain("is fresh (16 page(s))");
+    expect(r.code).toBe(0);
+  });
+
+  test("a page whose BYTES changed is reported as differing", () => {
+    const d = rendered();
+    const page = join(d, "types/field.html");
+    writeFileSync(page, `${readFileSync(page, "utf8")}<!-- hand edit -->`);
+    const r = run("--check", "--out", d);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("types/field.html (differs)");
+  });
+
+  test("a page nothing generates any more is reported as an orphan", () => {
+    // The case that matters most and is the least intuitive: a retired type family leaves
+    // a page behind, and it keeps being served. Byte-comparing what IS generated can
+    // never see it.
+    const d = rendered();
+    writeFileSync(join(d, "types/retired.html"), "<!doctype html>gone\n");
+    const r = run("--check", "--out", d);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("types/retired.html (orphan");
+  });
+
+  test("a deleted page is reported as missing", () => {
+    const d = rendered();
+    unlinkSync(join(d, "index.html"));
+    const r = run("--check", "--out", d);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("index.html (missing)");
+  });
+
+  test("it names the command that fixes it", () => {
+    const d = rendered();
+    unlinkSync(join(d, "index.html"));
+    expect(run("--check", "--out", d).out).toContain("bun scripts/build-site-reference.ts");
+  });
+
+  // Write mode opens with `rmSync(OUT, { recursive: true })`. A directory that is not
+  // already a rendered reference is a mistyped path, not a target.
+  test("writing refuses a directory that is not a rendered reference", () => {
+    const d = mkdtempSync(join(tmpdir(), "mo-ref-notref-"));
+    dirs.push(d);
+    writeFileSync(join(d, "important.txt"), "not a reference\n");
+    const r = run("--out", d);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("refusing to write into");
+    expect(existsSync(join(d, "important.txt"))).toBe(true);
+  });
+
+  test("--out with no directory is refused rather than silently defaulting", () => {
+    const r = run("--out", "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("--out needs a directory");
   });
 });

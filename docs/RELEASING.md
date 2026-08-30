@@ -189,6 +189,12 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    version printed the flag as a ready-made remedy for any mismatch — which would have
    waived the exact defect the gate exists to catch.
 
+   **Every refusal above is pinned by `scripts/finish-release.test.ts`**, which runs in the
+   `gates` lane and exercises the real script against throwaway origin+clone pairs. Before
+   it, this file ran in no lane and had no tests while deciding what the website publishes;
+   a review found eight defects in 172 lines. If you change a gate, change its case there —
+   and check the change against a mutation, not just a green run.
+
    **A second effect, and it is an improvement rather than a cost.** `conformance.yml` and
    `integration-tests.yml` are the heavy gates that run on a `v*` tag and nowhere else.
    Cutting the tag last means they now run against the FINAL coordinated tree — all four

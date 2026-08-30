@@ -79,6 +79,61 @@ describe("site-inject-ci", () => {
     expect([...twice.matchAll(/<details[^>]*>/g)]).toHaveLength(1);
   });
 
+  // ── version coordinates ─────────────────────────────────────────────────────
+  //
+  // `injectRegistries` is unit-tested next door, but nothing proved the DEPLOY entrypoint
+  // calls it — and the entrypoint is the only thing that ever runs it in anger. A page
+  // whose coordinate never gets filled ships the placeholder's hand-typed contents, which
+  // look exactly like a real version number and are the previous release's.
+
+  test("fills a version coordinate from the committed payload", () => {
+    const dir = site({ "index.html": page(`<span data-registry="npm">0.0.0</span>`) });
+    const r = run(dir);
+    expect(r.code).toBe(0);
+    const html = readFileSync(join(dir, "index.html"), "utf8");
+    // The value comes from the committed payload, so this asserts the SHAPE, not a
+    // version — pinning the number here would make every release edit this test.
+    expect(html).toMatch(/<span data-registry="npm">\d+\.\d+\.\d+<\/span>/);
+    expect(html).not.toContain(">0.0.0<");
+  });
+
+  test("counts the coordinates it filled, not just the snippets", () => {
+    const dir = site({ "index.html": page(
+      `<span data-registry="npm">x</span> <code data-registry="maven">y</code>`) });
+    const r = run(dir);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("2 version coordinate(s)");
+  });
+
+  // A page naming a coordinate the payload does not carry must FAIL, for the same reason
+  // an unknown snippet id does: the alternative is publishing a blank where a version
+  // should be.
+  test("FAILS on a coordinate the payload does not carry", () => {
+    const dir = site({ "index.html": page(`<span data-registry="rubygems">1.0</span>`) });
+    const r = run(dir);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("rubygems");
+  });
+
+  // The bijection is deliberately ONE-WAY here: the payload always carries all five
+  // coordinates because they are one fact about the release, and which of them a page
+  // chooses to show is editorial. Unlike an unreferenced snippet, this is not even warned
+  // about.
+  test("a coordinate no page shows is not an error", () => {
+    const dir = site({ "index.html": page(`<span data-registry="npm">x</span>`) });
+    const r = run(dir);
+    expect(r.code).toBe(0);
+    expect(r.out).not.toContain("pypi");
+  });
+
+  test("a page with only coordinates and no snippets is still processed", () => {
+    // The entrypoint `continue`s on a page with neither. Reading that condition as
+    // "no snippet ids" would skip every version-only page in silence.
+    const dir = site({ "versions.html": page(`<span data-registry="maven">x</span>`) });
+    expect(run(dir).code).toBe(0);
+    expect(readFileSync(join(dir, "versions.html"), "utf8")).not.toContain(">x<");
+  });
+
   test("walks nested directories, so an article page is not skipped", () => {
     const dir = site({
       "index.html": page(`<pre data-snippet="sql-migration"></pre>`),

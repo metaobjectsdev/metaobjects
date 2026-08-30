@@ -242,6 +242,19 @@ gate_site_payload() { bun_install && bun test scripts/site && bun scripts/build-
 # being served.
 gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --check; }
 
+# ── the release tag gate is itself gated ──────────────────────────────────────
+# `scripts/finish-release.mjs` decides whether `v<version>` is cut, and the site's Pages
+# deploy RESOLVES that tag, clones the tree and publishes what it finds. It ran in NO lane
+# and had NO tests, while every refusal in it is the difference between metaobjects.dev
+# stating the release and metaobjects.dev stating something that never shipped — a review
+# found eight defects in 172 lines. The tests build throwaway origin+clone pairs and run
+# the real script against them, so the whole refusal list is exercised rather than
+# hand-checked once per release.
+#
+# No bun_install: the test imports node builtins only and spawns `node` on a copy of the
+# script beside a fixture repository, so there is no bare specifier to resolve.
+gate_release_tag() { bun test scripts/finish-release.test.ts; }
+
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
 # typecheck` walks WORKSPACE PACKAGES only — so every script here, including every
@@ -531,6 +544,7 @@ if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
 if want gates; then step_if bun "site payload is true"         gate_site_payload;           fi
 if want gates; then step_if bun "site reference is fresh"     gate_site_reference;         fi
+if want gates; then step_if bun "release tag gate"             gate_release_tag;            fi
 if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
