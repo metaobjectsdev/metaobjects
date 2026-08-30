@@ -1702,6 +1702,27 @@ If any `tok-*` class appears **outside** a `<pre>` block, keep its rule and migr
 .example-code .err { color: #e06c5f; }
 ```
 
+> **VERIFIED 2026-08-30 — task 12's counts and markup assumption are STALE.** The site has
+> moved since the plan was written (`d2f51e5`/`ba16a4b` added a requirements page).
+> Measured against the live checkout:
+>
+> | page | `<pre class="example-code">` | plan says |
+> |---|---|---|
+> | `www/index.html` | **13** | 11 |
+> | `www/requirements.html` | **0** (one bare `<pre>`) | 2 |
+> | `www/articles/prompts-are-code.html` | **0** (two bare `<pre>`) | 2 |
+>
+> So 16 candidate blocks against 15 payload entries, and two of the three pages do not use
+> the `example-code` class at all — the injector matches on `data-snippet`, not on the
+> class, so that is survivable, but the styling in step 1 keys off `.example-code` and a
+> bare `<pre>` would ship unstyled. Re-count before mapping ids to blocks; do NOT trust the
+> 11/2/2 split.
+>
+> The rest of step 1 checks out: `tok-*` classes are live (4 `tok-cmt`, 2 `tok-err`, 17
+> `tok-key`, 1 `tok-ok`, 13 `tok-val`), and `www/styles.css:429-432` defines
+> `.example-code .comment/.keyword/.key/.string` with nothing for `ok`/`err`, so transcript
+> blocks would ship unstyled exactly as the plan warns.
+
 - [ ] **Step 2: Replace each block with a placeholder**
 
 Every block becomes:
@@ -1839,15 +1860,16 @@ describe("payload ↔ live site bijection", () => {
 > form gives `v0.24.4`; and `v7.20.12` carries `examples/advanced-modeling` but **no**
 > `examples/showcase`, so an unfiltered pin would break forever exactly as described.
 >
-> **The `PAGES` list above is wrong and will rot.** The site has SIX pages —
+> **The `PAGES` list is correct today and will rot.** Stated precisely, because the first
+> draft of this note overstated it: task 12 places all fifteen placeholders on exactly the
+> three pages named here, so the list covers them. But the site has SIX pages —
 > `www/{index,getting-started,story,requirements,videos}.html` and
-> `www/articles/prompts-are-code.html` — and the list names three. A placeholder added to
-> `story.html`, `getting-started.html` or `videos.html` would be invisible to the
-> bidirectional check: the "payload entry on no page" half would report an orphan that is
-> not one, and the "page id with no payload entry" half would miss it entirely. Derive the
-> list by walking the fetched tree (or fetch the site's file list) rather than hardcoding
-> it — a hand-maintained list of pages is the same defect class as the hand-maintained
-> snippet ids this whole program exists to remove.
+> `www/articles/prompts-are-code.html` — and the moment a placeholder lands on one of the
+> other three it becomes invisible to the bidirectional check: the "payload entry on no
+> page" half would report an orphan that is not one, and the "page id with no payload
+> entry" half would miss it entirely. Derive the list by walking the fetched tree rather
+> than hardcoding it — a hand-maintained list of pages is the same defect class as the
+> hand-maintained snippet ids this program exists to remove.
 
 - [ ] **Step 4: Wire it into the release preflight**
 
