@@ -201,6 +201,32 @@ gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
 # partial fragment stays quiet. The self-test replays all three incidents.
 gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-examples.ts; }
 
+# ── the site's published snippets must still be true ──────────────────────────
+# metaobjects.dev publishes generated code under the claim that it is real `meta gen`
+# output, and until this gate NOTHING checked that: the showcase corpus, the committed
+# excerpts and the highlighters all shipped with tests that ran in no lane at all.
+# This runs them — the excerpt must still be an in-order subsequence of the real
+# generated file, the drift fixture must still fail, and `regen-showcase --check
+# --bun-only` must still find the committed ts+sql output byte-identical to a pristine
+# regen (pristine because `meta gen` three-way-merges a hand edit and reports `merged`,
+# so `verify --codegen` is blind to a COMMITTED edit inside a generated file).
+#
+# bun_install FIRST: scripts/site imports highlight.js, and the regen test spawns the
+# workspace `meta` CLI. Cold, a bare specifier from inside the workspace otherwise
+# resolves to the PUBLISHED release in ~/.bun/install/cache and the gate passes GREEN
+# against the wrong code.
+#
+# SCOPED to `scripts/site` — a bare `bun test` at the repo root walks java/python/
+# csharp/fixtures and takes many minutes.
+#
+# Deliberately does NOT run the other four ports: that shells out to mvn/dotnet/uv,
+# and this lane is `step_if bun` — guarded on bun alone and included in `--quick`, the
+# documented pre-PR command. The release preflight runs `--check --all-ports`, which
+# refuses to leave a port out. The site PAYLOAD half of this gate joins here when the
+# payload builder lands (plan task 9); today there is no payload to check, and naming
+# the gate for one would be a gate reading as more coverage than it has.
+gate_site_snippets() { bun_install && bun test scripts/site; }
+
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
 # typecheck` walks WORKSPACE PACKAGES only — so every script here, including every
@@ -488,6 +514,7 @@ if want gates; then step    "script-name hook collisions"      gate_script_name_
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
+if want gates; then step_if bun "site snippets are true"       gate_site_snippets;          fi
 if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
 if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
 if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi

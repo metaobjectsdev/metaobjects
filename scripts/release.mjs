@@ -4,6 +4,13 @@
 //   bun run release <version>            # do it (stops for confirm before publish)
 //   bun run release <version> --dry-run  # everything except publish/tag/push
 //   bun run release <version> --yes      # skip the interactive confirm (CI)
+//   bun run release <version> --preflight-only   # run PHASE 0 and stop
+//
+// --preflight-only is NOT --dry-run. --dry-run still runs Phase 1, which writes the
+// new version into all 14 package.json files, rebuilds, and regenerates bun.lock —
+// nothing reverts that, and this repo carries a scar from a corrupting version bump.
+// --preflight-only returns before any of it, so it is the safe way to exercise a
+// preflight change.
 //
 // Collapses the manual 11-phase ceremony into one command: preflight → bump →
 // build → relock → pack-verify → [CONFIRM] → commit → publish (tier order) → tag →
@@ -25,6 +32,7 @@ import { publishSet } from "./publish-set.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
+const PREFLIGHT_ONLY = process.argv.includes("--preflight-only");
 const YES = process.argv.includes("--yes");
 
 // A scratch root for the post-publish smoke that no stray node_modules can shadow.
@@ -45,7 +53,7 @@ const ok = (m) => console.log(`\x1b[32m✓\x1b[0m ${m}`);
 const die = (m) => { console.error(`\x1b[31m✗ ${m}\x1b[0m`); process.exit(1); };
 
 if (!VERSION || !/^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(VERSION)) {
-  die("usage: bun run release <version> [--dry-run] [--yes]   (e.g. 0.12.6)");
+  die("usage: bun run release <version> [--dry-run] [--yes] [--preflight-only]   (e.g. 0.12.6)");
 }
 
 // --- PHASE 0: preflight (all must pass) -----------------------------------
@@ -112,6 +120,33 @@ if (taken.length)
       `npm versions are permanent — pick the next free version.`);
 ok(`preflight: on main, synced, ${VERSION} free on all ${set.length} packages`);
 ok(`lockstep set @ ${current}: ${set.length} packages → ${VERSION}`);
+
+// The showcase corpus is what metaobjects.dev publishes as "real `meta gen` output",
+// so a stale tree is a stale claim on a public page. Checked BEFORE the version bump,
+// which is committed and pushed long before the first publish.
+//
+// LAST in Phase 0 on purpose: this is the only slow check here (it shells out to
+// mvn/dotnet/uv), so everything cheap — and everything that fails often, like a dead
+// npm token — gets to fail first.
+//
+// `--all-ports`, never a bare `--check`: without it a missing mvn/dotnet/uv makes
+// regen-showcase SKIP that port and still exit 0, so the preflight would pass on a box
+// that never checked Java at all. This is the one place that refuses to leave a port
+// out; the ci-local gate deliberately runs the bun-only half.
+try {
+  sh("bun scripts/regen-showcase.ts --check --all-ports", { quiet: true });
+  ok("showcase: committed output matches a pristine regen on all five ports");
+} catch (e) {
+  die("showcase output is stale, or a port's toolchain is missing — the site would\n" +
+      "  publish a stale claim. Run `bun scripts/regen-showcase.ts --all-ports`, review\n" +
+      "  the diff, and commit before releasing.\n\n" +
+      `${e.stdout ?? ""}${e.stderr ?? ""}`);
+}
+
+if (PREFLIGHT_ONLY) {
+  ok("--preflight-only: Phase 0 passed; stopping before the version bump");
+  process.exit(0);
+}
 
 // --- PHASE 1: bump --------------------------------------------------------
 for (const p of set) {
