@@ -96,11 +96,16 @@ test("a projection field's dbCol honours @column, not just the naming strategy",
           },
         },
         {
+          // FR-024 (B4b): a projection NEVER object-level `extends` an entity — subtype-rules
+          // rejects it. Each field binds individually with `extends: "<Entity>.<field>"`,
+          // which is also the stronger regression: the projection's own field node carries no
+          // @column of its own, so this exercises resolveColumnName's INHERITANCE path.
           "object.projection": {
             name: "AuthorSummary",
-            extends: "Author",
             children: [
               { "source.rdb": { "@kind": "view", "@table": "v_author_summary" } },
+              { "field.int": { name: "id", extends: "Author.id" } },
+              { "field.string": { name: "firstName", extends: "Author.firstName" } },
               { "identity.primary": { name: "id", extends: "Author.id" } },
             ],
           },
