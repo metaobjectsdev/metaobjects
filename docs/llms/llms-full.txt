@@ -1,6 +1,6 @@
 # MetaObjects -- Full Reference Corpus
 
-> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, and prompt construction across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `0.24.4` on npm and `7.24.4` on Maven Central.
+> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, prompt construction, and capability requirements across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `0.24.4` on npm and `7.24.4` on Maven Central.
 
 **Note for AI assistants:** This file is the concatenated reference material for MetaObjects, intended to be loaded as LLM context. For the short index, see [llms.txt](https://metaobjects.dev/llms.txt). For the canonical spec and source, see the [GitHub repo](https://github.com/metaobjectsdev/metaobjects). When this file is out of date relative to the GitHub source, the GitHub source wins.
 
@@ -10,12 +10,13 @@
 
 ## What MetaObjects is
 
-MetaObjects is a cross-language metadata standard for declaring typed entity models. From a single metadata definition, MetaObjects drives four capabilities — **all four ship today across all five ports** (TypeScript, Java, Kotlin, C#, Python), though not uniformly deep (field ranking: drift > codegen > prompts > runtime metadata):
+MetaObjects is a cross-language metadata standard for declaring typed entity models. From a single metadata definition, MetaObjects drives five capabilities. The first four **ship today across all five ports** (TypeScript, Java, Kotlin, C#, Python), though not uniformly deep (field ranking: drift > codegen > prompts > runtime metadata); the fifth ships its vocabulary and checks in every port and its test scaffolding in TypeScript only:
 
 1. **Code generation** -- idiomatic per-language code generated from the same metadata model.
 2. **Runtime metadata access** -- load the metadata at runtime to drive dynamic behavior: CRUD operations, validation, relationships, dynamic admin UIs. (Typed tool payloads are declared today; MCP exposure of tools is on the roadmap.)
 3. **Drift detection** -- catch divergence between code and metadata before it ships, surfacing drift as build-time breakage.
 4. **Prompt construction** -- treat LLM prompts as governed metadata: a typed payload (a projection), external provider-resolved prompt text, byte-identical cross-language render, and build-time prompt-to-payload drift detection.
+5. **Requirements and testing** -- declare what the software is supposed to *do* as a node in the same model, so `implementedBy` is resolved rather than trusted, `meta verify` reports the ledger on every run, and `requirementTests()` scaffolds a test stub per claim (TypeScript only).
 
 The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, and the generated code is idiomatic per-language output with **no proprietary runtime** — the entity/model tier is dependency-free, and the optional client, prompt-render, and runtime tiers are ordinary Apache-2.0 packages you could vendor or fork. If the `@metaobjectsdev/*` (npm) or `com.metaobjects:*` (Maven) packages disappeared tomorrow, your generated code keeps working in every language.
 
@@ -41,9 +42,9 @@ This file is the short corpus; the deep, version-matched how-to is the scaffolde
 
 ---
 
-## The four pillars
+## The five pillars
 
-The pillars are views on the same metadata, not separate products. All four ship per language today, conformance-gated so behavior is byte-identical across ports — though they are not uniformly deep. In field materialization the ranking is drift > codegen > prompts > runtime metadata (the youngest pillar); see the capability matrix in the README for per-port coverage.
+The pillars are views on the same metadata, not separate products. All five ship today. The first four ship per language, conformance-gated so behavior is byte-identical across ports — though they are not uniformly deep. In field materialization the ranking is drift > codegen > prompts > runtime metadata (the youngest of the four); see the capability matrix in the README for per-port coverage. The fifth, requirements and testing, ships its vocabulary and its `verify` checks in every port and its test scaffolding in TypeScript only — the split is stated below because it is easy to overclaim.
 
 ### Codegen
 
@@ -81,11 +82,23 @@ Combinations aggregate (exit non-zero if any selected mode reports drift). Bare 
 
 ### Prompt construction
 
-The prompt is code too — but most teams still ship it as a string assembled imperatively and scattered across services, with no declared shape, no tests, and no visibility into token cost. The fourth pillar makes a prompt a declared, deterministic, testable artifact.
+The prompt is code too — but most teams still ship it as a string assembled imperatively and scattered across services, with no declared shape, no tests, and no visibility into token cost. This pillar makes a prompt a declared, deterministic, testable artifact.
 
 A prompt's input payload is declared as a typed projection — the same machinery used for DB views — so the data a prompt consumes has one declared shape and unused fields (payload bloat, token cost) show up as a diff. The prompt text is never inline: it is external and resolved by a runtime-configured provider (filesystem, RDB, or NoSQL), addressed by a backend- and locale-agnostic logical reference, so a rule block triplicated across call sites lives once. A logic-less Mustache engine renders `(payload + provider-resolved text) → final prompt string` deterministically: the same inputs always produce the same string, which makes prompts snapshot-testable in CI and keeps them byte-stable so a stray whitespace or key-order change can't silently break exact-prefix prompt caching (where the savings run up to ~90% of input cost). A build-time `verify --templates` step proves every prompt variable resolves to a real field on its payload, so a renamed field three services away breaks the build instead of quietly degrading output.
 
 Because the render is conformance-gated, the determinism guarantee holds in every language port — which is also what lets an eval harness (often Python) render exactly what a production service (often not) ships. The library-side building blocks all ship in all five ports today: render, payload-VO codegen, `verify`, `template.output` parser-on-receipt (FR-006), the output-format prompt fragment, and the tolerant `extract` parser (FR-010/FR-011). The one remaining library-side piece is MCP exposure of declared prompts/tools (see the roadmap).
+
+### Requirements and testing
+
+The other four pillars keep the code honest about the *model*. This one asks a question none of them can: is the thing you said the software does actually built? A test exercises code that exists; there is no test that fails because a column nobody writes was never wired to anything. The absence has no address — so give it one.
+
+A capability is declared as a node in the same model as the entities, not in a side document and not in a tool where the link to the code is a string. `requirement.functional` (fails when *nothing* implements it — existence) and `requirement.architectural` (fails when something *violates* it — universality) are registered vocabulary in all five ports, with the loader enforcing the closed `@status` enum so a typo fails the load in every language rather than passing silently in four of them. Hierarchy is nesting, so regrouping moves a subtree.
+
+`@implementedBy` is **resolved, not trusted**: it names a real member of the real model, so a claim whose implementation was renamed or deleted fails the build instead of going quietly stale. `meta verify` reports the ledger on **every** run — a gate that says nothing when it passes cannot be told apart from a gate that checked nothing — covering unresolved links, entities no claim covers, and gaps recorded versus gaps nobody has ruled on, plus an authoring lint whose findings are warnings that can never fail a build. `meta docs` renders the ledger for humans and for agents.
+
+**The port split, stated exactly:** the vocabulary and the `verify` checks are cross-port. **`requirementTests()` — which scaffolds a test stub per claim, carrying the statement and counterexample in, kept from rotting by `verify --codegen` — is TypeScript-only.** There is no five-language test generation.
+
+What MetaObjects does not do is write the assertion. A generated stub is a place to put a proof and a guarantee that it stays in step with the claim; it is not a proof. Entirely opt-in — a project that declares no `requirement.*` nodes sees no change at all.
 
 ---
 
@@ -93,7 +106,7 @@ Because the render is conformance-gated, the determinism guarantee holds in ever
 
 | Language | Status | Notes |
 |---|---|---|
-| TypeScript | Reference implementation, npm `0.24.4` | All four pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
+| TypeScript | Reference implementation, npm `0.24.4` | All five pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
 | Java | Maven Central `7.24.4` | Spring REST + DTO + repository-interface codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
 | Kotlin | Maven Central `7.24.4` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
 | C# | NuGet `0.24.4` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
@@ -300,7 +313,7 @@ Apache License 2.0. See [`LICENSE`](https://github.com/metaobjectsdev/metaobject
 
 For the "why metadata is the architectural spine AI codegen needs" argument, see Doug Mealing's flagship essay: [I thought AI killed MetaObjects. Then AI drift made it essential.](https://dougmealing.com/writing/metaobjects-ai-drift/)
 
-On the fourth pillar — why prompts are code too: [The prompt is code — and yours is drifting too.](https://dougmealing.com/writing/the-prompt-is-code/)
+On the prompt pillar — why prompts are code too: [The prompt is code — and yours is drifting too.](https://dougmealing.com/writing/the-prompt-is-code/)
 
 For the comparison between MetaObjects and the broader AI stack (context engineering, schema-driven agent design, knowledge-graph grounding, the Model Context Protocol), see: [The 2025 AI stack and the architecture it's missing](https://dougmealing.com/writing/ai-stack-missing-architecture/).
 

@@ -28,7 +28,7 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  */
 const BLOCK = (id: string) => new RegExp(
   `(<pre[^>]*data-snippet="${escapeRe(id)}"[^>]*>)[\\s\\S]*?(</pre>)` +
-  `(\\s*<details>[\\s\\S]*?</details>)?`, "g");
+  `(\\s*<details[^>]*>[\\s\\S]*?</details>)?`, "g");
 
 const PLACEHOLDER = /<pre[^>]*data-snippet="([^"]+)"/g;
 
@@ -48,8 +48,12 @@ export function injectSnippets(html: string, payload: SitePayload): string {
         `site inject: no payload entry for placeholder "${id}". Either the page names an ` +
         `id the payload does not build, or the id is misspelled.`);
     }
+    // `example-details` is not decoration: the site styles the expander through it, and
+    // a bare <details> would ship the browser's own disclosure widget onto a page that
+    // has no other one. The BLOCK regex above matches `<details[^>]*>` so this stays
+    // idempotent — a class-less details left by an older deploy is still recognised.
     const details = s.full
-      ? `\n<details><summary>Show the whole generated file (${s.lineCount} lines)</summary>\n` +
+      ? `\n<details class="example-details"><summary>Show the whole generated file (${s.lineCount} lines)</summary>\n` +
         `<pre class="example-code"><code>${s.full}</code></pre></details>`
       : "";
     // A function replacer, deliberately: the snippet is highlighted code and routinely

@@ -18,14 +18,22 @@ describe("injectSnippets", () => {
 
   test("appends a <details> when a full file exists — and NO script tag", () => {
     const out = injectSnippets(`<pre class="example-code" data-snippet="ts-entity"></pre>`, payload);
-    expect(out).toContain("<details>");
+    expect(out).toContain("<details");
     expect(out).toContain("Show the whole generated file (2 lines)");
     expect(out).not.toContain("<script");
   });
 
+  // The site styles the expander through `.example-details`. A bare <details> would
+  // ship with the browser's own disclosure widget on a page that has no other one —
+  // and nothing on the site would fail, because the site has no tests.
+  test("the appended <details> carries the class the site styles", () => {
+    const out = injectSnippets(`<pre class="example-code" data-snippet="ts-entity"></pre>`, payload);
+    expect(out).toContain(`<details class="example-details">`);
+  });
+
   test("appends no <details> when there is no full file", () => {
     const out = injectSnippets(`<pre class="example-code" data-snippet="showcase-model"></pre>`, payload);
-    expect(out).not.toContain("<details>");
+    expect(out).not.toContain("<details");
   });
 
   test("replaces existing content, so re-injection is idempotent", () => {
@@ -42,7 +50,7 @@ describe("injectSnippets", () => {
     const once = injectSnippets(`<pre class="example-code" data-snippet="ts-entity"></pre>`, payload);
     const twice = injectSnippets(once, payload);
     expect(twice).toBe(once);
-    expect([...twice.matchAll(/<details>/g)]).toHaveLength(1);
+    expect([...twice.matchAll(/<details[^>]*>/g)]).toHaveLength(1);
   });
 
   test("throws on a placeholder with no payload entry", () => {
