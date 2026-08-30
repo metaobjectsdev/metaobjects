@@ -142,6 +142,8 @@
   },
   "include": [
     "scripts/**/*.ts",
-    "scripts/site/*.mjs"
+    "scripts/site/*.mjs",
+    "scripts/finish-release.mjs",
+    "scripts/site-inject-ci.mjs"
   ]
 }
