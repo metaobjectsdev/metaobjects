@@ -513,12 +513,23 @@ describe("renderNamesDecl", () => {
     expect(renderNamesDecl(await subscriber(), "snake_case")).not.toContain("schema");
   });
 
-  test("is deterministic — same input, byte-identical output", async () => {
-    const s = await subscriber();
-    expect(renderNamesDecl(s, "snake_case")).toBe(renderNamesDecl(s, "snake_case"));
+  // Field order must follow the MODEL, not declaration order — the renderer sorts for
+  // exactly this reason. Rendering the SAME object twice does not test that: it is
+  // deterministic whether or not the sort exists, so such a test passes with `.sort()`
+  // deleted. Two fixtures declaring the same fields in different order is the test that
+  // has teeth.
+  test("field order does not depend on declaration order", async () => {
+    const ab = await entityWithFieldOrder(["alpha", "beta"]);
+    const ba = await entityWithFieldOrder(["beta", "alpha"]);
+    expect(renderNamesDecl(ab, "snake_case")).toBe(renderNamesDecl(ba, "snake_case"));
   });
 });
 ```
+
+Write `entityWithFieldOrder(order: string[])` beside `subscriber()`: same loader idiom,
+emitting `field.string` children in the given order, each with an `@column` that is NOT the
+strategy's answer for its name (so the test also proves the column is carried, not
+recomputed).
 
 - [ ] **Step 2: Run and confirm it fails**
 
