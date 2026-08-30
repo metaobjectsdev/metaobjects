@@ -1682,7 +1682,7 @@ git commit -m "feat(site): payload injector, bijection check, and local preview"
 - Modify: `www/articles/prompts-are-code.html` (2 blocks → placeholders)
 - Modify: `www/styles.css` (palette)
 
-- [ ] **Step 1: Audit `tok-*` before deleting anything**
+- [x] **Step 1: Audit `tok-*` before deleting anything**
 
 The `tok-*` rules are **not in `styles.css`** — they live in inline `<style>` blocks: `www/requirements.html:47-48` (global) and `www/articles/prompts-are-code.html:48-52` (scoped under `.article`). A `grep tok- www/styles.css` returns nothing, which reads as "no rules to keep" and is how you would delete markup whose styling lives elsewhere.
 
@@ -1723,7 +1723,7 @@ If any `tok-*` class appears **outside** a `<pre>` block, keep its rule and migr
 > `.example-code .comment/.keyword/.key/.string` with nothing for `ok`/`err`, so transcript
 > blocks would ship unstyled exactly as the plan warns.
 
-- [ ] **Step 2: Replace each block with a placeholder**
+- [x] **Step 2: Replace each block with a placeholder**
 
 Every block becomes:
 
@@ -1735,12 +1735,12 @@ Every block becomes:
 
 `ts-requirement-test` belongs on **`requirements.html`**, the page whose claim it proves — not on `index.html`. Counting: 11 on `index.html`, 2 on `requirements.html` (the ledger entry and the generated test stub), 2 on `prompts-are-code.html`.
 
-- [ ] **Step 3: Rewrite the prose the model change invalidates**
+- [x] **Step 3: Rewrite the prose the model change invalidates**
 
 - `index.html` "metamodel goes deep": the fictional `blog` package becomes the real `acme::learn`. The claim *"this exact model loads and generates a full typed stack"* is now true, so it stays — but the `# … title, authorId …` elision it referred to is gone, replaced by a computed `…` where the excerpt genuinely skips.
 - `requirements.html`: `arena::Bot.status` becomes `acme::Subscriber.status`, and the surrounding story becomes *a subscriber can be paused without erasing their history*. The claim "resolved, not trusted" is now gated by Task 9's requirement-link check.
 
-- [ ] **Step 4: Add the fifth pillar card**
+- [x] **Step 4: Add the fifth pillar card**
 
 In `index.html`'s pillar section, after "Prompt construction":
 
@@ -1758,7 +1758,7 @@ In `index.html`'s pillar section, after "Prompt construction":
 
 The last sentence is **load-bearing and must not be softened** — the vocabulary is cross-port, `requirementTests()` is TypeScript-only, and the site must not imply five-language test generation.
 
-- [ ] **Step 5: Preview before committing**
+- [x] **Step 5: Preview before committing**
 
 ```bash
 cd <metaobjects-repo> && bun run site:preview --site <site-repo>
@@ -1766,7 +1766,7 @@ cd <metaobjects-repo> && bun run site:preview --site <site-repo>
 
 Open the printed path. The site has no CI, so this preview is the only check before it is live.
 
-- [ ] **Step 6: Commit (site repo)**
+- [x] **Step 6: Commit (site repo)**
 
 ```bash
 git add www && git commit -m "site: code blocks become generated-snippet placeholders"
@@ -1775,6 +1775,33 @@ git add www && git commit -m "site: code blocks become generated-snippet placeho
 Do **not** push yet — the pages render empty until Task 13 lands the deploy step.
 
 ---
+
+
+> **DONE 2026-08-30** (site `d6a9f08`, monorepo `efa74864c` — site commit is HELD, not pushed).
+> Four things the plan did not anticipate:
+>
+> 1. **The 11/1/2 mapping held** even though the raw `<pre>` counts did not — index.html's
+>    13 `example-code` blocks are 11 convertible plus the assess prompt and the shell
+>    block, and requirements.html needed a SECOND placeholder ADDED (`ts-requirement-test`
+>    had no block to replace). 11 + 2 + 2 = the 15 payload ids exactly.
+> 2. **Step 4 forced the pillar count everywhere.** Five cards under "Four pillars" is
+>    visibly wrong, and `www/llms.txt` / `www/llms-full.txt` (mirrors of `docs/llms/`)
+>    said four on the same site. Both moved to five, upstream first. **`www/assess.md` was
+>    deliberately NOT touched**: `agent-context/skills/metaobjects-fit-assessment/SKILL.md`
+>    carries a written ruling deferring `requirement.*` from the assessment — "NOT a fifth
+>    pillar, NOT a P4 rubric row, NOT an R0 verdict line" — with a pre-committed shape and
+>    an anti-trigger. Do not "finish the job" there without reopening that ruling.
+> 3. **The injector now emits `<details class="example-details">`** (`scripts/site/inject.ts`),
+>    because the site styles the expander through that class. `BLOCK` matches
+>    `<details[^>]*>` so idempotence covers both spellings.
+> 4. **Three factual errors were fixed while rewriting around the blocks**: the Java
+>    "+ JPA" claim (codegen-spring emits no `@Entity` and no jakarta.persistence), the
+>    per-language labels each promising a whole generated set for a one-file block, and
+>    `meta migrate --db … --slug …` under a comment claiming it reads the live DB (it
+>    diffs the committed snapshot without `--from-db`).
+>
+> **`www/assess.md` is separately STALE** and worth its own task: 519 lines against the
+> skill's 629, and its header still says "grounded against npm `0.15.x` / Maven `7.7.x`".
 
 ### Task 13: Deploy injection and the cross-repo preflight
 
