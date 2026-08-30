@@ -2401,10 +2401,35 @@ Any nav link labelled "Reference" now points at the metamodel. Add a link to the
 
 ## Done when
 
-- Every metadata and generated-code block on `metaobjects.dev` comes from `site-payload.json`.
-- `bash scripts/ci-local.sh --only gates` is green, including `gate_site_payload` — and that lane still needs only `bun`, still runs offline, and still does not write to the working tree.
-- The release preflight passes, verified via `--preflight-only` (**never** via `release.mjs <v> --dry-run`, which bumps 14 package.json files and regenerates the lockfile before it exits).
-- Each of the eight gates has been seen to FAIL when its condition is broken, and then to pass again.
-- The live site renders every block, `<details>` expands, and `view-source` shows no `<script>`.
-- `/reference` shows the metamodel — all 69 `type.subType` pairs — and `/reference/example` shows the adopter model. No nav link 404s.
-- `meta docs --metamodel --site` refuses with a message instead of silently dropping `--site`.
+- [x] Every metadata and generated-code block on `metaobjects.dev` comes from `site-payload.json`.
+- [x] `bash scripts/ci-local.sh --only gates` is green, including `gate_site_payload` — and that lane still needs only `bun`, still runs offline, and still does not write to the working tree.
+- [x] The release preflight passes, verified via `--preflight-only` (**never** via `release.mjs <v> --dry-run`, which bumps 14 package.json files and regenerates the lockfile before it exits).
+- [x] Each of the eight gates has been seen to FAIL when its condition is broken, and then to pass again.
+- [x] The live site renders every block, `<details>` expands, and `view-source` shows no `<script>`.
+- [~] `/reference` shows the metamodel — all 69 `type.subType` pairs — and `/reference/example` shows the adopter model. No nav link 404s.
+- [x] `meta docs --metamodel --site` refuses with a message instead of silently dropping `--site`.
+
+> **STATUS 2026-08-30 — the program is complete in this repo; two live verifications wait
+> on the next release.**
+>
+> Verified today: 15 placeholders live on metaobjects.dev, all filled, zero `<script>`, 8
+> `<details>` expanders; the `gates` lane green at 20 checks (now including `site reference
+> is fresh`), offline, bun-only, leaving the tree clean; the release preflight green via
+> `--preflight-only`; `site-reference/index.html` carries exactly **69** `type.subType`
+> pairs.
+>
+> **The one criterion not yet met live is `/reference`**, and only because `v0.24.5`
+> predates `site-reference/`. Both held site commits (`ef743d7` llms mirrors, `55f9aae`
+> reference + example) go out immediately after the next release, which `finish-release.mjs`
+> now guarantees will carry both the renderer output and fresh llms mirrors.
+>
+> **What this program added that the plan did not ask for, all forced by the same
+> constraint** — the deploy pins to a release tag and installs nothing:
+> - `scripts/finish-release.mjs`, because the tag was cut in the MIDDLE of a coordinated
+>   release and therefore named a tree stating three registry versions that were never
+>   published. The website reads that tree. Fixed as ORDER, gated six ways, proven by
+>   breaking each gate.
+> - `site-reference/` rendered here rather than at deploy, and gated for freshness on both
+>   difference and orphan.
+> - The llms freshness gate on the tag, for the same reason: the site copies from the tag,
+>   and the docs refresh had always been a post-tag commit.
