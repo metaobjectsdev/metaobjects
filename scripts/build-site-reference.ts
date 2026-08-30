@@ -62,8 +62,13 @@ function resolveOut(): string {
   return out;
 }
 const OUT = resolveOut();
-/** How the messages below name the target — `site-reference/` on the default path. */
-const label = `${relative(REPO, OUT) || OUT}/`;
+/**
+ * How the messages below name the target — `site-reference/` on the default path, and an
+ * absolute path for anything outside the repo (a repo-relative `../../tmp/x` would be
+ * true and useless).
+ */
+const rel = relative(REPO, OUT);
+const label = rel !== "" && !rel.startsWith("..") ? `${rel}/` : OUT;
 
 /** Every file under `dir`, repo-relative, sorted. */
 function walk(dir: string, root: string = dir): string[] {
