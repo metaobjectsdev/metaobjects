@@ -132,7 +132,25 @@ for (const rel of ["scripts/site-inject-ci.mjs", "examples/showcase/site-payload
 }
 ok("the deploy's injector and payload are both in the tagged tree");
 
-// ── 5. the tag the DEPLOY will resolve is the one being cut ──────────────────
+// ── 5. the llms mirrors state this release ───────────────────────────────────
+// The site COPIES docs/llms/* from this tag (Task 15), so a mirror that lags makes the
+// published site lag — silently, because the copy succeeds and stale numbers look like
+// fresh ones. `v0.24.5` carries mirrors reading `0.24.4`, because the docs refresh has
+// always been a post-tag commit; with the tag moving to the end, it no longer has to be.
+for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
+  const text = out(`git show HEAD:${rel}`);
+  const missing = [
+    ...(text.includes(VERSION) ? [] : [`npm ${VERSION}`]),
+    ...(text.includes(MAVEN_VERSION) ? [] : [`Maven ${MAVEN_VERSION}`]),
+  ];
+  if (missing.length > 0) {
+    die(`${rel} does not name ${missing.join(" or ")} — refresh the mirrors before tagging, ` +
+        `or the site publishes the previous release's versions (RELEASING-docs-checklist).`);
+  }
+}
+ok("the llms mirrors state this release");
+
+// ── 6. the tag the DEPLOY will resolve is the one being cut ──────────────────
 // The repo carries two tag lines and `sort -V` over a bare `v*` returns v7.20.12, which
 // has no examples/showcase at all. This mirrors deploy.yml's own filter, so a change to
 // either is caught here rather than on a deploy nobody is watching.
@@ -146,7 +164,7 @@ ok(`the site deploy will resolve ${tag}`);
 
 if (CHECK_ONLY) { ok("--check: gates passed; no tag cut"); process.exit(0); }
 
-// ── 6. cut it ────────────────────────────────────────────────────────────────
+// ── 7. cut it ────────────────────────────────────────────────────────────────
 execSync(`git tag -a ${tag} -m "metaobjects ${VERSION} / ${MAVEN_VERSION}"`, { cwd: REPO, stdio: "inherit" });
 execSync(`git push origin ${tag}`, { cwd: REPO, stdio: "inherit" });
 ok(`cut and pushed ${tag}`);

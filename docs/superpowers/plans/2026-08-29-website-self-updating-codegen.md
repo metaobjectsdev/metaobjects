@@ -2102,7 +2102,7 @@ git commit -m "feat(site): per-registry version payload (never one version strin
 - Modify (site repo): `.github/workflows/deploy.yml`
 - Test: `scripts/site/llms.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, test, expect } from "bun:test";
@@ -2128,7 +2128,7 @@ describe("llms mirrors", () => {
 });
 ```
 
-- [ ] **Step 2: Add the deploy copy step**
+- [x] **Step 2: Add the deploy copy step**
 
 In the same clone the Task 13 step already made — do not clone twice:
 
@@ -2137,11 +2137,11 @@ In the same clone the Task 13 step already made — do not clone twice:
         cp /tmp/mo/docs/llms/llms-full.txt "$GITHUB_WORKSPACE/www/llms-full.txt"
 ```
 
-- [ ] **Step 3: Stop tracking the mirrors in the site repo**
+- [x] **Step 3: Stop tracking the mirrors in the site repo**
 
 `git rm --cached www/llms.txt www/llms-full.txt` and gitignore them. A file that is both committed and overwritten at deploy invites someone to edit the copy that loses.
 
-- [ ] **Step 4: Verify live**
+- [~] **Step 4: Verify live**
 
 After the deploy, `curl -s https://metaobjects.dev/llms.txt | head -20` must match `docs/llms/llms.txt`.
 
@@ -2149,13 +2149,45 @@ After the deploy, `curl -s https://metaobjects.dev/llms.txt | head -20` must mat
 
 Generating them is a real follow-on (template + the `registries` block), deliberately not folded in: `docs/llms/*` is also consumed directly by agents from this repo, so templating it is a change to an adopter-facing artifact and deserves its own decision.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/site/llms.test.ts && git commit -m "feat(site): llms mirrors generated at deploy"
 ```
 
 ---
+
+> **DONE 2026-08-30 except step 4, which waits on the next release — and the reason is a
+> defect this task found in the tag, not in the copy.**
+>
+> Monorepo: `scripts/site/llms.test.ts`, plus a new gate in `scripts/finish-release.mjs`.
+> Site repo: `deploy.yml` + `.gitignore`, **committed at `ef743d7` and deliberately NOT
+> pushed.**
+>
+> **Why it is held.** `v0.24.5`'s `docs/llms/` still reads `0.24.4`: the docs refresh has
+> always been a post-tag commit, and the tag was cut mid-release. Deploying the copy step
+> against that tag would REGRESS the live mirrors by a release — worse than the drift this
+> task removes. `finish-release.mjs` now refuses to tag a tree whose mirrors do not name the
+> release, so the next tag is fresh by construction and the site half can be pushed
+> immediately after it.
+>
+> **One structural change the plan did not call for.** The plan put the `cp` beside the
+> injection, inside the guard that skips when the tag predates the injector. But step 3
+> UNTRACKS the mirrors, so a skipped copy no longer leaves a stale file — it leaves **no
+> file**, and `/llms.txt` 404s on a documented URL. The copy therefore runs BEFORE that
+> guard, it has its own presence check, and a missing source warns rather than failing, on
+> the same reasoning as the injector guard: one absent text file must not take down the
+> site.
+>
+> **The test's first draft was wrong in a way worth keeping.** It forbade any `0.x`/`7.x`
+> string other than the current one, and failed on *"`@verifiedBy` … were retired in
+> `0.24.0`"* — a correct historical sentence. Rewritten to assert POSITIVELY that each
+> mirror names the current npm and Maven versions, which is what a lagging mirror stops
+> doing, and to pin the one-line summary separately: "the file mentions 0.24.5 somewhere"
+> and "the summary says we ship 0.24.5" are different claims and only the second is acted
+> on. Bound stated in the test: it passes if a mirror names the current version and leaves
+> an old shipping claim beside it. Proven by staling `docs/llms/llms.txt` — both assertions
+> red, green on restore.
 
 ### Task 16: `--metamodel --site` stops lying
 
