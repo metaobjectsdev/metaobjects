@@ -31,7 +31,7 @@
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectPlaceholderIds, injectSnippets } from "./site/inject.mjs";
+import { collectPlaceholderIds, collectRegistryKeys, injectRegistries, injectSnippets } from "./site/inject.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PAYLOAD = resolve(REPO, "examples/showcase/site-payload.json");
@@ -79,22 +79,25 @@ const pages = htmlFiles(SITE, SITE);
 /** @type {Set<string>} */
 const referenced = new Set();
 let filled = 0;
+let coordsFilled = 0;
 
 for (const rel of pages) {
   const full = join(SITE, rel);
   const src = readFileSync(full, "utf8");
   const ids = collectPlaceholderIds(src);
-  if (ids.length === 0) continue;
+  const coords = collectRegistryKeys(src);
+  if (ids.length === 0 && coords.length === 0) continue;
   for (const id of ids) referenced.add(id);
-  // injectSnippets throws, naming the id and the file, when the payload cannot fill a
+  // Both injectors throw, naming the id/key and the file, when the payload cannot fill a
   // placeholder. That is the hard-failure half — let it escape.
   try {
-    writeFileSync(full, injectSnippets(src, payload));
+    writeFileSync(full, injectRegistries(injectSnippets(src, payload), payload));
   } catch (err) {
     console.error(`✗ ${rel}: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
   filled += ids.length;
+  coordsFilled += coords.length;
 }
 
 const orphans = Object.keys(payload.snippets).filter((id) => !referenced.has(id));
@@ -106,4 +109,6 @@ if (orphans.length > 0) {
     `release preflight, where it can be fixed before publishing.`);
 }
 
-console.log(`✓ injected ${filled} placeholder(s) across ${pages.length} page(s)`);
+console.log(
+  `✓ injected ${filled} placeholder(s) and ${coordsFilled} version coordinate(s) ` +
+  `across ${pages.length} page(s)`);

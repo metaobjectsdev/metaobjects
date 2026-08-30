@@ -263,7 +263,7 @@ git commit -m "feat(showcase): the landing-page corpus, generated and drift-gate
 - Consumes: nothing.
 - Produces: `extractMarkedRegion(source: string, id: string): string` — throws on a missing or unterminated marker; returns the region dedented by its common leading indent, with the marker lines themselves removed.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, test, expect } from "bun:test";
@@ -307,12 +307,12 @@ describe("extractMarkedRegion", () => {
 });
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `bun test scripts/site/markers.test.ts`
 Expected: FAIL — "Cannot find module './markers.js'".
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 /**
@@ -2035,16 +2035,64 @@ Expected: FAIL — `registries` is stubbed.
 
 Read npm from `server/typescript/packages/cli/package.json`; Maven from the root POM; PyPI and NuGet from their port version files; `metamodel` from `expected-registry.json`'s `metamodelVersion`. Find each authoritative file by reading `scripts/check-metamodel-version.mjs` and `scripts/check-pom-versions.sh` — both already locate these, and duplicating the lookup is how two answers to one question start.
 
-- [ ] **Step 4: Convert the site table**
+- [x] **Step 4: Convert the site table**
 
 Each of the five rows takes `data-registry` attributes; the injector fills them. **Do not collapse the five to one number** — npm/PyPI/NuGet share a coordinate today and Maven does not, and at 1.0 they separate further.
 
-- [ ] **Step 5: Run the test to verify it passes, then commit**
+- [x] **Step 5: Run the test to verify it passes, then commit**
 
 ```bash
 git add scripts/site/payload.ts scripts/site/registries.test.ts
 git commit -m "feat(site): per-registry version payload (never one version string)"
 ```
+
+> **DONE 2026-08-30, and step 3 was already done.** `readRegistries` landed with Task 9's
+> payload shape, so `registries.test.ts` passed on first run — recorded rather than
+> presented as a red-green, because a test written against working code proves less than
+> one that failed first. It is kept as a PIN on the three simplifications that would break
+> it (npm ≠ the cli version, one shared version string, metamodel read off a package line),
+> plus a fourth the plan did not have: pypi/nuget must be read from their OWN manifests,
+> because under publish-what-changed a registry legitimately lags and deriving it from npm
+> would make a lagging registry unreportable.
+>
+> **What the plan did NOT call for, and is the actual work:** the injector had no
+> `data-registry` support at all — Task 9 built the payload half and nothing consumed it.
+> `injectRegistries` + `collectRegistryKeys` now do, wired into BOTH callers (deploy and
+> local preview). Three things in it are load-bearing:
+> - **The closing tag is a BACKREFERENCE**, not a literal `</code>`. A fixed closer lets a
+>   `<span data-registry>` be terminated by the next `</code>` anywhere in the document,
+>   swallowing everything between — and the page still looks plausible.
+> - **Content is `[^<]*`**, so a coordinate placeholder holds text and nothing else. It
+>   cannot eat a block it was pointed at by mistake.
+> - **A Map, not an index cast.** The key comes out of the page and is untrusted; casting
+>   `Registries` to `Record<string, string>` to look it up is how a typo becomes
+>   `undefined` flowing onward instead of the error that names it.
+>
+> **The bijection is deliberately ONE-WAY for coordinates**, unlike snippets. A key the
+> payload cannot fill is a hard failure (it would publish a blank or stale version that
+> reads like a real one); a coordinate no page shows is fine, because the payload carries
+> all five as one fact about the release and displaying four is editorial. A snippet is the
+> opposite — it is BUILT for a page, so an unreferenced one is work nobody asked for. The
+> unfillable-key half is also added to `site-bijection.test.ts`, so a typo is a red
+> preflight rather than a dark Pages deploy.
+>
+> **Proven by breaking it**, since the committed HTML already carries the right numbers and
+> injection is a no-op on a correct page: staling npm to `0.19.0`, maven to `7.11.0` and
+> metamodel to `0.9` in a scratch copy, the preview restored all three. 11 coordinates
+> across the index — five package rows plus `metamodelVersion`, which gets a line under the
+> table rather than a row, because it is a separate contract (ADR-0035 Am. 2) and folding it
+> into a package version is exactly the collapse step 4 forbids.
+>
+> **Also fixed here: the tag was cut in the MIDDLE of a coordinated release** — the defect
+> Task 13's verification exposed, and the one that would have made this whole task publish
+> three stale numbers every release. `release.mjs` no longer tags; `scripts/finish-release.mjs`
+> does, last, and refuses a tree that does not state what shipped (dirty/unpushed, tag
+> already exists, payload coordinates disagreeing, missing injector/payload, or a tag the
+> deploy's own filter would not resolve). A registry that genuinely SAT OUT is declared
+> (`--sat-out pypi,nuget`) rather than guessed — guessing "sat out" ships the stale number,
+> guessing "published" blocks a correct lagging registry. **npm can never sit out**: the
+> version argument IS the npm version. Every gate was proven to fire, in a scratch clone
+> with a controlled origin, plus the happy path. `docs/RELEASING.md` golden rule 7.
 
 ---
 

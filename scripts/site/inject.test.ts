@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { injectSnippets, collectPlaceholderIds, assertBijection } from "./inject.mjs";
+import { injectSnippets, collectPlaceholderIds, assertBijection, injectRegistries, collectRegistryKeys } from "./inject.mjs";
 import type { SitePayload } from "./payload.js";
 
 const payload = {
@@ -118,5 +118,57 @@ describe("assertBijection", () => {
       "deep.html": `<pre data-snippet="ts-entity"></pre><pre data-snippet="ts-entity"></pre>`,
     };
     expect(() => assertBijection(html, payload)).toThrow(/deep\.html/);
+  });
+});
+
+// ── data-registry: the five version coordinates ──────────────────────────────
+//
+// A version reference on the site is the same defect class as a hand-copied code
+// snippet — a number maintained in two repos, correct on the day it was typed. These
+// pin the behaviour that makes it maintained in one.
+describe("injectRegistries", () => {
+  test("fills a coordinate placeholder with the payload value", () => {
+    const out = injectRegistries(`<code data-registry="maven">OLD</code>`, payload);
+    expect(out).toBe(`<code data-registry="maven">7.24.5</code>`);
+  });
+
+  test("fills every occurrence, not just the first", () => {
+    const src = `<code data-registry="npm">x</code> and <code data-registry="npm">y</code>`;
+    expect(injectRegistries(src, payload)).toBe(
+      `<code data-registry="npm">0.24.5</code> and <code data-registry="npm">0.24.5</code>`);
+  });
+
+  test("is idempotent — a second run over injected output changes nothing", () => {
+    const once = injectRegistries(`<span data-registry="pypi">stale</span>`, payload);
+    expect(injectRegistries(once, payload)).toBe(once);
+  });
+
+  test("closes with the SAME tag it opened — a span is not a code", () => {
+    // The closer is a backreference, not a fixed string. Without that, a `</code>`
+    // later in the document would end a `<span data-registry>` and the replacement
+    // would swallow everything between.
+    const src = `<span data-registry="npm">a</span><p>keep</p><code>untouched</code>`;
+    expect(injectRegistries(src, payload)).toBe(
+      `<span data-registry="npm">0.24.5</span><p>keep</p><code>untouched</code>`);
+  });
+
+  test("an unknown coordinate is a hard failure, never an empty version", () => {
+    // Same asymmetry as a snippet placeholder: a key the payload cannot fill would
+    // publish a blank or stale version, which reads as a real one.
+    expect(() => injectRegistries(`<code data-registry="crates">x</code>`, payload))
+      .toThrow(/no payload coordinate/);
+  });
+
+  test("a coordinate the page never shows is NOT an error", () => {
+    // Deliberately unlike snippets. The payload always carries all five because they
+    // are one fact about the release; a page showing four of them is an editorial
+    // choice, and it costs no build time. A snippet, by contrast, is BUILT for a page
+    // and an unreferenced one is work nobody asked for.
+    expect(() => injectRegistries(`<code data-registry="npm">x</code>`, payload)).not.toThrow();
+  });
+
+  test("collectRegistryKeys reports what a page references", () => {
+    expect(collectRegistryKeys(`<code data-registry="npm">a</code><b data-registry="maven">c</b>`))
+      .toEqual(["npm", "maven"]);
   });
 });

@@ -22,7 +22,7 @@
 import { cpSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { injectSnippets, collectPlaceholderIds, assertBijection } from "./site/inject.mjs";
+import { injectSnippets, injectRegistries, collectPlaceholderIds, collectRegistryKeys, assertBijection } from "./site/inject.mjs";
 import type { SitePayload } from "./site/payload.js";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -66,21 +66,29 @@ cpSync(SITE, dest, { recursive: true, filter: (src) => !src.includes(`${"/"}.git
 const pages = htmlFiles(dest, dest);
 const htmlById: Record<string, string> = {};
 let filled = 0;
+let coordsFilled = 0;
 
 for (const rel of pages) {
   const full = join(dest, rel);
   const src = readFileSync(full, "utf8");
   htmlById[rel] = src;
   const ids = collectPlaceholderIds(src);
-  if (ids.length === 0) continue;
-  writeFileSync(full, injectSnippets(src, payload));
+  const coords = collectRegistryKeys(src);
+  // Both, not just ids: a page carrying only version coordinates has no snippet
+  // placeholder, and skipping on `ids.length === 0` alone would silently leave its
+  // versions stale while reporting a clean preview.
+  if (ids.length === 0 && coords.length === 0) continue;
+  writeFileSync(full, injectRegistries(injectSnippets(src, payload), payload));
   filled += ids.length;
+  coordsFilled += coords.length;
 }
 
 const referenced = new Set(Object.values(htmlById).flatMap(collectPlaceholderIds));
 const unreferenced = Object.keys(payload.snippets).filter((id) => !referenced.has(id));
 
-console.log(`✓ previewed ${pages.length} page(s), filled ${filled} placeholder(s)`);
+console.log(
+  `✓ previewed ${pages.length} page(s), filled ${filled} placeholder(s) ` +
+  `and ${coordsFilled} version coordinate(s)`);
 console.log(`  ${dest}`);
 if (unreferenced.length > 0) {
   console.log(

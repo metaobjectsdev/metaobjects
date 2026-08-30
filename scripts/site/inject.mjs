@@ -14,8 +14,14 @@
  * `tsconfig.scripts.json` includes `scripts/site/*.mjs` under `checkJs`, so moving it
  * out of `.ts` did not move it out of the gate.
  *
- * A placeholder is a `<pre>` carrying `data-snippet="<id>"`. The injector replaces its
- * contents and, for a snippet that ships its whole file, appends a `<details>` after it.
+ * There are TWO kinds of placeholder, and they are filled by two functions:
+ *
+ *  - `data-snippet="<id>"` on a `<pre>` — a generated code block. The injector replaces
+ *    its contents and, for a snippet that ships its whole file, appends a `<details>`
+ *    after it.
+ *  - `data-registry="<key>"` on any element — one of the release's five version
+ *    coordinates. The injector replaces its text.
+ *
  * Everything emitted is plain HTML — the site has zero `<script>` tags and keeps it that
  * way, so expand-to-view is a `<details>`, not a click handler.
  */
@@ -83,6 +89,74 @@ export function injectSnippets(html, payload) {
     // `$&`/`$1` inside it and corrupt the published block.
     out = out.replace(BLOCK(id), (/** @type {string} */ _m, /** @type {string} */ open, /** @type {string} */ close) =>
       `${open}<code>${s.inline}</code>${close}${details}`);
+  }
+  return out;
+}
+
+/**
+ * A version coordinate placeholder: any element carrying `data-registry="<key>"`.
+ *
+ * The closer is a BACKREFERENCE to the opening tag name, not a fixed `</code>`. A fixed
+ * closer would let a `<span data-registry>` be ended by the next `</code>` anywhere in
+ * the document, swallowing everything between — and the page would still look plausible.
+ *
+ * The content is `[^<]*`, so a coordinate placeholder holds TEXT and nothing else. That
+ * is a deliberate constraint rather than a limitation: a version is a bare string, and
+ * refusing to match across nested markup means this can never eat a block it was pointed
+ * at by mistake.
+ */
+/** @type {(key: string) => RegExp} */
+const COORD = (key) => new RegExp(
+  `(<([a-zA-Z][\\w-]*)[^>]*\\sdata-registry="${escapeRe(key)}"[^>]*>)[^<]*(</\\2>)`, "g");
+
+const COORD_KEY = /<[a-zA-Z][\w-]*[^>]*\sdata-registry="([^"]+)"/g;
+
+/** Every coordinate key the page references, in document order, repeats included. */
+/**
+ * @param {string} html
+ * @returns {string[]}
+ */
+export function collectRegistryKeys(html) {
+  return [...html.matchAll(COORD_KEY)]
+    .map((m) => m[1])
+    .filter((k) => k !== undefined);
+}
+
+/**
+ * Fill every `data-registry` placeholder from the payload's five coordinates.
+ *
+ * The direction enforced here is page -> payload only, and that asymmetry is on purpose.
+ * A key the payload cannot fill is a hard failure, because the alternative is publishing
+ * a blank or stale number that reads exactly like a real one. But a coordinate NO page
+ * shows is fine: the payload always carries all five because they are one fact about the
+ * release, and which of them a page chooses to display is editorial. That is the
+ * opposite of a snippet, which is BUILT for a page — an unreferenced snippet is build
+ * work nobody asked for, and `assertBijection` reports it.
+ */
+/**
+ * @param {string} html
+ * @param {SitePayload} payload
+ * @returns {string}
+ */
+export function injectRegistries(html, payload) {
+  let out = html;
+  // A Map rather than an index cast: `Registries` is a closed shape with no index
+  // signature, and casting it to Record<string, string> to look up an UNTRUSTED key
+  // read out of a page is exactly the kind of assertion that turns a typo into
+  // `undefined` flowing onward instead of the error below.
+  const coords = new Map(Object.entries(payload.registries));
+  for (const key of new Set(collectRegistryKeys(html))) {
+    const v = coords.get(key);
+    if (v === undefined) {
+      throw new Error(
+        `site inject: no payload coordinate for data-registry="${key}". ` +
+        `Known coordinates: ${[...coords.keys()].join(", ")}.`);
+    }
+    // A function replacer for the same reason injectSnippets uses one: a version is
+    // tame today, but `$&` in a replacement string is a trap that only fires on the
+    // one value that contains it.
+    out = out.replace(COORD(key), (/** @type {string} */ _m, /** @type {string} */ open, /** @type {string} */ _tag, /** @type {string} */ close) =>
+      `${open}${v}${close}`);
   }
   return out;
 }

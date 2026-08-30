@@ -12,7 +12,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { assertBijection, collectPlaceholderIds } from "./site/inject.mjs";
+import { assertBijection, collectPlaceholderIds, collectRegistryKeys } from "./site/inject.mjs";
 
 const REPO = resolve(import.meta.dirname, "..");
 const OWNER = "metaobjectsdev";
@@ -85,6 +85,22 @@ describe("payload ↔ live site bijection", () => {
       }
 
       expect(() => assertBijection(htmlById, payload)).not.toThrow();
+
+      // Version coordinates, checked in the one direction that can fail.
+      //
+      // A `data-registry` key the payload cannot fill is a HARD failure at deploy — which
+      // is the run nobody is watching, and it takes the whole Pages deploy down with it,
+      // including unrelated prose edits. Catching it here means a typo on a page is a red
+      // preflight before anything publishes rather than a dark site afterwards.
+      //
+      // Only this direction. A coordinate no page displays is not a defect: the payload
+      // carries all five because they are one fact about the release, and showing four of
+      // them is editorial. That is the opposite of a snippet, which is BUILT for a page.
+      const known = new Set(Object.keys(payload.registries));
+      const unfillable = [...new Set(Object.entries(htmlById).flatMap(([file, html]) =>
+        collectRegistryKeys(html).map((k) => `${k} (${file})`)))]
+        .filter((s) => !known.has(s.split(" ")[0] ?? ""));
+      expect(unfillable).toEqual([]);
     },
     // Six pages plus a tree listing, over the network, from a release preflight.
     60_000,

@@ -245,10 +245,22 @@ for (const pkg of ordered) {
   ok(`published ${pkg.short}@${VERSION}`);
 }
 
-// --- PHASE 8: push + tag --------------------------------------------------
+// --- PHASE 8: push (the tag is NOT cut here) -------------------------------
+// This script publishes npm, which is one of FOUR registries. The PyPI/NuGet/Maven
+// version bump is a separate, later commit — so at this point `main` states the new npm
+// coordinate and three stale ones, and the site payload committed above says exactly
+// that.
+//
+// `v<version>` is what the website's deploy PINS TO: it clones the tag and injects that
+// payload. Cutting the tag here would publish three registry versions that were never
+// released, on every release, forever — and it did, at v0.24.5, where the tag carries
+// {npm 0.24.5, pypi 0.24.4, nuget 0.24.4, maven 7.24.4}. Nothing caught it because no
+// page displayed a coordinate yet.
+//
+// So the tag moves to the END of the coordinated cut: `scripts/finish-release.mjs`,
+// which refuses to tag until the payload's coordinates match what actually shipped.
 sh("git push origin main", { quiet: true });
-sh(`git tag v${VERSION} && git push origin v${VERSION}`, { quiet: true });
-ok(`pushed main + tag v${VERSION}`);
+ok("pushed main (tag deferred to finish-release)");
 
 // --- PHASE 11: post-publish smoke (the RC's safety net) -------------------
 // NOT under tmpdir(). Node's resolution walks UP from the scratch dir, so a stale
@@ -265,6 +277,11 @@ if (!v.includes(VERSION)) die(`smoke FAILED: clean install reports ${v}, expecte
 ok(`smoke: clean external install → meta --version = ${v}`);
 
 console.log(`\n\x1b[32m\x1b[1m✅ ${VERSION} is live on npm latest.\x1b[0m`);
+console.log(`\n\x1b[1mNOT DONE — v${VERSION} is not tagged yet, by design.\x1b[0m`);
+console.log(`   1. Bump PyPI/NuGet/Maven, run \`bun run site:payload\`, commit, push.`);
+console.log(`   2. Tag the ports: python-v${VERSION}, csharp-v${VERSION}, java-v7.${VERSION.split(".").slice(1).join(".")}.`);
+console.log(`   3. \`bun scripts/finish-release.mjs ${VERSION}\` — gates the coordinates, then cuts v${VERSION}.`);
+console.log(`   The website pins to v${VERSION}, so tagging before step 1 publishes three stale versions.`);
 console.log(`   Docs version refs are NOT auto-bumped (low-value churn for a patch); batch them when convenient.`);
 console.log(`   The site payload IS auto-bumped and committed here — but only its npm coordinate.`);
 console.log(`   The PyPI/NuGet/Maven bump commit must run \`bun run site:payload\` or gates goes red on main.\n`);

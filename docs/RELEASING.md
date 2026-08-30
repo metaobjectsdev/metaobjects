@@ -149,6 +149,35 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    too. Forget it and `main` goes red on the next push; once the site injection lands, the page
    would publish the previous release's versions.
 
+7. **`v<version>` is cut LAST, and it is not just a marker — the website deploys from it.**
+   metaobjects.dev's Pages workflow resolves the newest `v0.x` tag, clones that tree, and
+   injects its `examples/showcase/site-payload.json` into the pages. So the tag decides
+   what the site states about the release, **including all five version coordinates.**
+
+   A coordinated cut is **two commits** — npm's, then the hand-written PyPI/NuGet/Maven
+   bump. `release.mjs` used to tag between them, which names a tree whose payload reads
+   `{npm: <new>, pypi: <old>, nuget: <old>, maven: <old>}`: three versions that were never
+   released. `v0.24.5` carries exactly that, and nothing caught it because no page
+   displayed a coordinate yet.
+
+   So `release.mjs` pushes `main` and **stops**. After the ports are bumped, committed,
+   pushed and tagged (`python-v*`, `csharp-v*`, `java-v7.*`), run:
+
+   ```bash
+   bun scripts/finish-release.mjs <version>            # gates, then tags and pushes
+   bun scripts/finish-release.mjs <version> --check    # gates only
+   ```
+
+   It refuses to tag a tree that does not state the release: dirty or unpushed tree, a tag
+   that already exists (never move one — a moved tag silently changes what the site
+   deploys), payload coordinates that disagree with what shipped, a missing injector or
+   payload, or a tag the deploy's own filter would not resolve. A registry that genuinely
+   **sat out** the release under publish-what-changed is declared explicitly
+   (`--sat-out pypi,nuget`) rather than guessed — guessing "sat out" ships the stale
+   number, and guessing "published" blocks a correct lagging registry. **npm can never sit
+   out:** `<version>` *is* the npm version, so a mismatch there always means
+   `bun run site:payload` was not re-run.
+
 ## Versioning policy
 
 **The version number's only mechanical meaning today is npm's caret rule.** For
@@ -431,8 +460,11 @@ gh run list --workflow local-ci.yml --limit 1 --json headSha,conclusion
 rm bun.lock && bun install
 # verify packed deps (rule 2); commit "chore(release): <version>"
 ( cd <pkg-dir> && bun publish )                  # default tag = latest, tier order
-git tag v<version> && git push origin main --tags
+git push origin main                             # NO tag here — see golden rule 7
 ```
+
+**The `v<version>` tag is cut LAST, by `scripts/finish-release.mjs`** — after PyPI, NuGet
+and Maven have been bumped, committed and published. See golden rule 7.
 
 ### 4. Cleanup
 ```bash
