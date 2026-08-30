@@ -620,7 +620,24 @@ each against the source before writing:
   `providedEnumModule`. `columnNamingStrategy` and `generators` live on the USER-facing
   config, not this one.
 - **`emitsNames` must be added to the `Generator` interface** (`src/generator.ts:41`) beside
-  `emitsHonoRoutes`. Read that field's comment and copy its shape.
+  `emitsHonoRoutes`, **in this task** — Step 6a below. Setting a property the interface does
+  not declare fails Step 7's typecheck, so the declaration cannot wait for Task 5.
+
+- [ ] **Step 6a: Declare `emitsNames` on the `Generator` interface**
+
+In `server/typescript/packages/codegen-ts/src/generator.ts`, beside `emitsHonoRoutes`:
+
+```ts
+  /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
+   *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
+   *  entity generator reads to decide whether it may reference those constants.
+   *  Same mechanism as emitsHonoRoutes/includeHonoRoutes. */
+  emitsNames?: boolean;
+```
+
+Task 5 adds the config field and the runner aggregation that consume it. The declaration
+lives here because this is the task that sets it — a marker set against an interface that
+does not declare it fails Step 7.
 
 - [ ] **Step 6: Export both from the package barrel**
 
@@ -646,6 +663,7 @@ step that catches a wrong signature.
 git add server/typescript/packages/codegen-ts/src/names.ts \
         server/typescript/packages/codegen-ts/src/templates/names-decl.ts \
         server/typescript/packages/codegen-ts/src/reference/names.ts \
+        server/typescript/packages/codegen-ts/src/generator.ts \
         server/typescript/packages/codegen-ts/src/index.ts \
         server/typescript/packages/codegen-ts/test/templates/names-decl.test.ts
 git commit -m "feat(codegen-ts): namesFile() emits <Entity>Names
@@ -771,8 +789,7 @@ to document the Hono surface. Task 3 sets `emitsNames`; this task adds the match
 cannot scan `ctx.config.generators` — that field does not exist on `ResolvedGenConfig`.
 
 **Files:**
-- Modify: `server/typescript/packages/codegen-ts/src/generator.ts` (add `emitsNames?: boolean`)
-- Modify: `server/typescript/packages/codegen-ts/src/metaobjects-config.ts` (add `includeNames?: boolean` to `ResolvedGenConfig`)
+- Modify: `server/typescript/packages/codegen-ts/src/metaobjects-config.ts` (add `includeNames?: boolean` to `ResolvedGenConfig`) — the `Generator.emitsNames` marker it aggregates was declared in Task 3 Step 6a
 - Modify: `server/typescript/packages/codegen-ts/src/runner.ts` (aggregate the marker — find how `includeHonoRoutes` is aggregated and mirror it exactly)
 - Modify: `server/typescript/packages/codegen-ts/src/templates/entity-file.ts`
 - Modify: `server/typescript/packages/codegen-ts/src/templates/drizzle-schema.ts`
