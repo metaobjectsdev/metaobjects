@@ -136,6 +136,46 @@ Maven wiring:
 </plugin>
 ```
 
+### Declarative template-codegen (`TemplateScopeGenerator`)
+
+The 14 generators above are a starting point, not the ceiling. When you need a shape
+none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
+real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
+
+**Programmatic** means implementing `com.metaobjects.generator.Generator` in your own
+project and naming the class in `<classname>`; the plugin loads it from the project
+classloader, so your generator wires exactly like a built-in one.
+
+**Declarative** means a Mustache template and no generator code at all. Kotlin gets
+this from the shared JVM engine — `TemplateScopeGenerator` is a plain `<generator>`,
+wired in the same `<generators>` block as the `Kotlin*` generators above (it is
+language-neutral, so there is no KotlinPoet involvement and no Kotlin-specific
+variant):
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.template.TemplateScopeGenerator</classname>
+  <args>
+    <templatesDir>src/main/templates</templatesDir>
+    <template>service/entity-service</template>
+    <scope>perEntity</scope>
+    <outputPattern>{package}/{Name}Service.kt</outputPattern>
+    <outputDir>${project.build.directory}/generated-sources/kotlin</outputDir>
+  </args>
+</generator>
+```
+
+`template`, `scope` (`perEntity` | `perPackage` | `perModel`), `outputPattern`,
+`templatesDir` and `outputDir` are required; `format` defaults to `text`. The
+`outputPattern` placeholders are `{name}`, `{Name}` and `{package}` (whose `::`
+segments become nested directories). Abstract objects are excluded from every scope.
+
+The walks, the data dict and the pattern grammar are gated byte-identical against the
+shared `fixtures/template-codegen-conformance/` corpus, so one template emits the same
+output here, in Java, in TypeScript, in C# and in Python. Full arg table and the
+`@generated`-marker note: [the Java port page](java.md#declarative-template-codegen-templatescopegenerator).
+The data dict itself: [`codegen-data-shapes.md`](../features/codegen-data-shapes.md).
+
 ### Custom providers (optional)
 
 Kotlin inherits Java's SPI-based provider discovery directly — write a

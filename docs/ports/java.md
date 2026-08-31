@@ -275,6 +275,69 @@ entry pointing at `com.metaobjects.generator.spring.SpringControllerGenerator` /
 independently configurable; typical use is all three together (controller +
 DTO + repository).
 
+### Authoring your own — two paths
+
+The built-in set above is a starting point, not the ceiling. When you need a shape
+it does not emit, the JVM port gives you **both** authoring paths, and which one to
+reach for is a real decision — see the tradeoff table in
+[`codegen-concepts.md` §3](../features/codegen-concepts.md).
+
+**Programmatic.** Implement `com.metaobjects.generator.Generator` (or extend
+`GeneratorBase`) in your own project and name your class in the `<classname>`
+element. The plugin resolves it through the **project classloader**, so a generator
+compiled in your own build is wired exactly like a built-in one — there is no
+registration step and no plugin change. Reach for this when the logic is gnarly or
+the run is hot.
+
+**Declarative.** Write a Mustache template and wire
+`TemplateScopeGenerator`, which needs no generator code at all. Reach for this when
+the output *shape* is what you are iterating on, or when you want the same output
+across languages — the template renders against the neutral, byte-gated data dict
+every port shares, so one template emits identically here, in TypeScript, in C# and
+in Python.
+
+### Declarative template-codegen (`TemplateScopeGenerator`)
+
+`com.metaobjects.generator.template.TemplateScopeGenerator` is wired as an ordinary
+`<generator>` — the JVM needs no `--template-spec` flag because `<generator>` is
+already the seam the CLI ports lack:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.template.TemplateScopeGenerator</classname>
+  <args>
+    <templatesDir>src/main/templates</templatesDir>
+    <template>service/entity-service</template>
+    <scope>perEntity</scope>
+    <outputPattern>{package}/{Name}Service.java</outputPattern>
+    <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+  </args>
+</generator>
+```
+
+| Arg | Required | Meaning |
+|---|---|---|
+| `template` | yes | Template ref, resolved under `templatesDir` (`<templatesDir>/<ref>.mustache`) |
+| `scope` | yes | `perEntity` \| `perPackage` \| `perModel` — the walk, declared instead of hand-written |
+| `outputPattern` | yes | Output path per unit. Placeholders `{name}`, `{Name}`, `{package}`; `{package}` renders its `::` segments as nested directories. An unknown placeholder fails the build |
+| `templatesDir` | yes | The project's templates root |
+| `outputDir` | yes | Standard generator arg — where the rendered files land |
+| `format` | no | Escaper format; defaults to `text` |
+
+Abstract objects are excluded from every scope. The three walks, the data dict and
+the output-pattern grammar are gated byte-identical against the shared
+`fixtures/template-codegen-conformance/` corpus, so a template that renders here
+renders the same everywhere.
+
+One deliberate difference from the other ports: this generator writes its output
+**directly**, not through `GeneratedFileWriter`, so your template is under no
+obligation to emit the `@generated` marker. The marker floor guards output whose
+header MetaObjects controls; a user template's output is not that. The tradeoff is
+that these files are overwritten on every run — keep hand edits out of them.
+
+The data dict your template receives is documented in
+[`codegen-data-shapes.md`](../features/codegen-data-shapes.md).
+
 ## Serializing generated objects
 
 Two paths hand you a `MetaObjectAware` instance: the `JavaObjectCodeGenerator`
