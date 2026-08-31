@@ -15,7 +15,7 @@ const baseColumns: ColumnDef<Row>[] = [
 
 const columns: ColumnDef<Row>[] = [
   { id: "name",   accessorKey: "name",   header: "Name",   meta: { view: "text" } },
-  { id: "active", accessorKey: "active", header: "Active", meta: { view: "boolean" } },
+  { id: "active", accessorKey: "active", header: "Active", meta: { view: "checkbox" } },
 ];
 
 const grid: GridConfig = { name: "default", pageSize: 25, filterable: false };
@@ -51,7 +51,7 @@ describe("<EntityGrid> — core rendering", () => {
     expect(screen.getByText("Active")).toBeDefined();
   });
 
-  test("renders cell values via default renderers (boolean → Yes/No)", () => {
+  test("renders cell values via default renderers (checkbox → Yes/No)", () => {
     const data: Row[] = [{ id: 1, name: "alice", active: true }, { id: 2, name: "bob", active: false }];
     render(
       <EntityGrid

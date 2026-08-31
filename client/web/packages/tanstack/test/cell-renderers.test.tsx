@@ -14,9 +14,9 @@ describe("defaultCellRenderers", () => {
     expect(defaultCellRenderers.text!(ctx("hello"))).toBe("hello");
     expect(defaultCellRenderers.text!(ctx(null))).toBe("");
   });
-  test("boolean renders Yes/No", () => {
-    expect(defaultCellRenderers.boolean!(ctx(true))).toBe("Yes");
-    expect(defaultCellRenderers.boolean!(ctx(false))).toBe("No");
+  test("checkbox renders Yes/No", () => {
+    expect(defaultCellRenderers.checkbox!(ctx(true))).toBe("Yes");
+    expect(defaultCellRenderers.checkbox!(ctx(false))).toBe("No");
   });
   test("date renders a locale date string", () => {
     const out = defaultCellRenderers.date!(ctx("2026-05-13T10:00:00Z")) as string;
@@ -31,25 +31,25 @@ describe("useCellRenderers (no provider)", () => {
   test("returns the defaults when no CellRendererProvider is present", () => {
     const { result } = renderHook(() => useCellRenderers());
     expect(result.current.text).toBeDefined();
-    expect(result.current.boolean).toBeDefined();
+    expect(result.current.checkbox).toBeDefined();
   });
 });
 
 describe("CellRendererProvider", () => {
   test("overrides specific keys; defaults remain for unspecified keys", () => {
-    const override = { boolean: (c: any) => (c.getValue() ? "YES!" : "NO!") };
+    const override = { checkbox: (c: any) => (c.getValue() ? "YES!" : "NO!") };
     const { result } = renderHook(() => useCellRenderers(), {
       wrapper: ({ children }) => (
         <CellRendererProvider value={override}>{children}</CellRendererProvider>
       ),
     });
-    expect(result.current.boolean!(ctx(true))).toBe("YES!");
+    expect(result.current.checkbox!(ctx(true))).toBe("YES!");
     expect(result.current.text).toBe(defaultCellRenderers.text);
   });
 
   test("nested providers compose: inner wins for overlapping keys", () => {
-    const outer = { boolean: () => "outer" } as any;
-    const inner = { boolean: () => "inner" } as any;
+    const outer = { checkbox: () => "outer" } as any;
+    const inner = { checkbox: () => "inner" } as any;
     const { result } = renderHook(() => useCellRenderers(), {
       wrapper: ({ children }) => (
         <CellRendererProvider value={outer}>
@@ -57,6 +57,6 @@ describe("CellRendererProvider", () => {
         </CellRendererProvider>
       ),
     });
-    expect(result.current.boolean!(ctx(true))).toBe("inner");
+    expect(result.current.checkbox!(ctx(true))).toBe("inner");
   });
 });

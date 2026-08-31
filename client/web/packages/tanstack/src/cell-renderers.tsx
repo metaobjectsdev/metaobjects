@@ -16,11 +16,10 @@ export const defaultCellRenderers: Record<string, CellRenderer> = {
     const v = ctx.getValue();
     return v ? new Date(v as string).toLocaleDateString() : "";
   },
-  datetime: (ctx) => {
-    const v = ctx.getValue();
-    return v ? new Date(v as string).toLocaleString() : "";
-  },
-  boolean:  (ctx) => (ctx.getValue() ? "Yes" : "No"),
+  // #355 — keyed by REGISTERED view subtype. `checkbox` is the registered subtype for a
+  // boolean-valued view; this renderer previously sat under `boolean`, which no subtype
+  // produces, so it was unreachable and a checkbox column rendered a raw true/false.
+  checkbox: (ctx) => (ctx.getValue() ? "Yes" : "No"),
   currency: (ctx) => {
     const value = ctx.getValue();
     if (value == null || !Number.isFinite(Number(value))) return "";
