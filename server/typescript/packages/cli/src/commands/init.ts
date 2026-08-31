@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile, readdir, stat } from "node:fs/promises";
+import { mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { basename, dirname } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
@@ -254,6 +254,8 @@ export interface InitOptions {
 export interface InitResult {
   created: string[];
   preserved: string[];
+  /** agent-context files deleted because this stack no longer assembles them. */
+  removed: string[];
   warnings: string[];
 }
 
@@ -332,6 +334,12 @@ async function writeUnlessDryRun(cwd: string, dryRun: boolean, path: string, con
   await writeFile(abs, contents, "utf8");
 }
 
+/** Delete twin of writeUnlessDryRun — a dry run must not remove anything either. */
+async function removeUnlessDryRun(cwd: string, dryRun: boolean, path: string): Promise<void> {
+  if (dryRun) return;
+  await rm(join(cwd, path), { force: true });
+}
+
 /** "would be VERBED" during a dry run, plain VERBED otherwise — the one tense
  *  marker every reported write shares, so each call site states only its own
  *  past participle instead of writing out both tenses of the whole sentence. */
@@ -395,8 +403,21 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
   );
   result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
 
+  // A fragment this stack no longer assembles. `prunes` are ones we wrote that nobody has
+  // touched — deleting is exactly as safe as the overwrite the same hash predicate already
+  // authorises above, and leaving them contradicts every SKILL.md footer, which tells the
+  // reader to read every references/*.md "one per server language in this project's stack".
+  for (const orphan of decision.prunes) {
+    await removeUnlessDryRun(opts.cwd, dryRun, orphan);
+    result.removed.push(orphan);
+  }
+  // Hand-edited ones are never deleted — losing an adopter's writing is worse than leaving
+  // a stale file behind — so they are named, with the reason and the remedy.
   for (const orphan of decision.removed) {
-    result.warnings.push(`${orphan} is no longer part of this stack; orphaned (safe to delete).`);
+    result.warnings.push(
+      `${orphan} is no longer part of this stack but appears hand-edited, so it was kept; ` +
+      "delete it yourself once you have salvaged anything you want from it.",
+    );
   }
 
   if (opts.wireRoot) await wireRootMemory(opts.cwd, result, dryRun);
@@ -521,7 +542,7 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
 }
 
 export async function init(opts: InitOptions): Promise<InitResult> {
-  const result: InitResult = { created: [], preserved: [], warnings: [] };
+  const result: InitResult = { created: [], preserved: [], removed: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
   const metaobjectsDir = join(opts.cwd, DEFAULT_METADATA_DIR);
 

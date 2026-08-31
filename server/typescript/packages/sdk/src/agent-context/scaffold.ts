@@ -30,7 +30,22 @@ export interface ScaffoldDecision {
   conflicts: { path: string; newPath: string; contents: string }[];
   /** the manifest to persist after writing. */
   manifest: Manifest;
-  /** paths the prior manifest tracked that are no longer assembled (e.g. stack shrank) — reported, never auto-deleted. */
+  /**
+   * Orphans safe to DELETE: the prior manifest tracked them, this stack no longer
+   * assembles them, and the on-disk content still hashes to what we recorded writing.
+   *
+   * Same predicate that separates `writes` from `conflicts` — we only ever remove a file
+   * we wrote and nobody has touched, so deleting is exactly as safe as the overwrite that
+   * predicate already authorises for a file still in the stack.
+   */
+  prunes: string[];
+  /**
+   * Orphans that are HAND-EDITED — reported, never auto-deleted. Losing an adopter's
+   * writing is worse than leaving a stale file behind.
+   *
+   * An orphan already absent from disk appears in neither list: there is nothing to delete
+   * and nothing to report. It simply leaves the manifest.
+   */
   removed: string[];
 }
 
@@ -68,13 +83,29 @@ export function planScaffold(opts: {
     }
   }
 
+  // An orphan is a path the prior manifest tracked that this stack no longer assembles —
+  // typically a language fragment left by `--refresh-docs --server <other>`. It used to be
+  // reported and never deleted whatever its state, so a python.md sat in a TypeScript
+  // project forever while every SKILL.md footer told the reader to read every
+  // references/*.md "one per server language in this project's stack".
   const assembledPaths = new Set(assembled.map((f) => f.path));
-  const removed = prior ? Object.keys(prior.files).filter((p) => !assembledPaths.has(p)) : [];
+  const prunes: string[] = [];
+  const removed: string[] = [];
+  for (const path of prior ? Object.keys(prior.files) : []) {
+    if (assembledPaths.has(path)) continue;
+    const current = readCurrent(path);
+    if (current === undefined) continue;                       // already gone — nothing to do
+    if (hashContents(current) === prior?.files[path]) prunes.push(path);
+    else removed.push(path);
+  }
 
   return {
     writes,
     conflicts,
+    // `files` holds only what this run assembled, so a pruned orphan does not survive into
+    // the new manifest — otherwise it would be re-reported as an orphan on every run.
     manifest: { version: 1, generatedBy, servers: stack.servers, clients: stack.clients, files },
+    prunes,
     removed,
   };
 }

@@ -50,10 +50,60 @@ describe("planScaffold", () => {
     expect(d.conflicts.map((c) => c.path)).toEqual([".metaobjects/AGENTS.md"]);
   });
 
-  test("a file in the prior manifest no longer assembled (stack shrank) is reported as removed", () => {
-    const prior: Manifest = { version: 1, servers: ["typescript", "java"], clients: ["react"], files: { ".claude/skills/metaobjects-codegen/references/java.md": "abc" } };
-    const d = planScaffold({ stack, assembled: files, prior, readCurrent: () => undefined, generatedBy: "0.9.0" });
-    expect(d.removed).toEqual([".claude/skills/metaobjects-codegen/references/java.md"]);
+  // An orphan is a file the PRIOR manifest tracked that this stack no longer assembles —
+  // typically a language fragment left behind by `--refresh-docs --server <other>`. It used
+  // to be reported and never deleted, whatever its state, so a python.md sat in a
+  // TypeScript project forever while every SKILL.md footer told the reader to "read every
+  // references/*.md file in this skill's directory (one per server language in this
+  // project's stack)". The three cases below are decided by the SAME hash predicate that
+  // already separates `writes` from `conflicts`: we only ever delete a file we wrote and
+  // nobody has touched.
+  const ORPHAN = ".claude/skills/metaobjects-codegen/references/java.md";
+  const priorWith = (hash: string): Manifest => ({
+    version: 1, servers: ["typescript", "java"], clients: ["react"], files: { [ORPHAN]: hash },
+  });
+
+  test("an orphan still matching the hash we recorded is pruned", () => {
+    const d = planScaffold({
+      stack, assembled: files, prior: priorWith(hashContents("java fragment v1")),
+      readCurrent: (p) => (p === ORPHAN ? "java fragment v1" : undefined),
+      generatedBy: "0.9.0",
+    });
+    // We wrote it and nobody edited it, so deleting is exactly as safe as the overwrite
+    // the same predicate already authorises for a file still in the stack.
+    expect(d.prunes).toEqual([ORPHAN]);
+    expect(d.removed).toEqual([]);
+  });
+
+  test("a HAND-EDITED orphan is reported, never pruned", () => {
+    const d = planScaffold({
+      stack, assembled: files, prior: priorWith(hashContents("java fragment v1")),
+      readCurrent: (p) => (p === ORPHAN ? "I ADDED MY OWN NOTES HERE" : undefined),
+      generatedBy: "0.9.0",
+    });
+    // Losing an adopter's writing is worse than leaving a stale file behind.
+    expect(d.prunes).toEqual([]);
+    expect(d.removed).toEqual([ORPHAN]);
+  });
+
+  test("an orphan already gone from disk is neither pruned nor reported", () => {
+    const d = planScaffold({
+      stack, assembled: files, prior: priorWith("abc"),
+      readCurrent: () => undefined, generatedBy: "0.9.0",
+    });
+    // Nothing to delete and nothing to tell the user about — it just leaves the manifest.
+    expect(d.prunes).toEqual([]);
+    expect(d.removed).toEqual([]);
+  });
+
+  test("a pruned orphan does not survive into the new manifest", () => {
+    const d = planScaffold({
+      stack, assembled: files, prior: priorWith(hashContents("java fragment v1")),
+      readCurrent: (p) => (p === ORPHAN ? "java fragment v1" : undefined),
+      generatedBy: "0.9.0",
+    });
+    // A manifest that still tracked it would re-report it as an orphan on every run.
+    expect(Object.keys(d.manifest.files)).not.toContain(ORPHAN);
   });
 });
 
