@@ -265,7 +265,7 @@ The \`@columns\` attr is a flat string array listing fields to display. Per-colu
 
 **Cell renderers.** Field rendering inside grids comes from each field's own \`view\` subtype (the same one that drives forms). Override defaults app-wide with \`<CellRendererProvider value={{ currency: ({ getValue }) => <Money value={getValue()} /> }}>\`.
 
-**Per-entity opt-out.** \`@emitTanstack: false\` on an entity skips both hooks and columns.
+**Narrowing what emits.** Wire only the generators whose output you import, and narrow one with its \`filter\` option — \`tanstackQuery({ filter: (e) => e.name !== "InternalAudit" })\`. \`filter\` is ANDed with the generator's built-in gates, so it can only narrow. There is no \`@emit*\` metadata attribute for this: it was never registered vocabulary, so it passed \`meta gen\` and failed \`meta verify\`.
 
 ## Filtering generated lists
 
@@ -399,7 +399,7 @@ After \`meta gen\`, you get one barrel + per-entity files in your configured \`o
 | \`<Entity>.ts\` | Drizzle table, relations(), inferred types, Zod insert/update schemas, and the rich \`<Entity>\` constants block (per-field objects with name, label, view, htmlType, rules, etc.) | Never. Regenerate. |
 | \`<Entity>.queries.ts\` | Typed query helpers (\`findUserById\`, \`listUsers\`, \`createUser\`, ...) using prepared statements | Never. Regenerate. |
 | \`<Entity>.routes.ts\` | Fastify CRUD plugin delegating to \`mountCrudRoutes\` from \`@metaobjectsdev/runtime-ts/drizzle-fastify\` (5 verbs, Zod validation, 404/204 mapping, Drizzle-direct under the hood) | Never. Regenerate. |
-| \`<Entity>.form.tsx\` | React form using \`useEntityForm\` + the entity constants. **OPT-IN at project level:** add \`formFile()\` to \`generators\` in \`metaobjects.config.ts\`. Opt out per-entity via \`@emitForm: false\`. | Never. Regenerate. |
+| \`<Entity>.form.tsx\` | React form using \`useEntityForm\` + the entity constants. **OPT-IN at project level:** add \`formFile()\` to \`generators\` in \`metaobjects.config.ts\`. Narrow it with \`formFile({ filter })\` — there is no \`@emitForm\` attribute. | Never. Regenerate. |
 | \`index.ts\` | Barrel re-exporting every entity file | Never. Regenerate. |
 
 For business logic the generator doesn't cover, create a SIBLING file: \`<Entity>.extra.ts\` for query/route helpers, or any file you like in your apps directory. Import the constants from the generated \`<Entity>.ts\`.

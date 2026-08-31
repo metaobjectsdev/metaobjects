@@ -180,8 +180,21 @@ From `@metaobjectsdev/codegen-ts-tanstack`: `tanstackQuery()` → `<Entity>.hook
 `tanstackGridHook()` → `<Entity>.grid.tsx`.
 
 `entityFile({ allowlists: false })` drops the `runtime-ts/drizzle-fastify` import
-for edge/worker consumers that don't mount server routes. Per-entity opt-out:
-`@emitTanstack: false` on the entity skips its hook + column files.
+for edge/worker consumers that don't mount server routes.
+
+**Wire a generator only for output you consume, and narrow it with its `filter`.**
+Every generator factory takes `{ filter?: (entity) => boolean }`, ANDed with the
+generator's built-in gates — so it can only NARROW what emits, never widen it:
+`tanstackQuery({ filter: (e) => e.name !== "InternalAudit" })` emits no hooks for
+that entity. There is no `@emit*` metadata attribute to do this — `@emitTanstack`,
+`@emitRoutes`, `@emitForm`, `@emitGrid` and `@emitAngular` were never registered
+vocabulary, so they passed `meta gen` and failed `meta verify`. If a project carries
+one, `meta upgrade --apply` removes it.
+
+The one thing a `filter` can't express is opting a TPH subtype IN to its own
+per-subtype grid (that WIDENS): `tanstackGrid({ tphSubtypeGrids: (e) => … })`,
+default `() => false`. Pass the same predicate to `tanstackGridHook()` or you get
+a `<Sub>.grid.ts` whose `<Sub>.columns.tsx` is never emitted.
 
 ## Run
 

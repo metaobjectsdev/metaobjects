@@ -470,7 +470,7 @@ import { CurrencyInput } from "@metaobjectsdev/react";
 - `<CellRendererProvider value={{...}}>` — renderer overrides keyed by view subtype.
 - `<EntityGrid columns={...} grid={...} data={...} />` — opinionated TanStack Table component.
 
-**Per-entity opt-out**: `@emitTanstack: false` on an entity skips both hook and column files.
+**Narrowing what emits**: wire only the generators whose output you import, and narrow one with its `filter` option — `filter` is ANDed with the generator's built-in gates, so it can only narrow. There is no `@emit*` metadata attribute for this (`@emitTanstack` / `@emitRoutes` / `@emitForm` / `@emitGrid` / `@emitAngular` were never registered vocabulary — they passed `meta gen` and failed `meta verify`; `meta upgrade --apply` removes them). The one opt-IN, a TPH subtype's own per-subtype grid, widens rather than narrows, so it is a generator option: `tanstackGrid({ tphSubtypeGrids })`, with the same predicate passed to `tanstackGridHook()`.
 
 ## Cross-language porting
 

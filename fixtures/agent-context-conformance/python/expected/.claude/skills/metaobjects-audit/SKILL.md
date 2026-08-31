@@ -118,19 +118,25 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
     references repo-wide (grep the emitted symbol / module path for importers):
     delete it and stop generating it.
   - **Artifacts an entity doesn't need** — REST routes / TanStack grids / forms /
-    hooks emitted for an entity that has no such surface. The per-entity opt-outs
-    exist for exactly this (`@emitRoutes: false`, `@emitTanstack: false`, a
-    `layout.dataGrid`-gated grid): flag the opt-out NOT used where the artifact is
-    unused.
+    hooks emitted for an entity that has no such surface. The remedy is the
+    generator's own `filter` option (`routesFile({ filter: (e) => e.name !== "Audit" })`,
+    `tanstackQuery({ filter })`), which is ANDed with the generator's built-in gates
+    and so can only NARROW what emits; a grid additionally needs a `layout.dataGrid`
+    on the entity at all. Flag the unused artifact and name the filter that would
+    suppress it. **Never recommend an `@emit*` attribute** — `@emitRoutes`,
+    `@emitTanstack`, `@emitForm`, `@emitGrid` and `@emitAngular` were never
+    registered vocabulary, so they passed `meta gen` (open load) and FAILED
+    `meta verify` (strict). A project carrying one is a **finding**, not an opt-out:
+    report it and route to `meta upgrade --apply` plus the generator config above.
   - **Generators wired but unconsumed** — a generator in `metaobjects.config.ts`
     `generators: [...]` (or the per-port equivalent) whose whole output class no
     code imports: drop the generator rather than generate into the void.
   - **Wrong target / duplicate output** — the same logical artifact emitted to two
     places (a mis-set per-target `outDir`), one of which is orphaned.
-  Recommend generating ONLY what is consumed — narrow the generator set + use the
-  per-entity opt-outs. A smaller, fully-consumed generated surface beats a large one
-  with dead files (which also make the leverage ratio lie; discount them from the
-  census).
+  Recommend generating ONLY what is consumed — decide per generator: drop the ones
+  whose whole output class nothing imports, and narrow the ones that over-emit with
+  their `filter`. A smaller, fully-consumed generated surface beats a large one with
+  dead files (which also make the leverage ratio lie; discount them from the census).
 - [ ] **G. Runtime-contract anti-patterns.** Module-global `db` vs context-as-parameter
   (ADR-0008); wire-canonicalization in the query path vs native in-process return types
   (ADR-0019); runtime reflection to resolve a type from FQN vs generated static imports /

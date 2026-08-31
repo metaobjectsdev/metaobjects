@@ -492,19 +492,59 @@ import { CellRendererProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 Per-column `cell` always wins; the provider only fills in when a column
 has no `cell` set.
 
-## Per-entity opt-out
+## Narrowing what a generator emits
 
-Mark an entity with `@emitTanstack: false` and `tanstackQuery()` +
-`tanstackGrid()` will skip it. The entity-file + query-file +
-route-file generators still run unless they have their own opt-out.
+Decide **per generator** what you consume: wire only the generators whose output
+you actually import, and narrow one that emits too broadly with its `filter`
+option. There is no `@emit*` metadata attribute for this — `@emitTanstack`,
+`@emitRoutes`, `@emitForm`, `@emitGrid` and `@emitAngular` were never registered
+vocabulary, so `meta verify`, which loads strict, refuses metadata carrying one.
+If you have them, `meta upgrade --apply` removes them; see
+[`features/migrations/emit-attrs-to-generator-config.md`](../features/migrations/emit-attrs-to-generator-config.md).
 
-```json
-{ "object.entity": {
-    "name": "InternalAudit",
-    "@emitTanstack": false,
-    "children": [ ... ]
-}}
+```ts
+// metaobjects.config.ts — narrow at the generator, not in the metadata
+const inAdminApp = (e: MetaObject) => e.name === "Author" || e.name === "Post";
+
+export default defineConfig({
+  generators: [
+    entityFile(),
+    queriesFile(),
+    // InternalAudit is written through an audited service, not stock CRUD routes.
+    routesFile({ filter: (e) => e.name !== "InternalAudit" }),
+    // Only the entities the admin app actually renders get client artifacts.
+    tanstackQuery({ filter: inAdminApp }),
+    tanstackGrid({ filter: inAdminApp }),
+    tanstackGridHook({ filter: inAdminApp }),
+    barrel(),
+  ],
+});
 ```
+
+A `filter` is ANDed with the generator's built-in gates, so it can only NARROW
+what would otherwise emit — never widen it. Narrowing is worth doing: generated
+code nothing imports is indistinguishable from generated code that does not
+compile, and an unmounted routes file still reads as an invitation to mount the
+CRUD surface you decided against.
+
+### Per-subtype grids under TPH
+
+A TPH subtype inherits its base's `layout.dataGrid` via `extends`, but the base's
+single polymorphic grid is the default source of truth, so per-subtype grid files
+are opt-**IN**. Opting in WIDENS, which a `filter` cannot express — it is a
+generator option instead, defaulting to `() => false`:
+
+```ts
+const perSubtypeGrid = (e: MetaObject) => e.name === "CopayAuth";
+
+tanstackGrid({ tphSubtypeGrids: perSubtypeGrid }),
+tanstackGridHook({ tphSubtypeGrids: perSubtypeGrid }),
+```
+
+Pass the **same predicate to both**. `tanstackGridHook()` alone emits a
+`<Sub>.grid.ts` whose `<Sub>.columns.tsx` never exists — a dangling
+`use<Sub>DefaultGrid()`, and an outright `TS2307` when the inherited layout
+carries an `@filter` preset.
 
 ## Status across backends
 
@@ -549,8 +589,11 @@ implementing the REST contract serves it.
 | `@metaobjectsdev/angular` | Angular 18 runtime — standalone components, signals, peer-deps on `@angular/core`, `@angular/common`, `@angular/forms`, `@tanstack/angular-table` | `EntityFetcherToken`, `provideEntityFetcher`, `<mo-currency-input>` (`CurrencyInputComponent`), `<mo-entity-grid>` (`EntityGridComponent`), `CellRendererRegistry`, type `EntityGridColumn`; re-exports `EntityFetcher`, `GridConfig`, `formatCurrency`, `parseCurrency`, `buildFilterQs` from `runtime-web` |
 | `@metaobjectsdev/codegen-ts-angular` | Angular codegen — emits standalone components + signal-based services | `angularServiceFile()`, `angularFormFile()`, `angularGridFile()`, `barrel()` |
 
-Per-entity opt-out: mark an entity with `@emitAngular: false` and all three
-Angular outputs are skipped.
+Narrowing: pass a `filter` to `angularServiceFile()` / `angularFormFile()` /
+`angularGridFile()` for the entities each should emit. There is no `@emitAngular`
+metadata attribute — it was never registered vocabulary, so `meta verify` refuses
+metadata carrying it
+([migration](../features/migrations/emit-attrs-to-generator-config.md)).
 
 ### Wiring `provideEntityFetcher` in `app.config.ts`
 
