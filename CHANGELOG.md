@@ -7,6 +7,42 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `expose` on both routes generators: mount fewer than five CRUD verbs
+
+([#348](https://github.com/metaobjectsdev/metaobjects/issues/348)) `expose` has always
+existed on the runtime mount helpers, and across **both** generated route emitters exactly
+one call site passed it — the TPH polymorphic mount's hardcoded `["list", "get"]`. For a
+vanilla or write-through entity, neither Fastify nor Hono could restrict verbs. The issue
+named Hono; the gap was both.
+
+```ts
+routesFileHono({ expose: (e) => e.name === "AuditEntry" ? ["list", "get"] : undefined })
+routesFile({ expose: ["list", "get"] })
+```
+
+Verbs, or a per-entity function. Absent — or a function returning `undefined` — means all
+five and emits **no `expose` key at all**, so output is byte-identical for every project
+that does not use it.
+
+**Why an option rather than `filter`.** The remedy that answered the retired `@emit*`
+family — *narrow it with the generator's own `filter`* — cannot express this. `filter`
+decides whether the file emits **at all**, per entity, so it can only remove the whole
+surface; restricting to a subset of verbs is a different axis. Same reasoning that made a
+TPH subtype's opt-**IN** grid `tphSubtypeGrids` rather than a filter. And deliberately not
+metadata: which verbs a deployment exposes is a property of the app, not the model — the
+same entity is read-only in one service and writable in another.
+
+**A read-only mount narrows but never widens.** A TPH polymorphic mount is read-only by
+construction, so an author-supplied `expose` **intersects** with that fixed set rather than
+replacing it: it may narrow to just `list`, and asking for `create` yields an empty set
+instead of a route that fails at runtime.
+
+The reference templates carry the option too, so an ejected generator behaves identically.
+`CRUD_VERBS`, `resolveExpose`, `intersectExpose` and `exposeLine` are public, because an
+owned routes generator composes the same render call — and the verb union, which is
+restated in `codegen-ts` (it emits a call to the runtime helper, it never links against
+it), is now gated against **both** runtime declarations so the two cannot drift.
+
 ### Changed — `AGENT_DOCS_BODY` is removed; the agent context has one source
 
 **BREAKING for anyone importing `AGENT_DOCS_BODY` from `@metaobjectsdev/sdk/agent-docs`.**
