@@ -73,8 +73,13 @@ two people who both regenerated do not conflict over ordering.
 That means those files differ from fresh output and there is no hash recording them yet —
 `meta gen` genuinely cannot tell an intentional edit from stale output. Two ways forward:
 
-- **Keep the differences.** Move each edit into a non-generated file (a
-  `<Entity>.extra.ts` sibling is the usual place) and re-run.
+- **Keep the differences.** Where the edit can live outside the generated file, move it
+  into a sibling module you create (`<Entity>.extra.ts` is the usual name — a convention,
+  not a mechanism: you import it yourself) and re-run. Where it cannot — a
+  `requirementTests()` stub's body has to stay put, since the test name is its link to the
+  requirement — commit the file as it stands, then run `meta gen --baseline=fresh`,
+  `git checkout -- <the paths>`, and `meta gen` again: the first run seeds the missing
+  snapshot, and the second merges your version back in.
 - **Discard them.** `meta gen --baseline=fresh` overwrites and adopts fresh output as the
   baseline. This throws away hand edits in generated files, so read the refusal list first.
 

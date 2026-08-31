@@ -139,10 +139,21 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
     body = `  // Intended, not built. Write the assertion when this becomes live.`;
   }
 
+  // The header states the CONDITION on the survival promise, not just the promise.
+  // It used to say the body "survives regeneration" flat, which is true of the body and
+  // false of the run: a stub is worthless until hand-edited, and the moment it is edited
+  // and pushed, every clone that did not generate it refuses the file and exits 1 —
+  // demonstrable by deleting the gitignored `.gen-state` bodies and re-running. Stating
+  // the machine-local half here is what keeps a reader from reading a red CI run as a
+  // broken promise. The remedy itself lives on the refusal, not in every stub.
   return (
     `// ${GENERATED_HEADER}.\n` +
-    `// The test IDENTITY is generated from the requirement; the BODY below is yours\n` +
-    `// and survives regeneration. Do not rename the test — the name is the link.\n` +
+    `// The test IDENTITY is generated from the requirement; the BODY below is yours.\n` +
+    `// Do not rename the test — the name is the link.\n` +
+    `// Your body is never overwritten: MERGED where .metaobjects/.gen-state/ holds this\n` +
+    `// file's snapshot body, REFUSED (run exits 1, body kept) where it does not. Those\n` +
+    `// bodies are gitignored, so a fresh clone or CI is always the second case — see\n` +
+    `// docs/features/own-your-codegen.md for the recovery.\n` +
     `import { test, expect } from "bun:test";\n` +
     `\n` +
     `/**\n` +

@@ -97,7 +97,13 @@ describe("regen on a fresh clone: hashes committed, bodies absent", () => {
     // deleted by hand, which is what refusing exists to prevent.
     const warning = result.warnings.find((w) => w.includes("Post.ts"));
     expect(warning).toBeDefined();
-    expect(warning).toContain("--baseline=fresh");
+    expect(warning).toContain("intact on disk");
+    // The action is a RUN-level warning now, not a per-file one: the sequence that
+    // keeps an edit is three commands and identical for every refused file, so
+    // repeating it per file buries it. It must still be present and reachable.
+    const recovery = result.warnings.find((w) => w.includes("--baseline=fresh"));
+    expect(recovery).toBeDefined();
+    expect(recovery).toContain("git checkout --");
   });
 
   test("--baseline=fresh is the documented way through, and it works", async () => {

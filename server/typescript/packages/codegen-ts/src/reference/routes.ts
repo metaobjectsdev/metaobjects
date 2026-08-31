@@ -12,7 +12,10 @@
 //                framework; see also the routes-hono template, whose deps-injected shape
 //                ports more easily to hosts that hand you a request.
 // use-when:      you want generated Fastify REST routes per entity. Drop it and hand-write routes
-//                if you need bespoke endpoints — or keep it and add handlers via <Entity>.extra.ts.
+//                if you need bespoke endpoints — or keep it and register extra handlers YOURSELF
+//                alongside the generated `register<Entity>Routes(app)` call. Nothing here
+//                discovers a sibling module: a `<Entity>.extra.ts` next to the output is a naming
+//                convention, not a plugin point, so its handlers only mount if your server calls them.
 // emits:         <target>/<Entity>.routes.ts — full CRUD for write-through entities, read-only
 //                (GET list + GET :id) for projections, polymorphic + per-subtype for TPH bases.
 //                Skipped for any sourceless object (incl. every object.value, source-less by

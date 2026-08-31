@@ -95,7 +95,7 @@ describe("no snapshot body, but a committed hash", () => {
     );
   });
 
-  test("the refusal explains itself and names the way out", () => {
+  test("the refusal explains itself and points at the way out", () => {
     const path = join(tmp, "User.ts");
     decideAndWrite(path, "a\n", { genStateDir: state, outputRelPath: "User.ts" });
     dropSnapshotBodies(["User.ts"]);
@@ -106,7 +106,18 @@ describe("no snapshot body, but a committed hash", () => {
       outputRelPath: "User.ts",
     });
     expect(result.status).toBe("refused");
-    expect(result.conflictHint).toContain("--baseline=fresh");
+    // What happened, and that nothing was lost.
+    expect(result.conflictHint).toContain("no .gen-state snapshot body");
+    expect(result.conflictHint).toContain("intact on disk");
+    // A POINTER, not a remedy. This hint used to say "move your edits into a
+    // non-generated file, or re-run with --baseline=fresh to discard them" — and both
+    // halves are impossible for a `requirementTests()` stub, whose body cannot move
+    // (the test name is its link to the requirement) and is the file's only content.
+    // A per-file hint cannot know which generator produced the file, so it must not
+    // prescribe; `runGen` prints the one recovery that keeps the edit, once per run.
+    expect(result.conflictHint).toContain("docs/features/own-your-codegen.md");
+    expect(result.conflictHint).not.toContain("--baseline=fresh");
+    expect(result.conflictHint).not.toContain("non-generated file");
   });
 
   test("identical fresh content → unchanged, whatever the hash says", () => {

@@ -572,6 +572,34 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         `Refused to overwrite ${w.path}: ${w.conflictHint ?? "content differs and could not be verified as generated."}`,
       );
     }
+
+    // The recovery, ONCE — for the same reason the no-manifest branch above aggregates:
+    // it is the same three commands whether one file refused or sixteen, and repeating
+    // it per file buries it.
+    //
+    // It is stated as a SEQUENCE rather than a menu because there is exactly one way to
+    // keep an edit here and it is not obvious: a three-way merge needs a base, the
+    // `.gen-state` bodies are gitignored, and this machine has none — so the base has to
+    // be manufactured first. `--baseline=fresh` writes fresh output AND seeds the missing
+    // snapshot; restoring the file from git then puts the edit back with a base now
+    // present, and the next run merges it. Verified end to end (refused → overwrite →
+    // merged, edit intact).
+    //
+    // Two remedies were removed from the per-file hint and are not restored here as
+    // universal advice. "Move the edit into a non-generated file" holds only where the
+    // edit CAN live elsewhere — a `requirementTests()` stub's body cannot, because the
+    // test name is the link to the requirement and the stub's own header forbids renaming
+    // it. "--baseline=fresh" alone is a discard, and is named as one.
+    warnings.push(
+      `To KEEP your version of the file(s) above, the edit must be committed first — ` +
+      `then: 'meta gen --baseline=fresh' (writes fresh output over them and seeds the ` +
+      `missing .gen-state snapshot), 'git checkout -- <paths>' to bring your version back, ` +
+      `then 'meta gen' again — the snapshot now exists, so the edit merges. ` +
+      `To DISCARD your version instead, '--baseline=fresh' on its own is the whole answer. ` +
+      `Moving the edit into a non-generated file works only where the edit can live outside ` +
+      `the generated one; a requirementTests() stub's body cannot, since the test name is ` +
+      `its link to the requirement.`,
+    );
   };
 
   const sweep = (dryRun: boolean): void => {

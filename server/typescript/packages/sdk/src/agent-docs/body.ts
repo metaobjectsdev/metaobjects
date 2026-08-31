@@ -402,7 +402,7 @@ After \`meta gen\`, you get one barrel + per-entity files in your configured \`o
 | \`<Entity>.form.tsx\` | React form using \`useEntityForm\` + the entity constants. **OPT-IN at project level:** add \`formFile()\` to \`generators\` in \`metaobjects.config.ts\`. Narrow it with \`formFile({ filter })\` — there is no \`@emitForm\` attribute. | Never. Regenerate. |
 | \`index.ts\` | Barrel re-exporting every entity file | Never. Regenerate. |
 
-For business logic the generator doesn't cover, create a SIBLING file: \`<Entity>.extra.ts\` for query/route helpers, or any file you like in your apps directory. Import the constants from the generated \`<Entity>.ts\`.
+For business logic the generator doesn't cover, create a SIBLING file: \`<Entity>.extra.ts\` for query/route helpers, or any file you like in your apps directory. Import the constants from the generated \`<Entity>.ts\`. The \`.extra\` name is a CONVENTION, not a mechanism — the file is safe because codegen only writes the paths it records in \`.gen-state/.hashes.json\`, and the generated \`index.ts\` barrel (built from the model, not from a directory listing) does NOT re-export it. Import your sibling module directly.
 
 ### Stock route mounting
 

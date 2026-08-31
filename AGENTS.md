@@ -353,8 +353,14 @@ full output paths — two emissions of the same path whose CONTENT differs, wher
 result would depend on generator order — while byte-identical duplicates collapse to
 one file (#266: a shared artifact rendered from the whole loaded root, like the shared
 `enums.ts`, is emitted by every `entityFile()` instance); also errors on an unknown
-target, missing `importBase` for cross-target imports, or any generator throw, (6) writes each file under its target's `outDir` (overwriting only
-files carrying the `@generated` header; refusing others).
+target, missing `importBase` for cross-target imports, or any generator throw, (6) writes each file under its target's `outDir`, deciding from
+`.metaobjects/.gen-state/` — a three-way merge against the snapshot body when one is
+present, else the committed `.hashes.json` (hash matches what we recorded writing ⇒
+overwrite; edited or unrecorded ⇒ refused). The `@generated` header is **informational**:
+every use of it is an emitter stamping the marker into output, and the overwrite decision
+never reads it. Because the snapshot bodies are gitignored while `.hashes.json` is
+committed, a fresh clone or CI runner takes the second branch — so a hand-edited generated
+file is REFUSED there rather than merged.
 
 ### Filter syntax + sort (Project D)
 

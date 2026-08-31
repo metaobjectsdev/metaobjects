@@ -72,34 +72,41 @@ codegen is so fast that the skip logic costs more than it saves** — just regen
 every time. Match the optimization to the mechanism: timestamp-skip for templates,
 always-regenerate for direct code.
 
-## 5. Preserving hand edits — pick the strategy that fits the language and the change
+## 5. Preserving hand edits — one shipped strategy, and two you would build
 
-Generated code is disposable, but people *do* edit it. Three strategies, each with
-per-language variations — choose by what you're protecting:
+Generated code is disposable, but people *do* edit it. **MetaObjects ships exactly one
+of the three strategies below. The other two are patterns you can build with your own
+generators — no shipped generator on any port emits a base/extension or a partial
+pair, and no write path is write-if-absent.** Treat 2 and 3 as design options for
+generators you author, not as behaviour to expect from `meta gen`.
 
-1. **Three-way merge.** Edit the generated file in place; a committed baseline +
-   `git merge-file --diff3` re-applies your edits on every regen. Best when edits are
-   small and scattered through otherwise-generated files. (MetaObjects' default for
-   generated files; the baseline lives in `.metaobjects/.gen-state/`.)
-2. **Generated base class + your extension.** Generate a base, and you write a
-   subclass that overrides what you need. The base regenerates freely; your subclass
-   is yours. Best when the customization is behavioral and naturally subclassable.
-3. **Partials.** Where the language supports it (C# `partial` classes are the clean
-   case), generate one partial and own another. Best when the language gives you a
-   first-class "split one type across files" seam.
+1. **Three-way merge — SHIPPED (TypeScript only).** Edit the generated file in place; a
+   snapshot baseline + `git merge-file --diff3` re-applies your edits on every regen.
+   Best when edits are small and scattered through otherwise-generated files. The
+   baseline lives in `.metaobjects/.gen-state/` and its **bodies are gitignored**, so
+   the merge happens on the machine that generated the file and nowhere else; elsewhere
+   an edited file is refused rather than merged. C# and Python refuse rather than merge;
+   Java and Kotlin have neither — they check a marker (see
+   [own-your-codegen.md](own-your-codegen.md)). Say which of those you mean whenever you
+   say "hand edits survive".
+2. **Generated base class + your extension — a pattern, not a feature.** Generate a base
+   and hand-write a subclass that overrides what you need. Nothing ships this: there is
+   no base/subclass pair in any port's generator set, and no generator emits a
+   hand-owned half. If you want it, your generator emits the base and you write the
+   subclass by hand, once.
+3. **Partials — a pattern, not a feature.** Where the language supports it (C# `partial`
+   classes are the clean case), generate one partial and own another. The C# generators
+   emit no `partial` types today, so this is something you would add.
 
-Each port has its own idiom — Java/Kotlin lean on subclass+override seams, C# on
-partials, TS on three-way merge or composition. The strategy is a per-project, often
-per-artifact choice.
+## 6. The extension + git pattern (if you build strategy 2 or 3)
 
-## 6. The extension + git pattern (when you use base-class / partials)
-
-When you go with the base-class/extension strategy, the **git layout** is what makes
-it pleasant:
+Nothing below is implemented by MetaObjects — it is the **git layout** that makes a
+base/extension split pleasant if you author one:
 
 - **The extension** (the subclass / your-side partial you edit): generate it **once**,
-  **commit it**, and from then on it's yours — you and the LLM edit it freely; codegen
-  never touches it again.
+  **commit it**, and from then on it's yours. Your generator has to make that "once" real
+  — `runGen` accepts a `skip-existing` merge strategy for exactly this shape, but no CLI
+  flag selects it, so it is reachable only from a programmatic caller.
 - **The base class** (the regenerated half): emit it into a **separate directory** and
   **gitignore it**. It's regenerated on every build, never reviewed, never committed.
 
@@ -108,12 +115,24 @@ This cleanly separates *owned + edited* (committed, stable, in review) from
 mechanical half with zero merge noise, and a small hand-owned half that's the only
 thing in git and the only thing anyone reads.
 
-## 7. Safety: the `@generated` header, and never clobbering hand edits
+## 7. Safety: never clobbering hand edits — by two different mechanisms
 
-Every generated file carries a `@generated` header. Codegen overwrites only files that
-carry it; a file you've taken ownership of (header removed, or a never-generated path)
-is never clobbered. This is the backstop under every strategy above — the generator
-will not silently eat your work.
+The backstop under every strategy above is that the generator will not silently eat your
+work. **How it knows is not the same on every port, and the `@generated` header is only
+half the story:**
+
+- **TypeScript** decides from `.metaobjects/.gen-state/` — the snapshot body if this
+  machine has one (three-way merge), otherwise the committed `.hashes.json` (byte-for-byte
+  what we wrote ⇒ overwrite; anything else ⇒ refused, path named, exit 1). The
+  `@generated` header is emitted for human readers and **the write decision never reads
+  it**. Deleting it does not take ownership of a file — it changes the content, so the
+  hash stops matching and the file is refused like any other edit.
+- **Java and Kotlin** decide from the header: `GeneratedFileWriter` refuses any existing
+  file whose header carries no `GENERATED` marker, and **deleting that line is exactly
+  how you take ownership**. A refusal there is a warning, not a build failure.
+
+Both are stated in full, per port, in
+[own-your-codegen.md](own-your-codegen.md).
 
 ## 8. Bind metadata → native types at build time, never runtime reflection
 

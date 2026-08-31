@@ -610,10 +610,22 @@ export function decideAndWrite(
       return {
         path,
         status: "refused",
+        // The hint states WHAT HAPPENED, per file, and points at the recovery rather
+        // than restating it. The two remedies it used to name were both WRONG for the
+        // generator with the most at stake: `requirementTests()` emits a stub whose
+        // entire value is the body you write over it, and whose own header says "do not
+        // rename the test — the name is the link", so "move your edits into a
+        // non-generated file" asks for something the artifact forbids, and
+        // "--baseline=fresh to discard them" discards the only content the file has.
+        // The sequence that actually keeps an edit is three commands long and identical
+        // for every file in the run, so `runner.ts` prints it once; a doc pointer is
+        // what a direct `decideAndWrite` caller (a public export — no runner involved)
+        // gets instead, and it is never wrong.
         conflictHint: kase.hasRecord
-          ? "this file has been edited since it was generated — it was NOT " +
-            "overwritten. Move your edits into a non-generated file, or re-run " +
-            "with --baseline=fresh to discard them and adopt fresh output."
+          ? "this file has been edited since it was generated, and there is no " +
+            ".gen-state snapshot body on this machine to merge against — it was NOT " +
+            "overwritten, and your version is intact on disk. Recovery: " +
+            "docs/features/own-your-codegen.md."
           : "no record of generating this file, and its content differs from fresh " +
             "output — it was NOT overwritten. Move it aside, or re-run with " +
             "--baseline=fresh to overwrite it and adopt fresh output as the baseline.",

@@ -479,9 +479,9 @@ describe("verify's requirement diagnostics ride in the payload, uncapped", () =>
 
 // The project's escape hatch has to be REACHABLE from a config file, not merely
 // present as a function parameter. An option only a caller inside this repo can set
-// is the same dead-seam shape as `EXTRA_SUFFIX` — exported, documented in generated
-// output, and wired to nothing — so the wiring gets its own gate rather than being
-// implied by the unit tests on `scanSourceForAntiPatterns`.
+// is the same dead-seam shape `EXTRA_SUFFIX` had before it was deleted — exported,
+// pointed at from generated output, and wired to nothing — so the wiring gets its own
+// gate rather than being implied by the unit tests on `scanSourceForAntiPatterns`.
 //
 // It matters because `--no-antipatterns` is not a substitute: silencing the whole scan
 // to quiet one directory is precisely how a useful advisory gets switched off wholesale.
