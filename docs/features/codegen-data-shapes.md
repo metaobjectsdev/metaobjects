@@ -2,7 +2,7 @@
 
 When you write a custom Mustache template that drives a `templateGenerator()`
 instance, the data dict your template receives follows a stable, typed shape
-exported from `@metaobjectsdev/codegen-ts/generators`. This page documents
+exported from `@metaobjectsdev/codegen-ts`. This page documents
 those shapes — they are **public API**. Field keys are versioned per
 MetaObjects **major** release; deprecations are announced before removal.
 
@@ -162,6 +162,37 @@ emits an out-of-spec shape fails the cross-port conformance suite.
 
 ## Where to find the types
 
+Everything on this page comes from the package **main entry**. The
+`@metaobjectsdev/codegen-ts/generators` subpath re-exports some of the same names,
+but it is deprecated (ADR-0034) and removed at the 1.0 cut — do not import from it.
+
+The neutral structural shapes, which is what a declarative `scope` generator renders
+against:
+
+```ts
+import type {
+  FieldTemplateData,
+  EntityTemplateData,
+  IdentityTemplateData,
+  RelationshipTemplateData,
+  PackageTemplateData,
+  ModelTemplateData,
+  TemplateScope,
+} from "@metaobjectsdev/codegen-ts";
+
+import {
+  templateGenerator,
+  expandOutputPattern,
+  buildEntityTemplateData,
+  buildPackageTemplateData,
+  buildModelTemplateData,
+  parseTemplateSpec,
+  templateSpecToGenerators,
+} from "@metaobjectsdev/codegen-ts";
+```
+
+The Markdown-flavored docs shapes, for a template replacing a `meta docs` page:
+
 ```ts
 import type {
   EntityDocData,
@@ -169,10 +200,10 @@ import type {
   IdentityDoc,
   RelationshipDoc,
   UsedByDoc,
-  GeneratedFileDoc,
-} from "@metaobjectsdev/codegen-ts/generators";
+  ConstraintRow,
+} from "@metaobjectsdev/codegen-ts";
 
-import { buildEntityDocData, templateGenerator } from "@metaobjectsdev/codegen-ts/generators";
+import { buildEntityDocData } from "@metaobjectsdev/codegen-ts";
 ```
 
 Each type is intentionally narrow — fields are required iff the corresponding
@@ -192,5 +223,6 @@ Mermaid diagram):
 4. Add a conformance fixture that locks the expected output.
 5. Document the new shape on this page under a new section.
 
-The `templateGenerator({ walk, template, format })` factory does the rest —
-no new generator scaffolding is needed.
+The `templateGenerator()` factory does the rest — no new generator scaffolding is
+needed. Take the built-in `scope` + `outputPattern` walk when one of the three scopes
+fits; supply your own `walk` only when it does not.
