@@ -11,20 +11,18 @@
 // !subtreeClaimsAnything(req)`. Pinning the SET of codes turns that from noise
 // into a fact under test: a new code, or the known one disappearing, both fail.
 //
-// WHY THE TOTAL IS PINNED TOO, AND WHAT IS STILL BLIND.
-// `meta verify` prints at most 20 warnings PER SECTION and then says "…and N
-// more." (verify.ts:505). So the printed list is a SAMPLE, not the diagnostic
-// set, and a gate reading only the printed codes cannot see a novel warning that
-// landed at position 21. Errors are NOT capped — they print in full — so the
-// error half of this check is sound as written.
+// WHY THE TOTAL IS PINNED TOO, AND WHY THIS GATE NO LONGER SCRAPES TEXT.
+// This check used to read `meta verify`'s HUMAN output and reconstruct the total
+// as "codes printed + the N in each '…and N more.' line", because the text
+// output caps each section at 20 warnings. That left exactly one shape blind: a
+// new code REPLACING an existing one one-for-one past position 20, leaving the
+// total unchanged. The header said so, and said closing it "needs a
+// machine-readable verify output, which is a product change".
 //
-// The total closes almost all of that: it is reconstructed as printed + N-more,
-// so any new warning changes it and fails here even when its code was truncated
-// away. What remains blind is exactly one shape — a new code REPLACING an
-// existing one one-for-one, past position 20, leaving the total unchanged. That
-// is stated rather than hidden, per the repo's own no-silent-caps rule. Removing
-// it needs a machine-readable verify output, which is a product change and out
-// of scope for this ledger.
+// That product change shipped: `meta verify --format json` emits every gate's
+// verdict and every requirement diagnostic UNCAPPED. So the gate reads the
+// payload, and the blind spot is gone — the diagnostic SET is compared, not a
+// sample of it, and the total is counted rather than reconstructed.
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "./lib/requirement-vocabulary.js";
@@ -83,12 +81,28 @@ const EXPECTED_WARNING_COUNT = expectedWarnings(process.argv.slice(2));
 // reason.
 const CLI = resolve(REPO_ROOT, "server/typescript/packages/cli/bin/meta.ts");
 
+/** The requirement diagnostics `meta verify --format json` reports. Mirrors the
+ *  CLI's `AdvisoryDiagnosticRow`; declared here rather than imported because this
+ *  gate consumes the CLI as a PRODUCT — over a process boundary, the same way an
+ *  adopter does — and importing its internals would make the gate pass on a shape
+ *  no published CLI actually emits. */
+interface DiagnosticRow {
+  code: string;
+  path: string;
+  severity: string;
+  source: string;
+  message: string;
+}
+
 function main(): number {
-  const run = spawnSync("bun", [CLI, "verify", "--cwd", "."], {
+  // --format json, not the human text: the payload carries EVERY diagnostic, so
+  // the set under test is the real one rather than the first 20 of each section.
+  const run = spawnSync("bun", [CLI, "verify", "--format", "json", "--cwd", "."], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+  const stdout = run.stdout ?? "";
+  const output = `${stdout}${run.stderr ?? ""}`;
 
   if (run.status !== 0) {
     console.error("requirements-ledger: `meta verify` exited non-zero.\n");
@@ -96,18 +110,42 @@ function main(): number {
     return 1;
   }
 
-  // Every diagnostic code the run mentioned, in first-seen order.
-  const codes = [...output.matchAll(/\b(ERR_[A-Z0-9_]+|WARN_[A-Z0-9_]+)\b/g)]
-    .map((m) => m[1])
-    .filter((c): c is string => c !== undefined);
-  const errors = codes.filter((c) => c.startsWith("ERR_"));
-  if (errors.length > 0) {
-    console.error(`requirements-ledger: ${errors.length} error(s): ${[...new Set(errors)].join(", ")}\n`);
+  let payload: { requirements?: { status?: string; rows?: DiagnosticRow[] }; summary?: string };
+  try {
+    payload = JSON.parse(stdout) as typeof payload;
+  } catch {
+    // A parse failure means verify put something other than one document on
+    // stdout. Reported loudly rather than degraded into a text scrape: a gate
+    // that silently falls back to the weaker check is a gate that stops testing
+    // what it claims to.
+    console.error(
+      "requirements-ledger: `meta verify --format json` did not emit parseable JSON on stdout.\n",
+    );
     console.error(output);
     return 1;
   }
 
-  const unexpected = [...new Set(codes.filter((c) => c !== EXPECTED_WARNING))];
+  const section = payload.requirements;
+  if (section?.status !== "ran" || section.rows === undefined) {
+    console.error(
+      `requirements-ledger: the payload's requirements section did not run ` +
+      `(status '${section?.status ?? "absent"}') — did the ledger load at all?\n`,
+    );
+    console.error(output);
+    return 1;
+  }
+  const rows = section.rows;
+
+  const errors = rows.filter((r) => r.severity === "error");
+  if (errors.length > 0) {
+    const codes = [...new Set(errors.map((e) => e.code))];
+    console.error(`requirements-ledger: ${errors.length} error(s): ${codes.join(", ")}\n`);
+    console.error(output);
+    return 1;
+  }
+
+  const warnings = rows.filter((r) => r.severity === "warn");
+  const unexpected = [...new Set(warnings.map((w) => w.code).filter((c) => c !== EXPECTED_WARNING))];
   if (unexpected.length > 0) {
     console.error(
       `requirements-ledger: unexpected diagnostic code(s): ${unexpected.join(", ")}.\n` +
@@ -118,6 +156,9 @@ function main(): number {
     return 1;
   }
 
+  // The summary line still comes from the human narration (stderr in a structured
+  // run) — it is a sentence for a person, and the payload carries the same counts
+  // as fields for everything this gate actually decides on.
   const summary = output.split("\n").find((l) => l.includes("meta verify — requirements:"));
   if (summary === undefined) {
     console.error("requirements-ledger: no requirements summary line — did the ledger load at all?\n");
@@ -125,15 +166,11 @@ function main(): number {
     return 1;
   }
 
-  // The real total, not the printed one. Every "…and N more." line the run
-  // emitted is added back to the codes it actually printed.
-  const suppressed = [...output.matchAll(/…and (\d+) more\./g)]
-    .reduce((n, m) => n + Number(m[1]), 0);
-  const total = codes.length + suppressed;
+  // Counted, not reconstructed: the payload is uncapped.
+  const total = warnings.length;
   if (total !== EXPECTED_WARNING_COUNT) {
     console.error(
-      `requirements-ledger: ${total} warning(s), expected ${EXPECTED_WARNING_COUNT} ` +
-      `(${codes.length} printed + ${suppressed} suppressed by the display cap).\n` +
+      `requirements-ledger: ${total} warning(s), expected ${EXPECTED_WARNING_COUNT}.\n` +
       `One per live functional node. If the ledger grew, update EXPECTED_WARNING_COUNT\n` +
       `in the same commit; if it did not, something new is being reported.\n`,
     );
@@ -141,7 +178,9 @@ function main(): number {
     return 1;
   }
 
-  console.log(`requirements-ledger: OK — ${summary.trim()}`);
+  // The narration reaches stderr with the CLI's own `meta: ` prefix in a structured
+  // run; strip it so this gate's OK line reads as one sentence.
+  console.log(`requirements-ledger: OK — ${summary.trim().replace(/^meta: /, "")}`);
   console.log(`requirements-ledger: ${total} × ${EXPECTED_WARNING} (expected; implementedBy is omitted by design)`);
   return 0;
 }

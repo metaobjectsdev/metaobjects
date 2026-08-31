@@ -95,7 +95,13 @@ export const SNIPPETS: Record<string, SnippetSource> = {
     // --prompts templates is REQUIRED: verify's default prompts dir is `prompts`
     // and this fixture's text lives in templates/, so omitting it yields
     // ERR_PARTIAL_UNRESOLVED instead of the payload-drift error the page is about.
-    argv: ["verify", "--templates", "--prompts", "templates"],
+    //
+    // --format text is REQUIRED for the same class of reason: this capture is
+    // spawned onto a pipe, and off a TTY the CLI's default format is TOON (it now
+    // is for `verify` too, as it already was for `gen` and `migrate`). The page
+    // publishes this block to a HUMAN reader, so it asks for the human rendering
+    // rather than inheriting the machine one.
+    argv: ["verify", "--templates", "--prompts", "templates", "--format", "text"],
     // The page publishes this block to demonstrate THIS diagnostic. A non-zero exit
     // alone would let a fixture failing for an unrelated reason keep publishing, so the
     // builder asserts the code appears.

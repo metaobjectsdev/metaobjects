@@ -8,6 +8,17 @@ export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
 const VERSION = cliVersion();
 
+/**
+ * The commands that actually honor the global `--format`. Everything else prints
+ * text whatever is passed.
+ *
+ * This list exists because the flag was advertised globally and threaded to two
+ * commands: `meta verify --format json` parsed, validated, exited 0 and printed
+ * human text. It is named ONCE and used by both the warning below and the help
+ * text above, so the two cannot drift apart.
+ */
+const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate"];
+
 const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 
 USAGE:
@@ -33,10 +44,18 @@ COMMANDS:
 
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
-  --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY)
+  --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY).
+                            Honored by ${FORMAT_AWARE_COMMANDS.join(", ")}; every other
+                            command prints text and says so if you pass it.
+                            A structured payload is never truncated — --limit is a
+                            TEXT-only display cap.
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
+  --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
+  --limit <n|all>       How many advisory lines TEXT output prints before it truncates
+                        (default 20). Never applies to --format toon/json, which
+                        carry every finding.
   <entity> [<entity>]   Positional filter on entity names
   (outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts)
 
@@ -68,6 +87,10 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         the ONLY way to verify the actual deployed D1 database
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
+  --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --limit <n|all>       How many advisory lines TEXT output prints per section before
+                        it truncates (default 20). Never applies to --format
+                        toon/json, which carry every finding and every diagnostic.
 
 PROMPT-SNAPSHOT FLAGS:
   --check               Compare against committed snapshots; exit 1 on drift (CI gate)
@@ -105,6 +128,8 @@ USAGE:
 FLAGS:
   --dry-run             Compute and print, don't write
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
+  --limit <n|all>       Advisory lines TEXT output prints before truncating (default 20)
+  --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help
 
@@ -113,6 +138,11 @@ your authored source for hand-rolled aggregates, money-as-float, and CHECK-IN en
 and points you at the construct that models them (origin.aggregate / field.currency /
 field.enum). Warnings only — it never fails the build. Opt out with --no-antipatterns
 or META_NO_ANTIPATTERNS=1.
+
+Text output caps that list at --limit lines (default 20) and says how many it held
+back. --format toon / --format json carry EVERY finding in the payload's
+antiPatterns block, uncapped — --limit is a display cap for a terminal, never a
+limit on the machine-readable result.
 
 NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
 `,
@@ -166,6 +196,14 @@ FLAGS:
                         the ONLY way to verify the actual deployed D1 database
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --limit <n|all>       Advisory lines TEXT output prints PER SECTION before truncating
+                        (default 20; per-section so the authoring lint can never push
+                        the gate's own warnings off the end)
+  --format <toon|json|text>   Output format (global flag; default toon off-TTY).
+                        Emits one machine-readable document on stdout — every gate's
+                        verdict, every advisory finding, every requirement diagnostic,
+                        UNCAPPED — and moves narration to stderr so the payload parses.
+                        What it does NOT carry is listed in its own notRepresented[].
   --help, -h            Print this help
 
 A bare 'meta verify' also runs an ADVISORY anti-pattern pass: it scans your authored
@@ -307,6 +345,32 @@ export async function run(argv: string[]): Promise<number> {
 
   const [cmd, ...rest] = cleaned;
 
+  // A bare `--json` / `--toon` / `--text` is the spelling an adopter reaches for
+  // when they want structured output, and every command's `parseArgs` runs
+  // `strict: true`, so today it dies as `Unknown option '--json'` — a message that
+  // names the flag that failed and not the flag that works. It is REJECTED rather
+  // than aliased, deliberately: `--format` is validated once, globally, for all
+  // three values, while an alias would have to be added to every command's own
+  // option table — the per-command scattering that let `--format` be honored by
+  // two commands and silently ignored by the rest. One spelling, and a refusal
+  // that names it. Exit 2, the same usage-error code the unknown option produced.
+  const formatAlias = cleaned.find((a) => a === "--json" || a === "--toon" || a === "--text");
+  if (formatAlias !== undefined) {
+    log.error(
+      `${formatAlias} is not a flag. Use \`--format ${formatAlias.slice(2)}\` — one global spelling for all three formats.`,
+    );
+    return 2;
+  }
+
+  // A `--format` a command does not honor is a no-op, and a silent no-op is the
+  // defect this release is fixing one level down: the adopter who guessed the right
+  // flag still lost, because nothing said the command ignores it. Say it.
+  if (formatFlag !== undefined && cmd !== undefined && !FORMAT_AWARE_COMMANDS.includes(cmd)) {
+    log.warn(
+      `--format is honored by: ${FORMAT_AWARE_COMMANDS.join(", ")}. \`meta ${cmd}\` ignores it and prints text.`,
+    );
+  }
+
   // Intercept per-subcommand --help / -h before dispatching (mirrors migrate's own pattern).
   if (cmd !== undefined && cmd !== "--help" && cmd !== "-h" && cmd !== "--version" && cmd !== "-v") {
     if (rest.includes("--help") || rest.includes("-h")) {
@@ -412,7 +476,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     case "verify": {
       const { verifyCommand } = await import("./commands/verify.js");
-      return verifyCommand(rest, cwd);
+      return verifyCommand(rest, cwd, undefined, fmt);
     }
     case "upgrade": {
       const { upgradeCommand } = await import("./commands/upgrade.js");

@@ -82,6 +82,16 @@ it and call the generated query/field instead of keeping the hand-rolled version
 This is the most common way a build ends up *declaring* a projection yet still
 hand-aggregating in a route — verify catches exactly that.
 
+**Read the whole report, not the first twenty lines.** Text output caps each
+advisory section at 20 lines and then says how many it held back; raise it with
+`--limit <n>` or remove it with `--limit all`. You are on a pipe, so your default
+format is already TOON: `meta verify` puts one machine-readable document on stdout
+carrying every gate's verdict, every anti-pattern finding and every requirement
+diagnostic — **uncapped** — with narration on stderr. `--format json` if you want
+JSON. A pass that did not run reports `status: "skipped"` and why, so an empty list
+always means "found nothing", never "never looked"; what the payload does not carry
+is named in its own `notRepresented[]`.
+
 **A bare `verify` is a partial check, not the full gate.** The Node/C# default runs
 only `--templates`; Java/Python's bare default runs only `--codegen` — either way,
 paired with the advisory anti-pattern pass above, never all three subverbs. Treat a

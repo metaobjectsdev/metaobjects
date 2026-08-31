@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { parseGenArgs } from "../../src/lib/args.js";
+import { DEFAULT_ADVISORY_LIMIT } from "../../src/lib/advisory.js";
 
 describe("parseGenArgs", () => {
   test("default flags", () => {
@@ -9,6 +10,7 @@ describe("parseGenArgs", () => {
       baseline: "default",
       list: false,
       noAntipatterns: false,
+      limit: DEFAULT_ADVISORY_LIMIT,
     });
   });
 

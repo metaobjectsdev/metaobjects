@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveGenConfig, resolveMigrateConfig, resolveD1Config } from "../../src/lib/config.js";
+import { DEFAULT_ADVISORY_LIMIT } from "../../src/lib/advisory.js";
 
 function makeRoot(configBody?: object): string {
   const root = mkdtempSync(join(tmpdir(), "config-resolver-"));
@@ -21,13 +22,13 @@ describe("resolveGenConfig", () => {
   // outDir/dialect/dbImport/extStyle. Only dryRun + entities come from flags.
 
   test("passes dryRun and entities through", () => {
-    const resolved = resolveGenConfig({ dryRun: true, entities: ["User", "Post"], baseline: "default", list: false, noAntipatterns: false });
+    const resolved = resolveGenConfig({ dryRun: true, entities: ["User", "Post"], baseline: "default", list: false, noAntipatterns: false, limit: DEFAULT_ADVISORY_LIMIT });
     expect(resolved.dryRun).toBe(true);
     expect(resolved.entities).toEqual(["User", "Post"]);
   });
 
   test("defaults: dryRun false, entities empty", () => {
-    const resolved = resolveGenConfig({ dryRun: false, entities: [], baseline: "default", list: false, noAntipatterns: false });
+    const resolved = resolveGenConfig({ dryRun: false, entities: [], baseline: "default", list: false, noAntipatterns: false, limit: DEFAULT_ADVISORY_LIMIT });
     expect(resolved.dryRun).toBe(false);
     expect(resolved.entities).toEqual([]);
   });

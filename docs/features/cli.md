@@ -219,10 +219,68 @@ the construct that replaces it:
 | a fixed value set enforced by a SQL `CHECK (... IN (...))` | `field.enum` |
 
 It is **warnings only** — it never changes the exit code (bias to under-flagging;
-a >15% false-positive rate is a project kill criterion). Suppress it with
-`--no-antipatterns` on either command, or `META_NO_ANTIPATTERNS=1` in the
-environment. This pass is **Node-`meta`-specific**; the C#/Java/Kotlin/Python
-codegen surfaces do not run it.
+a >15% false-positive rate is a project kill criterion). This pass is
+**Node-`meta`-specific**; the C#/Java/Kotlin/Python codegen surfaces do not run it.
+
+#### Quieting it — two tools, and they are not interchangeable
+
+Reach for the narrow one first. Turning the whole scan off to silence one directory
+is how a useful advisory stops being read at all.
+
+| You want to | Use |
+|---|---|
+| skip a directory whose files you cannot act on | `verify: { antiPatternIgnore: [...] }` in `metaobjects.config.ts` |
+| turn the scan off for a run | `--no-antipatterns`, or `META_NO_ANTIPATTERNS=1` |
+
+```ts
+// metaobjects.config.ts
+export default defineConfig({
+  // ...
+  verify: { antiPatternIgnore: ["db/changelog/**", "vendor/sql/**"] },
+});
+```
+
+Path globs relative to the project root; `**` spans separators, and a glob matching
+a directory prunes the whole subtree. Declared globs **add** to the built-ins.
+
+**Immutable migration files are already excluded and need no config.** A Flyway
+`V001__…sql` / `U001__…sql`, a timestamped `20240115120000_add_users.sql`, a
+zero-padded `0000_init.sql`, an `up.sql`/`down.sql` pair, and the `db/migration`
+and `migrations` directories are all skipped wherever they live — because those
+files are checksummed by the tool that applied them, so a finding on one can never
+be acted on. Flyway **repeatable** (`R__`) scripts are deliberately *not* in that
+set: Flyway re-applies one when its checksum changes, so editing it is the
+sanctioned workflow and a finding on it is actionable.
+
+### Reading the whole report
+
+**Text output caps each advisory section at 20 lines** and then says how many it
+held back. That cap exists to spare a terminal, and it is one shared value, not one
+per section — raise it with **`--limit <n>`**, or remove it with **`--limit all`**,
+on both commands.
+
+**A structured run is never capped.** `--format json` / `--format toon` carry
+*every* finding, with its `file`, `line`, `rule`, `construct` and `message`, plus
+the total:
+
+```
+meta gen --format json      → { gen[], summary, help[], antiPatterns: { status, total, rows[] } }
+meta verify --format json   → { verify[], exitCode, summary, help[],
+                                antiPatterns: { status, total, rows[] },
+                                requirements: { status, total, rows[] },
+                                requirementCounts?, notRepresented[] }
+```
+
+A pass that did **not** run says so (`status: "skipped"` with a `note` giving the
+reason) rather than reporting an empty list — "found nothing" and "never looked"
+are different answers. `meta verify`'s payload carries each gate's pass/fail
+verdict; the per-gate drift **detail** stays on stderr as text, and the payload's
+own `notRepresented[]` says so.
+
+In a structured run every narration line moves to **stderr**, so stdout is one
+parseable document. `--format` is honored by `gen`, `verify` and `migrate`; any
+other command prints text and says so if you pass it. There is no `--json` flag —
+`--format json` is the one spelling.
 
 ## `meta upgrade` — retired vocabulary, not schema
 

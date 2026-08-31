@@ -9,6 +9,10 @@ import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
+import {
+  antiPatternRows, ranSection, skippedSection, warnCapped,
+  type AdvisoryFindingRow, type AdvisorySection,
+} from "../lib/advisory.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
@@ -149,12 +153,23 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     (forgeConfig.targets ? Object.values(forgeConfig.targets).map((t) => t.outDir) : [])
       .concat([forgeConfig.outDir]),
   ));
+
+  // The advisory verify-as-teacher pass now runs BEFORE the result is rendered,
+  // because its findings ride IN the result. It used to run after the payload was
+  // printed and write only to stderr as text, so `meta gen --format json` on a run
+  // with hundreds of findings emitted a document that mentioned none of them — the
+  // structured output being the documented default for an agent on a pipe.
+  // Warnings ONLY — nothing here reaches the exit code (bias to under-flagging).
+  const antiPatterns = runAntiPatternScan(
+    projectRoot, cliConfig.dryRun, flags.noAntipatterns, forgeConfig.verify?.antiPatternIgnore);
+
   const genResult = {
     files,
     outDir: targetDirs.length > 1 ? targetDirs.join(", ") : forgeConfig.outDir,
     dialect: forgeConfig.dialect,
     dryRun: cliConfig.dryRun,
     warnings: [],
+    antiPatterns,
   };
   const output =
     fmt === "toon" ? formatGenResultToon(genResult)
@@ -175,29 +190,49 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     );
   }
 
-  // Advisory verify-as-teacher pass (same as `meta verify`): on a real write run,
-  // surface authored source that hand-rolls what the metadata could model. `gen`
-  // is the command an agent always runs, so this is where the teaching actually
-  // reaches it. Warnings ONLY — never affects the exit code. Suppress with
-  // --no-antipatterns or META_NO_ANTIPATTERNS=1 (both opt-outs work on `meta gen`
-  // and `meta verify`).
-  if (!cliConfig.dryRun && !flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") {
-    try {
-      const findings = scanSourceForAntiPatterns(projectRoot);
-      if (findings.length > 0) {
-        const CAP = 10;
-        log.warn(
-          `\nmeta gen — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
-            `(advisory — declaring the construct lets codegen own it):`,
-        );
-        for (const f of findings.slice(0, CAP)) log.warn(`  ${f.message}`);
-        if (findings.length > CAP) log.warn(`  …and ${findings.length - CAP} more.`);
-      }
-    } catch { /* never let an advisory scan break gen */ }
+  // The human-readable half of the advisory pass, printed after the file listing
+  // where a reader expects it. Capped for a terminal; the structured payload above
+  // already carried every finding, and the tail line says so.
+  if (antiPatterns.total > 0) {
+    log.warn(
+      `\nmeta gen — ${antiPatterns.total} place(s) hand-roll what MetaObjects can model ` +
+        `(advisory — declaring the construct lets codegen own it):`,
+    );
+    warnCapped(antiPatterns.rows.map((r) => `  ${r.message}`), flags.limit, { structured: fmt !== "text" });
   }
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
   return hasFailure ? 1 : 0;
+}
+
+/**
+ * Run the advisory verify-as-teacher scan (same pass `meta verify` runs): surface
+ * authored source that hand-rolls what the metadata could model. `gen` is the
+ * command an agent always runs, so this is where the teaching actually reaches it.
+ *
+ * Returns the section EITHER WAY — a skip is reported with its reason rather than
+ * dropped, so a reader can tell "found nothing" from "never looked". Warnings only;
+ * it can never affect the exit code. Suppress with --no-antipatterns or
+ * META_NO_ANTIPATTERNS=1 (both opt-outs work on `meta gen` and `meta verify`).
+ */
+function runAntiPatternScan(
+  projectRoot: string,
+  dryRun: boolean,
+  noAntipatterns: boolean,
+  ignore: readonly string[] | undefined,
+): AdvisorySection<AdvisoryFindingRow> {
+  // A --dry-run writes nothing, so it teaches nothing; the scan is skipped, as it
+  // always has been. The payload now says that instead of looking clean.
+  if (dryRun) return skippedSection("skipped on --dry-run (the advisory pass runs on a real write run)");
+  if (noAntipatterns) return skippedSection("suppressed by --no-antipatterns");
+  if (process.env.META_NO_ANTIPATTERNS === "1") return skippedSection("suppressed by META_NO_ANTIPATTERNS=1");
+  try {
+    return ranSection(antiPatternRows(scanSourceForAntiPatterns(
+      projectRoot, ignore !== undefined ? { ignore } : undefined)));
+  } catch (err) {
+    // Never let an advisory scan break gen — but never claim it found nothing either.
+    return skippedSection(`the scan failed: ${(err as Error).message}`);
+  }
 }
 
 /**

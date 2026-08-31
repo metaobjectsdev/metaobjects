@@ -26,10 +26,18 @@ COMMANDS:
 
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
-  --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY)
+  --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY).
+                            Honored by gen, verify, migrate; every other
+                            command prints text and says so if you pass it.
+                            A structured payload is never truncated — --limit is a
+                            TEXT-only display cap.
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
+  --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
+  --limit <n|all>       How many advisory lines TEXT output prints before it truncates
+                        (default 20). Never applies to --format toon/json, which
+                        carry every finding.
   <entity> [<entity>]   Positional filter on entity names
   (outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts)
 
@@ -61,6 +69,10 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         the ONLY way to verify the actual deployed D1 database
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
+  --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --limit <n|all>       How many advisory lines TEXT output prints per section before
+                        it truncates (default 20). Never applies to --format
+                        toon/json, which carry every finding and every diagnostic.
 
 PROMPT-SNAPSHOT FLAGS:
   --check               Compare against committed snapshots; exit 1 on drift (CI gate)

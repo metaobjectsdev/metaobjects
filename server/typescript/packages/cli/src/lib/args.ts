@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { parseAdvisoryLimit } from "./advisory.js";
 
 // ---------------------------------------------------------------------------
 // init flags
@@ -102,6 +103,12 @@ export interface GenFlags {
   list: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
+  /**
+   * How many advisory lines TEXT output prints before truncating
+   * (`DEFAULT_ADVISORY_LIMIT`, or Infinity for `--limit all`). It never applies to
+   * a structured payload, which carries every finding.
+   */
+  limit: number;
 }
 
 export function parseGenArgs(argv: string[]): GenFlags {
@@ -112,6 +119,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
       "baseline": { type: "string" },
       "list": { type: "boolean", default: false },
       "no-antipatterns": { type: "boolean", default: false },
+      "limit": { type: "string" },
     },
     strict: true,
     allowPositionals: true,
@@ -128,6 +136,9 @@ export function parseGenArgs(argv: string[]): GenFlags {
     baseline: (baselineRaw as "default" | "fresh" | undefined) ?? "default",
     list: !!values.list,
     noAntipatterns: !!values["no-antipatterns"],
+    // Throws on a bad value; the command layer reports it and exits 2, exactly as
+    // it does for --baseline above.
+    limit: parseAdvisoryLimit(values.limit as string | undefined),
   };
 }
 
@@ -273,6 +284,14 @@ export interface VerifyFlags {
    * restores the legacy open-attr load (today's behavior). Default false (strict).
    */
   lax: boolean;
+  /**
+   * How many advisory lines TEXT output prints per SECTION before truncating
+   * (`DEFAULT_ADVISORY_LIMIT`, or Infinity for `--limit all`). Per-section, never
+   * shared across them — the reason the two caps were separate in the first place
+   * is that one shared budget lets the authoring lint push every gate warning off
+   * the end. It never applies to a structured payload, which carries everything.
+   */
+  limit: number;
 }
 
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
@@ -293,6 +312,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       lax: { type: "boolean", default: false },
       "d1": { type: "string" },
       "remote": { type: "boolean", default: false },
+      "limit": { type: "string" },
     },
     strict: true,
     allowPositionals: false,
@@ -343,6 +363,9 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     lax: !!values.lax,
     d1: values.d1 as string | undefined,
     remote: !!values.remote,
+    // Throws on a bad value; the command layer reports it and exits 2, exactly as
+    // it does for --dialect and --allow above.
+    limit: parseAdvisoryLimit(values.limit as string | undefined),
   };
 }
 

@@ -21,13 +21,24 @@ npx --no-install meta verify
 npx --no-install meta verify --prompts data/templates
 ```
 
-Exit 0 = clean. Non-zero = drift. The drift report goes to stdout — same shape
-as the CI action's PR comment.
+Exit 0 = clean. Non-zero = drift. The drift report itself goes to **stderr**, so a
+hook shows it whatever the output format is.
+
+A hook runs the CLI on a pipe, not a terminal, and off a TTY the default output
+format is TOON — so stdout carries a machine-readable result document (gate
+verdicts plus every advisory finding) rather than prose. Add `--format text` if you
+want the human rendering in your hook output:
+
+```bash
+npx --no-install meta verify --format text
+```
 
 `meta verify` also prints an **advisory** anti-pattern pass (hand-rolled
 aggregates / money-as-float / `CHECK (... IN (...))` enums, with the construct
 that models them). It is warnings only — it **never** changes the exit code, so it
 won't block a commit. Silence it with `--no-antipatterns` or `META_NO_ANTIPATTERNS=1`.
+Text output caps it at 20 lines (raise with `--limit <n>` / `--limit all`); a
+`--format json`/`toon` run carries every finding, uncapped.
 
 ## Choose your hook manager
 

@@ -5,6 +5,7 @@
 
 import type { Dialect } from "./kysely.js";
 import { toonEncode } from "./format.js";
+import { skippedSection, type AdvisoryFindingRow, type AdvisorySection } from "./advisory.js";
 
 export interface FormatOptions {
   isTTY: boolean;
@@ -29,6 +30,17 @@ export interface GenResultShape {
   dialect: Dialect | undefined;
   dryRun: boolean;
   warnings: string[];
+  /**
+   * The advisory anti-pattern pass, in full. Optional on the TYPE only so the
+   * pure formatter tests can build a result without one; `genResultToData` turns
+   * an absent section into an explicit "skipped" with a reason, because a payload
+   * that omits the advisory is precisely the defect this field closes — a run
+   * carrying hundreds of findings read as "all green" to an agent parsing stdout.
+   *
+   * NEVER capped here. The text renderer truncates for a human's terminal; the
+   * structured payload carries every finding.
+   */
+  antiPatterns?: AdvisorySection<AdvisoryFindingRow>;
 }
 
 const GEN_GLYPHS: Record<GenFileStatus, string> = {
@@ -179,7 +191,10 @@ export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOpt
 // ---------------------------------------------------------------------------
 
 export function genResultToData(result: GenResultShape): {
-  gen: { file: string; status: GenFileStatus }[]; summary: string; help: string[];
+  gen: { file: string; status: GenFileStatus }[];
+  summary: string;
+  help: string[];
+  antiPatterns: AdvisorySection<AdvisoryFindingRow>;
 } {
   const counts = result.files.reduce<Record<GenFileStatus, number>>(
     (a, f) => ((a[f.status] = (a[f.status] ?? 0) + 1), a),
@@ -198,7 +213,23 @@ export function genResultToData(result: GenResultShape): {
   const help = result.files.length === 0
     ? ["author entities in this project's metadata sources then re-run `meta gen`"]
     : ["typecheck the generated code with `npx tsc`", "create your database tables with `meta migrate --from-db --db <url> --dialect <sqlite|postgres> --slug init --apply`"];
-  return { gen: result.files.map((f) => ({ file: f.path, status: f.status })), summary, help };
+  // An absent section is STATED, never omitted: a reader must be able to tell
+  // "the scan found nothing" from "the scan never ran".
+  const antiPatterns = result.antiPatterns
+    ?? skippedSection<AdvisoryFindingRow>("the advisory anti-pattern pass did not run for this result");
+  // One more next step when there is something to act on — the whole reason the
+  // findings are in the payload is that somebody can now act on all of them.
+  if (antiPatterns.total > 0) {
+    help.push(
+      `${antiPatterns.total} authored site(s) hand-roll what MetaObjects can model — see antiPatterns.rows[] and run \`meta types <construct>\``,
+    );
+  }
+  return {
+    gen: result.files.map((f) => ({ file: f.path, status: f.status })),
+    summary,
+    help,
+    antiPatterns,
+  };
 }
 
 export function formatGenResultToon(result: GenResultShape): string {

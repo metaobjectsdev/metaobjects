@@ -10,6 +10,11 @@
 import { join, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
+import { emitStructured, type OutputFormat } from "../lib/format.js";
+import {
+  antiPatternRows, ranSection, skippedSection, warnCapped,
+  type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
+} from "../lib/advisory.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
@@ -117,13 +122,29 @@ export async function verifyCommand(
   cwd: string,
   /** Injectable wrangler runner (D1 path only) — tests pass a mock; production uses the default. */
   wranglerRunner?: WranglerRunner,
+  /**
+   * Output format, threaded from the global `--format` flag (4th position, matching
+   * `migrateCommand`). It used to be passed to `gen` and `migrate` ONLY, so
+   * `meta verify --format json` was accepted, validated, exited 0 — and printed
+   * human text. An adopter who guessed the right flag lost silently.
+   */
+  fmt: OutputFormat = "text",
 ): Promise<number> {
   const activeWranglerRunner = wranglerRunner ?? defaultWranglerRunner;
+  // In a structured format stdout carries exactly ONE document, so every narration
+  // line moves to stderr (`say` below) instead of being printed into the payload or
+  // dropped. Same split `meta migrate` makes for its out-of-scope note.
+  const structured = fmt !== "text";
+  const say = (msg: string): void => { if (structured) log.warn(msg); else log.info(msg); };
   let flags: ReturnType<typeof parseVerifyArgs>;
   try {
     flags = parseVerifyArgs(args);
   } catch (err) {
-    log.error((err as Error).message);
+    const msg = (err as Error).message;
+    log.error(msg);
+    // A structured caller gets a structured refusal. Exiting 2 with an EMPTY stdout
+    // is the same silence this command is being fixed for, one level up.
+    emitStructured({ error: msg, hint: "run `meta verify --help` for the accepted flags" }, fmt);
     return 2;
   }
 
@@ -137,7 +158,7 @@ export async function verifyCommand(
   // D1 has no URL connection); that check lives inside runSchemaVerify.
   const runCodegen = flags.codegen;
   if (!flags.anyExplicit) {
-    log.info(
+    say(
       "meta verify — running --templates (default). Explicit subverbs: " +
         "--templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift), " +
         "--replay/--replay-snapshot (the committed migration chain replays from empty).",
@@ -157,7 +178,9 @@ export async function verifyCommand(
   try {
     collection = await resolveCollection(cwd);
   } catch (err) {
-    log.error((err as Error).message);
+    const msg = (err as Error).message;
+    log.error(msg);
+    emitStructured({ error: msg, hint: "declare metadata `sources` in .metaobjects/config.json, or run `meta init`" }, fmt);
     return 2;
   }
 
@@ -239,16 +262,25 @@ export async function verifyCommand(
     // strictly worse than the error it replaced.
     const code = (err as { code?: string }).code;
     const suggestions = (err as { suggestions?: string[] }).suggestions;
+    const strictHint =
+      "meta verify is strict (ADR-0023): every authored @attr must be declared. " +
+      "Fix: register the attr on a metadata provider, OR move arbitrary " +
+      "author-supplied properties into an `attr.properties` bag, OR re-run " +
+      "with `meta verify --lax` to keep the legacy open-attr load.";
+    const isStrictAttr = code === ERR_UNKNOWN_ATTR || msg.includes("Unknown attribute");
     if (suggestions !== undefined && suggestions.length > 0) {
       for (const s of suggestions) log.error(`  ${s}`);
-    } else if (code === ERR_UNKNOWN_ATTR || msg.includes("Unknown attribute")) {
-      log.error(
-        "meta verify is strict (ADR-0023): every authored @attr must be declared. " +
-          "Fix: register the attr on a metadata provider, OR move arbitrary " +
-          "author-supplied properties into an `attr.properties` bag, OR re-run " +
-          "with `meta verify --lax` to keep the legacy open-attr load.",
-      );
+    } else if (isStrictAttr) {
+      log.error(strictHint);
     }
+    // The same refusal, machine-readable. No gate ran, so there is no verdict to
+    // report — only why there is none.
+    emitStructured({
+      error: `failed to load metadata: ${msg}`,
+      hint: suggestions !== undefined && suggestions.length > 0
+        ? suggestions.join(" ")
+        : isStrictAttr ? strictHint : "fix the metadata error above and re-run",
+    }, fmt);
     return 1;
   }
 
@@ -260,6 +292,26 @@ export async function verifyCommand(
 
   const promptsDir = join(projectRoot, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
+
+  // The two advisory sections, captured as the gates run so the structured payload
+  // can carry them IN FULL. They were previously formatted straight to stderr and
+  // existed nowhere else, which is why 96% of a 239-finding report was unreachable
+  // by any flag, env var or format.
+  let requirementSection: AdvisorySection<AdvisoryDiagnosticRow> =
+    skippedSection("the requirement pass did not run");
+  let antiPatternSection: AdvisorySection<AdvisoryFindingRow> =
+    skippedSection("the advisory anti-pattern pass did not run");
+  // The ledger counts `meta verify` prints on every run. Undefined for a project
+  // declaring no requirement.* node at all (opt-in by declaration) — the payload
+  // then omits the block rather than reporting zeroes that would read as an empty
+  // ledger instead of no ledger.
+  let requirementCounts: RequirementCounts | undefined;
+
+  // Whether the schema gate is selected. `runSchemaVerify` makes this decision
+  // internally (it is selected by --db or --dialect d1, not by a subverb flag);
+  // naming it here lets the structured payload report "ran" from the SAME
+  // expression rather than a second guess at it.
+  const ranSchemaGate = (flags.db !== undefined || flags.dialect === "d1") && !flags.skipSchema;
 
   // Exit-code composition: the overall result is the MAX across every selected
   // subverb so ANY kind of drift fails CI. Each gate only runs when its mode is
@@ -281,9 +333,34 @@ export async function verifyCommand(
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
   // Suppressed with --no-antipatterns or META_NO_ANTIPATTERNS=1 for the rare
   // noisy project (both opt-outs work on `meta verify` and `meta gen`).
-  if (!flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") runAntiPatternAdvisory();
+  runAntiPatternAdvisory();
 
-  return Math.max(templateExit, schemaExit, codegenExit, requirementExit, replayExit);
+  const exitCode = Math.max(templateExit, schemaExit, codegenExit, requirementExit, replayExit);
+
+  if (structured) {
+    emitStructured(
+      buildVerifyPayload({
+        gates: [
+          { gate: "templates", ran: runTemplates, ok: templateExit === 0 },
+          // The schema gate decides internally whether it is selected (--db, or
+          // --dialect d1), so "ran" is read off the same signals rather than
+          // restated: a payload that claims a gate ran when it did not is the
+          // failure mode this whole change exists to remove.
+          { gate: "schema", ran: ranSchemaGate, ok: schemaExit === 0 },
+          { gate: "codegen", ran: runCodegen, ok: codegenExit === 0 },
+          { gate: "requirements", ran: true, ok: requirementExit === 0 },
+          { gate: "replay", ran: flags.replay || flags.replaySnapshot, ok: replayExit === 0 },
+        ],
+        exitCode,
+        requirements: requirementSection,
+        requirementCounts,
+        antiPatterns: antiPatternSection,
+      }),
+      fmt,
+    );
+  }
+
+  return exitCode;
 
   // -- replay (#313) ---------------------------------------------------------
   /**
@@ -372,10 +449,10 @@ export async function verifyCommand(
       // empty replay is still compared against a snapshot that may record dozens of
       // tables, rather than reporting success having compared nothing.
       if (applied.pending.length === 0) {
-        log.info(`meta verify --replay: no committed migrations — nothing to replay`);
+        say(`meta verify --replay: no committed migrations — nothing to replay`);
         if (!flags.replaySnapshot) return 0;
       } else {
-        log.info(
+        say(
           `meta verify --replay — the committed chain applies to an empty ${dialect} database ` +
             `(${applied.applied.length} migration(s)).`,
         );
@@ -415,11 +492,11 @@ export async function verifyCommand(
     try {
       snapshot = await readSnapshot(snapshotPath(dir, dialect));
     } catch {
-      log.info(`meta verify --replay-snapshot: the committed snapshot could not be read — nothing to compare`);
+      say(`meta verify --replay-snapshot: the committed snapshot could not be read — nothing to compare`);
       return 0;
     }
     if (snapshot === null) {
-      log.info(`meta verify --replay-snapshot: no committed snapshot — nothing to compare`);
+      say(`meta verify --replay-snapshot: no committed snapshot — nothing to compare`);
       return 0;
     }
 
@@ -453,7 +530,7 @@ export async function verifyCommand(
       ...(governed !== undefined ? { governed } : {}),
     });
     if (result.ok) {
-      log.info(`meta verify --replay-snapshot — the replayed chain reproduces the committed snapshot.`);
+      say(`meta verify --replay-snapshot — the replayed chain reproduces the committed snapshot.`);
       return 0;
     }
 
@@ -499,34 +576,50 @@ export async function verifyCommand(
       // all, which is why nothing had ever flagged the templates living in them. No
       // check can see a tree it was never pointed at, so the honest fix is to publish
       // what the count was taken over and let a wrong number be noticeable.
-      log.info(
+      say(
         `meta verify — requirements: ${s.total} entries (${s.functional} functional, ` +
         `${s.architectural} architectural) — ${parts.join(", ")}; ` +
         `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed, ` +
         `counted over ${collection.files.length} metadata file(s).`,
       );
       if (s.undecided > 0) {
-        log.info(
+        say(
           `meta verify — requirements: ${s.undecided} recorded gap(s) with no @disposition. ` +
           `These are known problems nobody has ruled on — set 'accepted' or 'deferred' to close the question.`,
         );
       }
+      // The same counts, machine-readable. `metadataFiles` travels with them for the
+      // reason the text line carries it: the claimed/total ratio is only ever taken
+      // over what actually loaded, so a reader needs the denominator's provenance to
+      // notice a spine that covers half an estate.
+      requirementCounts = {
+        total: s.total,
+        functional: s.functional,
+        architectural: s.architectural,
+        byStatus: order
+          .filter((k) => (s.byStatus[k] ?? 0) > 0)
+          .map((k) => ({ status: k, count: s.byStatus[k] ?? 0 })),
+        undecided: s.undecided,
+        entitiesClaimed: s.entitiesClaimed,
+        entitiesTotal: s.entitiesTotal,
+        metadataFiles: collection.files.length,
+      };
     }
 
     const errors = diags.filter((d) => d.severity === "error");
     const warns = diags.filter((d) => d.severity === "warn");
-    const CAP = 20;
-    const fmt = (d: Diagnostic): string =>
+    // Named `fmtDiag`, not `fmt`: `fmt` is this command's OUTPUT FORMAT parameter,
+    // and a shadow of it inside the one function that must not confuse the two is
+    // how a structured run quietly reverts to text.
+    const fmtDiag = (d: Diagnostic): string =>
       `  ${d.code}${d.path !== undefined ? ` [${d.path}]` : ""}: ${d.message}`;
-    /** Print a capped run of warnings. Capped per SECTION, never across them: a
-     *  ledger of a few hundred entries can produce hundreds of prose findings, and a
-     *  shared cap would let the advisory lint push every gate warning off the end. */
-    const warnCapped = (ds: readonly Diagnostic[]): void => {
-      for (const d of ds.slice(0, CAP)) log.warn(fmt(d));
-      if (ds.length > CAP) log.warn(`  …and ${ds.length - CAP} more.`);
-    };
-    for (const d of errors) log.error(fmt(d));
-    warnCapped(warns);
+    // Capped per SECTION, never across them: a ledger of a few hundred entries can
+    // produce hundreds of prose findings, and a shared budget would let the advisory
+    // lint push every gate warning off the end. The cap VALUE is now one shared
+    // constant (`--limit`), so raising it cannot miss a section — errors stay
+    // uncapped, as they always were.
+    for (const d of errors) log.error(fmtDiag(d));
+    warnCapped(warns.map(fmtDiag), flags.limit, { structured });
 
     // -- the authoring lint: its own section, its own cap ----------------------
     // Separate from the gate above because it makes a different claim. The gate
@@ -555,8 +648,16 @@ export async function verifyCommand(
         `meta verify — requirements: ${lint.length} authoring warning(s) ` +
         `(advisory — does not fail the build):`,
       );
-      warnCapped(lint);
+      warnCapped(lint.map(fmtDiag), flags.limit, { structured });
     }
+
+    // Everything this pass found, uncapped, for the structured payload — gate
+    // diagnostics and lint findings in one list, each row saying which it is, so a
+    // reader can tell what can fail a build from what never can.
+    requirementSection = ranSection<AdvisoryDiagnosticRow>([
+      ...diags.map((d) => toDiagnosticRow(d, "gate")),
+      ...lint.map((d) => toDiagnosticRow(d, "lint")),
+    ]);
 
     if (errors.length > 0) {
       log.error(`meta verify — requirements: ${errors.length} error(s).`);
@@ -566,21 +667,34 @@ export async function verifyCommand(
   }
 
   // -- verify-as-teacher (advisory) ------------------------------------------
+  // Records its result EITHER WAY — a skip carries its reason rather than looking
+  // like a clean scan. Warnings only; nothing here reaches the exit code (the
+  // scanner's own header: bias to under-flagging, never a non-zero exit).
   function runAntiPatternAdvisory(): void {
+    if (flags.noAntipatterns) {
+      antiPatternSection = skippedSection("suppressed by --no-antipatterns");
+      return;
+    }
+    if (process.env.META_NO_ANTIPATTERNS === "1") {
+      antiPatternSection = skippedSection("suppressed by META_NO_ANTIPATTERNS=1");
+      return;
+    }
     let findings;
     try {
-      findings = scanSourceForAntiPatterns(projectRoot);
-    } catch {
-      return; // never let an advisory scan break verify
+      const ignore = forgeConfig?.verify?.antiPatternIgnore;
+      findings = scanSourceForAntiPatterns(projectRoot, ignore !== undefined ? { ignore } : undefined);
+    } catch (err) {
+      // Never let an advisory scan break verify — and never report it as clean.
+      antiPatternSection = skippedSection(`the scan failed: ${(err as Error).message}`);
+      return;
     }
+    antiPatternSection = ranSection(antiPatternRows(findings));
     if (findings.length === 0) return;
-    const CAP = 10;
     log.warn(
       `meta verify — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
         `(advisory — does not fail the build):`,
     );
-    for (const f of findings.slice(0, CAP)) log.warn(`  ${f.message}`);
-    if (findings.length > CAP) log.warn(`  …and ${findings.length - CAP} more.`);
+    warnCapped(findings.map((f) => `  ${f.message}`), flags.limit, { structured });
   }
 
   // -- template (prompt / output) drift --------------------------------------
@@ -588,7 +702,7 @@ export async function verifyCommand(
     // ADR-0039: effective children — resolve rather than rely on root being unextended.
     const templates = root.children().filter((c) => c.type === TYPE_TEMPLATE);
     if (templates.length === 0) {
-      log.info("meta verify — no template.* nodes found; nothing to check.");
+      say("meta verify — no template.* nodes found; nothing to check.");
       return 0;
     }
 
@@ -701,7 +815,7 @@ export async function verifyCommand(
       );
       return 1;
     }
-    log.info(
+    say(
       `meta verify — ${checkedTemplates} template(s) clean${warnCount > 0 ? ` (${warnCount} warning(s))` : ""}.`,
     );
     return 0;
@@ -982,7 +1096,7 @@ export async function verifyCommand(
     // annotate them as external (declared) rather than let them vanish silently.
     const externalDeclared = collectUnmanagedNames(root);
     if (externalDeclared.length > 0) {
-      log.info(
+      say(
         `meta verify — ${externalDeclared.length} object(s) external (declared @unmanaged, managed elsewhere): ${externalDeclared.join(", ")}`,
       );
     }
@@ -991,12 +1105,12 @@ export async function verifyCommand(
     // was NOT checked, and silence would misreport it as checked-and-clean. Shared
     // wording with `meta migrate` — one declaration, one sentence about it.
     if (driftResult.outOfScope.length > 0) {
-      log.info(outOfScopeNote("verify", driftResult.outOfScope));
+      say(outOfScopeNote("verify", driftResult.outOfScope));
     }
 
     const changes = driftResult.changes;
     if (changes.length === 0 && ledgerDrift.length === 0) {
-      log.info(`meta verify — schema in sync with ${displayUrl}.`);
+      say(`meta verify — schema in sync with ${displayUrl}.`);
       return 0;
     }
 
@@ -1072,7 +1186,7 @@ export async function verifyCommand(
     }
 
     if (result.clean) {
-      log.info("meta verify — generated output is in sync with the metadata (no codegen drift).");
+      say("meta verify — generated output is in sync with the metadata (no codegen drift).");
       return 0;
     }
 
@@ -1127,4 +1241,107 @@ function summarizeDrift(changes: Change[]): string[] {
     if (p === undefined) return JSON.stringify(c);
     return `${p.glyph} ${p.noun} ${describeChange(c)}`;
   });
+}
+
+// ---------------------------------------------------------------------------
+// structured output (--format toon|json)
+// ---------------------------------------------------------------------------
+
+/** The ledger counts `meta verify` prints on every run, machine-readable. */
+interface RequirementCounts {
+  total: number;
+  functional: number;
+  architectural: number;
+  byStatus: { status: string; count: number }[];
+  undecided: number;
+  entitiesClaimed: number;
+  entitiesTotal: number;
+  /** How many metadata files the two entity counts were taken over. */
+  metadataFiles: number;
+}
+
+/** One gate's verdict. `ran: false` is NOT a pass — it is "not selected". */
+interface VerifyGateRow {
+  gate: string;
+  ran: boolean;
+  ok: boolean;
+}
+
+/** Project a requirement diagnostic into a payload row. */
+function toDiagnosticRow(d: Diagnostic, source: "gate" | "lint"): AdvisoryDiagnosticRow {
+  return {
+    code: d.code,
+    // "" rather than omitted: a tabular encoder (TOON) needs every row to carry the
+    // same keys, and an absent column would silently shift the rest.
+    path: d.path ?? "",
+    severity: d.severity,
+    source,
+    message: d.message,
+  };
+}
+
+/**
+ * What `--format json|toon` puts on stdout.
+ *
+ * The rule this shape is built to keep: **anything not represented here is
+ * STATED, not silently dropped.** A half-payload that looks complete is the very
+ * defect being fixed — an agent read a run carrying 233 advisory findings as "all
+ * green across the board", because the findings were on stderr as text and the
+ * payload mentioned none of them.
+ *
+ * So: every gate's verdict, every advisory finding (uncapped), and an explicit
+ * `notRepresented` list naming what stays on stderr as text.
+ */
+function buildVerifyPayload(input: {
+  gates: VerifyGateRow[];
+  exitCode: number;
+  requirements: AdvisorySection<AdvisoryDiagnosticRow>;
+  requirementCounts: RequirementCounts | undefined;
+  antiPatterns: AdvisorySection<AdvisoryFindingRow>;
+}): Record<string, unknown> {
+  const ran = input.gates.filter((g) => g.ran);
+  const failed = ran.filter((g) => !g.ok);
+  const parts: string[] = [
+    failed.length === 0
+      ? `${ran.length} gate(s) ran, all clean`
+      : `${failed.length} of ${ran.length} gate(s) failed (${failed.map((g) => g.gate).join(", ")})`,
+  ];
+  if (input.antiPatterns.status === "ran" && input.antiPatterns.total > 0) {
+    parts.push(`${input.antiPatterns.total} advisory anti-pattern finding(s)`);
+  }
+  if (input.requirements.total > 0) {
+    parts.push(`${input.requirements.total} requirement diagnostic(s)`);
+  }
+
+  const help: string[] = [];
+  if (failed.length > 0) {
+    help.push(
+      `the failing gate's drift DETAIL is printed as text on stderr — this payload carries the verdict only`,
+    );
+  }
+  if (input.antiPatterns.total > 0) {
+    help.push(
+      `${input.antiPatterns.total} authored site(s) hand-roll what MetaObjects can model — see antiPatterns.rows[] and run \`meta types <construct>\``,
+    );
+  }
+  if (failed.length === 0 && input.antiPatterns.total === 0 && input.requirements.total === 0) {
+    help.push("no drift and nothing advisory to answer — nothing to do");
+  }
+
+  return {
+    verify: input.gates,
+    exitCode: input.exitCode,
+    summary: parts.join("; "),
+    help,
+    antiPatterns: input.antiPatterns,
+    requirements: input.requirements,
+    ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
+    // The honest boundary. Everything named here is REACHABLE — it is printed as
+    // text on stderr — but it is not in this document, and a reader must not have
+    // to discover that by its absence.
+    notRepresented: [
+      "per-gate drift detail (which template variable drifted, which schema change, which generated file differs, which migration failed to replay) — printed as text on stderr; this payload carries each gate's pass/fail verdict",
+      "the loader's own warnings and the agent-context/manifest advisories — printed as text on stderr",
+    ],
+  };
 }

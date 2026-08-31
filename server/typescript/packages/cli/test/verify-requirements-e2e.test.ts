@@ -95,7 +95,12 @@ describe("meta verify — requirements exit-code contract", () => {
   // that it prints at all, which is the same shape of hole it exists to close.
   test("a CLEAN run still prints the summary, with the denominator's provenance", async () => {
     const dir = project(req({ ...L4, "@implementedBy": ["Order"] }));
-    const lines = await captureInfo(() => run(["verify", "--cwd", dir]));
+    // --format text explicitly: this asserts the HUMAN summary line, and the test
+    // runner is not a TTY, where the CLI's default format is TOON — for `verify`
+    // as it already was for `gen` and `migrate`. In a structured run this line is
+    // narration and moves to stderr, with the same counts carried as payload
+    // fields (asserted in verify-structured-output.test.ts).
+    const lines = await captureInfo(() => run(["verify", "--format", "text", "--cwd", dir]));
 
     const summary = lines.find((l) => l.includes("requirements:"));
     expect(summary).toBeDefined();

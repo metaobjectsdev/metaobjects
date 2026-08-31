@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { parseVerifyArgs } from "../../src/lib/args.js";
+import { DEFAULT_ADVISORY_LIMIT } from "../../src/lib/advisory.js";
 
 describe("parseVerifyArgs", () => {
   test("defaults: prompts/db/dialect undefined, allow empty, skipSchema false, no explicit subverb", () => {
@@ -7,7 +8,7 @@ describe("parseVerifyArgs", () => {
       prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
-      d1: undefined, remote: false,
+      d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
   });
   test("--prompts <dir> is captured", () => {
@@ -15,7 +16,7 @@ describe("parseVerifyArgs", () => {
       prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
-      d1: undefined, remote: false,
+      d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
   });
   test("--db / --dialect / --skip-schema are captured", () => {
@@ -23,7 +24,7 @@ describe("parseVerifyArgs", () => {
       prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true,
       templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
-      d1: undefined, remote: false,
+      d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
   });
   // #225 — --d1 <binding> and --remote, mirroring `meta migrate`'s spelling.
@@ -33,7 +34,7 @@ describe("parseVerifyArgs", () => {
       prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
-      d1: "DB", remote: true,
+      d1: "DB", remote: true, limit: DEFAULT_ADVISORY_LIMIT,
     });
     const bare = parseVerifyArgs(["--dialect", "d1"]);
     expect(bare.anyExplicit).toBe(true);
@@ -57,7 +58,7 @@ describe("parseVerifyArgs", () => {
       allow: ["drop-column", "drop-table"], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
-      d1: undefined, remote: false,
+      d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
   });
 
