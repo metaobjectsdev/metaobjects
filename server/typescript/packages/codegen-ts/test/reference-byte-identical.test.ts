@@ -14,12 +14,14 @@ import {
   routesFile as builtinRoutes,
   routesFileHono as builtinRoutesHono,
   barrel as builtinBarrel,
+  namesFile as builtinNames,
 } from "../src/generators/index.js";
 import { entityFile as refEntity } from "../src/reference/entity.js";
 import { queriesFile as refQueries } from "../src/reference/queries.js";
 import { routesFile as refRoutes } from "../src/reference/routes.js";
 import { routesFileHono as refRoutesHono } from "../src/reference/routes-hono.js";
 import { barrel as refBarrel } from "../src/reference/barrel.js";
+import { namesFile as refNames } from "../src/reference/names.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
@@ -58,6 +60,7 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   routes: { builtin: builtinRoutes, ref: refRoutes },
   "routes-hono": { builtin: builtinRoutesHono, ref: refRoutesHono },
   barrel: { builtin: builtinBarrel, ref: refBarrel },
+  names: { builtin: builtinNames, ref: refNames },
 };
 
 describe("ADR-0034 — reference templates are byte-identical to built-ins", () => {

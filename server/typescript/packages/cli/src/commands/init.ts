@@ -19,7 +19,7 @@ import { readReferenceTemplate, type ReferenceGeneratorName } from "@metaobjects
 // the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
 const OWNED_GENERATORS_DIR = "codegen/generators";
 
-// The FOUR reference generators `meta init` copies EAGERLY — deliberately an explicit
+// The FIVE reference generators `meta init` copies EAGERLY — deliberately an explicit
 // literal, not derived from @metaobjectsdev/codegen-ts's REFERENCE_GENERATOR_NAMES (the
 // full list of everything `meta eject` can copy). Looping over that array unconditionally
 // used to mean init scaffolded whatever it contained: when a later task registered
@@ -28,7 +28,13 @@ const OWNED_GENERATORS_DIR = "codegen/generators";
 // scaffolded metaobjects.config.ts's import list (buildMetaobjectsConfigBody below) made
 // explicit and checkable — anything else is eject-on-demand via `meta eject <name>`, which
 // exists exactly so eager copying isn't the only way to take ownership of a template.
-const SCAFFOLDED_GENERATOR_NAMES: readonly ReferenceGeneratorName[] = ["entity", "queries", "routes", "barrel"];
+//
+// "names" joined this list by spec §A5's ruling, not by falling out of the general rule
+// above: TypeScript is opt-in by construction under ADR-0034 (meta gen runs the adopter's
+// copy, so a packaged change to a generator can never reach anyone who has ejected), so
+// the honest maximum for the names artifact is every NEW `meta init` getting it and every
+// existing project adding one config line by hand.
+const SCAFFOLDED_GENERATOR_NAMES: readonly ReferenceGeneratorName[] = ["entity", "queries", "routes", "barrel", "names"];
 
 // The scaffolded config's outDir + dbImport, as named constants so the throwing-stub
 // path below is DERIVED from the same values the config template embeds rather than
@@ -106,6 +112,7 @@ import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { routesFile } from "./codegen/generators/routes.js";
 import { barrel } from "./codegen/generators/barrel.js";
+import { namesFile } from "./codegen/generators/names.js";
 
 export default defineConfig({
   outDir:    "${SCAFFOLD_OUT_DIR}",
@@ -126,6 +133,7 @@ export default defineConfig({
     entityFile(),
     queriesFile(),
     routesFile(),
+    namesFile(),   // <Entity>Names — physical table/column constants (spec §A1/§A5)
     barrel(),
   ],
   docs: {
@@ -426,7 +434,7 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
  * so a re-run with --force never clobbers a hand-edited generator. The scaffolded
  * metaobjects.config.ts imports these local copies (not the package `/generators` export).
  *
- * Copies SCAFFOLDED_GENERATOR_NAMES only — the four the scaffolded config actually
+ * Copies SCAFFOLDED_GENERATOR_NAMES only — the five the scaffolded config actually
  * wires — not every name @metaobjectsdev/codegen-ts happens to register. Anything else
  * (routes-hono, and any UI-tier template from codegen-ts-react/-tanstack) is reached with
  * `meta eject <name>`, not by eager copying.

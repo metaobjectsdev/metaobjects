@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Basenames (no extension) of the copyable reference generators shipped in `src/reference/`. */
-export const REFERENCE_GENERATOR_NAMES = ["entity", "queries", "routes", "routes-hono", "barrel"] as const;
+export const REFERENCE_GENERATOR_NAMES = ["entity", "queries", "routes", "routes-hono", "barrel", "names"] as const;
 export type ReferenceGeneratorName = (typeof REFERENCE_GENERATOR_NAMES)[number];
 
 /** A directory is a reference root iff it holds the first template the reader was told to expect. */

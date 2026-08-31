@@ -173,12 +173,19 @@ describe("init() — happy path", () => {
 // template registered in REFERENCE_GENERATOR_NAMES must NOT silently join init's eager
 // scaffold; it stays reachable only via `meta eject <name>` until a human decides
 // otherwise.
+//
+// "names" is the one deliberate exception, added by spec §A5: TypeScript is opt-in by
+// construction under ADR-0034 (meta gen runs the adopter's copy, so a packaged change
+// can't reach anyone who has ejected), and §A5 rules that the honest maximum for existing
+// projects is a one-line config addition while every NEW `meta init` gets it for free.
+// That is the human decision this comment says the pin defers to — for "names" only. The
+// pin still guards everything else (routes-hono stays eject-only below).
 describe("init() — owned generator scaffold set (FR-040 fix round 1, Finding 1)", () => {
-  test("copies exactly the four generators the scaffolded config wires — not routes-hono", async () => {
+  test("copies exactly the five generators the scaffolded config wires — not routes-hono", async () => {
     const result = await init({ cwd });
     const dir = join(cwd, "codegen", "generators");
     const files = readdirSync(dir).sort();
-    expect(files).toEqual(["barrel.ts", "entity.ts", "queries.ts", "routes.ts"]);
+    expect(files).toEqual(["barrel.ts", "entity.ts", "names.ts", "queries.ts", "routes.ts"]);
     expect(existsSync(join(dir, "routes-hono.ts"))).toBe(false);
 
     for (const rel of [
@@ -186,18 +193,20 @@ describe("init() — owned generator scaffold set (FR-040 fix round 1, Finding 1
       "codegen/generators/queries.ts",
       "codegen/generators/routes.ts",
       "codegen/generators/barrel.ts",
+      "codegen/generators/names.ts",
     ]) {
       expect(result.created).toContain(rel);
     }
     expect(result.created).not.toContain("codegen/generators/routes-hono.ts");
   });
 
-  test("--print-only forecasts the same four-file set, not routes-hono", async () => {
+  test("--print-only forecasts the same five-file set, not routes-hono", async () => {
     const result = await init({ cwd, printOnly: true });
     expect(result.created).toContain("codegen/generators/entity.ts");
     expect(result.created).toContain("codegen/generators/queries.ts");
     expect(result.created).toContain("codegen/generators/routes.ts");
     expect(result.created).toContain("codegen/generators/barrel.ts");
+    expect(result.created).toContain("codegen/generators/names.ts");
     expect(result.created).not.toContain("codegen/generators/routes-hono.ts");
   });
 
@@ -211,6 +220,23 @@ describe("init() — owned generator scaffold set (FR-040 fix round 1, Finding 1
     const ejectResult = await ejectGenerator({ cwd, name: "routes-hono" });
     expect(ejectResult.status).toBe("created");
     expect(existsSync(join(cwd, "codegen", "generators", "routes-hono.ts"))).toBe(true);
+  });
+});
+
+// Spec §A5 — the one deliberate exception to the pin above: every new `meta init` gets
+// the names generator scaffolded AND wired, because that's the only route a packaged
+// change to it can reach an ADR-0034 adopter through at all.
+describe("init() — names generator is scaffolded and wired (spec §A5)", () => {
+  test("scaffolds codegen/generators/names.ts", async () => {
+    const dir = await init({ cwd }).then(() => join(cwd, "codegen", "generators"));
+    expect(existsSync(join(dir, "names.ts"))).toBe(true);
+  });
+
+  test("the scaffolded metaobjects.config.ts imports and wires namesFile()", async () => {
+    await init({ cwd });
+    const configSrc = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configSrc).toContain('import { namesFile } from "./codegen/generators/names.js";');
+    expect(configSrc).toContain("namesFile()");
   });
 });
 

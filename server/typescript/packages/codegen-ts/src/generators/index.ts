@@ -13,6 +13,7 @@ export { callableFile, type CallableFileOpts } from "./callable-file.js";
 /** @deprecated ADR-0034 — own a copy instead: `import { routesFile } from "./codegen/generators/routes"` (scaffolded by `meta init`). */
 export { routesFile, type RoutesFileOpts } from "./routes-file.js";
 export { routesFileHono, type RoutesFileHonoOpts } from "./routes-file-hono.js";
+export { namesFile } from "./names-file.js";
 /** @deprecated ADR-0034 — own a copy instead: `import { barrel } from "./codegen/generators/barrel"` (scaffolded by `meta init`). */
 export { barrel, type BarrelOpts } from "./barrel.js";
 /** @deprecated ADR-0021 D1 — neutral artifact owned by `meta docs` (ADR-0020); not part of the recommended `meta gen` suite. */
