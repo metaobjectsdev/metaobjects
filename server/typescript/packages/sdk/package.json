@@ -1,7 +1,7 @@
 {
   "name": "@metaobjectsdev/sdk",
   "version": "0.24.5",
-  "description": "Workspace helpers and agent-docs utilities for MetaObjects projects.",
+  "description": "Workspace helpers and agent-context assembly for MetaObjects projects.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,11 +10,6 @@
       "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./agent-docs": {
-      "bun": "./src/agent-docs/index.ts",
-      "types": "./dist/agent-docs/index.d.ts",
-      "default": "./dist/agent-docs/index.js"
     },
     "./agent-context": {
       "bun": "./src/agent-context/index.ts",
@@ -49,7 +44,7 @@
   "keywords": [
     "metaobjects",
     "sdk",
-    "agent-docs",
+    "agent-context",
     "workspace"
   ],
   "publishConfig": {
