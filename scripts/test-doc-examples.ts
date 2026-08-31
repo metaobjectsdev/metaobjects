@@ -7,6 +7,12 @@
  * and asserts a non-zero exit each time. It also asserts the quiet cases stay quiet —
  * a partial fragment, an unrelated JSON block — because a gate that flags illustrations
  * gets switched off, and then catches nothing at all.
+ *
+ * The second half of the file covers NORMALISATION: an elided or stacked fence used to be
+ * skipped whole, hiding whatever else it said. Those cases come in pairs on purpose — one
+ * proving the hidden defect is now caught, one proving correct documentation is still
+ * accepted — because either half alone would be satisfied by a gate that is simply wrong
+ * in one direction.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -125,16 +131,21 @@ const CASES: readonly Case[] = [
       "```",
     ].join("\n"),
   },
-  // The skip-visibility fix (#337-family blind spot): a block that never becomes a
-  // loadable model must stay quiet (exit 0, ADR unchanged) but must now be COUNTED and
-  // CLASSIFIED in the report — that is the whole point of the fix. Each case below
-  // pins one SkipReason so a future edit that misclassifies, or silently drops the
-  // report, fails a test instead of shipping unnoticed (the same failure mode this
-  // gate exists to close, one level up).
+  // ── De-elision: the two conventions that used to hide a whole block ──────────────
+  //
+  // An elision (`...`) and a stacked fence each made a block fail to parse AS ONE VALUE,
+  // and the block was then skipped WHOLE — taking every attribute the author did write
+  // with it. Both are now normalised and checked. The pairs below are deliberate: each
+  // "is caught" case is matched by an "is not manufactured" case, because a gate that
+  // starts flagging correct documentation gets switched off, and then catches nothing.
   {
-    name: "elided fragment is quiet but counted as elided",
-    shouldFail: false,
-    mustContain: "1 elided",
+    // The exact shape that motivated the work: a retired attribute two lines above the
+    // `...` that hid it. `@emitTanstack` is retired vocabulary as of 0.24.6 (FR-040 —
+    // the @emit* family left the model), which is what makes it the right fixture and
+    // not merely an unused name: this is a spelling the docs really did teach.
+    name: "an elision no longer hides a retired attribute",
+    shouldFail: true,
+    because: "ERR_UNKNOWN_ATTR",
     markdown: [
       "```json",
       '{ "object.entity": { "name": "InternalAudit", "@emitTanstack": false,',
@@ -143,9 +154,85 @@ const CASES: readonly Case[] = [
     ].join("\n"),
   },
   {
-    name: "stacked one-liners are quiet but counted as stacked",
+    // The anti-cry-wolf pin, and it matters as much as the case above. Eliding a long
+    // `children` array is normal, good documentation practice; de-elision must leave a
+    // correct block correct. The inner `{ ... }` also pins the hole-pruning: without it
+    // the de-elided array holds an empty object and the loader fails a document that
+    // said nothing wrong.
+    // The summary assertion is what stops this pin being vacuous: "quiet" alone was also
+    // true when the block was SKIPPED, which is the behaviour being replaced. One example
+    // out of one block says it was read, and passed.
+    name: "de-elision does not manufacture a failure",
     shouldFail: false,
-    mustContain: "1 stacked",
+    mustContain: "1 shipped metadata example(s) from 1 fenced block(s)",
+    markdown: [
+      "```json",
+      '{ "object.entity": { "name": "Ledger", "children": [',
+      '  { "field.string": { "name": "note" } },',
+      "  { ... }",
+      "] } }",
+      "```",
+    ].join("\n"),
+  },
+  {
+    // Elision-stripping runs over a STRING-MASKED copy, so a "..." inside a quoted value
+    // is never deleted. Observable only through a value the loader checks: an enum member
+    // must match ^[A-Za-z_][A-Za-z0-9_]*$, so `CLO...SED` is illegal — and would silently
+    // become the legal `CLOSED` if the mask were ever dropped, turning this into a pass.
+    name: "quoted text survives de-elision (string mask)",
+    shouldFail: true,
+    because: "ERR_BAD_ATTR_VALUE",
+    markdown: [
+      "```json",
+      '{ "object.entity": { "name": "Ledger", "children": [',
+      '  { "field.enum": { "name": "status", "@values": ["OPEN", "CLO...SED"] } },',
+      "  ...",
+      "] } }",
+      "```",
+    ].join("\n"),
+  },
+  {
+    // YAML elisions are the nastier half: an indented `...` is a valid plain scalar, so
+    // the block PARSES and the string child aborts the node before the loader reaches its
+    // attributes — a green tick over an unchecked document. ADR-0006 makes YAML the
+    // authoring front-end, so this is the #337 shape on the surface agents write in.
+    name: "an elision that PARSES as a YAML scalar no longer hides a retired attribute",
+    shouldFail: true,
+    because: "ERR_UNKNOWN_ATTR",
+    markdown: [
+      "```yaml",
+      "object.entity:",
+      "  name: Ledger",
+      "  emitTanstack: false",
+      "  children:",
+      "    - ...",
+      "```",
+    ].join("\n"),
+  },
+  {
+    // The other YAML shape: a bare indented `...` is a parse ERROR, and is rescued by the
+    // line-based stripper rather than by the post-parse prune above. Two code paths, two
+    // cases — one fixture cannot cover both.
+    name: "an elision that BREAKS the YAML parse no longer hides a retired attribute",
+    shouldFail: true,
+    because: "ERR_UNKNOWN_ATTR",
+    markdown: [
+      "```yaml",
+      "object.entity:",
+      "  name: Ledger",
+      "  emitTanstack: false",
+      "  ...",
+      "```",
+    ].join("\n"),
+  },
+  // ── De-stacking ─────────────────────────────────────────────────────────────────
+  {
+    // Several one-line examples in one fence are several documents. Asserting the SUMMARY
+    // is the point: "quiet" alone would also be satisfied by skipping them, which is what
+    // used to happen. Two examples out of one block is the proof they were checked.
+    name: "stacked one-liners are each checked, not skipped",
+    shouldFail: false,
+    mustContain: "2 shipped metadata example(s) from 1 fenced block(s)",
     markdown: [
       "```json",
       '{ "field.uuid": { "name": "id" } }',
@@ -153,6 +240,28 @@ const CASES: readonly Case[] = [
       "```",
     ].join("\n"),
   },
+  {
+    // One bad piece fails the fence, and the report says WHICH — a finding a reader cannot
+    // locate inside a four-line fence is a finding they will not act on.
+    name: "a stacked fence fails on its bad piece, and names the piece",
+    shouldFail: true,
+    because: "ERR_UNKNOWN_ATTR",
+    mustContain: "piece 2 of 3",
+    markdown: [
+      "```json",
+      '{ "field.uuid": { "name": "id" } }',
+      '{ "object.entity": { "name": "InternalAudit", "@emitTanstack": false } }',
+      '{ "field.string": { "name": "email", "@maxLength": 120 } }',
+      "```",
+    ].join("\n"),
+  },
+  // ── What is still skipped, and stays visible ────────────────────────────────────
+  //
+  // A block that never becomes a loadable model must stay quiet (exit 0 — see the note on
+  // `printSkipReport` for why a skip count is not turned into a failure) but must be
+  // COUNTED and CLASSIFIED in the report. Each case pins one SkipReason so a future edit
+  // that misclassifies, or silently drops the report, fails a test instead of shipping
+  // unnoticed — the same failure mode this gate exists to close, one level up.
   {
     name: "a genuine syntax error is quiet but counted as unparseable",
     shouldFail: false,

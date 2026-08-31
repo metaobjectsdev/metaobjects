@@ -37,6 +37,29 @@
  * spurious noise across hundreds of fragments. Forcing a one-line decision is the same
  * posture as `VocabularyRewrite.otherwise`, and for the same reason: an entry that
  * classifies only what it thought of has said nothing about the rest.
+ *
+ * ── Normalising a block before classifying it ────────────────────────────────────
+ *
+ * Two ordinary authoring conventions used to make a block vanish before it ever reached
+ * the loader, and between them they hid over a tenth of the shipped corpus:
+ *
+ *   an ELISION — `"children": [ ... ]` — is how a fence says "more of the same, not shown
+ *   here". The placeholder is not JSON, so the block failed to parse and was skipped
+ *   WHOLE, taking with it every attribute the author DID write. That is not hypothetical:
+ *   the block that motivated this pass carried a retired `@emit*` attribute two lines
+ *   above the `...` that hid it.
+ *
+ *   a STACKED fence — several one-line examples back to back — is not one document, so it
+ *   too failed to parse as a single value and was skipped whole.
+ *
+ * Both are now NORMALISED rather than counted: an elision is deleted (over a string-masked
+ * copy, so a literal "..." inside a quoted value is never touched) and a stacked fence is
+ * split into its values, each checked on its own and located BY PIECE in any report. This
+ * adds no verdict — every normalised piece lands in the same FAIL/ALLOW classification
+ * above. It only stops the gate skipping a claim it is perfectly able to check.
+ *
+ * What is deliberately NOT done is failing on the skips that remain; the reasoning, with
+ * the measurement behind it, is on `printSkipReport`.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -209,19 +232,18 @@ interface LoadableModel {
 }
 
 /**
- * Why a block never became a loadable model — the gate's OTHER blind spot. `optedOut`
- * above is a COUNTED, ANNOTATED skip; every reason below was, until now, silent: the
- * block vanished between "found" and "checked" with nothing in the output to say so.
+ * Why a block — or one PIECE of a stacked block — never became a loadable model. This is
+ * the gate's OTHER blind spot: `optedOut` above is a COUNTED, ANNOTATED skip; every reason
+ * below was once silent, the block vanishing between "found" and "checked" with nothing in
+ * the output to say so.
  *
- *   elided          the body failed to parse and contains a literal `...`/`…` — the
- *                    shipped convention for "there is more here, elided for brevity."
- *   stacked         the body failed to parse AS ONE VALUE, but is a clean sequence of
- *                    two or more independently-valid JSON values back to back — several
- *                    one-line examples shown in a single fence, not one document. Proven
- *                    mechanically (each piece is re-parsed on its own), not guessed.
- *   unparseable     the body failed to parse and neither convention above explains why.
- *                    This is the bucket worth a human's second glance — everything else
- *                    here is a recognized, load-bearing authoring pattern, not a defect.
+ *   elided          the body carries a literal `...`/`…` placeholder AND still would not
+ *                    parse once the placeholder was removed (see `stripJsonElisions`). A
+ *                    de-elidable block is CHECKED; this reason is only the residue.
+ *   unparseable     the body failed to parse and no normalisation rescued it. This is the
+ *                    bucket worth a human's second glance: everything else here is a
+ *                    recognized authoring pattern, while a body that fails to parse for no
+ *                    visible reason is exactly the shape a genuine typo takes.
  *   not-object      the body parsed, but to a scalar, array, or `null` — not a JSON
  *                    object at all, so it cannot be a metadata node under any reading.
  *   not-node-shape  the body parsed to an object, but its keys don't match a single
@@ -231,25 +253,50 @@ interface LoadableModel {
  *   host-dependent  a bare `origin.*` fragment — see HOST_DEPENDENT_TYPES; a deliberate,
  *                    already-documented carve-out, not a new finding each time it fires.
  *
- * `unparseable` is the only reason that could plausibly hide a #337/#342/#343 repeat —
- * a fragment cut with `...` or stacked one-liners is a legible authoring choice; a body
- * that fails to parse for no visible reason is exactly the shape a genuine typo takes.
+ * `stacked` is gone from this list on purpose. A stacked fence is now split and every piece
+ * checked, so it is no longer a reason anything is skipped — only an individual piece can
+ * be skipped, for one of the reasons above, and the report names which piece.
  */
 type SkipReason =
   | "elided"
-  | "stacked"
   | "unparseable"
   | "not-object"
   | "not-node-shape"
   | "host-dependent";
 
-/** A block that never reached the loader, and why. */
-interface Skip {
+/**
+ * Where one example sits. A stacked fence yields several examples from one block, so the
+ * line is the PIECE's own line rather than the fence's, and `piece` names which one: a
+ * finding a reader cannot locate inside the fence is a finding they will not act on.
+ *
+ * `piece` is a required property that may be `undefined` rather than an optional one —
+ * `exactOptionalPropertyTypes` is on, and every construction site spreads a `Located`.
+ */
+interface Located {
   readonly block: Block;
+  /** 1-based file line this example starts on. */
+  readonly line: number;
+  /** `piece 2 of 4` for a de-stacked fence; `undefined` when the fence is one document. */
+  readonly piece: string | undefined;
+}
+
+/** A block, or one piece of one, rendered into something the loader will check. */
+interface Example extends Located {
+  readonly model: LoadableModel;
+}
+
+/** A block, or one piece of one, that never reached the loader, and why. */
+interface Skip extends Located {
   readonly reason: SkipReason;
 }
 
-/** The result of trying to turn a block into something the loader can check. */
+/** Everything one fence produced: zero or more checkable examples, zero or more skips. */
+interface BlockAnalysis {
+  readonly examples: readonly Example[];
+  readonly skips: readonly Skip[];
+}
+
+/** The result of trying to turn one parsed value into something the loader can check. */
 type ModelResult =
   | { readonly ok: true; readonly model: LoadableModel }
   | { readonly ok: false; readonly reason: SkipReason };
@@ -321,7 +368,17 @@ function stripJsonComments(src: string): string {
     }
     if (c === '"') { inString = true; out += c; continue; }
     if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; out += "\n"; continue; }
-    if (c === "/" && src[i + 1] === "*") { i += 2; while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++; i++; continue; }
+    if (c === "/" && src[i + 1] === "*") {
+      const from = i;
+      i += 2;
+      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i++;
+      // Re-emit the newlines the comment spanned. Every line number this gate reports is
+      // computed over the STRIPPED text, so swallowing them would point a reader at the
+      // wrong line of the file they open.
+      out += src.slice(from, i + 1).replace(/[^\n]/g, "");
+      continue;
+    }
     out += c;
   }
   return out;
@@ -330,16 +387,162 @@ function stripJsonComments(src: string): string {
 /** The shipped "there is more here" convention — ASCII `...` or the unicode ellipsis. */
 const ELISION_MARKER = /\.\.\.|…/;
 
+/** Filler for a masked string literal's contents: one character in, one character out. */
+const STRING_MASK_CHAR = "S";
+
 /**
- * Whether `source` (already comment-stripped) is a clean sequence of two or more
- * top-level JSON values with nothing but whitespace between them — i.e. several
- * one-line/one-block examples stacked in a single fence rather than one document.
- * Mechanical, not a guess: it walks balanced `{}`/`[]`/string/scalar tokens and
- * requires EVERY piece to `JSON.parse` on its own; one bad piece and it gives up
- * rather than claim a pattern that isn't really there.
+ * `source` with the CONTENTS of every string literal replaced by a filler, length and
+ * every position preserved (newlines included, so line arithmetic still works). Elision
+ * hunting then runs positionally over the mask, which is what makes it safe: a literal
+ * "..." inside a quoted value — prose in a `description`, a `like` pattern — can never be
+ * mistaken for the elision convention and deleted out of a shipped example.
+ *
+ * Indexed by UTF-16 code unit, NOT `for…of`: iterating by code point would collapse a
+ * surrogate pair into one output character and slide every position after it.
  */
-function splitsAsStackedValues(source: string): boolean {
-  const pieces: string[] = [];
+function maskStringLiterals(source: string): string {
+  let out = "";
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i]!;
+    if (!inString) {
+      out += c;
+      if (c === '"') inString = true;
+      continue;
+    }
+    if (escape) { escape = false; out += STRING_MASK_CHAR; continue; }
+    if (c === "\\") { escape = true; out += STRING_MASK_CHAR; continue; }
+    if (c === '"') { inString = false; out += '"'; continue; }
+    out += c === "\n" ? "\n" : STRING_MASK_CHAR;
+  }
+  return out;
+}
+
+/**
+ * An elided array element or object member, together with the comma that joined it to its
+ * siblings: `, ...`, `... ,`, `"children": ...`. Matched over a MASKED copy of the source
+ * (see `maskStringLiterals`), never the raw text.
+ */
+const JSON_ELISION = new RegExp(
+  String.raw`,?\s*(?:"${STRING_MASK_CHAR}*"\s*:\s*)?(?:\.\.\.|…)`, "g");
+
+/** Everything in `span` except its newlines — what a deleted region leaves behind. */
+function newlinesOf(span: string): string {
+  return span.replace(/[^\n]/g, "");
+}
+
+/**
+ * `source` (already comment-stripped) with every elided element or member removed, leaving
+ * JSON that parses. Two details carry their weight:
+ *
+ *   the deleted span's NEWLINES are re-emitted, so every line number this gate reports
+ *   still points at the line a reader will open; and
+ *
+ *   when the elision had no comma BEFORE it, the comma after it goes too — the comma that
+ *   joined the elision to its sibling is now dangling, and `[ ..., b ]` must not be handed
+ *   to the parser as `[ , b ]`.
+ */
+function stripJsonElisions(source: string): string {
+  const masked = maskStringLiterals(source);
+  let out = "";
+  let last = 0;
+  for (const match of masked.matchAll(JSON_ELISION)) {
+    const start = match.index;
+    if (start === undefined) continue;
+    let end = start + match[0].length;
+    if (!match[0].startsWith(",")) {
+      let j = end;
+      while (j < masked.length && /\s/.test(masked[j]!)) j++;
+      if (masked[j] === ",") end = j + 1;
+    }
+    out += source.slice(last, start) + newlinesOf(source.slice(start, end));
+    last = end;
+  }
+  return out + source.slice(last);
+}
+
+/**
+ * A YAML line that IS an elision: a bare `...`, an elided sequence item, or a key whose
+ * entire value is the placeholder.
+ */
+const YAML_ELISION_LINE = /^\s*(?:-\s*|[\w.@$-]+\s*:\s*)?(?:\.\.\.|…)\s*$/;
+
+/**
+ * YAML de-elision is line-based and deliberately blunter than the JSON one: there is no
+ * safe string mask for YAML here (`stripJsonComments` would mangle a `//` inside a URL, and
+ * YAML's own quoting rules differ), so only a whole line that is nothing but an elision is
+ * removed and anything subtler is left unparsed rather than guessed at. The line is BLANKED
+ * rather than deleted, again so reported line numbers stay true.
+ *
+ * It is here at all because ADR-0006 makes YAML the universal authoring front-end: leaving
+ * its elisions unchecked would reopen the #337 hole on the surface agents author in.
+ */
+function stripYamlElisionLines(source: string): string {
+  return source.split("\n").map((line) => (YAML_ELISION_LINE.test(line) ? "" : line)).join("\n");
+}
+
+/** A value that is nothing but the placeholder — `...` / `…`, whitespace aside. */
+function isElisionPlaceholder(value: unknown): boolean {
+  return typeof value === "string" && /^\s*(?:\.\.\.|…)\s*$/.test(value);
+}
+
+/**
+ * An array element standing for "more of these, not shown". Two shapes reach here:
+ *
+ *   `[ {} ]` — what JSON de-elision leaves behind for `"children": [ { ... } ]`; and
+ *   `[ "..." ]` — what a YAML PARSER hands back for `children:\n  - ...`, because in YAML
+ *    an indented `...` is a perfectly good plain scalar. That one is the nastier case: the
+ *    block parses, so nothing ever looked elided, and the string child then aborted the
+ *    node before the loader reached its attributes — a YAML fence could carry a RETIRED
+ *    attribute past this gate purely because it also carried an elision.
+ */
+function isElisionHole(element: unknown): boolean {
+  if (isElisionPlaceholder(element)) return true;
+  return element !== null && typeof element === "object" && !Array.isArray(element)
+    && Object.keys(element).length === 0;
+}
+
+/**
+ * `value` with the holes an elision leaves dropped: placeholder elements and members go,
+ * and so does an empty object left in a child array. No real example ships either, so this
+ * is the faithful reading of the elision — and it is what stops de-elision MANUFACTURING a
+ * load error the document never committed.
+ *
+ * Applied only to a block whose source carries an elision marker, so a block with no
+ * elision is passed to the loader exactly as written.
+ */
+function pruneElisionHoles(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(pruneElisionHoles).filter((element) => !isElisionHole(element));
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, member] of Object.entries(value)) {
+      if (isElisionPlaceholder(member)) continue; // `children: ...` — an elided member
+      out[key] = pruneElisionHoles(member);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** One top-level JSON value found in a fence, and where in the fence it starts. */
+interface TopLevelValue {
+  readonly value: unknown;
+  readonly offset: number;
+}
+
+/**
+ * `source` (already comment-stripped) split into two or more independently-valid top-level
+ * JSON values with nothing but whitespace between them — several one-line examples stacked
+ * in a single fence rather than one document — or `undefined` when it is not that shape.
+ * Mechanical, not a guess: it walks balanced `{}`/`[]`/string/scalar tokens and requires
+ * EVERY piece to `JSON.parse` on its own; one bad piece and it gives up rather than claim a
+ * pattern that isn't really there.
+ */
+function splitTopLevelValues(source: string): readonly TopLevelValue[] | undefined {
+  const values: TopLevelValue[] = [];
   let i = 0;
   const n = source.length;
   while (i < n) {
@@ -362,7 +565,7 @@ function splitsAsStackedValues(source: string): boolean {
         if (c === openCh) depth++;
         else if (c === close) { depth--; if (depth === 0) { j++; break; } }
       }
-      if (depth !== 0) return false; // unbalanced — not a clean sequence
+      if (depth !== 0) return undefined; // unbalanced — not a clean sequence
       end = j;
     } else if (openCh === '"') {
       let j = i + 1, esc = false;
@@ -378,26 +581,19 @@ function splitsAsStackedValues(source: string): boolean {
       while (j < n && !/[\s,]/.test(source[j]!)) j++;
       end = j;
     }
-    const piece = source.slice(i, end);
-    try { JSON.parse(piece); } catch { return false; }
-    pieces.push(piece);
+    let value: unknown;
+    try { value = JSON.parse(source.slice(i, end)); } catch { return undefined; }
+    values.push({ value, offset: i });
     i = end;
   }
-  return pieces.length >= 2;
+  return values.length >= 2 ? values : undefined;
 }
 
-/**
- * Why a block's JSON/YAML failed to parse. YAML has no verified detector for the
- * "stacked" pattern here — nothing in the shipped corpus has ever hit it, and YAML's
- * own comment syntax makes `stripJsonComments` unsafe to run over it (it would mangle a
- * bare `//` inside a URL). Rather than guess, a YAML parse failure is `unparseable`.
- */
-function classifyParseFailure(block: Block): SkipReason {
-  if (ELISION_MARKER.test(block.body)) return "elided";
-  if (block.lang === "json" || block.lang === "jsonc") {
-    if (splitsAsStackedValues(stripJsonComments(block.body))) return "stacked";
-  }
-  return "unparseable";
+/** Newlines in `s` — how far into a fence a piece starts. */
+function countNewlines(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) if (s[i] === "\n") n++;
+  return n;
 }
 
 /** A metadata node key: `object.entity`, `field.string`, `identity.reference`, ... */
@@ -423,17 +619,16 @@ const CHILD_ONLY_TYPES = new Set([
 const HOST_DEPENDENT_TYPES = new Set(["origin"]);
 
 /**
- * The block as a loadable canonical-JSON model, or the reason it cannot become one —
+ * One PARSED value as a loadable canonical model, or the reason it cannot become one —
  * see `SkipReason`. A skip is not a verdict on the document; most of them are a
- * legitimate authoring pattern (a stacked one-liner, an elided fragment, a config
- * example that was never metadata) this gate simply has no way to load.
+ * legitimate authoring pattern (a config example that was never metadata, a bare origin
+ * fragment) this gate simply has no way to load.
  *
  * A fragment — a single `field.string` / `object.entity` node — is wrapped in a
  * synthetic root so the loader sees a well-formed document. That wrapping is what makes
  * fragment-ness mechanical: nothing about the block has to be annotated.
  */
-function asLoadableModel(block: Block): ModelResult {
-  const isYaml = block.lang === "yaml" || block.lang === "yml";
+function modelFromValue(parsed: unknown, isYaml: boolean): ModelResult {
   // YAML authoring is sigil-free (ADR-0006) and the loader desugars it, so a YAML block
   // is parsed, wrapped like any other fragment, and handed BACK to the loader as YAML —
   // re-emitting keeps the bare attribute keys the desugar expects, where canonical JSON
@@ -446,12 +641,6 @@ function asLoadableModel(block: Block): ModelResult {
     format,
   });
 
-  let parsed: unknown;
-  try {
-    parsed = isYaml ? Bun.YAML.parse(block.body) : JSON.parse(stripJsonComments(block.body));
-  } catch {
-    return { ok: false, reason: classifyParseFailure(block) };
-  }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { ok: false, reason: "not-object" };
   }
@@ -484,21 +673,99 @@ function asLoadableModel(block: Block): ModelResult {
   return { ok: true, model: emit({ "metadata.root": { package: "docexample", children: [node] } }) };
 }
 
+/**
+ * Everything one fence yields. A fence that parses as one value is one example; an elided
+ * fence is normalised and then IS one example; a stacked fence becomes several, each
+ * checked and located separately. Only what survives none of that is skipped.
+ *
+ * Order matters: de-elision runs FIRST and the split runs over its output, because a fence
+ * can legitimately be both (stacked one-liners, one of them cut short with `...`).
+ */
+function analyzeBlock(block: Block): BlockAnalysis {
+  const isYaml = block.lang === "yaml" || block.lang === "yml";
+  const source = isYaml ? block.body : stripJsonComments(block.body);
+
+  const examples: Example[] = [];
+  const skips: Skip[] = [];
+
+  /**
+   * Where an offset lands in the file the reader will open. `text` is whichever variant of
+   * the fence the offset came from — every normalisation here preserves newlines exactly
+   * (blanked YAML lines, re-emitted newlines in a deleted JSON span) precisely so this
+   * arithmetic stays true no matter which one it counts in.
+   */
+  const locate = (text: string, offset: number, piece: string | undefined): Located => ({
+    block,
+    // `block.line` is the fence's own 1-based line; the body starts on the next one.
+    line: block.line + 1 + countNewlines(text.slice(0, offset)),
+    piece,
+  });
+
+  /** Classify one already-parsed value into an example or a skip. */
+  const take = (
+    value: unknown, text: string, offset: number, piece: string | undefined,
+  ): void => {
+    const where = locate(text, offset, piece);
+    const result = modelFromValue(value, isYaml);
+    if (result.ok) examples.push({ ...where, model: result.model });
+    else skips.push({ ...where, reason: result.reason });
+  };
+
+  const parse = (text: string): { ok: true; value: unknown } | { ok: false } => {
+    try { return { ok: true, value: isYaml ? Bun.YAML.parse(text) : JSON.parse(text) }; }
+    catch { return { ok: false }; }
+  };
+
+  const elided = ELISION_MARKER.test(source);
+  /** Only a block that actually carries a placeholder gets its holes pruned. */
+  const prune = (value: unknown): unknown => (elided ? pruneElisionHoles(value) : value);
+
+  // The pruning pass runs even when the block parsed as shipped, because an elision does
+  // not always BREAK the parse: YAML reads an indented `...` as a plain scalar, so the
+  // block loads with a string sitting where a child belongs and the rest of it never gets
+  // checked. That is the same blind spot as an unparseable elision, wearing a green tick.
+  const asShipped = parse(source);
+  if (asShipped.ok) { take(prune(asShipped.value), source, 0, undefined); return { examples, skips }; }
+
+  const normalised = !elided ? source
+    : isYaml ? stripYamlElisionLines(source)
+    : stripJsonElisions(source);
+  if (elided) {
+    const deElided = parse(normalised);
+    if (deElided.ok) { take(prune(deElided.value), normalised, 0, undefined); return { examples, skips }; }
+  }
+
+  // Splitting is JSON-only: nothing in the shipped corpus has ever stacked YAML documents,
+  // and YAML's own `---` separator would be the thing to detect rather than this walker.
+  if (!isYaml) {
+    const pieces = splitTopLevelValues(normalised);
+    if (pieces !== undefined) {
+      for (const [index, piece] of pieces.entries()) {
+        take(prune(piece.value), normalised, piece.offset,
+          `piece ${index + 1} of ${pieces.length}`);
+      }
+      return { examples, skips };
+    }
+  }
+
+  skips.push({ ...locate(source, 0, undefined), reason: elided ? "elided" : "unparseable" });
+  return { examples, skips };
+}
+
 interface Finding {
-  readonly block: Block;
+  readonly example: Example;
   readonly code: string;
   readonly message: string;
 }
 
 /** Print order: the bucket most worth a human's attention first. */
 const SKIP_REASON_ORDER: readonly SkipReason[] = [
-  "unparseable", "elided", "stacked", "not-object", "not-node-shape", "host-dependent",
+  "unparseable", "elided", "not-object", "not-node-shape", "host-dependent",
 ];
 
 const SKIP_REASON_LABEL: Readonly<Record<SkipReason, string>> = {
-  unparseable: "unparseable — failed to parse; neither pattern below explains why. Look by hand",
-  elided: 'elided — contains a literal "..."/"…" placeholder',
-  stacked: "stacked — several independently-valid JSON values in one fence, not one document",
+  unparseable: "unparseable — failed to parse, and no normalisation rescued it. Look by hand",
+  elided: 'elided — carries a literal "..."/"…" placeholder AND would not parse without it',
   "not-object": "not an object — parsed to a scalar, array, or null",
   "not-node-shape": "not shaped like one metaobjects node — parsed fine but keys don't match a " +
     "single `type.subtype` node or `metadata.root` (usually a non-metaobjects config/API example)",
@@ -508,20 +775,34 @@ const SKIP_REASON_LABEL: Readonly<Record<SkipReason, string>> = {
 
 /**
  * Prints every skip with its reason and location, UNCONDITIONALLY — called before the
- * pass/fail branches below, so it is visible whether the run is red or green. This is
- * the visibility half of the fix (#337-family): exit code is deliberately untouched.
+ * pass/fail branches below, so it is visible whether the run is red or green. Exit code is
+ * deliberately untouched here, and that is now a decision with a measurement behind it
+ * rather than an omission.
  *
- * The obvious next step — once the one confirmed hit in this report
- * (docs/ports/typescript-client.md's elided `@emitTanstack` example, the exact #337
- * shape) is fixed and its vocabulary is registered or removed — is turning a skip
- * count into a failure: `if (skips.length > <threshold>) process.exit(1)`, or a
- * `--strict-skips` flag. A small, obvious change, because `skips` is already fully
- * computed and printed here; nothing about this function needs to change to add it.
+ * The obvious next step, once the blind spot was first measured, looked like "fail when the
+ * skip count exceeds a threshold". It is the wrong fix, for three reasons that survived
+ * contact with the corpus:
+ *
+ *   A threshold reports how many blocks we cannot see and never checks ONE of them. The
+ *   hole it closes is the hole of not knowing, which the report already closed.
+ *
+ *   The two kinds that could actually hide drift — an elision, a stacked fence — are now
+ *   NORMALISED and checked. Failing on those would have failed correct documents to buy
+ *   coverage the normalisation gets for free, and would have taught authors to elide less
+ *   clearly to appease a gate, making the docs worse.
+ *
+ *   What remains is dominated by `not-node-shape`: a config snippet or an API response
+ *   sharing a fence language with metadata, correctly classified, with nothing to fix. A
+ *   gate that fails those cries wolf, and a warning that cries wolf gets deleted rather
+ *   than fixed — which is the failure mode this whole family started with.
+ *
+ * So a skip printed here is a FACT about the corpus. A FAIL is a claim about a document,
+ * and the gate only makes one when it has read the document.
  */
-function printSkipReport(skips: readonly Skip[], rel: (b: Block) => string): void {
+function printSkipReport(skips: readonly Skip[], where: (l: Located) => string): void {
   if (skips.length === 0) return;
   console.log(
-    `\n⚠ ${skips.length} fenced block(s) never became a checkable example — silently ` +
+    `\n⚠ ${skips.length} fenced block(s)/piece(s) never became a checkable example — ` +
     "skipped, not counted as pass or fail:\n");
   const byReason = new Map<SkipReason, Skip[]>();
   for (const s of skips) {
@@ -532,7 +813,7 @@ function printSkipReport(skips: readonly Skip[], rel: (b: Block) => string): voi
     const group = byReason.get(reason);
     if (!group || group.length === 0) continue;
     console.log(`  ${group.length} ${SKIP_REASON_LABEL[reason]}:`);
-    for (const s of group) console.log(`    ${rel(s.block)}`);
+    for (const s of group) console.log(`    ${where(s)}`);
     console.log("");
   }
 }
@@ -556,18 +837,23 @@ async function main(): Promise<void> {
 
   const findings: Finding[] = [];
   const unclassified = new Map<string, Finding>();
+  const examples: Example[] = [];
   const skips: Skip[] = [];
-  let checked = 0;
+  /** Fences that yielded at least one checkable example — one fence can yield several. */
+  let checkedBlocks = 0;
 
   for (const block of blocks) {
-    const result = asLoadableModel(block);
-    if (!result.ok) { skips.push({ block, reason: result.reason }); continue; }
-    checked++;
+    const analysis = analyzeBlock(block);
+    if (analysis.examples.length > 0) checkedBlocks++;
+    examples.push(...analysis.examples);
+    skips.push(...analysis.skips);
+  }
 
+  for (const example of examples) {
     let errors: readonly Error[];
     try {
       ({ errors } = await MetaDataLoader.fromString(
-        result.model.content, result.model.format, { strict: true }));
+        example.model.content, example.model.format, { strict: true }));
     } catch (e) {
       errors = [e as Error];
     }
@@ -575,20 +861,22 @@ async function main(): Promise<void> {
     for (const error of errors) {
       const code = (error as { code?: string }).code ?? "ERR_UNCODED";
       if (FRAGMENT_CODES.has(code)) continue;
-      const finding: Finding = { block, code, message: error.message };
+      const finding: Finding = { example, code, message: error.message };
       if (FAIL_CODES.has(code)) { findings.push(finding); continue; }
       if (!unclassified.has(code)) unclassified.set(code, finding);
     }
   }
 
-  const rel = (b: Block) => `${relative(REPO_ROOT, b.file)}:${b.line}`;
+  const where = (l: Located) =>
+    `${relative(REPO_ROOT, l.block.file)}:${l.line}` +
+    (l.piece === undefined ? "" : ` (${l.piece})`);
 
-  printSkipReport(skips, rel);
+  printSkipReport(skips, where);
 
   if (unclassified.size > 0) {
     console.error("✗ unclassified loader error code(s) — the gate cannot decide these:\n");
     for (const [code, f] of unclassified)
-      console.error(`  ${code}\n    first seen at ${rel(f.block)}\n    ${f.message}\n`);
+      console.error(`  ${code}\n    first seen at ${where(f.example)}\n    ${f.message}\n`);
     console.error(
       "Add each code to FAIL_CODES (vocabulary the example USES is wrong) or to\n" +
       "FRAGMENT_CODES (the example merely OMITS or REFERENCES something) in\n" +
@@ -600,7 +888,7 @@ async function main(): Promise<void> {
   if (findings.length > 0) {
     console.error(`✗ ${findings.length} shipped example(s) no longer load:\n`);
     for (const f of findings)
-      console.error(`  ${rel(f.block)}\n    ${f.code}: ${f.message}\n`);
+      console.error(`  ${where(f.example)}\n    ${f.code}: ${f.message}\n`);
     console.error(
       "These are examples we SHIP — a reader or an agent copying one produces metadata\n" +
       "that fails to load. Fix the example; `meta upgrade` knows most of the rewrites.");
@@ -610,8 +898,8 @@ async function main(): Promise<void> {
   const optedOutNote = optedOut > 0 ? `, ${optedOut} opted out (external-provider)` : "";
   const skippedNote = skips.length > 0 ? `, ${skips.length} skipped (see above)` : "";
   console.log(
-    `✓ ${checked} shipped metadata example(s) load under the strict registry` +
-    `${optedOutNote}${skippedNote}`);
+    `✓ ${examples.length} shipped metadata example(s) from ${checkedBlocks} fenced block(s) ` +
+    `load under the strict registry${optedOutNote}${skippedNote}`);
 }
 
 await main();
