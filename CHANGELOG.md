@@ -87,6 +87,68 @@ it existed to catch. The terminator now accepts a colon or whitespace, and the r
 own three-case pin, because every file currently uses the form the old pattern also matched —
 narrowing it back would otherwise leave every assertion green.
 
+### Fixed — generated source on Java and Kotlin really does go through the write guard
+
+`docs/features/own-your-codegen.md` told JVM adopters that every generator writes through one
+guard refusing any file without a `GENERATED` marker, so a hand-written file at a generated
+path is never clobbered. **Eight write sites made that false** — and the JVM has no three-way
+merge and no hash manifest, so `GeneratedFileWriter` is the *entire* ownership story there:
+taking ownership is one gesture, deleting the marker line, and that gesture did nothing for
+these eight files, silently.
+
+Six were KotlinPoet `FileSpec.writeTo(Path)` — an unconditional `CREATE`/`TRUNCATE_EXISTING`
+write that never stats the existing file — including **`<Entity>.kt`**, the file a Kotlin
+adopter most wants to own. `KotlinEntityGenerator` used the guard *and* a raw write, so within
+one generator some outputs were protected and some were not.
+
+**Two were Java**, which is why the sentence would have stayed false if only Kotlin were
+fixed: `ExtractorCodeGenerator` and `JavaObjectCodeGenerator` each built a `GENERATED` header
+into their source and then wrote it raw.
+
+Adopter bytes are unchanged and gated — routing through the guard changes *whether* a file is
+written, never *what*; a test writes the same `FileSpec` both ways and asserts identical path
+and bytes, charset included. Four write paths still bypass the guard **by design** (user
+supplied templates, the Maven docs goal's API pages, and the `META-INF/services` registration
+whose whole content is a bare FQN): none emits content MetaObjects authors, so requiring a
+marker would make run 1 write and every run after refuse — a frozen artifact behind a green
+build. They are listed in `GeneratedFileWriter`'s javadoc and named in the docs.
+
+### Fixed — the ownership seam was advertised in four places and worked in none of them as described
+
+Every claim below was checked by running the product, and one of them turned out to be true in
+a way that made the real defect worse rather than absent.
+
+**The hand-edit survival promise is machine-local.** `requirementTests()` emitted a header
+saying *"the BODY below is yours and survives regeneration."* On the machine that generated the
+file that is true — three-way merge returns it `MERGED`. But `.metaobjects/.gen-state/` snapshot
+**bodies are gitignored** while `.hashes.json` is committed, so on a colleague's clone or a CI
+runner there is no merge base: the run **exits 1 with `REFUSED`**. The body is not lost — that
+is the floor working — but the two remedies it printed were **both impossible for this
+generator**: *"move your edits into a non-generated file"* contradicts the same header's *"Do
+not rename the test — the name is the link,"* and `--baseline=fresh` discards the only content
+the file has. The header now states its condition, the per-file hint explains rather than
+prescribes, and the run prints a **real recovery** once (`--baseline=fresh` to seed the missing
+base, `git checkout` the edit back, regenerate → `MERGED`) — which requires the edit to be
+committed first, and says so.
+
+**The `@generated` header does not decide anything on TypeScript.** Its own doc comment claimed
+it "drives the overwrite policy". Every use of it is an *emitter* stamping the marker into
+output; the decision is made from `.gen-state`. The JVM is the inversion — there the marker is
+the whole mechanism.
+
+**`<Entity>.extra.ts` is a convention, not a mechanism.** Generated files advertise it as the
+customization seam; the emitted barrel re-exports only `./<Entity>`, so the sibling is invisible
+to it. It is not wired, and wiring it would make generated output a function of the filesystem
+rather than of the model. `EXTRA_SUFFIX` — dead, used by nothing — is **removed**, which is a
+**breaking** change to `@metaobjectsdev/codegen-ts`'s public exports. A test now pins that the
+barrel does not re-export a sibling, so a future attempt to wire it fails a gate instead of
+shipping.
+
+**`codegen-concepts.md`'s generate-once/own-it strategies described things that do not exist.**
+No `partial` emission in the C# codegen, no generated-base + hand-owned-subclass pair in any
+port, and while `skip-existing` exists as a merge strategy, no CLI flag selects it. The section
+now says which one strategy ships and which are patterns you would build yourself.
+
 ### Changed — `meta verify` honours `--format`, and its advisory is finally reachable
 
 **This changes what a piped `meta verify` prints.** It now follows the same TTY-aware
