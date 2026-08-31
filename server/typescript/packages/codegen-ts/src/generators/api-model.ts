@@ -35,7 +35,7 @@
 //                        (templates/routes-file-hono.ts) — the OPT-IN Hono variant
 //                        of the Fastify REST surface. Documented ONLY when the
 //                        adopter wires routesFileHono() (ctx.includeHonoRoutes), and
-//                        gated by the SAME @emitRoutes:false filter.
+//                        gated by the SAME source + TPH rules as the Fastify surface.
 //   • template.prompt (T5):
 //       - prompt       : render<Name> (payload, provider): string — the prompt
 //                        render handle promptRender() emits into a single
@@ -75,10 +75,17 @@
 //     / update<Sub>ById / delete<Sub>ById scoped to the shared table) and the
 //     subtype REST subpaths are NOT YET documented by this builder — that fuller
 //     TPH modeling is a tracked follow-up (under-documentation, allowed).
-//   • @emitRoutes:false entities → the routes generator filters them out
-//     (routes-file.ts: ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false), so they get
-//     NO REST symbols here. The queries + validator generators do NOT honor
-//     @emitRoutes, so data-access + validation symbols still apply.
+//
+// NOT modelled here (stated so the gap is known + intentional): a generator's own
+// `filter` option. `routesFile({ filter })` narrows what the routes generator emits,
+// and this builder reads the MODEL, not the wired generator set, so it cannot see
+// that narrowing and will over-document REST for a filtered-out entity. That is
+// under-documentation's opposite and it is a real limitation — but it is inherent to
+// a docs pass that runs off metadata, and it applies equally to every generator's
+// filter. (It used to be dodged for routes ALONE via an @emitRoutes:false metadata
+// read; that attribute was never registered vocabulary, so `meta verify` rejected the
+// very models this builder was reading it from. The read is gone — see
+// constants.ts.)
 
 import {
   type MetaRoot,
@@ -112,7 +119,6 @@ import { isTphSubtype } from "../templates/zod-validators.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
 import { hasAnyRdbSource } from "../source-detect.js";
-import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 import { resourcePath } from "../templates/entity-constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
@@ -353,15 +359,6 @@ function isQueryable(obj: MetaObject): boolean {
   return hasAnyRdbSource(obj) && !isTphSubtype(obj);
 }
 
-/** Whether the routes generator emits REST routes for this entity. It filters
- *  out @emitRoutes:false (routes-file.ts:27), unlike the queries + validator
- *  generators which always emit. So REST symbols are gated separately from the
- *  other queryable kinds. */
-function emitsRoutes(obj: MetaObject): boolean {
-  // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
-  return obj.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false;
-}
-
 function buildEntityUnit(
   obj: MetaObject,
   ctx: RenderContext,
@@ -392,13 +389,15 @@ function buildEntityUnit(
   if (isQueryable(obj)) {
     symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
     symbols.push(...validationSymbols(obj, entityMod));
-    // REST is additionally gated: @emitRoutes:false suppresses routes only.
-    if (emitsRoutes(obj)) {
-      symbols.push(...restSymbols(obj, layout));
-      // The OPT-IN Hono variant mounts the SAME CRUD verbs under the SAME
-      // @emitRoutes filter — documented only when the adopter wired it.
-      if (includeHono) symbols.push(...restHonoSymbols(obj, layout));
-    }
+    // REST needs no gate of its own: the routes generator's built-in filter is
+    // `hasAnyRdbSource && !isTphSubtype` — exactly isQueryable — so every queryable
+    // object gets routes. (Its `filter` option can narrow that further; this builder
+    // reads the model, not the wired generator set, and cannot see it. See the module
+    // header.)
+    symbols.push(...restSymbols(obj, layout));
+    // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
+    // documented only when the adopter wired it.
+    if (includeHono) symbols.push(...restHonoSymbols(obj, layout));
   }
 
   // --- relation: the drizzle relations() export, when the resolver derives a

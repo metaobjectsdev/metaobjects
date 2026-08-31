@@ -7,8 +7,12 @@
 //   - Fields with @formExclude: true excluded
 //   - Timestamp fields with default CURRENT_TIMESTAMP excluded (auto-managed)
 //
-// Form-generation is OPT-IN per entity via `@emitAngular: true` on the
-// object metadata. (The factory layer applies that filter.)
+// Form generation is OPT-IN at PROJECT level: add `angularFormFile()` to
+// `generators` in metaobjects.config.ts, and narrow it to a subset with
+// `angularFormFile({ filter })`. There is no `@emitAngular` metadata attribute
+// — it was never registered vocabulary, so `meta verify` rejects it
+// (ERR_UNKNOWN_ATTR); the line here used to claim it turned generation ON,
+// while the factory beside it read it as an opt-OUT. Neither is true now.
 
 import { code, imp } from "ts-poet";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";

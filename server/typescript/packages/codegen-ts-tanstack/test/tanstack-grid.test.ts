@@ -3,8 +3,32 @@ import { resolve } from "node:path";
 import { tanstackGrid } from "../src/tanstack-grid.js";
 import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
 import type { GenContext } from "@metaobjectsdev/codegen-ts";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+
+// A model carrying the retired `@emitTanstack: false` — deliberately. The strict loader
+// (`meta verify`) rejects it with ERR_UNKNOWN_ATTR; the non-strict loader `meta gen` runs
+// accepts it, which is exactly the half-working state this deletion ends. Keeping a real
+// carrier here is what makes the inertness assertions below real: a test that only checks
+// the constant is gone would pass against a half-done deletion.
+const STALE_ATTR_MODEL = JSON.stringify({
+  "metadata.root": {
+    children: [{
+      "object.entity": {
+        name: "Subscriber",
+        "@emitTanstack": false,
+        children: [
+          { "source.rdb": { "@table": "subscribers" } },
+          { "field.long": { name: "id", children: [
+            { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+          ] } },
+          { "field.string": { name: "email" } },
+          { "layout.dataGrid": { name: "default", "@columns": ["email"] } },
+        ],
+      },
+    }],
+  },
+});
 
 const FIXTURE        = resolve(import.meta.dir, "fixtures", "single-entity.json");
 const MULTI_GRID     = resolve(import.meta.dir, "fixtures", "multi-grid-entity.json");
@@ -13,6 +37,10 @@ const NO_GRID        = resolve(import.meta.dir, "fixtures", "no-grid-layout.json
 
 async function ctxFor(fixturePath: string): Promise<GenContext> {
   const { root } = await new MetaDataLoader().load([new FileSource(fixturePath)]);
+  return ctxForRoot(root);
+}
+
+async function ctxForRoot(root: MetaRoot): Promise<GenContext> {
   const entities = root.objects();
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
@@ -96,12 +124,24 @@ describe("tanstackGrid() factory", () => {
     expect(file.content).toMatch(/import type \{[^}]*SubscriberFilter[^}]*\} from "\.\/Subscriber"/);
   });
 
-  test("respects @emitTanstack: false per entity", async () => {
-    // Same approach as the freeze workaround in B-T8 — construct a fresh entity.
-    // Use MetaData directly. Import what's needed.
-    const { MetaObject, TypeId, TYPE_OBJECT: T_OBJ, OBJECT_SUBTYPE_ENTITY } = await import("@metaobjectsdev/metadata");
-    const fakeEntity: any = new MetaObject(new TypeId(T_OBJ, OBJECT_SUBTYPE_ENTITY), "Subscriber");
-    fakeEntity.setAttr("emitTanstack", false);
-    expect(tanstackGrid().filter?.(fakeEntity)).toBe(false);
+  // `@emitTanstack` was read by this filter but was NEVER registered metamodel
+  // vocabulary, so the strict loader — which `meta verify` runs — rejected it with
+  // ERR_UNKNOWN_ATTR while `meta gen` honoured it. The read is gone; these two tests pin
+  // BOTH halves, because a deletion proved only by an absent assertion is not proved.
+  test("@emitTanstack is INERT — a stale one no longer suppresses the columns file", async () => {
+    const { root } = await new MetaDataLoader().load([new InMemoryStringSource(STALE_ATTR_MODEL)]);
+    const subscriber = root.objects().find((o) => o.name === "Subscriber")!;
+    expect(subscriber.hasAttr("emitTanstack")).toBe(true);  // the adopter really wrote it …
+    expect(tanstackGrid().filter?.(subscriber)).toBe(true); // … and it decides nothing.
+    const files = await tanstackGrid().generate(await ctxForRoot(root));
+    expect(files.map((f) => f.path)).toEqual(["Subscriber.columns.tsx"]);
+  });
+
+  test("`filter` is how you narrow — it AND-composes with the built-in gates", async () => {
+    const gen = tanstackGrid({ filter: (e) => e.name !== "Subscriber" });
+    const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
+    expect(gen.filter?.(root.objects().find((o) => o.name === "Subscriber")!)).toBe(false);
+    const ctx = await ctxForRoot(root);
+    expect(await gen.generate({ ...ctx, matches: (e) => gen.filter?.(e) ?? true })).toEqual([]);
   });
 });

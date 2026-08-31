@@ -31,7 +31,7 @@ import {
   renderEntityMetaFile,
   servesReadApi,
   isTphSubtype,
-  CODEGEN_ATTR_EMIT_TANSTACK,
+ 
   withClientDirective,
 } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "@metaobjectsdev/codegen-ts-tanstack";
@@ -45,21 +45,24 @@ export interface TanstackQueryOpts {
  * Per-entity generator that emits <Entity>.hooks.ts — a query-key factory
  * plus 2 query hooks and 3 mutation hooks backed by useEntityFetcher().
  *
- * Per-entity opt-out via `@emitTanstack: false` is honored. If the user
- * supplies their own filter, both must pass (AND).
+ * If the user supplies their own filter, it AND-composes with the built-in gates.
+ *
+ * Decide per generator what you consume: wire only the generators whose output you
+ * actually import, and narrow this one with its `filter` option. There is no `@emit*`
+ * metadata attribute — those were never registered vocabulary, so `meta verify` rejects
+ * them (ERR_UNKNOWN_ATTR).
  */
 export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "tanstack-query",
     // AND-composes the framework instance-artifact guard (skips abstract types —
-    // they contribute shape via inheritance only and have no instance to query),
-    // the metadata opt-out, and the optional user filter. Projections still pass
-    // here and get read-only hooks via renderHooksFile's isProjection branch.
+    // they contribute shape via inheritance only and have no instance to query)
+    // with the optional user filter. Projections still pass here and get read-only
+    // hooks via renderHooksFile's isProjection branch.
     // FR-017 Tier 3: TPH subtypes get no standalone hooks file — their per-subtype
     // hooks live in the discriminator base's hooks file (polymorphic + per-subtype).
-    // ADR-0039: resolving — a concrete entity may inherit @emitTanstack via extends.
-    filter: (e: MetaObject) => servesReadApi(e) && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false && !isTphSubtype(e) && userFilter(e),
+    filter: (e: MetaObject) => servesReadApi(e) && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error(

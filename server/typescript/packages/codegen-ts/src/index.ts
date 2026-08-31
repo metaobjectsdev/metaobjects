@@ -70,7 +70,8 @@ export { decideAndWrite, GitMissingError } from "./overwrite-policy.js";
 export { contentHash, readGeneratedHash, listGeneratedPaths } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
-export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID, CODEGEN_ATTR_EMIT_FORM, CODEGEN_ATTR_EMIT_ROUTES } from "./constants.js";
+export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, type RetiredCodegenAttr } from "./constants.js";
+export { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 
 export { formatTs } from "./format.js";
 

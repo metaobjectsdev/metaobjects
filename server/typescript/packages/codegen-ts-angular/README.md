@@ -9,7 +9,11 @@ Generators:
 - `angularGridFile()` — `<Entity>.grid.component.ts`: standalone component over `<mo-entity-grid>` with column defs derived from `layout.dataGrid` metadata.
 - `barrel()` — `index.ts` re-exporting all per-entity Angular outputs.
 
-Per-entity opt-out: `@emitAngular: false` on an entity skips all three Angular outputs.
+Decide per generator what you consume: wire only the generators whose output you actually
+import, and narrow one with its `filter` option (`angularServiceFile({ filter: (e) => e.name
+!== "InternalAudit" })`) — `filter` is ANDed with each generator's built-in gates, so it can
+only narrow. There is no `@emit*` metadata attribute for this: `@emitAngular` was never
+registered vocabulary, so authoring it fails `meta verify` with `ERR_UNKNOWN_ATTR`.
 
 ## Install
 

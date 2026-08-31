@@ -24,8 +24,12 @@ function hasDataGridLayout(entity: MetaObject): boolean {
  * `<Entity>.grid.component.ts` — a standalone component over
  * `<mo-entity-grid>` with column defs derived from `layout.dataGrid` metadata.
  *
- * Per-entity opt-out via `@emitAngular: false`. Per-entity opt-in via
- * presence of at least one `dataGrid` layout child.
+ * Per-entity opt-in via presence of at least one `dataGrid` layout child.
+ *
+ * Decide per generator what you consume: wire only the generators whose output you
+ * actually import, and narrow this one with its `filter` option. There is no `@emit*`
+ * metadata attribute — those were never registered vocabulary, so `meta verify` rejects
+ * them (ERR_UNKNOWN_ATTR).
  */
 export const angularGridFile = function angularGridFile(
   opts?: AngularGridOpts,
@@ -36,11 +40,7 @@ export const angularGridFile = function angularGridFile(
     filter: (e: MetaObject) =>
       // A grid renders what a generated READ endpoint returns — no endpoint, no grid
       // (see api-surface.ts).
-      // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
-      servesReadApi(e)
-      && e.attr("emitAngular") !== false
-      && userFilter(e)
-      && hasDataGridLayout(e),
+      servesReadApi(e) && userFilter(e) && hasDataGridLayout(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("angular-grid: renderContext is required (provided by runGen)");

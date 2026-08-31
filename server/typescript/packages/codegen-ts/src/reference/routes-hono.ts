@@ -19,7 +19,11 @@
 //                object and for TPH subtypes.
 // customize:     this generator is YOURS — edit it freely. For the emitted route
 //                composition, call `renderRoutesFileHono` (exported from the engine) and
-//                wrap its result, or replace the call entirely.
+//                wrap its result, or replace the call entirely. Decide per generator what
+//                you consume: wire only the generators whose output you actually import,
+//                and narrow this one with its `filter`. There is no `@emit*` metadata
+//                attribute — those were never registered vocabulary, so `meta verify`
+//                rejects them (ERR_UNKNOWN_ATTR).
 // composes-with: entity.ts (imports the table/schemas/allowlists), queries.ts.
 
 import { type MetaObject } from "@metaobjectsdev/metadata";
@@ -32,7 +36,6 @@ import {
   hasAnyRdbSource,
   formatTs,
   entityOutputPath,
-  CODEGEN_ATTR_EMIT_ROUTES,
 } from "@metaobjectsdev/codegen-ts";
 
 export interface RoutesFileHonoOpts {
@@ -48,17 +51,12 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
   // without being named as held back, or get warned about while still emitting.
   // (Same shape as tanstack's grid generator, which factors it the same way.)
   const passesOtherGates = (e: MetaObject): boolean =>
-    // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
-    e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false
-    && hasAnyRdbSource(e)
-    && userFilter(e);
+    hasAnyRdbSource(e) && userFilter(e);
   const generator: Generator = {
     name: "routes-file-hono",
     // Marks this as the Hono routes generator so the runner can aggregate
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
     emitsHonoRoutes: true,
-    // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
-    //
     // TPH subtypes are EXCLUDED, matching the Fastify generator. A TPH subtype shares
     // its base's table, so mounting vanilla CRUD for it produced routes with no
     // discriminator scoping at all: the list returned EVERY subtype's rows, and

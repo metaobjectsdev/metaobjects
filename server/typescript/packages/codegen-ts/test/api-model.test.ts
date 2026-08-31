@@ -51,10 +51,13 @@ const AUTH_TPH = [
   },
 ];
 
-// An entity that opts out of route emission via @emitRoutes: false. The routes
-// generator filters it out, so the ApiModel must emit NO REST symbols for it —
-// but data-access + validation still apply (those generators don't honor it).
-const NO_ROUTES = {
+// An entity carrying the RETIRED `@emitRoutes: false` — deliberately, so the attribute's
+// inertness is pinned by a real carrier rather than by the absence of an assertion. It was
+// never registered metamodel vocabulary: the strict loader `meta verify` runs rejects it
+// with ERR_UNKNOWN_ATTR, while the non-strict loader `meta gen` runs accepts it and the
+// routes generator used to honour it. Nothing reads it now, so this entity is documented
+// exactly like any other queryable one.
+const STALE_EMIT_ROUTES = {
   "object.entity": {
     name: "Ledger",
     "@emitRoutes": false,
@@ -235,16 +238,20 @@ describe("buildApiModel — SKIP rules", () => {
     expect(new Set(base.symbols.map((s) => s.kind)).has("data-access")).toBe(true);
   });
 
-  test("@emitRoutes:false suppresses REST symbols only (data-access + validation stay)", async () => {
-    const root = await loadRoot([NO_ROUTES]);
+  test("@emitRoutes is INERT — a stale one no longer suppresses REST symbols", async () => {
+    const root = await loadRoot([STALE_EMIT_ROUTES]);
     const model = buildApiModel(root, { loadedRoot: root });
 
     const u = unit(model, "Ledger");
+    // The attribute really is in this model (the non-strict loader accepts it) …
+    expect(root.objects().find((o) => o.name === "Ledger")!.hasAttr("emitRoutes")).toBe(true);
     const kinds = new Set(u.symbols.map((s) => s.kind));
-    // No routes generated for an @emitRoutes:false entity.
-    expect(kinds.has("rest")).toBe(false);
-    expect(u.symbols.filter((s) => s.kind === "rest")).toEqual([]);
-    // But queries + validators still emit (they don't honor @emitRoutes).
+    // … and REST is now documented, because the routes generator emits it. This builder
+    // mirrors the routes generator's filter (hasAnyRdbSource && !isTphSubtype ==
+    // isQueryable); the old @emitRoutes read was a fifth gate that mirrored nothing.
+    expect(kinds.has("rest")).toBe(true);
+    expect(u.symbols.filter((s) => s.kind === "rest").length).toBeGreaterThan(0);
+    // The other kinds are unchanged, which is what makes this a deletion and not a rewrite.
     expect(kinds.has("data-access")).toBe(true);
     expect(kinds.has("validation")).toBe(true);
     expect(kinds.has("model")).toBe(true);

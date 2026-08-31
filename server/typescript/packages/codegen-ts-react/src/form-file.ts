@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, servesWriteApi, isProjection, isTphSubtype, CODEGEN_ATTR_EMIT_FORM, withClientDirective } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, servesWriteApi, isProjection, isTphSubtype, withClientDirective } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -10,8 +10,12 @@ export interface FormFileOpts {
 
 /**
  * Forms are opt-in: a user must add `formFile()` to config.generators.
- * Per-entity opt-out via `@emitForm: false` is honored.
  * .tsx files are not piped through formatTs (Biome only handles .ts here).
+ *
+ * Decide per generator what you consume: wire only the generators whose output you
+ * actually import, and narrow this one with its `filter` option. There is no `@emit*`
+ * metadata attribute — those were never registered vocabulary, so `meta verify` rejects
+ * them (ERR_UNKNOWN_ATTR).
  */
 export const formFile = function formFile(opts?: FormFileOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
@@ -19,14 +23,11 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
     name: "form-file",
     // Always set: AND-composes the framework write-artifact guard
     // (skips abstract types — no instance — and read-only projections —
-    // instantiable for read, never for write), the metadata opt-out, and
-    // the optional user filter.
+    // instantiable for read, never for write) with the optional user filter.
     // FR-017 Tier 3: forms are ALWAYS per-subtype. The discriminator base gets
     // NO form (you can't create an abstract base), but each concrete subtype
     // does — even though it has no own writable source (it inherits the base's).
     filter: (e: MetaObject) => {
-      // ADR-0039: resolving — a concrete entity may inherit @emitForm via extends.
-      if (e.attr(CODEGEN_ATTR_EMIT_FORM) === false) return false;
       if (!userFilter(e)) return false;
       if (isTphSubtype(e)) return true; // per-subtype form
       // A discriminator base is never form-rendered directly.

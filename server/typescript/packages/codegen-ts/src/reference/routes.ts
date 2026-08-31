@@ -18,8 +18,11 @@
 //                Skipped for any sourceless object (incl. every object.value, source-less by
 //                value purity) and for TPH subtypes — no source.rdb means no table/allowlist
 //                for a routes file to import (#248 R2).
-// customize:     this generator (filter, output path, per-entity @emitRoutes opt-out, target) is
-//                YOURS — edit it freely. The route *composition* itself is richer than the others
+// customize:     this generator (filter, output path, target) is YOURS — edit it freely.
+//                Decide per generator what you consume: wire only the generators whose
+//                output you actually import, and narrow this one with its `filter`. There
+//                is no `@emit*` metadata attribute — those were never registered
+//                vocabulary, so `meta verify` rejects them (ERR_UNKNOWN_ATTR). The route *composition* itself is richer than the others
 //                (M:N junction traversal, TPH per-subtype route sets), so it stays in the engine via
 //                `renderRoutesFile`. To own the composition too, copy `renderRoutesFile`'s body out
 //                of the package source — it dispatches projection → mountReadOnlyCrudRoutes,
@@ -38,7 +41,6 @@ import {
   hasAnyRdbSource,
   formatTs,
   entityOutputPath,
-  CODEGEN_ATTR_EMIT_ROUTES,
 } from "@metaobjectsdev/codegen-ts";
 
 export interface RoutesFileOpts {
@@ -50,14 +52,13 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "routes-file",
-    // per-entity opt-out via `@emitRoutes: false`; TPH subtypes get no standalone routes
-    // file (their routes live in the discriminator base's); AND-composed with your filter.
+    // TPH subtypes get no standalone routes file (their routes live in the discriminator
+    // base's); AND-composed with your filter.
     // #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't
     // backed by any store — routes against it would import Drizzle table/allowlist
     // exports the entity file never emits. Gated by hasAnyRdbSource.
     filter: (e: MetaObject) =>
-      // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
-      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && hasAnyRdbSource(e) && !isTphSubtype(e) && userFilter(e),
+      hasAnyRdbSource(e) && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file: renderContext is required (provided by runGen)");

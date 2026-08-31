@@ -34,7 +34,6 @@ async function formFor(
         {
           "object.entity": {
             name,
-            "@emitForm": true,
             children: [
               { "source.rdb": { "@table": "bookings" } },
               { "field.int": { name: "id" } },

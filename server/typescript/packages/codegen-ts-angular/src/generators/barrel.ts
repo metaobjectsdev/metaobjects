@@ -24,11 +24,6 @@ function specifierFor(layout: string, pkg: string | undefined, stem: string): st
   return dir === "" ? `./${stem}` : `./${dir}/${stem}`;
 }
 
-function isAngularEmittable(entity: MetaObject): boolean {
-  // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
-  return entity.attr("emitAngular") !== false;
-}
-
 function hasDataGridLayout(entity: MetaObject): boolean {
   return entity.layouts().some((l) => l.subType === LAYOUT_SUBTYPE_DATA_GRID);
 }
@@ -50,9 +45,7 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
       }
       const layout = ctx.renderContext.outputLayout;
       const lines: string[] = [];
-      const eligible = entities
-        .filter(isAngularEmittable)
-        .sort((a, b) => a.name.localeCompare(b.name));
+      const eligible = [...entities].sort((a, b) => a.name.localeCompare(b.name));
       for (const e of eligible) {
         // Each line mirrors its generator's filter exactly — a re-export of a file
         // that was never emitted is a hard build break in the consumer app.

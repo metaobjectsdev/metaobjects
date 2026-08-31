@@ -660,19 +660,27 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     }
   });
 
-  test("INVERSE: @emitRoutes:false entity is documented with NO REST symbol (routes gen skipped it)", () => {
+  test("@emitRoutes is INERT — the generator emits routes for it AND the docs say so", () => {
+    // `@emitRoutes` was read by the routes generator's filter but was never registered
+    // metamodel vocabulary: the strict loader `meta verify` runs rejects it with
+    // ERR_UNKNOWN_ATTR, while `meta gen` loads non-strict and honoured it. Half-working
+    // is the defect, so the read is gone.
+    //
+    // This is the strongest place in the repo to pin that, because this file runs the
+    // REAL generators and compares their output against the docs builder. A half-done
+    // deletion — one read left in either tier — fails here as a mismatch, which is the
+    // failure the accuracy gate exists to produce.
     const ledger = model.units.find((u) => u.node === "Ledger")!;
     expect(ledger).toBeDefined();
 
-    // The ApiModel documents NO REST symbol for the @emitRoutes:false entity …
-    expect(ledger.symbols.filter((s) => s.kind === "rest")).toEqual([]);
-    // … and the routes generator genuinely emitted no routes file for it.
-    expect(fileFor(routesFiles, "Ledger.routes.ts"), "routes skips @emitRoutes:false").toBeUndefined();
-    // The handler name must not appear anywhere in the routes output.
-    expect(hasExportedFn(routesAll, "ledgerRoutes")).toBe(false);
+    // The routes generator emits the routes file for it …
+    expect(fileFor(routesFiles, "Ledger.routes.ts"), "@emitRoutes suppresses nothing").toBeDefined();
+    expect(hasExportedFn(routesAll, "ledgerRoutes")).toBe(true);
+    // … and the ApiModel documents the matching REST symbols.
+    expect(ledger.symbols.filter((s) => s.kind === "rest").length).toBeGreaterThan(0);
 
-    // But data-access + validation ARE documented AND ARE generated (those
-    // generators don't honor @emitRoutes) — proves we didn't over-skip.
+    // Data-access + validation are untouched by the deletion, which is what makes this a
+    // deletion rather than a rewrite.
     expect(ledger.symbols.some((s) => s.kind === "data-access")).toBe(true);
     expect(ledger.symbols.some((s) => s.kind === "validation")).toBe(true);
     expect(fileFor(queriesFiles, "Ledger.queries.ts"), "queries still emitted").toBeDefined();

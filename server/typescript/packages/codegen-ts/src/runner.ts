@@ -1,5 +1,6 @@
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
+import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
@@ -389,6 +390,13 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // this, said nothing — while `meta verify` reported the template "clean". See
   // prompt-generator-gate.ts. Self-extinguishing; warning only.
   warnMissingPromptGenerators(root, config.generators, (m) => warnings.push(m));
+
+  // A retired `@emit*` codegen flag still sitting in the metadata suppresses nothing now.
+  // Named here rather than left to be discovered as a file that reappeared. Scoped to
+  // the run's own entity set (the same set every generator sees), so `meta gen <entity>`
+  // reports on what it just generated rather than on objects it was told to skip.
+  // See retired-codegen-attrs.ts. Self-extinguishing; warning only.
+  warnRetiredCodegenAttrs(safeEntities, (m) => warnings.push(m));
 
   // 4. Run each generator with a per-target render context; collect with full path.
   const emitted: { fullPath: string; content: string; generatedBy: string }[] = [];

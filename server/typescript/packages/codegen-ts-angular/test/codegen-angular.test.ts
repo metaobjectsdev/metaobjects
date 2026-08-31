@@ -118,7 +118,6 @@ describe("angularGridFile() factory", () => {
     const gen = angularGridFile();
     const fake = {
       name: "X",
-      // ADR-0039: the filter now resolves @emitAngular via attr() (own + inherited).
       attr: () => undefined,
       ownAttr: () => undefined,
       layouts: () => [] as any[],
@@ -144,5 +143,71 @@ describe("barrel() factory", () => {
     expect(file.content).toContain('./Author.service');
     expect(file.content).toContain('./Author.form.component');
     expect(file.content).toContain('./Author.grid.component');
+  });
+});
+
+// `@emitAngular` was read by all four Angular generators (as a bare string literal, in
+// four places — it never even had a constant). It was NEVER registered metamodel
+// vocabulary: the strict loader `meta verify` runs rejects it with ERR_UNKNOWN_ATTR,
+// while `meta gen` loads non-strict and honoured it. The reads are gone; this pins both
+// halves, because a deletion proved only by an absent assertion is not proved at all.
+describe("@emitAngular is retired", () => {
+  const STALE = JSON.stringify({
+    "metadata.root": {
+      children: [{
+        "object.entity": {
+          name: "Author",
+          "@emitAngular": false,
+          children: [
+            { "source.rdb": { "@table": "authors" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "name", "@maxLength": 80 } },
+            { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+            { "layout.dataGrid": { name: "default", "@columns": ["name"] } },
+          ],
+        },
+      }],
+    },
+  });
+
+  async function staleRoot() {
+    const { InMemoryStringSource } = await import("@metaobjectsdev/metadata");
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(STALE)]);
+    expect(errors).toEqual([]);
+    return root;
+  }
+
+  test("INERT — every generator's filter admits an entity carrying it", async () => {
+    const root = await staleRoot();
+    const author = root.objects().find((o) => o.name === "Author")!;
+    expect(author.hasAttr("emitAngular")).toBe(true); // the adopter really wrote it …
+    for (const gen of [angularServiceFile(), angularFormFile(), angularGridFile()]) {
+      expect(gen.filter?.(author), gen.name).toBe(true); // … and it decides nothing.
+    }
+  });
+
+  test("INERT — the barrel re-exports it rather than skipping it", async () => {
+    // The barrel used to apply its OWN copy of the opt-out. It now mirrors only the
+    // per-generator endpoint rules, so a re-export can never name a file nobody emitted.
+    const root = await staleRoot();
+    const gen = barrel();
+    const files = await gen.generate({
+      entities: root.objects(),
+      loadedRoot: root,
+      matches: () => true,
+      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      renderContext: makeRenderContext({
+        dialect: "sqlite", loadedRoot: root, outDir: "/tmp", dbImport: "../db",
+        extStyle: "none", pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+      }),
+      warn: () => {},
+    });
+    expect(files[0]!.content).toContain("./Author.service");
+  });
+
+  test("`filter` is how you narrow — it AND-composes with the built-in gates", async () => {
+    const root = await staleRoot();
+    const author = root.objects().find((o) => o.name === "Author")!;
+    expect(angularServiceFile({ filter: (e) => e.name !== "Author" }).filter?.(author)).toBe(false);
   });
 });

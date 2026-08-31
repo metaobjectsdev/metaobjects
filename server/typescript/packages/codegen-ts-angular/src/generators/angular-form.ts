@@ -21,7 +21,10 @@ export interface AngularFormOpts {
  * forms + signal-based inputs. Form controls + validators are derived from
  * metadata (required, maxLength, …).
  *
- * Per-entity opt-out via `@emitAngular: false`.
+ * Decide per generator what you consume: wire only the generators whose output you
+ * actually import, and narrow this one with its `filter` option. There is no `@emit*`
+ * metadata attribute — those were never registered vocabulary, so `meta verify` rejects
+ * them (ERR_UNKNOWN_ATTR).
  */
 export const angularFormFile = function angularFormFile(
   opts?: AngularFormOpts,
@@ -33,12 +36,8 @@ export const angularFormFile = function angularFormFile(
     // (mirrors codegen-ts-react's formFile; see api-surface.ts). `!isProjection`
     // stays explicit: a read-only view has nothing to submit even where write
     // endpoints exist on the base entity.
-    // ADR-0039: resolving — a concrete entity may inherit @emitAngular via extends.
     filter: (e: MetaObject) =>
-      servesWriteApi(e)
-      && !isProjection(e)
-      && e.attr("emitAngular") !== false
-      && userFilter(e),
+      servesWriteApi(e) && !isProjection(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("angular-form: renderContext is required (provided by runGen)");

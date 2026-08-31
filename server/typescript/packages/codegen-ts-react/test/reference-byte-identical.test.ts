@@ -15,9 +15,16 @@
 // assertion cannot see any of that; only running both halves can.
 //
 // The filter is the half most worth gating here: `formFile` skips abstract types and
-// read-only projections, skips a TPH discriminator BASE while emitting for each
-// concrete subtype, and honours `@emitForm: false`. The inline model below carries one
-// of each, so a drifted filter changes the emitted file SET and fails loudly.
+// read-only projections, and skips a TPH discriminator BASE while emitting for each
+// concrete subtype. The inline model below carries one of each, so a drifted filter
+// changes the emitted file SET and fails loudly.
+//
+// It used to carry a fourth row instead of the TPH pair: an entity opting out via an
+// `emitForm` attribute. That attribute was never registered metamodel vocabulary — the
+// strict loader `meta verify` runs rejects it — so no generator reads it any more, and
+// the row proved nothing about a branch that still exists. The TPH pair it was replaced
+// with covers two branches the header above had ALREADY claimed and the model did not
+// actually contain.
 import { describe, test, expect } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,8 +40,8 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const PACKAGED_FIXTURE = resolve(import.meta.dir, "fixtures", "packaged-entity.json");
 
-// A plain writable entity, a read-only projection, an abstract value object and an
-// entity opting out — i.e. one row per branch of formFile's filter.
+// A plain writable entity, a TPH discriminator base (no form) with one concrete subtype
+// (a form), and a value object — i.e. one row per branch of formFile's filter.
 const MIXED_MODEL = JSON.stringify({
   "metadata.root": {
     package: "demo",
@@ -45,13 +52,14 @@ const MIXED_MODEL = JSON.stringify({
         { "field.string": { name: "email", "@required": true, "@maxLength": 200 } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
       ] } },
-      { "object.entity": { name: "Muted", children: [
-        { "source.rdb": { "@table": "muted" } },
+      { "object.entity": { name: "Payment", "@discriminator": "kind", children: [
+        { "source.rdb": { "@table": "payments" } },
         { "field.long": { name: "id" } },
-        { "field.string": { name: "label", "@maxLength": 50 } },
+        { "field.enum": { name: "kind", "@values": ["Card", "Cash"] } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
-        { "attr.boolean": { name: "emitForm", "value": false } },
       ] } },
+      { "object.entity": { name: "CardPayment", extends: "Payment", "@discriminatorValue": "Card",
+        children: [{ "field.string": { name: "last4", "@maxLength": 4 } }] } },
       { "object.value": { name: "Address", children: [
         { "field.string": { name: "city", "@maxLength": 80 } },
       ] } },
@@ -96,20 +104,28 @@ describe("ADR-0034 — the react reference template is byte-identical to the bui
     expect(Object.keys(PAIRS).sort()).toEqual([...REFERENCE_GENERATOR_NAMES].sort());
   });
 
-  const cases: Array<[string, () => Promise<Parameters<typeof runGen>[0]["metadata"]>]> = [
+  // Each case carries the form files it MUST emit — so the fixture's filter branches are
+  // load-bearing rather than decorative. Without this, a filter that emitted a form for
+  // every object (or for none) would still be identical on both sides and pass:
+  // equivalence is not correctness.
+  const cases: Array<[string, () => Promise<Parameters<typeof runGen>[0]["metadata"]>, string[], string[]]> = [
     ["packaged-entity.json", async () => {
       const { root, errors } = await new MetaDataLoader().load([new FileSource(PACKAGED_FIXTURE)]);
       expect(errors).toEqual([]);
       return root;
-    }],
-    ["mixed entity / opted-out / value object", async () => {
+    }, ["Product.form.tsx"], []],
+    ["mixed entity / TPH base + subtype / value object", async () => {
       const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(MIXED_MODEL)]);
       expect(errors).toEqual([]);
       return root;
-    }],
+    },
+      // A writable entity and a concrete TPH subtype get a form …
+      ["Customer.form.tsx", "CardPayment.form.tsx"],
+      // … a value object and a TPH discriminator base never do.
+      ["Address.form.tsx", "Payment.form.tsx"]],
   ];
 
-  for (const [name, load] of cases) {
+  for (const [name, load, mustEmit, mustNotEmit] of cases) {
     test(name, async () => {
       const root = await load();
       // entityFile rides along on both sides so the form renders in the context a real
@@ -119,6 +135,10 @@ describe("ADR-0034 — the react reference template is byte-identical to the bui
 
       // Same set of files: catches a drifted FILTER (an entity that stops emitting).
       expect(Object.keys(b).sort()).toEqual(Object.keys(a).sort());
+      // …and this case's filter branches are LIVE (see the case table).
+      const forms = Object.keys(a).filter((f) => f.endsWith(".form.tsx")).sort();
+      for (const f of mustEmit) expect(forms).toContain(f);
+      for (const f of mustNotEmit) expect(forms).not.toContain(f);
       // Byte-identical contents: catches a drifted renderer or composition.
       for (const k of Object.keys(a).sort()) {
         expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);

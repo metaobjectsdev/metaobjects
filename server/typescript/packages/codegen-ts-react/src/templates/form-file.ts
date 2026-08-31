@@ -17,8 +17,12 @@
 //   - Fields with @formExclude: true on the metadata
 //   - Fields auto-defaulted to CURRENT_TIMESTAMP at the DB
 //
-// Form generation is OPT-IN per entity via `@emitForm: true` on the
-// object metadata. Default off. Most projects don't need stock forms.
+// Form generation is OPT-IN at PROJECT level: add `formFile()` to `generators`
+// in metaobjects.config.ts. Most projects don't need stock forms. Narrow it to
+// a subset with `formFile({ filter })`. There is no `@emitForm` metadata
+// attribute — it was never registered vocabulary, so `meta verify` rejects it
+// (ERR_UNKNOWN_ATTR); the doc line here used to claim it turned generation ON,
+// while the filter beside it read it as an opt-OUT. Neither is true now.
 
 import { code, imp } from "ts-poet";
 import { MetaField, MetaObject, MetaView, stripPackage } from "@metaobjectsdev/metadata";

@@ -10,19 +10,75 @@ export const EXTRA_SUFFIX = ".extra";
 export const DEFAULT_OUT_DIR = "./src/db/entities";
 
 // ---------------------------------------------------------------------------
-// Codegen-control attributes.
+// Retired codegen-control attributes.
 //
-// These are per-entity opt-in/opt-out flags read by generators (NOT metamodel
-// vocabulary — they tune codegen, not the model). Named here so the literals
-// aren't scattered as magic strings across the generator packages (compile-time
-// typo safety), matching the metadata package's constants discipline.
+// `@emitRoutes` / `@emitTanstack` / `@emitForm` / `@emitGrid` / `@emitAngular`
+// were read off metadata by generator filters and were NEVER registered
+// metamodel vocabulary. The strict loader rejects every one of them with
+// ERR_UNKNOWN_ATTR — and `meta verify` loads strict — while `meta gen` loads
+// non-strict and honoured them. So an adopter who authored the documented
+// per-entity opt-out got the behaviour AND a red `meta verify`: half-working,
+// which is worse than either half, and exactly the class ADR-0023 §2 names.
+//
+// Registering them was refused. That moves `metamodelVersion` and forces a
+// four-registry publish for a TypeScript-only generator kill switch that four
+// of five ports would never read. The replacement already exists and is
+// verified end to end: decide per generator what you consume — wire only the
+// generators whose output you actually import, and narrow one with its
+// `filter` option. The one clause that was opt-IN rather than opt-out (a TPH
+// subtype's own per-subtype grid) cannot be a `filter`, since a filter is
+// ANDed with the built-in gates and can only NARROW; it is the
+// `tphSubtypeGrids` option on tanstackGrid()/tanstackGridHook() instead.
+//
+// No generator reads any of these names now. They survive HERE and nowhere
+// else, so `meta gen` can recognise a stale one still sitting in an adopter's
+// metadata and say what replaced it (see retired-codegen-attrs.ts). Keeping
+// the name and its replacement in ONE record is the point: a warning whose
+// text lives apart from the list it is warning about drifts from it.
 // ---------------------------------------------------------------------------
 
-/** `@emitTanstack: false` — skip the TanStack hooks + grid generators for an entity. */
-export const CODEGEN_ATTR_EMIT_TANSTACK = "emitTanstack";
-/** `@emitGrid: true` — opt a TPH subtype IN to its own per-subtype grid (default: the polymorphic base grid is the single source). */
-export const CODEGEN_ATTR_EMIT_GRID = "emitGrid";
-/** `@emitForm: false` — skip the React form generator for an entity. */
-export const CODEGEN_ATTR_EMIT_FORM = "emitForm";
-/** `@emitRoutes: false` — skip the Fastify routes generator for an entity. */
-export const CODEGEN_ATTR_EMIT_ROUTES = "emitRoutes";
+/** One retired codegen-control attribute, paired with what an adopter does instead. */
+export interface RetiredCodegenAttr {
+  /** The bare attribute name, as it appears in metadata (no `@` sigil). */
+  readonly name: string;
+  /** What to do instead, phrased as an instruction and naming a real API. */
+  readonly replacement: string;
+}
+
+/** Every retired codegen-control attribute. Read ONLY by the `meta gen` warning. */
+export const RETIRED_CODEGEN_ATTRS: readonly RetiredCodegenAttr[] = [
+  {
+    name: "emitRoutes",
+    replacement:
+      'drop routesFile() / routesFileHono() from `generators` in metaobjects.config.ts if ' +
+      'you do not consume REST routes, or narrow it — routesFile({ filter: (e) => e.name !== "Ledger" })',
+  },
+  {
+    name: "emitTanstack",
+    replacement:
+      'drop tanstackQuery() / tanstackGrid() / tanstackGridHook() from `generators` in ' +
+      'metaobjects.config.ts if you do not consume their output, or narrow one — ' +
+      'tanstackQuery({ filter: (e) => e.name !== "InternalAudit" })',
+  },
+  {
+    name: "emitForm",
+    replacement:
+      'drop formFile() from `generators` in metaobjects.config.ts if you do not consume ' +
+      'generated forms, or narrow it — formFile({ filter: (e) => e.name !== "InternalAudit" })',
+  },
+  {
+    name: "emitGrid",
+    replacement:
+      'pass the `tphSubtypeGrids` option — tanstackGrid({ tphSubtypeGrids: (e) => e.name === ' +
+      '"CopayAuth" }) — and pass the SAME predicate to tanstackGridHook(), or the emitted ' +
+      '<Sub>.grid.ts has no <Sub>.columns.tsx to import. This one is an opt-IN, so a `filter` ' +
+      'cannot express it: a filter is ANDed with the built-in gates and can only narrow',
+  },
+  {
+    name: "emitAngular",
+    replacement:
+      'drop angularServiceFile() / angularFormFile() / angularGridFile() from `generators` in ' +
+      'metaobjects.config.ts if you do not consume Angular output, or narrow one — ' +
+      'angularServiceFile({ filter: (e) => e.name !== "InternalAudit" })',
+  },
+] as const;

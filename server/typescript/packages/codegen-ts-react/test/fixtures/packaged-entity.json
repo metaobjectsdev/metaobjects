@@ -5,7 +5,6 @@
         "object.entity": {
           "name": "Product",
           "package": "shop::commerce",
-          "@emitForm": true,
           "children": [
             {
               "source.rdb": {

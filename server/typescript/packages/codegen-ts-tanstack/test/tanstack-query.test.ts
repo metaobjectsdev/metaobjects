@@ -1,18 +1,47 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { MetaObject, TypeId, OBJECT_SUBTYPE_ENTITY, TYPE_OBJECT } from "@metaobjectsdev/metadata";
 import { tanstackQuery } from "../src/tanstack-query.js";
 import { makeRenderContext } from "@metaobjectsdev/codegen-ts";
 import { buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
 import type { GenContext } from "@metaobjectsdev/codegen-ts";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+
+// A model carrying the retired `@emitTanstack: false` — deliberately. The strict loader
+// (`meta verify`) rejects it with ERR_UNKNOWN_ATTR; the non-strict loader `meta gen` runs
+// accepts it, which is exactly the half-working state this deletion ends. Keeping a real
+// carrier here is what makes the inertness assertions below real: a test that only checks
+// the constant is gone would pass against a half-done deletion.
+const STALE_ATTR_MODEL = JSON.stringify({
+  "metadata.root": {
+    children: [{
+      "object.entity": {
+        name: "Subscriber",
+        "@emitTanstack": false,
+        children: [
+          { "source.rdb": { "@table": "subscribers" } },
+          { "field.long": { name: "id", children: [
+            { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+          ] } },
+          { "field.string": { name: "email" } },
+          { "layout.dataGrid": { name: "default", "@columns": ["email"] } },
+        ],
+      },
+    }],
+  },
+});
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 async function buildCtx(genFilter?: (e: { name: string }) => boolean): Promise<GenContext> {
-  const loader = new MetaDataLoader();
-  const { root } = await loader.load([new FileSource(FIXTURE)]);
+  const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
+  return ctxForRoot(root, genFilter);
+}
+
+async function ctxForRoot(
+  root: MetaRoot,
+  genFilter?: (e: { name: string }) => boolean,
+): Promise<GenContext> {
   const entities = root.objects();
   const renderContext = makeRenderContext({
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
@@ -90,21 +119,22 @@ describe("tanstackQuery() factory", () => {
     expect(file.content).toContain("${Subscriber.$apiPrefix}${Subscriber.$path}");
   });
 
-  test("respects @emitTanstack: false per entity", async () => {
-    // Filter mimics what the runner does: AND-composes the generator's filter
-    // with the entity's @emitTanstack attribute.
-    const gen = tanstackQuery();
-    // Build a fresh (unfrozen) MetaData with @emitTanstack: false.
-    // The Loader freezes models after parsing, so we construct one in-memory.
-    const ctx = await buildCtx();
-    const optedOut = new MetaObject(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Subscriber");
-    optedOut.setAttr("emitTanstack", false);
-    const ctx2: GenContext = {
-      ...ctx,
-      entities: [optedOut],
-      matches: (e) => gen.filter?.(e) ?? true,
-    };
-    const files = await gen.generate(ctx2);
-    expect(files).toEqual([]);
+  // `@emitTanstack` was read by this filter but was NEVER registered metamodel
+  // vocabulary: the strict loader `meta verify` runs rejects it with ERR_UNKNOWN_ATTR,
+  // while `meta gen` loads non-strict and honoured it. The read is gone. These two tests
+  // pin the deletion AND the replacement — a deletion proved only by an absent assertion
+  // is not proved at all.
+  test("@emitTanstack is INERT — a stale one no longer suppresses the hooks file", async () => {
+    const { root } = await new MetaDataLoader().load([new InMemoryStringSource(STALE_ATTR_MODEL)]);
+    const subscriber = root.objects().find((o) => o.name === "Subscriber")!;
+    expect(subscriber.hasAttr("emitTanstack")).toBe(true);   // the adopter really wrote it …
+    expect(tanstackQuery().filter?.(subscriber)).toBe(true); // … and it decides nothing.
+    const files = await tanstackQuery().generate(await ctxForRoot(root, () => true));
+    expect(pick(files, ".hooks.ts")).toBeDefined();
+  });
+
+  test("`filter` is how you narrow — it AND-composes with the built-in gates", async () => {
+    const gen = tanstackQuery({ filter: (e) => e.name !== "Subscriber" });
+    expect(await gen.generate(await buildCtx((e) => gen.filter?.(e as never) ?? true))).toEqual([]);
   });
 });

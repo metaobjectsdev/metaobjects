@@ -4,7 +4,6 @@ import { renderRoutesFileHono } from "../templates/routes-file-hono.js";
 import { hasAnyRdbSource } from "../source-detect.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
-import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 
 export interface RoutesFileHonoOpts {
@@ -22,8 +21,12 @@ export interface RoutesFileHonoOpts {
  * consumers running Hono can replace hand-written route registration with
  * this generator output one entity at a time.
  *
- * Per-entity opt-out via `@emitRoutes: false` is honored. If the user
- * supplies their own filter, both must pass (AND).
+ * If the user supplies their own filter, it AND-composes with the built-in gates.
+ *
+ * Decide per generator what you consume: wire only the generators whose output you
+ * actually import, and narrow this one with its `filter` option. There is no `@emit*`
+ * metadata attribute — those were never registered vocabulary, so `meta verify` rejects
+ * them (ERR_UNKNOWN_ATTR).
  *
  * #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't
  * backed by any store — gated by `hasAnyRdbSource` (does NOT add TPH handling;
@@ -36,17 +39,12 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
   // written out twice a later edit to one silently makes an entity either stop emitting
   // without being named as held back, or get warned about while still emitting.
   const passesOtherGates = (e: MetaObject): boolean =>
-    // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
-    e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false
-    && hasAnyRdbSource(e)
-    && userFilter(e);
+    hasAnyRdbSource(e) && userFilter(e);
   const generator: Generator = {
     name: "routes-file-hono",
     // Marks this as the Hono routes generator so the runner can aggregate
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
     emitsHonoRoutes: true,
-    // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
-    //
     // TPH subtypes are EXCLUDED, matching the Fastify generator. A TPH subtype shares
     // its base's table, so mounting vanilla CRUD for it produced routes with no
     // discriminator scoping at all: the list returned EVERY subtype's rows, and

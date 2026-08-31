@@ -19,7 +19,10 @@ export interface AngularServiceOpts {
  * `@Injectable({ providedIn: 'root' })` class wrapping the injected
  * EntityFetcher with typed CRUD methods (list / get / create / update / delete).
  *
- * Per-entity opt-out via `@emitAngular: false`.
+ * Decide per generator what you consume: wire only the generators whose output you
+ * actually import, and narrow this one with its `filter` option. There is no `@emit*`
+ * metadata attribute — those were never registered vocabulary, so `meta verify` rejects
+ * them (ERR_UNKNOWN_ATTR).
  */
 export const angularServiceFile = function angularServiceFile(
   opts?: AngularServiceOpts,
@@ -30,9 +33,7 @@ export const angularServiceFile = function angularServiceFile(
     // A service is a client of a generated READ endpoint — no endpoint, no service
     // (an `object.value`, a sourceless entity/projection or an abstract object has
     // nothing to fetch, and its emitted output could never compile; see api-surface.ts).
-    // ADR-0039: resolving — a concrete entity may inherit @emitAngular via extends.
-    filter: (e: MetaObject) =>
-      servesReadApi(e) && e.attr("emitAngular") !== false && userFilter(e),
+    filter: (e: MetaObject) => servesReadApi(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("angular-service: renderContext is required (provided by runGen)");
