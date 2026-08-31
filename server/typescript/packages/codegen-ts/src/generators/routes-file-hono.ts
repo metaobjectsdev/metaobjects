@@ -5,9 +5,20 @@ import { hasAnyRdbSource } from "../source-detect.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
+import { resolveExpose, type ExposeOption } from "../routes-expose.js";
 
 export interface RoutesFileHonoOpts {
   filter?: (entity: MetaObject) => boolean;
+  /**
+   * Which CRUD verbs the emitted file mounts (#348). Verbs, or a per-entity function;
+   * absent means all five and emits byte-identical output.
+   *
+   *   routesFileHono({ expose: (e) => e.name === "AuditEntry" ? ["list", "get"] : undefined })
+   *
+   * A `filter` cannot express this — it decides whether the file emits AT ALL, so it can
+   * only remove the whole surface, not restrict it to a subset of verbs.
+   */
+  expose?: ExposeOption;
   target?: string;
 }
 
@@ -79,7 +90,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
           entity.package,
           `${entity.name}.routes.hono.ts`,
         ),
-        content: await formatTs(renderRoutesFileHono(entity, ctx.renderContext)),
+        content: await formatTs(renderRoutesFileHono(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),
       };
   });
   if (opts?.target) {

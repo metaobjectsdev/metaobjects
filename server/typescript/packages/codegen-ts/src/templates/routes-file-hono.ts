@@ -30,8 +30,19 @@ import { type RenderContext } from "../render-context.js";
 import { entityModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
+import { type CrudVerb, exposeLine } from "../routes-expose.js";
 
-export function renderRoutesFileHono(entity: MetaObject, ctx: RenderContext): string {
+export function renderRoutesFileHono(
+  entity: MetaObject,
+  ctx: RenderContext,
+  // #348 — resolved by the generator from its `expose` option. undefined = all five verbs,
+  // emitting no `expose` key at all, so output stays byte-identical without it.
+  //
+  // Applies to the CRUD mount only. The projection branch above uses
+  // mountReadOnlyCrudRoutes, a different helper that is read-only by construction and
+  // takes no `expose` — there is no writable surface there to narrow.
+  expose?: readonly CrudVerb[],
+): string {
   const entityName = entity.name;
   const handlerName = `register${entityName}Routes`;
 
@@ -107,6 +118,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
   const writeThrough = isWriteThrough(entity);
   const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const readViewLine = writeThrough ? `\n    readView: ${camelName}View,` : "";
+  const exposeLineHono = exposeLine(expose, "    ");
 
   const HonoSym = imp("t:Hono@hono");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/hono");
@@ -142,7 +154,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},
+    dialect: ${JSON.stringify(ctx.dialect)},${exposeLineHono}
   });
 }
 `;

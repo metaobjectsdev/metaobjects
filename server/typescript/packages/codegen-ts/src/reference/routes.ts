@@ -40,6 +40,8 @@ import {
   type Generator,
   type GeneratorFactory,
   renderRoutesFile,
+  resolveExpose,
+  type ExposeOption,
   isTphSubtype,
   hasAnyRdbSource,
   formatTs,
@@ -48,6 +50,16 @@ import {
 
 export interface RoutesFileOpts {
   filter?: (entity: MetaObject) => boolean;
+  /**
+   * Which CRUD verbs the emitted file mounts (#348). Verbs, or a per-entity function;
+   * absent means all five and emits byte-identical output.
+   *
+   *   routesFile({ expose: (e) => e.name === "AuditEntry" ? ["list", "get"] : undefined })
+   *
+   * A `filter` cannot express this — it decides whether the file emits AT ALL, so it can
+   * only remove the whole surface, not restrict it to a subset of verbs.
+   */
+  expose?: ExposeOption;
   target?: string;
 }
 
@@ -68,7 +80,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
       }
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.routes.ts`),
-        content: await formatTs(renderRoutesFile(entity, ctx.renderContext)),
+        content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),
       };
     }),
   };

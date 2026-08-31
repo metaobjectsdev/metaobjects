@@ -28,14 +28,22 @@ import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
+import { type CrudVerb, exposeLine, intersectExpose } from "../routes-expose.js";
 
-export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
+export function renderRoutesFile(
+  entity: MetaObject,
+  ctx: RenderContext,
+  // #348 — resolved by the generator from its `expose` option. undefined = all five verbs,
+  // which emits no `expose` key at all and so keeps output byte-identical for projects
+  // that do not use it.
+  expose?: readonly CrudVerb[],
+): string {
   // FR-017 Tier 2 — a TPH discriminator base mounts polymorphic list/get at the
   // base path plus a full per-subtype CRUD route set scoped to each
   // discriminator value. (Subtype entities are filtered out of the routes
   // generator entirely — their routes live here.)
   if (isTphDiscriminatorBase(entity, ctx.loadedRoot)) {
-    return renderTphRoutesFile(entity, ctx);
+    return renderTphRoutesFile(entity, ctx, expose);
   }
 
   const entityName = entity.name;
@@ -134,6 +142,8 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   const viewImportLine = writeThrough ? `\n  ${camelName}View,` : "";
   const readViewLinePrefixed = writeThrough ? `\n      readView: ${camelName}View,` : "";
   const readViewLineFlat = writeThrough ? `\n    readView: ${camelName}View,` : "";
+  const exposeLinePrefixed = exposeLine(expose, "      ");
+  const exposeLineFlat = exposeLine(expose, "    ");
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
@@ -184,7 +194,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       updateSchema: ${entityName}UpdateSchema,
       filterAllowlist: ${entityName}FilterAllowlist,
       sortAllowlist: ${entityName}SortAllowlist,
-      dialect: ${JSON.stringify(ctx.dialect)},
+      dialect: ${JSON.stringify(ctx.dialect)},${exposeLinePrefixed}
     });
 ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
@@ -208,7 +218,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},
+    dialect: ${JSON.stringify(ctx.dialect)},${exposeLineFlat}
   });
 ${m2mMountsFlat}}
 `;
@@ -318,7 +328,11 @@ function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: Rende
  * FR-017 design's `/auths/bridge` examples. Fastify resolves the static
  * `/auths/bridge` ahead of the parametric `/auths/:id`, so the two coexist.
  */
-function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
+function renderTphRoutesFile(
+  base: MetaObject,
+  ctx: RenderContext,
+  expose?: readonly CrudVerb[],
+): string {
   const baseName = base.name;
   const handlerName = routesHandlerName(baseName);
   // Single source of truth for the discriminator field + subtypes + route segments.
@@ -344,6 +358,10 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
   const fastifyRef = ctx.apiPrefix ? "instance" : "fastify";
   const dialectLit = JSON.stringify(ctx.dialect);
 
+  // The polymorphic mount is read-only BY CONSTRUCTION — the discriminated union has no
+  // single writable shape — so an author-supplied `expose` intersects with that fixed set
+  // rather than replacing it: it may narrow to just `list`, never widen to `create`.
+  const polymorphicExposeLine = exposeLine(intersectExpose(["list", "get"], expose), "      ");
   const polymorphic = code`
     ${mountCrudRoutesSym}({
       fastify: ${fastifyRef},
@@ -354,8 +372,7 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       updateSchema: ${baseUpdateSym},
       filterAllowlist: ${baseFilterSym},
       sortAllowlist: ${baseSortSym},
-      dialect: ${dialectLit},
-      expose: ["list", "get"],
+      dialect: ${dialectLit},${polymorphicExposeLine}
     });`;
 
   const subtypeMounts: Code[] = plan.subtypes.map(({ entity: sub, value, routeSegment: segment }) => {
@@ -386,7 +403,7 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
       dialect: ${dialectLit},
-      discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },
+      discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
   });
 

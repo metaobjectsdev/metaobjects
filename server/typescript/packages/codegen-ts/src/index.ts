@@ -168,6 +168,10 @@ export { renderFilterType } from "./templates/filter-type.js";
 export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-allowlist.js";
 export { renderEntityConstants, resourcePath } from "./templates/entity-constants.js";
 export { renderQueriesFile } from "./templates/queries-file.js";
+// #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED
+// routes generator (ADR-0034) composes the same render call and needs the same option.
+export { CRUD_VERBS, resolveExpose, intersectExpose, exposeLine } from "./routes-expose.js";
+export type { CrudVerb, ExposeOption } from "./routes-expose.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
 export { renderValueObjectFile } from "./templates/value-object-file.js";
