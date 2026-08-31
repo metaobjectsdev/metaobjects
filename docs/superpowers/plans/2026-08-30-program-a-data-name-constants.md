@@ -625,7 +625,17 @@ export function namesFile(): Generator {
       // carries outDir/extStyle/dbImport/dialect and nothing about naming.
       const body = renderNamesDecl(entity, ctx.renderContext?.columnNamingStrategy);
       if (body === "") return [];   // no primary source ⇒ no names artifact (#248)
-      return [{ path: `${entity.name}.names.ts`, content: body }];
+      // The path MUST go through entityOutputPath, like every other per-entity
+      // generator (entity-file.ts, queries-file.ts, routes-file-hono.ts). A bare
+      // filename lands at the target ROOT under `outputLayout: "package"`, while the
+      // entity module it describes lands at `<pkg>/<Entity>.ts` — so the consuming
+      // import cannot resolve, and two same-bare-named entities in different packages
+      // collide on one output path (a hard `meta gen` conflict). Fixed in Task 5 Step 0;
+      // corrected here so a port fan-out does not inherit the bare form.
+      return [{
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.names.ts`),
+        content: body,
+      }];
     }),
   };
 }
@@ -862,19 +872,45 @@ That asymmetry is the proof the change is additive.
 
 - [ ] **Step 3: Implement conditional consumption**
 
-In `entity-file.ts`, derive the flag once and thread it into the Drizzle emitter:
+The flag lands in TWO places, from ONE aggregation in the runner. `ResolvedGenConfig.includeNames`
+because Task 3's shipped comments — one of them in `src/reference/names.ts`, copied verbatim into
+every adopter repo — already assert the runner aggregates into exactly that field. And
+`RenderContext.includeNames` because that is what the TEMPLATES can actually read:
 
 ```ts
 // §A6 — consume the names artifact only when the run actually emits it. The names
 // generator is opt-in (ADR-0034 scaffold-and-own), so an unconditional import would
-// break every project that has not enabled it. The flag is aggregated by the runner from
-// each generator's `emitsNames` marker — the same path includeHonoRoutes takes.
-const namesActive = ctx.config.includeNames === true;
+// break every project that has not enabled it. Aggregated by the runner from each
+// generator's `emitsNames` marker — the same path includeHonoRoutes takes, except
+// SCOPED BY TARGET: this artifact is referenced by a RELATIVE import, so a
+// default-target namesFile() beside an entityFile({ target: "db" }) would emit a
+// specifier into a directory holding no such file.
+const namesActive = ctx.includeNames;   // ctx is the RenderContext
 ```
+
+**Do NOT write `ctx.config.includeNames` inside `templates/entity-file.ts`.** That file's `ctx` is a
+`RenderContext`, not a `GenContext` — `generators/entity-file.ts` calls
+`renderEntityFile(entity, ctx.renderContext, …)`, and `renderDrizzleSchema(entity, ctx)` takes a
+`RenderContext` too, so `ctx.config` does not exist there and the line cannot compile.
+
+Putting the flag on `RenderContext` is also what keeps `renderDrizzleSchema`'s SIGNATURE stable.
+`src/reference/entity.ts` calls it and that file lives in adopter repos — a signature change would
+break every already-ejected copy, the one thing ADR-0034 scaffold-and-own must never do.
 
 In `drizzle-schema.ts`, take that flag and emit either the constant reference or the
 literal. Keep both paths going through `resolveObjectNames` so the literal arm and the
-constant arm cannot disagree.
+constant arm cannot disagree — **subject to the resolver check below.**
+
+> **The two resolvers are not the same function, and the divergence is REACHABLE.** The DDL
+> authority (`migrate-ts/src/expected-schema.ts:203`) uses `resolveTableName(obj)`; the ORM binding
+> (`drizzle-schema.ts:36`) uses `obj.dbTable ?? tableNameFromEntity(obj.name, strategy)`. `dbTable`
+> requires a *primary writable* source; `resolveTableName` takes the *primary* source whatever its
+> kind. An `object.base` carrying a `view @role: primary` plus a `table @role: replica` LOADS clean
+> and hits the gap: migrate creates `v_weird` while generated queries bind `weirds` — under the
+> DEFAULT snake_case, not only under `literal`/`kebab-case`. Until that is arbitrated, emit the
+> constant ONLY where it is provably the same string the binding already produced
+> (`names.name === tableName`). Do not "make the arms agree" by picking a resolver: routing the ORM
+> through `resolveObjectNames` renames tables for anyone on the exotic shape.
 
 - [ ] **Step 4: Run both arms**
 
