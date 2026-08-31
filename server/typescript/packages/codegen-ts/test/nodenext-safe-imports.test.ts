@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { runGen, defineConfig } from "../src/index.js";
-import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";
+import { entityFile, queriesFile, routesFile, barrel, namesFile } from "../src/generators/index.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
 const META = JSON.stringify({
@@ -58,7 +58,14 @@ async function genTo(dir: string, extStyle: "js" | "none" = "js"): Promise<void>
       dbImport: "../db",
       dialect: "sqlite",
       extStyle,
-      generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+      // The list must stay equal to `meta init`'s SCAFFOLDED_GENERATOR_NAMES — this gate's
+      // whole claim is about the output a stock scaffold produces, so a generator that
+      // init writes but this list omits is emitting relative imports nothing checks.
+      // `names` was added to the scaffold set and was outside this gate until now; the
+      // names-consumption compile gate cannot substitute, because it runs under
+      // `moduleResolution: Bundler`, which accepts extensionless specifiers and so is
+      // structurally incapable of reporting TS2835.
+      generators: [entityFile(), queriesFile(), routesFile(), barrel(), namesFile()],
     }),
     metadata: root,
   });
