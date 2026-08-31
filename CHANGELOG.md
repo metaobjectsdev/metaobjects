@@ -7,6 +7,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a reference fragment the stack no longer uses is deleted, not announced forever
+
+`meta init --refresh-docs --server typescript` on a project scaffolded as python left
+`python.md` on disk in four skills. The run reported it **once** — *"orphaned (safe to
+delete)"* — and never again, because the manifest kept tracking it. Meanwhile every
+`SKILL.md` footer tells the reader to read every `references/*.md` file in the directory,
+*"one per server language in this project's stack"*. So the shipped context pointed an agent
+at guidance for a language the project had stopped using, and described it as the current
+stack.
+
+This is the real gap behind [#351](https://github.com/metaobjectsdev/metaobjects/issues/351),
+which reported the inverse symptom and was otherwise not reproducible: stack scoping is
+correct, and a stack **change** is the only path that puts a foreign fragment there.
+
+**The safety predicate already existed and was simply not asked.** `planScaffold` hashes
+every file it writes into the manifest and already uses that hash to decide overwrite-vs-
+`.new` for a file still in the stack. An orphan is now decided the same way:
+
+| state | outcome |
+|---|---|
+| on disk, hash matches what we recorded writing | **deleted** — as safe as the overwrite the same predicate already authorises |
+| on disk, hash differs (hand-edited) | **kept**, and named with the reason and the remedy |
+| already absent | neither — nothing to delete, nothing to report |
+
+A pruned orphan leaves the manifest, so it cannot be re-reported on every subsequent run.
+`--print-only` deletes nothing, and `InitResult` gains `removed` so a deletion is visible as
+an outcome rather than parsed out of a warning string.
+
 ### Added — `expose` on both routes generators: mount fewer than five CRUD verbs
 
 ([#348](https://github.com/metaobjectsdev/metaobjects/issues/348)) `expose` has always
@@ -43,7 +71,7 @@ owned routes generator composes the same render call — and the verb union, whi
 restated in `codegen-ts` (it emits a call to the runtime helper, it never links against
 it), is now gated against **both** runtime declarations so the two cannot drift.
 
-### Changed — `AGENT_DOCS_BODY` is removed; the agent context has one source
+### Changed — the `@metaobjectsdev/sdk/agent-docs` subpath is removed; the agent context has one source
 
 **BREAKING for anyone importing `AGENT_DOCS_BODY` from `@metaobjectsdev/sdk/agent-docs`.**
 Delete the import; the live surface is `@metaobjectsdev/sdk/agent-context`.
@@ -69,8 +97,19 @@ scans the audit skill directory; the shipped-example gate parses fenced blocks u
 and the skills — a TypeScript string literal is in neither scope), so removing the surface
 closes the hole rather than widening two gates to chase it.
 
-This is the third public-export removal in this release, alongside `CODEGEN_ATTR_EMIT_ROUTES`
-and `EXTRA_SUFFIX`, on the same reasoning each time: **an export is a promise of support.**
+Removing it left the subpath exporting four content-hash helpers and nothing else, and all
+four had no consumer anywhere. They were the **pre-manifest** way of telling a hand-edited
+scaffold from an untouched one — hash the content, stamp the hash into the file, read it
+back. `agent-context/scaffold.ts` answers that with a per-file hash in
+`.metaobjects/.agent-context.json`, which needs no marker inside the file. So the whole
+subpath goes, not just the blob.
+
+This is the third and fourth public-export removal in this release, alongside
+`CODEGEN_ATTR_EMIT_ROUTES` and `EXTRA_SUFFIX`, on the same reasoning each time: **an export
+is a promise of support.**
+
+**The `meta agent-docs` command is unrelated and unaffected** — it is the canonical
+scaffolder for every port and merely shares a name with the retired package subpath.
 
 ### Added — `namesFile()` emits `<Entity>Names`, and generated code reads it
 
