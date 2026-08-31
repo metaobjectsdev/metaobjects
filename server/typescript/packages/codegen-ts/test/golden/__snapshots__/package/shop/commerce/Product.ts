@@ -14,11 +14,14 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { tags } from "../../Tag";
+import { ProductNames } from "./Product.names";
 
-export const products = sqliteTable("products", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  tagId: integer("tag_id")
+export const products = sqliteTable(ProductNames.name, {
+  id: integer(ProductNames.fields.id.column).primaryKey({
+    autoIncrement: true,
+  }),
+  name: text(ProductNames.fields.name.column).notNull(),
+  tagId: integer(ProductNames.fields.tagId.column)
     .notNull()
     .references((): AnySQLiteColumn => tags.id),
 });

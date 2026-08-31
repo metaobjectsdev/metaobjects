@@ -69,7 +69,7 @@ describe("defineConfig", () => {
 
   test("type-level: MetaobjectsGenConfig embeds ResolvedGenConfig's non-DB fields exactly (#194 — dbImport/dialect are OPTIONAL here, filled by the runner)", () => {
     // Everything except dbImport/dialect matches ResolvedGenConfig field-for-field.
-    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "extStyle" | "outputLayout" | "includeHonoRoutes" | "providedEnumModule">>()
+    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "extStyle" | "outputLayout" | "includeHonoRoutes" | "includeNames" | "providedEnumModule">>()
       .toEqualTypeOf<Omit<ResolvedGenConfig, "dbImport" | "dialect">>();
     // dbImport/dialect are OPTIONAL on the user config (a value-object-only project omits
     // them); ResolvedGenConfig (what generators consume) keeps them required.

@@ -13,12 +13,13 @@ import {
   text,
 } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
+import { TagNames } from "./Tag.names";
 import { customers } from "./shop/users/Customer";
 
-export const tags = sqliteTable("tags", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  label: text("label").notNull(),
-  customerId: integer("customer_id")
+export const tags = sqliteTable(TagNames.name, {
+  id: integer(TagNames.fields.id.column).primaryKey({ autoIncrement: true }),
+  label: text(TagNames.fields.label.column).notNull(),
+  customerId: integer(TagNames.fields.customerId.column)
     .notNull()
     .references((): AnySQLiteColumn => customers.id),
 });

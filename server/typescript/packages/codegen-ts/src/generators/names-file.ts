@@ -1,4 +1,5 @@
 import { perEntity, type Generator } from "../generator.js";
+import { entityOutputPath } from "../import-path.js";
 import { renderNamesDecl } from "../templates/names-decl.js";
 
 /**
@@ -27,7 +28,16 @@ export function namesFile(): Generator {
       // carries outDir/extStyle/dbImport/dialect and nothing about naming.
       const body = renderNamesDecl(entity, ctx.renderContext?.columnNamingStrategy);
       if (body === "") return [];   // no primary source ⇒ no names artifact (#248)
-      return [{ path: `${entity.name}.names.ts`, content: body }];
+      // entityOutputPath, not a bare filename: §A6 makes the entity module IMPORT these
+      // constants, so the artifact has to land in the same directory the entity module
+      // does. Under outputLayout: "package" a bare name puts it at the target ROOT while
+      // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
+      // conflicting-duplicate-path failure as soon as two packages declare a
+      // same-bare-named entity.
+      return [{
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.names.ts`),
+        content: body,
+      }];
     }),
   };
 }

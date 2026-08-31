@@ -4,10 +4,13 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
+import { CustomerNames } from "./Customer.names";
 
-export const customers = sqliteTable("customers", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  email: text("email").notNull(),
+export const customers = sqliteTable(CustomerNames.name, {
+  id: integer(CustomerNames.fields.id.column).primaryKey({
+    autoIncrement: true,
+  }),
+  email: text(CustomerNames.fields.email.column).notNull(),
 });
 export type Customer = InferSelectModel<typeof customers>;
 export type CustomerInsert = InferInsertModel<typeof customers>;

@@ -2,6 +2,13 @@
 // Pins the file placement + import specifiers produced by outputLayout:"package"
 // so any regression in path computation or import rewriting is caught immediately.
 //
+// This is ALSO the one golden that runs `namesFile()`, so it is where §A6's ON arm has byte
+// coverage: the entity modules here reference `<Entity>Names` rather than embedding the
+// physical names a second time. It carries that duty because package layout is the layout
+// the consumption can actually break in — the names artifact has to land beside the entity
+// module that imports it, and under "flat" a bare filename and `entityOutputPath(...)`
+// return the identical string, so a flat golden cannot see a placement bug at all.
+//
 // Run with UPDATE_GOLDEN=1 to (re)write snapshots:
 //   UPDATE_GOLDEN=1 bun test test/golden/package-layout.test.ts
 //
@@ -22,7 +29,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve, relative, dirname } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
-import { entityFile, queriesFile, routesFile, barrel } from "../../src/generators/index.js";
+import { entityFile, queriesFile, routesFile, barrel, namesFile } from "../../src/generators/index.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -66,7 +73,7 @@ describe("golden output — package layout placement + import gate", () => {
           dbImport: "../db",
           dialect: "sqlite",
           outputLayout: "package",
-          generators: [entityFile(), queriesFile(), routesFile(), formFile(), barrel()],
+          generators: [entityFile(), queriesFile(), routesFile(), formFile(), namesFile(), barrel()],
         }),
         metadata: metadataRoot,
       });

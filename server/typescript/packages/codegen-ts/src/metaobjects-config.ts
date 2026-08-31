@@ -55,6 +55,14 @@ export interface ResolvedGenConfig {
    *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
+  /** §A6 — whether the OPT-IN names generator (namesFile) is active in the run,
+   *  aggregated by the runner from the suite's `emitsNames` markers. A generator that
+   *  wants to REFERENCE `<Entity>Names` reads this to know the artifact will exist:
+   *  the names generator is opt-in under ADR-0034 scaffold-and-own, so an
+   *  unconditional import would break every project that has not enabled it.
+   *  Undefined ⇒ false. Templates read the same fact off `RenderContext.includeNames`,
+   *  which the runner sets from this same aggregation. */
+  includeNames?: boolean;
   /**
    * FR-019 / ADR-0026: the module specifier from which an externally-PROVIDED
    * shared enum (`@provided: true` on an abstract package-level `field.enum`) is

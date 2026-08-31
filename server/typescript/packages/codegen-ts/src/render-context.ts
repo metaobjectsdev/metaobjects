@@ -66,6 +66,16 @@ export interface RenderContext {
   /** Output layout mode: "flat" (default) — all files in outDir; "package" — sub-paths from entity metadata package. */
   outputLayout: OutputLayout;
   /**
+   * §A6 — whether the run emits the `<Entity>Names` artifact (the runner aggregates the
+   * suite's `emitsNames` markers; `ctx.config.includeNames` carries the same fact for
+   * generators). A template may reference those constants ONLY when this is true: the
+   * names generator is opt-in under ADR-0034 scaffold-and-own, so an unconditional
+   * import would break every project that has not enabled it. Defaults to FALSE, which
+   * is what keeps output byte-identical for such a project — and for every bare-context
+   * caller (unit tests, generators invoked outside runGen).
+   */
+  includeNames: boolean;
+  /**
    * Resolve an entity name to its Drizzle collection (table) variable name,
    * applying the project's pluralization config + per-entity overrides. Every
    * template that emits or references a table var goes through this so the
@@ -108,7 +118,7 @@ export interface RenderContext {
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). `collectionName` is built from `pluralizeCollections` + `collectionNameOverrides` (both default to always-pluralize). */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "packageOf" | "valueObjectNames" | "valueObjectEmittedName" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "includeNames" | "packageOf" | "valueObjectNames" | "valueObjectEmittedName" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
@@ -117,6 +127,7 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
   apiPrefix?: string;
   emitAbstractShapes?: boolean;
   outputLayout?: OutputLayout;
+  includeNames?: boolean;
   packageOf?: Map<string, string | undefined>;
   /** ADR-0044/#228 value-object emitted-name map (resolutionKey → emitted name).
    *  Defaults to an empty Map — bare names, byte-identical to pre-#228 output.
@@ -196,6 +207,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     apiPrefix: opts.apiPrefix ?? "",
     emitAbstractShapes: opts.emitAbstractShapes ?? true,
     outputLayout,
+    includeNames: opts.includeNames ?? false,
     packageOf: opts.packageOf ?? new Map(),
     valueObjectNames,
     valueObjectEmittedName: (obj: MetaData) => valueObjectNames.get(obj.resolutionKey()) ?? obj.name,

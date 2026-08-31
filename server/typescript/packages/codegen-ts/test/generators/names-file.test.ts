@@ -6,9 +6,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../../src/index.js";
+import { entityFile } from "../../src/generators/entity-file.js";
 import { namesFile } from "../../src/generators/names-file.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
 
@@ -31,6 +32,23 @@ async function loadRoot(children: unknown[]) {
 const AUTHOR = {
   "object.entity": {
     name: "Author",
+    children: [
+      { "source.rdb": { "@table": "authors" } },
+      { "field.string": { name: "id" } },
+      { "identity.primary": { name: "pk", "@fields": "id" } },
+    ],
+  },
+};
+
+// Same entity, but declaring its `package` on the NODE rather than inheriting the file
+// default. Object nodes keep `.package` undefined when the package is a file default
+// (FR5d — `fqn()` stays bare), and every per-entity generator places output off
+// `entity.package`, so a file-default fixture would render flat no matter what the layout
+// says and could not see the placement bug at all.
+const PACKAGED_AUTHOR = {
+  "object.entity": {
+    name: "Author",
+    package: "acme::probe",
     children: [
       { "source.rdb": { "@table": "authors" } },
       { "field.string": { name: "id" } },
@@ -92,5 +110,41 @@ describe("namesFile() generator", () => {
 
     // Nothing beyond what runGen reported landed on disk either.
     expect(readdirSync(tmp).sort()).toEqual(["Author.names.ts"]);
+  });
+
+  // The names artifact DESCRIBES the entity module, and §A6 makes the entity module
+  // IMPORT it — so the two have to land in the same directory. Every other per-entity
+  // generator routes its path through entityOutputPath (entity-file.ts, queries-file.ts,
+  // routes-file-hono.ts); this one emitted a bare filename, so under
+  // outputLayout: "package" it landed at the target ROOT while its entity landed at
+  // <pkg>/<Entity>.ts — an unresolvable import, and a conflicting-duplicate-path hard
+  // failure the moment two packages declare a same-bare-named entity.
+  //
+  // No gate could see it: reference-byte-identical.test.ts runs its five fixtures through
+  // a defineConfig that never sets outputLayout, and under "flat" a bare filename and
+  // entityOutputPath(...) return the identical string.
+  test("under outputLayout: 'package' the file lands beside its entity module", async () => {
+    const root = await loadRoot([PACKAGED_AUTHOR]);
+    const out = await runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "none",
+        dbImport: "~/server/db",
+        dialect: "postgres",
+        outputLayout: "package",
+        // The entity generator rides along deliberately: the assertion is that the two
+        // artifacts share a DIRECTORY, which is what makes the import resolvable. A bare
+        // `expect(path).toBe(<literal>)` would pin one generator's answer to a hand-written
+        // string and could pass while the pair still disagreed.
+        generators: [entityFile(), namesFile()],
+      }),
+      metadata: root,
+    });
+    expect(out.warnings).toEqual([]);
+
+    const byBase = new Map(out.files.map((f) => [basename(f.path), dirname(f.path)]));
+    expect(byBase.get("Author.names.ts")).toBe(join(tmp, "acme/probe"));
+    expect(byBase.get("Author.names.ts")).toBe(byBase.get("Author.ts"));
+    expect(existsSync(join(tmp, "Author.names.ts"))).toBe(false);
   });
 });

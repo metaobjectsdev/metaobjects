@@ -12,8 +12,10 @@
 // use-when:      you want the physical database names (table/view + column names) for each
 //                object available as importable constants, so a hand-written consumer never
 //                has to embed a name as a string literal a second time.
-// emits:         <target>/<Entity>.names.ts per concrete object with a primary source. An
-//                object with no primary source (#248) gets no names artifact.
+// emits:         <target>/<Entity>.names.ts per concrete object with a primary source
+//                (under outputLayout: "package", <target>/<pkg>/<Entity>.names.ts — beside
+//                the entity module it describes). An object with no primary source (#248)
+//                gets no names artifact.
 // customize:     swap `renderNamesDecl` for your own shape; keep `resolveObjectNames` as the
 //                one resolver so the constant and the DDL it describes cannot disagree.
 // composes-with: entity.ts, queries.ts, routes.ts (a later task wires them to reference these
@@ -24,6 +26,7 @@
 // bytes to existing files, where a flag would move every $table-carrying golden for the
 // same functionality.
 import {
+  entityOutputPath,
   perEntity,
   renderNamesDecl,
   type Generator,
@@ -41,7 +44,16 @@ export function namesFile(): Generator {
       // carries outDir/extStyle/dbImport/dialect and nothing about naming.
       const body = renderNamesDecl(entity, ctx.renderContext?.columnNamingStrategy);
       if (body === "") return [];   // no primary source ⇒ no names artifact (#248)
-      return [{ path: `${entity.name}.names.ts`, content: body }];
+      // entityOutputPath, not a bare filename: §A6 makes the entity module IMPORT these
+      // constants, so the artifact has to land in the same directory the entity module
+      // does. Under outputLayout: "package" a bare name puts it at the target ROOT while
+      // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
+      // conflicting-duplicate-path failure as soon as two packages declare a
+      // same-bare-named entity.
+      return [{
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.names.ts`),
+        content: body,
+      }];
     }),
   };
 }

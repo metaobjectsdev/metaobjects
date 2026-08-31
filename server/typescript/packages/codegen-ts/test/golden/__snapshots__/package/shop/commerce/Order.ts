@@ -13,17 +13,18 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { customers } from "../users/Customer";
+import { OrderNames } from "./Order.names";
 import { products } from "./Product";
 
-export const orders = sqliteTable("orders", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  customerId: integer("customer_id")
+export const orders = sqliteTable(OrderNames.name, {
+  id: integer(OrderNames.fields.id.column).primaryKey({ autoIncrement: true }),
+  customerId: integer(OrderNames.fields.customerId.column)
     .notNull()
     .references((): AnySQLiteColumn => customers.id),
-  productId: integer("product_id")
+  productId: integer(OrderNames.fields.productId.column)
     .notNull()
     .references((): AnySQLiteColumn => products.id),
-  quantity: integer("quantity").notNull(),
+  quantity: integer(OrderNames.fields.quantity.column).notNull(),
 });
 export const ordersRelations = relations(orders, ({ one }) => ({
   customer: one(customers, {

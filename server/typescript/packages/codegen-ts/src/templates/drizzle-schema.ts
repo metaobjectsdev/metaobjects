@@ -12,9 +12,10 @@ import {
   FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
+import { crossEntitySpecifier, siblingSpecifier, valueObjectModuleSpecifier } from "../import-path.js";
 import { mapColumnType, type ColumnSpec, type EnumIntCustomType } from "../column-mapper.js";
 import { tableNameFromEntity, columnNameFromField } from "../naming.js";
+import { resolveObjectNames } from "../names.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
@@ -35,6 +36,50 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
 
   const tableName = obj.dbTable ?? tableNameFromEntity(obj.name, ctx.columnNamingStrategy);
   const varName = ctx.collectionName(obj.name);
+
+  // §A6 — reference `<Entity>Names` instead of embedding the physical names a SECOND time.
+  // Both spellings come from `resolveObjectNames`, so the constant and this binding cannot
+  // be produced by different resolvers (§A3) — the constant is the same run's answer,
+  // not a lookalike computed twice.
+  //
+  // Conditional on the names generator being active in this run: it is opt-in under
+  // ADR-0034 scaffold-and-own (`meta gen` runs the adopter's own generator copies), so an
+  // unconditional import would break every project that has not enabled it. `includeNames`
+  // is the runner's aggregation of the suite's `emitsNames` markers, and defaults to false
+  // — which is what keeps output byte-identical for such a project.
+  const names = ctx.includeNames ? resolveObjectNames(obj, ctx.columnNamingStrategy) : undefined;
+  // Same target, same package as the entity module — namesFile() places its output through
+  // the same `entityOutputPath` this file's own generator does — so a sibling specifier is
+  // the whole computation. Derived, never concatenated: it has to honour extStyle (".js" by
+  // default, required by nodenext) AND outputLayout.
+  const namesSym = names === undefined
+    ? undefined
+    : imp(`${obj.name}Names@${siblingSpecifier(ctx.selfTarget, obj.package, `${obj.name}.names`, ctx.extStyle)}`);
+
+  // Emit the constant ONLY where it is provably the same string this binding already
+  // emitted. `<Entity>Names.name` is the PRIMARY source's physical name (resolveTableName);
+  // `obj.dbTable` is the primary WRITABLE source's. For every authorable object those are
+  // one source and one string — an entity's primary source must be writable
+  // (ERR_ENTITY_PRIMARY_SOURCE_READONLY), a value may hold no source at all, and a
+  // projection never reaches this function. They can only differ for an object whose
+  // primary source is read-only while a non-primary writable one exists, where the two
+  // resolvers are answering genuinely different questions and picking either one would
+  // rename a table. The equality check keeps this change value-preserving instead of
+  // silently arbitrating that; see the plan's Task 5 ruling.
+  const tableNameExpr: Code =
+    namesSym !== undefined && names !== undefined && names.name === tableName
+      ? code`${namesSym}.name`
+      : code`${JSON.stringify(tableName)}`;
+
+  // A column's constant, on the same terms. A lookup MISS is normal, not a defect: the TPH
+  // fold below emits columns for fields that belong to SUBTYPE entities, and the base's
+  // names artifact carries only the base's own fields.
+  const columnNameExpr = (field: MetaField, dbName: string): Code => {
+    const entry = names?.fields[field.name];
+    return namesSym !== undefined && entry !== undefined && entry.column === dbName
+      ? code`${namesSym}.fields.${field.name}.column`
+      : code`${JSON.stringify(dbName)}`;
+  };
 
   const primary = obj.primaryIdentity();
   const rawPkFields = primary?.attr(IDENTITY_ATTR_FIELDS);
@@ -85,7 +130,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package, obj.name);
+    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) {
       checkConstraints.push({
@@ -114,7 +159,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     }
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
-      spec, child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, obj.name, true,
+      spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, obj.name, true,
     );
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
@@ -169,7 +214,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   let tableBlock: Code;
   if (callbackEntries.length > 0) {
     tableBlock = code`
-export const ${varName} = ${tableFnSym}(${JSON.stringify(tableName)}, {
+export const ${varName} = ${tableFnSym}(${tableNameExpr}, {
 ${joinCode(columnLines, { on: ",\n", trim: false })}
 }, (table) => [
   ${joinCode(callbackEntries, { on: ",\n  ", trim: false })}
@@ -177,7 +222,7 @@ ${joinCode(columnLines, { on: ",\n", trim: false })}
 `;
   } else {
     tableBlock = code`
-export const ${varName} = ${tableFnSym}(${JSON.stringify(tableName)}, {
+export const ${varName} = ${tableFnSym}(${tableNameExpr}, {
 ${joinCode(columnLines, { on: ",\n", trim: false })}
 });
 `;
@@ -309,6 +354,10 @@ function inlineObjectLiteral(obj: Record<string, unknown>): string {
 /** Render one column line (field name + Drizzle column expression). */
 function renderColumn(
   spec: ColumnSpec,
+  // §A6 — the column's physical name as an EXPRESSION: either the `<Entity>Names` constant
+  // or the same literal as before. Passed in rather than derived here so one call site owns
+  // the decision (and the equality check that makes it byte-safe).
+  dbNameExpr: Code,
   field: MetaField,
   ctx: RenderContext,
   isPk: boolean,
@@ -332,12 +381,11 @@ function renderColumn(
       ? spec.enumIntCustomType.fnConstName
       : imp(`${spec.fnName}@${spec.importModule}`);
 
-  const dbNameLit = JSON.stringify(spec.dbName);
   let baseCall: Code;
   if (spec.fnOptions !== undefined && Object.keys(spec.fnOptions).length > 0) {
-    baseCall = code`${fnSym}(${dbNameLit}, ${inlineObjectLiteral(spec.fnOptions)})`;
+    baseCall = code`${fnSym}(${dbNameExpr}, ${inlineObjectLiteral(spec.fnOptions)})`;
   } else {
-    baseCall = code`${fnSym}(${dbNameLit})`;
+    baseCall = code`${fnSym}(${dbNameExpr})`;
   }
 
   let pkSuffix = "";
@@ -350,10 +398,10 @@ function renderColumn(
         // Postgres: bigserial for long (8-byte), serial for int (4-byte).
         if (field.subType === FIELD_SUBTYPE_LONG) {
           const bigserialSym = imp(`bigserial@${spec.importModule}`);
-          baseCall = code`${bigserialSym}(${dbNameLit}, { mode: "number" })`;
+          baseCall = code`${bigserialSym}(${dbNameExpr}, { mode: "number" })`;
         } else {
           const serialSym = imp(`serial@${spec.importModule}`);
-          baseCall = code`${serialSym}(${dbNameLit})`;
+          baseCall = code`${serialSym}(${dbNameExpr})`;
         }
         pkSuffix = isComposite ? "" : ".primaryKey()";
       }

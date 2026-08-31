@@ -367,6 +367,24 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // CRUD surface it actually emits (rather than silently omitting it).
   const includeHonoRoutes = config.generators.some((g) => g.emitsHonoRoutes === true);
 
+  // §A6 — same auto-detection for the OPT-IN names generator. The entity tier may only
+  // REFERENCE `<Entity>Names` when something in this run actually emits it; the names
+  // generator is opt-in under ADR-0034 (meta gen runs the adopter's own copies), so an
+  // unconditional import would break every project that has not added it. Surfaced BOTH
+  // on ctx.config (the field reference/names.ts documents, and the shape a third-party
+  // generator reads) and on every RenderContext below (what the templates can actually
+  // see) — one aggregation, two consumers.
+  //
+  // Scoped BY TARGET, unlike includeHonoRoutes, because the two flags are read for
+  // different reasons: api-docs asks "is this surface in the run?", while a template
+  // referencing these constants emits a RELATIVE import at its own target's path. The
+  // names artifact is not a registered cross-target module (there is no importBase route
+  // to it), so `entityFile({ target: "db" })` beside a default-target `namesFile()` would
+  // otherwise emit `./<Entity>.names` from a directory that does not hold one.
+  const namesTargets = new Set(
+    config.generators.filter((g) => g.emitsNames === true).map((g) => targetOf(g).name),
+  );
+
   // A declared template.prompt with no prompt generator wired emits nothing and, before
   // this, said nothing — while `meta verify` reported the template "clean". See
   // prompt-generator-gate.ts. Self-extinguishing; warning only.
@@ -421,6 +439,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       apiPrefix: config.apiPrefix,
       emitAbstractShapes: config.emitAbstractShapes,
       outputLayout: selfTarget.outputLayout,
+      includeNames: namesTargets.has(selfTarget.name),
       pkMap,
       relationMap,
       packageOf,
@@ -440,6 +459,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         dialect: config.dialect,
         outputLayout: selfTarget.outputLayout,
         includeHonoRoutes,
+        includeNames: namesTargets.has(selfTarget.name),
       },
       renderContext,
       ...(projectRoot !== undefined && { projectRoot }),
