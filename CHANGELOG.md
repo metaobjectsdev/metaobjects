@@ -87,6 +87,55 @@ it existed to catch. The terminator now accepts a colon or whitespace, and the r
 own three-case pin, because every file currently uses the form the old pattern also matched —
 narrowing it back would otherwise leave every assertion green.
 
+### Changed — `meta verify` honours `--format`, and its advisory is finally reachable
+
+**This changes what a piped `meta verify` prints.** It now follows the same TTY-aware
+default as `meta gen` and `meta migrate` — human text at a terminal, **TOON on a pipe** —
+with narration moved to stderr. A CI job, git hook or agent that pipes `meta verify` will
+see a structured document on stdout where it previously saw prose. Pin the old behaviour
+with `--format text`.
+
+That is not a new convention: two shipped agent-context skills already tell adopters the
+CLI "generally" is TTY-aware, and `--format` was specified as uniform. `verify` was the
+exception violating a contract we publish — it **accepted `--format json`, exited 0, and
+printed human text**, because the resolved format reached only `gen` and `migrate`.
+
+**The defect that did real damage was not the cap.** `meta gen --format json` did honour the
+flag, but advisory findings went to stderr as text and appeared **nowhere in the payload** —
+confirmed on a 30-finding project, all 30 on stderr, zero in the JSON. TOON/JSON is the
+documented default for an agent on a pipe, so an agent reading the structured output of a run
+carrying hundreds of findings saw a clean document; one summarised such a run as *"All green
+across the board."* Findings now ride in the payload with their real fields, **uncapped** — a
+cap spares a human's terminal, and truncating a machine document is how this started.
+
+Also: the three cap literals (10, 10, 20) become one shared value of **20** — taking 10 would
+have halved the requirement gate's output — raised by **`--limit <n|all>`** on both commands;
+`--json` / `--toon` / `--text` are intercepted with a message naming `--format` instead of
+dying as an unknown option; and what the payload does **not** carry (per-gate drift detail,
+loader warnings) is declared in it as `notRepresented[]`, because a half-structured document
+that looks complete is the defect being fixed. **No exit code changed anywhere.**
+
+### Fixed — the advisory flagged migration files nobody is allowed to edit
+
+The verify-as-teacher scan fired on immutable historical migrations — a Flyway
+`V001__…baseline.sql`, which Flyway checksums, so editing one breaks every database that has
+already applied it. A finding nobody can act on is what trains a reader to skip the section.
+
+It was flagging **our own output, in the directory we document**: the ignore list carried
+`migrations` (plural) while Flyway's convention — and the path `migrate-ts`'s own Flyway
+writer names as its output directory — is `db/migration` (singular); and the rule that
+matches `CHECK (… IN (…))` matches exactly what our `field.enum` DDL emits. A baseline in
+that directory produced two findings, one of them on our own generated constraint.
+
+Exclusion is now by **filename shape**, which travels with the file wherever a project puts
+it, for conventions with first-party evidence — a longer list of directory names would repeat
+the guess that caused this, the same way `@verifiedBy`'s closed pattern list did in `0.23.1`.
+Flyway **repeatable** (`R__`) scripts are deliberately still scanned: Flyway re-applies one
+when its checksum changes, so editing it is the sanctioned workflow and the finding is
+actionable. Projects can declare their own skips with `verify: { antiPatternIgnore: [...] }`
+in `metaobjects.config.ts` — narrower than `--no-antipatterns` on purpose, since silencing
+the whole scan to quiet one directory is how a useful advisory stops being read.
+
 ### Fixed — the shipped-example gate reported a document it had not read as passing
 
 The gate that loads every fenced metadata example under `docs/` and the agent-context skills
