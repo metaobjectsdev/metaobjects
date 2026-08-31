@@ -7,6 +7,86 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — the five `@emit*` attributes are retired; narrow at the generator instead
+
+**This changes what `meta gen` emits.** If your metadata carries `@emitRoutes`,
+`@emitTanstack`, `@emitForm`, `@emitGrid` or `@emitAngular`, the artifact you had
+suppressed will now be generated. `meta upgrade --apply` removes the attributes, and
+`meta gen` names every object carrying one until you do, so the new file never appears
+without an explanation.
+
+These five were **read by the TypeScript generators and never registered by any
+provider**, which made them behave differently depending on which command you ran:
+
+| command | load mode | result |
+|---|---|---|
+| `meta gen` | open | the attribute worked — the artifact was suppressed |
+| `meta verify` | strict (ADR-0023) | `ERR_UNKNOWN_ATTR` — the build failed |
+
+So the documented way to suppress an artifact broke the drift gate documented beside it.
+`codegen-ts/src/constants.ts` had already recorded the contradiction, calling them *"NOT
+metamodel vocabulary — they tune codegen, not the model"* directly above the code that read
+them off the model, in 21 places across four packages.
+
+**Registering them was refused deliberately.** It would move `metamodelVersion` and oblige
+four other ports to carry a TypeScript-only generator kill switch none of them will ever
+read. The replacement already existed: **decide per generator what you consume** — wire only
+the generators whose output you import, and narrow one with its own `filter`.
+
+```ts
+// metaobjects.config.ts
+routesFile({ filter: (e) => e.name !== "InternalAudit" }),
+```
+
+**`@emitGrid` is the exception** and got an option rather than a deletion. It was opt-**IN**
+(a TPH subtype's own per-subtype grid) and a `filter` is ANDed with the built-in gates, so it
+can only ever narrow. It is now `tphSubtypeGrids?: (entity) => boolean` on `tanstackGrid()`
+and `tanstackGridHook()`, defaulting to `() => false` — byte-identical output for every
+project that never declared it. **Pass the same predicate to both**, or you reproduce
+[#287](https://github.com/metaobjectsdev/metaobjects/issues/287) exactly: a `<Sub>.grid.ts`
+whose `<Sub>.columns.tsx` never exists.
+
+**BREAKING for an adopter who ejected a generator on `0.24.5` or earlier.**
+`CODEGEN_ATTR_EMIT_ROUTES` and its three siblings were public exports of
+`@metaobjectsdev/codegen-ts`, and the shipped reference templates imported them — so an owned
+`codegen/generators/*.ts` fails to compile with `TS2305` after upgrading. That is loud rather
+than silent, and the `meta gen` warning names the replacement. Delete the import and the
+clause that used it.
+
+Migration: [`docs/features/migrations/emit-attrs-to-generator-config.md`](docs/features/migrations/emit-attrs-to-generator-config.md).
+
+### Fixed — `meta verify`'s strict-load remedy offered a bag that loads and means nothing
+
+On `ERR_UNKNOWN_ATTR` the CLI printed one generic remedy for every cause: register the attr
+on a provider, **or move it into an `attr.properties` bag**, or re-run with `--lax`. For a
+typo that is right. For a retired attribute the middle exit is actively harmful, and not for
+the reason it looks — `attr.properties` is exempt from the strict-attr check **by subtype**,
+so `"@properties": { "emitRoutes": false }` loads with zero errors. An author following the
+printed advice got a **green `meta verify` over a value no generator will ever read**: the
+tool converted its own correct, loud failure into a quiet, wrong pass, and told them to.
+
+Retired vocabulary now carries its own exits — `meta upgrade --apply`, the replacement, and
+the migration guide — attached by the loader as ADR-0009 `suggestions[]` and printed in place
+of the generic three. A typo carries none and still gets the generic advice. Fixed at all
+three retirement diagnostic sites and at **both** doors of `verify`'s strict load; the second
+(`--codegen`'s sub-project re-resolve) had printed no remedy at all.
+
+### Fixed — the shipped audit skill recommended metadata our own loader rejects
+
+`metaobjects-audit`'s over-generation checklist instructed an audit agent to **flag a project
+for not using** `@emitRoutes: false` / `@emitTanstack: false`. That skill is the mechanism
+that produced the adopter report this work came from — a closed loop in which we shipped
+guidance to author vocabulary we reject.
+
+The gate built to prevent exactly this could not see it. It extracted attributes with a
+pattern requiring a backtick **immediately** after the name, so it matched `` `@column` `` and
+was blind to `` `@emitRoutes: false` `` — the more natural way to write an example, because it
+shows the value too. Measured against the prior commit, the old pattern missed **exactly two
+tokens in the audit skill, and both were unregistered**: its entire blind spot was the defect
+it existed to catch. The terminator now accepts a colon or whitespace, and the rule has its
+own three-case pin, because every file currently uses the form the old pattern also matched —
+narrowing it back would otherwise leave every assertion green.
+
 ### Fixed — `meta docs --metamodel --site` accepted `--site` and dropped it
 
 The flag parsed, the command printed *"wrote 16 page(s)"*, exited **0**, and produced
