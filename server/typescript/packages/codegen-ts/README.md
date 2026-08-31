@@ -140,11 +140,23 @@ The `type Db = ...` alias at the top of each generated `<Entity>.queries.ts` is
 the **base** Drizzle class every driver of that dialect extends, so any
 compatible Drizzle instance type-checks:
 
-- **Postgres** → `PgDatabase<PgQueryResultHKT, ...>` — accepts `node-postgres`
-  (`pg`), `postgres.js`, `@neondatabase/serverless`, `@vercel/postgres`, and
-  `pglite`.
-- **SQLite** → `BaseSQLiteDatabase<"sync" | "async", unknown>` — accepts both the
-  sync driver (`better-sqlite3`) and the async ones (`libsql` / Turso / D1).
+- **Postgres** → `PgDatabase<PgQueryResultHKT, Record<string, unknown>>` — accepts
+  `node-postgres` (`pg`), `postgres.js`, `@neondatabase/serverless`,
+  `@vercel/postgres`, and `pglite`.
+- **SQLite** → `BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>`
+  — accepts both the sync driver (`better-sqlite3`) and the async ones (`libsql` /
+  Turso / D1).
+
+The trailing `Record<string, unknown>` is the **schema** parameter, held open at
+Drizzle's own `TFullSchema extends Record<string, unknown>` bound rather than its
+`Record<string, never>` default. That is what lets you pass the idiomatic
+schema-carrying database:
+
+```ts
+import * as schema from "./generated";
+export const db = drizzle(client, { schema });   // assigns to `Db`
+export const bare = drizzle(client);             // so does this
+```
 
 Reads (`find*ById`, `list*`, and a projection's read-only queries) work on every
 one of those drivers.

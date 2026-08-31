@@ -77,14 +77,21 @@ function renderQueries(obj: MetaObject, ctx: RenderContext): string {
 
   // `db` is parameter-passed into every finder (ADR-0008). Emit the dialect-correct
   // Drizzle type alias so signatures typecheck without the consumer constructing one.
+  // Keep EVERY type argument as open as Drizzle's own constraint allows — a `Db` this
+  // alias cannot name is a helper nobody can call, and uncompilable generated code looks
+  // exactly like unused generated code from outside. Both the driver axis (base classes,
+  // not `NodePgDatabase` / `<"async">`) and the schema axis (`Record<string, unknown>`,
+  // Drizzle's own `TFullSchema extends …` bound, NOT its `Record<string, never>` default)
+  // have been re-pinned once already; do not narrow either again. A schema-carrying
+  // `drizzle(client, { schema })` must assign, and so must a schema-less `drizzle(client)`.
   const dbTypeImport =
     ctx.dialect === "postgres"
       ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
       : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
   const dbTypeAlias =
     ctx.dialect === "postgres"
-      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`
-      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
+      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;`
+      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;`;
 
   const literalImports = code`
 ${dbTypeImport}

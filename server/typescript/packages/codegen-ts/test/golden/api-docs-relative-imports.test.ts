@@ -224,7 +224,12 @@ declare module "drizzle-orm/sqlite-core" {
   export const integer: any;
   export const sqliteTable: any;
   export const text: any;
-  export type BaseSQLiteDatabase<A = any, B = any> = any;
+  // Arity must cover every argument the generated \`Db\` alias supplies — real
+  // drizzle takes four (resultKind, runResult, fullSchema, schema) and the alias
+  // now names three, since leaving the SCHEMA parameter at drizzle's
+  // \`Record<string, never>\` default rejected a \`drizzle(client, { schema })\` db.
+  // A stub too narrow here fails with TS2707, not with anything about the docs.
+  export type BaseSQLiteDatabase<A = any, B = any, C = any, D = any> = any;
 }
 declare module "drizzle-orm/node-postgres" {
   export const drizzle: any;

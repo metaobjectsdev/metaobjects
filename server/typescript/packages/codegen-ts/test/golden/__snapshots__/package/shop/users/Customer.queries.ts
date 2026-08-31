@@ -4,7 +4,11 @@
 import { eq } from "drizzle-orm";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
+type Db = BaseSQLiteDatabase<
+  "sync" | "async",
+  unknown,
+  Record<string, unknown>
+>;
 
 import {
   type Customer,

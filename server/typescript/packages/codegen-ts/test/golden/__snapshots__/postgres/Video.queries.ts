@@ -4,7 +4,7 @@
 import { eq, inArray } from "drizzle-orm";
 
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
-type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;
+type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Video,

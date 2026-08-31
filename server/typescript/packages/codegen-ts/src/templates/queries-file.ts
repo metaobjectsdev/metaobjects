@@ -35,16 +35,31 @@ import { hasAutoSetFields } from "./zod-validators.js";
  *     postgres.js, Neon, Vercel, pglite) — accepts whichever driver the consumer chose.
  *   - SQLite: `BaseSQLiteDatabase<"sync" | "async", …>` accepts BOTH sync (better-sqlite3)
  *     and async (libsql/Turso/D1) drivers; the generated queries `await` results, valid on either.
+ *
+ * EVERY type argument here must stay as OPEN as Drizzle's own constraint allows — a `Db`
+ * this alias cannot name is a helper the consumer cannot call, and generated code that
+ * does not compile is indistinguishable from generated code nobody imports. Two axes have
+ * now been re-pinned and re-widened in turn, so neither may be narrowed again:
+ *   - DRIVER: pinning `NodePgDatabase` / `<"async">` rejected postgres.js and
+ *     better-sqlite3. Fixed by dropping to the base classes above.
+ *   - SCHEMA (`TFullSchema`): the idiomatic setup is `drizzle(client, { schema })`, which
+ *     yields `PgDatabase<…, typeof schema>` / `BaseSQLiteDatabase<…, typeof schema>`.
+ *     Leaving this parameter at Drizzle's `Record<string, never>` DEFAULT — spelled out on
+ *     postgres, silently inherited on sqlite by supplying only two arguments — rejected
+ *     every such db with TS2345 ("Type '\"work_item\"' is not assignable to type 'never'").
+ *     `Record<string, unknown>` is verbatim Drizzle's own declared bound
+ *     (`TFullSchema extends Record<string, unknown>`), so it admits both a schema-carrying
+ *     and a schema-less db without reaching for `any`.
  */
 function dbTypeBlock(dialect: "postgres" | "sqlite"): { import: string; alias: string } {
   return dialect === "postgres"
     ? {
         import: `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`,
-        alias: `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`,
+        alias: `type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;`,
       }
     : {
         import: `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`,
-        alias: `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`,
+        alias: `type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;`,
       };
 }
 

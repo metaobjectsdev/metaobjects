@@ -75,8 +75,14 @@ describe("renderQueriesFile", () => {
     const out = renderQueriesFile(post, ctx);
     expect(out).toContain('import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"');
     // Accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1) drivers —
-    // pinning <"async"> wrongly rejected better-sqlite3.
-    expect(out).toContain('type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;');
+    // pinning <"async"> wrongly rejected better-sqlite3. The trailing
+    // `Record<string, unknown>` is the SCHEMA parameter: omitting it let Drizzle's
+    // `Record<string, never>` default stand, which rejected the idiomatic
+    // `drizzle(client, { schema })` db. Assignability is gated for real in
+    // db-schema-generic-compile.test.ts; this pins the spelling.
+    expect(out).toContain(
+      'type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;',
+    );
   });
 
   test("emits postgres-flavoured `type Db = ...` alias for postgres", () => {
@@ -93,9 +99,13 @@ describe("renderQueriesFile", () => {
     });
     const out = renderQueriesFile(post, ctx);
     // The base class every PG driver extends — accepts node-postgres, postgres.js,
-    // Neon, Vercel, pglite — not just node-postgres.
+    // Neon, Vercel, pglite — not just node-postgres. The second argument is the
+    // SCHEMA parameter, held at Drizzle's own `TFullSchema extends Record<string,
+    // unknown>` bound rather than its `Record<string, never>` default, which
+    // rejected the idiomatic `drizzle(client, { schema })` db. Assignability is
+    // gated for real in db-schema-generic-compile.test.ts; this pins the spelling.
     expect(out).toContain('import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core"');
-    expect(out).toContain('type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;');
+    expect(out).toContain('type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;');
   });
 
   test("imports entity types from ./Post.js", () => {

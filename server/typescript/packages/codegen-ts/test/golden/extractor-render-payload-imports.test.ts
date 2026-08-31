@@ -146,7 +146,10 @@ declare module "drizzle-orm/sqlite-core" {
   export const integer: any;
   export const sqliteTable: any;
   export const text: any;
-  export type BaseSQLiteDatabase<A = any, B = any> = any;
+  // Four params, matching real drizzle — the generated \`Db\` alias names three
+  // (the third is the SCHEMA parameter). A stub narrower than the alias fails
+  // with TS2707, which says nothing about what this gate is actually checking.
+  export type BaseSQLiteDatabase<A = any, B = any, C = any, D = any> = any;
 }
 declare module "zod" {
   export namespace z {

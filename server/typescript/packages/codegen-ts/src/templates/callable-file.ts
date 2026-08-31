@@ -7,7 +7,7 @@
 //   import { PhaseSummarySchema, type PhaseSummary } from "./PhaseSummary.js";
 //
 //   export async function callPhaseSummary(
-//     db: PgDatabase<PgQueryResultHKT, Record<string, never>>,
+//     db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>,
 //     args: PhaseSummaryArgs,
 //   ): Promise<PhaseSummary[]> {
 //     const r = await db.execute(
@@ -105,9 +105,16 @@ export function renderCallableFile(entity: MetaObject): string {
     ? `import type { ${argsObjectName} } from "./${argsObjectName}.js";\n`
     : "";
 
+  // The `db` parameter type carries the same open-type-argument rule as the queries
+  // file's `Db` alias (see templates/queries-file.ts `dbTypeBlock`): `PgDatabase` is the
+  // base every PG driver extends, and the schema parameter stays at Drizzle's own bound
+  // `Record<string, unknown>` — NOT its `Record<string, never>` default, which rejects the
+  // idiomatic `drizzle(client, { schema })` db with TS2345 and makes this callable
+  // uninvokable. Uncompilable generated code is indistinguishable from unused generated
+  // code, so this parameter must never be narrowed back.
   const signature = argsObject
-    ? `db: PgDatabase<PgQueryResultHKT, Record<string, never>>, args: ${argsObjectName}`
-    : `db: PgDatabase<PgQueryResultHKT, Record<string, never>>`;
+    ? `db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>, args: ${argsObjectName}`
+    : `db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>`;
 
   return `// ${GENERATED_HEADER}
 import { sql } from "drizzle-orm";
