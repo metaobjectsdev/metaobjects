@@ -87,6 +87,23 @@ it existed to catch. The terminator now accepts a colon or whitespace, and the r
 own three-case pin, because every file currently uses the form the old pattern also matched —
 narrowing it back would otherwise leave every assertion green.
 
+### Fixed — the shipped-example gate reported a document it had not read as passing
+
+The gate that loads every fenced metadata example under `docs/` and the agent-context skills
+against the strict registry could not see 63 of 120 fenced blocks. The planned follow-up was
+to fail on a skip count; the numbers refuted it — 45 of the residue is simply not metaobjects
+metadata, and a blanket rule would have failed two correct documents. The blocks are now
+**normalised and checked** instead of counted: an elided fence has its `...` pruned, a stacked
+fence is split into its independent values. Checked examples go from **55 to 91**, and the two
+buckets that could hide vocabulary drift are gone — one to zero, one out of existence.
+
+The worse half was not a skip at all. A YAML elision usually does **not** break the parse —
+an indented `...` reads as a plain scalar — so a string sat where a child belonged, the loader
+abandoned the node before reaching its attributes, and the block was reported as **checked and
+passing**. A YAML example carrying a retired attribute printed *"✓ 1 shipped metadata
+example(s) load under the strict registry"* and exited 0. The placeholder prune therefore runs
+after parsing, not only on a parse failure.
+
 ### Fixed — `meta docs --metamodel --site` accepted `--site` and dropped it
 
 The flag parsed, the command printed *"wrote 16 page(s)"*, exited **0**, and produced
