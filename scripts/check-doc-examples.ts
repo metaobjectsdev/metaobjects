@@ -82,6 +82,13 @@ const SKIP_PREFIXES = [
  *
  * Deliberately narrow and counted in the summary: a skip is a blind spot, and one that
  * cannot be seen growing is how this family recurred in the first place.
+ *
+ * The same rule now applies past this one marker: EVERY block that never becomes a
+ * loadable model — an elision, several one-liners stacked in a fence, a config example
+ * that was never metadata, a genuine typo — is counted and located in the report (see
+ * `SkipReason` / `printSkipReport`), not just the ones an author flagged. Silence about
+ * how much a gate skipped is exactly the shape that let #337/#342/#343 each survive
+ * three real releases before an adopter, not this gate, found them.
  */
 const OPT_OUT = /<!--\s*meta-example:\s*external-provider\s*-->/;
 
@@ -202,6 +209,52 @@ interface LoadableModel {
 }
 
 /**
+ * Why a block never became a loadable model — the gate's OTHER blind spot. `optedOut`
+ * above is a COUNTED, ANNOTATED skip; every reason below was, until now, silent: the
+ * block vanished between "found" and "checked" with nothing in the output to say so.
+ *
+ *   elided          the body failed to parse and contains a literal `...`/`…` — the
+ *                    shipped convention for "there is more here, elided for brevity."
+ *   stacked         the body failed to parse AS ONE VALUE, but is a clean sequence of
+ *                    two or more independently-valid JSON values back to back — several
+ *                    one-line examples shown in a single fence, not one document. Proven
+ *                    mechanically (each piece is re-parsed on its own), not guessed.
+ *   unparseable     the body failed to parse and neither convention above explains why.
+ *                    This is the bucket worth a human's second glance — everything else
+ *                    here is a recognized, load-bearing authoring pattern, not a defect.
+ *   not-object      the body parsed, but to a scalar, array, or `null` — not a JSON
+ *                    object at all, so it cannot be a metadata node under any reading.
+ *   not-node-shape  the body parsed to an object, but its keys don't match a single
+ *                    `type.subtype` node or a `metadata.root` document — almost always a
+ *                    non-metaobjects config or API-response example that happens to
+ *                    share a fence language with real metadata.
+ *   host-dependent  a bare `origin.*` fragment — see HOST_DEPENDENT_TYPES; a deliberate,
+ *                    already-documented carve-out, not a new finding each time it fires.
+ *
+ * `unparseable` is the only reason that could plausibly hide a #337/#342/#343 repeat —
+ * a fragment cut with `...` or stacked one-liners is a legible authoring choice; a body
+ * that fails to parse for no visible reason is exactly the shape a genuine typo takes.
+ */
+type SkipReason =
+  | "elided"
+  | "stacked"
+  | "unparseable"
+  | "not-object"
+  | "not-node-shape"
+  | "host-dependent";
+
+/** A block that never reached the loader, and why. */
+interface Skip {
+  readonly block: Block;
+  readonly reason: SkipReason;
+}
+
+/** The result of trying to turn a block into something the loader can check. */
+type ModelResult =
+  | { readonly ok: true; readonly model: LoadableModel }
+  | { readonly ok: false; readonly reason: SkipReason };
+
+/**
  * Documents that carry shipped examples. `.txt` is included deliberately: `docs/llms/`
  * ships `llms.txt` / `llms-full.txt`, and #343 — one of the three incidents this gate
  * exists for — landed in exactly those files. Scanning only `.md` would have left the
@@ -274,6 +327,79 @@ function stripJsonComments(src: string): string {
   return out;
 }
 
+/** The shipped "there is more here" convention — ASCII `...` or the unicode ellipsis. */
+const ELISION_MARKER = /\.\.\.|…/;
+
+/**
+ * Whether `source` (already comment-stripped) is a clean sequence of two or more
+ * top-level JSON values with nothing but whitespace between them — i.e. several
+ * one-line/one-block examples stacked in a single fence rather than one document.
+ * Mechanical, not a guess: it walks balanced `{}`/`[]`/string/scalar tokens and
+ * requires EVERY piece to `JSON.parse` on its own; one bad piece and it gives up
+ * rather than claim a pattern that isn't really there.
+ */
+function splitsAsStackedValues(source: string): boolean {
+  const pieces: string[] = [];
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    while (i < n && /\s/.test(source[i]!)) i++;
+    if (i >= n) break;
+    const openCh = source[i]!;
+    let end: number;
+    if (openCh === "{" || openCh === "[") {
+      const close = openCh === "{" ? "}" : "]";
+      let depth = 0, inStr = false, esc = false, j = i;
+      for (; j < n; j++) {
+        const c = source[j]!;
+        if (inStr) {
+          if (esc) esc = false;
+          else if (c === "\\") esc = true;
+          else if (c === '"') inStr = false;
+          continue;
+        }
+        if (c === '"') { inStr = true; continue; }
+        if (c === openCh) depth++;
+        else if (c === close) { depth--; if (depth === 0) { j++; break; } }
+      }
+      if (depth !== 0) return false; // unbalanced — not a clean sequence
+      end = j;
+    } else if (openCh === '"') {
+      let j = i + 1, esc = false;
+      for (; j < n; j++) {
+        const c = source[j]!;
+        if (esc) { esc = false; continue; }
+        if (c === "\\") { esc = true; continue; }
+        if (c === '"') { j++; break; }
+      }
+      end = j;
+    } else {
+      let j = i;
+      while (j < n && !/[\s,]/.test(source[j]!)) j++;
+      end = j;
+    }
+    const piece = source.slice(i, end);
+    try { JSON.parse(piece); } catch { return false; }
+    pieces.push(piece);
+    i = end;
+  }
+  return pieces.length >= 2;
+}
+
+/**
+ * Why a block's JSON/YAML failed to parse. YAML has no verified detector for the
+ * "stacked" pattern here — nothing in the shipped corpus has ever hit it, and YAML's
+ * own comment syntax makes `stripJsonComments` unsafe to run over it (it would mangle a
+ * bare `//` inside a URL). Rather than guess, a YAML parse failure is `unparseable`.
+ */
+function classifyParseFailure(block: Block): SkipReason {
+  if (ELISION_MARKER.test(block.body)) return "elided";
+  if (block.lang === "json" || block.lang === "jsonc") {
+    if (splitsAsStackedValues(stripJsonComments(block.body))) return "stacked";
+  }
+  return "unparseable";
+}
+
 /** A metadata node key: `object.entity`, `field.string`, `identity.reference`, ... */
 const NODE_KEY = /^[a-z][A-Za-z]*\.[A-Za-z*]+$/;
 
@@ -297,14 +423,16 @@ const CHILD_ONLY_TYPES = new Set([
 const HOST_DEPENDENT_TYPES = new Set(["origin"]);
 
 /**
- * The block as a loadable canonical-JSON model, or undefined when it is not a metadata
- * example at all (prose JSON, a config snippet, an elision that will not parse).
+ * The block as a loadable canonical-JSON model, or the reason it cannot become one —
+ * see `SkipReason`. A skip is not a verdict on the document; most of them are a
+ * legitimate authoring pattern (a stacked one-liner, an elided fragment, a config
+ * example that was never metadata) this gate simply has no way to load.
  *
  * A fragment — a single `field.string` / `object.entity` node — is wrapped in a
  * synthetic root so the loader sees a well-formed document. That wrapping is what makes
  * fragment-ness mechanical: nothing about the block has to be annotated.
  */
-function asLoadableModel(block: Block): LoadableModel | undefined {
+function asLoadableModel(block: Block): ModelResult {
   const isYaml = block.lang === "yaml" || block.lang === "yml";
   // YAML authoring is sigil-free (ADR-0006) and the loader desugars it, so a YAML block
   // is parsed, wrapped like any other fragment, and handed BACK to the loader as YAML —
@@ -322,17 +450,21 @@ function asLoadableModel(block: Block): LoadableModel | undefined {
   try {
     parsed = isYaml ? Bun.YAML.parse(block.body) : JSON.parse(stripJsonComments(block.body));
   } catch {
-    return undefined; // an elision or a prose snippet — makes no metadata claim
+    return { ok: false, reason: classifyParseFailure(block) };
   }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "not-object" };
+  }
 
   const keys = Object.keys(parsed as Record<string, unknown>);
-  if (keys.includes("metadata.root")) return emit(parsed);
-  if (keys.length !== 1 || !NODE_KEY.test(keys[0]!)) return undefined;
+  if (keys.includes("metadata.root")) return { ok: true, model: emit(parsed) };
+  if (keys.length !== 1 || !NODE_KEY.test(keys[0]!)) {
+    return { ok: false, reason: "not-node-shape" };
+  }
 
   const key = keys[0]!;
   const type = key.split(".")[0]!;
-  if (HOST_DEPENDENT_TYPES.has(type)) return undefined;
+  if (HOST_DEPENDENT_TYPES.has(type)) return { ok: false, reason: "host-dependent" };
 
   let node: unknown = parsed;
   if (CHILD_ONLY_TYPES.has(type)) {
@@ -349,13 +481,60 @@ function asLoadableModel(block: Block): LoadableModel | undefined {
       .map((n) => ({ "field.string": { name: n } }));
     node = { "object.entity": { name: "DocExample", children: [...fields, parsed] } };
   }
-  return emit({ "metadata.root": { package: "docexample", children: [node] } });
+  return { ok: true, model: emit({ "metadata.root": { package: "docexample", children: [node] } }) };
 }
 
 interface Finding {
   readonly block: Block;
   readonly code: string;
   readonly message: string;
+}
+
+/** Print order: the bucket most worth a human's attention first. */
+const SKIP_REASON_ORDER: readonly SkipReason[] = [
+  "unparseable", "elided", "stacked", "not-object", "not-node-shape", "host-dependent",
+];
+
+const SKIP_REASON_LABEL: Readonly<Record<SkipReason, string>> = {
+  unparseable: "unparseable — failed to parse; neither pattern below explains why. Look by hand",
+  elided: 'elided — contains a literal "..."/"…" placeholder',
+  stacked: "stacked — several independently-valid JSON values in one fence, not one document",
+  "not-object": "not an object — parsed to a scalar, array, or null",
+  "not-node-shape": "not shaped like one metaobjects node — parsed fine but keys don't match a " +
+    "single `type.subtype` node or `metadata.root` (usually a non-metaobjects config/API example)",
+  "host-dependent": "host-dependent — a bare origin.* fragment (HOST_DEPENDENT_TYPES); a " +
+    "deliberate, already-documented carve-out",
+};
+
+/**
+ * Prints every skip with its reason and location, UNCONDITIONALLY — called before the
+ * pass/fail branches below, so it is visible whether the run is red or green. This is
+ * the visibility half of the fix (#337-family): exit code is deliberately untouched.
+ *
+ * The obvious next step — once the one confirmed hit in this report
+ * (docs/ports/typescript-client.md's elided `@emitTanstack` example, the exact #337
+ * shape) is fixed and its vocabulary is registered or removed — is turning a skip
+ * count into a failure: `if (skips.length > <threshold>) process.exit(1)`, or a
+ * `--strict-skips` flag. A small, obvious change, because `skips` is already fully
+ * computed and printed here; nothing about this function needs to change to add it.
+ */
+function printSkipReport(skips: readonly Skip[], rel: (b: Block) => string): void {
+  if (skips.length === 0) return;
+  console.log(
+    `\n⚠ ${skips.length} fenced block(s) never became a checkable example — silently ` +
+    "skipped, not counted as pass or fail:\n");
+  const byReason = new Map<SkipReason, Skip[]>();
+  for (const s of skips) {
+    const group = byReason.get(s.reason);
+    if (group) group.push(s); else byReason.set(s.reason, [s]);
+  }
+  for (const reason of SKIP_REASON_ORDER) {
+    const group = byReason.get(reason);
+    if (!group || group.length === 0) continue;
+    console.log(`  ${group.length} ${SKIP_REASON_LABEL[reason]}:`);
+    for (const s of group) console.log(`    ${rel(s.block)}`);
+    console.log("");
+  }
 }
 
 async function main(): Promise<void> {
@@ -377,16 +556,18 @@ async function main(): Promise<void> {
 
   const findings: Finding[] = [];
   const unclassified = new Map<string, Finding>();
+  const skips: Skip[] = [];
   let checked = 0;
 
   for (const block of blocks) {
-    const model = asLoadableModel(block);
-    if (model === undefined) continue;
+    const result = asLoadableModel(block);
+    if (!result.ok) { skips.push({ block, reason: result.reason }); continue; }
     checked++;
 
     let errors: readonly Error[];
     try {
-      ({ errors } = await MetaDataLoader.fromString(model.content, model.format, { strict: true }));
+      ({ errors } = await MetaDataLoader.fromString(
+        result.model.content, result.model.format, { strict: true }));
     } catch (e) {
       errors = [e as Error];
     }
@@ -401,6 +582,8 @@ async function main(): Promise<void> {
   }
 
   const rel = (b: Block) => `${relative(REPO_ROOT, b.file)}:${b.line}`;
+
+  printSkipReport(skips, rel);
 
   if (unclassified.size > 0) {
     console.error("✗ unclassified loader error code(s) — the gate cannot decide these:\n");
@@ -424,8 +607,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const skipped = optedOut > 0 ? `, ${optedOut} opted out (external-provider)` : "";
-  console.log(`✓ ${checked} shipped metadata example(s) load under the strict registry${skipped}`);
+  const optedOutNote = optedOut > 0 ? `, ${optedOut} opted out (external-provider)` : "";
+  const skippedNote = skips.length > 0 ? `, ${skips.length} skipped (see above)` : "";
+  console.log(
+    `✓ ${checked} shipped metadata example(s) load under the strict registry` +
+    `${optedOutNote}${skippedNote}`);
 }
 
 await main();

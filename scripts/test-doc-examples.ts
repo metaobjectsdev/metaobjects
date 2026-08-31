@@ -22,6 +22,12 @@ interface Case {
   readonly shouldFail: boolean;
   /** Substring the failure output must contain, proving it failed for the right reason. */
   readonly because?: string;
+  /**
+   * Substring the output must contain regardless of pass/fail — for asserting on the
+   * skip-visibility report (#337-family blind-spot fix) without asserting anything
+   * about the exit code, which stays 0 for every skip reason on purpose.
+   */
+  readonly mustContain?: string;
 }
 
 const CASES: readonly Case[] = [
@@ -119,6 +125,50 @@ const CASES: readonly Case[] = [
       "```",
     ].join("\n"),
   },
+  // The skip-visibility fix (#337-family blind spot): a block that never becomes a
+  // loadable model must stay quiet (exit 0, ADR unchanged) but must now be COUNTED and
+  // CLASSIFIED in the report — that is the whole point of the fix. Each case below
+  // pins one SkipReason so a future edit that misclassifies, or silently drops the
+  // report, fails a test instead of shipping unnoticed (the same failure mode this
+  // gate exists to close, one level up).
+  {
+    name: "elided fragment is quiet but counted as elided",
+    shouldFail: false,
+    mustContain: "1 elided",
+    markdown: [
+      "```json",
+      '{ "object.entity": { "name": "InternalAudit", "@emitTanstack": false,',
+      '  "children": [ ... ] } }',
+      "```",
+    ].join("\n"),
+  },
+  {
+    name: "stacked one-liners are quiet but counted as stacked",
+    shouldFail: false,
+    mustContain: "1 stacked",
+    markdown: [
+      "```json",
+      '{ "field.uuid": { "name": "id" } }',
+      '{ "field.string": { "name": "id", "@dbColumnType": "uuid" } }',
+      "```",
+    ].join("\n"),
+  },
+  {
+    name: "a genuine syntax error is quiet but counted as unparseable",
+    shouldFail: false,
+    mustContain: "1 unparseable",
+    markdown: [
+      "```json",
+      '{ "field.string": { "name": "email", } }',
+      "```",
+    ].join("\n"),
+  },
+  {
+    name: "non-metadata JSON is quiet but counted as not-node-shape",
+    shouldFail: false,
+    mustContain: "1 not shaped like one metaobjects node",
+    markdown: ['```json', '{ "outDir": "src/generated", "dialect": "sqlite" }', "```"].join("\n"),
+  },
 ];
 
 let failures = 0;
@@ -144,6 +194,13 @@ for (const testCase of CASES) {
       console.error(
         `✗ ${testCase.name}\n    rejected, but not for ${testCase.because} — the gate may be ` +
         `failing for an unrelated reason\n${output.replace(/^/gm, "    ")}`);
+      continue;
+    }
+    if (testCase.mustContain !== undefined && !output.includes(testCase.mustContain)) {
+      failures++;
+      console.error(
+        `✗ ${testCase.name}\n    output missing "${testCase.mustContain}"\n` +
+        `${output.replace(/^/gm, "    ")}`);
       continue;
     }
     console.log(`✓ ${testCase.name}`);
