@@ -100,6 +100,13 @@ export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, t
 export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
 export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js";
 
+// The ONE sortability rule. It builds the server-side `<Entity>SortAllowlist` and the
+// client-side sort union, and it is public so a UI-tier generator (a data-grid column
+// emitter, say) marks a column sortable by ASKING the server's rule rather than
+// reimplementing its three branches out of tree. A hand-copied predicate is how the
+// grid came to offer headers the allowlist rejects (#352/#354).
+export { isSortableField, sortableFields } from "./templates/filter-shared.js";
+
 // ADR-0034 reference-template composition helpers. Promoted to the public engine
 // surface so a COPIED reference generator (src/reference/*.ts → consumer's
 // codegen/generators/*.ts) imports only `@metaobjectsdev/codegen-ts`, never a

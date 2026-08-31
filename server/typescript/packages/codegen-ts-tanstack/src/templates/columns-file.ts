@@ -16,6 +16,7 @@ import {
   entityModuleSpecifier,
   isTphDiscriminatorBase,
   collectTphSubtypeFields,
+  isSortableField,
 } from "@metaobjectsdev/codegen-ts";
 
 /** FR-017 TPH grid context, threaded into extractGrids when the entity is a
@@ -58,10 +59,18 @@ function fieldViewKind(field: MetaField): string {
 }
 
 function fieldLabel(field: MetaField): string {
-  // ADR-0039: resolving — a field's view (and its @label) may be inherited via extends.
-  const view = field.views()[0];
-  const label = view?.attr("label");
-  if (typeof label === "string") return label;
+  // #353 — this read `@label`, which NO provider registers, so the override branch was
+  // unreachable: authoring it fails the strict load `meta verify` runs (ERR_UNKNOWN_ATTR)
+  // and every header fell back to humanize(). `title` is already a registered common attr
+  // on every node and already means "a noun phrase", so nothing was registered for this
+  // — ADR-0037 step 0: the vocabulary existed, only the read was wrong.
+  // View first, then the field itself: a view-level title is the more specific override
+  // (this rendering of the field); a field-level one names the field wherever it appears.
+  // ADR-0039: resolving — a field's view (and its @title) may be inherited via extends.
+  const viewTitle = field.views()[0]?.attr("title");
+  if (typeof viewTitle === "string" && viewTitle.length > 0) return viewTitle;
+  const fieldTitle = field.attr("title");
+  if (typeof fieldTitle === "string" && fieldTitle.length > 0) return fieldTitle;
   return humanize(field.name);
 }
 
@@ -110,6 +119,12 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
         id:       name,
         header:   fieldLabel(field),
         viewKind: fieldViewKind(field),
+        // #352 — ALWAYS emitted, never left absent. EntityGrid gates on
+        // `meta?.sortable !== false`, so an omitted flag reads as "offer it" and the
+        // header renders clickable for a field the server's SortAllowlist rejects
+        // (400 `sort.unknown_field`). isSortableField is the SAME predicate that builds
+        // that allowlist — imported (#354), never reimplemented, so the two cannot drift.
+        sortable: isSortableField(field),
       };
       // FR-017: the discriminator column renders as a subtype badge.
       if (tph && name === tph.discField) spec.renderer = "badge";

@@ -173,14 +173,22 @@ export function currencyMetaFor(field: MetaField): { currency: string; locale: s
 
 /**
  * Resolve the human-readable label for a field.
- * Uses @label attr on a view child if present; otherwise humanizes the field name.
+ * Uses the registered `@title` common attr — on a view child first, else on the field
+ * itself; otherwise humanizes the field name.
+ *
+ * #353 — this read `@label`, which no provider registers on any `view.*` subtype, so the
+ * override branch was unreachable: authoring it fails the strict load `meta verify` runs
+ * (ERR_UNKNOWN_ATTR). `title` is already a registered common attr on every node and
+ * already means "a noun phrase", so nothing was registered for this (ADR-0037 step 0).
  */
 export function labelFor(field: MetaField): string {
   for (const child of field.views()) {
-    // ADR-0039: resolving — a view may inherit @label via extends.
-    const label = child.attr("label");
-    if (typeof label === "string" && label.length > 0) return label;
+    // ADR-0039: resolving — a view may inherit @title via extends.
+    const title = child.attr("title");
+    if (typeof title === "string" && title.length > 0) return title;
   }
+  const fieldTitle = field.attr("title");
+  if (typeof fieldTitle === "string" && fieldTitle.length > 0) return fieldTitle;
   return humanize(field.name);
 }
 

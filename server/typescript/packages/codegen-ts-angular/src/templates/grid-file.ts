@@ -44,10 +44,14 @@ function fieldViewKind(field: MetaField): string {
 }
 
 function fieldLabel(field: MetaField): string {
-  // ADR-0039: resolving — a field's view (and its @label) may be inherited via extends.
-  const view = field.views()[0];
-  const label = view?.attr("label");
-  if (typeof label === "string") return label;
+  // #353 — this read `@label`, which no provider registers on any `view.*` subtype, so
+  // the override branch was unreachable (ERR_UNKNOWN_ATTR under the strict registry).
+  // `title` is the registered common attr that already means "a noun phrase".
+  // ADR-0039: resolving — a field's view (and its @title) may be inherited via extends.
+  const viewTitle = field.views()[0]?.attr("title");
+  if (typeof viewTitle === "string" && viewTitle.length > 0) return viewTitle;
+  const fieldTitle = field.attr("title");
+  if (typeof fieldTitle === "string" && fieldTitle.length > 0) return fieldTitle;
   return humanize(field.name);
 }
 
