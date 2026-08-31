@@ -7,6 +7,156 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — `AGENT_DOCS_BODY` is removed; the agent context has one source
+
+**BREAKING for anyone importing `AGENT_DOCS_BODY` from `@metaobjectsdev/sdk/agent-docs`.**
+Delete the import; the live surface is `@metaobjectsdev/sdk/agent-context`.
+
+It was the pre-agent-context single-blob agent reference. `meta init` stopped scaffolding
+it when the assembler replaced it — its own JSDoc said *"kept only for back-compat; not
+scaffolded by `meta init`"* — but it stayed exported, and the sdk README went on selling it
+as *"the canonical agent reference docs (scaffolded by `meta init`)"*, a sentence with two
+wrong halves.
+
+Its prose had rotted underneath it, and was still teaching six things the loader rejects:
+`@label` on a view (documented as a slot **and** written in a worked example), a
+`view.text-input` subtype that does not exist, `@placeholder` and `@helpText` as view attrs,
+`@message` on a `validator.length`, the split `{"view": {"subType": …}}` key form the live
+always-on template forbids — and the claim that *"sortability comes from the field's
+`@sortable` attr"*, which no generator implemented. Two of those are the subject of separate
+fixes in this release.
+
+Deleted rather than corrected: keeping it means two prompt surfaces held in agreement
+forever, one of which nothing assembles, tests or scaffolds — so it drifts unobserved, which
+is what happened. Neither gate for this class could see it (the capability-grounding test
+scans the audit skill directory; the shipped-example gate parses fenced blocks under `docs/`
+and the skills — a TypeScript string literal is in neither scope), so removing the surface
+closes the hole rather than widening two gates to chase it.
+
+This is the third public-export removal in this release, alongside `CODEGEN_ATTR_EMIT_ROUTES`
+and `EXTRA_SUFFIX`, on the same reasoning each time: **an export is a promise of support.**
+
+### Added — `namesFile()` emits `<Entity>Names`, and generated code reads it
+
+A per-entity artifact carrying the physical data names — table/view/proc name, schema,
+column names, read-only-ness — resolved through one `resolveObjectNames()` that both the
+artifact and the generated code call, so a constant and the binding it describes cannot come
+from different resolvers. Shape follows the FR-009 filter allowlist: the same per-entity
+name-artifact problem, already solved in five ports.
+
+A **separate generator**, never a flag on the entity generator — a new artifact adds zero
+bytes to existing files, where a flag would move every `$table`-carrying golden for the same
+functionality. Output is byte-identical for any project that does not wire it. New projects
+get it from `meta init`; an existing project adds one config line, and `meta eject names`
+hands over the source. `resolveObjectNames()` returns `undefined` with no primary source —
+persistability derives from a declared `source.*`, never from a subtype (#248).
+
+### Fixed — the generated grid column promised two things it never delivered
+
+**Sortability was never stated** ([#352](https://github.com/metaobjectsdev/metaobjects/issues/352)).
+`ColumnSpec.sortable` was declared and emitted `if (col.sortable !== undefined)`, but nothing
+ever assigned it — so every emitted `meta` omitted the flag. `EntityGrid` gates on
+`meta?.sortable !== false`, which an absent value satisfies, so **every header rendered
+clickable** while the server's `<Entity>SortAllowlist` was built from a rule the column never
+consulted. Clicking a column outside the allowlist returns `400 sort.unknown_field`; an
+audit-log-shaped entity with seven columns, three declared neither `@sortable` nor
+`@filterable`, offered all seven and failed on three.
+
+The flag is now always emitted, from `isSortableField` itself rather than a copy of it —
+which is why that predicate becomes **public**
+([#354](https://github.com/metaobjectsdev/metaobjects/issues/354)). It and `sortableFields`
+were module-internal while the comment beside them said keeping the two sides in sync
+*"prevents client/server mismatches"*; any generator outside the package had to reimplement
+three branches by hand.
+
+**The header override was unreachable** ([#353](https://github.com/metaobjectsdev/metaobjects/issues/353)).
+`fieldLabel()`/`labelFor()` read `@label` off the field's view, and **no provider registers
+`label` on any `view.*` subtype** — so authoring it fails the strict load `meta verify` runs
+with `ERR_UNKNOWN_ATTR`, and every header fell back to `humanize()`. A decimal cost column
+read "Cost Usd" with no way to say otherwise.
+
+**Nothing was registered to fix this**, because the vocabulary already existed: **`title` is
+a registered common attr on every node** and already means "a noun phrase". That is ADR-0037
+step 0 — derivable from what exists, so add nothing — and a second attribute meaning what
+`title` means would be the same-name overload the framework forbids, at the cost of moving
+`metamodelVersion` and obliging four registries to publish for a header string. Precedence is
+view-then-field: a view-level title is the more specific override, a field-level one names the
+field wherever it appears. All three read sites move together (the tanstack columns emitter,
+codegen-ts's shared `labelFor()`, the angular grid emitter).
+
+Worth recording: the columns file has **no golden**, and no committed example wires a data
+grid at all — so neither the snapshot corpus nor the drift gates could have seen either
+defect. That absence is why they survived.
+
+### Fixed — two cell renderers were keyed to view subtypes that do not exist
+
+`defaultCellRenderers` is keyed by a column's `meta.view`, and codegen is what puts a value
+there (`view?.subType ?? "text"`), so the selectable key set is exactly the **registered**
+view subtypes. Nothing compared the two, and they had drifted in both directions at once
+([#355](https://github.com/metaobjectsdev/metaobjects/issues/355)).
+
+`datetime` and `boolean` were keys no subtype produces. The half that cost something is the
+inverse: **`view.checkbox` is registered and had no renderer**, so a checkbox column fell
+through to a raw `true`/`false` — while the "Yes"/"No" renderer plainly written for it sat
+under the unreachable `boolean` key. Renaming the key to the registered subtype is the fix.
+
+`datetime` is deleted rather than made reachable: registering a `view.datetime` subtype would
+move `metamodelVersion` and oblige all four registries to publish for a rendering variant the
+**field** subtype already distinguishes. A `field.timestamp` that should show time-of-day is
+served by overriding the `date` key through `CellRendererProvider` — the documented, already
+working escape hatch, which the runtime-ui skill now says, in place of a sentence that listed
+`boolean` among the selectable keys.
+
+### Fixed — generated `.queries.ts` did not compile against a drizzle db built with a schema
+
+([#350](https://github.com/metaobjectsdev/metaobjects/issues/350)) The `type Db = …` alias
+left Drizzle's schema type parameter at its `Record<string, never>` default — spelled out on
+postgres, inherited silently on sqlite by supplying only two of four type arguments.
+`Record<string, never>` types a database constructed with **no** schema, while the idiomatic
+setup is `drizzle(client, { schema })`; passing one to any generated helper failed with
+`TS2345`.
+
+Uncompilable generated code and unused generated code are indistinguishable from outside: in
+one adopter project this made **87 generated query helpers across 15 files uncallable**, and
+it survived two audits because the dead-file census read "imported by nothing" as
+over-generation. The fix names Drizzle's own declared bound
+(`TFullSchema extends Record<string, unknown>`), so schema-carrying and schema-less both
+assign with **no `any` anywhere**. Verified across a postgres.js / node-postgres /
+better-sqlite3 / libsql matrix at both ends of the declared peer range.
+
+### Fixed — a projection's column name ignored `@column`
+
+`projection-decl.ts` passed the field NAME to `columnNameFromField`, which applies the naming
+strategy and cannot read `@column`. A projection field declaring or inheriting a physical
+column name got the strategy's guess instead, disagreeing with the column the DDL emits.
+Invisible until now because no fixture declared a `@column` that DIFFERS from the strategy's
+answer — so the wrong resolver returned the right string by coincidence.
+
+### Fixed — the shipped agent context told adopters to hand-write migrations
+
+Three claims in the always-on context every project gets from `meta init` were false. This is
+what an AI agent reads before touching an adopter's repo, so a wrong sentence here does not
+mislead a reader — it instructs an agent.
+
+1. It named "a JVM stack whose migration tool `meta migrate` does not emit for (e.g.
+   Flyway/Liquibase)". `meta migrate --migration-format flyway` has emitted paired V/U files
+   since 0.20.15 (#192) — ADR-0015 removed the Maven mojo, the Node CLI kept the capability,
+   and this file read that removal as the feature not existing. Measured cost in one adopter
+   estate: **four hand-written migrations across six sessions**, including a `CREATE VIEW`
+   hand-written minutes after the same join was declared as an `origin.passthrough`.
+2. The sibling bullet told a stack that owns its migration files to MATCH the generated
+   schema, without saying MetaObjects will generate them.
+3. *"three-way merge preserves hand-written regions"* was stated unconditionally. It is true
+   of the Node/TS `meta gen` path only — the JVM generators overwrite. (The unguarded JVM
+   write sites are fixed separately in this release.)
+
+The context also gained the **converse of the generate-don't-hand-write rule**: wire a
+generator only for output you will actually consume. Generated code nothing imports is
+indistinguishable from generated code that does not compile — and an unused generated file
+still reads as an invitation, since a routes file nobody mounted still says to register it
+as-is for stock CRUD, so a later dead-code cleanup is invited to adopt unrestricted CRUD on a
+project whose tables are written through narrow audited paths.
+
 ### Changed — the five `@emit*` attributes are retired; narrow at the generator instead
 
 **This changes what `meta gen` emits.** If your metadata carries `@emitRoutes`,
