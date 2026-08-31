@@ -155,10 +155,14 @@ don't have to.
 
 ## Cell renderer overrides
 
-`<EntityGrid>` routes rendering through `CellRendererProvider`, keyed by `meta.view`
-(`text` / `number` / `date` / `boolean` / `currency` / `dropdown` / …). Override a
-key without touching generated code; per-column `cell` always wins, the provider
-fills in otherwise.
+`<EntityGrid>` routes rendering through `CellRendererProvider`, keyed by `meta.view` —
+which is the field's **registered `view.*` subtype** (`text` / `textarea` / `number` /
+`date` / `checkbox` / `currency` / `dropdown` / `password`), so a key that is not a
+registered subtype can never be selected. Override a key without touching generated
+code; per-column `cell` always wins, the provider fills in otherwise.
+
+A `field.timestamp` declares `view.date` and renders date-only by default. To show the
+time as well, override the `date` key — there is no `view.datetime` subtype.
 
 ```tsx
 import { CellRendererProvider } from "@metaobjectsdev/tanstack";

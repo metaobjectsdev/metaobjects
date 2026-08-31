@@ -92,10 +92,6 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
     "cli/src/commands/init.ts",
     "the scaffolder WRITING the default layout — creating that directory, never assuming one exists",
   ],
-  [
-    "sdk/src/agent-docs/body.ts",
-    "the agent-docs PROSE `meta init` scaffolds beside that layout — documentation content, reachable by no read path; it teaches the default a fresh project gets. The prose now states outright that `metaobjects/` IS the default value of `sources` and must not be assumed to exist, so a project declaring `sources` elsewhere is told so rather than being left with the old wording gap.",
-  ],
 ]);
 
 // ---------------------------------------------------------------------------
