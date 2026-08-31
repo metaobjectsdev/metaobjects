@@ -35,8 +35,11 @@ like any hand-written module.
 Every emitted file carries a `@generated` header. This is load-bearing:
 
 - **Never hand-edit a file with a `@generated` header for a change you want to
-  keep.** The next `gen` run overwrites it. If you need different output, change
-  the metadata (or the template), not the generated file.
+  keep.** The next `gen` run overwrites it. If you need different output, change the
+  metadata, or change the generator that emits it.
+- **This rule is about emitted output — it is not a rule about your generators.** A
+  generator you own carries no `@generated` header and is edited like any other source
+  file in your repo. See the next section before you conclude a shape is unreachable.
 - **Hand-written regions are preserved by three-way merge.** Where the codegen
   supports designated hand-editable regions, regeneration runs a three-way merge
   (base → yours → newly-generated) so your edits survive a regen. Code review is
@@ -53,6 +56,43 @@ for a shape origins can express is drift the drift gate can't even see. A genuin
 *irreducible* view body (recursive CTE, window function, set op) isn't hand-written
 loose either — it goes in the `source.rdb` **`@sql`** escape (#208, ADR-0043) so the
 tool still registers, fingerprints, and drift-checks it (see the projection bullet).
+
+## Your generators are yours — editing one needs no permission
+
+A generator in your repo is your code, not a vendor artifact. ADR-0034 is
+**scaffold-and-own**: the generators the scaffolded config wires are copied into your
+repo at init, and every reference template's header says so in its own first line
+("copy this into your repo … and own it", "now YOURS to change"). None carries a
+`@generated` header. Editing one is ordinary work.
+
+**A standing rule not to change the MetaObjects repo is not a rule about your
+generators.** They are different repositories, and you own yours outright. That
+generalisation is the observed failure mode, not a hypothetical: an agent told not to
+touch upstream quietly drops "edit the generator" from the moves available to it and
+hand-writes the layer instead — the single outcome the rest of this skill exists to
+prevent. If you are about to hand-write something data-shaped because the generated
+shape is wrong, the generator is the file to open, and you do not need to ask first.
+
+**The order when generated output does not fit:**
+
+1. **The metadata**, if the model is wrong — wrong column type, missing relationship,
+   a join that should be a projection. Fix the spine first; it fixes every port at once.
+2. **Your own generator**, if the model is right and the *emit* is wrong — naming, file
+   layout, imports, framework, signatures.
+3. **Hand-write**, only for what metadata genuinely cannot express — and wire it to the
+   generated types.
+
+Hand-writing something the metadata already describes is step 3 used as step 1.
+
+**The converse, so ownership does not become sprawl:** wire a generator only for output
+you will actually consume. Decide per generator, narrow one with its own `filter`, and
+own the ones you keep — an emitted file nobody imports still reads as an invitation to
+adopt the surface you decided against.
+
+How you get a generator's source differs per port — a copy command on TypeScript,
+implementing the port's generator interface elsewhere. Your language reference has the
+mechanism; see also "The commands and config keys that implement the steps above differ
+per port" below.
 
 ## Selecting generators by stable name
 
