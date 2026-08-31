@@ -76,7 +76,15 @@ const REPO_ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 /** Trees whose fenced metadata examples ship to a reader or to an agent. */
 const SCAN_ROOTS = [
   "docs",
-  "server/typescript/packages/sdk/agent-context",
+  // The TRACKED skill source, not `server/typescript/packages/sdk/agent-context` — that
+  // path is the BUNDLE, produced by `scripts/bundle-agent-context.mjs` and gitignored
+  // (`packages/sdk/.gitignore`). Scanning it meant this gate checked a build artifact
+  // instead of the files a reviewer reads: an edit to the source was invisible until
+  // somebody re-bundled, and on a fresh clone or CI runner the directory does not exist
+  // at all. Combined with the silent-skip below, that made the gate report success over
+  // the entire corpus it was BUILT for — #337 was about the agent-context docs teaching
+  // retired vocabulary, which is exactly what stops being checked.
+  "agent-context",
 ];
 
 /**
@@ -827,7 +835,22 @@ async function main(): Promise<void> {
   const blocks: Block[] = [];
   for (const root of roots) {
     const dir = isAbsolute(root) ? root : join(REPO_ROOT, root);
-    try { statSync(dir); } catch { continue; }
+    // A missing root is a BROKEN GATE, never an empty one. This used to `continue`, so a
+    // renamed directory or a path that only exists after a build step shrank the corpus in
+    // silence and still printed a tick: with the skills root absent the run reported
+    // "✓ 40 shipped metadata example(s)" and exit 0, having checked 51 fewer than it does
+    // with the root present. A gate that cannot find what it grades has not passed.
+    try {
+      statSync(dir);
+    } catch {
+      console.error(
+        `\n✗ scan root not found: ${root}\n` +
+        `  This gate grades every shipped metadata example; a root it cannot read is a\n` +
+        `  broken gate, not an empty one. Fix the path in SCAN_ROOTS, or pass the roots\n` +
+        `  you meant as arguments.`,
+      );
+      process.exit(1);
+    }
     for (const file of documentFiles(dir)) {
       const path = relative(REPO_ROOT, file);
       if (SKIP_PREFIXES.some((p) => path.startsWith(p))) continue;

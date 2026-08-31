@@ -34,9 +34,37 @@ interface Case {
    * about the exit code, which stays 0 for every skip reason on purpose.
    */
   readonly mustContain?: string;
+  /**
+   * Extra scan roots appended after the fixture dir — the only way to exercise the
+   * gate's handling of a root it cannot read, which has no `markdown` of its own.
+   */
+  readonly extraRoots?: readonly string[];
 }
 
 const CASES: readonly Case[] = [
+  {
+    // A root the gate cannot read is a BROKEN gate, not an empty one. It used to
+    // `continue` past one, so a renamed directory — or a path that only exists after a
+    // build step — shrank the corpus in silence and still printed a tick. That was live:
+    // SCAN_ROOTS pointed at the gitignored agent-context BUNDLE rather than the tracked
+    // source, so on a fresh clone the run reported "✓ 40 shipped metadata example(s)",
+    // exit 0, having checked 51 fewer than it does with the root present — and the corpus
+    // it silently dropped is the one this gate was built for (#337 was about the
+    // agent-context skills teaching retired vocabulary).
+    name: "a scan root that does not exist FAILS, rather than quietly grading less",
+    shouldFail: true,
+    because: "scan root not found",
+    extraRoots: ["definitely/not/a/real/directory"],
+    // Valid content, so the ONLY reason this run can fail is the unreadable root.
+    markdown: [
+      "# Fixture",
+      "",
+      "```json",
+      '{ "field.string": { "name": "email", "@maxLength": 255 } }',
+      "```",
+      "",
+    ].join("\n"),
+  },
   {
     // #337 — the agent-context docs described @verifiedBy as live after FR-038 retired it.
     name: "#337 retired attribute (@verifiedBy)",
@@ -287,7 +315,10 @@ for (const testCase of CASES) {
   try {
     writeFileSync(join(dir, "example.md"), testCase.markdown, "utf8");
 
-    const proc = Bun.spawnSync(["bun", CHECKER, dir], { stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawnSync(
+      ["bun", CHECKER, dir, ...(testCase.extraRoots ?? [])],
+      { stdout: "pipe", stderr: "pipe" },
+    );
     const output = proc.stdout.toString() + proc.stderr.toString();
     const failed = proc.exitCode !== 0;
 
