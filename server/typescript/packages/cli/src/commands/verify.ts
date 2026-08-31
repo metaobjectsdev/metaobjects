@@ -225,10 +225,23 @@ export async function verifyCommand(
   } catch (err) {
     const msg = (err as Error).message;
     log.error(`failed to load metadata: ${msg}`);
-    // Strict-load rejection (ADR-0023): give the author the three exits — register
-    // the attr on a provider, stash it in the `attr.properties` bag, or pass --lax.
+    // Strict-load rejection (ADR-0023). Two different failures reach here and they need
+    // different advice:
+    //
+    //   a TYPO'd or genuinely undeclared attr — the three exits below are right;
+    //   a RETIRED attr — the loader already knows the exits and attaches them as
+    //   ADR-0009 `suggestions[]`, so we print those and say nothing of our own.
+    //
+    // The distinction is not cosmetic. The middle generic exit — the `attr.properties`
+    // bag — is EXEMPT from the strict-attr check by subtype, so it loads. Offer it for a
+    // retired attribute and the author gets a green `meta verify` over a value that now
+    // reaches nothing: a correct, loud failure converted into a quiet, wrong pass. That is
+    // strictly worse than the error it replaced.
     const code = (err as { code?: string }).code;
-    if (code === ERR_UNKNOWN_ATTR || msg.includes("Unknown attribute")) {
+    const suggestions = (err as { suggestions?: string[] }).suggestions;
+    if (suggestions !== undefined && suggestions.length > 0) {
+      for (const s of suggestions) log.error(`  ${s}`);
+    } else if (code === ERR_UNKNOWN_ATTR || msg.includes("Unknown attribute")) {
       log.error(
         "meta verify is strict (ADR-0023): every authored @attr must be declared. " +
           "Fix: register the attr on a metadata provider, OR move arbitrary " +
@@ -1037,6 +1050,10 @@ export async function verifyCommand(
         });
       } catch (err) {
         log.error(`verify --codegen: failed to load this package's metadata: ${(err as Error).message}`);
+        // The second door onto the same strict load. It carried no remedy at all, which
+        // meant a retirement diagnosed here told the author what broke and nothing about
+        // how to fix it — the half-true rule this file's sibling comment warns about.
+        for (const s of (err as { suggestions?: string[] }).suggestions ?? []) log.error(`  ${s}`);
         return 2;
       }
     }
