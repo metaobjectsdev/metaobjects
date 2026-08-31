@@ -30,7 +30,7 @@ import { MetaAttr } from "./core/attr/meta-attr.js";
 import { canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 // #337 — see retired-vocabulary.ts. Diagnostic only; no load outcome changes.
-import { retiredSubType, retirementHint } from "./retired-vocabulary.js";
+import { retiredSubType, retirementHint, retirementSuggestions } from "./retired-vocabulary.js";
 import { resolvedSource, type ErrorSource, type LoaderWarning, type Contributor } from "./source.js";
 import { semanticDiff } from "./semantic-diff.js";
 import {
@@ -436,7 +436,13 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       throw new ParseError(
         `Unknown root type "${rootType}.${rootSubType}" — ` +
           (retiredRoot !== undefined ? retirementHint(retiredRoot) : "not registered"),
-        { code: rootTypeCode, source: src },
+        {
+          code: rootTypeCode,
+          source: src,
+          ...(retiredRoot !== undefined
+            ? { suggestions: retirementSuggestions(retiredRoot) }
+            : {}),
+        },
       );
     }
 

@@ -1,6 +1,7 @@
 // server/typescript/packages/metadata/src/retired-vocabulary.ts
 //
-// Vocabulary this project USED to register, and what to do instead.
+// Vocabulary this project USED to register — or used to READ and document without ever
+// registering — and what to do instead.
 //
 // WHY THIS EXISTS (#337). Under ADR-0023 the registry is strict and sealed, so retired
 // vocabulary fails the load — correctly. But the message it failed with said the attribute
@@ -45,6 +46,15 @@ export interface RetirementNote {
   readonly replacedBy?: string;
   /** Repo-relative migration guide. */
   readonly migration?: string;
+  /**
+   * True when `meta upgrade --apply` can make this edit itself.
+   *
+   * Carried on the NOTE, not just the entry, because the diagnostic is the only place an
+   * adopter meets a retirement — and the difference between "run one command" and "this is
+   * a judgement call" is the single most useful thing to tell them at that moment. Absent
+   * ⇒ the human decides (see `VocabularyRewrite`).
+   */
+  readonly automated?: boolean;
 }
 
 /**
@@ -97,6 +107,7 @@ export interface RetiredEntry extends RetirementNote {
 
 const REQUIREMENT_MIGRATION = "docs/features/migrations/verified-by-retirement.md";
 const RETIRED_STATUS_MIGRATION = "docs/features/migrations/retired-status-restore.md";
+const EMIT_ATTR_MIGRATION = "docs/features/migrations/emit-attrs-to-generator-config.md";
 
 export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   // ── 0.24.0: `@violation` is renamed `@counterexample` ──
@@ -244,7 +255,79 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     // caught this exists to prevent.
     rewrite: { kind: "dropAttr" },
   },
+  // ── FR-040: the @emit* family leaves the model (0.24.6) ──
+  //
+  // Five attributes — @emitRoutes, @emitTanstack, @emitForm, @emitGrid, @emitAngular — were
+  // READ by the TypeScript generators as per-entity kill switches, and documented as THE way
+  // to suppress an artifact, but they were never REGISTERED by any provider. So they worked
+  // under `meta gen`, which loads open, and failed `meta verify`, which loads strict: a
+  // mechanism we documented broke the drift gate we documented beside it.
+  //
+  // They are retired rather than registered. codegen-ts's own constants file already called
+  // them "NOT metamodel vocabulary — they tune codegen, not the model" and then read them off
+  // metadata anyway; that contradiction is the defect, and ADR-0023 §2 names the class.
+  // Registering them instead would move `metamodelVersion` and oblige four other ports to
+  // carry a TypeScript-only generator flag none of them will ever read.
+  //
+  // WHAT REPLACED THEM IS CONFIGURATION, NOT VOCABULARY, so `replacedBy` names a mechanism
+  // rather than an attribute — the only entries here that do. The rule is one sentence:
+  // decide per generator what you consume, wire only the generators whose output you import,
+  // and narrow one with its own `filter`.
+  //
+  // `dropAttr` is safe for all five: after this release nothing reads them, so removing one
+  // cannot change what is emitted. What it DOES change is what `meta gen` emitted BEFORE —
+  // an adopter who suppressed an artifact this way now gets that artifact — which is why the
+  // run also warns by name, rather than letting the file appear with no explanation.
+  {
+    type: "object", subType: "*", attr: "emitRoutes",
+    since: "0.24.6",
+    why: "it was never registered vocabulary, so the opt-out we documented passed `meta gen` " +
+         "and failed `meta verify`",
+    replacedBy: "the routes generator's own `filter` — routesFile({ filter: (e) => … })",
+    migration: EMIT_ATTR_MIGRATION,
+    rewrite: { kind: "dropAttr" },
+  },
+  {
+    type: "object", subType: "*", attr: "emitTanstack",
+    since: "0.24.6",
+    why: "it was never registered vocabulary, so the opt-out we documented passed `meta gen` " +
+         "and failed `meta verify`",
+    replacedBy: "the `filter` option on tanstackQuery() / tanstackGrid() / tanstackGridHook()",
+    migration: EMIT_ATTR_MIGRATION,
+    rewrite: { kind: "dropAttr" },
+  },
+  {
+    type: "object", subType: "*", attr: "emitForm",
+    since: "0.24.6",
+    why: "it was never registered vocabulary, and its own doc comment described it backwards " +
+         "— as opt-IN via `true`, while the code implemented opt-OUT via `false`",
+    replacedBy: "formFile({ filter: (e) => … })",
+    migration: EMIT_ATTR_MIGRATION,
+    rewrite: { kind: "dropAttr" },
+  },
+  {
+    type: "object", subType: "*", attr: "emitAngular",
+    since: "0.24.6",
+    why: "it was never registered vocabulary, and unlike its four siblings it was not even a " +
+         "named constant — just a bare string literal in four generators",
+    replacedBy: "the `filter` option on the Angular generators",
+    migration: EMIT_ATTR_MIGRATION,
+    rewrite: { kind: "dropAttr" },
+  },
+  {
+    // The one that is opt-IN rather than opt-out, so `filter` cannot replace it: a filter is
+    // ANDed with the built-in gates and can only ever narrow. It became a generator OPTION,
+    // which must be passed to BOTH grid generators — they emit a matched pair of files.
+    type: "object", subType: "*", attr: "emitGrid",
+    since: "0.24.6",
+    why: "it was never registered vocabulary, and being an opt-IN it could not be expressed " +
+         "by a generator filter, which only ever narrows",
+    replacedBy: "the `tphSubtypeGrids` option on BOTH tanstackGrid() and tanstackGridHook()",
+    migration: EMIT_ATTR_MIGRATION,
+    rewrite: { kind: "dropAttr" },
+  },
 ];
+
 
 /**
  * True when `entry` governs `typeKey` (`"<type>.<subType>"`).
@@ -267,6 +350,7 @@ export function note(entry: RetiredEntry): RetirementNote {
     why: entry.why,
     ...(entry.replacedBy !== undefined ? { replacedBy: entry.replacedBy } : {}),
     ...(entry.migration !== undefined ? { migration: entry.migration } : {}),
+    ...(entry.rewrite !== undefined ? { automated: true } : {}),
   };
 }
 
@@ -320,4 +404,26 @@ export function retirementHint(n: RetirementNote): string {
   if (n.replacedBy !== undefined) parts.push(`Use ${n.replacedBy} instead`);
   if (n.migration !== undefined) parts.push(`Migration: ${n.migration}`);
   return `${parts.join(". ")}.`;
+}
+
+/**
+ * The ADR-0009 `suggestions[]` for a retirement: what to DO, as distinct from
+ * `retirementHint`, which says what happened.
+ *
+ * WHY THIS EXISTS. A caller that knows only "the load failed with ERR_UNKNOWN_ATTR" gives
+ * the generic three exits — register the attr, stash it in an `attr.properties` bag, or
+ * re-run with `--lax`. For a TYPO that is exactly right. For a RETIREMENT the middle one is
+ * actively harmful: the properties bag is exempt from the strict-attr check, so it loads,
+ * and the value then sits there reaching nothing. The adopter gets a green `meta verify`
+ * over metadata that no longer means what they wrote — a loud, correct failure converted
+ * into a quiet, wrong pass. So a retirement supplies its own exits and the caller prints
+ * those instead of guessing.
+ */
+export function retirementSuggestions(n: RetirementNote): string[] {
+  const out: string[] = [];
+  if (n.automated === true) out.push("Run `meta upgrade --apply` to make this edit for you.");
+  if (n.replacedBy !== undefined) out.push(`Use ${n.replacedBy} instead.`);
+  if (n.migration !== undefined) out.push(`Migration guide: ${n.migration}`);
+  // Never the `attr.properties` bag: it would load, and mean nothing. See above.
+  return out;
 }

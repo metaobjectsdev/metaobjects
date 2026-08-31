@@ -49,7 +49,7 @@ import { TYPE_FIELD, TYPE_METADATA } from "./shared/base-types.js";
 import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
 // #337: turns "unknown X" into "retired in V — here is the migration". Changes no load
 // outcome; retired vocabulary still fails with the same code.
-import { retiredAttr, retiredAttrValue, retirementHint } from "./retired-vocabulary.js";
+import { retiredAttr, retiredAttrValue, retirementHint, retirementSuggestions } from "./retired-vocabulary.js";
 import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
@@ -178,7 +178,13 @@ function validateNode(
               (retired !== undefined
                 ? retirementHint(retired)
                 : `not declared by any registered provider for ${typeKey}`),
-            { code: "ERR_UNKNOWN_ATTR", source: node.source },
+            {
+              code: "ERR_UNKNOWN_ATTR",
+              source: node.source,
+              // A retirement knows its own exits; an unrecognised name does not, and its
+              // caller's generic advice stays correct. Only the retired arm overrides.
+              ...(retired !== undefined ? { suggestions: retirementSuggestions(retired) } : {}),
+            },
           ),
         );
       }
@@ -310,7 +316,13 @@ function validateNode(
               `'${String(bad)}' which is not one of the allowed values: ` +
               `${allowed.map((v) => String(v)).join(", ")}` +
               (retiredValue !== undefined ? ` — ${retirementHint(retiredValue)}` : ""),
-            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+            {
+              code: "ERR_BAD_ATTR_VALUE",
+              source: node.source,
+              ...(retiredValue !== undefined
+                ? { suggestions: retirementSuggestions(retiredValue) }
+                : {}),
+            },
           ),
         );
       }

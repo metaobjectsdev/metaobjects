@@ -18,8 +18,11 @@ import {
   retiredAttr,
   retiredAttrValue,
   retiredSubType,
+  retirementSuggestions,
   RETIRED_VOCABULARY,
 } from "../src/retired-vocabulary.js";
+import { MetaDataLoader } from "../src/index.js";
+import type { LoaderError } from "../src/source.js";
 
 describe("retiredAttr", () => {
   test("knows @verifiedBy retired from requirement.*", () => {
@@ -171,5 +174,88 @@ describe("mechanical rewrites", () => {
 
   test("@readOnly carries a key+value rewrite, not a bare rename", () => {
     expect(RETIRED_VOCABULARY.find((x) => x.attr === "readOnly")?.rewrite?.kind).toBe("renameAttrValue");
+  });
+});
+
+// ── FR-040: the @emit* family ───────────────────────────────────────────────────────
+//
+// These five differ from every other entry in this map: they were never REGISTERED, so
+// nothing about them ever loaded under strict. They were read off metadata by the
+// TypeScript generators and documented as the per-entity opt-out, which made them work
+// under `meta gen` (open load) and fail `meta verify` (strict load) — a documented
+// mechanism that broke the drift gate documented beside it.
+const EMIT_ATTRS: readonly string[] = ["emitRoutes", "emitTanstack", "emitForm", "emitGrid", "emitAngular"];
+
+describe("the @emit* retirements", () => {
+  test.each([...EMIT_ATTRS])("@%s is retired on every object subtype", (attr) => {
+    // subType "*" is load-bearing: an author could have put one of these on a projection
+    // or a value, not only on an entity, and a retirement that spoke for one subtype would
+    // send the others back to the generic "not declared by any registered provider".
+    for (const key of ["object.entity", "object.projection", "object.value"]) {
+      expect(retiredAttr(key, attr), `${key} @${attr}`).toBeDefined();
+    }
+  });
+
+  test.each([...EMIT_ATTRS])("@%s is mechanically removable by `meta upgrade`", (attr) => {
+    const hit = RETIRED_VOCABULARY.find((e) => e.attr === attr);
+    expect(hit?.rewrite).toEqual({ kind: "dropAttr" });
+    // The note the DIAGNOSTIC sees must know it too — the lookups return notes, not
+    // entries, so a rewrite the note dropped would never reach the author.
+    expect(retiredAttr("object.entity", attr)?.automated).toBe(true);
+  });
+
+  test.each([...EMIT_ATTRS])("@%s actually fails a strict load, with the retirement hint", async (attr) => {
+    // The point of the whole exercise: this is what an adopter's `meta verify` prints.
+    const model = JSON.stringify({
+      "metadata.root": { package: "probe", children: [
+        { "object.entity": { name: "Thing", [`@${attr}`]: false,
+          children: [{ "field.string": { name: "id" } }] } },
+      ]},
+    });
+    const { errors } = await MetaDataLoader.fromString(model, "json", { strict: true });
+    const first = errors[0] as unknown as LoaderError;
+    expect(errors).toHaveLength(1);
+    expect(first.code).toBe("ERR_UNKNOWN_ATTR");
+    expect(first.message).toContain("retired in");
+    // NOT the generic story — that is the sentence that sent an adopter to file a
+    // registration bug against a deliberate decision (#337).
+    expect(first.message).not.toContain("not declared by any registered provider");
+  });
+
+  test("a retirement carries its own exits, and NEVER the attr.properties bag", () => {
+    const note = retiredAttr("object.entity", "emitRoutes");
+    const exits = retirementSuggestions(note!);
+    expect(exits.some((s) => s.includes("meta upgrade --apply"))).toBe(true);
+    expect(exits.some((s) => s.includes("emit-attrs-to-generator-config.md"))).toBe(true);
+    // The reason this function exists. `attr.properties` is exempt from the strict-attr
+    // check BY SUBTYPE, so it loads — offer it here and the author gets a green verify
+    // over a value that reaches nothing, which is worse than the failure it replaced.
+    expect(exits.join(" ")).not.toContain("attr.properties");
+  });
+
+  test("the diagnostic ATTACHES those exits, so a caller need not guess them", async () => {
+    const model = JSON.stringify({
+      "metadata.root": { package: "probe", children: [
+        { "object.entity": { name: "Thing", "@emitRoutes": false,
+          children: [{ "field.string": { name: "id" } }] } },
+      ]},
+    });
+    const { errors } = await MetaDataLoader.fromString(model, "json", { strict: true });
+    const first = errors[0] as unknown as LoaderError;
+    expect(first.suggestions?.length).toBeGreaterThan(0);
+  });
+
+  test("a genuine typo still gets NO suggestions — the generic advice stays correct", async () => {
+    const model = JSON.stringify({
+      "metadata.root": { package: "probe", children: [
+        { "object.entity": { name: "Thing", "@emitRoutez": false,
+          children: [{ "field.string": { name: "id" } }] } },
+      ]},
+    });
+    const { errors } = await MetaDataLoader.fromString(model, "json", { strict: true });
+    const first = errors[0] as unknown as LoaderError;
+    expect(errors).toHaveLength(1);
+    expect(first.message).toContain("not declared by any registered provider");
+    expect(first.suggestions).toBeUndefined();
   });
 });

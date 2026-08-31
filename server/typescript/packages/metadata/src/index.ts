@@ -297,6 +297,7 @@ export {
   retiredAttrValue,
   retiredSubType,
   retirementHint,
+  retirementSuggestions,
 } from "./retired-vocabulary.js";
 export type { RetirementNote, RetiredEntry, VocabularyRewrite } from "./retired-vocabulary.js";
 // Its sibling: pairs of LIVE attributes that may not sit on one node. Same two consumers,
