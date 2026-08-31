@@ -34,7 +34,7 @@ const OWNED_GENERATORS_DIR = "codegen/generators";
 // copy, so a packaged change to a generator can never reach anyone who has ejected), so
 // the honest maximum for the names artifact is every NEW `meta init` getting it and every
 // existing project adding one config line by hand.
-const SCAFFOLDED_GENERATOR_NAMES: readonly ReferenceGeneratorName[] = ["entity", "queries", "routes", "barrel", "names"];
+export const SCAFFOLDED_GENERATOR_NAMES: readonly ReferenceGeneratorName[] = ["entity", "queries", "routes", "barrel", "names"];
 
 // The scaffolded config's outDir + dbImport, as named constants so the throwing-stub
 // path below is DERIVED from the same values the config template embeds rather than
@@ -111,8 +111,8 @@ function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sql
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { routesFile } from "./codegen/generators/routes.js";
-import { barrel } from "./codegen/generators/barrel.js";
 import { namesFile } from "./codegen/generators/names.js";
+import { barrel } from "./codegen/generators/barrel.js";
 
 export default defineConfig({
   outDir:    "${SCAFFOLD_OUT_DIR}",

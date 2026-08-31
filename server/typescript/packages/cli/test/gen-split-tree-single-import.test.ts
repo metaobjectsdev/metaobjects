@@ -63,18 +63,25 @@ const META = JSON.stringify({
 
 // The scaffolded config shape (`meta init`): owned local generators, `.js`-extensioned
 // relative imports, sqlite.
+//
+// namesFile() is included for CONFIG coverage, but it does not add a second probe of the
+// legacy-rewrite arm: names.ts imports no ts-poet combinators (renderNamesDecl is a plain
+// string template), so the `legacyBareTsPoetImports` regex above never matches it and the
+// legacy and current copies of names.ts are identical bytes. Only the CURRENT-scaffold arm
+// gains real coverage from it.
 const CONFIG = [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
   `import { entityFile } from "./codegen/generators/entity.js";`,
   `import { queriesFile } from "./codegen/generators/queries.js";`,
   `import { routesFile } from "./codegen/generators/routes.js";`,
   `import { barrel } from "./codegen/generators/barrel.js";`,
+  `import { namesFile } from "./codegen/generators/names.js";`,
   `export default defineConfig({`,
   `  outDir: "src/generated",`,
   `  extStyle: "js",`,
   `  dbImport: "../db",`,
   `  dialect: "sqlite",`,
-  `  generators: [entityFile(), queriesFile(), routesFile(), barrel()],`,
+  `  generators: [entityFile(), queriesFile(), routesFile(), namesFile(), barrel()],`,
   `});`,
 ].join("\n");
 

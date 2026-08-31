@@ -59,7 +59,7 @@ describe("meta eject", () => {
   });
 
   // Fix round 2. Ejecting is only complete if the config actually ends up importing the
-  // LOCAL copy. Every template but the four `meta init` scaffolds is already imported in
+  // LOCAL copy. Every template but the five `meta init` scaffolds is already imported in
   // a working config from its package, so the instruction has to be REPLACE — told to
   // "paste", a reader either duplicates the identifier or, worse, leaves both imports
   // and keeps the generator entry bound to the PACKAGE one, silently running the
@@ -81,7 +81,7 @@ describe("meta eject", () => {
 
   // An ejected file is ordinary source in the adopter's repo: its imports must be
   // DECLARED or their `tsc` reports TS2307 on the file we just told them they own.
-  // `meta init` adds the two packages its four scaffolded generators need; the UI
+  // `meta init` adds the two packages its five scaffolded generators need; the UI
   // templates import two more that nothing declares, so eject has to say so.
   test("names the @metaobjectsdev packages the ejected file needs but the project lacks", async () => {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "p", private: true }), "utf8");

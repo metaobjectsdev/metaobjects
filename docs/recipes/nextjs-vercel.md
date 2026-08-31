@@ -29,7 +29,7 @@ config and none of them is metadata.
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators. `meta init` scaffolds entity/queries/routes/barrel;
+// Owned generators. `meta init` scaffolds entity/queries/routes/barrel/names;
 // routes-hono and the UI tier are reached with `meta eject` (§6).
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
@@ -205,7 +205,7 @@ Everything above is configuration. When you need different *output* — a differ
 shape, a different form library, an auth wrapper around every handler — take the generator:
 
 ```bash
-meta eject --list           # all nine reference templates, grouped by package
+meta eject --list           # all ten reference templates, grouped by package
 meta eject routes-hono      # → codegen/generators/routes-hono.ts
 meta eject form             # → codegen/generators/form.ts
 meta eject hooks            # → codegen/generators/hooks.ts

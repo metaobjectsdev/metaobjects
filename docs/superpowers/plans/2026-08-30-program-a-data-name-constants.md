@@ -528,8 +528,14 @@ describe("renderNamesDecl", () => {
 
 Write `entityWithFieldOrder(order: string[])` beside `subscriber()`: same loader idiom,
 emitting `field.string` children in the given order, each with an `@column` that is NOT the
-strategy's answer for its name (so the test also proves the column is carried, not
-recomputed).
+strategy's answer for its name. Keep the distinct `@column` values for fixture honesty, but
+note what the resulting `ab === ba` assertion actually proves: order-independence only — a
+mutant that recomputes `@column` from the field name instead of reading it (while still
+sorting) passes it too, since both orderings recompute the same values either way.
+Column-carrying needs its own pin, at the resolver level (an inherited `@column` resolves
+through `extends` rather than the strategy recomputing one from the field name) and at the
+renderer level (the renderer emits the resolver's column, e.g. `created_at` for a field
+named `createdAt`, rather than one of its own).
 
 - [ ] **Step 2: Run and confirm it fails**
 

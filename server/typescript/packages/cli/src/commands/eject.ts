@@ -1,6 +1,6 @@
 // FR-040 §4.2(a) — `meta eject <generator>` takes ownership of any reference-template
 // generator, in any package, at any time after `meta init`. ADR-0034 scaffold-and-own
-// has `init` copy four of them eagerly (entity, queries, routes, barrel); this is the
+// has `init` copy five of them eagerly (entity, queries, routes, barrel, names); this is the
 // SAME copy operation, generalised to every ejectable name and callable on demand — for
 // a generator you skipped at init time, or one a package gained since.
 import { mkdir, writeFile, stat, readFile } from "node:fs/promises";
@@ -147,7 +147,7 @@ function requiredPackages(templateSource: string): string[] {
  * declared dependencies or their `tsc` reports TS2307 on the file we just told them
  * they own — and under a strict (pnpm/npm) node_modules layout `meta gen` cannot
  * resolve it either. `meta init` already calls this out by ADDING the two packages its
- * four scaffolded generators need; the on-demand templates import two more
+ * five scaffolded generators need; the on-demand templates import two more
  * (codegen-ts-react, codegen-ts-tanstack) that nothing declares.
  *
  * This REPORTS rather than edits: init is a scaffolder writing a whole project and has
@@ -255,7 +255,7 @@ export async function ejectCommand(args: string[], cwd: string): Promise<number>
     //
     // But eject reads no config, so it cannot know WHICH of the three states this project
     // is in, and stating one of them as fact is wrong in the other two — including for the
-    // four `meta init` scaffolds, whose config already imports from ./codegen/generators/,
+    // five `meta init` scaffolds, whose config already imports from ./codegen/generators/,
     // which is precisely the `meta eject <name> --force` re-sync case. Name the goal, then
     // the three branches; the reader knows which one they are looking at.
     log.info(`In metaobjects.config.ts, "${result.exportName}" must resolve to this file:`);

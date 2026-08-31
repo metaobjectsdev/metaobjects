@@ -8,6 +8,7 @@
  * alone would make TS the odd port out on the axis this project protects hardest.
  */
 import type { ColumnNamingStrategy, MetaObject } from "@metaobjectsdev/metadata";
+import { GENERATED_HEADER } from "../constants.js";
 import { resolveObjectNames } from "../names.js";
 
 export function renderNamesDecl(obj: MetaObject, strategy?: ColumnNamingStrategy): string {
@@ -23,7 +24,11 @@ export function renderNamesDecl(obj: MetaObject, strategy?: ColumnNamingStrategy
 
   const schemaLine = n.schema === undefined ? "" : `\n  schema: ${JSON.stringify(n.schema)},`;
 
-  return `export const ${obj.name}Names = {
+  const header =
+    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// Source metadata: ${obj.name}\n`;
+
+  return `${header}export const ${obj.name}Names = {
   kind: ${JSON.stringify(n.kind)},
   name: ${JSON.stringify(n.name)},${schemaLine}
   readOnly: ${n.readOnly},

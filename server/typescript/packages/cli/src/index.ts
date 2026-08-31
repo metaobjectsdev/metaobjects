@@ -127,7 +127,7 @@ FLAGS:
   --force                Overwrite an already-ejected file (default: never clobber)
   --help, -h             Print this help
 
-\`meta init\` copies four generators (entity, queries, routes, barrel) into
+\`meta init\` copies five generators (entity, queries, routes, barrel, names) into
 codegen/generators/ automatically (ADR-0034 scaffold-and-own). \`meta eject\` is
 the same operation for ANY generator — one you skipped at init time, a UI-tier
 generator like form/hooks/grid, or one a package gains later. It prints the
