@@ -41,12 +41,39 @@ const DELIBERATELY_NAMED_RETIRED_OR_CUT = new Set<string>([
   "@violation",     // renamed to @counterexample
   "@verifiedBy",    // dropped — it proved a NAME existed, never that the test verified the claim
   "@supersededBy",  // dropped — a requirement is prescriptive, never a journal
+  // FR-040 (0.24.6) — the @emit* family. Named for the same reason as the requirement rows
+  // above, one step further: these were never REGISTERED AT ALL. They were read off metadata
+  // by the TS generators and documented as the per-entity opt-out, so they passed `meta gen`
+  // (open load) and failed `meta verify` (strict). The audit skill names all five so an
+  // auditor never recommends one — a project carrying one is a finding, not an opt-out.
+  //
+  // These two lines are also the reason ATTR_IN_CODE_SPAN was widened: while the skill wrote
+  // them as `@emitRoutes: false`, this very gate could not see them.
+  "@emitRoutes", "@emitTanstack", "@emitForm", "@emitGrid", "@emitAngular",
   // (Wave 4 — ADR-0038 reverse navigation — shipped as explicit generated FK finders with
   // NO metamodel attribute: the finder name derives from source + FK field, unique by
   // construction. The predicted-but-never-built @reverseName is therefore NOT named by the
   // skills and needs no exemption. Wave 3 — @stringFormat + field.uri/field.inet — and
   // Wave 2 — @localTime — are now REGISTERED, so those tokens pass grounding as real vocab.)
 ]);
+
+/**
+ * Every `@attr` named inside a code span.
+ *
+ * THE TRAILING TERMINATOR IS THE WHOLE POINT. This was `` /`@(\w+)`/g `` — a backtick
+ * required IMMEDIATELY after the name — so it saw `` `@column` `` and was blind to
+ * `` `@emitRoutes: false` ``, which is the more natural way to write an attribute example
+ * because it shows the value too. That blindness is not hypothetical: measured against the
+ * commit before FR-040, the old form missed exactly two tokens in the audit skill, and BOTH
+ * were unregistered vocabulary — `@emitRoutes` and `@emitTanstack`. The gate whose job is
+ * "the audit skill must not name an attribute nothing registers" could not see the only two
+ * that qualified, purely because of how they were quoted. It is how a shipped skill came to
+ * instruct agents to author metadata our own loader rejects.
+ *
+ * The leading backtick stays: it is the proxy for "inside a code span", without which every
+ * `@mention` in prose would be scanned as vocabulary.
+ */
+const ATTR_IN_CODE_SPAN = /`@([a-zA-Z][a-zA-Z0-9]*)(?=[`:\s])/g;
 
 // Code-level identifiers that the @attr regex (`@word`) extracts from the audit skill's
 // prose but that are NOT MetaObjects metamodel attributes.  The skill's port-specific
@@ -89,6 +116,31 @@ function auditSkillFiles(): Array<{ path: string; text: string }> {
   return result;
 }
 
+// The extraction rule needs its own pin. Every audit-skill file now happens to write the
+// bare `@attr` form, which the OLD regex also matched — so narrowing ATTR_IN_CODE_SPAN back
+// again would leave every assertion above green while restoring the exact blind spot that
+// let `@emitRoutes: false` ship in a skill for two releases. A gate that only fails on
+// content nobody currently writes has stopped being a gate.
+describe("the @attr extraction rule itself", () => {
+  const extract = (text: string): string[] =>
+    [...text.matchAll(new RegExp(ATTR_IN_CODE_SPAN.source, "g"))].map((m) => m[1]!);
+
+  test("sees an attribute quoted WITH its value — the form that was invisible", () => {
+    expect(extract("the opt-out is `@emitRoutes: false` on the entity")).toEqual(["emitRoutes"]);
+  });
+
+  test("still sees the bare form, and a value with no space after the colon", () => {
+    expect(extract("`@column` and `@table`")).toEqual(["column", "table"]);
+    expect(extract("`@kind:table`")).toEqual(["kind"]);
+  });
+
+  test("stays inside code spans — a bare @mention in prose is not vocabulary", () => {
+    // The leading backtick is the only thing separating "an attribute this skill names"
+    // from "an email address, a Java annotation in prose, a handle".
+    expect(extract("ask @someone about the @column attr")).toEqual([]);
+  });
+});
+
 describe("capability checklist is registry-grounded", () => {
   const text = readFileSync(CHECKLIST, "utf8");
   const { subtypes, attrs } = registryTokens();
@@ -103,7 +155,7 @@ describe("capability checklist is registry-grounded", () => {
   });
 
   test("every @attr named exists in the registry", () => {
-    const named = new Set([...text.matchAll(/`@([a-zA-Z][a-zA-Z0-9]*)`/g)].map((m) => m[1]!));
+    const named = new Set([...text.matchAll(ATTR_IN_CODE_SPAN)].map((m) => m[1]!));
     const unknown = [...named].filter((a) => !attrs.has(a));
     // Allow doc-only/config attrs not in the metamodel registry (apiPrefix etc. aren't @attrs anyway).
     expect(unknown).toEqual([]);
@@ -147,7 +199,7 @@ describe("audit skill files (SKILL.md + references) are registry-grounded", () =
   test("every @attr named exists in the registry or is a principled exemption", () => {
     const bad: string[] = [];
     for (const { path, text } of files) {
-      for (const m of text.matchAll(/`@([a-zA-Z][a-zA-Z0-9]*)`/g)) {
+      for (const m of text.matchAll(ATTR_IN_CODE_SPAN)) {
         const attrName = m[1]!;
         const token = `@${attrName}`;
         if (
