@@ -311,17 +311,55 @@ output/template · doesn't fit → write a generator that emits your shape *from
 metadata* · only the genuinely un-modelable (business algorithms, external calls) is
 hand-written outside codegen — and it still imports the generated types.
 
-**The commands and config keys that implement the steps above differ per port, and the
-ports differ in how much is written down.** TypeScript has the whole procedure as a
-documented one — `meta eject`, the `metaobjects.config.ts` keys, the exported `render*`
-functions — in this skill's `references/typescript.md`. **The other ports have no eject
-command.** There, owning a generator means implementing that port's generator interface
-— `com.metaobjects.generator.Generator` (Java / Kotlin),
-`metaobjects.codegen.generator.Generator` (Python), `MetaObjects.Codegen.IGenerator`
-(C#) — and registering it with the build tool that runs codegen for your port. Their
-`references/` fragments document what each built-in emits, which is what you compare
-your own emit against; they do not carry a step-by-step retargeting procedure, so do
-not go looking for one.
+## Two ways to author a generator — pick deliberately
+
+A generator can be **programmatic** (code that builds the output) or **declarative** (a
+Mustache template plus a scope). Both are first-class, both ship in every port, and they
+are good at different things.
+
+| | Programmatic | Declarative template |
+|---|---|---|
+| What you write | a `Generator` in the port's language, using its AST builder (ts-poet, KotlinPoet, …) | a `.mustache` file + `{ template, scope, outputPattern, format? }` |
+| Output shape | expressed in code | **is the file you are editing** |
+| Cross-language | per-port by construction | one template emits for any language — it renders against the neutral, byte-gated data dict |
+| Logic | any | what a template can express: sections, iteration, presence flags |
+
+**The rule:** reach for **programmatic** when the logic is gnarly or the run is hot; reach
+for a **template** when the *shape* is what you are iterating on, or when you want the same
+output across languages. `scope` is `perEntity` / `perPackage` / `perModel` — the walk you
+would otherwise hand-write — and `outputPattern` is the output path per item, with
+`{name}` / `{Name}` / `{package}` placeholders (e.g. `"{package}/{Name}Service.java"`).
+Full tradeoff table and the data dict: `docs/features/codegen-concepts.md` §3 and §10.
+
+**A template is not limited to documents.** It emits source as readily as docs — that is
+what the neutral data dict is for.
+
+### Which is available to you depends on the port — check before you plan
+
+**TypeScript** has both, and the whole programmatic procedure is documented: `meta eject`,
+the `metaobjects.config.ts` keys, the exported `render*` functions — see this skill's
+`references/typescript.md`. For the declarative path, spread a parsed spec into
+`generators` with `templateSpecToGenerators`, or call `templateGenerator()` directly.
+
+**Java / Kotlin** have both. **No eject command** — a programmatic generator means
+implementing `com.metaobjects.generator.Generator` and naming your class in the Maven
+`<generator>` element, which the plugin loads from the project classpath. The declarative
+path is `TemplateScopeGenerator`, wired the same way with `<template>` / `<scope>` /
+`<outputPattern>` / `<format>` / `<templatesDir>`.
+
+**C# and Python: the declarative path is your only option, and it is a real one.** Their
+generator sets are **closed built-in registries** — `--generators` *selects* from what
+ships, and there is no seam to register a `Generator` of your own. (Python's
+`--provider module:symbol` registers **metamodel vocabulary**, not a generator; do not
+reach for it here.) Use `--template-spec <json>` — plus `--templates <dir>` on Python or
+`--template-root <dir>` on C# — and your entries are appended to the default suite. Worked
+examples with the full JSON: `docs/ports/python.md` and `docs/ports/csharp.md`.
+
+So on C#/Python, "I need a shape the built-ins do not emit" is answered by a template, not
+by writing generator code. Do not conclude the port cannot be customized.
+
+Each port's `references/` fragment documents what its built-ins emit, which is what you
+compare your own emit against; they do not carry a step-by-step retargeting procedure.
 
 ## Dialects
 

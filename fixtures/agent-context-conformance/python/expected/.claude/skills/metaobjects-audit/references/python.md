@@ -58,8 +58,17 @@ regardless of server language — see the migration reference.
 ## Owned generators
 
 Python does not scaffold-and-own generators — they are provided by the `metaobjects`
-package and selected by stable name via `--generators`. There is no analog to the
-TS `codegen/generators/*.ts` pattern here.
+package and selected by stable name via `--generators`, over a **closed built-in
+registry**. There is no analog to the TS `codegen/generators/*.ts` pattern here, and no
+seam to register a generator of your own. (`--provider module:symbol` registers
+**metamodel vocabulary**, not a generator — do not read it as one.)
+
+**So do not score a Python project down for "not owning its generators", and do not
+recommend writing one.** The customization path here is the **declarative template**:
+`metaobjects gen --template-spec <json> --templates <dir>`, whose entries append to the
+default suite. A finding of the form "the built-ins do not emit the shape this project
+needs" resolves to a template-spec, not to generator code. Worked example with the full
+JSON: `docs/ports/python.md`.
 
 To re-scaffold the agent-context into a Python project, use the Node `meta` CLI (the
 single agent-docs assembler per ADR-0033):

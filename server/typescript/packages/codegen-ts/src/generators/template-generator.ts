@@ -5,13 +5,27 @@
 // generators; just adds the "Mustache template" + "walk that yields a
 // data dict per output" primitives.
 //
-// Design line we adopted (from the design doc):
-//   Code → hand-coded generators (ts-poet, idiomatic per-port).
-//   Documents → templateGenerator (shared Mustache templates).
+// SUPERSEDED, and left here as a correction because the old line still circulates:
+// the original 2026-05-28 split was "Code → hand-coded generators, Documents →
+// templateGenerator", with code emission an explicit NON-GOAL for this primitive.
+// SP-1 (docs/superpowers/specs/2026-06-28-mustache-codegen-parity-design.md §2)
+// moved past it — its goal is a consumer authoring "a working code generator, on ANY
+// port, with NO generator code", and its worked outputPattern is
+// "{package}/{name}Service.java". Source, not a document.
 //
-// docsFile() is the first templateGenerator instance (rc.12). OpenAPI specs,
-// Mermaid diagrams, HTML doc sites, etc. follow as templates + a walk
-// function each.
+// The axis is NOT what kind of file comes out. It is: pick a template when the output
+// SHAPE is what you are iterating on, or when you want the same output across
+// languages (that is what the neutral data dict buys); pick a hand-coded generator
+// when the logic is gnarly or the run is hot. Tradeoff table:
+// docs/features/codegen-concepts.md §3.
+//
+// This matters most where a port has no choice: C# and Python expose closed built-in
+// generator registries, so the declarative spec is the ONLY consumer authoring path
+// there — and a documents-only reading of this primitive would tell those adopters
+// their port cannot emit a custom shape at all.
+//
+// docsFile() is the first templateGenerator instance (rc.12), which is why the
+// documents framing stuck; it is the first instance, not the boundary.
 
 import type { MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
 import { render, type Provider, type RenderFormat } from "@metaobjectsdev/render";

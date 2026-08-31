@@ -59,7 +59,15 @@ rejected (exit 2).
 C# does not scaffold-and-own generators — the generators are provided by
 `MetaObjects.Codegen` and are not meant to be copied into the consumer project.
 There is no analog to the TS `codegen/generators/*.ts` pattern here. Generator
-selection uses stable names via `dotnet meta gen --generators <names>`.
+selection uses stable names via `dotnet meta gen --generators <names>`, over a
+**closed built-in registry** — there is no seam to register a generator of your own.
+
+**So do not score a C# project down for "not owning its generators", and do not
+recommend writing one.** The customization path here is the **declarative template**:
+`dotnet meta gen --template-spec <json> --template-root <dir>`, whose entries append to
+the default suite. A finding of the form "the built-ins do not emit the shape this
+project needs" resolves to a template-spec, not to generator code. Worked example with
+the full JSON: `docs/ports/csharp.md`.
 
 To re-scaffold the agent-context into a C# project, use the Node `meta` CLI (the
 single agent-docs assembler per ADR-0033):

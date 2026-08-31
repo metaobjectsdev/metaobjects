@@ -60,6 +60,15 @@ Java does not scaffold-and-own generators — they are provided by
 `metaobjects-codegen-spring` and wired by FQ class name in `pom.xml`. There is no
 analog to the TS `codegen/generators/*.ts` pattern here.
 
+Java does, however, have **both** authoring paths, so a project needing a shape the
+built-ins do not emit has two legitimate answers and neither is a finding on its own:
+a **programmatic** generator (implement `com.metaobjects.generator.Generator`, name the
+class in a `<generator>` element — the plugin loads it from the project classpath), or a
+**declarative template** (`TemplateScopeGenerator`, wired with `<template>` / `<scope>` /
+`<outputPattern>` / `<format>` / `<templatesDir>`). Prefer the template when the output
+SHAPE is the thing being iterated on or the same output is wanted in another language;
+prefer code when the logic is gnarly. See `docs/features/codegen-concepts.md` §3.
+
 To re-scaffold the agent-context into a Java project, use the Node `meta` CLI (the
 single agent-docs assembler per ADR-0033):
 
