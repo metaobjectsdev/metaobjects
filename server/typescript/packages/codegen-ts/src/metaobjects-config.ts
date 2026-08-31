@@ -179,6 +179,9 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
   emitAbstractShapes?: boolean;
   /** Docs-output config consumed by the `meta docs` door. See {@link DocsConfig}. */
   docs?: DocsConfig;
+  /** `meta verify` / `meta gen` advisory settings. Nothing here affects codegen.
+   *  See {@link VerifyConfig}. */
+  verify?: VerifyConfig;
   /** Named output destinations. Generators reference one via `target`. */
   targets?: Record<string, TargetConfig>;
   /** importBase for the default target (top-level outDir). */
@@ -240,6 +243,33 @@ export interface ApiSurface {
 /** The single docs-output config: where ALL doc surfaces go, how pages are laid
  *  out, and which surfaces to emit. Read by the `meta docs` door (and, when the
  *  api surface fans out, by each port's docs command). */
+/**
+ * `meta verify` settings. Nothing here changes what codegen emits.
+ *
+ * This block existed once before, for `verify.testFiles`, and was removed in 0.24.0 with
+ * the `@verifiedBy` vocabulary it served. It returns for exactly the reason it was added:
+ * the advisory scans carry a list of conventions that is, unavoidably, a guess about
+ * someone else's repository. Built-in defaults for the layouts that demonstrably exist,
+ * PLUS a project-declared list, is the shape that survives being wrong.
+ */
+export interface VerifyConfig {
+  /**
+   * Path globs the "you hand-rolled what MetaObjects models" advisory skips entirely.
+   * Relative to the project root, forward-slash, `**` spans separators; a glob matching a
+   * directory prunes the whole subtree. ADDS to the built-in exclusions rather than
+   * replacing them.
+   *
+   *   verify: { antiPatternIgnore: ["db/changelog/**", "vendor/sql/**"] }
+   *
+   * Reach for this when the advisory reports a file you cannot act on — a vendored SQL
+   * archive, read-only reference DDL, a migration tool whose naming the built-ins do not
+   * recognise. It is deliberately narrower than `--no-antipatterns`: silencing the whole
+   * scan to quiet one directory is how a useful advisory gets switched off wholesale, the
+   * same failure `--no-requirement-lint` was carved out to avoid.
+   */
+  antiPatternIgnore?: string[];
+}
+
 export interface DocsConfig {
   outDir?: string;
   layout?: OutputLayout;

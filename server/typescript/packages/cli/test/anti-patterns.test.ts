@@ -124,3 +124,246 @@ describe("scanSourceForAntiPatterns", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Immutable migration files (the anti-cry-wolf tier).
+//
+// A historical migration a runner has already applied cannot be edited — Flyway
+// checksums it and refuses to start against a database whose recorded checksum
+// moved — so a finding on one is advice nobody can take, and a section full of
+// unactionable advice is a section the reader learns to skip. The bodies below
+// are the real thing: `SUM(` from a view in a baseline, and the
+// `CHECK (... IN (...))` that MetaObjects' OWN field.enum DDL emits.
+// ---------------------------------------------------------------------------
+
+/** A baseline body that trips rule 1 (SUM) and rule 3 (CHECK ... IN). */
+const MIGRATION_BODY =
+  "CREATE VIEW v_totals AS SELECT order_id, SUM(amount) AS total FROM lines GROUP BY order_id;\n" +
+  "ALTER TABLE orders ADD COLUMN status varchar NOT NULL CHECK (status IN ('open','closed'));\n";
+
+describe("scanSourceForAntiPatterns — immutable migration files", () => {
+  test("that body really does trip two rules when it is NOT a migration (control)", () => {
+    // Without this control every exclusion case below could pass vacuously.
+    const root = scaffold({ "db/schema-changes.sql": MIGRATION_BODY });
+    try {
+      const rules = scanSourceForAntiPatterns(root).map((f) => f.rule).sort();
+      expect(rules).toEqual(["enum-check", "hand-rolled-aggregate"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a Flyway V001__ baseline is silent even in a directory with no ignored segment name", () => {
+    // `db/migration` (SINGULAR) is Flyway's own convention and the directory this
+    // repo's own adapter documents as its target; `sql/` is neither. Both must be
+    // silent — the FILENAME is what identifies a migration.
+    const root = scaffold({
+      "src/main/resources/db/migration/V001__baseline.sql": MIGRATION_BODY,
+      "sql/V001__baseline.sql": MIGRATION_BODY,
+    });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("db/migration (SINGULAR) is ignored as a directory, not only by filename", () => {
+    // The directory half of the fix, pinned independently of the filename half:
+    // Flyway's callbacks (afterMigrate.sql, beforeEachMigrate.sql) live in the same
+    // directory and wear none of the V/U/R name shapes, so only the segment covers
+    // them. `migration` singular is Flyway's own convention and the exact path this
+    // repo's adapter documents (write-migration-flyway.ts) — emitting there and then
+    // flagging what we wrote is the defect.
+    const root = scaffold({
+      "src/main/resources/db/migration/afterMigrate.sql": MIGRATION_BODY,
+    });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the V1.1__ and V1_0__ multi-part version forms are excluded too", () => {
+    // Both spellings are legal Flyway (write-migration-flyway.ts's VERSIONED_RE
+    // comment: Flyway pads versions for comparison, so 1 == 1.0). Missing either
+    // leaves half a real estate's history flagged.
+    const root = scaffold({
+      "sql/V1.1__add_view.sql": MIGRATION_BODY,
+      "sql/V1_0__init.sql": MIGRATION_BODY,
+      "sql/V10.5.2__deep_version.sql": MIGRATION_BODY,
+    });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("Flyway undo (U) files are excluded — an undo is as un-editable as its up half", () => {
+    // U__ files are emitted by this repo's own writeMigrationFlyway alongside the
+    // V half; flagging our own output is the defect this whole tier exists for.
+    const root = scaffold({
+      "sql/U001__baseline.sql": MIGRATION_BODY,
+      "sql/U1_0__init.sql": MIGRATION_BODY,
+    });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a stray Flyway REPEATABLE (R__) outside db/migration IS still scanned", () => {
+    // Deliberate asymmetry with V__/U__, and it is the rule's own definition doing the
+    // work: Flyway RE-APPLIES a repeatable migration whenever its checksum changes, so
+    // editing one is the sanctioned workflow, not a forbidden act. A finding on it is
+    // therefore ACTIONABLE — and this exclusion tier exists to drop findings that are
+    // NOT. Excluding R__ would silence a real one.
+    //
+    // Pinned rather than left as a silent absence, so re-adding `/^R__/` to the list
+    // fails here and has to argue with this comment first.
+    const root = scaffold({ "src/reports/R__refresh_totals_view.sql": MIGRATION_BODY });
+    try {
+      expect(scanSourceForAntiPatterns(root).length).toBeGreaterThan(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a repeatable script in Flyway's OWN directory is still excluded, by segment", () => {
+    // The practical blast radius of the decision above: R__ scripts live in
+    // db/migration, which IGNORE_SEGMENTS covers, so the asymmetry only ever bites a
+    // stray. Both halves are pinned because only the pair shows the rule is coherent.
+    const root = scaffold({ "db/migration/R__refresh_totals_view.sql": MIGRATION_BODY });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("timestamp- and zero-padded-sequence migration filenames are excluded", () => {
+    const root = scaffold({
+      // 14-digit YYYYMMDDHHMMSS (Rails / Knex / Sequelize) and 13-digit epoch ms
+      // (node-pg-migrate).
+      "db/20240115120000_add_users.sql": MIGRATION_BODY,
+      "db/1500000000000-add-users.sql": MIGRATION_BODY,
+      // Zero-padded sequence: Drizzle Kit's default `out` is ./drizzle, which no
+      // directory name in IGNORE_SEGMENTS covers.
+      "drizzle/0000_lush_rockslide.sql": MIGRATION_BODY,
+      // This repo's own D1 adapter pads to 4; golang-migrate pads to 6 and uses
+      // the .up.sql/.down.sql suffix pair.
+      "db/0001_init.sql": MIGRATION_BODY,
+      "db/000001_create_users.up.sql": MIGRATION_BODY,
+      "db/000001_create_users.down.sql": MIGRATION_BODY,
+    });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a timestamped per-migration DIRECTORY holding up.sql/down.sql is excluded", () => {
+    // The shape this repo's own default writer emits (write-migration.ts:
+    // <YYYYMMDDHHMMSS>-<slug>/up.sql + down.sql). Under a project-chosen
+    // migrate.outDir no `migrations` segment covers it.
+    const root = scaffold({
+      "db/changes/20240115120000-init/up.sql": MIGRATION_BODY,
+      "db/changes/20240115120000-init/down.sql": MIGRATION_BODY,
+      // Prisma's per-migration dir holds a file called migration.sql; the
+      // directory name is what excludes it.
+      "db/changes/20240116090000_add_status/migration.sql": MIGRATION_BODY,
+    });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("ANTI-CRY-WOLF PIN: a hand-written .sql that is not a migration is STILL flagged", () => {
+    // Do not delete this as redundant with the control above. The control proves
+    // the body trips the rules; THIS proves the exclusion did not swallow ordinary
+    // authored SQL — an over-broad exclusion silences real findings, which is the
+    // same failure pointed the other way and is the one nobody notices.
+    const root = scaffold({
+      "src/analytics/monthly_totals.sql": MIGRATION_BODY,
+      // Four leading digits are a year or a quarter, not a padded sequence, and a
+      // dated report is exactly the file an over-broad numeric prefix would eat.
+      "src/analytics/2024_q1_revenue.sql": MIGRATION_BODY,
+      // A version-ish name that is not Flyway's grammar (no __ separator).
+      "src/analytics/v2_totals.sql": MIGRATION_BODY,
+    });
+    try {
+      const files = [...new Set(scanSourceForAntiPatterns(root).map((f) => f.file))].sort();
+      expect(files).toEqual([
+        "src/analytics/2024_q1_revenue.sql",
+        "src/analytics/monthly_totals.sql",
+        "src/analytics/v2_totals.sql",
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a migration-shaped NAME in ordinary source is excluded — name beats location", () => {
+    // The deliberate call, pinned so it is a decision rather than an accident: the
+    // exclusion keys on the filename wherever it sits, because that is the only
+    // thing that survives a project putting its migrations somewhere we cannot
+    // guess (the directory-list failure this fix exists to stop repeating). The
+    // cost is bounded: V001__/0000_/20240115120000_ are not names an ordinary
+    // query or schema file wears, so the case being given up is close to empty.
+    const root = scaffold({ "src/db/V2__add_index.sql": MIGRATION_BODY });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a migration-shaped name in a NON-sql extension is still scanned", () => {
+    // The up/down rule is deliberately .sql-only: `up.ts` and `down.ts` are not
+    // migration names, and excluding them would silence real TypeScript findings.
+    const root = scaffold({
+      "src/lib/up.ts": "const total = rows.reduce((a, r) => a + r.value, 0);",
+    });
+    try {
+      expect(scanSourceForAntiPatterns(root).map((f) => f.file)).toEqual(["src/lib/up.ts"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("scanSourceForAntiPatterns — project-declared ignore globs", () => {
+  test("a declared glob silences a layout the built-ins cannot know about", () => {
+    const root = scaffold({ "db/legacy/schema_v3.sql": MIGRATION_BODY });
+    try {
+      expect(scanSourceForAntiPatterns(root).length).toBeGreaterThan(0);
+      expect(scanSourceForAntiPatterns(root, { ignore: ["db/legacy/**"] })).toEqual([]);
+      // A glob naming the directory itself prunes the subtree.
+      expect(scanSourceForAntiPatterns(root, { ignore: ["db/legacy"] })).toEqual([]);
+      // `**` spans separators; `*` does not, so this must NOT match db/legacy/*.
+      expect(scanSourceForAntiPatterns(root, { ignore: ["db/*.sql"] }).length).toBeGreaterThan(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("declared globs ADD to the built-ins, never replace them", () => {
+    const root = scaffold({
+      "sql/V001__baseline.sql": MIGRATION_BODY,
+      "src/analytics/monthly_totals.sql": MIGRATION_BODY,
+    });
+    try {
+      const files = scanSourceForAntiPatterns(root, { ignore: ["nothing/matches/**"] })
+        .map((f) => f.file);
+      expect([...new Set(files)]).toEqual(["src/analytics/monthly_totals.sql"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
