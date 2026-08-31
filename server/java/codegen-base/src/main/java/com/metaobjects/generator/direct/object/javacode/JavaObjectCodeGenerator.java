@@ -3,6 +3,7 @@ package com.metaobjects.generator.direct.object.javacode;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.loader.MetaDataLoader;
@@ -147,7 +148,10 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         sb.append("    }\n");
         sb.append("}\n");
 
-        Files.write(src.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+        // Guarded: the header above carries the GENERATED marker, so this is overwritten freely
+        // while a hand-written provider at the same path is refused. Byte-identical to the
+        // previous raw Files.write (UTF-8).
+        GeneratedFileWriter.write(src.toPath(), sb.toString());
     }
 
     /** Emit the {@code META-INF/services} registration naming the generated provider. */
@@ -156,6 +160,10 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                 "META-INF" + File.separatorChar + "services");
         if (!servicesDir.exists()) servicesDir.mkdirs();
         File services = new File(servicesDir, ObjectClassBindingProvider.class.getName());
+        // NOT routed through GeneratedFileWriter, deliberately: a META-INF/services file's
+        // content is a bare provider FQN with nowhere to carry a GENERATED marker. Guarding it
+        // would make the FIRST run write and every run after refuse — the artifact frozen while
+        // the build stays green, which is the failure the guard exists to prevent.
         Files.write(services.toPath(), (PROVIDER_FQN + "\n").getBytes(StandardCharsets.UTF_8));
     }
 

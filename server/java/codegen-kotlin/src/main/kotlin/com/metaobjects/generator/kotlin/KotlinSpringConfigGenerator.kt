@@ -82,10 +82,12 @@ open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject
             typeBuilder.addFunction(buildValidatorFn(resources))
         }
 
-        FileSpec.builder(pkg, className)
-            .addType(typeBuilder.build())
-            .build()
-            .writeTo(Paths.get(outDir.absolutePath))
+        KotlinPoetFileWriter.write(
+            FileSpec.builder(pkg, className)
+                .addType(typeBuilder.build())
+                .build(),
+            Paths.get(outDir.absolutePath)
+        )
     }
 
     /**

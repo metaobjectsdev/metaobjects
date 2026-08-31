@@ -1,9 +1,9 @@
 package com.metaobjects.generator.direct.object.javacode;
 
+import com.metaobjects.generator.util.GeneratedFileWriter;
+
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 
 /**
  * Emits a generated {@code <Name>Extractor} — the Task-6 payoff that wraps the Phase-B
@@ -82,7 +82,10 @@ public class ExtractorCodeGenerator {
         writeExtractLenientMethod(sb, className);
         writeFooter(sb);
 
-        Files.write(src.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+        // Guarded like every other generator on this port: writeHeader emits the GENERATED
+        // marker, so our own output is still overwritten freely while a hand-written extractor
+        // at this path is refused. Byte-identical to the previous raw Files.write (UTF-8).
+        GeneratedFileWriter.write(src.toPath(), sb.toString());
     }
 
     /** Emit the package declaration, JavaDoc, and the {@code final class} header + private ctor. */

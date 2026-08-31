@@ -194,10 +194,12 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             )
         }
 
-        FileSpec.builder(outPkg, className)
-            .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
-            .build()
-            .writeTo(outRoot)
+        KotlinPoetFileWriter.write(
+            FileSpec.builder(outPkg, className)
+                .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
+                .build(),
+            outRoot
+        )
     }
 
     /**

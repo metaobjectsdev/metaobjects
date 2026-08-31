@@ -61,10 +61,16 @@ internal object KotlinEnumEmitter {
         for (member in members) {
             enumBuilder.addEnumConstant(member)
         }
-        FileSpec.builder(enumClassName.packageName, enumClassName.simpleName)
-            .addType(enumBuilder.build())
-            .build()
-            .writeTo(outRoot)
+        KotlinPoetFileWriter.write(
+            FileSpec.builder(enumClassName.packageName, enumClassName.simpleName)
+                .addType(enumBuilder.build())
+                .build(),
+            outRoot
+        )
+        // Returns true for "this emitter handled the FQN", which is what the caller's dedupe
+        // set means — deliberately NOT "bytes hit the disk". A refused (hand-owned) enum file
+        // must still consume its FQN, or a second field sharing the enum super would re-emit
+        // and re-refuse, turning one WARN into one per referencing field.
         return true
     }
 

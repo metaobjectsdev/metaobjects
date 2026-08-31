@@ -242,7 +242,10 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
             .build()
 
-        fileSpec.writeTo(outRoot)
+        // Guarded: `<Entity>.kt` is the file an adopter is most likely to want to own, and a
+        // raw FileSpec.writeTo would overwrite a hand-written one unconditionally. The KDoc
+        // above carries the GENERATED marker, so our own output is still overwritten freely.
+        KotlinPoetFileWriter.write(fileSpec, outRoot)
     }
 
     /**
@@ -292,10 +295,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             typeBuilder.addProperty(propBuilder.build())
         }
 
-        FileSpec.builder(pkg, className)
-            .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
-            .build()
-            .writeTo(outRoot)
+        KotlinPoetFileWriter.write(
+            FileSpec.builder(pkg, className)
+                .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
+                .build(),
+            outRoot
+        )
     }
 
     /**
@@ -327,10 +332,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             )
         }
 
-        FileSpec.builder(pkg, shortName)
-            .addType(typeBuilder.build())
-            .build()
-            .writeTo(outRoot)
+        KotlinPoetFileWriter.write(
+            FileSpec.builder(pkg, shortName)
+                .addType(typeBuilder.build())
+                .build(),
+            outRoot
+        )
     }
 
     /**

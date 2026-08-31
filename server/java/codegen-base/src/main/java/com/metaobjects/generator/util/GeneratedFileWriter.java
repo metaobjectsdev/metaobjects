@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  *
  * <p><b>WHAT THIS GUARD MUST NOT WRAP.</b> It only fits output whose header <i>we</i>
  * control, because "no marker ⇒ not ours" is sound only when our own emitters always
- * write the marker. Two write paths deliberately bypass it, and re-routing them would
+ * write the marker. These write paths deliberately bypass it, and re-routing them would
  * break them silently rather than loudly:
  *
  * <ul>
@@ -47,9 +47,13 @@ import java.util.regex.Pattern;
  *       which emit no marker and are under no obligation to.</li>
  *   <li>{@code TemplateScopeGenerator} — emits whatever a user's {@code --template-spec}
  *       renders (SQL, markdown, CSV); the content is not ours to require a marker of.</li>
+ *   <li>{@code MustacheTemplateGenerator} — same reason: the body comes from a user-supplied
+ *       mustache template, in an output format we do not choose.</li>
+ *   <li>{@code JavaObjectCodeGenerator}'s {@code META-INF/services} registration — the file's
+ *       entire content is a bare provider FQN, with nowhere to put a marker.</li>
  * </ul>
  *
- * <p>Guarding either made the FIRST run write and every run after refuse, so the artifact
+ * <p>Guarding any of these made the FIRST run write and every run after refuse, so the artifact
  * froze while the build stayed green — the exact silent-staleness failure this class was
  * added to prevent, produced by the class itself. Before wrapping a new write site, check
  * that its emitter actually writes the marker.
