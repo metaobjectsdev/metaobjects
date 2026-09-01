@@ -17,6 +17,8 @@ import {
   isTphDiscriminatorBase,
   collectTphSubtypeFields,
   isSortableField,
+  viewForContext,
+  VIEW_CONTEXT_GRID,
 } from "@metaobjectsdev/codegen-ts";
 
 /** FR-017 TPH grid context, threaded into extractGrids when the entity is a
@@ -53,8 +55,10 @@ function humanize(s: string): string {
 }
 
 function fieldViewKind(field: MetaField): string {
+  // #356: the view declared for the GRID, never whichever view came first — a
+  // field declaring a form control and a grid cell must render both.
   // ADR-0039: resolving — a field's view may be inherited via extends.
-  const view = field.views()[0];
+  const view = viewForContext(field, VIEW_CONTEXT_GRID);
   return view?.subType ?? "text";
 }
 
@@ -67,7 +71,8 @@ function fieldLabel(field: MetaField): string {
   // View first, then the field itself: a view-level title is the more specific override
   // (this rendering of the field); a field-level one names the field wherever it appears.
   // ADR-0039: resolving — a field's view (and its @title) may be inherited via extends.
-  const viewTitle = field.views()[0]?.attr("title");
+  // #356: the GRID's own view — a form control's @title must not retitle a column.
+  const viewTitle = viewForContext(field, VIEW_CONTEXT_GRID)?.attr("title");
   if (typeof viewTitle === "string" && viewTitle.length > 0) return viewTitle;
   const fieldTitle = field.attr("title");
   if (typeof fieldTitle === "string" && fieldTitle.length > 0) return fieldTitle;

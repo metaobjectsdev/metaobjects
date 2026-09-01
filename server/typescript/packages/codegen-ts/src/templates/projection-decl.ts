@@ -21,6 +21,7 @@ import { valueObjectModuleSpecifier } from "../import-path.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
+import { VIEW_CONTEXT_FORM } from "../view-context.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { primaryIdentityFieldNames } from "./zod-validators.js";
 
@@ -143,10 +144,12 @@ export function renderProjectionDecl(
     // declared or inherited physical name. ADR-0039: resolving accessor, so a projection
     // field inheriting @column through `extends` resolves it.
     const dbCol = resolveColumnName(f, columnNamingStrategy);
-    const view = inferViewKind(f);
-    const label = labelFor(f);
+    // #356 — a projection's descriptor is the same shape the entity descriptor
+    // emits (entity-constants.ts resolveView), so it reads the same surface.
+    const view = inferViewKind(f, VIEW_CONTEXT_FORM);
+    const label = labelFor(f, VIEW_CONTEXT_FORM);
     const baseEntry = `name: ${JSON.stringify(f.name)}, label: ${JSON.stringify(label)}, view: ${JSON.stringify(view)}, dbCol: ${JSON.stringify(dbCol)}`;
-    const currencyMeta = currencyMetaFor(f);
+    const currencyMeta = currencyMetaFor(f, VIEW_CONTEXT_FORM);
     if (currencyMeta !== null) {
       return `  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(currencyMeta.currency)}, locale: ${JSON.stringify(currencyMeta.locale)} },`;
     }

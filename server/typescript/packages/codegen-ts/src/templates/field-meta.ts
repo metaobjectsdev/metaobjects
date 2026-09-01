@@ -35,6 +35,7 @@ import {
   VIEW_CURRENCY_ATTR_LOCALE_DEFAULT,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
+import { viewForContext } from "../view-context.js";
 import { ZOD_INET_EXPR } from "./net-regex.js";
 
 // ---------------------------------------------------------------------------
@@ -42,12 +43,16 @@ import { ZOD_INET_EXPR } from "./net-regex.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the cell-renderer key (view kind) for a field.
- * Explicit view child wins; field subType determines default.
+ * Resolve the cell-renderer key (view kind) for a field, for the surface named
+ * by `context`.
+ *
+ * An explicit view declared for THAT surface wins; field subType determines the
+ * default. #356: `context` is required rather than defaulting, because a caller
+ * that omits it is exactly the caller that renders somebody else's view.
  */
-export function inferViewKind(field: MetaField): string {
-  // Explicit view (own or inherited via extends) has highest priority.
-  const viewChild = field.views()[0];
+export function inferViewKind(field: MetaField, context: string): string {
+  // Explicit view for this surface (own or inherited via extends) has highest priority.
+  const viewChild = viewForContext(field, context);
   if (viewChild) return viewChild.subType;
   // Field subtype → default view.
   return defaultViewForSubType(field.subType);
@@ -152,14 +157,25 @@ export function zodTypeFor(field: MetaField, timestampMode: "date" | "string" = 
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve currency code + locale for a currency-subtype field.
- * Returns null for non-currency fields.
+ * Resolve currency code + locale for a currency-subtype field, for the surface
+ * named by `context`. Returns null for non-currency fields.
  */
-export function currencyMetaFor(field: MetaField): { currency: string; locale: string } | null {
+export function currencyMetaFor(
+  field: MetaField,
+  context: string,
+): { currency: string; locale: string } | null {
   if (field.subType !== FIELD_SUBTYPE_CURRENCY) return null;
   const currency =
     (field.attr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
-  const viewChild = field.views().find((c) => c.subType === VIEW_SUBTYPE_CURRENCY);
+  // #356: the surface's own view carries the @locale for that surface — two
+  // currency views with different locales must not be resolved by position.
+  // When the surface's view is NOT a currency view (or there is none), keep the
+  // pre-#356 scan: an authored @locale anywhere on the field beats the default.
+  const contextView = viewForContext(field, context);
+  const viewChild =
+    contextView?.subType === VIEW_SUBTYPE_CURRENCY
+      ? contextView
+      : field.views().find((c) => c.subType === VIEW_SUBTYPE_CURRENCY);
   // ADR-0039: resolving — a view may inherit @locale via extends.
   const locale =
     (viewChild?.attr(VIEW_CURRENCY_ATTR_LOCALE) as string | undefined) ??
@@ -172,21 +188,21 @@ export function currencyMetaFor(field: MetaField): { currency: string; locale: s
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the human-readable label for a field.
- * Uses the registered `@title` common attr — on a view child first, else on the field
- * itself; otherwise humanizes the field name.
+ * Resolve the human-readable label for a field, for the surface named by `context`.
+ * Uses the registered `@title` common attr — on that surface's view first, else on the
+ * field itself; otherwise humanizes the field name.
  *
  * #353 — this read `@label`, which no provider registers on any `view.*` subtype, so the
  * override branch was unreachable: authoring it fails the strict load `meta verify` runs
  * (ERR_UNKNOWN_ATTR). `title` is already a registered common attr on every node and
  * already means "a noun phrase", so nothing was registered for this (ADR-0037 step 0).
  */
-export function labelFor(field: MetaField): string {
-  for (const child of field.views()) {
-    // ADR-0039: resolving — a view may inherit @title via extends.
-    const title = child.attr("title");
-    if (typeof title === "string" && title.length > 0) return title;
-  }
+export function labelFor(field: MetaField, context: string): string {
+  // #356: the label reads the view for THIS surface, not whichever view was
+  // declared first — a grid header must not retitle the form's field.
+  // ADR-0039: resolving — a view may inherit @title via extends.
+  const title = viewForContext(field, context)?.attr("title");
+  if (typeof title === "string" && title.length > 0) return title;
   const fieldTitle = field.attr("title");
   if (typeof fieldTitle === "string" && fieldTitle.length > 0) return fieldTitle;
   return humanize(field.name);

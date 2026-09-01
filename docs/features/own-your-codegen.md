@@ -182,6 +182,28 @@ ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
   the declarative template surface). This split follows each ecosystem's norms
   rather than forcing a single mechanism.
 
+## Reading a field's view: name the surface, never take the first
+
+A field may declare several `view.*` children, one per surface it renders on. An owned
+TS generator must select the one named for the surface it emits:
+
+```ts
+import { viewForContext } from "@metaobjectsdev/codegen-ts";
+
+const view = viewForContext(field, "grid"); // "form", "grid", or your own surface name
+```
+
+`field.views()[0]` is the wrong read and reinstates a fixed bug: with several views the
+first-declared one wins, so reordering two lines of JSON silently changes generated
+output — and, because more than one generator reads the same list, one declaration ends
+up driving unrelated surfaces at once. `viewForContext` returns the single view when a
+field declares only one (so simple models are unaffected whatever that view is named),
+and throws — naming the field, its views and the surface — when several are declared and
+none is named for yours.
+
+The packaged generators use `form` and `grid`; an owned generator rendering a third
+surface passes its own name and tells its authors what to name.
+
 ## Custom types (custom providers)
 
 Beyond owning the *generators*, you can extend the *metamodel itself* — register your

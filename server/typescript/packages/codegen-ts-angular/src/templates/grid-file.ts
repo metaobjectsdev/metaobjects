@@ -14,7 +14,12 @@ import {
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
-import { GENERATED_HEADER, entityModuleSpecifier } from "@metaobjectsdev/codegen-ts";
+import {
+  GENERATED_HEADER,
+  entityModuleSpecifier,
+  viewForContext,
+  VIEW_CONTEXT_GRID,
+} from "@metaobjectsdev/codegen-ts";
 
 interface ColumnSpec {
   id:        string;
@@ -38,8 +43,10 @@ function humanize(s: string): string {
 }
 
 function fieldViewKind(field: MetaField): string {
+  // #356: the view declared for the GRID (the same surface the TanStack tier
+  // renders), never whichever view came first.
   // ADR-0039: resolving — a field's view may be inherited via extends.
-  const view = field.views()[0];
+  const view = viewForContext(field, VIEW_CONTEXT_GRID);
   return view?.subType ?? "text";
 }
 
@@ -48,7 +55,8 @@ function fieldLabel(field: MetaField): string {
   // the override branch was unreachable (ERR_UNKNOWN_ATTR under the strict registry).
   // `title` is the registered common attr that already means "a noun phrase".
   // ADR-0039: resolving — a field's view (and its @title) may be inherited via extends.
-  const viewTitle = field.views()[0]?.attr("title");
+  // #356: the GRID's own view — a form control's @title must not retitle a column.
+  const viewTitle = viewForContext(field, VIEW_CONTEXT_GRID)?.attr("title");
   if (typeof viewTitle === "string" && viewTitle.length > 0) return viewTitle;
   const fieldTitle = field.attr("title");
   if (typeof fieldTitle === "string" && fieldTitle.length > 0) return fieldTitle;

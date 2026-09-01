@@ -92,6 +92,10 @@ export { isProjection, isWriteThrough } from "./projection/projection-detector.j
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
 export { servesReadApi, servesWriteApi } from "./api-surface.js";
+// #356 — every emitter selects a field's view by the SURFACE it renders, never by
+// declaration position. An owned generator (FR-040) composing the render layer must
+// use this too, or it reinstates the order-dependence in its own copy.
+export { viewForContext, VIEW_CONTEXT_FORM, VIEW_CONTEXT_GRID } from "./view-context.js";
 // The DB-free descriptor module the UI tier imports from (see entity-meta-file.ts).
 export { renderEntityMetaFile, entityMetaFileName, entityMetaSpecifier } from "./templates/entity-meta-file.js";
 // FR-017 TPH helpers — used by the per-framework codegen packages (tanstack,

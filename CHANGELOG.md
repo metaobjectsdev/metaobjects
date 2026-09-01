@@ -7,6 +7,47 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — every emitter read `views()[0]`, so declaration order decided generated output (#356)
+
+A field may legally declare more than one `view.*` child and every one survives the load, but
+each of the five TS emitters read `field.views()[0]`. So **declaration order silently decided
+generated output** — and because several emitters read the same list, one declaration drove
+three unrelated surfaces at once. Reordering two lines of JSON with no semantic change moved
+the control:
+
+| generated surface | dropdown declared first | text declared first |
+|---|---|---|
+| `AuditEntry.form.tsx` | `<select>` | **`<input>`** |
+| `AuditEntry.meta.ts` descriptor | `view: "dropdown"` | **`view: "text"`** |
+
+It was hit the ordinary way: declaring a `view.text` so the GRID cell rendered as text
+degraded the generated FORM to an `<input>`. That is not a modelling mistake — it is the only
+possible outcome when one declaration serves three readers.
+
+Each emitter now selects the view **named for the surface it renders**, through one shared
+`viewForContext(field, context)` exported from `@metaobjectsdev/codegen-ts`. The selector is
+the view's `name`, a reserved structural key already legal on every node, so **nothing is
+registered for this: no new attribute, no provider, and no `metamodelVersion` move** — the
+same shape as #353's resolution (the fix is the read, not the registry). Two surface names
+exist: `form` (the React form AND the `<Entity>` descriptor, whose every other key —
+`htmlType`, `placeholder`, `helpText`, `rules` — is a form-input attribute consumed by
+`useEntityForm`) and `grid` (the TanStack and Angular columns).
+
+**A field declaring ONE view is unaffected, whatever it is named.** That short-circuit is
+load-bearing rather than cosmetic: a view's `name` is already how it is ADDRESSED by `extends`
+(ADR-0029 `Customer.priceCents.display`, the only view name any model in this repo uses), so
+scoping a lone view by its name would have silently dropped it from every surface.
+
+**Several views and none named for the surface is a hard error**, naming the field, the views
+found and the surface wanted. Falling back to `views()[0]` would reinstate the positional read
+for exactly the multi-view case this exists to fix, and falling back to the inferred default
+would turn a `name` typo (`"forms"`) into a silently degraded control.
+
+Fixed in **five** packages, not the four the report listed — `codegen-ts-angular` reads the
+same `[0]` and, though source-only (ADR-0048), builds in-repo and would have drifted from the
+grid tier it is modelled on. No generated output in this repo changes: not one model here
+declares two views on a field, which is also why nothing caught this.
+
 ### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
 
 The declarative Mustache template-spec was wired into `gen` and nowhere else, so the drift

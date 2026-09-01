@@ -58,7 +58,14 @@ import {
   VIEW_IMAGE_ATTR_ACCEPT,
   VIEW_IMAGE_ATTR_MAX_BYTES,
 } from "@metaobjectsdev/metadata";
-import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts";
+import {
+  type RenderContext,
+  entityModuleSpecifier,
+  GENERATED_HEADER,
+  tphDiscriminatorPin,
+  viewForContext,
+  VIEW_CONTEXT_FORM,
+} from "@metaobjectsdev/codegen-ts";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
@@ -282,8 +289,8 @@ ${inner.join("\n")}
 /** The view kind that drives control selection: an explicit view child wins;
  *  an enum with no view defaults to a dropdown; otherwise null (typed <input>).
  *  Takes the already-resolved view (callers that also need view attrs, like
- *  the textarea `@rows` lookup, fetch it once via `field.views()[0]` and
- *  pass it through rather than re-deriving it here). */
+ *  the textarea `@rows` lookup, fetch it once via `viewForContext(field,
+ *  VIEW_CONTEXT_FORM)` and pass it through rather than re-deriving it here). */
 function viewKindFor(field: MetaField, view: MetaView | undefined): string | null {
   if (view !== undefined) return view.subType;
   if (field.subType === FIELD_SUBTYPE_ENUM) return VIEW_SUBTYPE_DROPDOWN;
@@ -318,7 +325,8 @@ function blankableOptionalFields(fields: readonly MetaField[]): string[] {
     .filter((f) => f.attr(FIELD_ATTR_REQUIRED) !== true)
     .filter((f) => f.subType !== FIELD_SUBTYPE_OBJECT && !f.resolvedIsArray())
     .filter((f) => {
-      const kind = viewKindFor(f, f.views()[0]); // resolving accessor (ADR-0039)
+      // #356 + ADR-0039: the view declared for the FORM, resolving through extends.
+      const kind = viewKindFor(f, viewForContext(f, VIEW_CONTEXT_FORM));
       return kind !== VIEW_SUBTYPE_CHECKBOX && kind !== VIEW_SUBTYPE_IMAGE;
     })
     .map((f) => f.name);
@@ -440,7 +448,8 @@ ${control}
   // scalarBlock's typed <input> bound via `form.input.<field>`.
   const fieldControlFor = (field: MetaField): string => {
     const name = field.name;
-    const view = field.views()[0]; // resolving accessor (ADR-0039)
+    // #356 + ADR-0039: the view declared for the FORM, resolving through extends.
+    const view = viewForContext(field, VIEW_CONTEXT_FORM);
     const kind = viewKindFor(field, view);
     // Enum member symbols are validated to /^[A-Za-z_][A-Za-z0-9_]*$/, so raw
     // interpolation into JSX attribute/text positions is safe (no escaping).
@@ -535,7 +544,9 @@ ${control}
   // Only pull in Controller + ImageUpload when a view.image field needs them —
   // a native <input> can't drive a file-upload control's value/onChange
   // contract, so image fields are wrapped in react-hook-form's <Controller>.
-  const hasImage = fields.some((f) => f.views()[0]?.subType === VIEW_SUBTYPE_IMAGE);
+  const hasImage = fields.some(
+    (f) => viewForContext(f, VIEW_CONTEXT_FORM)?.subType === VIEW_SUBTYPE_IMAGE,
+  );
   const imageImports = hasImage
     ? `import { Controller } from "react-hook-form";\nimport { ImageUpload } from "@metaobjectsdev/react";\n`
     : "";

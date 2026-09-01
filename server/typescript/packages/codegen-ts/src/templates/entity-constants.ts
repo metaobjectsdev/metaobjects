@@ -52,6 +52,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { resolveTableName, pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
+import { viewForContext, VIEW_CONTEXT_FORM } from "../view-context.js";
 
 /** Convert a camelCase or PascalCase field name to a human-friendly label. */
 function humanize(s: string): string {
@@ -76,13 +77,23 @@ export function resourcePath(entity: MetaData): string {
   return `/${pluralize(toSnakeCase(entity.name))}`;
 }
 
-/** Resolve the view subtype: explicit `view` child (own or inherited) wins, else inferred from field subType. */
+/**
+ * Resolve the view subtype: the explicit `view` child declared for the FORM (own
+ * or inherited) wins, else inferred from field subType.
+ *
+ * #356 — the descriptor's surface is the form. Everything beside `view` in a
+ * field entry (`htmlType`, `placeholder`, `helpText`, `rules`) is a form-input
+ * attribute, and `useEntityForm` is the descriptor's only consumer; the grid tiers
+ * compute their own view kind at codegen time and never read this. So a field
+ * declaring several views drives this from the one named "form" — the same view
+ * the generated `<Entity>.form.tsx` renders, which is what keeps the two agreeing.
+ */
 function resolveView(field: MetaField): { view: string; viewNode?: MetaData } {
-  const viewChild = field.views()[0];
+  const viewChild = viewForContext(field, VIEW_CONTEXT_FORM);
   if (viewChild) {
     return { view: viewChild.subType, viewNode: viewChild };
   }
-  return { view: inferViewKind(field) };
+  return { view: inferViewKind(field, VIEW_CONTEXT_FORM) };
 }
 
 /**
@@ -182,7 +193,7 @@ function renderFieldRules(field: MetaField): string | undefined {
 /** Build one nested field-object entry like `email: { name, label, ... },`. */
 function renderFieldEntry(field: MetaField): string {
   const { view, viewNode } = resolveView(field);
-  const label = labelFor(field);
+  const label = labelFor(field, VIEW_CONTEXT_FORM);
   // ADR-0039: resolving — a view node may inherit @placeholder/@helpText/@htmlType via extends.
   const placeholder = viewNode?.attr("placeholder") as string | undefined;
   const helpText = viewNode?.attr("helpText") as string | undefined;
@@ -200,7 +211,7 @@ function renderFieldEntry(field: MetaField): string {
   if (rules !== undefined) entries.push(`rules: ${rules}`);
 
   // Currency-specific keys: only emitted for currency-subtype fields.
-  const currencyMeta = currencyMetaFor(field);
+  const currencyMeta = currencyMetaFor(field, VIEW_CONTEXT_FORM);
   if (currencyMeta !== null) {
     entries.push(`currency: ${JSON.stringify(currencyMeta.currency)}`);
     entries.push(`locale: ${JSON.stringify(currencyMeta.locale)}`);

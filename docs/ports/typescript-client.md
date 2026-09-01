@@ -468,6 +468,45 @@ single-`outDir` project.
 Full config reference: `@metaobjectsdev/cli` README, "Multiple output
 targets".
 
+## One field, several surfaces — naming a view
+
+A field may declare more than one `view.*` child, and each generated surface reads
+the one **named for it**:
+
+| `name` on the view | who reads it |
+|---|---|
+| `form` | `<Entity>.form.tsx`, and the `<Entity>` descriptor (`label` / `view` / `htmlType` / `placeholder` / `rules`) |
+| `grid` | `<Entity>.columns.tsx` and the Angular grid — the column's `header` and `meta.view` |
+
+```jsonc
+{ "field.enum": { "name": "outcome", "@values": ["PASS", "FAIL"],
+    "children": [
+      { "view.dropdown": { "name": "form", "@title": "Outcome" } },
+      { "view.text":     { "name": "grid", "@title": "Result" } }
+    ]
+}}
+```
+
+The form renders a `<select>`; the grid column renders text and is headed
+"Result". Nothing new is registered for this — `name` is a reserved structural
+key already legal on every node.
+
+**A field declaring ONE view is unchanged**: that view applies to every surface,
+whatever it is named (or unnamed), so existing models need no edit. A `name` is
+also how a view is ADDRESSED by `extends` (`Customer.priceCents.display`), and a
+lone view keeps working as both.
+
+**Declaring several views and naming none for a surface fails `meta gen`**, naming
+the field, the views it found and the surface it wanted. That is deliberate: with
+several views the generator has no basis to choose, and picking the first one
+declared is the defect this replaced — reordering two lines of JSON silently moved
+the dropdown to the grid and degraded the form to an `<input>`.
+
+An owned generator (`meta eject`, see
+[own-your-codegen.md](../features/own-your-codegen.md)) that renders a surface of its
+own calls `viewForContext(field, "<its surface>")` from `@metaobjectsdev/codegen-ts`
+with that name, rather than reading `field.views()[0]`.
+
 ## Cell renderer overrides
 
 `<EntityGrid>` routes cell rendering through `CellRendererProvider`, keyed
