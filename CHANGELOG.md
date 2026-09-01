@@ -7,6 +7,76 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
+
+The declarative Mustache template-spec was wired into `gen` and nowhere else, so the drift
+gate regenerated a **different generator list** than the generator did — and then failed the
+project for the difference. Reproduced against the shipped code:
+
+```
+$ metaobjects gen ./meta --out ./out --template-spec spec.json --templates ./templates
+...wrote 9 file(s)
+$ metaobjects verify --codegen ./meta --out ./out
+error: generated code is out of sync with metadata.
+  extra:   OrderService.py
+  extra:   ProductService.py
+regenerate (metaobjects gen) and commit the result.        EXIT 1
+```
+
+The printed remedy is a **loop**: regenerating cannot produce files the regen does not know
+about, and `verify` accepts no `--template-spec` to be told. C# failed the same way
+(`committed but a fresh regen would not emit it`). It lands on exactly the two ports whose
+generator registries are closed — where the template-spec is the **only** consumer authoring
+path — so an adopter doing the one thing their port supports failed their own gate.
+
+**SP-1 §4 had specified the fix and it was never built:** *"`--template-spec <path>`, with a
+conventional default the port auto-discovers and the flag overriding"*, and that **both**
+`gen` and `verify` read it. Only the flag on `gen` shipped. Both ports now resolve the spec
+through **one shared helper**: explicit flag wins, else `<projectRoot>/template-spec.json`,
+where projectRoot is the metadata dir's **parent** — not a new rule, it is the anchor
+`.metaobjects/.gen-state/` already uses on both ports. A flag on `verify` was rejected
+deliberately: it would need repeating at every CI call site, and one forgotten reproduces the
+bug exactly.
+
+**Python was blind as well as wrong, and that half was worse.** For a spec emitting anything
+other than `.py`, there was no false conviction — there was silence. With one generated file
+**deleted** and another **overwritten with garbage**, the gate answered:
+
+```
+metaobjects verify: in sync (7 file(s)).                   EXIT 0
+```
+
+`_relative_set` globbed `*.py` under a docstring that had already called it — *"if a
+generator ever emits a non-`.py` artifact, broaden this glob so `verify` drift-checks it
+too."* One does: template-spec output is format-agnostic by design (text/markdown/csv/
+json/xml/html), which is the **common** case, so the usual configuration was ungated
+entirely. The comparison now covers every text artifact (skipping `__pycache__`/`*.pyc` and
+anything that will not decode).
+
+**Broadening it required the jurisdiction rule, or it would have re-created the bug it
+fixes.** Seeing every file in `outDir` means convicting every stranger in it — precisely what
+failed a zero-drift project in TypeScript and produced the `0.24.3` ruling: **`outDir` is a
+directory, not a namespace this tool owns.** The manifest already records what we *wrote*,
+keyed relative to `out_dir` — the same key space the diff uses — so `extra` is now scoped to
+files with a write record, failing closed when there is no manifest. C# needed neither half:
+its comparison already enumerated `*`.
+
+Also: Python's declarative-config mode **accepted `--template-spec` and silently did
+nothing** (`_cmd_gen_config` goes straight to `_run_gen_targets`, which has no spec pass). It
+now refuses with the working form, because it cannot simply be honoured — a spec entry names
+no `target` while config mode writes per target, so there is no non-arbitrary outDir. A
+*discovered* spec is ignored there rather than refused, so discovery can never hard-fail a
+command that did not ask for it.
+
+**Behaviour change:** a project that already has `<projectRoot>/template-spec.json` and
+passes no flag will now run it. Exposure is near zero — the filename is only meaningful if
+you knew of a flag that had no default — but it is real.
+
+**Known and NOT fixed:** C#'s `CodegenDrift` has no jurisdiction guard on its
+`inCommitted && !inFresh` branch, so it still convicts files it never wrote — the
+pre-`0.24.3` TypeScript behaviour. It is not introduced here and fixing it changes `verify`'s
+verdict for every existing C# adopter, so it is reported rather than folded in.
+
 ### Fixed — a reference fragment the stack no longer uses is deleted, not announced forever
 
 `meta init --refresh-docs --server typescript` on a project scaffolded as python left

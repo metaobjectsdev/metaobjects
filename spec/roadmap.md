@@ -111,6 +111,23 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   Designed in `docs/superpowers/specs/2026-06-28-mustache-codegen-parity-design.md`
   (SP-1 §2, §6).
 
+- **The gap SP-3 found is fixed, not just tracked** — `--template-spec` was wired into
+  `gen` and nowhere else, so `verify --codegen` regenerated a DIFFERENT generator list and
+  failed the project for the difference, with a remedy that loops. SP-1 §4 had specified
+  auto-discovery (*"a conventional default the port auto-discovers and the flag
+  overriding"*, read by **both** verbs) and it was never built. Both ports now resolve the
+  spec through one shared helper: flag wins, else `<projectRoot>/template-spec.json`,
+  anchored on the metadata dir's parent — the same anchor `.gen-state/` already uses. A
+  flag on `verify` was rejected: it would need repeating at every CI call site, and one
+  forgotten reproduces the bug. Python additionally compared only `*.py`, so a **deleted**
+  and a **corrupted** template file both reported *"in sync"*; broadening that required
+  importing the `0.24.3` jurisdiction rule (`outDir` is a directory, not a namespace we
+  own) or it would have re-created the bug it fixes. Python's config mode also accepted
+  `--template-spec` and silently ignored it; it now refuses with the working form.
+  **Still open:** C#'s `CodegenDrift` has no jurisdiction guard, so it convicts files it
+  never wrote — the pre-`0.24.3` behaviour, not introduced by this work, and a change that
+  would alter `verify`'s verdict for every existing C# adopter.
+
 ### Foundation
 
 - **H1 — Polyglot monorepo migration** (2026-05-14)
@@ -217,27 +234,6 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **FR-030 — Runtime metadata-driven serializers: protocols, round-trip, field-subset.** Serialize/deserialize an object graph **driven by the MetaData itself** (honoring `normalization.md`), on **Pojo or ValueObject** instances, resolving the `MetaObject` via `MetaObjectAware` (fast path) or the `ObjectClassRegistry`. A pluggable **serializer SPI** so new protocols slot in uniformly: JSON + **XML write** (revive the legacy `metaobjects-core`/`dynamic` JSON+XML), plus a **binary** protocol (protobuf — reuse FR-022's `wireId`/type mapping — and/or MessagePack/CBOR) "to show how standardized it is." Per port: a thin **adapter** over the native serializer (Jackson / System.Text.Json / Pydantic / kotlinx) where one fits, fully custom otherwise. A **field-subset/projection** serialization parameter (reuses FR-024 projections; shared with grid JSON/XML downloads). **Round-trip integrity conformance** — `json → xml → binary → json`, assert no data loss, cross-port. Open ADR: keep bidirectional serialization separate from one-way (lossy) data download, sharing JSON/XML via the field-subset param. Detail: §"Theme 3" of the gap doc.
 
 - **FR-031 — MetaData read-path caching (general; serialization is the example).** Repeatedly walking the MetaData tree for field/attr/validator/view/children lookups is a hot path for **every** consumer — codegen, runtime, the UI, and (as the headline example) serializing 100k+ large objects re-queries the tree per object. The MetaData read-model is **immutable after load**, so memoize these lookups on the MetaData class once. Deliberately **not** serialization-specific: it's a general read-path cache that any processing benefits from, validated by a throughput **benchmark gate** (process 100k+ objects, cached-vs-uncached delta) per port, using serialization as the example workload. Low effort, high leverage. *(The serialization-specific perf — a per-MetaObject compiled plan + streaming large sets — rides with FR-030, building on this cache.)* Detail: §"Theme 4" of the gap doc.
-
-- **`--template-spec` output is invisible to `verify --codegen` on C# and Python.** Found
-  while documenting the declarative path (SP-3), and left documented-not-fixed on purpose:
-  it is a two-port CLI change, not a docs edit. `--template-spec` is accepted by `gen` only
-  — neither `metaobjects verify` nor `dotnet meta verify` takes it, and **neither port
-  auto-discovers a spec file**, though SP-1 §4 specified exactly that (*"a conventional
-  default the port auto-discovers and the flag overriding"*) and it was never built: the
-  only read is gated on the flag being present (`cli.py:700-707`) and no default-spec-path
-  constant exists in either port. So `verify --codegen` regenerates WITHOUT the adopter's
-  template generators and convicts their committed output — Python classifies each as
-  `extra:` (*"stale committed file"*) and exits 1 — **and the remedy it prints is a loop**:
-  regenerating without the flag cannot produce those files, and regenerating with it leaves
-  the gate failing identically. This is the `0.24.3` *gate-convicts-the-innocent* shape, and
-  it lands on precisely the two ports for which the template-spec is the ONLY authoring
-  path, so an adopter doing the one thing their port supports fails their own drift gate.
-  Fix is SP-1 §4's auto-discovery (a conventional spec path both `gen` and `verify` resolve,
-  so the two verbs cannot disagree) rather than a `verify --template-spec` flag, which would
-  need repeating at every CI call site. The workaround is documented at
-  [`own-your-codegen.md`](../docs/features/own-your-codegen.md) until then. **The JVM and TS
-  are structurally immune** — both declare template generators in the build config, which is
-  what the drift gate re-runs.
 
 ### Tracked outside this library repo (not roadmap work here)
 

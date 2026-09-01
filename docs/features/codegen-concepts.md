@@ -242,10 +242,11 @@ overwrite a file lacking the `@generated` marker — a regenerable template must
 that header in its own body. The JVM's `TemplateScopeGenerator` writes directly and
 carries no such obligation.)
 
-**Known gap on the two flag ports.** `--template-spec` is accepted by `gen` only.
-Neither `metaobjects verify` nor `dotnet meta verify` takes it, and neither port
-auto-discovers a spec file, so `verify --codegen` regenerates without your template
-generators and convicts their committed output as stale. The ports that have a code
-seam (TypeScript, JVM) do not have this problem, because there the declaration lives
-in the build config that the drift gate re-runs. Details and the workaround:
-[`own-your-codegen.md`](own-your-codegen.md#per-port).
+**The spec is auto-discovered.** With no `--template-spec`, both CLI ports read
+`<projectRoot>/template-spec.json` (projectRoot = the metadata dir's parent, the anchor
+`.metaobjects/` already uses); the flag overrides it. This is what lets `verify --codegen`
+regenerate WITH your template generators — it accepts no `--template-spec` of its own, so a
+flag-only setup would leave the gate resolving a different generator list from `gen` and
+convicting gen's own output. The ports with a code seam (TypeScript, JVM) declare template
+generators in the build config the gate already re-runs, reaching the same guarantee a
+different way.

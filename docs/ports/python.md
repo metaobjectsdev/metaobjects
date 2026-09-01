@@ -194,6 +194,29 @@ metaobjects gen ./metadata --out ./generated \
 ]}
 ```
 
+**The spec is auto-discovered.** Omit `--template-spec` and the CLI reads
+`<projectRoot>/template-spec.json`, where projectRoot is the metadata dir's **parent** —
+the same anchor `.metaobjects/` uses. The flag overrides it.
+
+Prefer the conventional path over the flag, because **`verify --codegen` accepts no
+`--template-spec`**: discovery is how the drift gate learns your template generators exist.
+A spec reachable only by flag leaves `verify` regenerating a different generator list from
+`gen` and reporting your committed template output as stale.
+
+```bash
+metaobjects gen ./metadata --out ./generated --templates ./templates
+metaobjects verify --codegen ./metadata --out ./generated --templates-root ./templates
+#   ^ both resolve <projectRoot>/template-spec.json — the gate agrees with the generator
+```
+
+(`gen` spells the templates dir `--templates`; on `verify` that name is the *subverb*, so
+the directory flag there is `--templates-root`.)
+
+`--template-spec` is **refused in declarative-config mode** (`metaobjects.config.yaml`,
+no positional metadata dir) rather than silently ignored: a spec entry names no `target`
+while config mode writes per target, so there is no outDir to render into. A *discovered*
+spec is ignored there rather than refused.
+
 Each spec entry derives the neutral template data dict for its scope and names
 each file via the `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`).
 The named generators are **appended** to the default suite and gated byte-identical

@@ -260,6 +260,22 @@ dotnet meta gen ./metadata --out ./Generated \
 ]}
 ```
 
+**The spec is auto-discovered.** Omit `--template-spec` and the CLI reads
+`<projectRoot>/template-spec.json`, where projectRoot is the metadata dir's **parent** —
+the same anchor `.metaobjects/` uses (`GenCommand.ProjectRootFor`). The flag overrides it.
+
+Prefer the conventional path over the flag, because **`dotnet meta verify --codegen`
+accepts no `--template-spec`**: discovery is how the drift gate learns your template
+generators exist. A spec reachable only by flag leaves `verify` regenerating a different
+generator list from `gen` and convicting your committed template output as
+"committed but a fresh regen would not emit it".
+
+```bash
+dotnet meta gen ./metadata --out ./Generated --template-root ./templates
+dotnet meta verify --codegen ./metadata --out ./Generated --template-root ./templates
+#   ^ both resolve <projectRoot>/template-spec.json — the gate agrees with the generator
+```
+
 Each spec entry derives the neutral template data dict for its scope
 (`MetaObjects.Codegen.TemplateCodegen.TemplateData`) and names each file via the
 `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The named generators

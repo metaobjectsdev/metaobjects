@@ -152,18 +152,19 @@ output *shape* is what you are iterating on, or when you want the same output ac
 languages; reach for a generator when the logic is gnarly or the run is hot. Full
 tradeoff table: [`codegen-concepts.md` §3](codegen-concepts.md).
 
-> **Known gap on the two flag ports.** `--template-spec` is a flag on `gen` only —
-> neither `metaobjects verify` nor `dotnet meta verify` accepts it, and neither port
-> auto-discovers a spec file. So `verify --codegen` regenerates WITHOUT your template
-> generators and convicts their committed output — Python classifies each as
-> `extra: <path>` (*"stale committed file"*) and exits 1, and the remedy it prints
-> (*"regenerate and commit the result"*) is a **loop**: regenerating without the flag
-> cannot produce those files, and regenerating with it leaves the gate failing
-> identically. Until that is closed, keep template-spec output outside the directory
-> `verify --codegen` diffs, or run the gate only against the default suite.
-> (This is why the two ports that have a code seam —
-> TypeScript and the JVM — declare template generators in the build config instead: the
-> config is what the drift gate re-runs.)
+**The spec file is discovered, not just flagged.** With no `--template-spec`, both ports
+look for **`<projectRoot>/template-spec.json`** — projectRoot being the metadata dir's
+parent, the same anchor `.metaobjects/` already uses. The flag overrides it.
+
+That matters for more than typing: `verify --codegen` takes **no** `--template-spec` flag,
+so discovery is how the drift gate learns about your template generators. Before it existed,
+`gen` honoured the flag and `verify` never looked — so verify regenerated without them and
+convicted their committed output, with a remedy that loops. Keep the spec at the
+conventional path and both verbs resolve the same one.
+
+Passing `--template-spec` explicitly still works and still wins; just make sure any CI that
+runs `verify --codegen` can find the spec, which the conventional path guarantees and a
+flag-only setup does not.
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
 ADR-0015. Schema migrations are TypeScript-owned across all ports.)*

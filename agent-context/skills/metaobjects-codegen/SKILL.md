@@ -361,12 +361,11 @@ reach for it here.) Use `--template-spec <json>` — plus `--templates <dir>` on
 `--template-root <dir>` on C# — and your entries are appended to the default suite. Worked
 examples with the full JSON: `docs/ports/python.md` and `docs/ports/csharp.md`.
 
-**One caveat to plan around on those two ports:** `--template-spec` is accepted by `gen`
-only. `verify` does not take it and neither port auto-discovers a spec file, so
-`verify --codegen` regenerates WITHOUT your template generators and reports their
-committed output as stale — Python prints `extra: <path>` and exits 1, and the remedy it
-prints is a loop. Emit template-spec output somewhere other than the directory
-`verify --codegen` diffs, and do not "fix" the failure by deleting the files.
+**The spec is auto-discovered, and that is load-bearing.** With no `--template-spec`, both
+ports read `<projectRoot>/template-spec.json` — projectRoot being the metadata dir's parent.
+Keep it there: `verify --codegen` accepts no `--template-spec` flag, so the conventional path
+is how the drift gate learns your template generators exist. Put the spec somewhere else and
+reach it only by flag, and `verify` regenerates without it and reports its output as stale.
 
 So on C#/Python, "I need a shape the built-ins do not emit" is answered by a template, not
 by writing generator code. Do not conclude the port cannot be customized.
