@@ -1,7 +1,16 @@
 // `meta types [QUERY]` — search the metadata vocabulary (types, subtypes, @attrs)
 // without loading it all into context. apropos + `kubectl explain` over the live
 // registry, tuned for an agent's token budget: terse names-first default, opt-in
-// description search, drill-in `--detail`, machine-readable `--json`.
+// description search, drill-in `--detail`.
+//
+// This command prints TEXT only. It once advertised a `--json` flag in its own --help,
+// in two places, that the CLI had long since REFUSED: `--format` is validated once,
+// globally, and a bare `--json` is rejected before a command ever sees its args (see
+// index.ts, `formatAlias`) — so the branch behind the flag was unreachable and the help
+// was describing a usage error. Removed rather than rewired: `meta types` is not in
+// FORMAT_AWARE_COMMANDS, and adding it is not a cleanup — `resolveFormat` defaults to
+// TOON off a TTY, so joining that set would silently change what EVERY agent invocation
+// of this command prints, which is a deliberate design call and not this fix's to make.
 import { composeRegistry, coreProviders, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
 import { forgeTypesProvider } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
@@ -12,7 +21,6 @@ interface TypesFlags {
   kind: Set<"type" | "subtype" | "attr">;
   type: string | null; // scope to one top-level type
   detail: boolean;
-  json: boolean;
   noHeaders: boolean;
   limit: number; // 0 = unlimited
   help: boolean;
@@ -24,7 +32,7 @@ const HELP = `meta types [QUERY] — search the metadata vocabulary without load
   meta types --all money                   # search names AND descriptions ("find by what it does")
   meta types --type field --kind subtype   # all field subtypes (terse)
   meta types field.enum --detail           # one construct: description + when-to-use + valid @attrs
-  meta types --type origin --json          # machine-readable subtree
+  meta types --type view --kind subtype    # every registered view control
 
 QUERY is a case-insensitive substring, matched on the name (type.subType / @attr).
 Add --desc (or --all) to also match descriptions + when-to-use guidance.
@@ -34,7 +42,6 @@ Add --desc (or --all) to also match descriptions + when-to-use guidance.
   --kind <k>        filter by category: type | subtype | attr (comma-list ok)
   --type <name>     scope to one top-level type (e.g. --type field)
   --detail          drill in: full description, when-to-use, and valid @attrs
-  --json            emit the matching registry subtree verbatim (stable-sorted)
   --limit <N>       cap results (default 20; 0 = unlimited)
   --no-headers      omit headers (parse-friendly)
 
@@ -45,14 +52,13 @@ construct.`;
 function parse(args: string[]): TypesFlags {
   const f: TypesFlags = {
     query: null, desc: false, kind: new Set(), type: null,
-    detail: false, json: false, noHeaders: false, limit: 20, help: false,
+    detail: false, noHeaders: false, limit: 20, help: false,
   };
   for (let i = 0; i < args.length; i++) {
     const a = args[i] as string;
     if (a === "--help" || a === "-h") f.help = true;
     else if (a === "--desc" || a === "--all") f.desc = true;
     else if (a === "--detail") f.detail = true;
-    else if (a === "--json") f.json = true;
     else if (a === "--no-headers") f.noHeaders = true;
     else if (a === "--limit") f.limit = Math.max(0, Number(args[++i] ?? "20") || 0);
     else if (a === "--type") f.type = (args[++i] ?? "").toLowerCase() || null;
@@ -80,7 +86,7 @@ interface Entry {
   tsOnly: boolean;
   /** A type's shared root (`<type>.base`): its attrs apply to every subtype. */
   sharedRoot: boolean;
-  raw: unknown; // the catalog node, for --json
+  raw: unknown; // the catalog node
 }
 
 /** Compact markers appended to a terse line, and the legend that explains them. */
@@ -174,11 +180,6 @@ export async function typesCommand(args: string[]): Promise<number> {
 
   const total = matches.length;
   const shown = f.limit > 0 ? matches.slice(0, f.limit) : matches;
-
-  if (f.json) {
-    log.info(JSON.stringify(shown.map((e) => e.raw), null, 2));
-    return 0;
-  }
 
   if (f.detail) {
     for (const e of shown) {

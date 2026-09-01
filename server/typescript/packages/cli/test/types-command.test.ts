@@ -19,6 +19,16 @@
 import { describe, test, expect, spyOn } from "bun:test";
 import { typesCommand } from "../src/commands/types.js";
 
+/** Run `meta types ...`, expecting a non-zero exit, and return what it printed to stderr. */
+async function runExpectingUsageError(args: string[]): Promise<number> {
+  const spy = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    return await typesCommand(args);
+  } finally {
+    spy.mockRestore();
+  }
+}
+
 /** Run `meta types ...` and return everything it printed to stdout. */
 async function run(args: string[]): Promise<string> {
   const lines: string[] = [];
@@ -102,5 +112,29 @@ describe("#357 the registry is COMPOSED, so attrs are not missing", () => {
     // so listing them would teach metadata the loader rejects.
     const out = await run(["--kind", "attr", "--limit", "0", "isArray"]);
     expect(out).toContain("No vocabulary matches");
+  });
+});
+
+describe("the help describes flags the CLI actually accepts", () => {
+  test("--json is neither advertised nor accepted", async () => {
+    // It was advertised twice while the CLI refused it: `--format` is validated once,
+    // globally, and a bare `--json` is rejected before a command sees its args, so the
+    // branch behind the flag was unreachable and the help described a usage error.
+    const help = await run(["--help"]);
+    expect(help).not.toContain("--json");
+    expect(await runExpectingUsageError(["--json"])).toBe(2);
+  });
+
+  test("every flag the help lists is accepted", async () => {
+    const help = await run(["--help"]);
+    const advertised = [...help.matchAll(/^ {2}(--[a-z-]+)/gm)].map((m) => m[1] as string);
+    expect(advertised.length).toBeGreaterThan(4);
+    for (const flag of advertised) {
+      // Each value-taking flag gets a valid value of its own kind; `--limit 1` also keeps
+      // this from dumping the whole registry to stdout on every run.
+      const value = flag === "--limit" ? "1" : flag === "--type" ? "view" : "subtype";
+      const args = ["--kind", "--type", "--limit"].includes(flag) ? [flag, value] : [flag];
+      expect(await typesCommand(flag === "--help" ? ["--help"] : args)).toBe(0);
+    }
   });
 });

@@ -87,6 +87,22 @@ those rows to `expected-registry.json` would break the C#/Python deregistration 
 cross-port change for a bug whose cause was a CLI command asking the wrong source.
 `expected-registry.json` and `metamodelVersion` are untouched.
 
+### Fixed — `meta types --help` advertised a flag the CLI refuses
+
+Twice, in the usage examples and the flag list: `meta types --type origin --json`. The CLI
+rejects a bare `--json` before a command ever sees its args — `--format` is validated once,
+globally (`--json is not a flag. Use \`--format json\``) — so the branch behind the flag was
+unreachable and the help was documenting a usage error, in the one command whose whole job is
+telling an author what is available.
+
+Removed rather than rewired. `meta types` is not in `FORMAT_AWARE_COMMANDS`, and adding it is
+not a cleanup: `resolveFormat` defaults to **TOON off a TTY**, so joining that set would
+silently change what every non-interactive invocation of this command prints — which is where
+its audience lives. That is a design call, and it is not this fix's to make.
+
+A test now asserts every flag the help lists is one the command accepts, so the two cannot
+drift apart again.
+
 ### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
 
 The declarative Mustache template-spec was wired into `gen` and nowhere else, so the drift
