@@ -84,6 +84,56 @@ public static class GenCommand
         Path.GetDirectoryName(Path.GetFullPath(metadataDir)) ?? Directory.GetCurrentDirectory();
 
     /// <summary>
+    /// The conventional declarative-template-spec file (SP-1 §4), discovered when
+    /// <c>--template-spec</c> is not passed. VISIBLE and at the project root on
+    /// purpose: this project splits author input (visible) from tool state (hidden
+    /// <c>.metaobjects/</c>), a spec is authored rather than generated, and it belongs
+    /// beside the <c>templates/</c> dir its refs resolve under. Same name and same
+    /// anchor as the Python port.
+    /// </summary>
+    public const string TemplateSpecFileName = "template-spec.json";
+
+    /// <summary>
+    /// The template-spec to use, or <c>null</c> for "no template generators".
+    /// An explicit <c>--template-spec</c> always wins and is used verbatim (a flag
+    /// naming a missing file stays a hard error at read time — silently ignoring a
+    /// path the user typed would be worse). Otherwise
+    /// <c>&lt;projectRoot&gt;/template-spec.json</c> is used IF it exists.
+    ///
+    /// <para>EVERY path that builds a generator list must call this. The defect it
+    /// exists to prevent is <c>gen</c> and <c>verify --codegen</c> resolving the spec
+    /// differently: <c>gen</c> honoured the flag while <c>verify</c> built its own list
+    /// and never looked, so verify regenerated WITHOUT the template generators and
+    /// reported their committed output as stale — with a remedy that loops, since
+    /// regenerating cannot produce files the regen does not know about.</para>
+    /// </summary>
+    public static string? TemplateSpecPathFor(string? projectRoot, string? explicitPath)
+    {
+        if (!string.IsNullOrEmpty(explicitPath)) return explicitPath;
+        if (string.IsNullOrEmpty(projectRoot)) return null;
+        var candidate = Path.Combine(projectRoot, TemplateSpecFileName);
+        return File.Exists(candidate) ? candidate : null;
+    }
+
+    /// <summary>
+    /// The declarative Mustache generators for this project — empty when there is no
+    /// spec at all. Throws the same exception set <see cref="Run(LoadResult, string,
+    /// string, bool, IReadOnlyList{string}?, string?, string?, string?,
+    /// ColumnNamingStrategy)"/> already catches, so a malformed spec surfaces as a
+    /// clean error rather than an unhandled throw.
+    /// </summary>
+    public static IReadOnlyList<IGenerator> TemplateSpecGenerators(
+        string? projectRoot, string? explicitPath, string? templateRoot)
+    {
+        var specPath = TemplateSpecPathFor(projectRoot, explicitPath);
+        if (specPath is null) return [];
+        using var doc = JsonDocument.Parse(File.ReadAllText(specPath));
+        var spec = TemplateSpec.Parse(doc.RootElement);
+        var provider = new FilesystemProvider(templateRoot ?? "templates");
+        return TemplateSpec.ToGenerators(spec, provider).ToList();
+    }
+
+    /// <summary>
     /// Same as the <c>metadataDir</c> overload above, but starting from an
     /// ALREADY-LOADED <paramref name="load"/> — used by the CLI's
     /// <c>.metaobjects/config.json</c> ladder path (<c>Program.cs</c>'s
@@ -109,13 +159,9 @@ public static class GenCommand
         try
         {
             generators = GeneratorRegistry.Resolve(names, new GeneratorBuildContext(templateRoot)).ToList();
-            if (!string.IsNullOrEmpty(templateSpecPath))
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(templateSpecPath));
-                var spec = TemplateSpec.Parse(doc.RootElement);
-                var provider = new FilesystemProvider(templateRoot ?? "templates");
-                generators.AddRange(TemplateSpec.ToGenerators(spec, provider));
-            }
+            // Explicit flag, else the conventional <projectRoot>/template-spec.json.
+            // Resolved through the SAME helper verify uses — that shared call is the fix.
+            generators.AddRange(TemplateSpecGenerators(projectRoot, templateSpecPath, templateRoot));
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
         {

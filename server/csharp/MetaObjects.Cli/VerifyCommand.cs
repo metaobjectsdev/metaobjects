@@ -14,6 +14,7 @@
 //
 // Runs at the last fixed point before serve, never on the request path.
 
+using System.Text.Json;
 using MetaObjects.Codegen;
 using MetaObjects.Loader;
 using MetaObjects.Render;
@@ -238,9 +239,20 @@ public static class VerifyCommand
         IReadOnlyList<IGenerator> generators;
         try
         {
-            generators = GeneratorRegistry.Resolve(names, new GeneratorBuildContext(opts.TemplateRoot));
+            var resolved = GeneratorRegistry
+                .Resolve(names, new GeneratorBuildContext(opts.TemplateRoot))
+                .ToList();
+            // The declarative template generators, resolved by the SAME rule `gen` uses.
+            // Without this, verify regenerated only the built-in suite and then convicted
+            // every spec-emitted file as "committed but a fresh regen would not emit it" —
+            // on a tree `gen` had just produced, with a remedy that loops. `verify` takes
+            // no --template-spec flag, so discovery is the whole mechanism here.
+            resolved.AddRange(GenCommand.TemplateSpecGenerators(
+                GenCommand.ProjectRootFor(opts.MetadataDir), null, opts.TemplateRoot));
+            generators = resolved;
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or IOException
+                                      or UnauthorizedAccessException or JsonException)
         {
             return new Codegen.CodegenDrift.Result { Clean = false, Error = $"verify --codegen: {ex.Message}" };
         }
