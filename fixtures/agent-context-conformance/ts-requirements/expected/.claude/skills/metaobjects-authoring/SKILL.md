@@ -49,7 +49,10 @@ aggregate — that is almost always **metadata you have not declared yet.** In o
 1. **Search the vocabulary** — `meta types <term>`, or `meta types --all
    <what-it-does>` to search by behavior. There are field subtypes, relationships,
    projections, origins, identities, sources, and attributes you may not know exist.
-   Find the construct that models it.
+   Find the construct that models it. Add `--detail` for one construct's valid
+   `@attrs`, or `--format json` for the same answer as one machine-readable document
+   — that form carries every match (`--limit` never truncates it) with each attr's
+   `allowedValues`, so you read the accepted values rather than guessing them.
 2. **Declare it and generate** — then *consume* the generated query/type/route;
    never reimplement it alongside.
 3. **If the model is right but the generated OUTPUT is wrong, change your generator.**

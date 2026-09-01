@@ -20,6 +20,7 @@ spine; generated code is the disposable artifact. Regenerate with `metaobjects g
 - **JVM:** serialize a MetaObject-backed instance (a `pojoAware`-flavor generated class, a runtime `ValueObject`, or any `MetaObjectAware` type) through the MetaObjects JSON layer — never hand-configure a Jackson/Gson mapper around the framework fields to make a default mapper cope.
 
 ## Authoring rules you must not violate
+- **Search the vocabulary before concluding it cannot be expressed — `meta types <term>`.** The loader is STRICT: an attribute or subtype no provider registers fails the LOAD, so inventing one is a build failure rather than a shortcut. Search names with `meta types <term>`, names and descriptions with `--all` ("find it by what it does"), and one construct's valid `@attrs` with `meta types <type>.<subType> --detail`; `--format json` returns the same answer as one machine-readable document, each attr with its `allowedValues`. Rows marked `[ts-only]` are TypeScript-only vocabulary the cross-port contract does not carry. It is the Node `meta` CLI and, like `meta migrate`, works whatever your backend — it reads the registry, so it needs no project. Ask for NEW vocabulary only once that search comes up empty.
 - Nodes are fused-key maps: `{"<type>.<subType>": { ... }}` (e.g. `{"field.string": {"name": "email"}}`) — never split the type and subtype into separate keys.
 - Attribute names are unique within a node; for multi-value use one array attr (`@values: [...]`).
 - An inline `@maxLength: 50` equals an `attr` child of the same name — never write both.

@@ -224,6 +224,26 @@ truncated, and this keeps it. `--help` itself stays prose in every format.
 correctly stops firing for it and the global help lists it — with its default stated, since
 that help would otherwise be wrong about this one command.
 
+### Fixed — the always-on agent context never named `meta types`
+
+`meta types` is step 1 of authoring, and the only place saying so was
+`metaobjects-authoring/SKILL.md` — a **conditionally triggered** skill. The file every agent
+reads unconditionally, `.metaobjects/AGENTS.md`, did not mention the tool at all. So an agent
+that never triggered that skill never learned the search exists, and the failure mode is the
+one already on this record: concluding the metamodel cannot express something and asking for a
+new attribute that was registered all along (#353, `@label` vs `@title`).
+
+The always-on file now opens its authoring rules with the search, framed by why it is a rule
+rather than a tip: **the loader is strict**, so an attribute or subtype nothing registers fails
+the LOAD — inventing one is a build failure, not a shortcut (ADR-0023). It names the three
+query shapes (`<term>`, `--all <what-it-does>`, `<type>.<subType> --detail`), the `--format
+json` document, and the `[ts-only]` marker, which matters most to the readers who are NOT on
+the TypeScript port: it is the Node `meta` CLI and, like `meta migrate`, works whatever the
+backend — it reads the registry, so it needs no project. The skill's own step 1 gains the
+`--detail` / `--format json` shapes for the same reason.
+
+All five `agent-context-conformance` corpora regenerated.
+
 ### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
 
 The declarative Mustache template-spec was wired into `gen` and nowhere else, so the drift
