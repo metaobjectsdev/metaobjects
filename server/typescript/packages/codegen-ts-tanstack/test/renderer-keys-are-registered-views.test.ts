@@ -77,9 +77,15 @@ describe("#355 — renderer keys and registered view subtypes agree", () => {
     image:
       "the field stores an opaque storage key, so an <img> needs ImageUploadAdapter.imageUrl(). " +
       "That adapter is exposed through a React context in @metaobjectsdev/react, which this " +
-      "browser package deliberately does not depend on — importing it would drag the " +
-      "image-upload/crop graph into every grid consumer's bundle (the #287 / react-easy-crop " +
-      "class of defect). Apps render it today by overriding the `image` key on " +
+      "browser package does not depend on. The DURABLE reason is the install graph, not the " +
+      "bundle: @metaobjectsdev/react declares react-hook-form and @hookform/resolvers as " +
+      "REQUIRED peers (only zod is marked optional), so a dependency edge would make every " +
+      "grid-only consumer responsible for a form stack it never uses — and peerDependencies " +
+      "are declared per PACKAGE, so no export-map or subpath change reaches that. The bundle " +
+      "cost (dragging the image-upload/crop graph in, the #287 / react-easy-crop class) is " +
+      "real but secondary, and is the half a subpath WOULD fix — recording only that reason " +
+      "would let a future reader retire this exemption on the strength of a change that does " +
+      "not address it. Apps render it today by overriding the `image` key on " +
       "<CellRendererProvider>.",
   };
 
