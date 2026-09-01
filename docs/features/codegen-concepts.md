@@ -197,6 +197,12 @@ exactly one. The `outputPattern` placeholders are `{name}`, `{Name}`, and `{pack
 (an unknown placeholder throws); `{package}` resolves through `effectivePackage` and
 renders `::`-separated segments as nested path directories.
 
+In TypeScript this call goes in `metaobjects.config.ts`'s `generators: [...]` array,
+like any other generator — there is no `--template-spec` flag on `meta gen`, because the
+config already takes generator values and keeping the declaration there is what keeps
+`meta verify --codegen` regenerating WITH it. Worked example, plus how to reuse a
+CLI-port JSON spec: [the TypeScript port page](../ports/typescript.md#declarative-template-codegen-mustache).
+
 ```ts
 templateGenerator({
   name: "entity-doc",
@@ -233,4 +239,13 @@ output-target concept). The same neutral data dict, output-pattern grammar, and
 conformance corpus apply, so a spec renders byte-identically across ports. (Because
 a template's output flows through the standard write path — which refuses to
 overwrite a file lacking the `@generated` marker — a regenerable template must emit
-that header in its own body.)
+that header in its own body. The JVM's `TemplateScopeGenerator` writes directly and
+carries no such obligation.)
+
+**Known gap on the two flag ports.** `--template-spec` is accepted by `gen` only.
+Neither `metaobjects verify` nor `dotnet meta verify` takes it, and neither port
+auto-discovers a spec file, so `verify --codegen` regenerates without your template
+generators and convicts their committed output as stale. The ports that have a code
+seam (TypeScript, JVM) do not have this problem, because there the declaration lives
+in the build config that the drift gate re-runs. Details and the workaround:
+[`own-your-codegen.md`](own-your-codegen.md#per-port).

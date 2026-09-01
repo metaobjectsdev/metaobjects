@@ -8,6 +8,7 @@ packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binar
 - Install
 - `metaobjects.config.ts`
 - The generators
+- Declarative template-codegen (Mustache)
 - Run
 - Multiple output targets
 - Field subtype → column mapping
@@ -82,7 +83,10 @@ PROJECT ROOT that CONTAINS the metadata — never the metadata directory itself.
 
 ## The generators
 
-From `@metaobjectsdev/codegen-ts/generators` (server-side, framework-neutral):
+Server-side, framework-neutral. The first four are **scaffolded into your repo** by
+`meta init` and imported from `./codegen/generators/*` (ADR-0034); the rest come from the
+package main entry, `@metaobjectsdev/codegen-ts`. Do **not** import any of them from
+`@metaobjectsdev/codegen-ts/generators` — that subpath is deprecated and removed at 1.0.
 
 | Generator | Emits per entity |
 |---|---|
@@ -195,6 +199,58 @@ The one thing a `filter` can't express is opting a TPH subtype IN to its own
 per-subtype grid (that WIDENS): `tanstackGrid({ tphSubtypeGrids: (e) => … })`,
 default `() => false`. Pass the same predicate to `tanstackGridHook()` or you get
 a `<Sub>.grid.ts` whose `<Sub>.columns.tsx` is never emitted.
+
+## Declarative template-codegen (Mustache)
+
+Everything above is the **programmatic** path. A generator can also be **declarative** —
+a Mustache template plus a scope, no generator code — and on TypeScript you have both.
+Pick a template when the output SHAPE is what you are iterating on, or when you want the
+same output across languages; pick programmatic when the logic is gnarly or the run is
+hot.
+
+**There is no `--template-spec` flag on `meta gen`.** Do not look for one and do not
+report its absence as a gap. `metaobjects.config.ts` takes generator VALUES, so a
+template generator is declared there like any other — which is also what keeps it
+visible to `meta verify --codegen`, a gate that re-runs the config's generator list.
+
+```ts
+import { templateGenerator } from "@metaobjectsdev/codegen-ts";
+
+export default defineConfig({
+  generators: [
+    entityFile(),
+    templateGenerator({
+      name: "entity-service",
+      template: "service/entity-service",   // → templates/service/entity-service.mustache
+      scope: "perEntity",                   // "perEntity" | "perPackage" | "perModel"
+      outputPattern: "{package}/{Name}Service.ts",
+    }),
+  ],
+});
+```
+
+- `template` resolves under the project's `templates/` dir first, then framework defaults.
+- `outputPattern` placeholders: `{name}`, `{Name}`, `{package}` (its `::` segments become
+  nested directories). An unknown placeholder throws.
+- `scope` and `walk` are mutually exclusive — supply exactly one. `walk` is the escape
+  hatch for a walk none of the three scopes expresses.
+- Abstract objects are excluded from every scope.
+
+**Reusing a C#/Python spec.** Those ports declare the same generators as a JSON
+template-spec because their registries are closed and the flag is their only seam. Parse
+it and spread it:
+
+```ts
+import { parseTemplateSpec, templateSpecToGenerators } from "@metaobjectsdev/codegen-ts";
+
+const spec = parseTemplateSpec(JSON.parse(readFileSync("./template-spec.json", "utf8")));
+// generators: [entityFile(), ...templateSpecToGenerators(spec)]
+```
+
+Portability runs ONE way: TS also accepts a `target` field that the CLI ports reject, so
+a spec written there always runs here, but not the reverse. Keep `target` out of a shared
+spec. The data dict a template renders against is the cross-port byte-gated contract —
+`docs/features/codegen-data-shapes.md`.
 
 ## Run
 

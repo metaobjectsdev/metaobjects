@@ -92,13 +92,19 @@ Read the existing code and schema *first*, then model to reproduce them:
 
 **Customize the CODEGEN to match the existing code before you change the existing code.**
 If generated output doesn't match the code's shape (naming, file layout, imports,
-signatures), **tune the generator/template/config to reproduce it** (owned generators,
-`outputPattern`, naming strategy — see the `metaobjects-codegen` skill). **The
-generators live in your repo and are yours to edit.** A standing instruction not to
-change the MetaObjects repo says nothing about them — reading it as though it did is
-how an adoption ends up hand-written, and it is the most common way this step is
-skipped. Editing a generator here is ordinary adoption work: not an escalation, not a
-hack, and nothing to ask permission for. Reshaping working call sites to satisfy the
+signatures), **tune the generator/template/config to reproduce it** — naming strategy
+first, then the generator or the template. **Which lever you have depends on the port,
+so establish that before planning:** on TypeScript and the JVM you can own a generator
+outright (TS scaffolds copies into your repo; the JVM loads your class from the project
+classpath), while on C# and Python the generator registry is closed and a **Mustache
+template** is the customization path — a real one, with `scope` and `outputPattern`
+doing the walk and the file naming. The `metaobjects-codegen` skill has the per-port
+matrix and defines `outputPattern`; read it before concluding a shape is unreachable.
+**Whichever lever you get, it is yours to edit.** A standing instruction not to
+change the MetaObjects repo says nothing about your own generators or templates —
+reading it as though it did is how an adoption ends up hand-written, and it is the most
+common way this step is skipped. Editing a generator or a template here is ordinary
+adoption work: not an escalation, not a hack, and nothing to ask permission for. Reshaping working call sites to satisfy the
 generator's defaults is the *last* resort, not the first.
 
 **Minimize churn to code the generator is not replacing.** The ONLY existing code that

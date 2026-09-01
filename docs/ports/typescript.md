@@ -75,6 +75,84 @@ export default defineConfig({
 });
 ```
 
+### Declarative template-codegen (Mustache)
+
+Owning a generator is one of **two** authoring paths, and TypeScript has both. A
+generator can be **programmatic** — the scaffolded `codegen/generators/*.ts` above,
+composing this package's `render*` functions — or **declarative**: a Mustache template
+plus a scope, with no generator code at all.
+
+Reach for a template when the output *shape* is what you are iterating on, or when you
+want the same output across languages; reach for a programmatic generator when the logic
+is gnarly or the run is hot. Tradeoff table:
+[`codegen-concepts.md` §3](../features/codegen-concepts.md).
+
+There is **no `--template-spec` flag on `meta gen`** — deliberately.
+`metaobjects.config.ts` already takes generator *values*, so a template generator is
+declared there like any other, which is also what keeps it visible to
+`meta verify --codegen` (that gate re-runs the config's generator list, so a generator
+declared anywhere else would have its output reported as drift):
+
+```ts
+// metaobjects.config.ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { templateGenerator } from "@metaobjectsdev/codegen-ts";
+import { entityFile } from "./codegen/generators/entity.js";
+
+export default defineConfig({
+  outDir: "src/generated",
+  generators: [
+    entityFile(),
+    templateGenerator({
+      name: "entity-service",              // kebab-case; surfaces in diagnostics
+      template: "service/entity-service",  // → templates/service/entity-service.mustache
+      scope: "perEntity",                  // "perEntity" | "perPackage" | "perModel"
+      outputPattern: "{package}/{Name}Service.ts",
+      // format: "text",                   // optional escaper; defaults to "text"
+      // target: "api",                    // optional named output target
+    }),
+  ],
+});
+```
+
+Templates resolve through the project's `templates/` directory first, then the framework
+defaults — so `template: "service/entity-service"` reads
+`<projectRoot>/templates/service/entity-service.mustache`. The `outputPattern`
+placeholders are `{name}`, `{Name}` and `{package}` (whose `::` segments become nested
+directories); an unknown placeholder throws. Abstract objects are excluded from every
+scope.
+
+`scope` and `walk` are mutually exclusive — supply exactly one. Take a `scope` when one
+of the three walks fits; supply your own `walk` when it does not.
+
+**Reusing a spec authored for another port.** C# and Python declare the same generators
+as a JSON **template-spec** file, because their generator registries are closed and a
+flag is the only seam they have. That spec is portable — parse it and spread the result
+into `generators`:
+
+```ts
+import { readFileSync } from "node:fs";
+import { parseTemplateSpec, templateSpecToGenerators } from "@metaobjectsdev/codegen-ts";
+
+const spec = parseTemplateSpec(JSON.parse(readFileSync("./template-spec.json", "utf8")));
+
+export default defineConfig({
+  generators: [entityFile(), ...templateSpecToGenerators(spec)],
+});
+```
+
+`parseTemplateSpec` validates the shape and throws on a bad `scope`, a missing required
+string, or an unregistered `format`. Portability runs **one way**: TypeScript additionally
+accepts a `target` field (named output targets), which the two CLI ports reject — so a
+spec written here may not run there, while a spec written there always runs here. Keep
+`target` out of any spec you intend to share.
+
+The walks, the data dict and the pattern grammar are gated byte-identical across all five
+ports by the shared `fixtures/template-codegen-conformance/` corpus — whose own TS runner
+drives exactly the `parseTemplateSpec` → `templateSpecToGenerators` → `generators` path
+shown above. The data dict your template receives is documented in
+[`codegen-data-shapes.md`](../features/codegen-data-shapes.md).
+
 ### Custom providers (optional)
 
 If your app needs a metamodel subtype the core doesn't ship (e.g.

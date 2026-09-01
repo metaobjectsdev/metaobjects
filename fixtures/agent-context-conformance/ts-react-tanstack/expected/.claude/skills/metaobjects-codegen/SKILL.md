@@ -338,14 +338,20 @@ what the neutral data dict is for.
 
 **TypeScript** has both, and the whole programmatic procedure is documented: `meta eject`,
 the `metaobjects.config.ts` keys, the exported `render*` functions — see this skill's
-`references/typescript.md`. For the declarative path, spread a parsed spec into
-`generators` with `templateSpecToGenerators`, or call `templateGenerator()` directly.
+`references/typescript.md`. The declarative path is declared in the SAME config: call
+`templateGenerator()` in `generators`, or spread a parsed JSON spec with
+`templateSpecToGenerators(parseTemplateSpec(...))` to reuse one written for C#/Python.
+**There is no `--template-spec` flag on `meta gen` and its absence is not a gap** — the
+config takes generator values, and keeping the declaration there is what keeps
+`meta verify --codegen` regenerating with it.
 
 **Java / Kotlin** have both. **No eject command** — a programmatic generator means
 implementing `com.metaobjects.generator.Generator` and naming your class in the Maven
 `<generator>` element, which the plugin loads from the project classpath. The declarative
 path is `TemplateScopeGenerator`, wired the same way with `<template>` / `<scope>` /
-`<outputPattern>` / `<format>` / `<templatesDir>`.
+`<outputPattern>` / `<format>` / `<templatesDir>` (plus the standard `<outputDir>`), and
+covers Java and Kotlin alike. No `--template-spec` flag here either, for the same reason:
+`<generator>` already loads a consumer class from the project classpath.
 
 **C# and Python: the declarative path is your only option, and it is a real one.** Their
 generator sets are **closed built-in registries** — `--generators` *selects* from what
@@ -354,6 +360,13 @@ ships, and there is no seam to register a `Generator` of your own. (Python's
 reach for it here.) Use `--template-spec <json>` — plus `--templates <dir>` on Python or
 `--template-root <dir>` on C# — and your entries are appended to the default suite. Worked
 examples with the full JSON: `docs/ports/python.md` and `docs/ports/csharp.md`.
+
+**One caveat to plan around on those two ports:** `--template-spec` is accepted by `gen`
+only. `verify` does not take it and neither port auto-discovers a spec file, so
+`verify --codegen` regenerates WITHOUT your template generators and reports their
+committed output as stale — Python prints `extra: <path>` and exits 1, and the remedy it
+prints is a loop. Emit template-spec output somewhere other than the directory
+`verify --codegen` diffs, and do not "fix" the failure by deleting the files.
 
 So on C#/Python, "I need a shape the built-ins do not emit" is answered by a template, not
 by writing generator code. Do not conclude the port cannot be customized.

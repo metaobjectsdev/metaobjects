@@ -131,12 +131,39 @@ meaning.
 
 ## Per port
 
-| Port | Invocation | Template ownership model |
-|---|---|---|
-| **TypeScript** | `meta init` → `meta gen` (Bun/Node CLI) | **Scaffold-and-own** — `meta init` copies `entityFile`/`queriesFile`/`routesFile`/`barrel` into `codegen/generators/*.ts`; `metaobjects.config.ts` imports those local copies. Edit them freely. |
-| **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | Build-config: the generator set (EF Core entities + `AppDbContext` + CRUD routes) is selected via config; customize via template-spec. |
-| **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | Build-config: generators selected in `pom.xml`, by **stable name** (`entity`/`routes`/…) through the `GeneratorRegistryProvider` ServiceLoader SPI. Kotlin generators run through the same goal. |
-| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | Build-config: the generator set (Pydantic + FastAPI) selected via config; customize via template-spec. |
+Every port offers the **declarative** path — a Mustache template plus a scope, no
+generator code. Two ports ALSO offer a **programmatic** path, and two do not. Which
+you get is the first thing to establish, because it changes what you can plan.
+
+| Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
+|---|---|---|---|
+| **TypeScript** | `meta init` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` copies `entityFile`/`queriesFile`/`routesFile`/`barrel` into `codegen/generators/*.ts`; `metaobjects.config.ts` imports those local copies. Edit them freely, or `meta eject <generator>` any other one. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Built-ins are selected in `pom.xml` by **stable name** through the `GeneratorRegistryProvider` ServiceLoader SPI; your OWN generator class is named in `<classname>` and loaded from the project classpath. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
+| **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **No.** `GeneratorRegistry` is a closed built-in registry; `--generators` *selects* from what ships. There is no registration seam. | **Yes, and it is your only path** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
+| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **No.** `GENERATOR_REGISTRY` is a closed built-in registry, same as C#. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator — do not reach for it here.) | **Yes, and it is your only path** — `metaobjects gen --template-spec <json> --templates <dir>`. |
+
+So "I need a shape the built-ins do not emit" has an answer on **every** port. On C# and
+Python that answer is a template, not generator code — which is a real path, not a
+consolation prize: it renders against the same neutral, byte-gated data dict every port
+shares, so one template emits identically on all five.
+
+**Choosing between the two paths** where you have both: reach for a template when the
+output *shape* is what you are iterating on, or when you want the same output across
+languages; reach for a generator when the logic is gnarly or the run is hot. Full
+tradeoff table: [`codegen-concepts.md` §3](codegen-concepts.md).
+
+> **Known gap on the two flag ports.** `--template-spec` is a flag on `gen` only —
+> neither `metaobjects verify` nor `dotnet meta verify` accepts it, and neither port
+> auto-discovers a spec file. So `verify --codegen` regenerates WITHOUT your template
+> generators and convicts their committed output — Python classifies each as
+> `extra: <path>` (*"stale committed file"*) and exits 1, and the remedy it prints
+> (*"regenerate and commit the result"*) is a **loop**: regenerating without the flag
+> cannot produce those files, and regenerating with it leaves the gate failing
+> identically. Until that is closed, keep template-spec output outside the directory
+> `verify --codegen` diffs, or run the gate only against the default suite.
+> (This is why the two ports that have a code seam —
+> TypeScript and the JVM — declare template generators in the build config instead: the
+> config is what the drift gate re-runs.)
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
 ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
