@@ -71,6 +71,46 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   attributes) and [ADR-0051](decisions/ADR-0051-extension-is-registration.md) (extension is
   registration), both surfaced by building it.
 
+### Codegen authoring paths — SP-3 (2026-08-31, unreleased)
+
+- **The shipped agent context taught ONE way to author a generator; there are two, and on
+  two ports only one exists.** A generator can be **programmatic** (a `Generator` in the
+  port's language) or **declarative** (a Mustache template plus `scope` + `outputPattern`,
+  rendered against the neutral byte-gated data dict). Availability is per-port and is the
+  fact that changes what an agent should plan: **TypeScript and the JVM have both**
+  (TS scaffold-and-own + `meta eject`; the JVM loads a consumer class from the project
+  classpath via `<classname>`), while **C# and Python have closed generator registries, so
+  the declarative `--template-spec` is their only authoring path.** The old text told those
+  two ports' adopters to implement a generator interface "and register it with the build
+  tool" — impossible there — and then closed the search.
+- **The rule was propagated, not invented.** `docs/features/codegen-concepts.md` §3 already
+  carried the tradeoff (template when the output SHAPE is what you are iterating on or you
+  want one output across languages; code when the logic is gnarly or the run is hot);
+  nothing in `agent-context/` linked to it, and the declarative path's whole footprint
+  across every shipped skill was two passing table cells.
+- **The JVM `TemplateScopeGenerator`** shipped in SP-1b for Java *and* Kotlin and was
+  documented in no port page — now in `docs/ports/java.md` (with a requiredness-per-arg
+  table checked against the source) and `docs/ports/kotlin.md`.
+- **TypeScript's invocation is the config, and there is deliberately no flag.** RULED after
+  a two-arm adjudication: `templateGenerator()` in `metaobjects.config.ts`'s `generators`,
+  or `templateSpecToGenerators(parseTemplateSpec(...))` to reuse a spec authored for
+  C#/Python. Reasons: SP-1 §4 already made registration per-port; `verify --codegen` re-runs
+  the *config's* generator list, so a flag-supplied generator's output would be convicted as
+  drift (and the jurisdiction guard does not rescue it — `meta gen` recorded its hashes);
+  [ADR-0035](decisions/ADR-0035-one-zero-stability-commitment-and-version-unification.md)
+  freezes documented CLI flags at 1.0 while adding one later stays additive; and a TS-only
+  config key would break the shipped claim that the Python config vocabulary is identical.
+  The cross-port conformance runner itself drives exactly the documented path.
+- **Portability is ONE-WAY** and now says so: TS additionally accepts a `target` field the
+  two CLI ports reject, so a spec written on C#/Python always runs on TS, not the reverse.
+- Stale pointers fixed: `codegen-data-shapes.md` and the codegen skill's TS reference both
+  sent template authors at `@metaobjectsdev/codegen-ts/generators`, removed at the 1.0 cut.
+- **SP-2 (native-generator registration parity for C#/Python) stays unscheduled and was
+  never a prerequisite** — SP-3 exists partly to document SP-2's absence honestly. If SP-2
+  lands, the C#/Python answer gains a second option rather than changing.
+  Designed in `docs/superpowers/specs/2026-06-28-mustache-codegen-parity-design.md`
+  (SP-1 §2, §6).
+
 ### Foundation
 
 - **H1 — Polyglot monorepo migration** (2026-05-14)
@@ -178,7 +218,26 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 
 - **FR-031 — MetaData read-path caching (general; serialization is the example).** Repeatedly walking the MetaData tree for field/attr/validator/view/children lookups is a hot path for **every** consumer — codegen, runtime, the UI, and (as the headline example) serializing 100k+ large objects re-queries the tree per object. The MetaData read-model is **immutable after load**, so memoize these lookups on the MetaData class once. Deliberately **not** serialization-specific: it's a general read-path cache that any processing benefits from, validated by a throughput **benchmark gate** (process 100k+ objects, cached-vs-uncached delta) per port, using serialization as the example workload. Low effort, high leverage. *(The serialization-specific perf — a per-MetaObject compiled plan + streaming large sets — rides with FR-030, building on this cache.)* Detail: §"Theme 4" of the gap doc.
 
-- **SP-3 — the codegen authoring-decision pass over the shipped agent context.** Chartered by SP-1 §6 (*"the agent-context docs rewrite — teach the decision framework + own-your-generators on every port"*), deferred out of that program, and then **absent from this roadmap entirely** — re-opened here because the gap it names is now measured rather than anticipated. **SP-1 sequenced it after SP-2 (native-generator registration parity); it is deliberately decoupled, because SP-2's ABSENCE is the thing SP-3 has to document.** Waiting would keep a false instruction shipping. **The sharpest finding, verified at each port's registry rather than inherited from the doc:** `agent-context/skills/metaobjects-codegen/SKILL.md:317-324` tells an adopter on any non-TS port that owning a generator means implementing that port's `Generator`/`IGenerator` interface *"and registering it with the build tool"*, then closes the search — *"they do not carry a step-by-step retargeting procedure, so do not go looking for one."* That is **true for Java/Kotlin** (`AbstractMetaDataMojo.java:147` resolves a consumer class by FQ name through `projectClassLoader.loadClass`) and **false for C# and Python**, whose generator sets are closed built-in registries (`GeneratorRegistry.Resolve` over `DefaultGeneratorNames`; `GENERATOR_REGISTRY` + `.get(name)` — Python's `--provider module:symbol` is the *metamodel-provider* hook, not a generator seam). So two ports' adopters are instructed to do something that cannot be done, and are simultaneously not told about `--template-spec`, which is exactly those two ports' working answer and is already documented in `docs/ports/python.md:172-205` and `docs/ports/csharp.md:238-272`. **The decision framework does not need inventing — it needs propagating.** `docs/features/codegen-concepts.md` §3 already carries a real tradeoff table (*"pick speed (direct) when the logic is gnarly or the run is hot; pick a template (Mustache) when the shape is what you're iterating on, or when you want the same output across languages"*), and nothing in `agent-context/` links to it: the declarative path's entire footprint across every shipped skill is **two passing table cells** (`references/csharp.md:50`, `references/python.md:64`), neither naming `--template-spec`, `scope` or `outputPattern`. Scope: (1) teach the two authoring paths as a CHOICE in `metaobjects-codegen/SKILL.md`, sourced from codegen-concepts §3; (2) correct the `:317-324` passage per-port, and stop telling the reader to stop looking; (3) give the four `metaobjects-audit/references/{csharp,java,kotlin,python}.md:~59-62` fragments an actual alternative — today each states that scaffold-and-own does not exist and offers nothing; (4) define `outputPattern` where the skills already use it undefined (`metaobjects-codegen/SKILL.md:182`, `metaobjects-authoring/SKILL.md:96`, the latter a forward reference to a skill that never defines it); (5) document the JVM `TemplateScopeGenerator`, which shipped in SP-1b for Java **and** Kotlin yet is missing from `docs/ports/java.md`, `docs/ports/kotlin.md`, `cli.md:38` and the Java/Kotlin row of `own-your-codegen.md:138`; (6) give TypeScript a documented invocation — it exports `templateGenerator`/`templateSpecToGenerators` but has no `meta gen` flag, no `metaobjects.config.ts` key and no example outside one code block in codegen-concepts; (7) repoint `codegen-data-shapes.md:167-176`, which sends template authors at the `@metaobjectsdev/codegen-ts/generators` subpath that `own-your-codegen.md:182` lists as deprecated-and-removed-at-1.0; (8) delete the superseded documents-only doctrine still asserted in source at `codegen-ts/src/generators/template-generator.ts:9-11` (*"Code → hand-coded generators … Documents → templateGenerator"*), which SP-1 §2 and codegen-concepts §3 have both moved past — SP-1's own worked example emits `{package}/{name}Service.java`. **SP-2 stays unscheduled and is not a prerequisite**; if it later lands, SP-3's per-port answer for C#/Python gains a second option rather than changing. Designed in `docs/superpowers/specs/2026-06-28-mustache-codegen-parity-design.md` (SP-1 §2, §6).
+- **`--template-spec` output is invisible to `verify --codegen` on C# and Python.** Found
+  while documenting the declarative path (SP-3), and left documented-not-fixed on purpose:
+  it is a two-port CLI change, not a docs edit. `--template-spec` is accepted by `gen` only
+  — neither `metaobjects verify` nor `dotnet meta verify` takes it, and **neither port
+  auto-discovers a spec file**, though SP-1 §4 specified exactly that (*"a conventional
+  default the port auto-discovers and the flag overriding"*) and it was never built: the
+  only read is gated on the flag being present (`cli.py:700-707`) and no default-spec-path
+  constant exists in either port. So `verify --codegen` regenerates WITHOUT the adopter's
+  template generators and convicts their committed output — Python classifies each as
+  `extra:` (*"stale committed file"*) and exits 1 — **and the remedy it prints is a loop**:
+  regenerating without the flag cannot produce those files, and regenerating with it leaves
+  the gate failing identically. This is the `0.24.3` *gate-convicts-the-innocent* shape, and
+  it lands on precisely the two ports for which the template-spec is the ONLY authoring
+  path, so an adopter doing the one thing their port supports fails their own drift gate.
+  Fix is SP-1 §4's auto-discovery (a conventional spec path both `gen` and `verify` resolve,
+  so the two verbs cannot disagree) rather than a `verify --template-spec` flag, which would
+  need repeating at every CI call site. The workaround is documented at
+  [`own-your-codegen.md`](../docs/features/own-your-codegen.md) until then. **The JVM and TS
+  are structurally immune** — both declare template generators in the build config, which is
+  what the drift gate re-runs.
 
 ### Tracked outside this library repo (not roadmap work here)
 
