@@ -2,12 +2,8 @@
 // without loading it all into context. apropos + `kubectl explain` over the live
 // registry, tuned for an agent's token budget: terse names-first default, opt-in
 // description search, drill-in `--detail`, machine-readable `--json`.
-import {
-  TypeRegistry,
-  registerCoreTypes,
-  buildRegistryManifest,
-} from "@metaobjectsdev/metadata";
-import { registerForgeTypes } from "@metaobjectsdev/sdk";
+import { composeRegistry, coreProviders, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
+import { forgeTypesProvider } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
 
 interface TypesFlags {
@@ -78,7 +74,24 @@ interface Entry {
   description: string;
   whenToUse: string | undefined;
   attrNames: string[]; // attr-name hints (for subtype terse lines)
-  raw: unknown; // the manifest node, for --json
+  /** Accepted on EVERY node, so no `--type` scope excludes it (#357). */
+  common: boolean;
+  /** Registered here but carved out of the cross-port manifest — TS-only vocabulary. */
+  tsOnly: boolean;
+  /** A type's shared root (`<type>.base`): its attrs apply to every subtype. */
+  sharedRoot: boolean;
+  raw: unknown; // the catalog node, for --json
+}
+
+/** Compact markers appended to a terse line, and the legend that explains them. */
+const MARK_TS_ONLY = "[ts-only]";
+const MARK_BASE = "[base]";
+const LEGEND = `  ${MARK_BASE}     the type's shared root — its @attrs apply to every subtype of that type\n` +
+  `  ${MARK_TS_ONLY}  registered in TypeScript only; the cross-port metamodel contract does not carry it`;
+
+function marks(e: Entry): string {
+  const m = [e.sharedRoot ? MARK_BASE : "", e.tsOnly ? MARK_TS_ONLY : ""].filter(Boolean);
+  return m.length > 0 ? `  ${m.join(" ")}` : "";
 }
 
 export async function typesCommand(args: string[]): Promise<number> {
@@ -94,26 +107,45 @@ export async function typesCommand(args: string[]): Promise<number> {
     return 0;
   }
 
-  const registry = new TypeRegistry();
-  registerCoreTypes(registry);
-  registerForgeTypes(registry);
-  const manifest = buildRegistryManifest(registry);
+  // #357 — COMPOSE the registry, never `registerCoreTypes` alone. The db, ui-web and
+  // documentation providers register attrs onto types the core provider declares, so a
+  // partially-composed registry reports a type that exists with most of its attributes
+  // missing: `field.string` came back with 6 attrs instead of 16 (no @column, @filterable,
+  // @sortable, @dbColumnType), `view.textarea` with none (no @rows), and the eight
+  // documentation commonAttrs — @title among them — were absent entirely. This is the same
+  // provider set the loader composes, so what this prints is what the loader accepts.
+  const registry = composeRegistry([...coreProviders, forgeTypesProvider], { validate: true });
+  const catalog = buildVocabularyCatalog(registry);
 
-  // Flatten the manifest into searchable entries.
+  // Flatten the catalog into searchable entries.
   const entries: Entry[] = [];
-  for (const mt of manifest.types) {
+  for (const mt of catalog.types) {
     const tsName = `${mt.type}.${mt.subType}`;
     entries.push({
       kind: "subtype", name: tsName, owner: tsName, type: mt.type,
       description: mt.description, whenToUse: mt.whenToUse,
-      attrNames: mt.attrs.map((a) => `@${a.name}`), raw: mt,
+      attrNames: mt.attrs.map((a) => `@${a.name}`),
+      common: false, tsOnly: !mt.crossPort, sharedRoot: mt.sharedRoot, raw: mt,
     });
     for (const at of mt.attrs) {
       entries.push({
         kind: "attr", name: `${tsName} @${at.name}`, owner: tsName, type: mt.type,
-        description: at.description, whenToUse: at.whenToUse, attrNames: [], raw: at,
+        description: at.description, whenToUse: at.whenToUse, attrNames: [],
+        common: false, tsOnly: !mt.crossPort, sharedRoot: false, raw: at,
       });
     }
+  }
+  // #357 — the attrs every node accepts. These were absent from the search entirely, so
+  // `meta types title` reported nothing for `@title` — the registered attr an author is
+  // supposed to find INSTEAD of asking for a new one (that omission is exactly how #353
+  // became a request to register `@label`). They belong to no single type, so no `--type`
+  // scope excludes them.
+  for (const at of catalog.commonAttrs) {
+    entries.push({
+      kind: "attr", name: `@${at.name}`, owner: "(any node)", type: "",
+      description: at.description, whenToUse: at.whenToUse, attrNames: [],
+      common: true, tsOnly: false, sharedRoot: false, raw: at,
+    });
   }
 
   const q = (f.query ?? "").toLowerCase();
@@ -122,7 +154,8 @@ export async function typesCommand(args: string[]): Promise<number> {
     : (f.kind.has("attr") && e.kind === "attr") ||
       ((f.kind.has("subtype") || f.kind.has("type")) && e.kind === "subtype");
   const matches = entries.filter((e) => {
-    if (f.type && e.type !== f.type) return false;
+    // A common attr is accepted on every type, so `--type field` must not hide it.
+    if (f.type && e.type !== f.type && !e.common) return false;
     if (!wantKind(e)) return false;
     if (!q) return true;
     if (e.name.toLowerCase().includes(q)) return true;
@@ -149,9 +182,12 @@ export async function typesCommand(args: string[]): Promise<number> {
 
   if (f.detail) {
     for (const e of shown) {
-      const head = e.kind === "subtype" ? e.name : e.name;
-      log.info(`\n${head}  (${e.kind})`);
+      log.info(`\n${e.name}  (${e.kind})`);
       if (e.description) log.info(`  ${e.description}`);
+      if (e.sharedRoot)
+        log.info(`  shared root: @attrs registered here apply to every ${e.type}.* subtype.`);
+      if (e.tsOnly)
+        log.info("  TypeScript-only: registered here, but not part of the cross-port metamodel contract.");
       if (e.whenToUse) log.info(`  → reach for it when: ${e.whenToUse}`);
       if (e.kind === "subtype") {
         const mt = e.raw as { attrs: { name: string; valueType: string | null; required: boolean; description: string }[] };
@@ -167,12 +203,13 @@ export async function typesCommand(args: string[]): Promise<number> {
     for (const e of shown) {
       if (e.kind === "subtype") {
         const hint = e.attrNames.length ? `  (${e.attrNames.slice(0, 6).join(", ")}${e.attrNames.length > 6 ? ", …" : ""})` : "";
-        log.info(`${e.name.padEnd(28)} ${oneLine(e.description)}${hint}`);
+        log.info(`${e.name.padEnd(28)} ${oneLine(e.description)}${hint}${marks(e)}`);
       } else {
-        log.info(`${e.name.padEnd(28)} ${oneLine(e.description)}`);
+        log.info(`${e.name.padEnd(28)} ${oneLine(e.description)}${marks(e)}`);
       }
     }
   }
+  if (!f.noHeaders && !f.detail && shown.some((e) => marks(e) !== "")) log.info(`\n${LEGEND}`);
   if (!f.noHeaders && shown.length < total)
     log.info(`\n${shown.length} of ${total} shown — narrow with QUERY/--type/--kind or raise --limit.`);
   else if (!f.noHeaders)

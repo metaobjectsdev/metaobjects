@@ -37,7 +37,7 @@ import {
 } from "./registry-manifest-exclusions.js";
 
 /** One attribute in the manifest — the logical, cross-port-identical facet. */
-interface ManifestAttr {
+export interface ManifestAttr {
   name: string;
   /** The attr's SCALAR value-type subtype, or null for a polymorphic/untyped attr (e.g. @default). */
   valueType: string | null;
@@ -63,7 +63,7 @@ interface ManifestAttr {
 }
 
 /** One structural child rule of a type (FR-033 constraint graph). */
-interface ManifestChild {
+export interface ManifestChild {
   /** The admitted child `type` (`"*"` = any). */
   childType: string;
   /** The admitted child subType — a single subtype, `"*"` (any), or a list of admitted subtypes. */
@@ -79,7 +79,7 @@ interface ManifestChild {
 }
 
 /** One registered (type, subType) in the manifest, with its docs + attrs + constraint graph. */
-interface ManifestType {
+export interface ManifestType {
   type: string;
   subType: string;
   /** FR-033 — human/AI-facing description of the type/subType (required, non-empty). */
@@ -124,7 +124,7 @@ interface RegistryManifest {
 }
 
 /** ASCII-string compare so the sort is locale-independent and byte-stable across ports. */
-function compareStrings(a: string, b: string): number {
+export function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -195,7 +195,7 @@ function toManifestChild(rule: ChildRule): ManifestChild {
 }
 
 /** Sort the constraint graph by (childType, childSubTypeKey, childName) — ASCII. */
-function sortedChildren(rules: readonly ChildRule[]): ManifestChild[] {
+export function sortedChildren(rules: readonly ChildRule[]): ManifestChild[] {
   return rules
     .map(toManifestChild)
     .sort(
@@ -207,7 +207,7 @@ function sortedChildren(rules: readonly ChildRule[]): ManifestChild[] {
 }
 
 /** Sort attrs by name (ascending, ASCII). */
-function sortedAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
+export function sortedAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
   return attrs
     .map(toManifestAttr)
     .sort((a, b) => compareStrings(a.name, b.name));
@@ -260,7 +260,8 @@ function sortedPerTypeAttrs(
  * judge a carve-out "dead" — that is a cross-port property, asserted by the
  * shared byte-canonical, not here.
  */
-const INCLUDED = "included" as const;
+/** The classifier's "this is logical cross-port vocabulary" verdict. */
+export const INCLUDED = "included" as const;
 export type AttrClassification = ExclusionReason | typeof INCLUDED;
 
 export function classifyPerTypeAttr(name: string): AttrClassification {

@@ -178,6 +178,11 @@ export { validateConstraints } from "./constraint-validate.js";
 
 // Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
 export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr, METAMODEL_VERSION } from "./registry-manifest.js";
+// #357 — the AUTHORING-facing twin of buildRegistryManifest: every registered
+// (type, subType) this port accepts, with the cross-port carve-outs MARKED rather
+// than dropped. `meta types` reads this; the five-port byte gate reads the manifest.
+export { buildVocabularyCatalog } from "./vocabulary-catalog.js";
+export type { VocabularyCatalog, VocabularyType } from "./vocabulary-catalog.js";
 export type { AttrClassification } from "./registry-manifest.js";
 export { ExclusionReason } from "./registry-manifest-exclusions.js";
 

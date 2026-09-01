@@ -48,6 +48,45 @@ same `[0]` and, though source-only (ADR-0048), builds in-repo and would have dri
 grid tier it is modelled on. No generated output in this repo changes: not one model here
 declares two views on a field, which is also why nothing caught this.
 
+### Fixed — `meta types` under-reported the registry it is the search for (#357)
+
+`meta types` is the vocabulary search the generated `.metaobjects/AGENTS.md` and the
+`metaobjects-authoring` skill both make **step 1** of the authoring procedure, on the reasoning
+that you must search the vocabulary before concluding something cannot be expressed. It gave
+confidently wrong answers, for two independent reasons:
+
+1. **It read the cross-port manifest.** `buildRegistryManifest` answers *"what must all five
+   ports byte-match?"* and deliberately carves out the 13 TS-web-presentation `view.*` controls
+   (B-2), which stay REGISTERED in TypeScript. Asked *"what can I author here?"*, it therefore
+   reported **2 of the 15** registered `view.*` subtypes, and the other 13 came back exactly as
+   a genuine typo does: `meta types view.text` → *"No vocabulary matches"*.
+2. **It composed a partial registry** — `registerCoreTypes` alone, which `core-types.ts` itself
+   documents as a legacy wrapper to be preferred against. Every attr the db, ui-web and
+   documentation providers register was invisible: `field.string` reported **6** attrs instead
+   of 16 (no `@column`, `@filterable`, `@sortable`, `@dbColumnType`), `view.textarea` none at
+   all (no `@rows`), and the eight documentation common attrs were absent entirely — so
+   **`meta types title` found nothing**, for the very attr an author is meant to find instead
+   of asking for a new one. That omission is exactly how #353 became a request to register
+   `@label` when `@title` already existed: the tool that would have prevented it under-reported
+   the attribute involved.
+
+The command now composes the same provider set the loader does, and reads a new
+`buildVocabularyCatalog` — the authoring-facing twin of the manifest, built from the same row
+rules — which enumerates every registered `(type, subType)` and **marks** the cross-port
+carve-outs `[ts-only]` rather than dropping them, which is the honest way to surface what the
+carve-out means: not "missing", but "TypeScript-only". A type's shared root (`<type>.base`) is
+marked `[base]`, so a listing cannot be mistaken for the concrete vocabulary. Common attrs are
+searchable and no `--type` scope hides them, since they are accepted on every node.
+
+Reserved structural keys (`isArray`, `extends`) stay unlisted: `@`-prefixing one is
+`ERR_RESERVED_ATTR`, so offering them would teach metadata the loader rejects. An unregistered
+subtype still reports as missing — the fix must not make the tool answer "yes" to everything.
+
+**TypeScript-only, and deliberately so.** The B-2 exclusion is correct and documented; adding
+those rows to `expected-registry.json` would break the C#/Python deregistration and force a
+cross-port change for a bug whose cause was a CLI command asking the wrong source.
+`expected-registry.json` and `metamodelVersion` are untouched.
+
 ### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
 
 The declarative Mustache template-spec was wired into `gen` and nowhere else, so the drift
