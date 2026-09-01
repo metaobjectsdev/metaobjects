@@ -90,10 +90,9 @@ declares two views on a field, which is also why nothing caught this.
 
 ### Fixed — `meta types` under-reported the registry it is the search for (#357)
 
-`meta types` is the vocabulary search the generated `.metaobjects/AGENTS.md` and the
-`metaobjects-authoring` skill both make **step 1** of the authoring procedure, on the reasoning
-that you must search the vocabulary before concluding something cannot be expressed. It gave
-confidently wrong answers, for two independent reasons:
+`meta types` is the vocabulary search the `metaobjects-authoring` skill makes **step 1** of the
+authoring procedure, on the reasoning that you must search the vocabulary before concluding
+something cannot be expressed. It gave confidently wrong answers, for two independent reasons:
 
 1. **It read the cross-port manifest.** `buildRegistryManifest` answers *"what must all five
    ports byte-match?"* and deliberately carves out the 13 TS-web-presentation `view.*` controls
