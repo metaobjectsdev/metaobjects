@@ -1,6 +1,6 @@
 import type { CellContext } from "@tanstack/react-table";
 import type { ReactNode } from "react";
-import { formatCurrency } from "@metaobjectsdev/runtime-web";
+import { formatCurrency, type ImageUploadAdapter } from "@metaobjectsdev/runtime-web";
 
 export type CellRenderer = (ctx: CellContext<any, any>) => ReactNode;
 
@@ -72,3 +72,60 @@ export const defaultCellRenderers: Record<string, CellRenderer> = {
   radio:    (ctx) => String(ctx.getValue() ?? ""),
   password: () => "•••••",
 };
+
+/** Presentation knobs for {@link imageCell}. Both have defaults; neither is metadata —
+ *  a column's `meta` carries only view/sortable/width/renderer, so `view.image`'s
+ *  @aspectRatio / @maxEdge do not reach the grid. */
+export interface ImageCellOptions {
+  /** Rendered edge length in px (square thumbnail). Default 32. */
+  size?: number;
+  /** Alt text. Defaults to "" — the row around the cell already carries the meaning,
+   *  and announcing an opaque storage key is worse than announcing nothing. */
+  alt?: string;
+}
+
+/**
+ * Cell renderer for a `view.image` column, closed over the app's upload/serve adapter.
+ *
+ * A FACTORY rather than a `defaultCellRenderers` key, and deliberately: the field stores
+ * an opaque storage key, so turning it into a `src` requires `ImageUploadAdapter.imageUrl`
+ * — and the adapter's React context lives in `@metaobjectsdev/react`, which declares
+ * `react-hook-form` and `@hookform/resolvers` as REQUIRED peers. A dependency edge from
+ * this package would make every grid-only consumer responsible for a form stack it never
+ * uses, and `peerDependencies` are declared per PACKAGE, so no subpath or export-map change
+ * reaches that. The app supplies the adapter instead:
+ *
+ *     <CellRendererProvider value={{ image: imageCell(adapter) }}>
+ *
+ * Only the adapter's TYPE is imported here, from a package this one already depends on, so
+ * the helper costs nothing at install or bundle time.
+ */
+export function imageCell(adapter: ImageUploadAdapter, opts: ImageCellOptions = {}): CellRenderer {
+  const size = opts.size ?? 32;
+  const alt = opts.alt ?? "";
+  return (ctx) => {
+    const v = ctx.getValue();
+    const key = v == null ? "" : String(v);
+    if (key === "") return "";
+    let src: string;
+    try {
+      src = adapter.imageUrl(key);
+    } catch {
+      // An adapter that cannot resolve the key: render the key as the text it is, the
+      // same fall-back `hotlink` makes for a value that is not a URL. There is no
+      // harmless empty-src alternative — an <img src=""> resolves to the PAGE url and
+      // re-requests it.
+      return key;
+    }
+    return (
+      <img
+        src={src}
+        alt={alt}
+        width={size}
+        height={size}
+        loading="lazy"
+        style={{ objectFit: "cover" }}
+      />
+    );
+  };
+}

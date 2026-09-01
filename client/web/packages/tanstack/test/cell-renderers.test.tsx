@@ -3,9 +3,11 @@ import "./setup.js";
 import { renderHook } from "@testing-library/react";
 import {
   defaultCellRenderers,
+  imageCell,
   CellRendererProvider,
   useCellRenderers,
 } from "../src/index.js";
+import type { ImageUploadAdapter } from "@metaobjectsdev/runtime-web";
 
 const ctx = (value: unknown) => ({ getValue: () => value }) as any;
 
@@ -116,5 +118,68 @@ describe("CellRendererProvider", () => {
       ),
     });
     expect(result.current.checkbox!(ctx(true))).toBe("inner");
+  });
+});
+
+// The `view.image` column is the one registered subtype whose cell CANNOT be rendered from
+// the value alone: the field stores an opaque storage key, and turning that into a `src`
+// needs the app's ImageUploadAdapter. So the renderer ships as a FACTORY the app closes over
+// its adapter with, rather than as a `defaultCellRenderers` key — see the `image` exemption
+// in codegen-ts-tanstack's renderer-keys-are-registered-views.test.ts for why a dependency
+// edge to @metaobjectsdev/react is not the answer.
+describe("imageCell", () => {
+  const adapter: ImageUploadAdapter = {
+    upload: async () => ({ key: "unused" }),
+    imageUrl: (key) => `https://cdn.example.com/${key}`,
+  };
+  const props = (out: unknown) =>
+    (out as { props?: Record<string, unknown> } | null)?.props;
+
+  test("renders an <img> whose src the adapter resolved from the stored key", () => {
+    const p = props(imageCell(adapter)(ctx("avatars/abc123")));
+    expect(p?.src).toBe("https://cdn.example.com/avatars/abc123");
+  });
+
+  test("an absent value renders nothing, never an empty <img>", () => {
+    // An <img src=""> resolves to the PAGE url and re-requests it, so "" is not a
+    // harmless placeholder — there is no empty-src fallback to fall back to.
+    expect(imageCell(adapter)(ctx(null))).toBe("");
+    expect(imageCell(adapter)(ctx(""))).toBe("");
+  });
+
+  test("an adapter that throws on the key renders the key as the text it is", () => {
+    const throwing: ImageUploadAdapter = {
+      upload: async () => ({ key: "unused" }),
+      imageUrl: () => { throw new Error("unresolvable key"); },
+    };
+    expect(imageCell(throwing)(ctx("orphaned-key"))).toBe("orphaned-key");
+  });
+
+  test("size and alt are overridable, and default to a square decorative thumbnail", () => {
+    // alt defaults to "" because the row around the cell already carries the meaning;
+    // announcing a storage key would be worse than announcing nothing.
+    const d = props(imageCell(adapter)(ctx("k")));
+    expect(d?.width).toBe(32);
+    expect(d?.height).toBe(32);
+    expect(d?.alt).toBe("");
+    const o = props(imageCell(adapter, { size: 64, alt: "Cover art" })(ctx("k")));
+    expect(o?.width).toBe(64);
+    expect(o?.alt).toBe("Cover art");
+  });
+
+  test("it is NOT a default renderer — the adapter has to come from the app", () => {
+    // The converse arm of codegen-ts-tanstack's gate ("no exemption outlives the gap it
+    // explains") goes red if `image` becomes a key here, and correctly so: a keyed
+    // default would have no adapter to call.
+    expect(defaultCellRenderers.image).toBeUndefined();
+  });
+
+  test("it reaches the `image` key through CellRendererProvider", () => {
+    const { result } = renderHook(() => useCellRenderers(), {
+      wrapper: ({ children }) => (
+        <CellRendererProvider value={{ image: imageCell(adapter) }}>{children}</CellRendererProvider>
+      ),
+    });
+    expect(props(result.current.image!(ctx("k")))?.src).toBe("https://cdn.example.com/k");
   });
 });

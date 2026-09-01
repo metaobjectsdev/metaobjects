@@ -510,10 +510,11 @@ with that name, rather than reading `field.views()[0]`.
 ## Cell renderer overrides
 
 `<EntityGrid>` routes cell rendering through `CellRendererProvider`, keyed
-by the column's `meta.view` (a string set by codegen from the field's
-`view.*` child). Defaults are `text` / `textarea` / `number` / `date` /
-`datetime` / `boolean` / `currency` / `dropdown` / `password`. Override
-per-key without touching generated code:
+by the column's `meta.view` — the field's **registered `view.*` subtype**, set by
+codegen, so a key that is not a registered subtype can never be selected. Defaults
+are `text` / `textarea` / `number` / `date` / `month` / `checkbox` / `hotlink` /
+`currency` / `dropdown` / `radio` / `password`. Override per-key without touching
+generated code:
 
 ```tsx
 import { CellRendererProvider, EntityGrid } from "@metaobjectsdev/tanstack";
@@ -530,6 +531,28 @@ import { CellRendererProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 
 Per-column `cell` always wins; the provider only fills in when a column
 has no `cell` set.
+
+Three registered subtypes have no default renderer, on purpose. `view.base` and
+`view.web` are abstract roots nothing emits, and `view.hidden` is dropped from the
+column set by codegen — "not rendered" means no column, since a blank cell would still
+carry a header and a sort target.
+
+`view.image` is the fourth, and it has a helper rather than a default: the field stores
+an opaque storage key, so the cell needs the app's `ImageUploadAdapter` to turn it into a
+`src`. Close the factory over your adapter and wire it under the `image` key:
+
+```tsx
+import { CellRendererProvider, imageCell } from "@metaobjectsdev/tanstack";
+
+<CellRendererProvider value={{ image: imageCell(adapter, { size: 48 }) }}>
+  <EntityGrid {...gridProps} />
+</CellRendererProvider>
+```
+
+`imageCell` renders a square, lazily-loaded thumbnail (`size` px, default 32; `alt`
+defaults to `""` — the row carries the meaning, and announcing a storage key would be
+worse than announcing nothing). An absent value renders nothing rather than an empty
+`<img>`, and a key the adapter cannot resolve renders as the text it is.
 
 ## Narrowing what a generator emits
 

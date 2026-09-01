@@ -2,7 +2,12 @@
 export { EntityFetcherProvider, useEntityFetcher } from "./entity-fetcher.js";
 export type { EntityFetcherProviderProps } from "./entity-fetcher.js";
 export type { EntityFetcher, GridConfig } from "@metaobjectsdev/runtime-web";
-export { defaultCellRenderers, type CellRenderer } from "./cell-renderers.js";
+export {
+  defaultCellRenderers,
+  imageCell,
+  type CellRenderer,
+  type ImageCellOptions,
+} from "./cell-renderers.js";
 export {
   CellRendererProvider,
   useCellRenderers,

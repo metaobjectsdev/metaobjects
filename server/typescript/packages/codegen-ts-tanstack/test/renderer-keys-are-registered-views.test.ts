@@ -30,8 +30,17 @@ function rendererKeys(): string[] {
   const src = readFileSync(RENDERERS, "utf8");
   const start = src.indexOf("defaultCellRenderers");
   expect(start).toBeGreaterThan(-1);
-  const body = src.slice(start);
-  const keys = [...body.matchAll(/^ {2}(\w+):/gm)]
+  // Bounded to the literal, not sliced to EOF. The literal is a top-level const, so its
+  // terminator is the first line that is exactly `};`. A to-EOF slice made this function's
+  // own doc comment false the moment anything followed the literal — and the `imageCell`
+  // factory now does. Today's single-line signature happens not to trip it; wrapping that
+  // signature over three lines is enough, and reads `adapter` and `opts` as renderer keys,
+  // failing the "every key is a registered subtype" arm on a file with nothing wrong with
+  // it. A non-optional `ImageCellOptions` member does the same. Verified by probe both ways.
+  const end = src.indexOf("\n};", start);
+  expect(end).toBeGreaterThan(start);
+  const literal = src.slice(start, end);
+  const keys = [...literal.matchAll(/^ {2}(\w+):/gm)]
     .map((m) => m[1])
     .filter((k): k is string => k !== undefined);
   expect(keys.length).toBeGreaterThan(3);   // the parse itself must not silently yield []
@@ -85,8 +94,9 @@ describe("#355 — renderer keys and registered view subtypes agree", () => {
       "cost (dragging the image-upload/crop graph in, the #287 / react-easy-crop class) is " +
       "real but secondary, and is the half a subpath WOULD fix — recording only that reason " +
       "would let a future reader retire this exemption on the strength of a change that does " +
-      "not address it. Apps render it today by overriding the `image` key on " +
-      "<CellRendererProvider>.",
+      "not address it. The adapter is supplied by the app instead, through the " +
+      "`imageCell(adapter)` factory @metaobjectsdev/tanstack exports beside the defaults: " +
+      "<CellRendererProvider value={{ image: imageCell(adapter) }}>.",
   };
 
   test("every concrete view subtype has a renderer, or a written exemption", () => {
@@ -95,6 +105,16 @@ describe("#355 — renderer keys and registered view subtypes agree", () => {
       (s) => !keys.includes(s) && NO_RENDERER_BY_DESIGN[s] === undefined,
     );
     expect(unexplained).toEqual([]);
+  });
+
+  test("the image exemption's named escape hatch exists", () => {
+    // The `image` exemption is the only one that ends by naming a REPLACEMENT rather than
+    // just a reason, so it is the only one that can rot in a second way: the gap could stay
+    // open while the helper it points at is renamed or deleted, leaving the exemption
+    // advising an import that fails. Same file, same read — assert the factory is there.
+    const src = readFileSync(RENDERERS, "utf8");
+    expect(NO_RENDERER_BY_DESIGN["image"]).toContain("imageCell(adapter)");
+    expect(src).toContain("export function imageCell(");
   });
 
   test("no exemption outlives the gap it explains", () => {

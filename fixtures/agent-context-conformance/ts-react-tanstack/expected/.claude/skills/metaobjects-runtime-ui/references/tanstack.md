@@ -157,9 +157,10 @@ don't have to.
 
 `<EntityGrid>` routes rendering through `CellRendererProvider`, keyed by `meta.view` —
 which is the field's **registered `view.*` subtype** (`text` / `textarea` / `number` /
-`date` / `checkbox` / `currency` / `dropdown` / `password`), so a key that is not a
-registered subtype can never be selected. Override a key without touching generated
-code; per-column `cell` always wins, the provider fills in otherwise.
+`date` / `month` / `checkbox` / `hotlink` / `currency` / `dropdown` / `radio` /
+`password`), so a key that is not a registered subtype can never be selected. Override a
+key without touching generated code; per-column `cell` always wins, the provider fills in
+otherwise.
 
 A `field.timestamp` declares `view.date` and renders date-only by default. To show the
 time as well, override the `date` key — there is no `view.datetime` subtype.
@@ -172,3 +173,20 @@ import { formatCurrency } from "@metaobjectsdev/runtime-web";
   <EntityGrid {...gridProps} />
 </CellRendererProvider>
 ```
+
+`view.image` has no default renderer and needs one wired: the field stores an opaque
+storage key, so the cell needs the app's `ImageUploadAdapter` to resolve a `src`. Close
+`imageCell` over your adapter — it is exported from this same package, so this costs no
+extra dependency.
+
+```tsx
+import { CellRendererProvider, imageCell } from "@metaobjectsdev/tanstack";
+
+<CellRendererProvider value={{ image: imageCell(adapter, { size: 48 }) }}>
+  <EntityGrid {...gridProps} />
+</CellRendererProvider>
+```
+
+`view.base`, `view.web` and `view.hidden` have no renderer either, and want none —
+the first two are abstract roots nothing emits, and a `view.hidden` field is dropped
+from the column set entirely (a blank cell would still carry a header and a sort target).
