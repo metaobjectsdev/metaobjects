@@ -17,6 +17,11 @@
       "items": { "type": "string", "pattern": "^[^:]+:[^:]+$" },
       "description": "Consumer provider refs as 'module:symbol', resolved relative to this config file's directory (no PYTHONPATH needed)."
     },
+    "libraries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "MetaObjects-shipped library packages to load alongside `metadata` (e.g. [\"ai\"]). An unknown package name is refused."
+    },
     "targets": {
       "type": "object",
       "minProperties": 1,

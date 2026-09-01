@@ -52,9 +52,16 @@ snake_case Postgres schema and a literal-column one.
 | `meta migrate` (schema, every port — ADR-0015) | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts` |
 | TypeScript codegen + `ObjectManager` | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts`; `columnNamingStrategy` option on `ObjectManager` |
 | C# (`dotnet meta gen`) | `literal` | `--column-naming snake_case` |
-| Python (codegen + `ObjectManager`) | `literal` | `GenConfig(column_naming=...)`; `ObjectManager(..., column_naming=...)` |
+| Python (`ObjectManager` — codegen names no column) | `literal` | `ObjectManager(..., column_naming=...)` |
 | Java (`ObjectManagerDB`) | `literal` | `SimpleMappingHandlerDB.setColumnNaming(...)` |
 | Kotlin (Exposed table codegen) | `snake_case` | `<args><columnNaming>literal</columnNaming></args>` in the pom |
+
+**Python has no codegen-side setting because Python codegen names no column.** Its
+models, create/patch shapes, router and filter allowlists all key by `field.name`, and
+persistence is your repository or `ObjectManager` — so the strategy is a runtime setting
+there, and `@column` remains the per-field override. (A `GenConfig(column_naming=…)`
+existed through `0.24.5` and nothing read it: it ran clean, reported success and changed
+no output. It is gone rather than wired, because there was nothing to wire it into.)
 
 **So a polyglot project must do one of two things** for any field whose name has a
 case boundary, or the generated data access will address a column the migration did

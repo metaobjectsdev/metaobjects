@@ -32,6 +32,16 @@ CONFIG_FILENAME = "metaobjects.config.yaml"
 #: Default metadata directory (relative to the config file) when ``metadata:`` is omitted.
 DEFAULT_METADATA_DIR = "metaobjects"
 
+#: Every key this loader reads at the top level, and the ONLY ones it accepts.
+#: ``metaobjects-config.schema.json`` declares ``additionalProperties: false``, so the
+#: shipped schema has always said an unknown key is invalid; naming the set here is what
+#: lets the loader — the thing that actually runs — say the same. Kept in step with the
+#: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
+TOP_LEVEL_KEYS: tuple[str, ...] = ("metadata", "providers", "libraries", "targets")
+
+#: Every key a ``targets.<name>`` mapping may carry. Same contract as above.
+TARGET_KEYS: tuple[str, ...] = ("outDir", "generators", "entities")
+
 
 class ConfigError(ValueError):
     """A ``metaobjects.config.yaml`` that is missing, malformed, or invalid.
@@ -91,6 +101,26 @@ class ProjectConfig:
         return _resolve_under(self.config_dir, target.out_dir)
 
 
+def _reject_unknown_keys(
+    mapping: dict[object, object], accepted: tuple[str, ...], ctx: str
+) -> None:
+    """Refuse a key this loader does not read.
+
+    Silently dropping one is the failure this exists to prevent: a config key that looks
+    honoured and is not lets an author believe they have configured something, and the
+    tool reports success for work it never did. It is the same call the ``libraries``
+    check below already makes for an unknown package name — *"a name typed into a config
+    file is a mistake worth failing on"* — applied to the key as well as the value.
+
+    The message names the accepted set, because the fix for a typo is the right spelling.
+    """
+    unknown = sorted(str(k) for k in mapping if str(k) not in accepted)
+    if unknown:
+        raise ConfigError(
+            f"{ctx}: unknown key(s) {unknown}; accepted: {list(accepted)}."
+        )
+
+
 def _resolve_under(base: Path, p: str) -> str:
     q = Path(p)
     return str(q if q.is_absolute() else (base / q).resolve())
@@ -125,6 +155,7 @@ def load_project_config(path: Path) -> ProjectConfig:
         raise ConfigError(f"{path}: config is empty.")
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: top level must be a mapping.")
+    _reject_unknown_keys(raw, TOP_LEVEL_KEYS, str(path))
 
     metadata = raw.get("metadata", DEFAULT_METADATA_DIR)
     if not isinstance(metadata, str):
@@ -160,6 +191,7 @@ def load_project_config(path: Path) -> ProjectConfig:
         ctx = f"{path}: target '{name}'"
         if not isinstance(spec, dict):
             raise ConfigError(f"{ctx} must be a mapping.")
+        _reject_unknown_keys(spec, TARGET_KEYS, ctx)
         out_dir = spec.get("outDir")
         if not isinstance(out_dir, str) or not out_dir:
             raise ConfigError(f"{ctx} must declare a non-empty 'outDir' string.")

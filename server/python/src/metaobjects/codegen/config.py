@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from metaobjects.naming import DEFAULT_COLUMN_NAMING
-
 
 @dataclass
 class GenConfig:
@@ -25,12 +23,15 @@ class GenConfig:
     # maps a declaring metadata package ("acme::shop") to the Python import module; with a
     # single ``provided_enum_namespace`` fallback for the one-module case. A referenced
     # @provided enum whose package resolves to no module is a codegen-time error.
-    # How a field with no explicit `@column` becomes a physical column name
-    # ("literal" | "snake_case" | "kebab-case"). Config, never metadata: the same model
-    # must be able to drive a snake_case schema and a literal-column one. Defaults to
-    # `literal`, this port's historical behaviour — but `meta migrate`, which owns
-    # schema for EVERY port (ADR-0015), defaults to `snake_case`, so a project whose
-    # tables it created wants `snake_case` here or an explicit `@column` per field.
-    column_naming: str = DEFAULT_COLUMN_NAMING
+    # NOTE: there is deliberately NO `column_naming` here. One existed and nothing read
+    # it, so `GenConfig(column_naming="snake_case")` ran clean, reported success and
+    # changed no output — while the docs named it as this port's codegen lever. It could
+    # not be wired, because Python codegen emits no physical column name at all: the
+    # models, create/patch shapes, router and filter allowlists all key by `field.name`,
+    # and persistence is the consumer's repository or `ObjectManager`. The strategy is a
+    # RUNTIME concern here — `ObjectManager(..., column_naming=...)` — plus the internal
+    # `resolve_m2m_descriptors(..., column_naming=...)` that builds junction FK column
+    # names for a consumer repository. If a generator ever emits a column name, add the
+    # field back TOGETHER with that generator, never ahead of it.
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)

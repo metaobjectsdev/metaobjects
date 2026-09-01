@@ -244,6 +244,63 @@ backend — it reads the registry, so it needs no project. The skill's own step 
 
 All five `agent-context-conformance` corpora regenerated.
 
+### Fixed — the Python config silently dropped every key it did not read, and named a dead knob
+
+Reported by an adopter who set a column-naming key in `metaobjects.config.yaml`, got
+exit 0 and "wrote N file(s)", and nothing changed. Two independent defects behind it.
+
+**1. `load_project_config` accepted any key and read four.** It pulled `metadata`,
+`providers`, `libraries` and `targets` out with `raw.get(...)` and never looked at the
+rest, so a key you typed — a real one this port does not have, or a plain typo like
+`metadta:` — was dropped in silence. A deliberately bogus value was accepted the same
+way. That is the failure class the whole `0.24.x` line has been cut to remove: the tool
+reporting success for work it did not do.
+
+**The config's own published schema already forbade this.**
+`metaobjects-config.schema.json` has always declared `"additionalProperties": false`, at
+the top level and per target — so an editor validating against the shipped schema
+rejected the key while the loader, the thing that actually runs, waved it through. The
+loader now refuses an unknown key at either level and names the accepted set, because
+the fix for a typo is the correct spelling. It is the same call the `libraries` check in
+that function already made for an unknown package name — *"a name typed into a config
+file is a mistake worth failing on"* — now applied to the key as well as the value.
+
+**The drift ran in both directions**: `libraries` is a key the loader has long accepted
+and the schema never listed, so under `additionalProperties: false` a perfectly valid
+config was flagged invalid by any editor using it. Added. The test that exists to keep
+the two in step asserted `set(props) >= {…}` — a **superset** — so it could never see a
+key the loader accepts and the schema omits. It compares exact sets now, and a probe
+confirms it fails from either side.
+
+**2. `GenConfig.column_naming` was dead, and the docs named it as this port's codegen
+lever.** Nothing anywhere read it — `grep -rn "\.column_naming" src/` returned zero —
+so `GenConfig(column_naming="snake_case")` ran clean, reported success and changed not
+one byte. **It is removed rather than wired, because there is nothing to wire it into:
+Python codegen emits no physical column name at all.** The models, create/patch shapes,
+router and filter allowlists all key by `field.name` (deliberately — that is `0.24.5`'s
+own "Python's read model renamed itself to `@column`" fix), and persistence is the
+consumer's repository or `ObjectManager`. Adding the CLI flag the report first suggested
+would have been *worse* than the silence: it would have looked honoured.
+
+In this port the strategy reaches two places, and both are now gated by an assertion
+that a non-default strategy changes an actual OUTPUT: `ObjectManager(…,
+column_naming=…)` at runtime, and the internal `resolve_m2m_descriptors(…,
+column_naming=…)` that derives junction FK column names for a consumer repository. The
+existing test suite gated only the pure `apply_column_naming_strategy` function, which
+is exactly how a knob that could never work shipped documented as the answer — every
+descriptor assertion ran at the `literal` default, where a junction column equals its
+field name, so all of them passed whether the strategy was applied or ignored.
+
+`docs/features/field-types.md`'s per-port table and the `0.24.5` entry above are
+corrected to name `ObjectManager` alone for Python.
+
+**Not a defect, and worth stating because it was reported alongside these:** a Python
+read model whose fields moved from `@column` to `field.name` in `0.24.5` did exactly
+what that release says it does. Before it, `<Entity>` keyed by `@column` while
+`<Entity>Create`, `<Entity>Patch`, the generated router and `ObjectManager` all keyed by
+`field.name` — one generated module disagreeing with itself. The camelCase field name is
+the wire name, cross-port; `@column` remains the physical column.
+
 ### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
 
 The declarative Mustache template-spec was wired into `gen` and nowhere else, so the drift
@@ -1088,8 +1145,9 @@ strategy, one port used `@column` for the wrong name entirely, and one ignored i
   resolved literal: **one model, two column names, one JVM.** Both now go through a
   shared `com.metaobjects.database.ColumnNaming`.
 - **`columnNamingStrategy` is now selectable in the four ports that lacked it** —
-  `dotnet meta gen --column-naming`, Python `GenConfig(column_naming=…)` /
-  `ObjectManager(…, column_naming=…)`, Java `SimpleMappingHandlerDB.setColumnNaming(…)`,
+  `dotnet meta gen --column-naming`, Python `ObjectManager(…, column_naming=…)`
+  (a `GenConfig(column_naming=…)` also shipped here and was DEAD — nothing read it; see
+  [Unreleased], where it is removed), Java `SimpleMappingHandlerDB.setColumnNaming(…)`,
   Kotlin's `<columnNaming>` generator arg. **No default moves** (TS/Kotlin-codegen
   `snake_case`, C#/Python/Java `literal`): a default that moved would silently
   re-point live queries at columns that do not exist. An unknown value is refused

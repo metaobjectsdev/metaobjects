@@ -76,3 +76,31 @@ def test_an_unknown_strategy_is_refused_not_silently_defaulted() -> None:
     # report success.
     with pytest.raises(ValueError, match="snake_case"):
         apply_column_naming_strategy("createdAt", "PascalCase")
+
+
+# WHERE THE STRATEGY ACTUALLY REACHES, in this port.
+#
+# `GenConfig.column_naming` existed and NOTHING read it — `grep -rn "\.column_naming"`
+# over `src/` returned zero hits — so `GenConfig(column_naming="snake_case")` ran clean,
+# reported success and changed not one byte of generated output. It was named in
+# docs/features/field-types.md as this port's codegen lever, which made a knob that could
+# never work look like the answer.
+#
+# It could not be fixed by wiring, because there was nothing to wire it INTO: Python
+# codegen emits no physical column name anywhere. The models, the create/patch shapes, the
+# router and the filter allowlists all key by `field.name` (deliberately — 0.24.5's
+# "Python's read model renamed itself to @column" fix), and persistence is the consumer's
+# repository or `ObjectManager`. A CLI flag for it would have been worse than the silence:
+# it would have looked honoured.
+#
+# So the field is gone, and these pin the two surfaces that DO carry the strategy.
+def test_gen_config_carries_no_column_naming_knob() -> None:
+    from metaobjects.codegen.config import GenConfig
+
+    assert not hasattr(GenConfig(out_dir=""), "column_naming"), (
+        "Python codegen emits no physical column name, so a codegen-side column-naming "
+        "knob cannot do anything. If a generator ever DOES emit one, add the field back "
+        "together with the generator that reads it — never ahead of it."
+    )
+    with pytest.raises(TypeError):
+        GenConfig(out_dir="", column_naming=COLUMN_NAMING_SNAKE_CASE)  # type: ignore[call-arg]

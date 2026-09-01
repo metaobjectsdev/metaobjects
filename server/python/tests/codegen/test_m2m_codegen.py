@@ -15,6 +15,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import pytest
+
 import metaobjects.core_types  # noqa: F401 — registers attr/relationship classes
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.entity_model import render_entity_model
@@ -155,3 +157,33 @@ def test_router_without_object_index_is_crud_only() -> None:
     assert out is not None
     assert "/tags" not in out
     assert "find_related" not in out
+
+
+def test_the_column_naming_strategy_reaches_the_junction_columns() -> None:
+    """The one place this port derives a PHYSICAL column name, so the one place a
+    column-naming strategy can be observed.
+
+    Every assertion above runs at the ``literal`` default, where a junction FK column
+    equals its field name — so all of them pass whether the strategy is applied or
+    ignored, and none could tell the parameter was live. That blindness is how a dead
+    ``GenConfig.column_naming`` shipped documented as this port's codegen lever: the
+    strategy's pure function was gated, and nothing gated it reaching an OUTPUT.
+
+    ``snake_case`` is chosen because ``postId`` → ``post_id`` differs from the field
+    name, which ``literal`` cannot produce.
+    """
+    descs = resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX, column_naming="snake_case")
+    assert len(descs) == 1
+    d = descs[0]
+    assert d.source_column == "post_id"
+    assert d.target_column == "tag_id"
+    # And the strategy must not leak into names that are not columns.
+    assert d.junction_table == "post_tags"
+    assert d.relation_name == "tags"
+
+
+def test_an_unknown_strategy_is_refused_at_the_descriptor_too() -> None:
+    # Fail loudly rather than fall back: a typo would otherwise bind junction SQL to
+    # columns that do not exist and report success.
+    with pytest.raises(ValueError, match="snake_case"):
+        resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX, column_naming="PascalCase")

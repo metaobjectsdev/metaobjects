@@ -9,6 +9,8 @@ import pytest
 from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     DEFAULT_METADATA_DIR,
+    TARGET_KEYS,
+    TOP_LEVEL_KEYS,
     ConfigError,
     ProjectConfig,
     TargetConfig,
@@ -134,3 +136,75 @@ def test_schema_file_is_valid_json_and_matches_shape(tmp_path: Path) -> None:
     assert set(props) >= {"metadata", "providers", "targets"}
     target_props = schema["properties"]["targets"]["additionalProperties"]["properties"]
     assert set(target_props) == {"outDir", "generators", "entities"}
+
+
+# A key you write into the config and the loader silently drops is the failure class the
+# 0.24.x line was cut to prevent — the tool reporting success for work it did not do.
+# `metaobjects-config.schema.json` has ALWAYS declared `"additionalProperties": false`, at
+# the top level and per target, so an editor validating against the shipped schema already
+# rejects an unknown key. The loader — the thing that actually runs — accepted it and moved
+# on, so the two disagreed and the permissive one won.
+def test_an_unknown_top_level_key_is_refused_not_silently_dropped(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        """
+        columnNaming: snake_case
+        targets:
+          models:
+            outDir: out
+        """,
+    )
+    with pytest.raises(ConfigError, match="columnNaming"):
+        load_project_config(p)
+
+
+def test_the_refusal_names_what_is_accepted(tmp_path: Path) -> None:
+    # Naming only the offender leaves the author guessing at the spelling; the fix for a
+    # typo is the correct key, so the message has to carry it.
+    p = _write(tmp_path, "metadta: model\ntargets:\n  m:\n    outDir: out\n")
+    with pytest.raises(ConfigError, match="metadata"):
+        load_project_config(p)
+
+
+def test_an_unknown_per_target_key_is_refused(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        """
+        targets:
+          models:
+            outDir: out
+            columnNaming: snake_case
+        """,
+    )
+    with pytest.raises(ConfigError, match="columnNaming"):
+        load_project_config(p)
+
+
+def test_libraries_is_accepted_and_is_not_mistaken_for_an_unknown_key(tmp_path: Path) -> None:
+    # The refusal must not convict a key the loader has supported all along.
+    p = _write(tmp_path, "libraries: []\ntargets:\n  m:\n    outDir: out\n")
+    assert load_project_config(p).libraries == []
+
+
+def test_schema_and_loader_accept_EXACTLY_the_same_keys(tmp_path: Path) -> None:
+    """The gate that would have caught this, in BOTH directions.
+
+    The existing shape test asserts ``set(props) >= {...}`` — a superset — so it could
+    never see a key the loader accepts and the schema omits. ``libraries`` was exactly
+    that: supported by the loader since the library-packages work, absent from the schema,
+    so any editor validating a perfectly valid config against the shipped schema flagged
+    it (the schema declares ``additionalProperties: false``). Compare EXACT sets, so a key
+    added to either side without the other fails here.
+    """
+    schema_path = (
+        Path(__file__).parents[2]
+        / "src" / "metaobjects" / "codegen" / "metaobjects-config.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    assert set(schema["properties"]) == set(TOP_LEVEL_KEYS)
+    target_props = schema["properties"]["targets"]["additionalProperties"]["properties"]
+    assert set(target_props) == set(TARGET_KEYS)
+    # Both levels must keep saying unknown keys are invalid — that claim is what the
+    # loader now enforces.
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["targets"]["additionalProperties"]["additionalProperties"] is False
