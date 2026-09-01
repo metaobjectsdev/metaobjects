@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+**⚠️ Contains one BREAKING change** — `GenConfig.column_naming` is removed from the Python
+package (it never did anything; setting it now raises `TypeError` instead of being
+ignored). That is a package-surface break, so the cut carrying it is a MINOR, not a patch.
+`metamodelVersion` is untouched — no vocabulary changes in this line.
+
 ### Fixed — a registered view subtype with no grid renderer printed its raw value (#355 residue)
 
 `#355` fixed the renderer map in one direction — every renderer key is now a registered view
@@ -244,7 +249,7 @@ backend — it reads the registry, so it needs no project. The skill's own step 
 
 All five `agent-context-conformance` corpora regenerated.
 
-### Fixed — the Python config silently dropped every key it did not read, and named a dead knob
+### Fixed — the Python config silently dropped every key it did not read
 
 Reported by an adopter who set a column-naming key in `metaobjects.config.yaml`, got
 exit 0 and "wrote N file(s)", and nothing changed. Two independent defects behind it.
@@ -272,27 +277,8 @@ the two in step asserted `set(props) >= {…}` — a **superset** — so it coul
 key the loader accepts and the schema omits. It compares exact sets now, and a probe
 confirms it fails from either side.
 
-**2. `GenConfig.column_naming` was dead, and the docs named it as this port's codegen
-lever.** Nothing anywhere read it — `grep -rn "\.column_naming" src/` returned zero —
-so `GenConfig(column_naming="snake_case")` ran clean, reported success and changed not
-one byte. **It is removed rather than wired, because there is nothing to wire it into:
-Python codegen emits no physical column name at all.** The models, create/patch shapes,
-router and filter allowlists all key by `field.name` (deliberately — that is `0.24.5`'s
-own "Python's read model renamed itself to `@column`" fix), and persistence is the
-consumer's repository or `ObjectManager`. Adding the CLI flag the report first suggested
-would have been *worse* than the silence: it would have looked honoured.
-
-In this port the strategy reaches two places, and both are now gated by an assertion
-that a non-default strategy changes an actual OUTPUT: `ObjectManager(…,
-column_naming=…)` at runtime, and the internal `resolve_m2m_descriptors(…,
-column_naming=…)` that derives junction FK column names for a consumer repository. The
-existing test suite gated only the pure `apply_column_naming_strategy` function, which
-is exactly how a knob that could never work shipped documented as the answer — every
-descriptor assertion ran at the `literal` default, where a junction column equals its
-field name, so all of them passed whether the strategy was applied or ignored.
-
-`docs/features/field-types.md`'s per-port table and the `0.24.5` entry above are
-corrected to name `ObjectManager` alone for Python.
+The second half of that report — a `GenConfig` knob that could never work — is its own
+BREAKING entry below.
 
 **Not a defect, and worth stating because it was reported alongside these:** a Python
 read model whose fields moved from `@column` to `field.name` in `0.24.5` did exactly
@@ -300,6 +286,44 @@ what that release says it does. Before it, `<Entity>` keyed by `@column` while
 `<Entity>Create`, `<Entity>Patch`, the generated router and `ObjectManager` all keyed by
 `field.name` — one generated module disagreeing with itself. The camelCase field name is
 the wire name, cross-port; `@column` remains the physical column.
+
+### BREAKING — `GenConfig.column_naming` is removed (Python)
+
+**`GenConfig(column_naming=…)` now raises `TypeError`. It previously did nothing.**
+Nothing anywhere read the field — `grep -rn "\.column_naming" src/` returned zero — so
+setting it ran clean, reported success and changed not one byte of generated output,
+while `docs/features/field-types.md` named it as this port's codegen lever.
+
+**It is removed rather than wired, because there is nothing to wire it into: Python
+codegen emits no physical column name at all.** The models, create/patch shapes, router
+and filter allowlists all key by `field.name` (deliberately — that is `0.24.5`'s own
+"Python's read model renamed itself to `@column`" fix), and persistence is the
+consumer's repository or `ObjectManager`. Adding the CLI flag first proposed for this
+would have been *worse* than the silence: it would have looked honoured. A deprecation
+shim would be worse still — it keeps a false surface alive while warning about it.
+
+The break converts a silent no-op into an immediate, accurate error, which is the only
+reason it is worth making: nobody's behaviour changes, only what they are told.
+
+**Versioning: this is a package-surface break, so the cut carrying it is a MINOR, not a
+patch** — pre-1.0 that is the rule for the package axis (ADR-0035), and `~=0.24.x`
+resolves a patch, so a PyPI consumer passing the kwarg would otherwise adopt a
+`TypeError` on a routine upgrade with no deliberate action. This is NOT the
+previously-wrong-*acceptance* carve-out that made the `@min` clamp and the `like` case
+fix patches: that carve-out is about the METADATA axis, and this is a public Python API
+member. `metamodelVersion` is untouched — no vocabulary changes.
+
+In this port the strategy reaches two places, and both are now gated by an assertion
+that a non-default strategy changes an actual OUTPUT: `ObjectManager(…,
+column_naming=…)` at runtime, and the internal `resolve_m2m_descriptors(…,
+column_naming=…)` that derives junction FK column names for a consumer repository. The
+existing suite gated only the pure `apply_column_naming_strategy` function, which is
+exactly how a knob that could never work shipped documented as the answer — every
+descriptor assertion ran at the `literal` default, where a junction column equals its
+field name, so all of them passed whether the strategy was applied or ignored.
+
+`docs/features/field-types.md`'s per-port table and the `0.24.5` entry above are
+corrected to name `ObjectManager` alone for Python.
 
 ### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
 
