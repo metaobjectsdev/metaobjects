@@ -72,3 +72,14 @@ describe("#356 the Angular grid selects the view named 'grid'", () => {
     ])).rejects.toThrow(/none is named "grid"/);
   });
 });
+
+// #355 residue — the Angular tier renders the same surface as the TanStack one, so it
+// applies the same rule: `view.hidden` means "not rendered", and a column that exists but
+// is blank still holds a header and a sort target.
+describe("#355 a view.hidden field is not a grid column", () => {
+  test("the column is dropped, not emitted blank", async () => {
+    const out = await render([{ "view.hidden": {} }]);
+    expect(out).not.toContain("outcome");
+    expect(out).not.toContain('view: "hidden"');
+  });
+});

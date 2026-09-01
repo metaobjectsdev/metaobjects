@@ -7,6 +7,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a registered view subtype with no grid renderer printed its raw value (#355 residue)
+
+`#355` fixed the renderer map in one direction — every renderer key is now a registered view
+subtype — and added a gate for it. The converse was never asserted, and that is the half the
+original `checkbox` bug lived in: `EntityGrid` does `if (!renderer) return col`, so a
+registered subtype with NO key falls through to TanStack's default cell and prints the raw
+value, whatever the subtype's own registered description promises.
+
+Five concrete subtypes had no renderer. Three are fixed and two are now exempt **in writing**:
+
+- **`view.hidden` — "Not rendered; carried but not shown"** — rendered its value in the grid.
+  The generated form has always honoured it (`<input type="hidden">`); the grid contradicted
+  it outright. The column is now **dropped at codegen** in both grid tiers rather than given
+  a blank-cell renderer: a blank cell still holds a header and a sort target, so the value
+  would be hidden while the column was not. Dropped even when `@columns` names the field —
+  that declaration and `view.hidden` contradict each other, and the one about RENDERING is
+  the specific answer to the question a grid asks.
+- **`view.hotlink` — "Renders the value as a clickable link"** — rendered plain text. Now an
+  anchor, with the scheme checked: the value comes from the database, and an anchor built
+  blindly from a stored string is a `javascript:` URL away from executing it on click.
+  Anything not `http`/`https`/`mailto` renders as text, which is what it did before, so the
+  guard can only ever be safe.
+- **`view.month`** — rendered the raw stored string. Now a formatted month, parsed
+  field-wise: `new Date("2026-09")` is UTC midnight and so displays the PREVIOUS month for
+  every viewer west of Greenwich. The test asserts it under a negative-offset timezone.
+- **`view.radio`** — keyed explicitly to the same rendering as `dropdown`, so "a radio column
+  shows its value" is a decision the map records rather than an accident of the fall-through.
+- **`view.image` — deliberately NOT given a default renderer.** The field stores an opaque
+  storage key, so an `<img>` needs `ImageUploadAdapter.imageUrl()`, exposed through a React
+  context in `@metaobjectsdev/react` — a package `@metaobjectsdev/tanstack` does not depend
+  on. Adding that dependency would drag the image-upload/crop graph into every grid
+  consumer's bundle, which is the `#287` / `react-easy-crop` defect class this project has
+  already fixed twice. Apps render it today by overriding the `image` key on
+  `<CellRendererProvider>`.
+
+The durable part is the **converse gate**: every concrete view subtype must now have a
+renderer OR a written exemption naming why, and a second test fails any exemption that
+outlives the gap it explains or names a subtype that does not exist. A missing key was an
+accident; an exemption is a decision on the record.
+
 ### Fixed — every emitter read `views()[0]`, so declaration order decided generated output (#356)
 
 A field may legally declare more than one `view.*` child and every one survives the load, but

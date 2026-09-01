@@ -9,6 +9,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTER,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   OBJECT_ATTR_DISCRIMINATOR,
+  VIEW_SUBTYPE_HIDDEN,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 import {
@@ -120,10 +121,22 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
     const columns: ColumnSpec[] = columnNames.flatMap((name) => {
       const field = fieldsByName.get(name);
       if (!field) return [];     // columns ref that doesn't exist on entity; defensive skip
+      const viewKind = fieldViewKind(field);
+      // #355 — `view.hidden` is registered as "Not rendered; carried but not shown", and
+      // the generated FORM has always honoured that (an <input type="hidden">). The grid
+      // did not: no renderer is keyed `hidden`, so EntityGrid's `if (!renderer) return col`
+      // fell through to TanStack's default cell and PRINTED the value — the opposite of
+      // what the subtype says. Emitting a blank cell would not fix it either: the column
+      // would still hold a header and a sort target, so the value would be hidden while
+      // the column was not. The column is dropped instead, which is what "not rendered"
+      // means. This applies even when @columns names the field: a declaration that the
+      // field is a column and a declaration that it is not rendered contradict each other,
+      // and the one about RENDERING is the specific answer to the question a grid asks.
+      if (viewKind === VIEW_SUBTYPE_HIDDEN) return [];
       const spec: ColumnSpec = {
         id:       name,
         header:   fieldLabel(field),
-        viewKind: fieldViewKind(field),
+        viewKind,
         // #352 — ALWAYS emitted, never left absent. EntityGrid gates on
         // `meta?.sortable !== false`, so an omitted flag reads as "offer it" and the
         // header renders clickable for a field the server's SortAllowlist rejects

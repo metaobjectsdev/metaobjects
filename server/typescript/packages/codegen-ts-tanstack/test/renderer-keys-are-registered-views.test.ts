@@ -52,4 +52,56 @@ describe("#355 — renderer keys and registered view subtypes agree", () => {
     expect(rendererKeys()).toContain("checkbox");
     expect(rendererKeys()).not.toContain("boolean");
   });
+
+  /**
+   * The CONVERSE direction, which the gate above cannot see.
+   *
+   * "Every renderer key is a registered subtype" only catches dead keys. It says nothing
+   * about a registered subtype with NO key — and that is the half that produced the
+   * original `checkbox` bug: `EntityGrid` does `if (!renderer) return col`, so an unkeyed
+   * subtype silently falls through to TanStack's default cell and prints the raw value,
+   * whatever the subtype's registered description promises. `hotlink` ("Renders the value
+   * as a clickable link") and `month` were rendering raw strings for exactly that reason.
+   *
+   * Every concrete subtype must therefore have a renderer OR a written exemption. An
+   * exemption is a decision on the record; a missing key is an accident.
+   */
+  const NO_RENDERER_BY_DESIGN: Readonly<Record<string, string>> = {
+    base: "the type's shared root, not a control — nothing emits `meta.view: \"base\"`.",
+    web: "an abstract base for web-rendered views, same as `base`.",
+    hidden:
+      "excluded from the column set by codegen (columns-file.ts), because \"not rendered\" " +
+      "means no column rather than a blank cell that still holds a header and a sort target. " +
+      "It therefore never reaches a cell, so a renderer would be unreachable. That claim " +
+      "about codegen is itself gated, in hidden-view-column.test.ts.",
+    image:
+      "the field stores an opaque storage key, so an <img> needs ImageUploadAdapter.imageUrl(). " +
+      "That adapter is exposed through a React context in @metaobjectsdev/react, which this " +
+      "browser package deliberately does not depend on — importing it would drag the " +
+      "image-upload/crop graph into every grid consumer's bundle (the #287 / react-easy-crop " +
+      "class of defect). Apps render it today by overriding the `image` key on " +
+      "<CellRendererProvider>.",
+  };
+
+  test("every concrete view subtype has a renderer, or a written exemption", () => {
+    const keys = rendererKeys();
+    const unexplained = [...VIEW_SUBTYPES].filter(
+      (s) => !keys.includes(s) && NO_RENDERER_BY_DESIGN[s] === undefined,
+    );
+    expect(unexplained).toEqual([]);
+  });
+
+  test("no exemption outlives the gap it explains", () => {
+    // An exemption for a subtype that HAS a renderer is stale prose asserting a gap that
+    // closed — the same silent-rot the exclusion classifier in registry-manifest-exclusions
+    // guards with its liveness tripwire.
+    const keys = rendererKeys();
+    const stale = Object.keys(NO_RENDERER_BY_DESIGN).filter((s) => keys.includes(s));
+    expect(stale).toEqual([]);
+    // And an exemption must name a real subtype, not a typo.
+    const unknown = Object.keys(NO_RENDERER_BY_DESIGN).filter(
+      (s) => !VIEW_SUBTYPES.includes(s as never),
+    );
+    expect(unknown).toEqual([]);
+  });
 });

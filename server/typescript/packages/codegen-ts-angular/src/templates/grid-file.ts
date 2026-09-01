@@ -12,6 +12,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
+  VIEW_SUBTYPE_HIDDEN,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 import {
@@ -76,7 +77,12 @@ function extractGrids(entity: MetaObject): GridSpec[] {
     const columns: ColumnSpec[] = columnNames.flatMap((name) => {
       const f = fieldsByName.get(name);
       if (!f) return [];
-      return [{ id: name, header: fieldLabel(f), viewKind: fieldViewKind(f) }];
+      const viewKind = fieldViewKind(f);
+      // #355 — `view.hidden` means "not rendered"; drop the column rather than emit one
+      // that prints the value. Same rule as the TanStack tier, which renders the same
+      // surface (see columns-file.ts for the full reasoning).
+      if (viewKind === VIEW_SUBTYPE_HIDDEN) return [];
+      return [{ id: name, header: fieldLabel(f), viewKind }];
     });
     const sortField = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
     const sortOrder = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
