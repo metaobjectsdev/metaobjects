@@ -37,15 +37,59 @@ Five concrete subtypes had no renderer. Three are fixed and two are now exempt *
 - **`view.image` — deliberately NOT given a default renderer.** The field stores an opaque
   storage key, so an `<img>` needs `ImageUploadAdapter.imageUrl()`, exposed through a React
   context in `@metaobjectsdev/react` — a package `@metaobjectsdev/tanstack` does not depend
-  on. Adding that dependency would drag the image-upload/crop graph into every grid
-  consumer's bundle, which is the `#287` / `react-easy-crop` defect class this project has
-  already fixed twice. Apps render it today by overriding the `image` key on
-  `<CellRendererProvider>`.
+  on. A keyed default would have no adapter to call. It is rendered by the `imageCell(adapter)`
+  factory below instead; the exemption stands, and the durable reason for it is the install
+  graph, not the bundle.
 
 The durable part is the **converse gate**: every concrete view subtype must now have a
 renderer OR a written exemption naming why, and a second test fails any exemption that
 outlives the gap it explains or names a subtype that does not exist. A missing key was an
 accident; an exemption is a decision on the record.
+
+### Added — `imageCell(adapter)`, so a `view.image` column can render
+
+The exemption above says a `view.image` cell cannot be rendered from the value alone. It did
+not say how to render one, and "override the `image` key yourself" leaves every adopter
+writing the same `<img>`.
+
+The obvious fix — depend on the package that already exposes the adapter through React
+context — was rejected on the **install graph**, not the bundle: `@metaobjectsdev/react`
+declares `react-hook-form` and `@hookform/resolvers` as REQUIRED peers (only `zod` is marked
+optional), so that edge makes every grid-only consumer responsible for a form stack it never
+uses. `peerDependencies` are declared per PACKAGE, so no export-map or subpath change reaches
+that half — a `@metaobjectsdev/react/image-adapter` subpath fixes the bundle cost and not
+this. The bundle cost is real and secondary, and recording only it would let a future reader
+retire the exemption on the strength of a change that does not address it.
+
+So `@metaobjectsdev/tanstack` exports **`imageCell(adapter, { size, alt })`** — a factory the
+app closes over its own adapter and wires under the `image` key:
+
+```tsx
+import { CellRendererProvider, imageCell } from "@metaobjectsdev/tanstack";
+
+<CellRendererProvider value={{ image: imageCell(adapter, { size: 48 }) }}>
+  <EntityGrid {...gridProps} />
+</CellRendererProvider>
+```
+
+Only the adapter's TYPE is imported, from `@metaobjectsdev/runtime-web`, which this package
+already depends on — so the helper costs nothing at install or bundle time. It renders a
+square lazily-loaded thumbnail (default 32px; `alt` defaults to `""`, because the row already
+carries the meaning and announcing a storage key would be worse than announcing nothing). An
+absent value renders **nothing** rather than an empty `<img>` — `src=""` resolves to the page
+URL and re-requests it — and a key the adapter throws on renders as the text it is, the same
+fall-back `hotlink` makes for a non-URL.
+
+It is deliberately **not** a `defaultCellRenderers` key, and the converse gate correctly goes
+red if it becomes one. Two corrections ship with it. The gate parsed renderer keys by slicing
+from `defaultCellRenderers` to end-of-file, so its own doc comment became false the moment
+anything followed the literal — now bounded to the literal, verified by probe (wrapping the
+factory's signature over three lines reads `adapter` and `opts` as renderer keys under the old
+parse, failing a file with nothing wrong with it), and a new arm asserts the exemption's named
+escape hatch actually exists. And two documents listing the default keys were stale:
+`docs/ports/typescript-client.md` still named `datetime` and `boolean`, the two dead keys #355
+deleted, and both it and the `metaobjects-runtime-ui` skill reference omitted `month`,
+`hotlink` and `radio`.
 
 ### Fixed — every emitter read `views()[0]`, so declaration order decided generated output (#356)
 
@@ -134,13 +178,51 @@ globally (`--json is not a flag. Use \`--format json\``) — so the branch behin
 unreachable and the help was documenting a usage error, in the one command whose whole job is
 telling an author what is available.
 
-Removed rather than rewired. `meta types` is not in `FORMAT_AWARE_COMMANDS`, and adding it is
-not a cleanup: `resolveFormat` defaults to **TOON off a TTY**, so joining that set would
-silently change what every non-interactive invocation of this command prints — which is where
-its audience lives. That is a design call, and it is not this fix's to make.
+Removed rather than rewired. The flag is not coming back: the CLI rejects a bare `--json`
+before a command sees its args on purpose — one global spelling for all three formats. What
+the command was missing was the *global* flag, and that is the entry below.
 
 A test now asserts every flag the help lists is one the command accepts, so the two cannot
 drift apart again.
+
+### Added — `meta types --format json|toon`, defaulting to text
+
+`meta types` is the vocabulary search the generated agent context and the
+`metaobjects-authoring` skill make **step 1** of authoring, and it printed only human text. So
+the one caller the command was designed for had to scrape padded columns, a marker legend and
+an "N of M shown" footer to answer *"does `@intValueMap` exist, and what values does it take?"*
+
+It now honors the global `--format`. **Its default is TEXT in every case** — deliberately
+unlike `gen` / `verify` / `migrate`, whose default is TOON off a TTY. Two reasons, and the
+second is binding: this command's text output is already the terse agent-tuned rendering the
+whole design is for, and every existing non-interactive caller pipes exactly that, so a
+TTY-aware default would silently change what all of them read with no flag passed. `index.ts`
+therefore hands this command the **raw** `--format` flag rather than the resolved one; `gen`
+already declares its own `fmt = "text"` default, so a command-local default is not new.
+
+The contract that makes structured output worth anything is **stdout purity: exactly one
+document, nothing else.** The legend, the count footer and the no-match hint are all text
+rendering — `| jq` dies on any of them — so the structured branch emits none of them and
+carries what they said as fields instead:
+
+- the terse line's `[base]` / `[ts-only]` markers are the `sharedRoot` / `tsOnly` booleans;
+- a closed-enum attr carries its **`allowedValues`**, which is the single most useful thing a
+  structured answer can carry and a terse line cannot — not just *"`@generation` exists"* but
+  which values the loader accepts;
+- `metamodelVersion` is on the document, because the vocabulary is a contract with a version
+  and a consumer caching the answer needs to know which one it captured;
+- **no match is an empty `matches` list**, not a prose sentence — the branch is taken *before*
+  the no-match hint on purpose;
+- a usage error is a structured refusal on stdout (exit 2), mirroring `verify`, because
+  exiting non-zero with an empty stdout is a silence a consumer cannot tell from "no results".
+
+`--limit`, `--detail` and `--no-headers` are all **text display controls** and none of them
+changes the document — the global `--help` already promised that a structured payload is never
+truncated, and this keeps it. `--help` itself stays prose in every format.
+
+`meta types` joins `FORMAT_AWARE_COMMANDS`, so the "this command ignores `--format`" warning
+correctly stops firing for it and the global help lists it — with its default stated, since
+that help would otherwise be wrong about this one command.
 
 ### Fixed — `verify --codegen` convicted the output `gen` had just written (C#, Python)
 

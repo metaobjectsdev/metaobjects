@@ -3,17 +3,27 @@
 // registry, tuned for an agent's token budget: terse names-first default, opt-in
 // description search, drill-in `--detail`.
 //
-// This command prints TEXT only. It once advertised a `--json` flag in its own --help,
-// in two places, that the CLI had long since REFUSED: `--format` is validated once,
-// globally, and a bare `--json` is rejected before a command ever sees its args (see
-// index.ts, `formatAlias`) — so the branch behind the flag was unreachable and the help
-// was describing a usage error. Removed rather than rewired: `meta types` is not in
-// FORMAT_AWARE_COMMANDS, and adding it is not a cleanup — `resolveFormat` defaults to
-// TOON off a TTY, so joining that set would silently change what EVERY agent invocation
-// of this command prints, which is a deliberate design call and not this fix's to make.
+// It honors the global `--format`, and its default is TEXT in every case — deliberately
+// NOT the TTY-aware default (`resolveFormat`: TOON off a TTY) that gen/verify/migrate take.
+// Two reasons, and the second is the binding one: this command's text output is already the
+// agent-tuned rendering the whole design is for, and every existing non-interactive caller
+// pipes exactly that — a TTY-aware default would silently change what all of them read, with
+// no flag passed. So index.ts hands this command the RAW --format flag rather than the
+// resolved `fmt`, and absent means text. (`gen` already declares its own `fmt = "text"`
+// default, so a command-local default is not a new idea.)
+//
+// In a structured format the rule is stdout PURITY: exactly one document, nothing else. The
+// legend, the "N of M shown" footer and the no-match hint are all TEXT rendering — a `| jq`
+// dies on any of them — so the structured branch emits none of them and carries what they
+// said as FIELDS instead.
+//
+// The `--json` flag this once advertised in its own --help, twice, is not coming back: the
+// CLI rejects a bare `--json` before a command ever sees its args (index.ts, `formatAlias`),
+// on purpose — one global spelling for all three formats.
 import { composeRegistry, coreProviders, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
 import { forgeTypesProvider } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
+import { emitStructured, type OutputFormat } from "../lib/format.js";
 
 interface TypesFlags {
   query: string | null;
@@ -44,10 +54,18 @@ Add --desc (or --all) to also match descriptions + when-to-use guidance.
   --detail          drill in: full description, when-to-use, and valid @attrs
   --limit <N>       cap results (default 20; 0 = unlimited)
   --no-headers      omit headers (parse-friendly)
+  --format <toon|json|text>   Output format (global flag). Defaults to TEXT here, even
+                    off a TTY — unlike gen/verify/migrate, whose default is TOON off a TTY.
 
 Default output is one terse line per match. Reach for metaobjects metadata
 (declare it, regenerate) instead of hand-writing data logic — this finds the
-construct.`;
+construct.
+
+--format toon / --format json emit ONE machine-readable document and nothing else. It
+carries every match with its full record, so --limit, --detail and --no-headers — all
+three TEXT display controls — do not change it. The terse line's [base] / [ts-only]
+markers are the sharedRoot / tsOnly fields there, a closed-enum attr carries its
+allowedValues, and no match is an empty matches list rather than a prose hint.`;
 
 function parse(args: string[]): TypesFlags {
   const f: TypesFlags = {
@@ -60,6 +78,13 @@ function parse(args: string[]): TypesFlags {
     else if (a === "--desc" || a === "--all") f.desc = true;
     else if (a === "--detail") f.detail = true;
     else if (a === "--no-headers") f.noHeaders = true;
+    // `--format` is a GLOBAL flag: index.ts strips it (and its value) from argv before
+    // dispatch and passes the result in as `fmt`, so it never reaches here through the
+    // CLI. Accepted and ignored anyway, so that the flag this command's --help lists is
+    // one the parser accepts — the invariant types-command.test.ts holds it to, and the
+    // one the removed `--json` broke.
+    else if (a === "--format") i++;
+    else if (a.startsWith("--format=")) { /* value is inline; nothing to consume */ }
     else if (a === "--limit") f.limit = Math.max(0, Number(args[++i] ?? "20") || 0);
     else if (a === "--type") f.type = (args[++i] ?? "").toLowerCase() || null;
     else if (a === "--kind") {
@@ -100,15 +125,96 @@ function marks(e: Entry): string {
   return m.length > 0 ? `  ${m.join(" ")}` : "";
 }
 
-export async function typesCommand(args: string[]): Promise<number> {
+/** A catalog attr, as far as the payload needs to know. */
+interface RawAttr {
+  name: string;
+  valueType: string | null;
+  isArray: boolean;
+  required: boolean;
+  allowedValues?: readonly string[];
+  description: string;
+  whenToUse?: string;
+}
+
+function attrRecord(at: RawAttr): Record<string, unknown> {
+  return {
+    name: at.name,
+    valueType: at.valueType,
+    isArray: at.isArray,
+    required: at.required,
+    ...(at.allowedValues !== undefined ? { allowedValues: at.allowedValues } : {}),
+    description: at.description,
+    ...(at.whenToUse !== undefined ? { whenToUse: at.whenToUse } : {}),
+  };
+}
+
+function payloadMatch(e: Entry): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    kind: e.kind,
+    name: e.name,
+    // A common attr belongs to no type and no subtype; `common: true` is what says so,
+    // and null is the honest answer for both. The text rendering's "(any node)" owner is
+    // a label for a human reading a column, not a value to hand a program.
+    type: e.common || e.type === "" ? null : e.type,
+    owner: e.common ? null : e.owner,
+    common: e.common,
+    tsOnly: e.tsOnly,
+    sharedRoot: e.sharedRoot,
+    description: e.description,
+    ...(e.whenToUse !== undefined ? { whenToUse: e.whenToUse } : {}),
+  };
+  if (e.kind === "subtype") {
+    out.attrs = (e.raw as { attrs: RawAttr[] }).attrs.map(attrRecord);
+  } else {
+    const at = e.raw as RawAttr;
+    out.valueType = at.valueType;
+    out.isArray = at.isArray;
+    out.required = at.required;
+    if (at.allowedValues !== undefined) out.allowedValues = at.allowedValues;
+  }
+  return out;
+}
+
+/**
+ * The machine-readable answer: ONE document, every match, the whole record.
+ *
+ * Not a serialization of the text rendering. `--limit`, `--detail` and `--no-headers` are
+ * TEXT display controls — the global --help already promises a structured payload is never
+ * truncated — so none of them reaches here and the payload always carries everything.
+ *
+ * `metamodelVersion` is included because it is the number that says whether this answer
+ * applies to a given model at all: the vocabulary is a contract with a version, and a
+ * consumer caching this document needs to know which one it captured.
+ */
+function buildPayload(f: TypesFlags, matches: Entry[], metamodelVersion: string): unknown {
+  return {
+    metamodelVersion,
+    query: f.query,
+    filters: {
+      type: f.type,
+      kind: [...f.kind].sort(),
+      searchDescriptions: f.desc,
+    },
+    total: matches.length,
+    matches: matches.map(payloadMatch),
+  };
+}
+
+export async function typesCommand(args: string[], fmt: OutputFormat = "text"): Promise<number> {
   let f: TypesFlags;
   try {
     f = parse(args);
   } catch (err) {
-    log.error((err as Error).message);
+    const msg = (err as Error).message;
+    log.error(msg);
+    // A structured caller gets a structured refusal — exiting 2 with an EMPTY stdout is
+    // the same silence a `| jq` cannot tell from "no results". Mirrors verify.ts.
+    emitStructured({ error: msg, hint: "run `meta types --help` for the accepted flags" }, fmt);
     return 2;
   }
   if (f.help) {
+    // Help is prose by definition — rendering it as a JSON string helps nobody, and a
+    // consumer asking for help is a human either way.
     log.info(HELP);
     return 0;
   }
@@ -171,6 +277,13 @@ export async function typesCommand(args: string[]): Promise<number> {
   });
   // Stable sort by (type, name).
   matches.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
+
+  // Structured output branches BEFORE the no-match hint below, deliberately: an empty
+  // result must still be a valid document (`"matches": []`), not a sentence on stdout.
+  if (fmt !== "text") {
+    emitStructured(buildPayload(f, matches, catalog.metamodelVersion), fmt);
+    return 0;
+  }
 
   if (matches.length === 0) {
     log.info(q ? `No vocabulary matches "${f.query}". Try --all to search descriptions, or drop --kind/--type filters.`

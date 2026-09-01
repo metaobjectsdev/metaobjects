@@ -27,8 +27,11 @@ COMMANDS:
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
   --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY).
-                            Honored by gen, verify, migrate; every other
+                            Honored by gen, verify, migrate, types; every other
                             command prints text and says so if you pass it.
+                            \`types\` is the one exception to the default: it prints TEXT
+                            unless you ask for a format, on a TTY or not, because its
+                            text output is already the terse agent-facing rendering.
                             A structured payload is never truncated — --limit is a
                             TEXT-only display cap.
 

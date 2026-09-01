@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { log } from "./lib/log.js";
 import { cliVersion } from "./lib/version.js";
-import { resolveFormat, isValidFormat, VALID_FORMATS } from "./lib/format.js";
+import { resolveFormat, isValidFormat, VALID_FORMATS, type OutputFormat } from "./lib/format.js";
 import { resolveCollection } from "@metaobjectsdev/sdk";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
@@ -17,7 +17,7 @@ const VERSION = cliVersion();
  * human text. It is named ONCE and used by both the warning below and the help
  * text above, so the two cannot drift apart.
  */
-const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate"];
+const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types"];
 
 const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 
@@ -47,6 +47,9 @@ GLOBAL OPTIONS:
   --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY).
                             Honored by ${FORMAT_AWARE_COMMANDS.join(", ")}; every other
                             command prints text and says so if you pass it.
+                            \`types\` is the one exception to the default: it prints TEXT
+                            unless you ask for a format, on a TTY or not, because its
+                            text output is already the terse agent-facing rendering.
                             A structured payload is never truncated — --limit is a
                             TEXT-only display cap.
 
@@ -342,6 +345,12 @@ export async function run(argv: string[]): Promise<number> {
     return 2;
   }
   const fmt = resolveFormat(formatFlag, process.stdout.isTTY ?? false);
+  // The flag as PASSED, before the TTY-aware default is applied. `meta types` takes this
+  // rather than `fmt`: its default is text whether or not stdout is a terminal, so that a
+  // pipe does not silently change what every existing scripted caller reads. See
+  // commands/types.ts for the reasoning; `gen` sets the same default on its own parameter.
+  const explicitFormat: OutputFormat | undefined =
+    formatFlag !== undefined && isValidFormat(formatFlag) ? formatFlag : undefined;
 
   const [cmd, ...rest] = cleaned;
 
@@ -468,7 +477,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     case "types": {
       const { typesCommand } = await import("./commands/types.js");
-      return typesCommand(rest);
+      return typesCommand(rest, explicitFormat);
     }
     case "docs": {
       const { docsCommand } = await import("./commands/docs.js");

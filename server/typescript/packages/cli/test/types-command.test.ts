@@ -18,6 +18,7 @@
 
 import { describe, test, expect, spyOn } from "bun:test";
 import { typesCommand } from "../src/commands/types.js";
+import { decode } from "@toon-format/toon";
 
 /** Run `meta types ...`, expecting a non-zero exit, and return what it printed to stderr. */
 async function runExpectingUsageError(args: string[]): Promise<number> {
@@ -136,5 +137,124 @@ describe("the help describes flags the CLI actually accepts", () => {
       const args = ["--kind", "--type", "--limit"].includes(flag) ? [flag, value] : [flag];
       expect(await typesCommand(flag === "--help" ? ["--help"] : args)).toBe(0);
     }
+  });
+});
+
+// `meta types` is the vocabulary search an agent is told to run FIRST, and it printed only
+// human text — so the one caller the command was designed for had to scrape padded columns,
+// a legend and an "N of M shown" footer to find out whether `@intValueMap` exists. It now
+// honors the global `--format`, and the contract that makes that worth anything is stdout
+// PURITY: one document, nothing else, or `| jq` dies on the sentence in front of it.
+describe("meta types --format", () => {
+  /** Every console.log call `meta types` made, as separate entries. */
+  async function stdoutCalls(args: string[], fmt?: "json" | "toon" | "text"): Promise<string[]> {
+    const calls: string[] = [];
+    const spy = spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      calls.push(a.map(String).join(" "));
+    });
+    try {
+      expect(await typesCommand(args, fmt)).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+    return calls;
+  }
+
+  async function json(args: string[]): Promise<any> {
+    const calls = await stdoutCalls(args, "json");
+    // ONE document. A legend line, a count footer or a "no matches" hint alongside it is
+    // the defect: each is a second thing on stdout, and none of them is JSON.
+    expect(calls).toHaveLength(1);
+    return JSON.parse(calls[0] as string);
+  }
+
+  test("the default is TEXT, not the TTY-aware global default", async () => {
+    // Deliberately unlike gen/verify/migrate, which default to TOON off a TTY. This
+    // command's text output is ALREADY the agent-tuned rendering, and every existing
+    // scripted caller pipes it — flipping the default would silently break all of them.
+    const calls = await stdoutCalls(["view.text"]);
+    expect(calls.join("\n")).toContain("view.text");
+    expect(() => JSON.parse(calls.join("\n"))).toThrow();
+  });
+
+  test("json emits one document whose matches carry the whole record", async () => {
+    const doc = await json(["view.textarea", "--limit", "0"]);
+    expect(doc.total).toBeGreaterThan(0);
+    const subtype = doc.matches.find((m: any) => m.name === "view.textarea");
+    expect(subtype.kind).toBe("subtype");
+    expect(subtype.description.length).toBeGreaterThan(0);
+    // @rows is registered by the ui-web provider; its presence is what proves the
+    // COMPOSED registry (#357) reaches the structured payload too.
+    expect(subtype.attrs.map((a: any) => a.name)).toContain("rows");
+  });
+
+  test("the legend's markers become FIELDS, not text appended to a name", async () => {
+    const doc = await json(["--type", "view", "--kind", "subtype", "--limit", "0"]);
+    const byName = (n: string) => doc.matches.find((m: any) => m.name === n);
+    expect(byName("view.text").tsOnly).toBe(true);
+    expect(byName("view.currency").tsOnly).toBe(false);
+    expect(byName("view.base").sharedRoot).toBe(true);
+    // And no row smuggles the text rendering's markers into its name.
+    for (const m of doc.matches) expect(m.name).not.toContain("[ts-only]");
+  });
+
+  test("a closed-enum attr carries its allowed values", async () => {
+    // The single most useful thing a structured answer can carry and a terse line cannot:
+    // not just "@generation exists" but which values the loader accepts.
+    const doc = await json(["identity.primary", "--limit", "0"]);
+    const gen = doc.matches.find((m: any) => m.name === "identity.primary @generation");
+    expect(gen.allowedValues).toContain("increment");
+  });
+
+  test("no match is an empty document, never a prose hint", async () => {
+    const doc = await json(["view.bogusxyz"]);
+    expect(doc.total).toBe(0);
+    expect(doc.matches).toEqual([]);
+  });
+
+  test("--limit is a TEXT display cap and never truncates the payload", async () => {
+    // The global --help promises exactly this for gen; it has to be true here too.
+    const doc = await json(["--type", "view", "--kind", "subtype", "--limit", "2"]);
+    expect(doc.total).toBe(15);
+    expect(doc.matches).toHaveLength(15);
+  });
+
+  test("--detail is a TEXT flag too: the payload always carries the full record", async () => {
+    const terse = await json(["view.month"]);
+    const detail = await json(["view.month", "--detail"]);
+    expect(terse).toEqual(detail);
+  });
+
+  test("--no-headers is a TEXT flag: it cannot change the document", async () => {
+    expect(await json(["view.month"])).toEqual(await json(["view.month", "--no-headers"]));
+  });
+
+  test("toon emits one decodable document with the same content", async () => {
+    const calls = await stdoutCalls(["view.month"], "toon");
+    expect(calls).toHaveLength(1);
+    const doc = decode(calls[0] as string) as any;
+    expect(doc.total).toBe(1);
+  });
+
+  test("a usage error is a structured refusal, not an empty stdout", async () => {
+    const calls: string[] = [];
+    const outSpy = spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      calls.push(a.map(String).join(" "));
+    });
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await typesCommand(["--nope"], "json")).toBe(2);
+    } finally {
+      outSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0] as string).error).toContain("--nope");
+  });
+
+  test("--help stays human text in every format", async () => {
+    // Help is prose by definition; rendering it as a JSON string would help nobody.
+    const calls = await stdoutCalls(["--help"], "json");
+    expect(calls.join("\n")).toContain("meta types [QUERY]");
   });
 });
