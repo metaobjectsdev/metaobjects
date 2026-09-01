@@ -1,6 +1,7 @@
 """#267 — `metaobjects verify --codegen` declarative-config mode (per-target diff)."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from metaobjects.cli import main
@@ -123,16 +124,45 @@ def test_verify_codegen_shared_outdir_detects_real_drift(tmp_path: Path, capsys)
     assert "drifted" in err and "Week.py" in err
 
 
+def _record_as_written(tmp_path: Path, rel: str) -> None:
+    """Add a write record for ``rel`` to the project manifest — i.e. make the file
+    look like something MetaObjects WROTE on an earlier run. That is what makes a
+    committed file a STALE artifact rather than a stranger, and the two now have
+    different verdicts (see the jurisdiction rule in ``cli._is_ours_for``)."""
+    manifest = tmp_path / ".metaobjects" / ".gen-state" / ".hashes.json"
+    hashes = json.loads(manifest.read_text()) if manifest.exists() else {}
+    hashes[rel] = "0" * 64
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps(hashes, indent=2, sort_keys=True) + "\n")
+
+
 def test_verify_codegen_shared_outdir_detects_stale_extra(tmp_path: Path, capsys) -> None:
-    """A genuinely stale committed file (produced by no target) is still flagged
-    `extra` under a shared outDir — stale detection is preserved under sharing."""
+    """A genuinely stale committed file — one WE wrote on an earlier run that a fresh
+    regen no longer emits (an entity since deleted or renamed) — is still flagged
+    `extra` under a shared outDir.
+
+    The fixture records the write, which is what "stale" means. It used to just drop a
+    hand-written file into the outDir and assert it was convicted; that file had never
+    been generated at all, so the test was pinning the pre-jurisdiction behaviour where
+    the gate convicted every stranger in the directory."""
     cfg = _project(tmp_path, SHARED_OUTDIR)
     assert main(["gen", "--config", str(cfg)]) == 0
-    (tmp_path / "shared/Orphan.py").write_text("# not produced by any target\n")
+    (tmp_path / "shared/Orphan.py").write_text("# we wrote this before; regen no longer emits it\n")
+    _record_as_written(tmp_path, "Orphan.py")
     rc = main(["verify", "--codegen", "--config", str(cfg)])
     assert rc == 1
     err = capsys.readouterr().err
     assert "extra" in err and "Orphan.py" in err
+
+
+def test_verify_codegen_shared_outdir_ignores_a_stranger(tmp_path: Path) -> None:
+    """The other half of the same rule: a file we have NO write record for is not ours
+    to convict. `outDir` is a directory, not a namespace this tool owns — convicting
+    strangers is what failed projects with zero drift (the TS gate's 0.24.3 ruling)."""
+    cfg = _project(tmp_path, SHARED_OUTDIR)
+    assert main(["gen", "--config", str(cfg)]) == 0
+    (tmp_path / "shared/HAND_WRITTEN.md").write_text("mine, not yours\n")
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
 
 
 def test_verify_target_scoping_widens_to_shared_outdir(tmp_path: Path, capsys) -> None:
@@ -187,3 +217,36 @@ def test_verify_codegen_no_args_no_yaml_falls_back_to_neutral_config(
     program = tmp_path / "gen/models/Program.py"
     program.write_text(program.read_text() + "\n# drift\n")
     assert main(["verify", "--codegen", "--out", "gen/models"]) == 1
+
+
+def test_config_mode_refuses_template_spec_instead_of_ignoring_it(
+    tmp_path: Path, capsys
+) -> None:
+    """Declarative-config mode used to ACCEPT --template-spec and silently do nothing:
+    `_cmd_gen_config` goes straight to `_run_gen_targets`, which has no spec pass. A
+    flag that is parsed, documented, and inert is worse than one that refuses — the
+    author has no way to tell it did not run."""
+    cfg = _project(tmp_path)
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        '{"generators": [{"name": "s", "template": "entity", '
+        '"scope": "perEntity", "outputPattern": "{name}.txt"}]}'
+    )
+    rc = main(["gen", "--config", str(cfg), "--template-spec", str(spec)])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "--template-spec is not supported in declarative-config mode" in err
+    # and it names the working alternative rather than just refusing
+    assert "--out" in err
+
+
+def test_config_mode_ignores_a_discovered_spec(tmp_path: Path) -> None:
+    """A DISCOVERED spec must not hard-fail config mode — discovery is a convention,
+    not a request. gen and verify both ignore it here, so they still agree."""
+    cfg = _project(tmp_path)
+    (tmp_path / "template-spec.json").write_text(
+        '{"generators": [{"name": "s", "template": "entity", '
+        '"scope": "perEntity", "outputPattern": "{name}.txt"}]}'
+    )
+    assert main(["gen", "--config", str(cfg)]) == 0
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0

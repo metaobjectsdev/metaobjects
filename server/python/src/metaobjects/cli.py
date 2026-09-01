@@ -55,6 +55,7 @@ from metaobjects.agent_context import (
 )
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.codegen.config import GenConfig
+from metaobjects.codegen.overwrite_policy import has_hash_manifest, read_generated_hash
 from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     ConfigError,
@@ -454,6 +455,65 @@ def gen_state_dir_for(metadata_dir: str) -> str:
     return str(Path(metadata_dir).resolve().parent / ".metaobjects" / ".gen-state")
 
 
+#: The conventional declarative-template-spec file (SP-1 §4), discovered when
+#: ``--template-spec`` is not passed. VISIBLE and at the project root on purpose:
+#: this repo splits author input (visible — ``metaobjects/``, ``templates/``) from
+#: tool state (hidden — ``.metaobjects/``), and a spec is authored, not generated.
+#: It also sits beside the ``templates/`` dir its refs resolve under.
+TEMPLATE_SPEC_FILENAME = "template-spec.json"
+
+
+def project_root_for(metadata_dir: str) -> Path:
+    """The project a metadata directory belongs to: its PARENT — the directory
+    holding ``metaobjects/``. Same rule as :func:`gen_state_dir_for` (which is
+    anchored here) and the C# port's ``GenCommand.ProjectRootFor``."""
+    return Path(metadata_dir).resolve().parent
+
+
+def template_spec_path_for(metadata_dir: str, explicit: str | None) -> str | None:
+    """Resolve the template-spec to use, or ``None`` for "no template generators".
+
+    An explicit ``--template-spec`` always wins and is used verbatim (a flag naming
+    a missing file stays a hard error at read time — silently ignoring a path the
+    user typed would be worse). Otherwise the conventional
+    ``<projectRoot>/template-spec.json`` is used IF it exists.
+
+    **Every code path that builds a generator list must call this.** The defect this
+    exists to prevent is `gen` and `verify --codegen` resolving the spec differently:
+    `gen` honoured the flag while `verify` built its own list and never looked, so
+    `verify` regenerated WITHOUT the template generators and reported their committed
+    output as stale — with a remedy that loops (regenerating cannot produce files the
+    regen does not know about).
+    """
+    if explicit:
+        return explicit
+    candidate = project_root_for(metadata_dir) / TEMPLATE_SPEC_FILENAME
+    return str(candidate) if candidate.is_file() else None
+
+
+def template_spec_generators(
+    metadata_dir: str, explicit: str | None, templates_dir: str,
+) -> tuple[list[Generator], str | None]:
+    """The declarative Mustache generators for this project, or an error message.
+
+    Returns ``(generators, None)`` on success — an EMPTY list when there is no spec
+    at all — and ``([], message)`` when a spec was found but could not be used.
+    """
+    spec_path = template_spec_path_for(metadata_dir, explicit)
+    if spec_path is None:
+        return [], None
+    from metaobjects.codegen.template_codegen.template_spec import (
+        parse_template_spec,
+        template_spec_to_generators,
+    )
+
+    try:
+        spec = parse_template_spec(json.loads(Path(spec_path).read_text(encoding="utf-8")))
+    except (OSError, ValueError) as exc:
+        return [], f"error: invalid template-spec {spec_path!r}: {exc}"
+    return template_spec_to_generators(spec, FilesystemProvider(templates_dir)), None
+
+
 def resolve_metadata_location(
     config: ProjectConfig | None,
     root: Path,
@@ -696,20 +756,12 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     # SEPARATE pass with emit_package_init=False — no Python __init__.py is injected
     # into their (possibly non-Python) output tree. Templates resolve under
     # --templates via a FilesystemProvider.
-    spec_gens: list[Generator] = []
-    if getattr(args, "template_spec", None):
-        from metaobjects.codegen.template_codegen.template_spec import (
-            parse_template_spec,
-            template_spec_to_generators,
-        )
-
-        try:
-            spec = parse_template_spec(json.loads(Path(args.template_spec).read_text(encoding="utf-8")))
-        except (OSError, ValueError) as exc:
-            print(f"error: invalid --template-spec: {exc}", file=sys.stderr)
-            return 1
-        provider = FilesystemProvider(args.templates)
-        spec_gens = template_spec_to_generators(spec, provider)
+    spec_gens, spec_err = template_spec_generators(
+        args.metadata_dir, getattr(args, "template_spec", None), args.templates,
+    )
+    if spec_err is not None:
+        print(spec_err, file=sys.stderr)
+        return 1
 
     entities = _parse_entities(getattr(args, "entities", None))
     providers, providers_ok = _providers_from_args(args)
@@ -864,6 +916,23 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     config_path = _find_config(args)
     if config_path is None:
         return _cmd_gen_neutral_fallback(args)
+    # An EXPLICIT --template-spec here was silently ignored: config mode goes straight
+    # to _run_gen_targets, which has no spec pass. Refuse instead of accepting a flag
+    # that does nothing. It cannot simply be honoured, because a spec has no `target`
+    # (the CLI ports reject that field outright) while config mode is target-shaped, so
+    # there is no non-arbitrary outDir to write into. A DISCOVERED spec is ignored here
+    # rather than refused — discovery must not hard-fail a command that never asked for
+    # it, and gen/verify agree in config mode either way, so no drift can result.
+    if getattr(args, "template_spec", None):
+        print(
+            "error: --template-spec is not supported in declarative-config mode "
+            f"({config_path}): a template-spec entry names no target, and config mode "
+            "writes per target, so there is no outDir to render into. Run the explicit "
+            "form instead: metaobjects gen <metadata_dir> --out <dir> --template-spec "
+            "<json> --templates <dir>.",
+            file=sys.stderr,
+        )
+        return 2
     try:
         config = load_project_config(config_path)
     except ConfigError as exc:
@@ -903,33 +972,83 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     return 0
 
 
-def _relative_set(root: Path) -> dict[str, str]:
-    """Map every ``*.py`` file under ``root`` to its content, keyed by rel path.
+#: Never compared: interpreter droppings, not generated artifacts. A committed
+#: ``__pycache__`` would otherwise read as drift on every run.
+_UNCOMPARED_DIRS = {"__pycache__", ".gen-state", ".metaobjects"}
+_UNCOMPARED_SUFFIXES = {".pyc", ".pyo"}
 
-    Scoped to ``*.py`` because the Python codegen suite emits only Python sources;
-    if a generator ever emits a non-``.py`` artifact, broaden this glob so ``verify``
-    drift-checks it too.
+
+def _relative_set(root: Path) -> dict[str, str]:
+    """Map every generated-artifact file under ``root`` to its content, keyed by rel path.
+
+    Deliberately NOT scoped to ``*.py``. It was, with a note saying to broaden it "if a
+    generator ever emits a non-``.py`` artifact" — and one does: the declarative
+    ``--template-spec`` generators emit text/markdown/csv/json/xml/html by design. The
+    consequence was a gate that answered ``in sync`` with a template-emitted file
+    DELETED and another CORRUPTED, because neither was a ``.py`` and neither was
+    compared. A gate silent about its own output is worse than one that is wrong.
+
+    Binary files are skipped rather than decoded: every generator this project ships
+    emits text, so an undecodable file is by definition not ours.
     """
     files: dict[str, str] = {}
-    if root.exists():
-        for p in sorted(root.rglob("*.py")):
-            files[str(p.relative_to(root))] = p.read_text()
+    if not root.exists():
+        return files
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root)
+        if any(part in _UNCOMPARED_DIRS for part in rel.parts):
+            continue
+        if p.suffix in _UNCOMPARED_SUFFIXES:
+            continue
+        try:
+            files[str(rel)] = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
     return files
 
 
-def _diff_report(expected: dict[str, str], committed: dict[str, str]) -> int:
+def _is_ours_for(gen_state_dir: str | None):
+    """Jurisdiction predicate for the ``extra`` verdict: did WE write this path?
+
+    ``out_dir`` is a DIRECTORY, not a namespace this tool owns — the same ruling the
+    TypeScript gate reached (0.24.3), for the same reason. Broadening the comparison
+    beyond ``*.py`` means the gate now sees every stranger's file too, and convicting
+    those turns a project with zero drift into a red build.
+
+    The manifest already records what we WROTE, keyed relative to ``out_dir`` — the
+    same key space this diff uses — so it answers the ownership question exactly.
+    FAILS CLOSED, matching :func:`is_pristine_generated`: with no manifest at all
+    nothing is proven, so every file stays in scope and the old verdict stands.
+    """
+    if gen_state_dir is None or not has_hash_manifest(gen_state_dir):
+        return lambda _rel: True
+    return lambda rel: read_generated_hash(gen_state_dir, rel) is not None
+
+
+def _diff_report(
+    expected: dict[str, str],
+    committed: dict[str, str],
+    gen_state_dir: str | None = None,
+) -> int:
     """Compare a regenerated file map against the committed one; print the
     standard ``verify --codegen`` drift report. Returns 0 (in sync) or 1.
 
     Extracted so the explicit-``<metadata_dir>`` flag mode
     (:func:`_verify_codegen`) and the ``.metaobjects/config.json`` fallback
     rung (:func:`_verify_codegen_neutral_fallback`) report drift identically.
+
+    ``gen_state_dir`` scopes the ``extra`` verdict to files we have a record of
+    writing — see :func:`_is_ours_for`. Omit it to keep the unscoped verdict.
     """
+    is_ours = _is_ours_for(gen_state_dir)
     changed = sorted(
         k for k in expected if k in committed and expected[k] != committed[k]
     )
     missing = sorted(k for k in expected if k not in committed)  # not yet committed
-    extra = sorted(k for k in committed if k not in expected)  # stale committed file
+    # A committed file a fresh regen would not emit is STALE only if it is ours.
+    extra = sorted(k for k in committed if k not in expected and is_ours(k))
 
     if not changed and not missing and not extra:
         print(f"metaobjects verify: in sync ({len(expected)} file(s)).")
@@ -976,6 +1095,22 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     providers, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
+    # The declarative template generators, resolved by the SAME rule `gen` uses —
+    # explicit flag, else the conventional <projectRoot>/template-spec.json. Without
+    # this, verify regenerated only the default suite and then reported every
+    # spec-emitted file as `extra:` ("stale committed file"), exiting 1 with a remedy
+    # that loops: `gen` reproduces those files but the next verify fails identically.
+    # `verify` spells the templates dir --templates-root (its --templates is the
+    # subverb selector), so the flag is read per-verb and threaded to one resolver.
+    spec_gens, spec_err = template_spec_generators(
+        args.metadata_dir,
+        getattr(args, "template_spec", None),
+        getattr(args, "templates_root", None) or "templates",
+    )
+    if spec_err is not None:
+        print(spec_err, file=sys.stderr)
+        return 1
+
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
         written, errors = _generate(
@@ -989,10 +1124,29 @@ def _verify_codegen(args: argparse.Namespace) -> int:
                 print(_strict_load_hint(), file=sys.stderr)
             return 1
 
+        if spec_gens:
+            # Mirror `gen`'s SECOND pass exactly, emit_package_init=False included —
+            # a diff against output produced by a two-pass gen has to be produced the
+            # same way, or the __init__.py placement alone reads as drift.
+            from metaobjects.render.renderer import RenderError
+
+            try:
+                _generate(
+                    args.metadata_dir, tmp, spec_gens, entities,
+                    emit_package_init=False, strict=strict, providers=providers,
+                )
+            except RenderError as exc:
+                print(
+                    f"error: template-spec render failed (check the template refs and "
+                    f"the templates dir): {exc}",
+                    file=sys.stderr,
+                )
+                return 1
+
         expected = _relative_set(Path(tmp))
         committed = _relative_set(Path(args.out))
 
-    return _diff_report(expected, committed)
+    return _diff_report(expected, committed, gen_state_dir_for(args.metadata_dir))
 
 
 def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
@@ -1037,7 +1191,12 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
         expected = _relative_set(Path(tmp))
         committed = _relative_set(Path(args.out))
 
-    return _diff_report(expected, committed)
+    # This rung has NO positional metadata dir — cwd is the project (same anchor
+    # `_cmd_gen_neutral_fallback` writes its manifest to), so the jurisdiction lookup
+    # must be built from that, not from args.metadata_dir (None here by definition).
+    return _diff_report(
+        expected, committed, str(root_dir.resolve() / ".metaobjects" / ".gen-state")
+    )
 
 
 def _temp_slot_for(temp_root: Path, real_outdir: str, config_dir: Path) -> str:
@@ -1150,7 +1309,11 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
                 k for k in expected if k in committed and expected[k] != committed[k]
             )
             missing = sorted(k for k in expected if k not in committed)
-            extra = sorted(k for k in committed if k not in expected)
+            # Same jurisdiction rule as _diff_report — this rung inlines its diff to
+            # report per-target, so the guard has to be inlined with it. Without it,
+            # broadening the comparison past *.py convicts every stranger's file.
+            is_ours = _is_ours_for(gen_state_dir_for(config.metadata_dir()))
+            extra = sorted(k for k in committed if k not in expected and is_ours(k))
 
             names = "+".join(
                 t.name for t in closure if config.out_dir_for(t) == real_outdir
