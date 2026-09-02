@@ -1,0 +1,4 @@
+{
+  "generators": ["names", "table"],
+  "useNames": true
+}

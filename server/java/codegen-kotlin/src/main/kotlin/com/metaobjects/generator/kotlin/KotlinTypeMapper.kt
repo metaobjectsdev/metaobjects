@@ -358,7 +358,7 @@ object KotlinTypeMapper {
      * the two-arg overload [exposedColumnSpec] and pass the column name explicitly.
      */
     fun exposedColumnSpec(field: MetaField<*>): String =
-        exposedColumnSpec(field, KotlinGenUtil.resolveColumnName(field))
+        exposedColumnSpec(field, "\"${KotlinGenUtil.resolveColumnName(field)}\"")
 
     /**
      * Return the fully-qualified import required for the Exposed column function this
@@ -409,11 +409,16 @@ object KotlinTypeMapper {
     }
 
     /**
-     * Same as [exposedColumnSpec], but with an explicit physical column name. Used by the
-     * `@storage: "flattened"` codepath to emit prefixed columns (e.g., `address_street`)
-     * for nested object.value fields without mutating the underlying MetaField.
+     * Same as [exposedColumnSpec], but with an explicit column-name EXPRESSION rather
+     * than a bare name — the caller renders it (a quoted string literal, or — Task 6 —
+     * an `<Entity>Names.<FIELD>_COLUMN` constant reference), and this mapper stays
+     * ignorant of where the string came from: its job is the column TYPE, not the
+     * naming policy. Used by the `@storage: "flattened"` codepath to emit prefixed
+     * columns (e.g., `address_street`) for nested object.value fields without mutating
+     * the underlying MetaField, and by [KotlinExposedTableGenerator]'s per-entity column
+     * loop.
      */
-    fun exposedColumnSpec(field: MetaField<*>, colName: String): String = when (field) {
+    fun exposedColumnSpec(field: MetaField<*>, colExpr: String): String = when (field) {
         is StringField    -> {
             // Phase 1 (dbColumnType slim-and-derive): a `field.string` + `isArray` DERIVES a
             // native Postgres `text[]` via Exposed's `array<E>("col", columnType)` Table member.
@@ -432,9 +437,9 @@ object KotlinTypeMapper {
             // straight through). Matches the other ports' JSONB emission — a TEXT column
             // would never round-trip to JSONB through the introspection corpus.
             if (isArrayResolved(field)) {
-                "array<String>(\"$colName\", org.jetbrains.exposed.sql.TextColumnType())"
+                "array<String>($colExpr, org.jetbrains.exposed.sql.TextColumnType())"
             } else when (dbColumnType(field)) {
-                DB_COLUMN_TYPE_UUID  -> "uuid(\"$colName\")"
+                DB_COLUMN_TYPE_UUID  -> "uuid($colExpr)"
                 // `@dbColumnType=jsonb` open bag (#98): decode the JSONB text to a kotlinx
                 // `JsonElement` (so the data-class property + CRUD DTO is a parsed JSON value, not
                 // a double-encoded String) and encode it back via `toString()` (a JsonElement's
@@ -442,7 +447,7 @@ object KotlinTypeMapper {
                 // `JsonElement`, which ANCHORS the Exposed column's generic to `Column<JsonElement>`
                 // (the `{ it }` identity codec would have left it `Column<String>`). The table file
                 // imports `kotlinx.serialization.json.Json` (see KotlinExposedTableGenerator).
-                DB_COLUMN_TYPE_JSONB -> "jsonb(\"$colName\", { it.toString() }, { Json.parseToJsonElement(it) })"
+                DB_COLUMN_TYPE_JSONB -> "jsonb($colExpr, { it.toString() }, { Json.parseToJsonElement(it) })"
                 else -> {
                     // Dispatch to Exposed `text(name)` when the field is unbounded text:
                     //   (1) no `@maxLength` declared — the DEFAULT for `field.string` (Phase 1:
@@ -450,25 +455,25 @@ object KotlinTypeMapper {
                     //   (2) `@maxLength` exceeds the VARCHAR/TEXT cutoff (Postgres TOAST boundary).
                     // Otherwise (a `@maxLength` within the cutoff) emit `varchar(name, N)`.
                     val maxLen = stringMaxLengthOrNull(field)
-                    if (maxLen == null || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
-                    else "varchar(\"$colName\", $maxLen)"
+                    if (maxLen == null || maxLen > VARCHAR_TEXT_THRESHOLD) "text($colExpr)"
+                    else "varchar($colExpr, $maxLen)"
                 }
             }
         }
-        is IntegerField   -> "integer(\"$colName\")"
-        is LongField      -> "long(\"$colName\")"
-        is DoubleField    -> "double(\"$colName\")"
+        is IntegerField   -> "integer($colExpr)"
+        is LongField      -> "long($colExpr)"
+        is DoubleField    -> "double($colExpr)"
         // Exposed `float(name)` maps to Postgres REAL (float4); `double` maps to
         // DOUBLE PRECISION (float8). Keeps field.float distinct on the wire. See R6.
-        is FloatField     -> "float(\"$colName\")"
+        is FloatField     -> "float($colExpr)"
         // field.decimal → Exposed `decimal(name, precision, scale)` (Postgres NUMERIC(p,s)).
         // Exposed requires both precision and scale; read the declared @precision/@scale,
         // falling back to 19,4 (matching the TS column-mapper default) when absent.
-        is DecimalField   -> "decimal(\"$colName\", ${decimalPrecision(field)}, ${decimalScale(field)})"
-        is BooleanField   -> "bool(\"$colName\")"
-        is DateField      -> "date(\"$colName\")"
+        is DecimalField   -> "decimal($colExpr, ${decimalPrecision(field)}, ${decimalScale(field)})"
+        is BooleanField   -> "bool($colExpr)"
+        is DateField      -> "date($colExpr)"
         // field.time → Exposed `time(name)` (Postgres TIME, java.time.LocalTime).
-        is TimeField      -> "time(\"$colName\")"
+        is TimeField      -> "time($colExpr)"
         // Default for field.timestamp is TZ-aware (`java.time.Instant`) — ADR-0036 Wave 2:
         // emits the file-local `instantWithTimeZone(...)` extension, a
         // `Column<java.time.Instant>` (matches the Instant data class) whose DDL is
@@ -476,35 +481,35 @@ object KotlinTypeMapper {
         // naive opt-out emits `datetime(...)` — Postgres `timestamp without time zone`
         // (`java.time.LocalDateTime`), the zone-less wall-clock shape.
         is TimestampField -> {
-            if (localTimeOptIn(field)) "datetime(\"$colName\")"
-            else "$EXPOSED_INSTANT_TZ_FN(\"$colName\")"
+            if (localTimeOptIn(field)) "datetime($colExpr)"
+            else "$EXPOSED_INSTANT_TZ_FN($colExpr)"
         }
         // Currency stored as BIGINT minor units — same as Long. Separate arm for
         // semantic clarity (a future migration generator can branch on it).
-        is CurrencyField  -> "long(\"$colName\")"
+        is CurrencyField  -> "long($colExpr)"
         // Enum stored as VARCHAR for v1. Proper enum-column handling needs the generated
         // enum class (Exposed's `customEnumeration` / `enumerationByName` takes a KClass<E>)
         // and is intentionally deferred.
-        is EnumField      -> "varchar(\"$colName\", $ENUM_VARCHAR_LEN)"
+        is EnumField      -> "varchar($colExpr, $ENUM_VARCHAR_LEN)"
         // field.uuid → Exposed's first-class `uuid(name)` (native Postgres uuid column).
         // R6 Plan 2a: matched by instanceof now that UuidField is a real JVM class.
         // Phase 1: with `isArray` it DERIVES a native Postgres `uuid[]` via Exposed's
         // `array<E>("col", columnType)` Table member (explicit UUIDColumnType element) —
         // matching the canonical migrate-ts DDL.
         is UuidField      ->
-            if (isArrayResolved(field)) "array<java.util.UUID>(\"$colName\", org.jetbrains.exposed.sql.UUIDColumnType())"
-            else "uuid(\"$colName\")"
+            if (isArrayResolved(field)) "array<java.util.UUID>($colExpr, org.jetbrains.exposed.sql.UUIDColumnType())"
+            else "uuid($colExpr)"
         // field.uri → file-local `uriColumn(...)` extension: a `Column<java.net.URI>` whose
         // DDL is plain `text` (Postgres has no uri type). The helper lives in the package-shared
         // MetaInetUriColumnType.kt support file (emitted once per package).
         // #234: a @lenient field.uri is a plain `text` column (no uriColumn / Column<URI>).
-        is UriField       -> if (lenientNetField(field)) "text(\"$colName\")" else "$EXPOSED_URI_FN(\"$colName\")"
+        is UriField       -> if (lenientNetField(field)) "text($colExpr)" else "$EXPOSED_URI_FN($colExpr)"
         // field.inet → file-local `inetColumn(...)` extension: a `Column<java.net.InetAddress>`
         // whose DDL is the Postgres-native `inet`. The helper lives in the package-shared
         // MetaInetUriColumnType.kt support file (emitted once per package). #234: a @lenient
         // field.inet is a plain `text` column (the native inet column would reject a
         // not-strictly-valid value at INSERT).
-        is InetField      -> if (lenientNetField(field)) "text(\"$colName\")" else "$EXPOSED_INET_FN(\"$colName\")"
+        is InetField      -> if (lenientNetField(field)) "text($colExpr)" else "$EXPOSED_INET_FN($colExpr)"
         // field.map → a single Postgres `JSONB` column holding the JSON object. Same emission
         // as a `field.object` jsonb column (the typed-object JSONB path) — the Exposed
         // `jsonb(name, encoder, decoder)` extension encoded/decoded through the shared Jackson
@@ -516,7 +521,7 @@ object KotlinTypeMapper {
         // is the normal producer of map columns; this arm keeps the mapper total for direct callers.
         is MapField       -> {
             val valueType = mapValueScalarTypeName(field)?.toString() ?: "Any"
-            "jsonb(\"$colName\", { metaJsonbMapper.writeValueAsString(it) }, " +
+            "jsonb($colExpr, { metaJsonbMapper.writeValueAsString(it) }, " +
                 "{ metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, $valueType>>() {}) })"
         }
         else -> throw IllegalArgumentException(

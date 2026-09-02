@@ -463,6 +463,18 @@ public object KotlinGenUtil {
      */
     const val ARG_COLUMN_NAMING: String = "columnNaming"
 
+    /**
+     * Task 6 — generator arg gating [KotlinExposedTableGenerator]'s substitution of the
+     * table-name and column-name string literals for `<Entity>Names.NAME` /
+     * `<Entity>Names.<FIELD>_COLUMN` constant references. Defaults OFF: Kotlin generators
+     * are selected by FQCN in the pom with no runner aggregating markers, so a project
+     * running the table generator WITHOUT [KotlinNamesGenerator] in the same run would
+     * reference a type nothing generated and fail to compile. This is a PRESENCE guard
+     * ("is the names artifact in this run"), never a divergence/equality guard — see
+     * [primaryRdbSource].
+     */
+    const val ARG_USE_NAMES: String = "useNames"
+
     /** Apply a column-naming strategy to a bare name. */
     fun applyColumnNamingStrategy(name: String, strategy: String): String =
         ColumnNaming.apply(name, strategy)

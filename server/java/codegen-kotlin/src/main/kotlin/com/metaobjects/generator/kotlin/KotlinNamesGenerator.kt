@@ -63,7 +63,7 @@ open class KotlinNamesGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val className = KotlinNaming.namesObjectName(shortName)
 
         val rows = names.fields.values
-            .map { f -> Triple(screamingSnake(f.name), f.name, f.column) }
+            .map { f -> Triple(KotlinNaming.namesMember(f.name), f.name, f.column) }
             .sortedBy { it.second }
 
         // Two fields whose SCREAMING_SNAKE forms collide would emit duplicate const
@@ -106,8 +106,6 @@ open class KotlinNamesGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         GeneratedFileWriter.write(outRoot.resolve(pkg.replace('.', '/')).resolve("$className.kt"), out)
     }
-
-    private fun screamingSnake(name: String): String = KotlinGenUtil.camelToSnake(name).uppercase()
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }

@@ -1,0 +1,13 @@
+{
+  "metadata.root": {
+    "package": "acme::demo",
+    "children": [
+      { "object.entity": { "name": "Author", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "callPurpose", "@maxLength": 40, "@column": "purpose_code" } },
+          { "source.rdb":   { "@table": "authors" } },
+          { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}

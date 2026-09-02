@@ -13,6 +13,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
+import com.metaobjects.generator.kotlin.KotlinNamesGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
 import com.metaobjects.integration.kotlin.PostgresContainer
 import com.metaobjects.loader.uri.URIHelper
@@ -105,11 +106,14 @@ class GeneratedDocumentControllerHarness(
         Files.createDirectories(srcDir)
         for (g in listOf(
             KotlinEntityGenerator(),
+            KotlinNamesGenerator(),
             KotlinExposedTableGenerator(),
             KotlinFilterAllowlistGenerator(),
             KotlinSpringControllerGenerator(),
         )) {
-            g.setArgs(mapOf("outputDir" to srcDir.toString()))
+            // Task 6 — free compile-level proof that <Entity>Names const val references
+            // actually resolve; useNames is ignored by every other generator.
+            g.setArgs(mapOf("outputDir" to srcDir.toString(), "useNames" to "true"))
             g.execute(loader)
         }
 

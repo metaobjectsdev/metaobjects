@@ -7,6 +7,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
+import com.metaobjects.generator.kotlin.KotlinNamesGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
 import com.metaobjects.loader.uri.URIHelper
 import com.metaobjects.metadata.ktx.loadUris
@@ -79,11 +80,18 @@ class GeneratedTphControllerHarness(
         Files.createDirectories(srcDir)
         for (g in listOf(
             KotlinEntityGenerator(),
+            KotlinNamesGenerator(),
             KotlinExposedTableGenerator(),
             KotlinFilterAllowlistGenerator(),
             KotlinSpringControllerGenerator(),
         )) {
-            g.setArgs(mapOf("outputDir" to srcDir.toString()))
+            // Task 6 — free compile-level proof that <Entity>Names const val references
+            // actually resolve; useNames is ignored by every other generator. TPH
+            // subtype-only columns stay literal regardless (out of Task 6's scope —
+            // see KotlinExposedTableGenerator's collectSubtypeFields loop), so this
+            // lane also proves that descoping compiles cleanly alongside the base
+            // entity's own substituted columns.
+            g.setArgs(mapOf("outputDir" to srcDir.toString(), "useNames" to "true"))
             g.execute(loader)
         }
 

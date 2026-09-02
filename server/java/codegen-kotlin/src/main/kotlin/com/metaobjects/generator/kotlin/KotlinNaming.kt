@@ -91,6 +91,16 @@ object KotlinNaming {
     fun namesObjectName(shortName: String): String = shortName + "Names"
 
     /**
+     * [KotlinNamesGenerator]: the SCREAMING_SNAKE member-name segment for a field on the
+     * `<Entity>Names` object — the shared prefix of both `<MEMBER>_FIELD` and
+     * `<MEMBER>_COLUMN`. (R27, Task 6) [KotlinExposedTableGenerator] builds the SAME
+     * string when referencing `<Entity>Names.<MEMBER>_COLUMN` — one shared transform so
+     * the table generator's constant REFERENCE and the names generator's constant
+     * DECLARATION can never name two different members for the same field.
+     */
+    fun namesMember(fieldName: String): String = KotlinGenUtil.camelToSnake(fieldName).uppercase()
+
+    /**
      * [KotlinSpringControllerGenerator] / [KotlinM2mSupport]: naive route-segment pluralisation —
      * lowercase + "s" (the same trivial rule TS / C# / Java use for the default route segment).
      */

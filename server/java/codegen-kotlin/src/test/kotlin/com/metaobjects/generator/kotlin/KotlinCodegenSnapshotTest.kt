@@ -67,6 +67,12 @@ class KotlinCodegenSnapshotTest {
                     args["packageName"] = config.validatorPackage
                         ?: fail("validator config needs validatorPackage")
                 }
+                // Task 6 — a fixture opting into useNames must run BOTH "names" and
+                // "table" (checked below) or the table references a type nothing
+                // emitted; only the table generator reads the arg.
+                if (g == "table" && config.useNames) {
+                    args[KotlinGenUtil.ARG_USE_NAMES] = "true"
+                }
                 gen.setArgs(args)
                 gen.execute(loader)
             }
@@ -113,13 +119,18 @@ class KotlinCodegenSnapshotTest {
         }
     }
 
-    private data class FixtureConfig(val generators: List<String>, val validatorPackage: String?)
+    private data class FixtureConfig(
+        val generators: List<String>,
+        val validatorPackage: String?,
+        val useNames: Boolean,
+    )
 
     private fun parseConfig(json: String): FixtureConfig {
         // Crude JSON parse — fixtures are tiny + controlled. No Jackson dep added for this.
         val gens = Regex("\"generators\"\\s*:\\s*\\[([^\\]]+)]").find(json)?.groupValues?.get(1)
             ?.split(",")?.map { it.trim().trim('"') } ?: emptyList()
         val pkg = Regex("\"validatorPackage\"\\s*:\\s*\"([^\"]+)\"").find(json)?.groupValues?.get(1)
-        return FixtureConfig(gens, pkg)
+        val useNames = Regex("\"useNames\"\\s*:\\s*true").containsMatchIn(json)
+        return FixtureConfig(gens, pkg, useNames)
     }
 }

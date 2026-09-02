@@ -11,6 +11,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
+import com.metaobjects.generator.kotlin.KotlinNamesGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
 import com.metaobjects.loader.uri.URIHelper
 import com.metaobjects.metadata.ktx.loadUris
@@ -124,11 +125,16 @@ class GeneratedAuthorControllerHarness(
         Files.createDirectories(srcDir)
         for (g in listOf(
             KotlinEntityGenerator(),
+            KotlinNamesGenerator(),
             KotlinExposedTableGenerator(),
             KotlinFilterAllowlistGenerator(),
             KotlinSpringControllerGenerator(),
         )) {
-            g.setArgs(mapOf("outputDir" to srcDir.toString()))
+            // Task 6 — useNames is ignored by every generator except
+            // KotlinExposedTableGenerator; harmless on the others. This is the only
+            // executable proof that a `<Entity>Names.NAME`/`_COLUMN` const val
+            // reference actually RESOLVES (compiles) rather than merely rendering.
+            g.setArgs(mapOf("outputDir" to srcDir.toString(), "useNames" to "true"))
             g.execute(loader)
         }
 

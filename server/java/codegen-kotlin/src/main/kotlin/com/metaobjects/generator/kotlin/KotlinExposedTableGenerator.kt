@@ -58,6 +58,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     protected fun columnNaming(): String =
         getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
 
+    /**
+     * Task 6 — whether the table binding references `<Entity>Names.NAME` /
+     * `<Entity>Names.<FIELD>_COLUMN` instead of respelling the physical name/column as a
+     * string literal. Defaults OFF: Kotlin generators are selected by FQCN in the pom
+     * with no runner aggregating markers, so a project running this generator WITHOUT
+     * [KotlinNamesGenerator] in the same run would reference a type nothing generated
+     * and fail to compile. A PRESENCE guard, not a divergence/equality guard — see
+     * [KotlinGenUtil.primaryRdbSource].
+     */
+    protected fun useNames(): Boolean =
+        (getArg(KotlinGenUtil.ARG_USE_NAMES, "false") ?: "false").toBoolean()
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -399,6 +411,36 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val tableName = sourceRdb.physicalName?.takeIf { it.isNotEmpty() }
             ?: (shortName.lowercase() + "s")
 
+        // Task 6 / R27 — reference the constant whenever the names generator is in the
+        // run (gated on the arg, never on equality: primaryRdbSource above is the SAME
+        // selector KotlinGenUtil.resolveObjectNames uses, so a reference here IS the
+        // single spelling — see that function's doc). The TABLE-NAME reference is
+        // scoped to objectNameOverride == null (the vanilla, non-write-through path)
+        // ONLY: emitWriteThrough calls this function twice for ONE entity, against two
+        // DIFFERENT own sources (the writable table and the read-only replica view).
+        // <Entity>Names.NAME always names the entity's role=primary source, which for an
+        // object.entity must be the WRITABLE one (ERR_ENTITY_PRIMARY_SOURCE_READONLY) —
+        // correct for the write call, WRONG for the read view's own, differently-named
+        // physical table. (Column-name substitution below has no such conflict — a
+        // field's column name does not depend on which of the two sources this call is
+        // emitting — and is gated on useNames() alone, not this scope.)
+        val tableExpr = if (useNames() && objectNameOverride == null)
+            "${KotlinNaming.namesObjectName(shortName)}.NAME"
+        else "\"$tableName\""
+
+        // Task 6 — the rendered column-name EXPRESSION for one of [entity]'s OWN fields:
+        // either the quoted physical-name literal, or (useNames()) a reference to
+        // <Entity>Names.<MEMBER>_COLUMN. Unlike tableExpr this is NOT scoped to
+        // objectNameOverride == null -- a field's column name does not depend on which
+        // of a write-through entity's two own sources this emit() call is targeting, so
+        // it is correct for both the write table and the read view.
+        fun columnExprFor(f: MetaField<*>): String {
+            val literal = "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+            return if (useNames())
+                "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
+            else literal
+        }
+
         // Walk the `extends` chain so identities declared on an abstract base
         // entity (the BaseEntity pattern: `identity.primary` on `id`) are
         // picked up by tables for concrete entities that extend it. Own-only
@@ -607,7 +649,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
             }
             append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
-            append("object $tableObjectName : Table(\"$tableName\") {\n")
+            append("object $tableObjectName : Table($tableExpr) {\n")
             // PK column(s) FIRST so a self-referential FK column (e.g.
             // `parentId = uuid(...).references(SelfTable.id)`) can reference the
             // PK `val id` — Kotlin object initializers run top-to-bottom, so a
@@ -641,7 +683,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // when cross-package) via crossPackageEnumImports above.
                     enumColumnSpec(field, entity)
                 } else {
-                    KotlinTypeMapper.exposedColumnSpec(field, KotlinGenUtil.resolveColumnName(field, columnNaming()))
+                    // Task 6 — the entity's OWN field, so its physical column is exactly
+                    // what <Entity>Names.<MEMBER>_COLUMN names (KotlinNamesGenerator
+                    // builds that constant from this SAME entity's resolving metaFields
+                    // via the SAME resolveColumnName). No equality check needed: the
+                    // reference and the value it stands for are derived from one shared
+                    // transform (KotlinNaming.namesMember), so they cannot disagree.
+                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field))
                 }
                 val withAuto = when {
                     isPk && incrementPk -> "$baseSpec.autoIncrement()"
@@ -672,7 +720,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // enums take the customEnumeration form here too.
                     enumColumnSpec(field, entity)
                 } else {
-                    KotlinTypeMapper.exposedColumnSpec(field, KotlinGenUtil.resolveColumnName(field, columnNaming()))
+                    // Task 6 — out of scope: `field` here belongs to a TPH SUBTYPE, not
+                    // `entity` (the discriminator base whose table this is). Its own
+                    // physical column is named by the SUBTYPE's <Sub>Names, a different
+                    // Names object than the one in scope in this function. Always
+                    // literal; useNames() does not reach this loop.
+                    KotlinTypeMapper.exposedColumnSpec(field, "\"${KotlinGenUtil.resolveColumnName(field, columnNaming())}\"")
                 }
                 append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $baseSpec.nullable()\n")
             }
@@ -803,7 +856,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
                     val colName = KotlinGenUtil.resolveColumnName(field, columnNaming()) + "_" +
                         KotlinGenUtil.resolveColumnName(subField, columnNaming())
-                    val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, colName)
+                    // Task 6 — out of scope: this composite name belongs to neither a
+                    // single field of `entity` nor of `target` — <Entity>Names has no
+                    // constant for it. Always literal; useNames() does not reach here.
+                    val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, "\"$colName\"")
                     // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
                     val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
                     val full = if (nullable) "$baseSpec.nullable()" else baseSpec
@@ -1497,7 +1553,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             ?.fields?.firstOrNull() ?: return "long(\"$colName\")"
         val pkField = target.metaFields.firstOrNull { it.name == pkFieldName }
             ?: return "long(\"$colName\")"
-        return runCatching { KotlinTypeMapper.exposedColumnSpec(pkField, colName) }
+        // Task 6 — out of scope: colName here is a RELATIONSHIP-synthesized FK column
+        // name (e.g. "author_id" from the composition's shortName + "Id"), not a
+        // metaField of any single object — no <Entity>Names constant names it. Always
+        // literal; useNames() does not reach here.
+        return runCatching { KotlinTypeMapper.exposedColumnSpec(pkField, "\"$colName\"") }
             .getOrDefault("long(\"$colName\")")
     }
 
