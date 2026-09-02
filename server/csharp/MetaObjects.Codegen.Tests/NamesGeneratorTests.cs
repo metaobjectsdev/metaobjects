@@ -20,6 +20,7 @@
 //    fallback-to-literal: every consumption site references the resolved constant
 //    unconditionally, so a name that cannot be agreed on must be a build error.
 
+using MetaObjects.Cli;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -229,5 +230,199 @@ public class NamesGeneratorTests
         Assert.Contains("ChildWeird", ex.Message);
         Assert.Contains("v_parent", ex.Message);
         Assert.Contains("child_table", ex.Message);
+    }
+
+
+    // -------------------------------------------------------------------------
+    // Task 4 (program A) — the EF bindings CONSUME the constants above instead
+    // of respelling the physical name (spec §A6).
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Entity_Table_and_Column_attributes_reference_the_name_constants()
+    {
+        var ctx = Ctx(Load(SubscriberModel));
+        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "Subscriber.g.cs").Content;
+
+        Assert.Contains("[Table(SubscriberNames.Name)]", src);
+        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", src);
+        Assert.Contains("[Column(SubscriberNames.CallPurposeColumn)]", src);
+        Assert.Contains("[Column(SubscriberNames.IdColumn)]", src);
+        // The literals this replaces must be GONE, not merely joined by the constant.
+        Assert.DoesNotContain("[Table(\"subscribers\")]", src);
+        Assert.DoesNotContain("[Column(\"created_at\")]", src);
+        Assert.DoesNotContain("[Column(\"purpose_code\")]", src);
+        Assert.DoesNotContain("[Column(\"id\")]", src);
+    }
+
+    [Fact]
+    public void TPH_subtype_columns_reference_the_subtypes_own_name_constants_not_a_miss()
+    {
+        // The subtype's own field (quantity) IS present in ITS OWN <Sub>Names artifact —
+        // ResolveObjectNames(subtype).Fields is built from subtype.Fields(), the exact
+        // same resolving Fields() call EmitTphSubtypeClass iterates (ADR-0039). This is
+        // NOT the lookup-miss case; a miss needs an owner with no primary source at all
+        // (see the flattened-value-object test below), which a TPH subtype never is —
+        // it always inherits the discriminator base's primary source.
+        const string model = """
+        { "metadata.root": { "package": "acme::auth", "children": [
+          { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb":       { "@table": "auths" } },
+            { "field.long":       { "name": "id" } },
+            { "field.enum":       { "name": "type", "@values": ["Bridge"] } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+          ]}},
+          { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity", "@required": true } }
+          ]}}
+        ]}}
+        """;
+        var ctx = Ctx(Load(model), ColumnNamingStrategy.Literal);
+        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "BridgeAuth.g.cs").Content;
+
+        Assert.Contains("[Column(BridgeAuthNames.QuantityColumn)]", src);
+        Assert.DoesNotContain("[Column(\"quantity\")]", src);
+        // The subtype class itself carries no [Table] (TPH subtypes share the base's table).
+        Assert.DoesNotContain("[Table(", src);
+    }
+
+    [Fact]
+    public void DbContext_ToView_and_ToJson_reference_the_name_constants()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Config", "children": [
+            { "field.string": { "name": "flag" } }
+          ]}},
+          { "object.entity": { "name": "Customer", "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "config", "@objectRef": "Config" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}},
+          { "object.projection": { "name": "CustomerSummary", "children": [
+            { "source.rdb": { "@kind": "view", "@table": "v_customer_summary" } },
+            { "field.string": { "name": "tag" } }
+          ]}}
+        ]}}
+        """;
+        var ctx = Ctx(Load(model), ColumnNamingStrategy.Literal);
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        // Projection .ToView — the unconditional [Table]-shaped substitution (keyless:
+        // CustomerSummary declares no identity, so .HasNoKey() precedes it).
+        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(CustomerSummaryNames.Name);", dbContext);
+        Assert.DoesNotContain("ToView(\"v_customer_summary\")", dbContext);
+
+        // Object-typed field .ToJson — the owner's own field, always present.
+        Assert.Contains("b.ToJson(CustomerNames.ConfigColumn)", dbContext);
+        Assert.DoesNotContain("b.ToJson(\"config\")", dbContext);
+    }
+
+    [Fact]
+    public void Flattened_value_object_nested_columns_keep_the_literal_a_genuine_lookup_miss()
+    {
+        // Address (object.value) has NO primary source (FR-024 value purity forbids
+        // one) and therefore NO <Address>Names artifact at all — CSharpNaming.ColumnRef
+        // misses unconditionally here, and the value it would need ("homeAddress_street",
+        // a PREFIXED composite) isn't even a bare physical name a names constant holds.
+        // This is the "a lookup miss is normal and keeps the literal" case, distinct from
+        // the divergence case below — ResolveObjectNames(Address) is never called (there
+        // is no primary source to resolve), so there is nothing to disagree with.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Address", "children": [
+            { "field.string": { "name": "street" } }
+          ]}},
+          { "object.entity": { "name": "Customer", "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var ctx = Ctx(Load(model), ColumnNamingStrategy.Literal);
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        Assert.Contains("HasColumnName(\"homeAddress_street\");", dbContext);
+        Assert.DoesNotContain("AddressNames", dbContext);
+    }
+
+    [Fact]
+    public void R_E_EntityGenerator_and_DbContextGenerator_never_reach_the_divergent_object_base_shape()
+    {
+        // R-E: the divergence below (object.base carrying a read-only primary source
+        // inherited beside a child's own writable primary) can be REFUSED only by
+        // NamesGenerator (via CSharpNaming.ResolveObjectNames) — never observed by
+        // EntityGenerator or DbContextGenerator directly. Both filter their working set
+        // to IsEntity() || DbView is not null; object.base satisfies neither
+        // (FR-024/ADR-0028's ERR_ENTITY_PRIMARY_SOURCE_READONLY bans a read-only
+        // primary on object.entity outright, and DbView is OWN-only, so ChildWeird's
+        // own writable table source never registers as a DbView). Reusing the exact
+        // model from A_divergent_primary_and_writable_source_pair_is_refused_naming_both
+        // above — establishes the brief's Step 1 sketch
+        // (Assert.Throws<GeneratorException>(() => GenerateEntity("WeirdBase"))) cannot
+        // pass: neither generator ever resolves names for ChildWeird, so neither can
+        // throw on its behalf. The RUN-level guarantee is proven separately below.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.base": { "name": "ParentWeird", "abstract": true, "children": [
+            { "source.rdb": { "name": "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
+            { "field.int": { "name": "id" } }
+          ]}},
+          { "object.base": { "name": "ChildWeird", "extends": "ParentWeird", "children": [
+            { "source.rdb": { "name": "tableSrc", "@table": "child_table", "@role": "primary" } }
+          ]}}
+        ]}}
+        """;
+        var root = Load(model);
+
+        var entityFiles = new EntityGenerator().Generate(Ctx(root)).ToList();
+        Assert.DoesNotContain(entityFiles, f => f.Path.Contains("Weird"));
+
+        // Neither ParentWeird nor ChildWeird is IsEntity() or DbView-bearing, so the
+        // DbSet/OnModelCreating loops never touch them either — DbContextGenerator
+        // emits no AppDbContext file at all for a model with nothing to map.
+        var dbContextFiles = new DbContextGenerator().Generate(Ctx(root)).ToList();
+        Assert.All(dbContextFiles, f => Assert.DoesNotContain("Weird", f.Content));
+    }
+
+    [Fact]
+    public void The_default_generator_suite_fails_the_run_on_a_divergent_primary_source()
+    {
+        // R-E's corrected version of the brief's sketched
+        // Assert.Throws<GeneratorException>(() => GenerateEntity("WeirdBase")): no such
+        // type as GeneratorException exists anywhere in this port, and no per-generator
+        // call reaches the divergent shape (see the test above). D4's guarantee — every
+        // consumption site references the constant unconditionally, divergence is a
+        // build error — is delivered at the RUN level: "names" is a member of
+        // GenCommand.DefaultGeneratorNames, so a default `dotnet meta gen` over this
+        // model fails via NamesGenerator's own InvalidOperationException, caught and
+        // surfaced by GenCommand.Run as a clean Outcome failure naming both sides.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.base": { "name": "ParentWeird", "abstract": true, "children": [
+            { "source.rdb": { "name": "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
+            { "field.int": { "name": "id" } }
+          ]}},
+          { "object.base": { "name": "ChildWeird", "extends": "ParentWeird", "children": [
+            { "source.rdb": { "name": "tableSrc", "@table": "child_table", "@role": "primary" } }
+          ]}}
+        ]}}
+        """;
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "gen.json")]);
+        Assert.Empty(load.Errors);
+
+        var tmp = Path.Combine(Path.GetTempPath(), "moc-names-run-" + Guid.NewGuid().ToString("N"));
+        var outcome = GenCommand.Run(
+            load, outDir: Path.Combine(tmp, "out"), ns: "Acme.Generated", emitAbstractShapes: false,
+            generatorNames: null, templateRoot: null, templateSpecPath: null, projectRoot: tmp);
+
+        Assert.False(outcome.Ok);
+        var message = string.Join("\n", outcome.LoadErrors);
+        Assert.Contains("ChildWeird", message);
+        Assert.Contains("v_parent", message);
+        Assert.Contains("child_table", message);
     }
 }

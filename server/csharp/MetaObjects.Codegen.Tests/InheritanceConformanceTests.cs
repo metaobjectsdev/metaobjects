@@ -51,7 +51,7 @@ public class InheritanceConformanceTests
         Assert.DoesNotContain(files, f => f.Path == "Auditable.g.cs");
 
         var product = Assert.Single(files, f => f.Path == "Product.g.cs");
-        Assert.Contains("[Table(\"products\")]", product.Content);
+        Assert.Contains("[Table(ProductNames.Name)]", product.Content); // §A6 (task 4)
 
         // All five fields present — 2 levels of inherited + 2 own.
         Assert.Contains("public long Id", product.Content);

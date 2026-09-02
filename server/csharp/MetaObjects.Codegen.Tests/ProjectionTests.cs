@@ -77,10 +77,11 @@ public class ProjectionTests
         var file = Assert.Single(new DbContextGenerator().Generate(Ctx(Load())));
         var src = file.Content;
         Assert.Contains("protected override void OnModelCreating(ModelBuilder modelBuilder)", src);
-        // keyed projection: ToView, no HasNoKey
-        Assert.Contains("modelBuilder.Entity<ProgramSummary>().ToView(\"v_program_summary\");", src);
+        // keyed projection: ToView, no HasNoKey. §A6 (task 4) — references the
+        // projection's own <Name>Names.Name constant.
+        Assert.Contains("modelBuilder.Entity<ProgramSummary>().ToView(ProgramSummaryNames.Name);", src);
         // keyless projection: HasNoKey + ToView
-        Assert.Contains("modelBuilder.Entity<TagCount>().HasNoKey().ToView(\"v_tag_count\");", src);
+        Assert.Contains("modelBuilder.Entity<TagCount>().HasNoKey().ToView(TagCountNames.Name);", src);
     }
 
     [Fact]

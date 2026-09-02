@@ -152,8 +152,10 @@ public class DbContextCompileTests
         // Routes are excluded — ASP.NET Core types are outside the sandbox.
         var entityFiles = new EntityGenerator().Generate(ctx).ToList();
         var dbContextFiles = new DbContextGenerator().Generate(ctx).ToList();
+        // §A6 (task 4) — entity + DbContext now reference the names artifact.
+        var namesFiles = new NamesGenerator().Generate(ctx).ToList();
 
-        var allSources = entityFiles.Concat(dbContextFiles).ToList();
+        var allSources = entityFiles.Concat(dbContextFiles).Concat(namesFiles).ToList();
         Assert.NotEmpty(allSources);
 
         var trees = allSources

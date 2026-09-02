@@ -8,22 +8,22 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Generated;
 
-[Table("subscribers")]
+[Table(SubscriberNames.Name)]
 public class Subscriber
 {
     public enum SubscriberStatus { active, paused, cancelled }
     [Key]
-    [Column("id")]
+    [Column(SubscriberNames.IdColumn)]
     public long Id { get; set; }
-    [Column("email")]
+    [Column(SubscriberNames.EmailColumn)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(320)]
     [MinLength(1)]
     public string Email { get; set; } = default!;
-    [Column("name")]
+    [Column(SubscriberNames.NameColumn)]
     public string? Name { get; set; }
-    [Column("status")]
+    [Column(SubscriberNames.StatusColumn)]
     public SubscriberStatus Status { get; set; }
-    [Column("created_at")]
+    [Column(SubscriberNames.CreatedAtColumn)]
     public DateTimeOffset? CreatedAt { get; set; }
 }

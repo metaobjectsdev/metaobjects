@@ -84,7 +84,7 @@ public class WriteThroughTests
     public void Write_entity_maps_table_and_excludes_derived_field()
     {
         var src = Src(new EntityGenerator().Generate(Ctx(Load())), "Order.g.cs");
-        Assert.Contains("[Table(\"orders\")]", src);
+        Assert.Contains("[Table(OrderNames.Name)]", src); // §A6 (task 4)
         Assert.Contains("public class Order", src);
         Assert.Contains("public long Id { get; set; }", src);
         Assert.Contains("public long CustomerId { get; set; }", src);
@@ -115,7 +115,9 @@ public class WriteThroughTests
         // The write entity is a normal table DbSet; the read model a view DbSet.
         Assert.Contains("public DbSet<Order> Orders { get; set; }", src);
         Assert.Contains("public DbSet<OrderView> OrderViews { get; set; }", src);
-        // The read model maps to the replica view (keyed → no HasNoKey).
+        // The read model maps to the replica view (keyed → no HasNoKey). §A6 (task 4)
+        // deliberately does NOT convert this one: <Entity>Names.Name is the PRIMARY
+        // source's name (the table); the replica view has no constant of its own.
         Assert.Contains("modelBuilder.Entity<OrderView>().ToView(\"v_order_with_customer\");", src);
         Assert.DoesNotContain("modelBuilder.Entity<OrderView>().HasNoKey()", src);
     }
@@ -168,7 +170,7 @@ public class WriteThroughTests
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var customer = Src(files, "Customer.g.cs");
-        Assert.Contains("[Table(\"customers\")]", customer);
+        Assert.Contains("[Table(CustomerNames.Name)]", customer); // §A6 (task 4)
         // No view read model is emitted for a plain entity.
         Assert.DoesNotContain(files, f => f.Path == "CustomerView.g.cs");
         var dbctx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;

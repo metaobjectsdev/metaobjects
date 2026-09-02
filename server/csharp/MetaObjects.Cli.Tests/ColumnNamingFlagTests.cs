@@ -60,15 +60,18 @@ public sealed class ColumnNamingFlagTests : IDisposable
     [Fact]
     public void Default_is_literal_unchanged()
     {
+        // §A6 (task 4) — [Column] references SubscriberNames.CreatedAtColumn, whose
+        // VALUE is still the literal-strategy "createdAt" (the constant's underlying
+        // value, checked at the source below).
         var src = GenerateWith();
-        Assert.Contains("[Column(\"createdAt\")]", src);
+        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", src);
     }
 
     [Fact]
     public void Snake_case_maps_the_field_name_to_a_snake_case_column()
     {
         var src = GenerateWith("--column-naming", "snake_case");
-        Assert.Contains("[Column(\"created_at\")]", src);
+        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", src);
         Assert.DoesNotContain("[Column(\"createdAt\")]", src);
     }
 
@@ -77,7 +80,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
     {
         foreach (var src in new[] { GenerateWith(), GenerateWith("--column-naming", "snake_case") })
         {
-            Assert.Contains("[Column(\"reason\")]", src);
+            Assert.Contains("[Column(SubscriberNames.PurposeCodeColumn)]", src);
             Assert.DoesNotContain("purpose_code", src);
         }
     }

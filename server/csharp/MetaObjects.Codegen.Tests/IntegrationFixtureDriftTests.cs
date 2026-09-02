@@ -1,9 +1,10 @@
 // IntegrationFixtureDriftTests — Docker-free codegen-drift gate for C#.
 //
 // The committed MetaObjects.IntegrationTests/Generated/*.g.cs files (entity classes
-// + AppDbContext) are static fixtures the Docker-based integration suite consumes
-// directly. They were produced by running the C# entity + DbContext generators on
-// the persistence-conformance corpus metadata
+// + AppDbContext +, since task 4's §A6 consumption, the per-object names artifacts
+// those entities now reference) are static fixtures the Docker-based integration
+// suite consumes directly. They were produced by running the C# entity + DbContext
+// (+ names) generators on the persistence-conformance corpus metadata
 // (fixtures/persistence-conformance/canonical/meta.fitness.json) into namespace
 // MetaObjects.IntegrationTests.Generated. Nothing regenerated or checked them, so a
 // change to the entity/DbContext generator could leave these fixtures silently stale.
@@ -66,7 +67,7 @@ public class IntegrationFixtureDriftTests
 
     // The exact harness a developer reruns to refresh the fixtures on intended drift.
     private const string RegenInstructions =
-        "Regenerate and commit the integration fixtures: the C# entity/DbContext generators " +
+        "Regenerate and commit the integration fixtures: the C# entity/DbContext/names generators " +
         "changed but server/csharp/MetaObjects.IntegrationTests/Generated/*.g.cs were not updated. " +
         "Run MetaObjects.Codegen.Tests.IntegrationFixtureDriftTests.Regenerate_committed_fixtures " +
         "(remove its Skip=) to rewrite the committed files, review the diff, then re-run the Docker integration suite " +
@@ -86,8 +87,15 @@ public class IntegrationFixtureDriftTests
             Config = FixtureConfig(),
         };
 
+        // §A6 (task 4) — EntityGenerator/DbContextGenerator output now REFERENCES the
+        // names artifact (e.g. [Table(ProgramNames.Name)]), so NamesGenerator's own
+        // companion files must be part of this same compiled fixture set or the
+        // committed project fails to compile — not merely drift. NamesGenerator is
+        // already in GenCommand.DefaultGeneratorNames; this brings the fixture in line
+        // with what a default `dotnet meta gen` actually produces.
         return new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx))
             .ToList();
     }
 

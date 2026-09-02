@@ -125,7 +125,9 @@ public sealed class ValidationConformanceTests
                 Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Validation.Generated" },
             };
 
-            var files = new EntityGenerator().Generate(ctx).ToList();
+            // §A6 (task 4) — the corpus entities now reference their names artifacts.
+            var files = new EntityGenerator().Generate(ctx)
+                .Concat(new NamesGenerator().Generate(ctx)).ToList();
             var trees = files.Select(f =>
                 CSharpSyntaxTree.ParseText(f.Content,
                     new CSharpParseOptions(LanguageVersion.CSharp12))).ToArray();

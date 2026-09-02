@@ -168,8 +168,10 @@ public class M2MCodegenTests
         // against EF Core 8 (routes excluded — ASP.NET types are outside this sandbox;
         // the Kestrel generated-lane compiles + hosts them).
         var ctx = Ctx(Load());
+        // §A6 (task 4) — the entity/DbContext output now references the names artifact.
         var sources = new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx))
             .ToList();
 
         var trees = sources

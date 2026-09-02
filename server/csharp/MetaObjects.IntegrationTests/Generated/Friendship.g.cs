@@ -10,11 +10,11 @@ using Microsoft.EntityFrameworkCore;
 namespace MetaObjects.IntegrationTests.Generated;
 
 [PrimaryKey(nameof(PersonAId), nameof(PersonBId))]
-[Table("friendships")]
+[Table(FriendshipNames.Name)]
 public class Friendship
 {
-    [Column("personAId")]
+    [Column(FriendshipNames.PersonAIdColumn)]
     public long PersonAId { get; set; }
-    [Column("personBId")]
+    [Column(FriendshipNames.PersonBIdColumn)]
     public long PersonBId { get; set; }
 }

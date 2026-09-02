@@ -90,7 +90,10 @@ public class ValueObjectValidationCodegenTests
         // The VO POCO now carries validation DataAnnotations + [JsonPropertyName]; verify the
         // added usings compile (the full generated server incl. routes is compiled by the
         // integration generated lane). Entity + VO only — no ASP.NET reference needed.
-        var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
+        var ctx = Ctx(Load());
+        // §A6 (task 4) — the entity now references its names artifact.
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx)).ToList();
         var trees = files.Select(f =>
             CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)

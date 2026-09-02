@@ -322,8 +322,12 @@ public class EntityGenerator : IGenerator
             var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
             sb.AppendLine($"[PrimaryKey({names})]");
         }
+        // A6 -- reference the constant unconditionally. NamesGenerator (run by default —
+        // GenCommand.DefaultGeneratorNames) has already refused any object whose primary
+        // and primary-writable sources disagree (CSharpNaming.ResolveObjectNames), so the
+        // reference IS the single spelling of this name in the run.
         if (!isProjection)
-            sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
+            sb.AppendLine($"[Table({CSharpNaming.NamesClassName(entity)}.Name)]");
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping
@@ -493,14 +497,14 @@ public class EntityGenerator : IGenerator
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
-            arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+            arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]");
             AppendArrayValidatorAttributes(arr, field);
             arr.Append($"    public ICollection<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+        sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]");
         if (baseType == "string")
             AppendStringValidatorAttributes(sb, field);
         else
@@ -516,7 +520,7 @@ public class EntityGenerator : IGenerator
     {
         var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = PropertyName(field);
-        var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n";
+        var colAttr = $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]\n";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
@@ -961,7 +965,7 @@ public class EntityGenerator : IGenerator
         // an inline enum keeps the per-object nested <Entity><Field> type name.
         var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = PropertyName(field);
-        var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n" : "";
+        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]\n" : "";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(entity, field);
@@ -1004,7 +1008,7 @@ public class EntityGenerator : IGenerator
         {
             var arr = new StringBuilder();
             if (withAttributes)
-                arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+                arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy)})]");
             // validator.array @min/@max → element-count bounds on the collection.
             if (emitValidation)
                 AppendArrayValidatorAttributes(arr, field);
@@ -1029,7 +1033,7 @@ public class EntityGenerator : IGenerator
         {
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
-            sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+            sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy)})]");
         }
         // Validation DataAnnotations — mapped entities AND value-object POCOs (a VO's
         // own members are validated on POST/PATCH; Program D), never an attribute-free
@@ -1302,7 +1306,7 @@ public class EntityGenerator : IGenerator
     {
         var valueType = CSharpNaming.MapValueType(field);
         var propName = PropertyName(field);
-        var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, ctx.Config.ColumnNamingStrategy)}\")]\n" : "";
+        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(owner, field, ctx.Config.ColumnNamingStrategy)})]\n" : "";
         return $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ get; set; }} = new();";
     }
 

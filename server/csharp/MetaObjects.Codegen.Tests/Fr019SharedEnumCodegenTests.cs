@@ -96,7 +96,10 @@ public class Fr019SharedEnumCodegenTests
     [Fact]
     public void Shared_enum_set_compiles()
     {
-        var files = new EntityGenerator().Generate(Ctx(Load(SharedModel))).ToList();
+        var ctx = Ctx(Load(SharedModel));
+        // §A6 (task 4) — the entities now reference the names artifacts.
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx)).ToList();
         var trees = files.Select(f =>
             Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
                 f.Content,

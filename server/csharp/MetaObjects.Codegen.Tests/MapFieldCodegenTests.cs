@@ -51,7 +51,7 @@ public class MapFieldCodegenTests
         var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
 
         // @valueType:string → Dictionary<string, string>, [Column]-mapped, never null.
-        Assert.Contains("[Column(\"labels\")]", customer);
+        Assert.Contains("[Column(CustomerNames.LabelsColumn)]", customer); // §A6 (task 4)
         Assert.Contains("public Dictionary<string, string> Labels { get; set; } = new();", customer);
     }
 
@@ -62,7 +62,7 @@ public class MapFieldCodegenTests
         var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
 
         // @objectRef:Address → Dictionary<string, Address>; the VO is emitted as a POCO.
-        Assert.Contains("[Column(\"addresses\")]", customer);
+        Assert.Contains("[Column(CustomerNames.AddressesColumn)]", customer); // §A6 (task 4)
         Assert.Contains("public Dictionary<string, Address> Addresses { get; set; } = new();", customer);
         Assert.Contains("public class Address", files.Single(f => f.Path == "Address.g.cs").Content);
     }
@@ -70,7 +70,10 @@ public class MapFieldCodegenTests
     [Fact]
     public void Generated_entities_and_value_objects_compile_together()
     {
-        var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
+        var ctx = Ctx(Load());
+        // §A6 (task 4) — Customer now references CustomerNames.
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx)).ToList();
         var trees = files.Select(f =>
             CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)

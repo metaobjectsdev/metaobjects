@@ -176,11 +176,14 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
             },
         };
 
-        // The full generated stack: entity + DbContext + filter allowlist + routes.
+        // The full generated stack: entity + DbContext + filter allowlist + routes +
+        // names (§A6, task 4 — the entity/DbContext output now references the names
+        // artifact, so it must be part of the same compiled server).
         var files = new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))
             .Concat(new FilterAllowlistGenerator().Generate(ctx))
             .Concat(new RoutesGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx))
             .ToList();
 
         var trees = files

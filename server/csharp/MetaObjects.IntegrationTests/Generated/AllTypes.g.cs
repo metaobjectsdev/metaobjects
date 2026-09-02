@@ -10,56 +10,56 @@ using System.Text.Json.Serialization;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("all_types")]
+[Table(AllTypesNames.Name)]
 public class AllTypes
 {
     public enum AllTypesEnumVal { LOW, MEDIUM, HIGH }
     public enum AllTypesIntEnumVal { DRAFT, PUBLISHED, ARCHIVED }
     [Key]
-    [Column("id")]
+    [Column(AllTypesNames.IdColumn)]
     public Guid Id { get; set; }
-    [Column("sVal")]
+    [Column(AllTypesNames.SValColumn)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
     [MinLength(1)]
     public string SVal { get; set; } = default!;
-    [Column("iVal")]
+    [Column(AllTypesNames.IValColumn)]
     public int IVal { get; set; }
-    [Column("lVal")]
+    [Column(AllTypesNames.LValColumn)]
     public long LVal { get; set; }
-    [Column("dVal")]
+    [Column(AllTypesNames.DValColumn)]
     public double DVal { get; set; }
-    [Column("fVal")]
+    [Column(AllTypesNames.FValColumn)]
     public float FVal { get; set; }
-    [Column("decVal")]
+    [Column(AllTypesNames.DecValColumn)]
     public decimal DecVal { get; set; }
-    [Column("bVal")]
+    [Column(AllTypesNames.BValColumn)]
     public bool BVal { get; set; }
-    [Column("dateVal")]
+    [Column(AllTypesNames.DateValColumn)]
     public DateOnly DateVal { get; set; }
-    [Column("timeVal")]
+    [Column(AllTypesNames.TimeValColumn)]
     public TimeOnly TimeVal { get; set; }
-    [Column("tsVal")]
+    [Column(AllTypesNames.TsValColumn)]
     public DateTime TsVal { get; set; }
-    [Column("tsTzVal")]
+    [Column(AllTypesNames.TsTzValColumn)]
     public DateTimeOffset TsTzVal { get; set; }
-    [Column("moneyVal")]
+    [Column(AllTypesNames.MoneyValColumn)]
     public long MoneyVal { get; set; }
-    [Column("enumVal")]
+    [Column(AllTypesNames.EnumValColumn)]
     public AllTypesEnumVal EnumVal { get; set; }
-    [Column("intEnumVal")]
+    [Column(AllTypesNames.IntEnumValColumn)]
     public AllTypesIntEnumVal? IntEnumVal { get; set; }
-    [Column("uuidVal")]
+    [Column(AllTypesNames.UuidValColumn)]
     public Guid UuidVal { get; set; }
-    [Column("uriVal")]
+    [Column(AllTypesNames.UriValColumn)]
     [Required]
     [JsonConverter(typeof(MetaNetValidation.AbsoluteUriJsonConverter))]
     public Uri UriVal { get; set; } = default!;
-    [Column("inetVal")]
+    [Column(AllTypesNames.InetValColumn)]
     [Required]
     [JsonConverter(typeof(MetaNetValidation.IPAddressJsonConverter))]
     public IPAddress InetVal { get; set; } = default!;
-    [Column("inet6Val")]
+    [Column(AllTypesNames.Inet6ValColumn)]
     [Required]
     [JsonConverter(typeof(MetaNetValidation.IPAddressJsonConverter))]
     public IPAddress Inet6Val { get; set; } = default!;

@@ -8,16 +8,16 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("auths")]
+[Table(AuthNames.Name)]
 public abstract class Auth
 {
     public enum AuthType { Bridge, Copay, PriorAuth }
     [Key]
-    [Column("id")]
+    [Column(AuthNames.IdColumn)]
     public long Id { get; set; }
-    [Column("type")]
+    [Column(AuthNames.TypeColumn)]
     public AuthType? Type { get; set; }
-    [Column("reference")]
+    [Column(AuthNames.ReferenceColumn)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(80)]
     [MinLength(1)]

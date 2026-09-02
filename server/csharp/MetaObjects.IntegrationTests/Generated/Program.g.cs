@@ -8,22 +8,22 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("programs")]
+[Table(ProgramNames.Name)]
 public class Program
 {
     public enum ProgramStatus { DRAFT, PUBLISHED, ARCHIVED }
     [Key]
-    [Column("id")]
+    [Column(ProgramNames.IdColumn)]
     public long Id { get; set; }
-    [Column("title")]
+    [Column(ProgramNames.TitleColumn)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
     [MinLength(1)]
     public string Title { get; set; } = default!;
-    [Column("priceCents")]
+    [Column(ProgramNames.PriceCentsColumn)]
     public long PriceCents { get; set; }
-    [Column("status")]
+    [Column(ProgramNames.StatusColumn)]
     public ProgramStatus Status { get; set; }
-    [Column("created_ts")]
+    [Column(ProgramNames.CreatedAtColumn)]
     public DateTime CreatedAt { get; set; }
 }

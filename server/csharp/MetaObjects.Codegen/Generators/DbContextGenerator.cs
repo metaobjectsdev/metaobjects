@@ -89,7 +89,10 @@ public class DbContextGenerator : IGenerator
         {
             var name = CSharpNaming.Pascal(p.Name);
             var noKey = p.PrimaryIdentity() is null ? ".HasNoKey()" : string.Empty;
-            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView(\"{p.DbView}\");");
+            // A6 -- unconditional, matching EntityGenerator's [Table]: a read-only
+            // projection reaching this loop always has a primary source (its own
+            // read-only view), so NamesGenerator always emits its <Name>Names artifact.
+            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NamesClassName(p)}.Name);");
             // Enum-typed projection columns persist as their string symbol in the view
             // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
             // string conversion EF defaults to the int-ordinal mapping and reads the text
@@ -177,6 +180,14 @@ public class DbContextGenerator : IGenerator
         foreach (var wt in objects.Where(o => o.IsEntity() && o.IsWriteThrough()))
         {
             var view = CSharpNaming.ViewModelClassName(wt);
+            // A6 -- NOT converted. wt.ReplicaViewName reads the REPLICA source
+            // (OwnSources().FirstOrDefault(IsReadOnly), any @role); <Entity>Names.Name
+            // is the PRIMARY source only (CSharpNaming.ResolveObjectNames). For a
+            // write-through entity these are two different physical names by design —
+            // the artifact carries no constant for the replica, so there is nothing to
+            // reference here (a lookup miss the field-level ColumnRef pattern can't even
+            // attempt: this isn't a field, and NamesGenerator's schema has no second slot
+            // for it).
             modelLines.Add($"        modelBuilder.Entity<{view}>().ToView(\"{wt.ReplicaViewName}\");");
             // #214 [0] — the read model exposes ALL fields (incl. the derived origin.* fields),
             // so it needs the SAME per-field TYPE converters the write entity gets, or EF Core
@@ -790,6 +801,10 @@ public class DbContextGenerator : IGenerator
         var strategy = ctx.Config.ColumnNamingStrategy;
         var nav = CSharpNaming.Pascal(field.Name);
         var parentCol = CSharpNaming.Column(field, strategy);
+        // A6 -- the field itself belongs to `entity` (the JSON column's own physical
+        // name, not the nested value object's), so it hits entity's own names artifact
+        // unconditionally in practice — a lookup, not an assumption, per ColumnRef.
+        var parentColRef = CSharpNaming.ColumnRef(entity, field, strategy);
 
         // An @isArray object field is a COLLECTION of the value object (the EntityGenerator
         // emits it as ICollection<VO>), so EF must map it with .OwnsMany(...).ToJson(...) —
@@ -799,10 +814,10 @@ public class DbContextGenerator : IGenerator
         // never takes the flattened branch below. ResolvedIsArray per ADR-0039 (array-ness is
         // inheritable via extends).
         if (field.ResolvedIsArray())
-            return $"        modelBuilder.Entity<{owner}>().OwnsMany(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
+            return $"        modelBuilder.Entity<{owner}>().OwnsMany(x => x.{nav}, b => b.ToJson({parentColRef}));";
 
         if (field.Storage != STORAGE_FLATTENED)
-            return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
+            return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));";
 
         // Flattened-column prefix for each nested scalar. Defaults to "{parentCol}_"
         // (EF's owned-type convention). An explicit @embeddedColumnPrefix overrides it —
@@ -813,6 +828,11 @@ public class DbContextGenerator : IGenerator
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
         sb.AppendLine("        {");
+        // A6 -- NOT converted, on two independent grounds. `vo` (object.value) never
+        // carries a source (FR-024 value purity), so it has no <Vo>Names artifact at
+        // all — CSharpNaming.ColumnRef would miss on every nf, always. And even with
+        // one, nestedCol is a COMPOSITE string (prefix + column), not the bare physical
+        // name a names constant holds — there is no single constant this could reference.
         foreach (var nf in vo.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
         {
             var nestedCol = $"{prefix}{CSharpNaming.Column(nf, strategy)}";

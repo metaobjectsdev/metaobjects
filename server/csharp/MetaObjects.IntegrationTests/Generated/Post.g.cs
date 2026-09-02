@@ -8,13 +8,13 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("posts")]
+[Table(PostNames.Name)]
 public class Post
 {
     [Key]
-    [Column("id")]
+    [Column(PostNames.IdColumn)]
     public long Id { get; set; }
-    [Column("title")]
+    [Column(PostNames.TitleColumn)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
     [MinLength(1)]

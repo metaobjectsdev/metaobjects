@@ -9,24 +9,24 @@ using System.Text.Json;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("assets")]
+[Table(AssetNames.Name)]
 public class Asset
 {
     [Key]
-    [Column("id")]
+    [Column(AssetNames.IdColumn)]
     public Guid Id { get; set; }
-    [Column("ownerId")]
+    [Column(AssetNames.OwnerIdColumn)]
     public Guid OwnerId { get; set; }
-    [Column("externalId")]
+    [Column(AssetNames.ExternalIdColumn)]
     public string? ExternalId { get; set; }
-    [Column("payload")]
+    [Column(AssetNames.PayloadColumn)]
     public JsonDocument? Payload { get; set; }
-    [Column("recordedAt")]
+    [Column(AssetNames.RecordedAtColumn)]
     public DateTimeOffset RecordedAt { get; set; }
-    [Column("observedAt")]
+    [Column(AssetNames.ObservedAtColumn)]
     public DateTime ObservedAt { get; set; }
-    [Column("asOfDate")]
+    [Column(AssetNames.AsOfDateColumn)]
     public DateOnly AsOfDate { get; set; }
-    [Column("atTime")]
+    [Column(AssetNames.AtTimeColumn)]
     public TimeOnly AtTime { get; set; }
 }

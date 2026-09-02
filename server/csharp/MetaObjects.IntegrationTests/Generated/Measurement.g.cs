@@ -8,16 +8,16 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("measurements")]
+[Table(MeasurementNames.Name)]
 public class Measurement
 {
     [Key]
-    [Column("id")]
+    [Column(MeasurementNames.IdColumn)]
     public long Id { get; set; }
-    [Column("tempC")]
+    [Column(MeasurementNames.TempCColumn)]
     public float TempC { get; set; }
-    [Column("massKg")]
+    [Column(MeasurementNames.MassKgColumn)]
     public double MassKg { get; set; }
-    [Column("preciseKg")]
+    [Column(MeasurementNames.PreciseKgColumn)]
     public decimal PreciseKg { get; set; }
 }

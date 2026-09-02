@@ -12,10 +12,10 @@ public class ProgramView
 {
     public enum ProgramViewStatus { DRAFT, PUBLISHED, ARCHIVED }
     [Key]
-    [Column("id")]
+    [Column(ProgramViewNames.IdColumn)]
     public long Id { get; set; }
-    [Column("title")]
+    [Column(ProgramViewNames.TitleColumn)]
     public string? Title { get; set; }
-    [Column("status")]
+    [Column(ProgramViewNames.StatusColumn)]
     public ProgramViewStatus? Status { get; set; }
 }

@@ -112,10 +112,12 @@ internal sealed class JsonbGeneratedServerFactory : IAsyncDisposable
             },
         };
 
+        // §A6 (task 4) -- the entity/DbContext output now references the names artifact.
         var files = new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))
             .Concat(new FilterAllowlistGenerator().Generate(ctx))
             .Concat(new RoutesGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx))
             .ToList();
 
         var trees = files

@@ -10,6 +10,6 @@ namespace MetaObjects.IntegrationTests.Generated;
 
 public class BridgeAuth : Auth
 {
-    [Column("quantity")]
+    [Column(BridgeAuthNames.QuantityColumn)]
     public int Quantity { get; set; }
 }

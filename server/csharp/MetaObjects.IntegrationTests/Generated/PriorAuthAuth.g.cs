@@ -10,7 +10,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 
 public class PriorAuthAuth : Auth
 {
-    [Column("approver")]
+    [Column(PriorAuthAuthNames.ApproverColumn)]
     [MaxLength(80)]
     public string? Approver { get; set; }
 }

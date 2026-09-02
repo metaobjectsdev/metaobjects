@@ -8,17 +8,17 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("nodes")]
+[Table(NodeNames.Name)]
 public class Node
 {
     [Key]
-    [Column("id")]
+    [Column(NodeNames.IdColumn)]
     public long Id { get; set; }
-    [Column("label")]
+    [Column(NodeNames.LabelColumn)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(80)]
     [MinLength(1)]
     public string Label { get; set; } = default!;
-    [Column("parentId")]
+    [Column(NodeNames.ParentIdColumn)]
     public long? ParentId { get; set; }
 }

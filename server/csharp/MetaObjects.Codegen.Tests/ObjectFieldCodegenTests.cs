@@ -78,12 +78,16 @@ public class ObjectFieldCodegenTests
         var ctx = Ctx(Load());
         var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
 
-        // Flattened: per-property column names prefixed by the parent column.
+        // Flattened: per-property column names prefixed by the parent column. §A6 —
+        // NOT converted: Address (object.value) has no primary source and so no
+        // AddressNames artifact, and the prefixed name is a composite no single
+        // constant could hold anyway (a genuine lookup miss).
         Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.HomeAddress, b =>", dbContext);
         Assert.Contains("b.Property(p => p.Street).HasColumnName(\"homeAddress_street\");", dbContext);
         Assert.Contains("b.Property(p => p.City).HasColumnName(\"homeAddress_city\");", dbContext);
-        // Default (no @storage): single json column.
-        Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b => b.ToJson(\"config\"));", dbContext);
+        // Default (no @storage): single json column. §A6 (task 4) — converted: the
+        // field belongs to Customer itself, which always has a names artifact.
+        Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b => b.ToJson(CustomerNames.ConfigColumn));", dbContext);
     }
 
     [Fact]
@@ -96,14 +100,17 @@ public class ObjectFieldCodegenTests
         // so EF must map it with .OwnsMany(...).ToJson(...) — .OwnsOne over a collection fails
         // at EF model finalization ("must be a non-interface reference type to be used as an
         // entity type"). Regression gate for the array-of-VO jsonb path.
-        Assert.Contains("modelBuilder.Entity<Customer>().OwnsMany(x => x.Tags, b => b.ToJson(\"tags\"));", dbContext);
+        Assert.Contains("modelBuilder.Entity<Customer>().OwnsMany(x => x.Tags, b => b.ToJson(CustomerNames.TagsColumn));", dbContext); // §A6
         Assert.DoesNotContain("OwnsOne(x => x.Tags", dbContext);
     }
 
     [Fact]
     public void Generated_entities_and_value_objects_compile_together()
     {
-        var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
+        var ctx = Ctx(Load());
+        // §A6 (task 4) — Customer now references CustomerNames.
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx)).ToList();
         var trees = files.Select(f =>
             CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)

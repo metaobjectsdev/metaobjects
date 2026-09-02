@@ -235,6 +235,8 @@ public sealed class ExtractTierCollisionTests
         var ctx = new GenContext { Entities = root.Objects(), Root = root, Config = config };
 
         var entitySrc = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+        // §A6 (task 4) — the Report entity (acme::alpha) now references ReportNames.
+        var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content;
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "ReportDoc.response.cs").Content;
         var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n"
             + PayloadCodegen.GeneratePayloadRecords(root, "acme::beta::Report");
@@ -252,7 +254,7 @@ public sealed class ExtractTierCollisionTests
         Assert.Contains("global::MetaObjects.NamingRefs.ResolveObjectRef(root, PAYLOAD_FQN, \"\")", parserSrc);
         Assert.DoesNotContain("root.FindObject(PAYLOAD_FQN)", parserSrc);
 
-        var asm = Compile(entitySrc, parserSrc, payloadSrc);
+        var asm = Compile(entitySrc, namesSrc, parserSrc, payloadSrc);
 
         var parserType = asm.GetType("Acme.Generated.ReportDocParser")!;
         var extractLenientWithLoader = parserType.GetMethods()

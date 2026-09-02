@@ -11,16 +11,16 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class ProgramStat
 {
     [Key]
-    [Column("programId")]
+    [Column(ProgramStatNames.ProgramIdColumn)]
     public long ProgramId { get; set; }
-    [Column("weekCount")]
+    [Column(ProgramStatNames.WeekCountColumn)]
     public long? WeekCount { get; set; }
-    [Column("totalMinutes")]
+    [Column(ProgramStatNames.TotalMinutesColumn)]
     public long? TotalMinutes { get; set; }
-    [Column("avgMinutes")]
+    [Column(ProgramStatNames.AvgMinutesColumn)]
     public double? AvgMinutes { get; set; }
-    [Column("minMinutes")]
+    [Column(ProgramStatNames.MinMinutesColumn)]
     public int? MinMinutes { get; set; }
-    [Column("maxMinutes")]
+    [Column(ProgramStatNames.MaxMinutesColumn)]
     public int? MaxMinutes { get; set; }
 }

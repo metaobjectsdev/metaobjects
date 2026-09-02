@@ -134,13 +134,16 @@ public class JsonbColumnCodegenTests
     {
         var ctx = Ctx(Load(Model));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+        var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content; // §A6 (task 4)
 
-        var tree = CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12));
+        var trees = new[] { src, namesSrc }
+            .Select(s => CSharpSyntaxTree.ParseText(s, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create("jsonb_" + Guid.NewGuid().ToString("N"),
-            [tree], refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
         Assert.True(errors.Count == 0, "generated jsonb entity should compile, got: " + string.Join("; ", errors));

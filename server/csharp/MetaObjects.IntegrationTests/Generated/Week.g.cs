@@ -8,17 +8,17 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table("weeks")]
+[Table(WeekNames.Name)]
 public class Week
 {
     [Key]
-    [Column("id")]
+    [Column(WeekNames.IdColumn)]
     public long Id { get; set; }
-    [Column("programId")]
+    [Column(WeekNames.ProgramIdColumn)]
     public long ProgramId { get; set; }
-    [Column("label")]
+    [Column(WeekNames.LabelColumn)]
     [MaxLength(80)]
     public string? Label { get; set; }
-    [Column("durationMinutes")]
+    [Column(WeekNames.DurationMinutesColumn)]
     public int DurationMinutes { get; set; }
 }

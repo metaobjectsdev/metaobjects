@@ -10,11 +10,11 @@ using Microsoft.EntityFrameworkCore;
 namespace MetaObjects.IntegrationTests.Generated;
 
 [PrimaryKey(nameof(PostId), nameof(TagId))]
-[Table("post_tags")]
+[Table(PostTagNames.Name)]
 public class PostTag
 {
-    [Column("postId")]
+    [Column(PostTagNames.PostIdColumn)]
     public long PostId { get; set; }
-    [Column("tagId")]
+    [Column(PostTagNames.TagIdColumn)]
     public long TagId { get; set; }
 }

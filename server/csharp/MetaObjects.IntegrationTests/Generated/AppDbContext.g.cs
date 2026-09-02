@@ -27,11 +27,11 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<ProgramStat>().ToView("v_program_stat");
-        modelBuilder.Entity<ProgramView>().ToView("v_program");
+        modelBuilder.Entity<ProgramStat>().ToView(ProgramStatNames.Name);
+        modelBuilder.Entity<ProgramView>().ToView(ProgramViewNames.Name);
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
-        modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson("settings"));
-        modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson("labels"));
+        modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(AllTypesNames.SettingsColumn));
+        modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(AllTypesNames.LabelsColumn));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
         modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : 9, v => v == 0 ? AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
         modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);

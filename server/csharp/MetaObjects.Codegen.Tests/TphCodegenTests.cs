@@ -94,7 +94,7 @@ public class TphCodegenTests
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var auth = FileContent(files, "Auth.g.cs");
-        Assert.Contains("[Table(\"auths\")]", auth);
+        Assert.Contains("[Table(AuthNames.Name)]", auth); // §A6 (task 4)
         // FR-017 TPH: the discriminator base is abstract (no plain-base rows; a
         // concrete base with a discriminator + no base value fails EF model build).
         Assert.Contains("public abstract class Auth", auth);
@@ -200,8 +200,10 @@ public class TphCodegenTests
     public void Entity_plus_dbcontext_compile_against_ef_core_8()
     {
         var ctx = Ctx(Load());
+        // §A6 (task 4) — base + subtypes now reference their own names artifacts.
         var sources = new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx))
             .ToList();
 
         var trees = sources

@@ -113,8 +113,8 @@ public class ScalarArrayCodegenTests
         var ctx = Ctx(Load(ScalarArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
 
-        // The [Column] annotation must still be present.
-        Assert.Contains("[Column(\"tags\")]", src);
+        // The [Column] annotation must still be present. §A6 (task 4).
+        Assert.Contains("[Column(ProductNames.TagsColumn)]", src);
     }
 
     // -------------------------------------------------------------------------
@@ -242,7 +242,8 @@ public class ScalarArrayCodegenTests
     {
         var ctx = Ctx(Load(ScalarArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
-        AssertCompiles(src, "scalararray");
+        var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content;
+        AssertCompiles("scalararray", src, namesSrc);
     }
 
     [Fact]
@@ -250,7 +251,8 @@ public class ScalarArrayCodegenTests
     {
         var ctx = Ctx(Load(EnumArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
-        AssertCompiles(src, "enumarray");
+        var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content;
+        AssertCompiles("enumarray", src, namesSrc);
     }
 
     [Fact]
@@ -258,21 +260,26 @@ public class ScalarArrayCodegenTests
     {
         var ctx = Ctx(Load(UuidArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
-        AssertCompiles(src, "uuidarray");
+        var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content;
+        AssertCompiles("uuidarray", src, namesSrc);
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
-    private static void AssertCompiles(string src, string label)
+    // §A6 (task 4) — params so a caller can pass the entity source PLUS its names
+    // artifact (now referenced from the entity) in one compilation unit.
+    private static void AssertCompiles(string label, params string[] sources)
     {
-        var tree = CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12));
+        var trees = sources
+            .Select(s => CSharpSyntaxTree.ParseText(s, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create("array_" + label + "_" + Guid.NewGuid().ToString("N"),
-            [tree], refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
         Assert.True(errors.Count == 0, $"generated {label} entity should compile, got: " + string.Join("; ", errors));

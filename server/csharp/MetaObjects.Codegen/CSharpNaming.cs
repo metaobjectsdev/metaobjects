@@ -390,6 +390,25 @@ public static class CSharpNaming
     }
 
     /// <summary>
+    /// §A6 — the <c>&lt;Owner&gt;Names.&lt;Field&gt;Column</c> constant reference for
+    /// <paramref name="field"/>, when <paramref name="owner"/>'s resolved names artifact
+    /// (<see cref="ResolveObjectNames"/>) carries it; the bare quoted physical-column
+    /// literal otherwise. A miss is NORMAL, never a divergence — ResolveObjectNames
+    /// already refuses a divergent primary/writable pair before this resolves — e.g. a
+    /// value-object-hosted field, whose owner has no primary source and so no names
+    /// artifact at all (FR-024 value purity forbids one). Entity and TPH-subtype fields
+    /// always hit: each owns its own <c>&lt;Owner&gt;Names.g.cs</c>, resolved over its
+    /// own <c>Fields()</c> (ADR-0039 resolving), the exact set this method iterates.
+    /// </summary>
+    public static string ColumnRef(MetaObject owner, MetaField field, ColumnNamingStrategy strategy)
+    {
+        var names = ResolveObjectNames(owner, strategy);
+        return names is not null && names.Fields.ContainsKey(field.Name)
+            ? $"{NamesClassName(owner)}.{Pascal(field.Name)}Column"
+            : $"\"{Column(field, strategy)}\"";
+    }
+
+    /// <summary>
     /// The bare object name from a possibly package-qualified reference (the segment
     /// after the last <c>::</c>), for resolving an <c>@objectRef</c>/<c>@references</c>
     /// against <see cref="MetaRoot.FindObject"/>. Shared by the schema + generators.

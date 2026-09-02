@@ -173,8 +173,10 @@ public class Fr037MutabilityCodegenTests
     public void Entity_and_dbcontext_compile_together()
     {
         var root = Load();
+        // §A6 (task 4) — the entity/DbContext output now references the names artifact.
         var files = new EntityGenerator().Generate(Ctx(root))
             .Concat(new DbContextGenerator().Generate(Ctx(root)))
+            .Concat(new NamesGenerator().Generate(Ctx(root)))
             .ToList();
 
         var trees = files

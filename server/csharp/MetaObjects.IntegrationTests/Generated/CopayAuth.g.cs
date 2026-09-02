@@ -10,6 +10,6 @@ namespace MetaObjects.IntegrationTests.Generated;
 
 public class CopayAuth : Auth
 {
-    [Column("copayAmount")]
+    [Column(CopayAuthNames.CopayAmountColumn)]
     public decimal? CopayAmount { get; set; }
 }

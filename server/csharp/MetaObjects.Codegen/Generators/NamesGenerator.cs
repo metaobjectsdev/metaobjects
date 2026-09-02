@@ -59,7 +59,13 @@ public sealed class NamesGenerator : PerEntityGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        // Task 4 (§A6) — the same per-package resolution EntityGenerator uses for the
+        // entity itself, so a package carrying a PackageNamespaces override still lands
+        // its <Entity>Names companion in the SAME namespace as the entity it describes
+        // (the promise the consumption sites rely on: no new `using` is required).
+        // Bare ctx.Config.Namespace would silently break that promise whenever a
+        // per-package override is configured.
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name)};");
         sb.AppendLine();
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// GENERATED — per-object physical database names for {CSharpNaming.Pascal(entity.Name)} (spec A1/A2/A6).");

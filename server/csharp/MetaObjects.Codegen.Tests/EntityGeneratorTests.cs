@@ -45,15 +45,17 @@ public class EntityGeneratorTests
         var src = file.Content;
 
         Assert.Contains("namespace Acme.Generated;", src);
-        Assert.Contains("[Table(\"subscribers\")]", src);
+        // §A6 (task 4) — [Table]/[Column] reference the <Entity>Names constants, not
+        // the physical-name literal.
+        Assert.Contains("[Table(SubscriberNames.Name)]", src);
         Assert.Contains("public class Subscriber", src);
         // PK long, required -> non-nullable, [Key] + [Column]
         Assert.Contains("[Key]", src);
-        Assert.Contains("[Column(\"id\")]", src);
+        Assert.Contains("[Column(SubscriberNames.IdColumn)]", src);
         Assert.Contains("public long Id { get; set; }", src);
         // required string -> [Required(AllowEmptyStrings)] + [MaxLength] + [MinLength(1)] (FR-036 A1)
         // + non-nullable w/ default!
-        Assert.Contains("[Column(\"email\")]", src);
+        Assert.Contains("[Column(SubscriberNames.EmailColumn)]", src);
         Assert.Contains("[MaxLength(255)]", src);
         Assert.Contains("public string Email { get; set; } = default!;", src);
         // optional value types -> nullable
@@ -67,13 +69,18 @@ public class EntityGeneratorTests
     {
         var ctx = Ctx(Load());
         var src = new EntityGenerator().Generate(ctx).Single().Content;
+        // §A6 (task 4) — the entity now references SubscriberNames constants, so the
+        // names artifact must be part of the same compilation unit.
+        var namesSrc = new NamesGenerator().Generate(ctx).Single().Content;
 
-        var tree = CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12));
+        var trees = new[] { src, namesSrc }
+            .Select(s => CSharpSyntaxTree.ParseText(s, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create("entitycompile_" + Guid.NewGuid().ToString("N"),
-            [tree], refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
@@ -239,8 +246,8 @@ public class EntityGeneratorTests
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED, ARCHIVED }", src);
         // Property typed by the nested enum
         Assert.Contains("public OrderStatus? Status { get; set; }", src);
-        // Column mapping annotation
-        Assert.Contains("[Column(\"status\")]", src);
+        // Column mapping annotation — §A6, references OrderNames (default strategy).
+        Assert.Contains("[Column(OrderNames.StatusColumn)]", src);
     }
 
     [Fact]
@@ -300,13 +307,16 @@ public class EntityGeneratorTests
     {
         var ctx = EnumCtx(LoadEnum());
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+        var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content; // §A6 (task 4)
 
-        var tree = CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12));
+        var trees = new[] { src, namesSrc }
+            .Select(s => CSharpSyntaxTree.ParseText(s, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create("enumcompile_" + Guid.NewGuid().ToString("N"),
-            [tree], refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
@@ -363,8 +373,11 @@ public class EntityGeneratorTests
         Assert.Contains("public OrderStatus? CurrentStatus { get; set; }", order.Content);
         Assert.Contains("public OrderStatus? PreviousStatus { get; set; }", order.Content);
 
-        // The whole set must compile cleanly (no CS0102 / unresolved type).
-        var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
+        // The whole set must compile cleanly (no CS0102 / unresolved type). §A6 (task 4)
+        // — includes the names artifact the entity now references.
+        var namesFiles = new NamesGenerator().Generate(ctx).ToList();
+        var trees = files.Concat(namesFiles)
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
