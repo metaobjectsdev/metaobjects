@@ -23,7 +23,8 @@ Drizzle, Bun test).
 
 **Predecessor:** [`docs/superpowers/plans/2026-08-30-program-a-data-name-constants.md`](2026-08-30-program-a-data-name-constants.md)
 — the TypeScript vertical. Its Tasks 1–6 are shipped; the Task 5b that ruling split out of Task 5
-mid-execution was never written into that document and is **Task 2 here**.
+mid-execution was never written into that document is **Task 1 here** — the first thing
+this plan discharges, so the reference is complete before four ports copy it.
 
 ---
 
@@ -105,7 +106,7 @@ carries a committed-output cost: `examples/showcase/generated/{csharp,python}` a
 output and release preflight runs `regen-showcase --check --all-ports`, which refuses to skip a port.
 Each default-ON task regenerates its own showcase directory.
 
-**D7 — `names` enters the shared generator manifest in Task 1 and each port appends itself.**
+**D7 — `names` enters the shared generator manifest in Task 2 and each port appends itself.**
 `fixtures/generator-registry-conformance/registry.json` is gated by a **bidirectional set-equality**
 test in every port. Seeding the entry with `ports: ["typescript"]` and having each port's task append
 its own id keeps every commit green; adding all five up front would redden four ports until the last
@@ -150,140 +151,7 @@ Every task's requirements implicitly include this section.
 
 ---
 
-### Task 1: Put `names` in the generator registry and the cross-port manifest
-
-The TypeScript vertical shipped `namesFile()` as an exported factory, a reference template and a
-`meta init` scaffold entry — but **never registered it**. `codegen-ts/src/generator-registry.ts` does
-not import it and `fixtures/generator-registry-conformance/registry.json` has no `names` key. The
-conformance gate passes only because both sides omit it.
-
-This is not cosmetic. `generatorRegistry` is also what resolves the **stable-name string form** of
-generator selection (`metaobjects-config.ts:354`), documented there as *"the cross-port-consistent
-selection mechanism (matches C#/Python `--generators entity,routes`)"*. §A5 rules C# and Python
-default ON, and in those ports selection **is** by stable name — so without a manifest entry the
-artifact is unreachable in the two ports the spec most wants it in. Every later task in this plan
-appends its port id to the entry this task creates.
-
-**Files:**
-- Modify: `fixtures/generator-registry-conformance/registry.json` (add a `names` entry)
-- Modify: `server/typescript/packages/codegen-ts/src/generator-registry.ts:20-38` (import) and the
-  registry object (add the entry)
-- Test: `server/typescript/packages/codegen-ts/test/generator-registry.test.ts:16-30`
-  (`EXPECTED_NATIVE`)
-
-**Interfaces:**
-- Produces: the manifest key `names`, with `"ports": ["typescript"]`. Tasks 3, 5, 7 and 9 each append
-  exactly one port id to that array: `"csharp"`, `"kotlin"`, `"java"`, `"python"` respectively.
-- Produces: `generatorRegistry["names"]`, so `defineConfig({ generators: ["names"] })` resolves.
-
-- [ ] **Step 1: Write the failing test**
-
-Add `"names"` to `EXPECTED_NATIVE` in `test/generator-registry.test.ts` (after `"barrel"`, matching
-the order the registry object will use), and add this test to the same file:
-
-```ts
-test("names is selectable by stable name (the C#/Python parity path)", () => {
-  const entry = getGenerator("names");
-  expect(entry?.name).toBe("names");
-  expect(entry?.tier).toBe("native");
-  // The factory must construct without throwing — `--list` calls every factory.
-  const gen = entry?.factory();
-  expect(gen?.name).toBe("names");
-  // §A6: the marker the runner aggregates into includeNames. Registering the
-  // generator without it would emit the artifact while every template still
-  // embedded its own literal.
-  expect(gen?.emitsNames).toBe(true);
-});
-```
-
-- [ ] **Step 2: Run it to confirm it fails**
-
-```bash
-cd <repo-root>/server/typescript && bun test packages/codegen-ts/test/generator-registry.test.ts
-```
-Expected: FAIL — `contains every expected stable name` reports `names` missing, and
-`getGenerator("names")` returns `undefined`.
-
-- [ ] **Step 3: Register the generator**
-
-In `server/typescript/packages/codegen-ts/src/generator-registry.ts`, add `namesFile` to the import
-list from `./generators/index.js`, then add this entry immediately after the `barrel` entry:
-
-```ts
-  names: {
-    name: "names",
-    description: "Per-entity physical database name constants (table/view, schema, columns).",
-    tier: "native",
-    factory: () => namesFile(),
-  },
-```
-
-No `options` key: `namesFile()` takes no options today. (Plan 1's Task 5 review flagged that this
-makes it unreachable on a non-default target; that is recorded as a known limit, not fixed here.)
-
-- [ ] **Step 4: Add the manifest entry**
-
-In `fixtures/generator-registry-conformance/registry.json`, add to `generators`, after `"barrel"`:
-
-```json
-    "names": {
-      "concept": "Per-entity physical database name constants (table/view name, schema, column names).",
-      "tier": "native",
-      "ports": ["typescript"]
-    },
-```
-
-`ports` lists **only** `typescript` — the four other ports have no such generator yet, and the
-conformance test checks presence in BOTH directions, so naming a port before it registers turns that
-port's build red.
-
-- [ ] **Step 5: Run the TypeScript gates**
-
-```bash
-cd <repo-root>/server/typescript && bun test packages/codegen-ts/test/generator-registry.test.ts packages/codegen-ts/test/golden/generator-registry-conformance.test.ts
-```
-Expected: PASS, both files.
-
-- [ ] **Step 6: Prove no other port went red**
-
-The manifest is shared. The four other ports each run a conformance test against their own slice, and
-this change must be invisible to all of them because `ports` names only `typescript`.
-
-```bash
-cd <repo-root>/server/csharp && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet 2>&1 | tee /tmp/cs.log; grep -c "error CS" /tmp/cs.log
-cd <repo-root>/server/python && uv run --extra integration pytest tests/conformance/test_generator_registry_conformance.py -q
-```
-Expected: C# passes with `0` occurrences of `error CS`; Python passes.
-
-- [ ] **Step 7: Typecheck and commit**
-
-```bash
-cd <repo-root> && bun run --filter '*' build && bun run --filter '*' typecheck; echo "EXIT=$?"
-```
-Expected: `EXIT=0`. Then:
-
-```bash
-cd <repo-root>
-git add fixtures/generator-registry-conformance/registry.json \
-        server/typescript/packages/codegen-ts/src/generator-registry.ts \
-        server/typescript/packages/codegen-ts/test/generator-registry.test.ts
-```
-```bash
-cd <repo-root> && printf '%s\n' \
-  'feat(codegen): the names generator was shipped but never registered' '' \
-  'namesFile() has been exported, scaffolded by meta init and ejectable since' \
-  '0.24.x, but it was absent from the stable-name registry and from the shared' \
-  'cross-port manifest. The conformance gate passed only because both sides' \
-  'omitted it.' '' \
-  'That made it invisible to meta gen --list, and unreachable through the' \
-  'stable-name string form of generator selection -- which is the mechanism the' \
-  'C# and Python ports use, and the two the spec puts it on by default.' \
-  > /tmp/msg.txt && git commit -F /tmp/msg.txt
-```
-
----
-
-### Task 2: Finish §A6 in TypeScript — the four remaining consumption sites
+### Task 1: Finish §A6 in TypeScript — the four remaining consumption sites
 
 Plan 1's ruling split Task 5 in two, sending the descriptor and the remaining consumption sites to a
 "Task 5b" that was never written into that plan and never executed. `includeNames` has exactly one
@@ -465,6 +333,139 @@ cd <repo-root> && printf '%s\n' \
   'renderEntityConstants takes the names as an OPTIONAL third argument on purpose:' \
   'the reference entity template is copied verbatim into adopter repos, so a' \
   'required parameter would stop every ejected copy compiling.' \
+  > /tmp/msg.txt && git commit -F /tmp/msg.txt
+```
+
+---
+
+### Task 2: Put `names` in the generator registry and the cross-port manifest
+
+The TypeScript vertical shipped `namesFile()` as an exported factory, a reference template and a
+`meta init` scaffold entry — but **never registered it**. `codegen-ts/src/generator-registry.ts` does
+not import it and `fixtures/generator-registry-conformance/registry.json` has no `names` key. The
+conformance gate passes only because both sides omit it.
+
+This is not cosmetic. `generatorRegistry` is also what resolves the **stable-name string form** of
+generator selection (`metaobjects-config.ts:354`), documented there as *"the cross-port-consistent
+selection mechanism (matches C#/Python `--generators entity,routes`)"*. §A5 rules C# and Python
+default ON, and in those ports selection **is** by stable name — so without a manifest entry the
+artifact is unreachable in the two ports the spec most wants it in. Every later task in this plan
+appends its port id to the entry this task creates.
+
+**Files:**
+- Modify: `fixtures/generator-registry-conformance/registry.json` (add a `names` entry)
+- Modify: `server/typescript/packages/codegen-ts/src/generator-registry.ts:20-38` (import) and the
+  registry object (add the entry)
+- Test: `server/typescript/packages/codegen-ts/test/generator-registry.test.ts:16-30`
+  (`EXPECTED_NATIVE`)
+
+**Interfaces:**
+- Produces: the manifest key `names`, with `"ports": ["typescript"]`. Tasks 3, 5, 7 and 9 each append
+  exactly one port id to that array: `"csharp"`, `"kotlin"`, `"java"`, `"python"` respectively.
+- Produces: `generatorRegistry["names"]`, so `defineConfig({ generators: ["names"] })` resolves.
+
+- [ ] **Step 1: Write the failing test**
+
+Add `"names"` to `EXPECTED_NATIVE` in `test/generator-registry.test.ts` (after `"barrel"`, matching
+the order the registry object will use), and add this test to the same file:
+
+```ts
+test("names is selectable by stable name (the C#/Python parity path)", () => {
+  const entry = getGenerator("names");
+  expect(entry?.name).toBe("names");
+  expect(entry?.tier).toBe("native");
+  // The factory must construct without throwing — `--list` calls every factory.
+  const gen = entry?.factory();
+  expect(gen?.name).toBe("names");
+  // §A6: the marker the runner aggregates into includeNames. Registering the
+  // generator without it would emit the artifact while every template still
+  // embedded its own literal.
+  expect(gen?.emitsNames).toBe(true);
+});
+```
+
+- [ ] **Step 2: Run it to confirm it fails**
+
+```bash
+cd <repo-root>/server/typescript && bun test packages/codegen-ts/test/generator-registry.test.ts
+```
+Expected: FAIL — `contains every expected stable name` reports `names` missing, and
+`getGenerator("names")` returns `undefined`.
+
+- [ ] **Step 3: Register the generator**
+
+In `server/typescript/packages/codegen-ts/src/generator-registry.ts`, add `namesFile` to the import
+list from `./generators/index.js`, then add this entry immediately after the `barrel` entry:
+
+```ts
+  names: {
+    name: "names",
+    description: "Per-entity physical database name constants (table/view, schema, columns).",
+    tier: "native",
+    factory: () => namesFile(),
+  },
+```
+
+No `options` key: `namesFile()` takes no options today. (Plan 1's Task 5 review flagged that this
+makes it unreachable on a non-default target; that is recorded as a known limit, not fixed here.)
+
+- [ ] **Step 4: Add the manifest entry**
+
+In `fixtures/generator-registry-conformance/registry.json`, add to `generators`, after `"barrel"`:
+
+```json
+    "names": {
+      "concept": "Per-entity physical database name constants (table/view name, schema, column names).",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
+```
+
+`ports` lists **only** `typescript` — the four other ports have no such generator yet, and the
+conformance test checks presence in BOTH directions, so naming a port before it registers turns that
+port's build red.
+
+- [ ] **Step 5: Run the TypeScript gates**
+
+```bash
+cd <repo-root>/server/typescript && bun test packages/codegen-ts/test/generator-registry.test.ts packages/codegen-ts/test/golden/generator-registry-conformance.test.ts
+```
+Expected: PASS, both files.
+
+- [ ] **Step 6: Prove no other port went red**
+
+The manifest is shared. The four other ports each run a conformance test against their own slice, and
+this change must be invisible to all of them because `ports` names only `typescript`.
+
+```bash
+cd <repo-root>/server/csharp && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet 2>&1 | tee /tmp/cs.log; grep -c "error CS" /tmp/cs.log
+cd <repo-root>/server/python && uv run --extra integration pytest tests/conformance/test_generator_registry_conformance.py -q
+```
+Expected: C# passes with `0` occurrences of `error CS`; Python passes.
+
+- [ ] **Step 7: Typecheck and commit**
+
+```bash
+cd <repo-root> && bun run --filter '*' build && bun run --filter '*' typecheck; echo "EXIT=$?"
+```
+Expected: `EXIT=0`. Then:
+
+```bash
+cd <repo-root>
+git add fixtures/generator-registry-conformance/registry.json \
+        server/typescript/packages/codegen-ts/src/generator-registry.ts \
+        server/typescript/packages/codegen-ts/test/generator-registry.test.ts
+```
+```bash
+cd <repo-root> && printf '%s\n' \
+  'feat(codegen): the names generator was shipped but never registered' '' \
+  'namesFile() has been exported, scaffolded by meta init and ejectable since' \
+  '0.24.x, but it was absent from the stable-name registry and from the shared' \
+  'cross-port manifest. The conformance gate passed only because both sides' \
+  'omitted it.' '' \
+  'That made it invisible to meta gen --list, and unreachable through the' \
+  'stable-name string form of generator selection -- which is the mechanism the' \
+  'C# and Python ports use, and the two the spec puts it on by default.' \
   > /tmp/msg.txt && git commit -F /tmp/msg.txt
 ```
 
@@ -1383,7 +1384,7 @@ Python resolves "which source is this object's primary" **four times, with two d
 `@role: replica`) those disagree.
 
 A names generator copying either one would be a fifth implementation, and §A3 is precisely the rule
-that forbids that. This task is the Python equivalent of the TypeScript vertical's Task 2, and it
+that forbids that. This task is the Python equivalent of the first plan's Task 2 (the name-resolution helper), and it
 lands **before** the generator so the generator has one resolver to call.
 
 **Files:**
