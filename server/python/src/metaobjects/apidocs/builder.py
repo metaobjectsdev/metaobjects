@@ -261,7 +261,13 @@ class PythonApiModelBuilder:
         add("PUT " + item, "update (PUT alias)")
         add("DELETE " + item, "delete")
 
-        # M:N traversal — GET /<source-plural>/{id}/<relation>.
+        # M:N traversal — GET /<source-plural>/{id}/<relation>. `docs` has no
+        # `GenConfig`/`--column-naming` of its own (see `cli.py`'s docs handler) and
+        # this loop reads only `.target_entity` / `.relation_name` off the
+        # descriptor — never a physical column/table name — so resolving it under
+        # the port default here changes nothing observable; threading a naming
+        # strategy through would mean inventing a config seam this command doesn't
+        # have, for a value nothing here would read.
         for d in resolve_m2m_descriptors(entity, object_index):
             target = object_index.get(d.target_entity)
             target_name = target.name if target is not None else d.target_entity

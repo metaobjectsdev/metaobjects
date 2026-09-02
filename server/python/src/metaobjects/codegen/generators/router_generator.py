@@ -65,6 +65,7 @@ from metaobjects.meta.core.identity.identity_constants import (
 )
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
+from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.shared.base_types import TYPE_IDENTITY
 from metaobjects.shared.separators import PACKAGE_SEP
 
@@ -781,7 +782,10 @@ class RouterGenerator:
         return "\n".join(parts)
 
     def render_router(
-        self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+        self,
+        entity: MetaObject,
+        object_index: dict[str, MetaObject] | None = None,
+        column_naming: str = DEFAULT_COLUMN_NAMING,
     ) -> str | None:
         """Render an entity as a FastAPI ``APIRouter`` module.
 
@@ -796,6 +800,15 @@ class RouterGenerator:
         repository ``Protocol`` seam (the consumer joins through the junction). The
         source URL segment is the ENTITY name pluralized (cross-port grammar), NOT
         the physical ``@table``. Without an index, only CRUD is emitted (back-compat).
+
+        *column_naming* is ``GenConfig.column_naming`` for this run — passed through
+        to :func:`resolve_m2m_descriptors` so the M:N descriptor's physical junction
+        columns are resolved by the SAME strategy the ``names`` generator applies to
+        every other column on the same fields. Nothing this generator currently emits
+        reads the descriptor's physical-name fields (only ``.target_entity`` /
+        ``.relation_name``), so this has no effect on today's output — it exists so
+        the descriptor itself never gives two different answers for one column
+        within one run.
         """
         if not emits_instance_artifacts(entity):
             return None
@@ -822,7 +835,7 @@ class RouterGenerator:
                 return self._render_tph_router(entity, plan)
 
         m2m: list[M2mDescriptor] = (
-            resolve_m2m_descriptors(entity, object_index)
+            resolve_m2m_descriptors(entity, object_index, column_naming)
             if object_index is not None
             else []
         )
@@ -985,8 +998,12 @@ class RouterGenerator:
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
 
-        def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
-            source = self.render_router(entity, index)
+        def emit(entity: MetaObject, c: GenContext) -> list[EmittedFile]:
+            # The run's column-naming strategy — same seam `names_generator.py`
+            # reads (`c.config.column_naming`) — so the M:N descriptor built here
+            # and the per-field constants built there can't disagree about a
+            # column name within one run.
+            source = self.render_router(entity, index, c.config.column_naming)
             if source is None:
                 return []
             snake = _snake_case(entity.name)
@@ -1001,12 +1018,14 @@ class RouterGenerator:
 
 
 def render_router(
-    entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+    entity: MetaObject,
+    object_index: dict[str, MetaObject] | None = None,
+    column_naming: str = DEFAULT_COLUMN_NAMING,
 ) -> str | None:
     """Module-level back-compat wrapper. Delegates to a default
     :class:`RouterGenerator` instance so existing callers (and tests) are
     unaffected. Subclass :class:`RouterGenerator` to customize."""
-    return RouterGenerator().render_router(entity, object_index)
+    return RouterGenerator().render_router(entity, object_index, column_naming)
 
 
 def router_generator() -> Generator:

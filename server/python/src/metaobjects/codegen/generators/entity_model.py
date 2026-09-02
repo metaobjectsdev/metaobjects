@@ -522,8 +522,10 @@ class EntityModelGenerator:
         *object_index* is supplied. Returns ``(lines, uses_field)`` where
         ``uses_field`` is True iff any line used a pydantic ``Field(...)`` (so the
         caller knows to import ``Field``). Required imports are collected into
-        *imports*. *config* carries the FR-019 @provided-enum resolution. Override to
-        add/transform body lines."""
+        *imports*. *config* carries the FR-019 @provided-enum resolution AND the
+        column-naming strategy the M:N descriptor below is resolved with — the same
+        ``GenConfig`` the ``names`` generator reads, so the two can't disagree about a
+        column name within one run. Override to add/transform body lines."""
         cfg = config if config is not None else GenConfig(out_dir="")
         uses_field = False
         lines: list[str] = []
@@ -537,8 +539,12 @@ class EntityModelGenerator:
 
         # M:N nested collections (FR-018). Element type is the target entity; a
         # self-join element type is a forward-ref string so the model can name itself.
+        # Nothing here reads the descriptor's physical-name fields (only
+        # `.target_entity` / `.relation_name`), but `cfg.column_naming` is already in
+        # scope, so there is no reason for this call to resolve them under a
+        # different strategy than the rest of the run.
         if object_index is not None:
-            for d in resolve_m2m_descriptors(entity, object_index):
+            for d in resolve_m2m_descriptors(entity, object_index, cfg.column_naming):
                 if d.target_entity == entity.name:
                     element = f'"{entity.name}"'
                 else:

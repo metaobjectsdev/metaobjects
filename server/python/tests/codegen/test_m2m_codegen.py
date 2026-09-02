@@ -16,17 +16,24 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 import pytest
 
 import metaobjects.core_types  # noqa: F401 — registers attr/relationship classes
 from metaobjects import MetaDataLoader
-from metaobjects.codegen.generators.entity_model import render_entity_model
+from metaobjects.codegen.config import GenConfig
+from metaobjects.codegen.generator import GenContext
+from metaobjects.codegen.generators.entity_model import (
+    EntityModelGenerator,
+    render_entity_model,
+)
 from metaobjects.codegen.generators.m2m_codegen import (
+    M2mDescriptor,
     build_object_index,
     resolve_m2m_descriptors,
 )
-from metaobjects.codegen.generators.router_generator import render_router
+from metaobjects.codegen.generators.router_generator import RouterGenerator, render_router
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.relationship.derive_m2m_fields import M2MDerivationError
 from metaobjects.shared.base_types import TYPE_OBJECT
@@ -268,3 +275,109 @@ def test_sourced_junction_still_resolves_correctly() -> None:
     assert len(descs) == 1
     assert descs[0].junction_table == "post_tags"
     assert descs[0].target_table == "tags"
+
+
+# ---------------------------------------------------------------------------
+# Column-naming strategy reaches the generator ENTRY POINTS — not just the
+# pure `resolve_m2m_descriptors` function.
+#
+# `test_the_column_naming_strategy_reaches_the_junction_columns` above proves
+# the resolver itself honours whatever strategy it is GIVEN. It does not prove
+# that a real `meta gen`/`metaobjects gen --column-naming snake_case` run ever
+# hands it that strategy: `RouterGenerator.generate(ctx)` and
+# `EntityModelGenerator`'s `_emit_field_lines` both call
+# `resolve_m2m_descriptors(entity, object_index)` with the column-naming
+# argument omitted, so both silently resolved every M:N junction column under
+# the port default (`literal`) regardless of `ctx.config.column_naming` — one
+# run, two answers for the same column, exactly the class this module's own
+# docstring says it exists to prevent.
+#
+# Neither generator's rendered TEXT exposes a junction FK column (both read
+# only `.target_entity` / `.relation_name` off the descriptor), so the render
+# output cannot distinguish a threaded strategy from a dropped one. These
+# tests patch `resolve_m2m_descriptors` at the point each generator module
+# calls it — a bare-name (module-global) call, so patching the module
+# attribute intercepts it — and capture what it actually returns when driven
+# through the real `generate(ctx)` entry point.
+# ---------------------------------------------------------------------------
+
+
+def _m2m_ctx(column_naming: str) -> GenContext:
+    return GenContext(
+        entities=list(_ENTITIES.values()),
+        loaded_root=None,
+        matches=lambda e: e.name == "Post",
+        config=GenConfig(out_dir="", column_naming=column_naming),
+        warn=lambda _msg: None,
+    )
+
+
+def _resolved_post_descriptor(spy_target: str, column_naming: str, run: Callable[[GenContext], object]) -> M2mDescriptor:
+    captured: list[list[M2mDescriptor]] = []
+
+    def _capturing(*args: Any, **kwargs: Any) -> list[M2mDescriptor]:
+        result = resolve_m2m_descriptors(*args, **kwargs)
+        captured.append(result)
+        return result
+
+    with patch(spy_target, side_effect=_capturing):
+        run(_m2m_ctx(column_naming))
+
+    assert len(captured) == 1, f"expected exactly one resolve_m2m_descriptors call, got {len(captured)}"
+    descs = captured[0]
+    assert len(descs) == 1
+    return descs[0]
+
+
+def test_router_generate_threads_column_naming_from_config_snake_case() -> None:
+    """The exact seam that was broken: `RouterGenerator.generate(ctx)` discarded
+    its `GenContext` when calling `render_router`, so `ctx.config.column_naming`
+    never reached `resolve_m2m_descriptors`. Under a `snake_case` run the
+    junction FK column must resolve `post_id` — and the `literal` spelling
+    (`postId`, what the bug always produced) must be gone."""
+    d = _resolved_post_descriptor(
+        "metaobjects.codegen.generators.router_generator.resolve_m2m_descriptors",
+        "snake_case",
+        lambda ctx: RouterGenerator().generate(ctx),
+    )
+    assert d.source_column == "post_id"
+    assert d.source_column != "postId"
+
+
+def test_router_generate_threads_column_naming_from_config_literal() -> None:
+    """Paired positive arm: under `literal` (the port default) the same seam must
+    still resolve `postId` — proving the fix threads whatever strategy the run
+    configures, not that `snake_case` happens to be hardcoded in its place."""
+    d = _resolved_post_descriptor(
+        "metaobjects.codegen.generators.router_generator.resolve_m2m_descriptors",
+        "literal",
+        lambda ctx: RouterGenerator().generate(ctx),
+    )
+    assert d.source_column == "postId"
+    assert d.source_column != "post_id"
+
+
+def test_entity_model_generate_threads_column_naming_from_config_snake_case() -> None:
+    """Same defect, second call site: `EntityModelGenerator`'s `_emit_field_lines`
+    already had the run's `GenConfig` in scope (threaded for FR-019 @provided-enum
+    resolution) and still called `resolve_m2m_descriptors(entity, object_index)`
+    with no column-naming argument, so it disagreed with `RouterGenerator` (and
+    with `names_generator.py`) about the SAME column within the SAME run."""
+    d = _resolved_post_descriptor(
+        "metaobjects.codegen.generators.entity_model.resolve_m2m_descriptors",
+        "snake_case",
+        lambda ctx: EntityModelGenerator().generate(ctx),
+    )
+    assert d.source_column == "post_id"
+    assert d.source_column != "postId"
+
+
+def test_entity_model_generate_threads_column_naming_from_config_literal() -> None:
+    """Paired positive arm for the entity-model seam (see the router pair above)."""
+    d = _resolved_post_descriptor(
+        "metaobjects.codegen.generators.entity_model.resolve_m2m_descriptors",
+        "literal",
+        lambda ctx: EntityModelGenerator().generate(ctx),
+    )
+    assert d.source_column == "postId"
+    assert d.source_column != "post_id"
