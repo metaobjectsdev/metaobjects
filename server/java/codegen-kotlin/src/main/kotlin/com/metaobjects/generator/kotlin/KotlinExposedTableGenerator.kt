@@ -126,9 +126,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 )
                 continue
             }
-            // ADR-0039: resolving source lookup — an entity inheriting its source.rdb via
-            // extends must still emit a table (own-only .children returned null → no table).
-            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
+            // R27: role-scoped resolving source lookup — an entity inheriting its
+            // source.rdb via extends must still emit a table (own-only .children
+            // returned null → no table). MUST be primaryRdbSource, not firstRdbSource:
+            // an object may declare two own sources of the SAME writable-or-read-only-ness
+            // (two read-only views, or two writable tables) in either declaration order,
+            // and firstRdbSource picks whichever was declared FIRST rather than whichever
+            // is role=primary. This is the SAME selector KotlinGenUtil.resolveObjectNames
+            // uses to build <Entity>Names.NAME/@kind, so the table binding and the names
+            // artifact can never resolve two different source nodes for the same entity
+            // (see KotlinGenUtil.primaryRdbSource's doc for the full shape + why the
+            // write-through branch above never reaches this line).
+            val sourceRdb = KotlinGenUtil.primaryRdbSource(entity) ?: continue
             val kind = sourceRdb.effectiveKind
             // table + view + materializedView → emit; view-like kinds are emitted read-only.
             // storedProc → skip; consumer should wire KotlinStoredProcGenerator for those entities.

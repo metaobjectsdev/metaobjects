@@ -151,6 +151,37 @@ public object KotlinGenUtil {
     // read/write pair?".
     // =========================================================================
 
+    /**
+     * R27 (Task 6) — the role-scoped PRIMARY `source.rdb` of [obj], resolving through the
+     * `extends` super chain (ADR-0039): `role == primary`, NEVER [firstRdbSource]'s
+     * role-blind first-DECLARED pick. THE single selection algorithm behind
+     * [resolveObjectNames] (the `<Entity>Names` artifact) AND
+     * [KotlinExposedTableGenerator]'s single-object emission path (table name + `@kind`
+     * dispatch) — both call this ONE function so the physical name a `<Entity>Names.NAME`
+     * constant carries and the physical name/`@kind` the table binding emits can never be
+     * resolved from two different source nodes.
+     *
+     * This matters on real, loadable metadata: an object may declare two OWN sources of
+     * the SAME writable-or-read-only-ness (two read-only views, or two writable tables —
+     * `ValidateOnePrimarySource` only forbids two OWN sources both claiming
+     * `@role: primary`, never two OWN sources of the same writability with only one
+     * marked primary), in either declaration order. [firstRdbSource] picks whichever was
+     * declared FIRST; this picks whichever resolves `role == primary` — a DIFFERENT node
+     * when the primary one is declared second. A write-through entity read-view (own
+     * writable table + own read-only view, [MetaObject.isWriteThrough]) never reaches
+     * here — [KotlinExposedTableGenerator.emitWriteThrough] classifies and dispatches it
+     * BEFORE this selector would run, via the own-only role-agnostic
+     * [writableRdbSource]/[readOnlyRdbSource] pair.
+     *
+     * Returns null when no source in the resolving chain has `role == primary` — i.e.
+     * [obj] has no rdb source at all (every loadable object with at least one declared
+     * `source.rdb` resolves exactly one, since `@role` defaults to `primary` and
+     * `ValidateOnePrimarySource` requires exactly one primary among each level's OWN
+     * children).
+     */
+    fun primaryRdbSource(obj: MetaObject): RdbSource? =
+        obj.getSources(true).filterIsInstance<RdbSource>().firstOrNull { MetaSource.ROLE_PRIMARY == it.role }
+
     /** §A2/§A3 — physical name + logical field name for one field. */
     data class KotlinFieldNames(val name: String, val column: String)
 
@@ -179,11 +210,10 @@ public object KotlinGenUtil {
      * database derives from a declared primary source, never from the object subtype.
      */
     fun resolveObjectNames(obj: MetaObject, strategy: String = DEFAULT_COLUMN_NAMING): KotlinObjectNames? {
-        // ADR-0039: getSources(true) resolves through extends, so an inherited primary
-        // source is seen. role == primary (not firstRdbSource's role-blind pick, and not
-        // writableRdbSource/readOnlyRdbSource's own-only role-agnostic pick).
-        val source = obj.getSources(true).filterIsInstance<RdbSource>()
-            .firstOrNull { MetaSource.ROLE_PRIMARY == it.role } ?: return null
+        // R27: the ONE selection algorithm, shared with KotlinExposedTableGenerator's
+        // single-object emission path -- see primaryRdbSource's doc for why neither
+        // firstRdbSource nor writableRdbSource/readOnlyRdbSource is the right selector.
+        val source = primaryRdbSource(obj) ?: return null
 
         // ADR-0039: metaFields is the RESOLVING accessor (getMetaFields() defaults to
         // includeParentData=true) -- an inherited @column must resolve here, or the
