@@ -60,6 +60,41 @@ Four findings from per-port recon contradict or extend the spec. They are bindin
 
 ---
 
+## Rulings from the adversarial review (2026-09-02)
+
+The plan was challenged by two independent adjudicators (record:
+the maintainer's local challenge log, not committed). Every checkable claim
+was run. Three defects survived and are fixed below; the descoping both adjudicators recommended
+does not survive, because it hinged on in-repo demand being zero and the maintainer has consumers
+for every port.
+
+1. **Scope is all five ports, all consumption sites, complete.** Nothing ships that is not the
+   final shape.
+2. **The D4 guard is deleted (Task 0).** Plan 1's Task 5 emitted a constant reference only where
+   it provably equalled the literal the binding already computed, and silently printed the
+   literal otherwise. Under that guard consumption changes text where the resolvers agree and
+   hides drift where they do not, so a wrong name could never fail a corpus. The `object.base`
+   shape it was protecting (a read-only primary view beside a writable replica table) has nothing
+   to do with this program; it is an invalid shape the loader lets through, and building a guard
+   around it made the whole feature cosmetic. Task 0 makes `resolveObjectNames` refuse that shape
+   outright and every consumption site reference the constant unconditionally.
+3. **Column naming is ONE codegen option, in every port, and nothing else.** A run's
+   `columnNaming` / `--column-naming` / `columnNamingStrategy` decides camelCase versus snake_case
+   for every field without an explicit `@column`. The artifact obeys that option (§A3). The docs
+   stop recommending a per-field `@column` as the portable answer to cross-port agreement; the
+   option is the answer. Java gains the option (Task 7) and Python gains the flag (Task 9), so
+   the option exists in all five.
+4. **D5 is corrected.** Java and Python default to `literal` while `meta migrate`, which owns
+   schema for every port, defaults to `snake_case`; the Python runtime says so at
+   `object_manager.py:188-193`. A default-ON artifact under `literal` would name a migrate-created
+   column wrongly. Each port keeps its existing default in this plan (changing a default moves
+   every adopter's output and is its own decision), but Task 10 documents the mismatch and tells
+   the reader to set the option, and Task 9 exports `resolve_column_name` with that caveat in its
+   docstring.
+5. **Task 7's coverage gate parsed a table its fixture does not contain.** Fixed in place.
+6. **Prior art in the spec was stale.** jOOQ built exactly this shape in 3.19 after seven years
+   of repeat requests; Prisma exposed `@map` through its metadata API. Corrected in the spec.
+
 ## Design decisions
 
 **D1 — Shape: FLAT scalar constants in C#, Java, Kotlin and Python; TypeScript keeps its nested
@@ -85,20 +120,26 @@ different consumer with a different lifetime. It is evidence the direction is ne
 evidence this artifact must ship it. An inverse is one expression away from the forward map, and
 shipping both creates a second thing that can disagree with the first.
 
-**D4 — Emit a name constant only where it provably equals the string the binding already emitted.**
-This is the guard the TypeScript vertical landed at `templates/drizzle-schema.ts:66-73` after Task 5
-found the divergent case reachable. C# has the identical hazard: `MetaObject.DbTable` resolves the
-primary **writable** source while `MetaSource.PhysicalName` resolves the **primary** source, and an
-`object.base` carrying `view @role:primary` + `table @role:replica` loads clean with the two
-disagreeing. Every consumption task carries the equality check. **No task in this plan arbitrates
-that divergence** — the open ruling stays open.
+**D4 — Every consumption site references the constant unconditionally, and divergence is a
+build error.** Plan 1's Task 5 landed a guard that substituted the constant only when it equalled
+the literal the binding had computed, and fell back to the literal otherwise. That guard made
+consumption cosmetic: where the two resolvers agreed it changed text, and where they disagreed it
+hid the disagreement. Task 0 deletes it. `resolveObjectNames` now compares the primary source's
+physical name with `obj.dbTable` and throws `CodegenError`, naming the object and both names, when
+they differ — the only shape that can make them differ is an `object.base` carrying a read-only
+primary beside a writable replica, which is not a shape any consumption site should quietly
+accommodate. With that check at the source, every consumption task emits the reference and never
+the literal, so the artifact IS the single spelling and a wrong name fails the corpus.
 
-**D5 — Java gets a `columnNaming` generator arg; Python gets a `--column-naming` CLI flag.** Neither
-is an invention. Kotlin already reads `columnNaming` off the identical `Generator.setArgs` SPI via
-the identical Maven `<args>` block, so Java is JVM parity. C# already ships `--column-naming`, so
-Python is CLI parity. Java's default is `ColumnNaming.DEFAULT` (`literal`) to match `ObjectManagerDB`,
-**not** Kotlin's `snake_case` — a Java artifact defaulting differently from the Java runtime would be
-the exact §A3 lie this program exists to remove.
+**D5 — One codegen option decides column naming in every port; the artifact obeys it.** Java
+gains a `columnNaming` generator arg (Kotlin already reads one off the identical `setArgs` SPI, so
+this is JVM parity); Python gains `--column-naming` (C# already ships it, so this is CLI parity).
+Each port keeps its existing default in this plan. **Those defaults disagree with the migrate
+engine's**: Java, Python and C# default `literal` while `meta migrate` defaults `snake_case`, so
+a project that sets neither gets a DDL and a binding that spell the same column two ways. That
+is pre-existing and is not fixed here, because moving a default moves every adopter's generated
+output. It is documented in Task 10 with the instruction to set the option, and the Python
+resolver export in Task 9 carries the same caveat.
 
 **D6 — Default ON in C# and Python (§A5); opt-in by construction in Java and Kotlin.** Java and
 Kotlin generators are selected by FQCN in `pom.xml`, so "default" has no meaning there. Default-ON
@@ -148,6 +189,128 @@ Every task's requirements implicitly include this section.
   local home path into a tracked file, a doc, or a commit message.
 - **Maven: never pass `-T`.** `server/java/README.md:85` claims `threadSafe` support since #233 and no
   script in the repo passes it; treat that as unproven and keep the reactor serial.
+
+---
+
+### Task 0: Delete the D4 guard — consumption becomes load-bearing
+
+Plan 1's Task 5 shipped `templates/drizzle-schema.ts:59-73` with an equality guard: emit
+`<Entity>Names.name` only when `names.name === tableName`, else the literal. The adjudication
+found what that does: where the two resolvers agree the substitution is text-only, and where they
+disagree the literal comes back silently. A drifting resolver can never fail a build, which
+refutes §A6's entire payoff claim. The guard exists to avoid arbitrating an `object.base` carrying
+`view @role:primary` + `table @role:replica`, which loads clean while `resolveTableName` (primary
+source) and `dbTable` (primary WRITABLE source) disagree. That shape is not this program's
+problem. Refuse it at the one place every name comes from, and every consumer downstream can
+reference the constant without a guard.
+
+**Files:**
+- Modify: `server/typescript/packages/codegen-ts/src/names.ts:33-63` (`resolveObjectNames`)
+- Modify: `server/typescript/packages/codegen-ts/src/templates/drizzle-schema.ts:50-80` (delete the guard)
+- Test: `server/typescript/packages/codegen-ts/test/names.test.ts` (extend)
+- Test: `server/typescript/packages/codegen-ts/test/names-consumption.test.ts` (rewrite the divergence case)
+
+**Interfaces:**
+- Produces: `resolveObjectNames` now THROWS `CodegenError` on divergence instead of returning a
+  name the binding will not use. Tasks 1, 4 and 6 rely on this: they emit the reference
+  unconditionally.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `names.test.ts`, using the same hand-built `object.base` fixture Plan 1's Task 5 used to prove
+the divergence reachable (`view @role:primary` + `table @role:replica`):
+
+```ts
+test("a divergent primary/writable pair is refused, naming both", () => {
+  expect(() => resolveObjectNames(weirdBase, "snake_case")).toThrow(CodegenError);
+  expect(() => resolveObjectNames(weirdBase, "snake_case")).toThrow(/WeirdBase.*v_weird.*weirds/);
+});
+```
+
+In `names-consumption.test.ts`, replace the test that asserted the literal survives divergence with
+one asserting the build FAILS, and add the unconditional-reference assertion:
+
+```ts
+test("the Drizzle binding references the constant with no equality guard", async () => {
+  const files = await runGenToMap([entityFile(), namesFile()], MODEL);
+  const entity = files.get("Post.ts")!;
+  expect(entity).toContain("pgTable(PostNames.name");
+  expect(entity).not.toContain('pgTable("posts"');
+});
+
+test("a divergent object fails the run rather than quietly reverting to the literal", async () => {
+  await expect(runGenToMap([entityFile(), namesFile()], WEIRD_MODEL)).rejects.toThrow(CodegenError);
+});
+```
+
+- [ ] **Step 2: Run them to confirm they fail**
+
+```bash
+cd <repo-root>/server/typescript && bun test packages/codegen-ts/test/names.test.ts packages/codegen-ts/test/names-consumption.test.ts
+```
+Expected: FAIL — the divergence test observes a literal, not a throw.
+
+- [ ] **Step 3: Refuse at the source**
+
+In `names.ts`, after `name` is resolved and before the return:
+
+```ts
+  const name = resolveTableName(obj);
+  // The ONLY shape that can make the primary source's name differ from the primary
+  // WRITABLE source's is an object.base carrying a read-only primary beside a writable
+  // replica. Plan 1 guarded every consumption site against that and made every site
+  // cosmetic in the process. Refuse it here instead, once, so no consumer needs a guard.
+  const writable = obj.dbTable;
+  if (writable !== undefined && writable !== name) {
+    throw new CodegenError(
+      `${obj.name}: primary source resolves to "${name}" but the primary WRITABLE source ` +
+      `resolves to "${writable}". A read-only primary beside a writable replica has no single ` +
+      `physical name to bind; give the object one writable primary source.`,
+    );
+  }
+```
+
+- [ ] **Step 4: Delete the guard**
+
+In `drizzle-schema.ts`, delete the equality branches at `:59-80`. `tableNameExpr` becomes
+`code\`${namesSym}.name\`` whenever `namesSym` is defined, and `columnNameExpr` becomes
+`code\`${namesSym}.fields.${field.name}.column\`` whenever the field is in `names.fields` — the
+TPH-subtype miss stays, because a subtype's fields genuinely are not in the base's artifact and
+that is a lookup miss, not a divergence. Delete the ten-line comment explaining the guard; replace
+it with two lines pointing at `resolveObjectNames`' check.
+
+- [ ] **Step 5: Regenerate goldens and read the diff**
+
+```bash
+cd <repo-root>/server/typescript && bun test packages/codegen-ts/test/names.test.ts packages/codegen-ts/test/names-consumption.test.ts
+cd <repo-root>/server/typescript && UPDATE_GOLDEN=1 bun test packages/codegen-ts/test/golden/golden-output.test.ts packages/codegen-ts/test/golden/package-layout.test.ts
+cd <repo-root> && git diff --stat server/typescript/packages/codegen-ts/test/golden/
+```
+Expected: the fixtures that enable `namesFile()` change from literal to reference on every table
+and column line; nothing else moves.
+
+- [ ] **Step 6: Typecheck and commit**
+
+```bash
+cd <repo-root> && bun run --filter '*' build && bun run --filter '*' typecheck; echo "EXIT=$?"
+```
+```bash
+cd <repo-root> && git add server/typescript/packages/codegen-ts/src/names.ts \
+        server/typescript/packages/codegen-ts/src/templates/drizzle-schema.ts \
+        server/typescript/packages/codegen-ts/test/
+```
+```bash
+cd <repo-root> && printf '%s\n' \
+  'fix(codegen-ts): the names artifact was referenced only where it changed nothing' '' \
+  'The Drizzle binding substituted <Entity>Names.name only when it already equalled the' \
+  'literal, and printed the literal otherwise. So where the resolvers agreed the change was' \
+  'cosmetic, and where they disagreed the disagreement was hidden. A wrong name could never' \
+  'fail a build, which is the one thing the artifact exists to make possible.' '' \
+  'The guard protected an object.base with a read-only primary beside a writable replica.' \
+  'That shape is refused at the resolver now, once, naming both names, and every consumer' \
+  'references the constant unconditionally.' \
+  > /tmp/msg.txt && git commit -F /tmp/msg.txt
+```
 
 ---
 
@@ -253,14 +416,11 @@ export function renderEntityConstants(
   const tableName = resolveTableName(obj);
   const path = resourcePath(obj);
 
-  // D4 — reference the constant only where it is provably the same string this
-  // descriptor already emitted. `resolveTableName` is the artifact's own resolver, so
-  // the two agree by construction here; the check is what keeps that TRUE rather than
-  // assumed, and mirrors the guard drizzle-schema.ts:66 already carries.
+  // A6 — reference the constant whenever the artifact is in the run. No equality guard:
+  // resolveObjectNames refuses any object whose two resolvers disagree (Task 0), so a
+  // reference here is the single spelling, never a lookalike.
   const tableExpr: Code =
-    names !== undefined && names.name === tableName
-      ? code`${names.symbol}.name`
-      : code`${JSON.stringify(tableName)}`;
+    names !== undefined ? code`${names.symbol}.name` : code`${JSON.stringify(tableName)}`;
 ```
 
 Then replace the `$table` emission with `tableExpr`.
@@ -276,16 +436,17 @@ path.
 - [ ] **Step 5: Convert the projection, view and M:N sites**
 
 `projection-decl.ts` — add an optional `names` key to its options object and, in the
-`constFieldLines` map at `:141-152`, emit `${namesSym}.fields.${f.name}.column` when
-`names.fields[f.name]?.column === dbCol`, else keep `JSON.stringify(dbCol)`.
+`constFieldLines` map at `:141-152`, emit `${namesSym}.fields.${f.name}.column` whenever the
+artifact is in the run and the field is in `names.fields`; keep `JSON.stringify(dbCol)` only for a
+field the artifact does not carry (a lookup miss, never a divergence — Task 0 refuses those).
 
 `view-decl.ts` — same treatment for `spec.dbName` at `:88` and the view name at `:110`, through
 `ViewDeclOpts`.
 
 `routes-file.ts:312` — this function already receives `ctx`, so read `ctx.includeNames` and return
-the constant reference when the resolved column matches.
+the constant reference whenever the artifact is in the run.
 
-Every one of these is the same three-line shape: resolve, compare, substitute-or-fall-back. Do not
+Every one of these is the same two-line shape: is the artifact in the run, then reference it. Do not
 introduce a shared helper for it — the four call sites differ in how they reach the symbol, and Task
 5's review found the explicit form easier to verify.
 
@@ -759,12 +920,12 @@ instruction.
 **Interfaces:**
 - Consumes: `<Entity>Names.Name`, `<Entity>Names.<Field>Column` from Task 3.
 
-> **D4 applies here with a real hazard.** `CSharpNaming.Table(entity)` resolves
-> `entity.DbTable`, which is the primary **WRITABLE** source; `<Entity>Names.Name` is the
-> **PRIMARY** source's `PhysicalName`. For every ordinary object those are one source and one string.
-> They diverge for an `object.base` carrying `view @role:primary` + `table @role:replica`, which
-> loads clean — the case Plan 1's Task 5 proved reachable in TypeScript. **Compare the two strings
-> and fall back to the literal when they differ. Do not pick one.**
+> **No equality guard here either.** `CSharpNaming.Table(entity)` resolves `entity.DbTable`
+> (primary WRITABLE source) while `<Entity>Names.Name` is the PRIMARY source's `PhysicalName`. They
+> can differ only for the same `object.base` shape Task 0 refuses in TypeScript. Do the same in C#:
+> `NamesGenerator` throws `GeneratorException` naming both when they differ, and every attribute
+> and fluent site references the constant unconditionally. A guard that falls back to the literal
+> is exactly the cosmetic consumption the adjudication rejected.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -780,14 +941,15 @@ public void The_entity_attributes_reference_the_name_constants()
 }
 
 [Fact]
-public void A_divergent_primary_source_keeps_the_literal_rather_than_renaming_the_table()
+public void A_divergent_primary_source_fails_the_run_rather_than_hiding_it()
 {
-    // object.base with a read-only PRIMARY view and a writable REPLICA table: DbTable
-    // and PhysicalName answer genuinely different questions. Emitting either constant
-    // would rename a table. The guard must fall back.
-    var src = GenerateEntity("WeirdBase");
-    Assert.Contains("[Table(\"weirds\")]", src);
-    Assert.DoesNotContain("WeirdBaseNames.Name", src);
+    // object.base with a read-only PRIMARY view and a writable REPLICA table: DbTable and
+    // PhysicalName answer different questions and there is no single name to bind. The
+    // run must FAIL naming both, never quietly print one of them.
+    var ex = Assert.Throws<GeneratorException>(() => GenerateEntity("WeirdBase"));
+    Assert.Contains("WeirdBase", ex.Message);
+    Assert.Contains("v_weird", ex.Message);
+    Assert.Contains("weirds", ex.Message);
 }
 ```
 
@@ -804,25 +966,19 @@ In `EntityGenerator.cs:325-326`, resolve the object's names once at the top of t
 before substituting:
 
 ```csharp
-// A6/D4 -- reference the constant only where it is provably the same string this
-// attribute already emitted. CSharpNaming.Table resolves the primary WRITABLE source,
-// <Entity>Names.Name the PRIMARY one; for every authorable object those are one source
-// and one string, and where they are not, renaming the table is not this task's call.
-var tableName = CSharpNaming.Table(entity);
-var names = entity.FindPrimarySource();
-var tableExpr = names is not null && names.PhysicalName == tableName
-    ? $"{CSharpNaming.NamesClassName(entity)}.Name"
-    : $"\"{tableName}\"";
+// A6 -- reference the constant unconditionally. NamesGenerator has already refused any
+// object whose primary and primary-writable sources disagree, so the reference IS the
+// single spelling of this name in the run.
 if (!isProjection)
-    sb.AppendLine($"[Table({tableExpr})]");
+    sb.AppendLine($"[Table({CSharpNaming.NamesClassName(entity)}.Name)]");
 ```
 
 - [ ] **Step 4: Convert `[Column]` at all seven sites and the three fluent sites**
 
-Same shape per field: compute `CSharpNaming.Column(field, strategy)`, compare it to the artifact's
-answer for that field, and substitute `{cls}.{Pascal(field.Name)}Column` on a match. A miss is normal
-and must not throw — the TPH fold emits columns for fields belonging to SUBTYPE entities, and the
-base's artifact carries only the base's own fields.
+Same shape per field: substitute `{cls}.{Pascal(field.Name)}Column` for every field the artifact
+carries. A lookup MISS is normal and keeps the literal — the TPH fold emits columns for fields
+belonging to SUBTYPE entities, and the base's artifact carries only the base's own fields. A miss
+is not a divergence; divergence was refused before this method ran.
 
 The generated entity file must `using` nothing new: the names class lands in the same
 `ctx.Config.Namespace`.
@@ -1159,15 +1315,15 @@ Expected: FAIL — the first test finds the literal, not the constant.
 
 Add `ARG_USE_NAMES = "useNames"` beside `ARG_COLUMN_NAMING` and a `useNames(): Boolean` reader
 defaulting to `false`. Then, at the table-name site and inside `exposedColumnSpec`'s call sites,
-substitute only when enabled **and** the resolved string matches (D4):
+substitute whenever enabled — no equality guard:
 
 ```kotlin
-// A6/D4 — reference the constant only where it is provably the same string this
-// binding already emitted, and only when the names generator is in the run. Kotlin
-// generators are pom-selected, so an unconditional reference would fail to compile
-// for any project that lists the table generator and not the names one.
-val tableExpr = if (useNames() && names?.name == tableName)
-    "${KotlinNaming.namesObjectName(shortName)}.NAME" else "\"$tableName\""
+// A6 — reference the constant whenever the names generator is in the run. Kotlin
+// generators are pom-selected, so the reference is gated on the arg (a project listing the
+// table generator without the names one would not compile otherwise), but it is NOT gated
+// on equality: KotlinNamesGenerator refuses any object whose primary and primary-writable
+// sources disagree, so a reference here is the single spelling.
+val tableExpr = if (useNames()) "${KotlinNaming.namesObjectName(shortName)}.NAME" else "\"$tableName\""
 ```
 
 `exposedColumnSpec` currently takes `colName: String`. Widen it to take the rendered *expression*
@@ -1336,8 +1492,11 @@ public void everyEmittedColumnConstantExistsInTheCanonicalSchema() {
     // fixtures/persistence-conformance/canonical/schema.postgres.sql is TS-produced and
     // is what the corpus actually provisions. Java emits no physical name into its own
     // output, so a wrong constant here would otherwise be caught by nothing at all.
-    Set<String> ddlColumns = parseColumns(CANONICAL_SCHEMA, "authors");
-    for (String c : AuthorNamesEmitted.columnsByField().values()) {
+    // `posts` — a table the canonical schema actually creates (it has no `authors`;
+    // Author lives in the api-contract corpus). The generator runs against the same
+    // fixtures/persistence-conformance/canonical/meta.fitness.json the schema was emitted from.
+    Set<String> ddlColumns = parseColumns(CANONICAL_SCHEMA, "posts");
+    for (String c : PostNamesEmitted.columnsByField().values()) {
         assertTrue("constant names a column the DDL does not create: " + c,
                    ddlColumns.contains(c));
     }
@@ -1607,7 +1766,19 @@ Delete `config.py:71-78`'s `column_naming` refusal, correct the field comment at
 Python codegen emits no physical column name — no longer true), and delete the `column_naming` entry
 from `INERT_BY_DESIGN` at `test_no_dead_config_fields.py:55-64`.
 
-- [ ] **Step 5: Add the CLI flag, register, and turn it on**
+- [ ] **Step 5: Export the resolver, with its caveat**
+
+Add `resolve_column_name` to `server/python/src/metaobjects/__init__.py`'s `__all__`, and give it
+this docstring paragraph — the adopter who motivated this program reached the correct answer
+through `get_meta_attr("column")`, and this function is that answer with the strategy applied:
+
+```python
+    Pass the SAME strategy the schema was created with. ``meta migrate`` defaults to
+    ``snake_case``; this port defaults to ``literal``. A caller that omits ``strategy``
+    against a migrate-created database gets ``createdAt`` for a column named ``created_at``.
+```
+
+- [ ] **Step 6: Add the CLI flag, register, and turn it on**
 
 Add `--column-naming` to the `gen` argparse block (`cli.py:1570-1641`) with choices
 `literal|snake_case|kebab-case`, default `literal`, and thread it into the `GenConfig(...)`
@@ -1615,7 +1786,7 @@ construction at `cli.py:396-400`. Add `names_generator()` to `_default_generator
 a `GENERATOR_REGISTRY` entry (`generator_registry.py:92-153`), bump
 `test_cli_registry.py:39` from `10` to `11`, and append `"python"` to the manifest's `ports`.
 
-- [ ] **Step 6: Run the suite, mypy, and regenerate the showcase**
+- [ ] **Step 7: Run the suite, mypy, and regenerate the showcase**
 
 ```bash
 cd <repo-root>/server/python && uv run --extra integration pytest tests/ -q
@@ -1626,7 +1797,7 @@ Expected: tests PASS, `MYPY=0`, and exactly one new file `subscriber_names.py` w
 file modified**. Default-ON makes the showcase mandatory: release preflight runs
 `regen-showcase --check --all-ports` and refuses to skip a port.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 cd <repo-root>
@@ -1690,10 +1861,18 @@ Kotlin `<columnNaming>` in the pom. Three rows change:
   comparing the two rows will otherwise think is a typo.
 
 Then delete the paragraph at `:59-66` — *"Python has no codegen-side setting because Python codegen
-names no column"* — and replace it with the honest successor: **codegen and runtime carry separate
-column-naming settings in Java and Python, and nothing reconciles them.** Codegen cannot see a runtime
-`setColumnNaming(...)` / `ObjectManager(column_naming=...)` call. A project that changes one must
-change the other.
+names no column"* — and replace it with the honest successor, in two parts. First: **the option is
+the answer.** Every port's codegen now takes one column-naming option, and a project sets it once
+per port to match the strategy `meta migrate` created the schema with; a per-field `@column` is for
+a column whose name is not derivable, never a workaround for cross-port agreement. Second: **the
+defaults disagree.** `meta migrate` defaults `snake_case`; Java, Python and C# codegen default
+`literal`. A project that sets neither gets a DDL and a binding spelling the same column two ways.
+Say that plainly, and say that codegen cannot see a runtime `setColumnNaming(...)` /
+`ObjectManager(column_naming=...)` call, so a project that changes one must change the other.
+
+The showcase's `meta.subscriber.yaml:8-17` comment currently calls declaring `column:` per field
+"the portable answer". Rewrite it to name the option instead; the metadata should not have to
+carry a physical name to get five ports to agree.
 
 - [ ] **Step 3: Fix the two stale generator inventories**
 
@@ -1922,11 +2101,14 @@ cd <repo-root> && printf '%s\n' \
 ## Not in this plan
 
 - **Programs B and C.** Separate programs with separate justifications (spec §B, §C).
-- **The `object.base` divergence ruling.** An `object.base` carrying `view @role:primary` +
-  `table @role:replica` loads clean while `resolveTableName` and `dbTable` disagree. Every consumption
-  task in this plan falls back to the literal rather than arbitrating. Deciding whether that shape
-  should be refused, or the two resolvers reconciled, renames tables for anyone using it and is its
-  own unit.
+- **Refusing the `object.base` read-only-primary shape at LOAD.** Task 0 refuses it at the
+  resolver, which is what this program needs. Extending `validateSourceRoles` (scoped to
+  `subType === "entity"` today) so the loader rejects it in all four ports is a metamodel change
+  with a conformance fixture and four loader edits, and it is not what makes the names artifact
+  correct.
+- **Unifying the per-port column-naming DEFAULTS to `snake_case`** (matching `meta migrate`).
+  Correct, and a change to every existing C#, Java and Python adopter's generated output. Its own
+  decision, its own release.
 - **`resourcePath` as a constant.** A URL path is not a database name and §A2's shape carries nothing
   for it. Needs a spec decision.
 - **`drizzle-schema.ts:190`'s unique-index identifier.** Built from the string-taking

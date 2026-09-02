@@ -125,8 +125,15 @@ must say this rather than recommending constants over typed handles everywhere.
 | EF Core | `nameof()` (CLR property) + model metadata API | Runtime |
 | Exposed (Kotlin) | `val email = varchar("email", 320)` | `.name` at runtime |
 
-**No mainstream tool emits a compile-time physical-name constant, and users keep asking
-for one.** That is the gap this fills. One caution from the same survey: a single global
+**Corrected 2026-09-02 — the two rows this paragraph leaned on were stale.** jOOQ
+[#5210](https://github.com/jOOQ/jOOQ/issues/5210) (opened 2016) was **fixed in jOOQ 3.19**: the
+maintainer declined it for seven years as "cost/benefit isn't very favourable... many edge cases"
+with the interim answer "extend the `JavaGenerator` yourself", then built it "given it gets
+traction time and again". Prisma [#3998](https://github.com/prisma/prisma/issues/3998) closed
+completed in 2024: `@map` information is exposed through DMMF, the metadata API. So the most
+respected typed-SQL tool eventually shipped exactly this shape after accumulated demand, and the
+other mainstream tool chose the metadata-API route. The edge case jOOQ named — naming conflicts —
+is the collision guard every port's generator carries. One caution from the same survey: a single global
 `Tables`/`Columns` class is the constant-interface anti-pattern; constants must be
 co-located per object, which is also what Lombok and jOOQ do.
 
