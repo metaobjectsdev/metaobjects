@@ -77,8 +77,13 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
                 entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
             // Abstract entities are inheritance scaffolding — never emit a stored-proc binding.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
-            // ADR-0039: resolving source lookup (inherited source.rdb via extends).
-            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
+            // R27 (Task 6): the role-scoped PRIMARY source, resolving through `extends`
+            // (ADR-0039) — NOT firstRdbSource's role-blind first-DECLARED pick. This
+            // generator emits its own PROC_NAME constant from sourceRdb.physicalName, so
+            // a role-blind selector can name a DIFFERENT source than the one an object's
+            // `@role: primary` designates (an entity with a replica proc source declared
+            // before its primary one previously bound PROC_NAME to the replica).
+            val sourceRdb = KotlinGenUtil.primaryRdbSource(entity) ?: continue
             if (sourceRdb.effectiveKind != MetaSource.KIND_STORED_PROC) continue
             emit(entity, sourceRdb, outRoot)
         }

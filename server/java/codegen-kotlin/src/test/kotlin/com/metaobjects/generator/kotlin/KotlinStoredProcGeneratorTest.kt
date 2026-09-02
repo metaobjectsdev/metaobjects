@@ -102,6 +102,39 @@ class KotlinStoredProcGeneratorTest {
         }
     }
 
+    @Test fun `proc name resolves the role-scoped primary source, not the first-declared one`() {
+        // TwoProcEntity declares its @role:replica source FIRST and its @role:primary
+        // source SECOND -- the role-blind KotlinGenUtil.firstRdbSource picked whichever
+        // was declared first (the replica), naming PROC_NAME after the WRONG procedure
+        // on a shape that loads with zero errors.
+        val fixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.projection": { "name": "TwoProcEntity", "children": [
+                { "source.rdb": { "@kind": "storedProc", "@proc": "sp_replica_proc", "@role": "replica" } },
+                { "source.rdb": { "@kind": "storedProc", "@proc": "sp_primary_proc", "@role": "primary" } },
+                { "field.int": { "name": "id" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kproc-role-")
+        try {
+            val gen = KotlinStoredProcGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("proc-role", fixture))
+
+            val emitted = outDir.resolve("acme/demo/TwoProcEntityProc.kt")
+            assertTrue(Files.exists(emitted),
+                "expected $emitted; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(emitted)
+            assertTrue("const val PROC_NAME = \"sp_primary_proc\"" in src, src)
+            // The wrong (role-blind, first-declared) procedure name must not appear at all.
+            assertFalse("sp_replica_proc" in src, src)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun nonStoredProcEntitySkipped() {
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
