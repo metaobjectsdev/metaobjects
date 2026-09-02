@@ -38,7 +38,8 @@ public static class GenCommand
     /// <c>output-prompt</c>, <c>extractor</c>. C# is the best-wired port for the
     /// per-object physical-database-names artifact — <c>ColumnNamingStrategy</c> is
     /// already threaded to every emit site — so it ships default ON here (program
-    /// spec §A5) even though the Python port has not yet built it.
+    /// spec §A5); Python has since built the same artifact and also ships it default
+    /// ON (<c>names_generator</c> in its default suite).
     /// The <c>render-helper</c> generator is intentionally NOT in the default suite —
     /// it requires <c>--template-root</c> for its build-time drift gate (matching the
     /// Python default, which also excludes the render helper). <c>template</c> /

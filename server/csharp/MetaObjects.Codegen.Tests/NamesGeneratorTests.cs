@@ -388,6 +388,7 @@ public class NamesGeneratorTests
         // DbSet/OnModelCreating loops never touch them either — DbContextGenerator
         // emits no AppDbContext file at all for a model with nothing to map.
         var dbContextFiles = new DbContextGenerator().Generate(Ctx(root)).ToList();
+        Assert.Empty(dbContextFiles);
         Assert.All(dbContextFiles, f => Assert.DoesNotContain("Weird", f.Content));
     }
 
@@ -463,18 +464,18 @@ public class NamesGeneratorTests
         },
     };
 
-    [Fact]
-    public void C1_with_names_absent_from_the_run_NamesGenerator_itself_emits_nothing_here()
-    {
-        // Establishes the premise the tests below depend on: in a run wired this way
-        // (NamesGenerator simply never included), no <Entity>Names.g.cs exists at all --
-        // this is a fact about which generators RAN, not a change to NamesGenerator
-        // itself (its own Filter/Generate never read GenConfig.IncludeNames).
-        var files = new List<EmittedFile>();
-        foreach (var gen in new IGenerator[] { new EntityGenerator(), new DbContextGenerator() })
-            files.AddRange(gen.Generate(CtxWithoutNames(Load(SubscriberModel))));
-        Assert.DoesNotContain(files, f => f.Path.Contains("Names", StringComparison.Ordinal));
-    }
+    // A prior version of this file had a
+    // "C1_with_names_absent_from_the_run_NamesGenerator_itself_emits_nothing_here" test
+    // here that ran only EntityGenerator + DbContextGenerator and asserted no emitted
+    // path contained "Names". Neither generator can EVER emit a "Names"-titled path
+    // under any GenConfig -- only NamesGenerator does, and this test never invoked it --
+    // so the assertion passed identically on both the ON and OFF arm and proved nothing
+    // about GenConfig.IncludeNames. The real end-to-end version of this claim (that a
+    // narrowed `--generators entity,db-context` selection produces no SubscriberNames.g.cs
+    // on disk) is
+    // C1_The_OFF_arm_reaches_the_CLI_a_narrowed_generators_selection_never_sets_IncludeNames
+    // below, which asserts File.Exists(...) is false -- an assertion that fails if the
+    // behavior regresses. Deleted rather than kept as a vacuous duplicate.
 
     [Fact]
     public void C1_with_names_absent_Entity_Table_and_Column_fall_back_to_the_pre_ProgramA_literal()

@@ -183,6 +183,17 @@ public class DbContextCompileTests
             errors.Count == 0,
             "Generated entity + AppDbContext should compile against EF Core 8, but got errors:\n"
                 + string.Join("\n", errors));
+
+        // A zero-error compile proves nothing about cross-references specifically -- it
+        // would pass identically if IncludeNames were false and namesFiles were dropped
+        // from allSources entirely (the names classes would simply not exist, and
+        // nothing here would reference them). Assert the entity output actually
+        // REFERENCES the names artifact, so this test proves what Ctx()'s
+        // IncludeNames: true comment claims: entity + DbContext + names compile
+        // together WITH a real cross-reference between them, not merely alongside.
+        var orderSrc = entityFiles.Single(f => f.Path == "Order.g.cs").Content;
+        Assert.Contains("[Table(OrderNames.Name)]", orderSrc);
+        Assert.Contains("[Column(OrderNames.StatusColumn)]", orderSrc);
     }
 
     // #214 review defects [0] + [1] — the write-through read model (<Entity>View) must carry

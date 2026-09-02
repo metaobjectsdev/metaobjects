@@ -125,7 +125,10 @@ public sealed class ValidationConformanceTests
                 Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Validation.Generated" },
             };
 
-            // §A6 (task 4) — the corpus entities now reference their names artifacts.
+            // §A6 (task 4) — NamesGenerator's output is compiled in alongside the
+            // corpus entities, but GenConfig.IncludeNames is not set here (defaults to
+            // false), so the entity output below does NOT reference the <Entity>Names
+            // constants; the names classes compile in as unreferenced siblings only.
             var files = new EntityGenerator().Generate(ctx)
                 .Concat(new NamesGenerator().Generate(ctx)).ToList();
             var trees = files.Select(f =>

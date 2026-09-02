@@ -235,7 +235,9 @@ public sealed class ExtractTierCollisionTests
         var ctx = new GenContext { Entities = root.Objects(), Root = root, Config = config };
 
         var entitySrc = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
-        // §A6 (task 4) — the Report entity (acme::alpha) now references ReportNames.
+        // §A6 (task 4) — GenConfig.IncludeNames is not set here (defaults to false),
+        // so the Report entity below does NOT reference ReportNames; this compiles
+        // ReportNames in alongside it as an unreferenced sibling class only.
         var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content;
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "ReportDoc.response.cs").Content;
         var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n"

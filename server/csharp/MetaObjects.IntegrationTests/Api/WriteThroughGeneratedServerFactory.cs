@@ -107,6 +107,13 @@ internal sealed class WriteThroughGeneratedServerFactory : IAsyncDisposable
                 Namespace = GeneratedNamespace,
                 ColumnNamingStrategy = ColumnNamingStrategy.Literal,
                 EmitAbstractShapes = false,
+                // GenConfig.IncludeNames defaults to false (§A6 task 4); without it
+                // here the entity/DbContext output below never references the
+                // <Entity>Names constants, and the .Concat(new NamesGenerator()...)
+                // a few lines down is dead input the compile never depends on. This
+                // is the only lane that proves an <Entity>Names.NAME reference
+                // actually RESOLVES against a real EF Core compile.
+                IncludeNames = true,
             },
         };
 
