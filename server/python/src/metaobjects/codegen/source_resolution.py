@@ -13,12 +13,47 @@ reads the rows back, so the codegen copies were the ones that were wrong.
 One definition, so a names generator (or anything else that needs a physical
 table name at codegen time) has exactly one resolver to call — a fifth
 hand-rolled copy is precisely what this module exists to forbid.
+
+**Cross-port divergence guard.** The C# (``CSharpNaming.ResolveObjectNames``)
+and TypeScript (``resolveObjectNames`` in ``codegen-ts/src/names.ts``) resolvers
+— and Kotlin's, by inheriting the JVM loader's validation — refuse an object
+whose primary source and primary WRITABLE source resolve to two different
+physical names. :func:`primary_rdb_source`'s own predicate is the LOOSE one (any
+role=primary source, readable or not); a stricter role=primary+writable source
+can survive alongside it when an abstract parent's own read-only primary source
+and a child's own, differently-named, writable primary source both land on the
+child's *effective* ``children()`` at once (own-only validation never sees the
+combination — see :func:`find_primary_writable_source`). That shape loads with
+zero errors, so this module — not a downstream consumer — is where it is
+caught, once, for every caller of :func:`primary_rdb_source`.
 """
 from __future__ import annotations
 
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
+
+
+def find_primary_writable_source(entity: MetaObject) -> MetaSource | None:
+    """The primary WRITABLE ``source.rdb`` for *entity*, or ``None``.
+
+    Mirrors C#'s ``MetaObject.FindPrimaryWritableSource`` / TS's ``obj.dbTable``
+    predicate: ``@role: primary`` AND :meth:`MetaSource.is_writable`. Used ONLY
+    by :func:`primary_rdb_source`'s divergence guard below — callers wanting
+    "the" primary source (writable or not) call :func:`primary_rdb_source`
+    itself, never this.
+
+    ADR-0039 — ``children()`` RESOLVES, matching the loose predicate this is
+    compared against (an inherited writable source must be seen too).
+    """
+    for c in entity.children():
+        if (
+            isinstance(c, MetaSource)
+            and c.role() == SOURCE_ROLE_PRIMARY
+            and c.is_writable()
+        ):
+            return c
+    return None
 
 
 def primary_rdb_source(entity: MetaObject) -> MetaSource | None:
@@ -34,11 +69,34 @@ def primary_rdb_source(entity: MetaObject) -> MetaSource | None:
 
     ADR-0039 — ``children()`` RESOLVES: a source inherited via ``extends``
     (the ``BaseEntity`` pattern) is seen; ``own_children()`` would miss it.
+
+    Raises :class:`ValueError` — mirroring the C#/TS ports' wording exactly —
+    when a primary WRITABLE source also exists (see
+    :func:`find_primary_writable_source`) and resolves to a DIFFERENT physical
+    name than the one returned here. No downstream consumer re-checks this;
+    the refusal lives here, once, so every caller inherits it for free.
     """
+    src: MetaSource | None = None
     for c in entity.children():
         if isinstance(c, MetaSource) and c.role() == SOURCE_ROLE_PRIMARY:
-            return c
-    return None
+            src = c
+            break
+    if src is None:
+        return None
+
+    writable = find_primary_writable_source(entity)
+    if writable is not None:
+        name = src.physical_name()
+        writable_name = writable.physical_name()
+        if writable_name != name:
+            raise ValueError(
+                f'{entity.name}: the primary source resolves to physical name "{name}" '
+                f"but the primary WRITABLE source resolves to "
+                f'"{writable_name}" — two role=primary sources disagree on the '
+                f"object's physical name. Give the read-only and writable sources "
+                f"matching physical names, or drop the extra role=primary declaration."
+            )
+    return src
 
 
 def resolve_table_name(entity: MetaObject) -> str | None:
