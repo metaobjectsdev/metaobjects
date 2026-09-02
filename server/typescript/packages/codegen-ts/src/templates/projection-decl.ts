@@ -18,7 +18,7 @@ import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
-import type { ObjectNames } from "../names.js";
+import { physicalNameExpr, type ObjectNames } from "../names.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
@@ -183,16 +183,12 @@ export function renderProjectionDecl(
   // A6 Task 1 fix round — the descriptor's $view is a SECOND, independent embedding
   // of the view's physical name (the Drizzle .existing() decl in view-decl.ts is the
   // first, already converted). Same "is the artifact in this run" condition, no
-  // equality guard: resolveObjectNames/resolveTableName is the sole source of truth
-  // here (see the report's finding on the viewName()/resolveTableName() divergence
-  // this surfaced for a projection with a role:replica read-only source declared
-  // before its role:primary one — `names.resolved.name` is always the PRIMARY
-  // source's physical name; `viewName` here can, for that shape, be a different,
-  // order-dependent string).
-  const viewLine: Code =
-    names !== undefined
-      ? code`$view:      ${names.symbol}.name`
-      : code`$view:      ${JSON.stringify(viewName)}`;
+  // equality guard: `names.resolved.name` is always the PRIMARY source's physical
+  // name, while `viewName` is derived by `viewName()` in extract-view-spec.ts, which
+  // for a projection declaring a role:replica read-only source BEFORE its role:primary
+  // one used to return a different, declaration-order-dependent string. That is why
+  // both spellings here must come from the constant rather than from two resolvers.
+  const viewLine: Code = code`$view:      ${physicalNameExpr(names, viewName)}`;
 
   // The projection's primary-identity fields type non-null in the view decl +
   // read schema even without @required (a PK is never NULL; see ViewDeclOpts).

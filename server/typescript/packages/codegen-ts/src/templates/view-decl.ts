@@ -14,7 +14,7 @@ import {
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { mapColumnType } from "../column-mapper.js";
 import { zodTypeFor } from "./field-meta.js";
-import type { ObjectNames } from "../names.js";
+import { columnExpr, physicalNameExpr, type ObjectNames } from "../names.js";
 
 export interface ViewDeclOpts {
   readonly dialect: "postgres" | "sqlite";
@@ -98,11 +98,7 @@ function viewColumnLine(f: MetaField, opts: ViewDeclOpts): Code {
   }
   // A6 — reference the constant whenever the artifact is in the run AND carries this
   // field. A lookup MISS is normal, not a divergence — see ViewDeclOpts.names.
-  const namesEntry = opts.names?.resolved.fields[f.name];
-  const dbNameExpr: Code =
-    opts.names !== undefined && namesEntry !== undefined
-      ? code`${opts.names.symbol}.fields.${f.name}.column`
-      : code`${JSON.stringify(spec.dbName)}`;
+  const dbNameExpr = columnExpr(opts.names, f.name, spec.dbName);
   return code`  ${f.name}: ${colSym}(${dbNameExpr}${optsArg})${dollarType}${viewModifiers}`;
 }
 
@@ -124,8 +120,7 @@ export function renderExistingViewDecl(
   // A6 — reference the constant for the view's own physical name too. No lookup-miss
   // case here (unlike a per-field column): when `opts.names` is present at all, its
   // `ObjectNames.name` IS this view's physical name (see ViewDeclOpts.names).
-  const viewNameExpr: Code =
-    opts.names !== undefined ? code`${opts.names.symbol}.name` : code`${JSON.stringify(viewName)}`;
+  const viewNameExpr = physicalNameExpr(opts.names, viewName);
   return code`
 // View declaration — Drizzle uses this for typed SELECT queries.
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
