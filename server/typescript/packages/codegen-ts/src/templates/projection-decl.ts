@@ -180,6 +180,20 @@ export function renderProjectionDecl(
   const camelName = projName.charAt(0).toLowerCase() + projName.slice(1);
   const path = pathFromProjectionName(projName);
 
+  // A6 Task 1 fix round — the descriptor's $view is a SECOND, independent embedding
+  // of the view's physical name (the Drizzle .existing() decl in view-decl.ts is the
+  // first, already converted). Same "is the artifact in this run" condition, no
+  // equality guard: resolveObjectNames/resolveTableName is the sole source of truth
+  // here (see the report's finding on the viewName()/resolveTableName() divergence
+  // this surfaced for a projection with a role:replica read-only source declared
+  // before its role:primary one — `names.resolved.name` is always the PRIMARY
+  // source's physical name; `viewName` here can, for that shape, be a different,
+  // order-dependent string).
+  const viewLine: Code =
+    names !== undefined
+      ? code`$view:      ${names.symbol}.name`
+      : code`$view:      ${JSON.stringify(viewName)}`;
+
   // The projection's primary-identity fields type non-null in the view decl +
   // read schema even without @required (a PK is never NULL; see ViewDeclOpts).
   const pkFieldNames: ReadonlySet<string> = new Set(primaryIdentityFieldNames(projection));
@@ -200,7 +214,7 @@ export type ${projName} = ${z}.infer<typeof ${projName}Schema>;
     code`
 export const ${projName} = {
   $entity:    ${JSON.stringify(projName)},
-  $view:      ${JSON.stringify(viewName)},
+  ${viewLine},
   $path:      ${JSON.stringify(path)},
   $apiPrefix: ${JSON.stringify(apiPrefix)},
 ${joinCode(constFieldLines, { on: "\n" })}

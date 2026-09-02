@@ -374,12 +374,122 @@ describe("renderEntityFile — a projection's dbCol + view name/columns referenc
     expect(out).not.toContain('"purpose_code"');
   });
 
+  // §A6 Task 1 fix round 1 — the descriptor's $view is a SECOND, independent
+  // embedding of the view's physical name, distinct from the Drizzle .existing()
+  // decl the test above covers (view-decl.ts). Both must reference the constant,
+  // or a reader cannot tell which spelling is authoritative.
+  test("with the names generator ACTIVE, the descriptor's $view references the constant", async () => {
+    const { projection, ctx } = await loadProjectionNamesFixture(true);
+    const out = renderEntityFile(projection, ctx);
+
+    expect(out).toContain("$view: ProgramSummaryNames.name");
+    expect(out).not.toContain('$view: "v_program_summary"');
+  });
+
   test("with the names generator NOT in the run, the projection keeps every literal", async () => {
     const { projection, ctx } = await loadProjectionNamesFixture(false);
     const out = renderEntityFile(projection, ctx);
 
     expect(out).toContain('dbCol: "purpose_code"');
     expect(out).toContain('sqliteView("v_program_summary"');
+    expect(out).toContain('$view: "v_program_summary"');
     expect(out).not.toContain("ProgramSummaryNames");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §A6 Task 1 fix round 1 — a finding surfaced while converting $view: the two
+// functions that resolve a projection's view physical name are NOT the same
+// resolver. `projectionViewName()` (extract-view-spec.ts `viewName()`) is
+// own-only and picks the FIRST read-only source in declaration order, with no
+// role filter. `resolveTableName()` (what `resolveObjectNames` — and now every
+// §A6 site — uses) filters by `role === "primary"`, order-independent. For a
+// projection with exactly one source, or with its primary source declared
+// first, both agree (see loadProjectionNamesFixture above). They can DISAGREE
+// for a projection declaring a role:"replica" read-only source BEFORE its own
+// role:"primary" one — confirmed loadable (not a licensing violation) by this
+// fixture. This is a PRE-EXISTING divergence in `viewName()`'s own source
+// selection, not something this task introduces or fixes; it is pinned here so
+// the ON-arm behavior (constant references the PRIMARY source, order-
+// independent) is deliberate and visible, not an accident of conversion.
+// ---------------------------------------------------------------------------
+
+async function loadMultiSourceProjectionFixture(includeNames: boolean, replicaFirst: boolean) {
+  const primarySource = { "source.rdb": { name: "primarySrc", "@kind": "view", "@table": "v_primary_name", "@role": "primary" } };
+  const replicaSource = { "source.rdb": { name: "replicaSrc", "@kind": "view", "@table": "v_replica_name", "@role": "replica" } };
+
+  const root = await loadMetadata([
+    {
+      "object.entity": {
+        name: "Base",
+        children: [
+          { "source.rdb": { "@table": "bases" } },
+          { "field.int": { name: "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
+        ],
+      },
+    },
+    {
+      "object.projection": {
+        name: "P",
+        children: [
+          ...(replicaFirst ? [replicaSource, primarySource] : [primarySource, replicaSource]),
+          { "field.int": { name: "id", extends: "Base.id" } },
+          { "identity.primary": { "name": "id", extends: "Base.id" } },
+        ],
+      },
+    },
+  ]);
+
+  const projection = root.objects().find((o) => o.name === "P");
+  if (!projection) throw new Error("P not found");
+
+  const ctx = makeRenderContext({
+    dialect: "sqlite",
+    loadedRoot: root,
+    outDir: "/x",
+    dbImport: "~/db",
+    includeNames,
+    pkMap: buildPkMap(root),
+    relationMap: buildRelationMap(root),
+  });
+
+  return { root, projection, ctx };
+}
+
+describe("renderEntityFile — a projection with a role:replica source declared before its role:primary one (§A6 finding)", () => {
+  test("resolveTableName/resolveObjectNames picks the PRIMARY source's name regardless of declaration order", async () => {
+    const { projection, ctx: ctxOff } = await loadMultiSourceProjectionFixture(false, true);
+    // Sanity: this shape loads at all (not a licensing violation) — the whole point.
+    expect(projection.name).toBe("P");
+    // Off-arm literal, from viewName()/projectionViewName() — the OWN-only,
+    // order-first-read-only-source selection that does NOT filter by role.
+    const outOff = renderEntityFile(projection, ctxOff);
+    expect(outOff).toContain('$view: "v_replica_name"');
+    expect(outOff).toContain('sqliteView("v_replica_name"');
+  });
+
+  test("with the names generator ACTIVE, both $view and the view decl switch to the PRIMARY source's constant — a behavior change, not just a literal-to-reference swap, for this shape", async () => {
+    const { projection, ctx } = await loadMultiSourceProjectionFixture(true, true);
+    const out = renderEntityFile(projection, ctx);
+
+    // The constant is resolveObjectNames()'s answer: the PRIMARY source, "v_primary_name" —
+    // NOT "v_replica_name", which is what the OFF arm (and pre-§A6 behavior) emits.
+    expect(out).toContain("$view: PNames.name");
+    expect(out).toContain("sqliteView(PNames.name");
+    expect(out).not.toContain("v_replica_name");
+    expect(out).not.toContain('"v_primary_name"');
+  });
+
+  test("with the primary source declared first, both resolvers already agreed (no behavior change)", async () => {
+    const outOff = renderEntityFile(
+      (await loadMultiSourceProjectionFixture(false, false)).projection,
+      (await loadMultiSourceProjectionFixture(false, false)).ctx,
+    );
+    expect(outOff).toContain('$view: "v_primary_name"');
+
+    const { projection, ctx } = await loadMultiSourceProjectionFixture(true, false);
+    const outOn = renderEntityFile(projection, ctx);
+    expect(outOn).toContain("$view: PNames.name");
   });
 });
