@@ -47,41 +47,53 @@ public sealed class ColumnNamingFlagTests : IDisposable
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
-    private string GenerateWith(params string[] extraArgs)
+    // §A6 (task 4) -- [Column] on Subscriber.g.cs now references
+    // SubscriberNames.<Field>Column unconditionally; the entity file is BYTE-IDENTICAL
+    // regardless of --column-naming. The flag's effect is observable only in the
+    // names artifact's DECLARED CONSTANT VALUE, so a caller proving the flag reached
+    // GenConfig.ColumnNamingStrategy must read SubscriberNames.g.cs, not Subscriber.g.cs
+    // alone -- that is the whole reason this method returns both files.
+    private (string Entity, string Names) GenerateWith(params string[] extraArgs)
     {
         var outDir = Path.Combine(_tmp, "generated-" + Guid.NewGuid().ToString("N"));
         var args = new List<string> { "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated" };
         args.AddRange(extraArgs);
         var (exit, stdout, stderr) = RunCli(_tmp, args.ToArray());
         Assert.True(exit == 0, $"exit={exit}\n{stdout}{stderr}");
-        return File.ReadAllText(Path.Combine(outDir, "Subscriber.g.cs"));
+        var entity = File.ReadAllText(Path.Combine(outDir, "Subscriber.g.cs"));
+        var names = File.ReadAllText(Path.Combine(outDir, "SubscriberNames.g.cs"));
+        return (entity, names);
     }
 
     [Fact]
     public void Default_is_literal_unchanged()
     {
-        // §A6 (task 4) — [Column] references SubscriberNames.CreatedAtColumn, whose
-        // VALUE is still the literal-strategy "createdAt" (the constant's underlying
-        // value, checked at the source below).
-        var src = GenerateWith();
-        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", src);
+        // The entity always references the constant, unconditionally (§A6) -- that part
+        // does NOT vary with the flag and is asserted the same way in every test here.
+        // What DOES vary with the flag is the constant's declared VALUE, in
+        // SubscriberNames.g.cs: "createdAt" (unchanged) under the default strategy.
+        var (entity, names) = GenerateWith();
+        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", entity);
+        Assert.Contains("public const string CreatedAtColumn = \"createdAt\";", names);
     }
 
     [Fact]
     public void Snake_case_maps_the_field_name_to_a_snake_case_column()
     {
-        var src = GenerateWith("--column-naming", "snake_case");
-        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", src);
-        Assert.DoesNotContain("[Column(\"createdAt\")]", src);
+        var (entity, names) = GenerateWith("--column-naming", "snake_case");
+        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", entity);
+        Assert.Contains("public const string CreatedAtColumn = \"created_at\";", names);
+        Assert.DoesNotContain("public const string CreatedAtColumn = \"createdAt\";", names);
     }
 
     [Fact]
     public void An_explicit_column_attr_wins_over_any_strategy()
     {
-        foreach (var src in new[] { GenerateWith(), GenerateWith("--column-naming", "snake_case") })
+        foreach (var (entity, names) in new[] { GenerateWith(), GenerateWith("--column-naming", "snake_case") })
         {
-            Assert.Contains("[Column(SubscriberNames.PurposeCodeColumn)]", src);
-            Assert.DoesNotContain("purpose_code", src);
+            Assert.Contains("[Column(SubscriberNames.PurposeCodeColumn)]", entity);
+            Assert.Contains("public const string PurposeCodeColumn = \"reason\";", names);
+            Assert.DoesNotContain("purpose_code", names);
         }
     }
 
