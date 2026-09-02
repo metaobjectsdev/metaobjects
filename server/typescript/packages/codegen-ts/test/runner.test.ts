@@ -6,6 +6,7 @@ import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, oncePerRun, type Generator } from "../src/generator.js";
 import { entityModuleSpecifier } from "../src/import-path.js";
+import { CodegenError } from "../src/errors.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
@@ -124,6 +125,31 @@ describe("runGen — error paths", () => {
       }),
       metadata: root,
     })).rejects.toThrow(/^\[exploder\] boom/);
+  });
+
+  test("generator throws -> the original error is preserved as `cause`", async () => {
+    // The prefixed message is for humans; `cause` is what a programmatic runGen
+    // caller needs. Without it the caller sees a plain Error and cannot tell a
+    // CodegenError — a metadata/config problem it should report as such — from a
+    // genuine bug inside a generator, and the original stack is gone.
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
+
+    const original = new CodegenError("bad view", { file: "Post.ts" });
+    const bad: Generator = { name: "exploder", generate: () => { throw original; } };
+
+    const err = await runGen({
+      config: defineConfig({
+        outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        generators: [bad],
+      }),
+      metadata: root,
+    }).then(() => undefined, (e: unknown) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).cause).toBe(original);
+    expect((err as Error).cause).toBeInstanceOf(CodegenError);
+    expect(((err as Error).cause as CodegenError).file).toBe("Post.ts");
   });
 
   test("rejects unsafe entity names (path-traversal guard preserved from legacy)", async () => {

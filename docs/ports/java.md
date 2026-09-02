@@ -262,19 +262,37 @@ into a Maven test (e.g. a JUnit assertion in the `test` phase).
 
 ## Generators
 
-| Generator | Module | Output |
-|---|---|---|
-| `SpringControllerGenerator` | `metaobjects-codegen-spring` | One `<Entity>Controller.java` per writable entity (`source.rdb @kind="table"`). Spring Boot 3.x / Spring Web MVC. Five CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE) matching the cross-port [REST API contract](../features/api-contract.md). `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators (`eq/ne/gt/gte/lt/lte/in/like/isNull`) ship via the generated `<Entity>FilterAllowlist` (`SpringFilterAllowlistGenerator`) + the runtime `FilterParser`, wired directly into the list handler. |
-| `SpringDtoGenerator` | `metaobjects-codegen-spring` | One `<Entity>Dto.java` per entity as a Java 21 `record`. Wrapped-primitive components (`Long`, `Integer`, `Boolean`) so missing JSON properties deserialise to `null`. Currency = `Long` (integer minor units cross-port invariant). Used as both request and response body. |
-| `SpringRepositoryGenerator` | `metaobjects-codegen-spring` | One `<Entity>Repository.java` per writable entity as a hand-stubbed Java `interface` the consumer implements with their preferred persistence layer (Spring Data JPA / jOOQ / plain JDBC — all out of MetaObjects' concern). Nests the `SortClause` record the controller calls into. |
-| `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a `<Name>Extractor` and a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
-| `SpringNamesGenerator` | `metaobjects-codegen-spring` | One `<Entity>Names.java` per object with a declared/inherited primary `source.rdb` — `public static final` physical database name constants (table/view name, schema, per-field columns). See "`<Entity>Names`" below. |
+This table is **complete**: it lists every generator in Java's
+`com.metaobjects.generator.GeneratorRegistry`, and a test fails if the registry gains one
+this page does not name. There is no default suite on the JVM — `<generators>` in the pom
+is the complete list, one `<generator>` entry per generator you want — so a generator
+missing from this page is one an adopter has no way to discover.
 
-Wire any of the three Spring generators via the Maven plugin's `<generator>`
-entry pointing at `com.metaobjects.generator.spring.SpringControllerGenerator` /
-`SpringDtoGenerator` / `SpringRepositoryGenerator`. The three are
-independently configurable; typical use is all three together (controller +
-DTO + repository).
+The **stable name** is the cross-port spelling pinned in
+`fixtures/generator-registry-conformance/registry.json`; the same concept carries the same
+name in every port.
+
+| Stable name | Generator | Module | Output |
+|---|---|---|---|
+| `routes` | `SpringControllerGenerator` | `metaobjects-codegen-spring` | One `<Entity>Controller.java` per writable entity (`source.rdb @kind="table"`). Spring Boot 3.x / Spring Web MVC. Five CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE) matching the cross-port [REST API contract](../features/api-contract.md). `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators (`eq/ne/gt/gte/lt/lte/in/like/isNull`) ship via the generated `<Entity>FilterAllowlist` + the runtime `FilterParser`, wired directly into the list handler. |
+| `dto` | `SpringDtoGenerator` | `metaobjects-codegen-spring` | One `<Entity>Dto.java` per entity as a Java 21 `record`. Wrapped-primitive components (`Long`, `Integer`, `Boolean`) so missing JSON properties deserialise to `null`. Currency = `Long` (integer minor units cross-port invariant). Used as both request and response body. |
+| `repository` | `SpringRepositoryGenerator` | `metaobjects-codegen-spring` | One `<Entity>Repository.java` per writable entity as a hand-stubbed Java `interface` the consumer implements with their preferred persistence layer (Spring Data JPA / jOOQ / plain JDBC — all out of MetaObjects' concern). Nests the `SortClause` record the controller calls into. |
+| `filter-allowlist` | `SpringFilterAllowlistGenerator` | `metaobjects-codegen-spring` | One `<Entity>FilterAllowlist.java` per writable entity: the filterable field set plus the operator set permitted per field, gated by field subtype (FR-009 §5, identical across ports). Only `@filterable: true` fields appear. Emitted even when no field is filterable (with empty constants), so the generated controller delegates to it unconditionally. |
+| `value-object` | `SpringValueObjectGenerator` | `metaobjects-codegen-spring` | One Java 21 `record` per `object.value` reachable from an entity's value-object jsonb column (`field.object @objectRef @storage: jsonb`, single or `@isArray`), transitively through nested members. Unlike a payload record it carries jakarta bean-validation constraints plus `@Valid` on nested members, so a VO column POSTs and PATCHes with validation cascading to depth ≥ 2. This is what `<Entity>Dto` / `<Entity>Patch` bind to. |
+| `names` | `SpringNamesGenerator` | `metaobjects-codegen-spring` | One `<Entity>Names.java` per object with a declared/inherited primary `source.rdb` — `public static final` physical database name constants (table/view name, schema, per-field columns). See "`<Entity>Names`" below. |
+| `entity` | `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a `<Name>Extractor` and a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
+| `payload` | `SpringPayloadGenerator` | `metaobjects-codegen-spring` | One `<Template>Payload` Java 21 `record` per `template.*` declaration, derived from the template's `@payloadRef` `object.value` field tree. No annotations — Jackson binds by name. This is the typed payload every other template-tier generator below builds on; none of them re-declares the shape. |
+| `output-parser` | `SpringOutputParserGenerator` | `metaobjects-codegen-spring` | One `<Template>Parser` per **responding** `template.prompt` (ADR-0052: one carrying `@responseRef`) — a Jackson-backed throw-only parser returning the `<Template>Response` record. FR-006 / ADR-0010; the Java sibling of TS's `outputParser()`. See [FR-006 — response parsing](#fr-006--response-parsing) below. |
+| `output-prompt` | `SpringOutputPromptGenerator` | `metaobjects-codegen-spring` | One `<Template>ResponseFormat` per responding `template.prompt` — a static `renderFormat()` / `renderFormat(PromptOverrides)` pair emitting the output-format prompt fragment (FR-010). The reply's syntax comes from `@responseFormat`, never `@format` (which is the syntax of the rendered prompt BODY). |
+| `render-helper` | `SpringRenderHelperGenerator` | `metaobjects-codegen-spring` | One `<Template>RenderHelper` per `template.output`, wrapping the JVM `Renderer` with a typed `render(payload, provider)`. `@kind: document` renders `@textRef` to a `String`; `@kind: email` renders subject + html (+ optional text) into an `EmailDocument`. **It also runs the mustache↔payload drift check at BUILD time** — an unresolvable text, or one with a non-warning `Verify` error, fails the build rather than emitting. |
+| `extractor` | `ExtractorCodeGenerator` | `metaobjects-codegen-base` | One `<Name>Extractor` wrapping the runtime tolerant extract, turning dirty LLM text into a fully-typed flavored object graph (nested objects + arrays-of-objects populated) in one call. It names `MetaObjectExtractor` (in `metaobjects-om`) by FQN string only, so `codegen-base` keeps no compile dependency on `om` — the reference resolves on the consumer's classpath. |
+| `trace-helper` | `LlmTraceHelperGenerator` | `metaobjects-codegen-spring` | One `<Entity>TraceHelper` per concrete entity that transitively `extends` `metaobjects::ai::LlmCallBase` **and** nests a `template.prompt` carrying `@responseRef` — a static `record<Entity>(...)` that extracts the typed response, builds the `LlmCallBase` trace row, and persists it. Emits nothing for any other entity. |
+| `template` | `TemplateGenerator` | `metaobjects-render` | The generic Mustache primitive: walk a caller-supplied root, render one shared template per walk result, return `List<EmittedFile>`. The declarative alternative to writing a generator class — see [Declarative template-codegen](#declarative-template-codegen-templatescopegenerator) below. |
+
+Wire any generator via the Maven plugin's `<generator>` entry pointing at its class.
+Every one is independently configurable; the typical starting set is
+`SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator`
+(controller + DTO + repository).
 
 ### `<Entity>Names` — the physical names, as constants
 

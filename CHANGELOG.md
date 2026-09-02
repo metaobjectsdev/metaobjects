@@ -157,6 +157,36 @@ ownership. The JVM marker is also a bare `GENERATED`, not `@generated`; the matc
 only whitespace before the token, so searching a JVM file for `@generated` finds nothing and
 an adopter following that advice loses the edit.
 
+**And the C#/Python half had an exception nothing documented.** With **no gen-state
+directory at all** both fall back to the JVM's marker rule — overwrite a file carrying the
+marker, refuse one without it — so in that mode the header IS load-bearing and a hand edit
+inside a generated file is overwritten silently, which is the exact failure the hash
+manifest exists to prevent. Only an embedder calling `CodegenRunner.Run` or Python's
+`decide_and_write` directly can reach it; `dotnet meta gen` and `metaobjects gen` always
+supply the directory. Now stated in `docs/features/codegen-concepts.md` and
+`docs/features/own-your-codegen.md`, where the per-port rules already are.
+
+### Fixed — `docs/ports/java.md` listed five of Java's fourteen generators
+
+There is no default generator suite on the JVM — `<generators>` in the pom is the complete
+list, one entry per generator — so a generator the port page does not name is one an adopter
+has **no way to discover**. Nine were missing, including every template-tier generator
+(`payload`, `output-parser`, `output-prompt`, `render-helper`, `extractor`), the
+`filter-allowlist` the generated controller delegates to, and `value-object`, which is what
+makes a jsonb value-object column validate on POST and PATCH.
+
+The table now lists all fourteen with their cross-port stable names, and a test fails if the
+registry gains a generator the page does not name. That gate is deliberately
+one-directional: it can prove a generator is *named*, and it does not pretend to check that
+what the row *says* is still true.
+
+### Fixed — a `runGen` caller could not tell a `CodegenError` from a crash
+
+`runner.ts` caught every generator throw and re-threw a plain `Error` carrying only the
+prefixed message, so a programmatic caller lost both the error's type — a `CodegenError` is
+a metadata or config problem it should report as such, not a bug — and the original stack,
+which stopped at the re-throw. The original is now attached as `cause`.
+
 ### Fixed — a registered view subtype with no grid renderer printed its raw value (#355 residue)
 
 `#355` fixed the renderer map in one direction — every renderer key is now a registered view

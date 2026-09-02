@@ -498,7 +498,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       files = await generator.generate(ctx);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`[${generator.name}] ${msg}`);
+      // `cause` preserves the original throw. Without it a `runGen` caller sees a
+      // plain Error carrying only the prefixed message, so it cannot tell a
+      // CodegenError (a metadata/config problem it can report) from a genuine bug
+      // in a generator, and every stack trace stops at this line.
+      throw new Error(`[${generator.name}] ${msg}`, { cause: err });
     }
 
     for (const file of files) {

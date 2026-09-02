@@ -131,4 +131,42 @@ public class GeneratorRegistryConformanceTest {
             assertTrue("tier must be set for " + e.getKey(), info.tier() != null);
         }
     }
+
+    /**
+     * Every registered generator must be NAMED on the adopter-facing port page.
+     *
+     * <p>There is no default generator suite on the JVM — {@code <generators>} in the pom is
+     * the complete list, one entry per generator — so a generator absent from
+     * {@code docs/ports/java.md} is one an adopter has no way to discover. The page had five
+     * of fourteen. This asserts the page names each generator's stable name AND its simple
+     * class name (the class name is what goes in the pom, so listing one without the other
+     * still leaves the reader unable to wire it).</p>
+     *
+     * <p>Deliberately one-directional: it fails on an UNDOCUMENTED generator, never on extra
+     * prose. Keeping the page's cell TEXT accurate is not something a string search can do,
+     * and a gate that pretended otherwise would be the false confidence this one exists to
+     * avoid.</p>
+     */
+    @Test
+    public void everyRegisteredGeneratorIsNamedInThePortDoc() throws IOException {
+        Path doc = repoRoot().resolve("docs/ports/java.md");
+        assertTrue("port doc must exist at " + doc, Files.exists(doc));
+        String page = Files.readString(doc);
+
+        TreeSet<String> undocumented = new TreeSet<>();
+        for (Map.Entry<String, GeneratorInfo> e : GeneratorRegistry.list().entrySet()) {
+            String simpleName = e.getValue().classname()
+                    .substring(e.getValue().classname().lastIndexOf('.') + 1);
+            if (!page.contains("`" + e.getKey() + "`") || !page.contains(simpleName)) {
+                undocumented.add(e.getKey() + " (" + simpleName + ")");
+            }
+        }
+
+        assertTrue(
+                "docs/ports/java.md must name every registered generator by stable name AND class.\n"
+                        + "  MISSING: " + undocumented + "\n"
+                        + "Fix: add a row to the Generators table — the JVM has no default suite, so a\n"
+                        + "generator this page does not name is one nobody can wire.",
+                undocumented.isEmpty());
+    }
 }
