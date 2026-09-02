@@ -281,14 +281,16 @@ function renderM2mMount(
   const mountM2mRouteSym = imp("mountM2mRoute@@metaobjectsdev/runtime-ts/drizzle-fastify");
   const junction = ctx.loadedRoot.findObject(entry.junctionEntity);
   const target = ctx.loadedRoot.findObject(entry.targetEntity);
+  // fromPackage = source.package: this routes file is SOURCE's own module, never the
+  // junction's or the target's — see resolveJunctionColumn's doc comment (B1).
   const sourceColumn: Code = junction
-    ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx)
+    ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx, source.package)
     : code`${JSON.stringify(entry.sourceJoinField!)}`;
   const targetColumn: Code = junction
-    ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx)
+    ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx, source.package)
     : code`${JSON.stringify(entry.targetJoinField!)}`;
   const targetPkColumn: Code = target
-    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx)
+    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx, source.package)
     : code`${JSON.stringify("id")}`;
 
   return code`  ${mountM2mRouteSym}({
@@ -313,13 +315,28 @@ function renderM2mMount(
  * artifact is in this run AND carries the field (the same two-condition shape as every
  * other §A6 site: is the artifact in the run, is the field in it — both PRESENCE
  * guards). A literal otherwise.
+ *
+ * B1 — `entity` here is the JUNCTION or TARGET object, never the routes file's own
+ * SOURCE entity (see renderM2mMount) — so `fromPackage` MUST be the source entity's
+ * package, not `entity`'s own. A same-package caller cannot tell the two apart (they're
+ * equal), which is exactly how this went unnoticed until a package-layout M:N golden
+ * existed: a plain sibling specifier (assuming fromPackage === entity.package, the
+ * shape `namesRef`'s default deliberately does NOT special-case) silently produced a
+ * same-directory import for a names artifact that lives in a DIFFERENT directory,
+ * because the object whose file we're building and the object whose names we're
+ * importing are two different objects.
  */
-function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: RenderContext): Code {
+function resolveJunctionColumn(
+  entity: MetaObject,
+  fieldName: string,
+  ctx: RenderContext,
+  fromPackage: string | undefined,
+): Code {
   // ADR-0039: resolving — a junction FK field may be inherited via extends.
   const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) return code`${JSON.stringify(fieldName)}`;
   const dbCol = resolveColumnName(field, ctx.columnNamingStrategy);
-  const names = namesRef(entity, ctx);
+  const names = namesRef(entity, ctx, fromPackage);
   return columnExpr(names, field.name, dbCol);
 }
 
