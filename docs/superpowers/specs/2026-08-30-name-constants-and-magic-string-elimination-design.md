@@ -1,7 +1,9 @@
 # Name constants and magic-string elimination — design
 
 **Date:** 2026-08-30
-**Status:** proposed — not yet approved for implementation. **Corrected 2026-08-30** after
+**Status:** **approved for implementation 2026-09-01**, all five ports. Open question 1 (the
+Python default for Program A) is closed in favour of this document's own recommendation: ON.
+**Corrected 2026-08-30** after
 measurement refuted Program B's founding premise (§B1) and Program A gained its consumption
 half (§A6); open questions 2 and 5 are closed.
 **Scope:** all five ports (TypeScript, C#, Java, Kotlin, Python), the agent-context skills,
