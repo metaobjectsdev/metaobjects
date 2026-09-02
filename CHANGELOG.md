@@ -7,6 +7,114 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — every physical database name has ONE spelling per run, in all five ports
+
+A generated per-object artifact now carries an object's physical database names — the
+table or view name, the schema, and every column name — as compile-time constants:
+`<Entity>.names.ts`, `<Entity>Names.g.cs`, `<Entity>Names.kt`, `<Entity>Names.java`,
+`<snake>_names.py`. A hand-written persistence layer references a constant instead of
+respelling a name that can drift, and the constant is produced by the **same resolver,
+with the same arguments**, as the binding it describes.
+
+That last clause is the whole feature. A physical name computed twice is a name that can
+disagree with itself, and the program that added this found five places where it already
+did — each one a generated artifact and a generated binding answering "what is this
+object's table" through two different functions.
+
+**Enablement differs per port, deliberately.** C# and Python ship it in the default
+generator suite. TypeScript wires it in `metaobjects.config.ts` like any other generator.
+The JVM ports have no default suite at all — generators are selected by FQCN in `pom.xml` —
+so it is opt-in there, and Kotlin's Exposed binding reads the constants only behind a
+`useNames` generator arg defaulting **off**, so a project that runs the table generator
+without the names generator still compiles.
+
+**Java's artifact has no generated consumer, and that is a real limitation rather than an
+oversight.** `codegen-spring` emits no physical name anywhere — its DTOs use logical field
+names and its repository is a consumer-implemented interface — so the constants exist for
+the persistence layer you write, not for anything MetaObjects generates. It is the port
+with the most to gain and the least to demonstrate.
+
+**Generated C# output changes for every adopter**: `[Table("subscribers")]` becomes
+`[Table(SubscriberNames.Name)]`, and each `[Column("...")]` likewise, because `names` is in
+the default suite. A run that does *not* include the names generator keeps the literals —
+the reference is gated on the artifact actually being produced, never on comparing its
+value to a literal.
+
+### Added — a column-naming lever in the two ports that lacked one, and on `verify`
+
+Java gains a `columnNaming` generator arg (via the `setArgs` SPI, matching Kotlin's) and
+Python gains `metaobjects gen --column-naming`. C# and Kotlin already had theirs;
+TypeScript's is `columnNamingStrategy`.
+
+**`verify --codegen` now accepts `--column-naming` in C# and Python.** Without it, a project
+that generated under a non-default strategy had its verify regenerate under the default and
+report drift on every file — a gate convicting a correct project. In C# the flag was
+rejected outright with exit 2, so there was no way to make `verify` agree with `gen` at all.
+TypeScript and the JVM never had this gap: their verify reads the same config or pom args as
+generate.
+
+**The per-port defaults differ and stay differing** — TypeScript `snake_case`, C# `literal`,
+Kotlin `snake_case`, Java `literal`, Python `literal` — because moving one moves every
+adopter's output and belongs to its own release. `meta migrate` owns schema for every port
+and defaults to `snake_case`, so in a `literal`-defaulting port an artifact can name
+`createdAt` for a column migrate created as `created_at`. **The run's option is the lever
+for that**; a per-field `@column` is for a name that genuinely cannot be derived, not a
+cross-port workaround. `docs/features/field-types.md` carries the full table.
+
+### Fixed — three ports named a physical source by declaration order rather than by role
+
+Python resolved "which source is this object's primary" in **four places with two different
+predicates**: the runtime filtered on `@role: primary`, while three codegen copies took the
+first source child and ignored role entirely. On any object declaring a `@role: replica`
+before its primary they disagreed — and the runtime is the one that reads the rows back.
+Consolidated to one resolver; the codegen answer changes to match the runtime's.
+
+Kotlin's Exposed table generator and its stored-proc generator had the same shape. A
+projection with two read-only sources (replica declared first) bound `two_ro_replica` while
+the artifact said `two_ro_primary`; the stored-proc generator emitted `PROC_NAME` naming the
+wrong procedure. Both now select by role. TypeScript's projection view name had already been
+corrected the same way.
+
+These are behaviour changes on metadata that declares a non-primary source before its
+primary one. If your model declares exactly one source per object — the overwhelmingly
+common case — nothing moves.
+
+### Fixed — a sourceless object no longer gets a table name it never declared
+
+A concrete `object.entity` with no `source.rdb` at all loads cleanly, and C# emitted
+`[Table(...)]` for it anyway, referencing a names class that was correctly never generated:
+generated code that does not compile, on the default path with no flags. The `[Table]` line
+is now gated on a declared primary source, matching issue #248 — participation in the
+database derives from a declared source, never from the object subtype.
+
+Python's M:N codegen had the same shape from the other direction: a `@through` junction
+declaring no source (which the loader permits — the relationship check requires two
+`identity.reference` children, never a source) had its physical table name **fabricated**
+from the entity name. It now raises, naming the entity and what it lacks, matching C#'s
+resolver for the identical shape.
+
+### Fixed — a cross-package M:N routes file imported names from the wrong directory
+
+Under `outputLayout: "package"`, a routes file for an entity in one package imported its
+junction's and target's name constants as siblings of *their* packages rather than of the
+routes file's own — emitting `./ArticleLabel.names.js` for a module that lives in
+`shop/tags/`. TS2307 on a documented layout. The single-package M:N test could not see it.
+
+### Fixed — the codegen skill taught one port's overwrite rule as all five
+
+`agent-context/skills/metaobjects-codegen` told adopters that codegen refuses to overwrite
+any file lacking the `@generated` header. That is true for Java and Kotlin only. TypeScript,
+C# and Python decide by a committed hash manifest and never read the header — so **editing
+the content** is what takes ownership there, not deleting a marker. The line was written
+when it was true for TypeScript and the mechanism changed underneath it.
+
+The two rules protect a hand edit in **opposite directions**, which the guidance never said:
+on the hash-manifest ports editing takes ownership; on the JVM editing protects nothing,
+because the marker is still there and the next run overwrites — only removing it takes
+ownership. The JVM marker is also a bare `GENERATED`, not `@generated`; the matcher allows
+only whitespace before the token, so searching a JVM file for `@generated` finds nothing and
+an adopter following that advice loses the edit.
+
 ### Fixed — a registered view subtype with no grid renderer printed its raw value (#355 residue)
 
 `#355` fixed the renderer map in one direction — every renderer key is now a registered view
