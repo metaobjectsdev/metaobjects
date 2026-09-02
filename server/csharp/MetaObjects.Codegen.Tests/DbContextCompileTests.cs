@@ -219,4 +219,73 @@ public class DbContextCompileTests
             dbctx);
         Assert.Contains("modelBuilder.Entity<Invoice>().OwnsOne(x => x.BillingAddress", dbctx);
     }
+
+    // I1 (Important) -- a sourceless CONCRETE object.entity: no source.rdb child
+    // anywhere in its own or inherited chain. This loads with ZERO errors --
+    // ValidateOnePrimarySource's own-sources-empty branch is a documented no-op, not a
+    // load error -- but #248 means NamesGenerator.Filter (CSharpNaming.HasPrimarySource)
+    // skips it: no primary source, no LedgerNames.g.cs, under ANY generator selection.
+    // EntityGenerator.Generate's `mapped` set is a broader SUBTYPE gate
+    // (IsEntity() || DbView != null), which still includes Ledger, so its [Table] line
+    // must fall back to the bare literal rather than reference a constant that will
+    // never exist for this object -- under the DEFAULT suite, no --generators flag.
+    private const string SourcelessEntityModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Ledger", "children": [
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "note" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Sourceless_concrete_entity_loads_cleanly_and_compiles_under_the_default_suite()
+    {
+        // Verify the load-bearing claim directly rather than assume it: a concrete
+        // object.entity with NO source.rdb anywhere loads with zero errors.
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(SourcelessEntityModel, id: "sourceless.json")]);
+        Assert.Empty(r.Errors);
+
+        // Default suite: no --generators selection, so GenConfig.IncludeNames defaults
+        // to true (matching GenCommand.Run's own default-suite computation) -- I1 is
+        // about the PER-OBJECT existence gate, not the C1 presence gate, so this test
+        // must exercise IncludeNames:true to isolate it.
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+
+        var entityFiles = new EntityGenerator().Generate(ctx).ToList();
+        var namesFiles = new NamesGenerator().Generate(ctx).ToList();
+
+        // #248 -- no primary source, so no names artifact at all, regardless of the run.
+        Assert.Empty(namesFiles);
+
+        var ledger = entityFiles.Single(f => f.Path == "Ledger.g.cs").Content;
+        Assert.Contains("[Table(\"Ledger\")]", ledger);
+        Assert.DoesNotContain("LedgerNames", ledger);
+        Assert.DoesNotContain("[Table(LedgerNames.Name)]", ledger);
+
+        var refs = BuildReferences();
+        var trees = entityFiles
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToList();
+        var comp = CSharpCompilation.Create(
+            "sourceless_entity_compile_" + Guid.NewGuid().ToString("N"),
+            trees,
+            refs,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var errors = comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Id}: {d.GetMessage()}")
+            .ToList();
+
+        Assert.True(
+            errors.Count == 0,
+            "A sourceless concrete entity's [Table] must not reference a Names constant " +
+                "that no generator ever produces for it, but got errors:\n" + string.Join("\n", errors));
+    }
 }

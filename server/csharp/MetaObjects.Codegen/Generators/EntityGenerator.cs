@@ -322,17 +322,17 @@ public class EntityGenerator : IGenerator
             var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
             sb.AppendLine($"[PrimaryKey({names})]");
         }
-        // A6/C1 -- reference the constant only when `names` is actually part of THIS
-        // run (ctx.Config.IncludeNames). A narrower --generators selection (e.g.
-        // `entity,db-context`) may exclude it, emitting no <Entity>Names.g.cs at all --
-        // falls back to the bare literal table name otherwise, exactly what this line
-        // emitted before Program A added the constant. This is presence, not the
-        // divergence check (that already threw, once, inside ResolveObjectNames,
-        // before this line ever runs).
+        // A6 -- CSharpNaming.NameRef gates this on TWO independent things, neither of
+        // which is the divergence check (that already threw, once, inside
+        // ResolveObjectNames, before this line ever runs): C1 -- is `names` actually
+        // part of THIS run (ctx.Config.IncludeNames; a narrower --generators selection
+        // may exclude it, emitting no <Entity>Names.g.cs at all); and I1 -- does `entity`
+        // even resolve a names artifact (#248 -- a concrete object.entity may declare NO
+        // source at all, which loads with zero errors and gets no artifact regardless of
+        // which generators ran). Falls back to the bare literal table name otherwise --
+        // exactly what this line emitted before Program A added the constant.
         if (!isProjection)
-            sb.AppendLine(ctx.Config.IncludeNames
-                ? $"[Table({CSharpNaming.NamesClassName(entity)}.Name)]"
-                : $"[Table(\"{CSharpNaming.Table(entity)}\")]");
+            sb.AppendLine($"[Table({CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity))})]");
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping

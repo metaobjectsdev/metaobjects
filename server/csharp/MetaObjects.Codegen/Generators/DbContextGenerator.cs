@@ -89,14 +89,15 @@ public class DbContextGenerator : IGenerator
         {
             var name = CSharpNaming.Pascal(p.Name);
             var noKey = p.PrimaryIdentity() is null ? ".HasNoKey()" : string.Empty;
-            // A6/C1 -- gated exactly like EntityGenerator's [Table]: reference the
-            // constant only when `names` is part of THIS run (ctx.Config.IncludeNames).
-            // Falls back to the bare literal view name (p.DbView, non-null in this
-            // branch) otherwise -- exactly what this line emitted before Program A
-            // added the constant.
-            modelLines.Add(ctx.Config.IncludeNames
-                ? $"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NamesClassName(p)}.Name);"
-                : $"        modelBuilder.Entity<{name}>(){noKey}.ToView(\"{p.DbView}\");");
+            // A6 -- gated exactly like EntityGenerator's [Table] (CSharpNaming.NameRef):
+            // C1 (ctx.Config.IncludeNames -- is `names` part of THIS run) AND I1
+            // (ResolveObjectNames non-null -- does `p` resolve a names artifact at all).
+            // A read-only projection reaching this loop always HAS a primary source (its
+            // own read-only view), so I1 never misses here -- but C1 can, under a
+            // narrowed --generators selection. Falls back to the bare literal view name
+            // (p.DbView, non-null in this branch) otherwise -- exactly what this line
+            // emitted before Program A added the constant.
+            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NameRef(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, p.DbView!)});");
             // Enum-typed projection columns persist as their string symbol in the view
             // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
             // string conversion EF defaults to the int-ordinal mapping and reads the text

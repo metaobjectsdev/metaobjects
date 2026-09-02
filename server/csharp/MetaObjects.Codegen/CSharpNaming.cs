@@ -423,6 +423,37 @@ public static class CSharpNaming
     }
 
     /// <summary>
+    /// I1/§A6 — the <c>&lt;Owner&gt;Names.Name</c> constant reference for <paramref
+    /// name="obj"/>'s physical table/view/proc name, when BOTH C1 (<paramref
+    /// name="includeNames"/> — is the <c>names</c> generator part of THIS run, same as
+    /// <see cref="ColumnRef"/>) and this method's OWN existence gate
+    /// (<see cref="ResolveObjectNames"/> non-null) hold; <paramref name="literal"/>
+    /// (quoted) otherwise — the caller's own pre-Program-A spelling
+    /// (<see cref="Table"/> for an entity's <c>[Table(...)]</c>; an object's own
+    /// <c>DbView</c> for a projection's <c>.ToView(...)</c>).
+    /// <para>
+    /// The existence gate matters here in a way <see cref="ColumnRef"/> already
+    /// handled: #248 — participation derives from a declared primary source, never the
+    /// object subtype — so a concrete <c>object.entity</c> with NO source at all (legal;
+    /// <c>ValidateOnePrimarySource</c>'s own-sources-empty branch is a documented no-op,
+    /// not a load error) resolves no names artifact, no matter which generators ran.
+    /// <see cref="Generators.EntityGenerator"/>'s <c>mapped</c> set is a broader SUBTYPE gate
+    /// (<c>IsEntity() || DbView != null</c>) that still includes such an object, so its
+    /// <c>[Table(...)]</c> line must fall back rather than reference a constant that
+    /// will never exist for it.
+    /// </para>
+    /// <para>
+    /// Neither gate is the divergence check — a primary/writable-source disagreement
+    /// has ALREADY thrown, once, inside <see cref="ResolveObjectNames"/>, before this
+    /// method ever runs.
+    /// </para>
+    /// </summary>
+    public static string NameRef(MetaObject obj, ColumnNamingStrategy strategy, bool includeNames, string literal) =>
+        includeNames && ResolveObjectNames(obj, strategy) is not null
+            ? $"{NamesClassName(obj)}.Name"
+            : $"\"{literal}\"";
+
+    /// <summary>
     /// The bare object name from a possibly package-qualified reference (the segment
     /// after the last <c>::</c>), for resolving an <c>@objectRef</c>/<c>@references</c>
     /// against <see cref="MetaRoot.FindObject"/>. Shared by the schema + generators.
