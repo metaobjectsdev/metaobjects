@@ -76,14 +76,29 @@ def plural_lowercase(name: str) -> str:
     return name.lower() + "s"
 
 
-def _physical_table(entity: MetaObject) -> str:
+def _physical_table(entity: MetaObject, *, relation_context: str) -> str:
     """The entity's physical SQL table name, via the shared
-    :func:`~metaobjects.codegen.source_resolution.resolve_table_name` resolver,
-    falling back to the bare entity name when it declares no primary source at
-    all. A legitimate M:N junction/target always has one; the fallback is
-    defensive parity with this helper's pre-existing (pre-shared-resolver)
-    behaviour rather than something the M:N path is expected to exercise."""
-    return resolve_table_name(entity) or entity.name
+    :func:`~metaobjects.codegen.source_resolution.resolve_table_name` resolver.
+
+    Raises :class:`M2MDerivationError` — naming *entity* and *relation_context*
+    — when it declares (and inherits) no primary source at all. #248: DB
+    participation derives from a declared source, never from the object
+    subtype, so ``resolve_table_name`` returning ``None`` here means the
+    junction/target has no physical table to join through at all; a M:N
+    relationship's whole point is a real SQL join, so that is a metadata
+    authoring error, not a legitimate "doesn't participate in persistence"
+    shape. Coercing to the bare entity name — the pre-existing behaviour this
+    replaces — fabricated a table that was never created, precisely the defect
+    class the C# port's EF binding had to fix this same session (a
+    ``[Table(...)]`` attribute naming a class that was never generated)."""
+    table = resolve_table_name(entity)
+    if table is None:
+        raise M2MDerivationError(
+            f"{relation_context}: entity \"{entity.name}\" declares no primary "
+            f"source (source.rdb) — a M:N join needs a physical table on both "
+            f"the junction and the target."
+        )
+    return table
 
 
 def _column_of(
@@ -178,8 +193,18 @@ def resolve_m2m_descriptors(
                 target_entity=target.name,
                 source_plural=plural_lowercase(entity.name),
                 target_plural=plural_lowercase(target.name),
-                junction_table=_physical_table(junction),
-                target_table=_physical_table(target),
+                junction_table=_physical_table(
+                    junction,
+                    relation_context=(
+                        f'M:N relationship "{entity.name}.{rel.name}" @through junction'
+                    ),
+                ),
+                target_table=_physical_table(
+                    target,
+                    relation_context=(
+                        f'M:N relationship "{entity.name}.{rel.name}" @objectRef target'
+                    ),
+                ),
                 source_column=_column_of(source_fk, fields.source_field, column_naming),
                 target_column=_column_of(target_fk, fields.target_field, column_naming),
                 target_pk_column=_column_of(
