@@ -207,8 +207,22 @@ class KotlinApiModelBuilder {
      */
     private fun projectionDataAccess(obj: MetaObject): ApiSymbol? {
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
-        // ADR-0039: resolving source lookup (inherited source.rdb via extends).
-        val src = KotlinGenUtil.firstRdbSource(obj) ?: return null
+        // Role-scoped, resolving (ADR-0039) — the SAME selector both generators this documents
+        // use ([KotlinExposedTableGenerator], [KotlinStoredProcGenerator]). NEVER firstRdbSource:
+        // an object may declare two own sources with distinct names in either declaration order,
+        // and the role-blind first-DECLARED pick disagrees with the generators on which node the
+        // @kind below is read from. Because that @kind dispatches Table-doc vs Proc-doc, the
+        // disagreement is not a wrong table NAME but a PHANTOM SYMBOL: on a projection declaring
+        // a @role:replica view before its @role:primary storedProc, the docs named <Short>Table
+        // while the only thing emitted anywhere was <Short>Proc.
+        //
+        // The sibling gate isWritableTableEntity above deliberately keeps firstRdbSource, because
+        // it mirrors KotlinSpringControllerGenerator / KotlinFilterAllowlistGenerator, which still
+        // select that way — and the accuracy contract is "documented == GENERATED". Its outcome is
+        // in any case invariant under the role-blindness: it only asks `kind == table`, and a shape
+        // where the first-declared and the primary source disagree on that answer is exactly the
+        // write-through shape, which both generators already detect order-independently.
+        val src = KotlinGenUtil.primaryRdbSource(obj) ?: return null
         return when (src.effectiveKind) {
             MetaSource.KIND_TABLE, MetaSource.KIND_VIEW, MetaSource.KIND_MATERIALIZED_VIEW -> {
                 val table = KotlinNaming.tableObjectName(shortName)

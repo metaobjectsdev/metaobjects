@@ -79,6 +79,18 @@ These are behaviour changes on metadata that declares a non-primary source befor
 primary one. If your model declares exactly one source per object — the overwhelmingly
 common case — nothing moves.
 
+**Kotlin's api-docs builder then had to follow them.** Fixing the two generators left the
+builder that documents them still selecting role-blind, so on the same shape they now
+disagree — and because the builder dispatches Table-doc versus Proc-doc on that source's
+`@kind`, the disagreement is not a wrong table name but a **phantom symbol**: a projection
+declaring a `@role: replica` view before its `@role: primary` storedProc was documented as
+`<Short>Table` while the only thing any generator emitted was `<Short>Proc`. The
+`meta docs`-facing surface named a symbol an adopter could not import.
+
+Reachability is pinned by the test rather than asserted: the two sources carry **distinct
+explicit names**, because two same-named children of one type collide and shadow — a fixture
+using unnamed sources proves nothing about a shape where both survive.
+
 ### Fixed — a sourceless object no longer gets a table name it never declared
 
 A concrete `object.entity` with no `source.rdb` at all loads cleanly, and C# emitted
