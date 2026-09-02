@@ -24,8 +24,20 @@ You run a `gen` step. The runner:
 2. Resolves output targets and precomputes shared render state.
 3. Runs each configured **generator** — most emit one file per entity; some emit a
    single shared file (a barrel, a DB-context, an app-config).
-4. Refuses to overwrite any file that does NOT carry the `@generated` header;
-   overwrites the ones that do.
+4. Decides whether it may overwrite a file — and **the rule differs by port**:
+   - **TypeScript, C#, Python** — by a committed **hash manifest**
+     (`.metaobjects/.gen-state/.hashes.json`). If a file still hashes to what the
+     generator recorded writing, it is safe to overwrite; if it was edited, or there is
+     no record of it, the write is **refused by name**. TypeScript additionally
+     three-way-merges against a snapshot when one is present locally.
+   - **Java, Kotlin** — by the `@generated` **marker line** in the file. Delete the
+     marker and regeneration will never touch that file again.
+
+   **Do not delete the `@generated` header to take ownership of a TypeScript, C# or
+   Python file.** It is informational there and the write decision never reads it —
+   what makes a file yours is *editing its content*, which is exactly what breaks the
+   hash. Deleting the header changes nothing except your ability to tell what
+   generated it.
 
 The output is normal idiomatic code in your language — you import it and use it
 like any hand-written module.
@@ -330,6 +342,13 @@ output across languages. `scope` is `perEntity` / `perPackage` / `perModel` — 
 would otherwise hand-write — and `outputPattern` is the output path per item, with
 `{name}` / `{Name}` / `{package}` placeholders (e.g. `"{package}/{Name}Service.java"`).
 Full tradeoff table and the data dict: `docs/features/codegen-concepts.md` §3 and §10.
+**Asking whether a base/extension split or a write-if-absent file exists? That's §5-§7, not
+here.** §5 (*Preserving hand edits*) states MetaObjects ships exactly one hand-edit strategy —
+no shipped generator on any port emits a generated-base + hand-owned-concrete pair, or a
+write-if-absent file; §6 names the `skip-existing` merge strategy `runGen` accepts for
+building that pair yourself, reachable only from a programmatic caller (no CLI flag selects
+it); §7 (*Safety*) is the per-port write-decision mechanism behind "What codegen does" step 4
+above.
 
 **A template is not limited to documents.** It emits source as readily as docs — that is
 what the neutral data dict is for.

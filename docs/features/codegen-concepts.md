@@ -94,6 +94,22 @@ generators you author, not as behaviour to expect from `meta gen`.
    no base/subclass pair in any port's generator set, and no generator emits a
    hand-owned half. If you want it, your generator emits the base and you write the
    subclass by hand, once.
+
+   **The one Java output that looks like this pattern isn't it.** `JavaObjectCodeGenerator`
+   (registered as `entity`) does emit `abstract class <Base>` alongside `class <Concrete>
+   extends <Base>` when the metadata declares an abstract entity with concrete subtypes —
+   but both halves are metadata-derived and **both regenerate on every `mvn
+   metaobjects:generate` run**; nobody hand-writes the subclass, so it is not a
+   hand-owned extension and carries no write-once semantics. It is also off the
+   documented mainline: the showcase and `docs/ports/java.md` wire `SpringDtoGenerator`'s
+   `<Entity>Dto` record for the entity shape, not this generator. **Kotlin does not
+   produce the shape at all by default** — `KotlinEntityGenerator` emits one flat data
+   class per concrete entity, and abstract entities are simply skipped. Its opt-in
+   `emitAbstractShapes` argument (default `false`) does not create an inheritance pair
+   even when enabled: it emits a standalone Kotlin `interface` for the abstract parent,
+   with no `implements`/`extends` link back to the concrete data class. Write-once
+   semantics of any kind live one layer up, in generator *scaffolding* (`meta init`,
+   `meta eject`) — never in generated output on any port.
 3. **Partials — a pattern, not a feature.** Where the language supports it (C# `partial`
    classes are the clean case), generate one partial and own another. The C# generators
    emit no `partial` types today, so this is something you would add.
