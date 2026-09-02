@@ -302,8 +302,8 @@ public final class AuthorNames {
     public static final String NAME_FIELD = "name";
     public static final String NAME_COLUMN = "name";
 
-    public static final Map<String, String> COLUMNS_BY_FIELD = Map.of(
-        "name", NAME_COLUMN
+    public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(
+        Map.entry("name", NAME_COLUMN)
     );
 
     private AuthorNames() {}

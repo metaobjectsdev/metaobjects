@@ -223,10 +223,17 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
 
         // The map's values reference the constants rather than repeating the literals --
         // the artifact must not spell a physical name twice inside itself.
-        src.append("\n    public static final Map<String, String> COLUMNS_BY_FIELD = Map.of(\n");
+        //
+        // Map.ofEntries(...), not Map.of(...): Map.of has overloads for 0-10 pairs
+        // only, so an object with 11+ fields (AllTypes in the canonical persistence
+        // corpus has 21) emitted more argument pairs than any Map.of overload
+        // accepts and javac refused the file outright. Map.ofEntries is a single
+        // varargs method with no arity ceiling and still returns the same
+        // immutable Map contract.
+        src.append("\n    public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(\n");
         for (int i = 0; i < rows.size(); i++) {
             String[] row = rows.get(i);
-            src.append("        \"").append(row[1]).append("\", ").append(row[0]).append("_COLUMN");
+            src.append("        Map.entry(\"").append(row[1]).append("\", ").append(row[0]).append("_COLUMN)");
             src.append(i < rows.size() - 1 ? ",\n" : "\n");
         }
         src.append("    );\n");

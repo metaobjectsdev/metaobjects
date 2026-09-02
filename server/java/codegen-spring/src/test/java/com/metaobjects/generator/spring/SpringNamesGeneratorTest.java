@@ -7,6 +7,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,13 +15,22 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.ToolProvider;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -426,5 +436,89 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         }
         throw new IllegalStateException(
             "Could not locate fixtures/persistence-conformance from " + Paths.get("").toAbsolutePath());
+    }
+
+    // -------------------------------------------------------------------------
+    // Program-A task 7 -- java.util.Map.of(...) has overloads for 0-10 pairs only.
+    // COLUMNS_BY_FIELD emitted one pair per field with NO ceiling, so an object with
+    // 11+ fields emitted more than 10 pairs and javac refused the file outright.
+    // Every other assertion in this class (and the sibling
+    // everyEmittedColumnConstantExistsInTheCanonicalSchema test) reads emitted source
+    // as TEXT and would pass on a file that cannot compile. This is the compile
+    // assertion that closes that gap -- mirrors SpringProjectionDtoCompileRunTest's
+    // in-process javac harness.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void anObjectWithMoreThanTenFieldsCompiles() throws Exception {
+        Path corpusRoot = findCorpusRoot();
+        String canonicalMeta = Files.readString(
+            corpusRoot.resolve("canonical/meta.fitness.json"), StandardCharsets.UTF_8);
+
+        Path outDir = tempFolder.newFolder().toPath();
+        Path workspace = tempFolder.newFolder().toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "fitness-compile", canonicalMeta);
+
+        SpringNamesGenerator gen = new SpringNamesGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        args.put("columnNaming", "literal");
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        // AllTypes (fixtures/persistence-conformance's canonical corpus) is the one
+        // object in this fixture carrying more than ten fields -- the natural
+        // fixture named in the task brief, not a fixture invented for this test.
+        Path allTypes = outDir.resolve("fitness/AllTypesNames.java");
+        assertTrue("expected " + allTypes + " to exist", Files.exists(allTypes));
+        String src = Files.readString(allTypes);
+
+        int fieldConstants = 0;
+        Matcher m = Pattern.compile("_FIELD = \"").matcher(src);
+        while (m.find()) fieldConstants++;
+        assertTrue("expected AllTypes to declare more than 10 fields (saw " + fieldConstants
+                + ") -- otherwise this test exercises nothing", fieldConstants > 10);
+
+        // The strongest available proof: compile EVERY emitted .java under outDir
+        // (not just AllTypesNames.java) with the real system compiler.
+        compileAll(outDir);
+    }
+
+    /**
+     * Compile every generated {@code .java} under {@code root} with the in-process
+     * JDK compiler. Fails with the diagnostics + source dump if compilation does
+     * not succeed. Mirrors {@code SpringProjectionDtoCompileRunTest#compile}.
+     */
+    private void compileAll(Path root) throws Exception {
+        List<File> sources;
+        try (Stream<Path> s = Files.walk(root)) {
+            sources = s.filter(p -> p.toString().endsWith(".java"))
+                       .map(Path::toFile)
+                       .collect(Collectors.toList());
+        }
+        assertFalse("expected generated .java files under " + root, sources.isEmpty());
+
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertNotNull("JDK (not JRE) required -- getSystemJavaCompiler() returned null", javac);
+
+        Path classes = tempFolder.newFolder("classes-" + root.getFileName()).toPath();
+        String cp = System.getProperty("java.class.path");
+        DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
+        var fm = javac.getStandardFileManager(diags, null, null);
+        List<String> opts = List.of("-classpath", cp, "-d", classes.toString());
+
+        boolean ok = javac.getTask(null, fm, diags, opts, null,
+                fm.getJavaFileObjectsFromFiles(sources)).call();
+        if (!ok) {
+            StringBuilder sb = new StringBuilder("generated names artifact(s) failed to compile:\n");
+            for (var d : diags.getDiagnostics()) {
+                sb.append("  ").append(d.getKind()).append(": ").append(d.getMessage(null)).append('\n');
+                if (d.getSource() != null) {
+                    sb.append("    at ").append(d.getSource().getName())
+                      .append(':').append(d.getLineNumber()).append('\n');
+                }
+            }
+            fail(sb.toString());
+        }
     }
 }
