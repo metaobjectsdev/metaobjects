@@ -23,7 +23,8 @@ import { renderProjectionDecl } from "./projection-decl.js";
 import { projectionViewName } from "../projection/extract-view-spec.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { renderDocsFor } from "./jsdoc.js";
-import { valueObjectModuleSpecifier } from "../import-path.js";
+import { valueObjectModuleSpecifier, siblingSpecifier } from "../import-path.js";
+import { resolveObjectNames } from "../names.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { renderValueObjectFile } from "./value-object-file.js";
 import { isAbstract } from "../instance-artifacts.js";
@@ -76,6 +77,16 @@ export function renderEntityFile(
   // Projections intentionally get the z.enum() validator but NOT a named enum
   // type alias — emitting aliases here is a deliberate v1 scope decision.
   if (isProjection(entity)) {
+    // §A6 — same resolveObjectNames + imp(...) pair drizzle-schema.ts builds, so the
+    // projection's view name + per-field dbCol reference the exact constant the names
+    // artifact exports (undefined when the artifact is not in this run — see names.ts).
+    const projectionNames = ctx.includeNames ? resolveObjectNames(entity, ctx.columnNamingStrategy) : undefined;
+    // `imp()` returns ts-poet's `Import`, not `Code` — wrap it so it satisfies the
+    // `{ symbol: Code }` shape `ProjectionDeclOpts.names` declares.
+    const projectionNamesSym: Code | undefined =
+      projectionNames === undefined
+        ? undefined
+        : code`${imp(`${entity.name}Names@${siblingSpecifier(ctx.selfTarget, entity.package, `${entity.name}.names`, ctx.extStyle)}`)}`;
     return renderProjectionDecl(entity, ctx.loadedRoot, {
       columnNamingStrategy: ctx.columnNamingStrategy,
       dialect: ctx.dialect,
@@ -85,6 +96,10 @@ export function renderEntityFile(
       ctx,
       // Contract target drops the Drizzle .existing() view decl + drizzle-orm import.
       includeViewDecl: runtime,
+      names:
+        projectionNames !== undefined && projectionNamesSym !== undefined
+          ? { resolved: projectionNames, symbol: projectionNamesSym }
+          : undefined,
     });
   }
 
@@ -161,13 +176,30 @@ ${docsPrefix}export type ${entity.name} = ${z}.infer<typeof ${entity.name}Schema
     );
   }
 
+  // §A6 — same resolveObjectNames + imp(...) pair drizzle-schema.ts (and this file's own
+  // projection branch above) build, so the descriptor's $table references the exact
+  // constant the names artifact exports (undefined when the artifact is not in this run).
+  const constantsNames = ctx.includeNames ? resolveObjectNames(entity, ctx.columnNamingStrategy) : undefined;
+  // `imp()` returns ts-poet's `Import`, not `Code` — wrap it so it satisfies the
+  // `{ symbol: Code }` shape `renderEntityConstants`'s third parameter declares.
+  const constantsNamesSym: Code | undefined =
+    constantsNames === undefined
+      ? undefined
+      : code`${imp(`${entity.name}Names@${siblingSpecifier(ctx.selfTarget, entity.package, `${entity.name}.names`, ctx.extStyle)}`)}`;
+
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
     ...viewSections,
     renderInferredTypes(entity, tphBase, ctx, writeThrough /* skipRow — read type is the view schema */),
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity, ctx),
-    renderEntityConstants(entity, ctx.apiPrefix),
+    renderEntityConstants(
+      entity,
+      ctx.apiPrefix,
+      constantsNames !== undefined && constantsNamesSym !== undefined
+        ? { name: constantsNames.name, symbol: constantsNamesSym }
+        : undefined,
+    ),
     ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity)] : []),
     renderFilterType(entity),
     ...(tphBlock !== null ? [tphBlock] : []),

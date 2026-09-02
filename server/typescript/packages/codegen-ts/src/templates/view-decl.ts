@@ -14,6 +14,7 @@ import {
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { mapColumnType } from "../column-mapper.js";
 import { zodTypeFor } from "./field-meta.js";
+import type { ObjectNames } from "../names.js";
 
 export interface ViewDeclOpts {
   readonly dialect: "postgres" | "sqlite";
@@ -38,6 +39,16 @@ export interface ViewDeclOpts {
    * UpdateSchema, all of which already treat the PK as non-null.
    */
   readonly pkFieldNames: ReadonlySet<string>;
+  /**
+   * §A6 — the resolved names artifact for the object this view declaration belongs to,
+   * plus the ts-poet symbol reference (`imp()`'d import of `<Object>Names`), when the
+   * names generator is in the run. Only a caller whose `ObjectNames.name` genuinely
+   * names THIS view may supply it — true for a projection (its primary source IS the
+   * view), never derivable for a write-through entity's replica view (a SECONDARY
+   * source `resolveObjectNames` does not resolve at all), so that caller omits it and
+   * keeps the literal. Absent ⇒ every emission here stays exactly what it is today.
+   */
+  readonly names?: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined;
 }
 
 /**
@@ -85,7 +96,14 @@ function viewColumnLine(f: MetaField, opts: ViewDeclOpts): Code {
       dollarType = code`.$type<Record<string, ${imp(`${vo.name}@${vo.module}`)}>>()`;
     }
   }
-  return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${dollarType}${viewModifiers}`;
+  // A6 — reference the constant whenever the artifact is in the run AND carries this
+  // field. A lookup MISS is normal, not a divergence — see ViewDeclOpts.names.
+  const namesEntry = opts.names?.resolved.fields[f.name];
+  const dbNameExpr: Code =
+    opts.names !== undefined && namesEntry !== undefined
+      ? code`${opts.names.symbol}.fields.${f.name}.column`
+      : code`${JSON.stringify(spec.dbName)}`;
+  return code`  ${f.name}: ${colSym}(${dbNameExpr}${optsArg})${dollarType}${viewModifiers}`;
 }
 
 /**
@@ -103,11 +121,16 @@ export function renderExistingViewDecl(
   const viewModule = opts.dialect === "postgres" ? "drizzle-orm/pg-core" : "drizzle-orm/sqlite-core";
   const viewSym = imp(`${viewFn}@${viewModule}`);
   const viewColumnLines = fields.map((f) => viewColumnLine(f, opts));
+  // A6 — reference the constant for the view's own physical name too. No lookup-miss
+  // case here (unlike a per-field column): when `opts.names` is present at all, its
+  // `ObjectNames.name` IS this view's physical name (see ViewDeclOpts.names).
+  const viewNameExpr: Code =
+    opts.names !== undefined ? code`${opts.names.symbol}.name` : code`${JSON.stringify(viewName)}`;
   return code`
 // View declaration — Drizzle uses this for typed SELECT queries.
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
 // not to attempt DDL for this declaration.
-export const ${viewVar} = ${viewSym}(${JSON.stringify(viewName)}, {
+export const ${viewVar} = ${viewSym}(${viewNameExpr}, {
 ${joinCode(viewColumnLines, { on: ",\n" })}
 }).existing();
 `;

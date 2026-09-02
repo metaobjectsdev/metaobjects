@@ -22,7 +22,8 @@ import {
   resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
+import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier, siblingSpecifier } from "../import-path.js";
+import { resolveObjectNames } from "../names.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
@@ -280,15 +281,15 @@ function renderM2mMount(
   const mountM2mRouteSym = imp("mountM2mRoute@@metaobjectsdev/runtime-ts/drizzle-fastify");
   const junction = ctx.loadedRoot.findObject(entry.junctionEntity);
   const target = ctx.loadedRoot.findObject(entry.targetEntity);
-  const sourceColumn = junction
+  const sourceColumn: Code = junction
     ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx)
-    : entry.sourceJoinField!;
-  const targetColumn = junction
+    : code`${JSON.stringify(entry.sourceJoinField!)}`;
+  const targetColumn: Code = junction
     ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx)
-    : entry.targetJoinField!;
-  const targetPkColumn = target
+    : code`${JSON.stringify(entry.targetJoinField!)}`;
+  const targetPkColumn: Code = target
     ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx)
-    : "id";
+    : code`${JSON.stringify("id")}`;
 
   return code`  ${mountM2mRouteSym}({
     fastify: ${fastifyVar},
@@ -297,19 +298,34 @@ function renderM2mMount(
     db,
     junctionTable: ${junctionVarSym},
     targetTable: ${targetVarSym},
-    sourceColumn: ${JSON.stringify(sourceColumn)},
-    targetColumn: ${JSON.stringify(targetColumn)},
-    targetPkColumn: ${JSON.stringify(targetPkColumn)},
+    sourceColumn: ${sourceColumn},
+    targetColumn: ${targetColumn},
+    targetPkColumn: ${targetPkColumn},
     symmetric: ${entry.symmetric ? "true" : "false"},
   });`;
 }
 
-/** Resolve a field's physical column name on an entity (defaults if missing). */
-function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: RenderContext): string {
+/**
+ * Resolve a field's physical column name on an entity (defaults if missing), as a
+ * ts-poet Code fragment.
+ *
+ * §A6 — references `<Entity>Names.fields.<field>.column` whenever the names artifact
+ * is in this run AND carries the field (the same two-condition shape as every other
+ * §A6 site: is the artifact in the run, is the field in it). A literal otherwise.
+ */
+function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: RenderContext): Code {
   // ADR-0039: resolving — a junction FK field may be inherited via extends.
   const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
-  if (!field) return fieldName;
-  return resolveColumnName(field, ctx.columnNamingStrategy);
+  if (!field) return code`${JSON.stringify(fieldName)}`;
+  const dbCol = resolveColumnName(field, ctx.columnNamingStrategy);
+  if (!ctx.includeNames) return code`${JSON.stringify(dbCol)}`;
+  const names = resolveObjectNames(entity, ctx.columnNamingStrategy);
+  const entry = names?.fields[field.name];
+  if (entry === undefined) return code`${JSON.stringify(dbCol)}`;
+  const namesSym = imp(
+    `${entity.name}Names@${siblingSpecifier(ctx.selfTarget, entity.package, `${entity.name}.names`, ctx.extStyle)}`,
+  );
+  return code`${namesSym}.fields.${field.name}.column`;
 }
 
 /**

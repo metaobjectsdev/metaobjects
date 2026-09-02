@@ -162,3 +162,92 @@ describe("renderRoutesFile — M:N traversal route", () => {
     expect(out).toContain('targetColumn: "followee_id"');
   });
 });
+
+// ---------------------------------------------------------------------------
+// §A6 Task 1 — the M:N join column names reference the names artifact. Own
+// model (NOT META above): nine tests over META assert exact literal column
+// names, so a names-consumption test needs its own fixture. `articleId` carries
+// a `@column` deliberately NOT the snake_case of its field name, so a
+// re-derivation that ignored it would produce "article_id", not "article_ref"
+// — proving the emitted reference comes from the resolver, not a hand-rolled
+// transform.
+// ---------------------------------------------------------------------------
+
+const NAMES_META = {
+  "metadata.root": {
+    package: "demo2",
+    children: [
+      { "object.entity": { name: "Article", children: [
+        { "source.rdb": { "@table": "articles" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "headline", "@required": true } },
+        { "relationship.association": { name: "labels", "@cardinality": "many", "@objectRef": "Label", "@through": "ArticleLabel" } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+      ] } },
+      { "object.entity": { name: "Label", children: [
+        { "source.rdb": { "@table": "labels" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "name", "@required": true } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+      ] } },
+      { "object.entity": { name: "ArticleLabel", children: [
+        { "source.rdb": { "@table": "article_labels" } },
+        { "field.long": { name: "articleId", "@required": true, "@column": "article_ref" } },
+        { "field.long": { name: "labelId", "@required": true } },
+        { "identity.primary": { "name": "id", "@fields": ["articleId", "labelId"] } },
+        { "identity.reference": { name: "fkArticle", "@fields": "articleId", "@references": "Article" } },
+        { "identity.reference": { name: "fkLabel", "@fields": "labelId", "@references": "Label" } },
+      ] } },
+    ],
+  },
+};
+
+async function loadNamesRoot(): Promise<MetaRoot> {
+  const res = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(NAMES_META))]);
+  expect(res.errors).toEqual([]);
+  return res.root;
+}
+
+function namesCtxFor(root: MetaRoot, includeNames: boolean) {
+  return makeRenderContext({
+    dialect: "postgres",
+    loadedRoot: root,
+    outDir: "/x",
+    dbImport: "./db",
+    apiPrefix: "/api",
+    includeNames,
+    pkMap: buildPkMap(root),
+    relationMap: buildRelationMap(root),
+  });
+}
+
+describe("renderRoutesFile — M:N join columns reference the names artifact (§A6)", () => {
+  test("with the names generator ACTIVE, sourceColumn/targetColumn reference the junction's constants", async () => {
+    const root = await loadNamesRoot();
+    const out = renderRoutesFile(root.findObject("Article")!, namesCtxFor(root, true));
+
+    expect(out).toContain("sourceColumn: ArticleLabelNames.fields.articleId.column");
+    expect(out).toContain("targetColumn: ArticleLabelNames.fields.labelId.column");
+    // The literals must be GONE, not merely accompanied.
+    expect(out).not.toContain('sourceColumn: "article_ref"');
+    expect(out).not.toContain('targetColumn: "label_id"');
+  });
+
+  test("with the names generator ACTIVE, targetPkColumn references the target entity's own constant", async () => {
+    const root = await loadNamesRoot();
+    const out = renderRoutesFile(root.findObject("Article")!, namesCtxFor(root, true));
+
+    expect(out).toContain("targetPkColumn: LabelNames.fields.id.column");
+    expect(out).not.toContain('targetPkColumn: "id"');
+  });
+
+  test("with the names generator NOT in the run, the join columns keep their literals", async () => {
+    const root = await loadNamesRoot();
+    const out = renderRoutesFile(root.findObject("Article")!, namesCtxFor(root, false));
+
+    expect(out).toContain('sourceColumn: "article_ref"');
+    expect(out).toContain('targetColumn: "label_id"');
+    expect(out).toContain('targetPkColumn: "id"');
+    expect(out).not.toContain("Names.fields");
+  });
+});

@@ -70,7 +70,7 @@ export type OrderPatch = z.input<typeof OrderUpdateSchema>;
  */
 export const Order = {
   $entity: "Order",
-  $table: "orders",
+  $table: OrderNames.name,
   $path: "/orders",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

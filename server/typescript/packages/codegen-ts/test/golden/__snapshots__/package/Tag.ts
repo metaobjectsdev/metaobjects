@@ -61,7 +61,7 @@ export type TagPatch = z.input<typeof TagUpdateSchema>;
  */
 export const Tag = {
   $entity: "Tag",
-  $table: "tags",
+  $table: TagNames.name,
   $path: "/tags",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

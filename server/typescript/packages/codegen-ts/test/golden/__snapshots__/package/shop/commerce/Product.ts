@@ -60,7 +60,7 @@ export type ProductPatch = z.input<typeof ProductUpdateSchema>;
  */
 export const Product = {
   $entity: "Product",
-  $table: "products",
+  $table: ProductNames.name,
   $path: "/products",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

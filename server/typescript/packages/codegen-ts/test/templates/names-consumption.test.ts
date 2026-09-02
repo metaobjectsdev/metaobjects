@@ -80,6 +80,26 @@ describe("§A6 — the entity file consumes the names artifact", () => {
     expect(out).not.toContain(".names");
   });
 
+  // §A6 Task 1 — the SECOND embedding this task closes: `entity-constants.ts`'s
+  // `$table` field on the `export const Subscriber = {...}` descriptor. The tests
+  // above (Task 0) only cover the Drizzle table/column bindings in drizzle-schema.ts;
+  // this is a completely independent spelling of the SAME physical name, in a
+  // different generated section of the same file.
+  test("with the names generator ACTIVE, the descriptor's $table references the constant", async () => {
+    const out = await renderEntityWithGenerators(true);
+
+    expect(out).toContain("$table: SubscriberNames.name");
+    // The literal must be GONE, not merely accompanied — see the Task 0 comment above.
+    expect(out).not.toContain('$table: "subscribers"');
+  });
+
+  test("with the names generator ABSENT, the descriptor's $table keeps its literal", async () => {
+    const out = await renderEntityWithGenerators(false);
+
+    expect(out).toContain('$table: "subscribers"');
+    expect(out).not.toContain("SubscriberNames");
+  });
+
   test("the import specifier follows extStyle, like every other cross-module reference", async () => {
     const out = await renderEntityWithGenerators(true, "none");
     expect(out).toContain(`import { SubscriberNames } from "./Subscriber.names";`);

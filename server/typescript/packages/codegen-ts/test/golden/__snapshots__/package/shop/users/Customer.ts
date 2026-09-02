@@ -42,7 +42,7 @@ export type CustomerPatch = z.input<typeof CustomerUpdateSchema>;
  */
 export const Customer = {
   $entity: "Customer",
-  $table: "customers",
+  $table: CustomerNames.name,
   $path: "/customers",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

@@ -18,6 +18,7 @@ import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
+import type { ObjectNames } from "../names.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
@@ -54,6 +55,17 @@ export interface ProjectionDeclOpts {
    * e.g. a shared types package consumed by a web client that has no Drizzle.
    */
   readonly includeViewDecl?: boolean;
+  /**
+   * §A6 — the resolved names artifact for this projection plus the ts-poet symbol
+   * reference (`imp()`'d import of `<Projection>Names`), when the names generator is
+   * in the run. Built by the caller via `resolveObjectNames` + `imp(...)` — the same
+   * pair `drizzle-schema.ts` builds — so this file never resolves names itself; it
+   * only decides, per field, whether to reference the constant or fall back to the
+   * literal (a lookup MISS, never a divergence — `resolveObjectNames` already refused
+   * any object whose two resolvers disagree). Threaded into `renderExistingViewDecl`
+   * too, since a projection's primary source IS the view its `ObjectNames.name` names.
+   */
+  readonly names?: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +105,7 @@ export function renderProjectionDecl(
   root: MetaRoot,
   opts: ProjectionDeclOpts,
 ): string {
-  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true, ctx, includeViewDecl = true } = opts;
+  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true, ctx, includeViewDecl = true, names } = opts;
 
   // ADR-0044/#228 — resolve a projection field's `@objectRef` to the value object's
   // EMITTED name + module TOGETHER (lock-step): bare when unique in the run,
@@ -138,22 +150,30 @@ export function renderProjectionDecl(
   // inherited fields are not duplicated.
   for (const f of projection.ownFields()) allFields.push(f);
 
-  const constFieldLines: string[] = allFields.map((f) => {
+  const constFieldLines: Code[] = allFields.map((f) => {
     // §A4: resolveColumnName, NOT columnNameFromField — the latter takes a string and so
     // cannot read @column, silently substituting the naming strategy's answer for a
     // declared or inherited physical name. ADR-0039: resolving accessor, so a projection
     // field inheriting @column through `extends` resolves it.
     const dbCol = resolveColumnName(f, columnNamingStrategy);
+    // A6 — reference the constant whenever the artifact is in the run AND carries this
+    // field. A lookup MISS (a TPH subtype field the base's names artifact never saw) is
+    // normal, not a divergence — fall back to the literal, same as every other §A6 site.
+    const namesEntry = names?.resolved.fields[f.name];
+    const dbColExpr: Code =
+      names !== undefined && namesEntry !== undefined
+        ? code`${names.symbol}.fields.${f.name}.column`
+        : code`${JSON.stringify(dbCol)}`;
     // #356 — a projection's descriptor is the same shape the entity descriptor
     // emits (entity-constants.ts resolveView), so it reads the same surface.
     const view = inferViewKind(f, VIEW_CONTEXT_FORM);
     const label = labelFor(f, VIEW_CONTEXT_FORM);
-    const baseEntry = `name: ${JSON.stringify(f.name)}, label: ${JSON.stringify(label)}, view: ${JSON.stringify(view)}, dbCol: ${JSON.stringify(dbCol)}`;
+    const baseEntry = code`name: ${JSON.stringify(f.name)}, label: ${JSON.stringify(label)}, view: ${JSON.stringify(view)}, dbCol: ${dbColExpr}`;
     const currencyMeta = currencyMetaFor(f, VIEW_CONTEXT_FORM);
     if (currencyMeta !== null) {
-      return `  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(currencyMeta.currency)}, locale: ${JSON.stringify(currencyMeta.locale)} },`;
+      return code`  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(currencyMeta.currency)}, locale: ${JSON.stringify(currencyMeta.locale)} },`;
     }
-    return `  ${f.name}: { ${baseEntry} },`;
+    return code`  ${f.name}: { ${baseEntry} },`;
   });
 
   const projName = projection.name;
@@ -166,7 +186,7 @@ export function renderProjectionDecl(
   const sections: Code[] = [
     ...(includeViewDecl
       ? [renderExistingViewDecl(allFields, viewName, `${camelName}View`, {
-          dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames,
+          dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames, names,
         })]
       : []),
     code`
@@ -183,7 +203,7 @@ export const ${projName} = {
   $view:      ${JSON.stringify(viewName)},
   $path:      ${JSON.stringify(path)},
   $apiPrefix: ${JSON.stringify(apiPrefix)},
-${constFieldLines.join("\n")}
+${joinCode(constFieldLines, { on: "\n" })}
 } as const;
 `,
     ...(allowlists

@@ -299,3 +299,87 @@ describe("renderEntityFile — source-aware dispatch", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// §A6 Task 1 — a projection's dbCol + view name/columns reference the names
+// artifact. Own fixture (NOT loadProjectionFixture above): the discriminating
+// assertion needs a field whose @column is deliberately NOT the snake_case of
+// its field name (`callPurpose` -> `purpose_code`), so a re-derivation that
+// ignored @column would produce `call_purpose` and this test would catch it.
+// ---------------------------------------------------------------------------
+
+async function loadProjectionNamesFixture(includeNames: boolean) {
+  const root = await loadMetadata([
+    {
+      "object.entity": {
+        name: "Program",
+        children: [
+          { "source.rdb": { "@table": "programs" } },
+          { "field.int": { name: "id" } },
+          // Deliberately NOT the snake_case of the field name.
+          { "field.string": { name: "callPurpose", "@column": "purpose_code" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
+        ],
+      },
+    },
+    {
+      "object.projection": {
+        name: "ProgramSummary",
+        children: [
+          { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+          { "field.int": { name: "id", extends: "Program.id" } },
+          { "field.string": { name: "callPurpose", extends: "Program.callPurpose" } },
+          { "identity.primary": { "name": "id", extends: "Program.id" } },
+        ],
+      },
+    },
+  ]);
+
+  const projection = root.objects().find((o) => o.name === "ProgramSummary");
+  if (!projection) throw new Error("ProgramSummary not found");
+
+  const ctx = makeRenderContext({
+    dialect: "sqlite",
+    loadedRoot: root,
+    outDir: "/x",
+    dbImport: "~/db",
+    includeNames,
+    pkMap: buildPkMap(root),
+    relationMap: buildRelationMap(root),
+  });
+
+  return { root, projection, ctx };
+}
+
+describe("renderEntityFile — a projection's dbCol + view name/columns reference the names artifact (§A6)", () => {
+  test("with the names generator ACTIVE, dbCol references the constant, honoring an inherited @column", async () => {
+    const { projection, ctx } = await loadProjectionNamesFixture(true);
+    const out = renderEntityFile(projection, ctx);
+
+    expect(out).toContain("dbCol: ProgramSummaryNames.fields.callPurpose.column");
+    // The literal must be GONE, not merely accompanied.
+    expect(out).not.toContain('dbCol: "purpose_code"');
+    // And the re-derivation trap: a naive snake_case-of-the-field-name transform
+    // would have produced this instead of honoring the inherited @column.
+    expect(out).not.toContain('dbCol: "call_purpose"');
+  });
+
+  test("with the names generator ACTIVE, the Drizzle view declaration references the view name + column constants", async () => {
+    const { projection, ctx } = await loadProjectionNamesFixture(true);
+    const out = renderEntityFile(projection, ctx);
+
+    expect(out).toContain("sqliteView(ProgramSummaryNames.name");
+    expect(out).toContain("ProgramSummaryNames.fields.callPurpose.column");
+    expect(out).not.toContain('sqliteView("v_program_summary"');
+    expect(out).not.toContain('"purpose_code"');
+  });
+
+  test("with the names generator NOT in the run, the projection keeps every literal", async () => {
+    const { projection, ctx } = await loadProjectionNamesFixture(false);
+    const out = renderEntityFile(projection, ctx);
+
+    expect(out).toContain('dbCol: "purpose_code"');
+    expect(out).toContain('sqliteView("v_program_summary"');
+    expect(out).not.toContain("ProgramSummaryNames");
+  });
+});

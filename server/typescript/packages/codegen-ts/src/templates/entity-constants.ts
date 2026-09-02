@@ -28,7 +28,7 @@
 // per-attribute access (placeholder, rules, etc.) by hand — the helper
 // picks them up from this object automatically.
 
-import { code, type Code } from "ts-poet";
+import { code, joinCode, type Code } from "ts-poet";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
@@ -220,7 +220,14 @@ function renderFieldEntry(field: MetaField): string {
   return `  ${field.name}: {\n    ${entries.join(",\n    ")},\n  }`;
 }
 
-export function renderEntityConstants(obj: MetaObject, apiPrefix = ""): Code {
+export function renderEntityConstants(
+  obj: MetaObject,
+  apiPrefix = "",
+  // §A6. OPTIONAL, and it must stay optional: `src/reference/entity.ts` is copied
+  // verbatim into adopter repos by ADR-0034 scaffold-and-own and calls this with two
+  // arguments. A required parameter would fail to compile in every ejected copy.
+  names?: { readonly name: string; readonly symbol: Code } | undefined,
+): Code {
   const entityName = obj.name;
   const tableName = resolveTableName(obj);
   const path = resourcePath(obj);
@@ -231,13 +238,24 @@ export function renderEntityConstants(obj: MetaObject, apiPrefix = ""): Code {
     fieldEntries.push(renderFieldEntry(child));
   }
 
-  const body = [
-    `  $entity: ${JSON.stringify(entityName)}`,
-    `  $table: ${JSON.stringify(tableName)}`,
-    `  $path: ${JSON.stringify(path)}`,
-    `  $apiPrefix: ${JSON.stringify(apiPrefix)}`,
-    ...fieldEntries,
-  ].join(",\n");
+  // A6 — reference the constant whenever the artifact is in the run. No equality guard:
+  // resolveObjectNames refuses any object whose two resolvers disagree (Task 0), so a
+  // reference here is the single spelling, never a lookalike.
+  const tableLine: Code =
+    names !== undefined
+      ? code`  $table: ${names.symbol}.name`
+      : code`  $table: ${JSON.stringify(tableName)}`;
+
+  const body = joinCode(
+    [
+      code`  $entity: ${JSON.stringify(entityName)}`,
+      tableLine,
+      code`  $path: ${JSON.stringify(path)}`,
+      code`  $apiPrefix: ${JSON.stringify(apiPrefix)}`,
+      ...fieldEntries.map((e) => code`${e}`),
+    ],
+    { on: ",\n" },
+  );
 
   return code`
 /**
