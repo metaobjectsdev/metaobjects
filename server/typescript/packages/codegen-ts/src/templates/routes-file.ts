@@ -22,8 +22,8 @@ import {
   resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier, siblingSpecifier } from "../import-path.js";
-import { resolveObjectNames } from "../names.js";
+import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
+import { namesRef, columnExpr } from "../names.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
@@ -309,23 +309,18 @@ function renderM2mMount(
  * Resolve a field's physical column name on an entity (defaults if missing), as a
  * ts-poet Code fragment.
  *
- * §A6 — references `<Entity>Names.fields.<field>.column` whenever the names artifact
- * is in this run AND carries the field (the same two-condition shape as every other
- * §A6 site: is the artifact in the run, is the field in it). A literal otherwise.
+ * §A6/§B2 — references `<Entity>Names.fields.<field>.column` whenever the names
+ * artifact is in this run AND carries the field (the same two-condition shape as every
+ * other §A6 site: is the artifact in the run, is the field in it — both PRESENCE
+ * guards). A literal otherwise.
  */
 function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: RenderContext): Code {
   // ADR-0039: resolving — a junction FK field may be inherited via extends.
   const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) return code`${JSON.stringify(fieldName)}`;
   const dbCol = resolveColumnName(field, ctx.columnNamingStrategy);
-  if (!ctx.includeNames) return code`${JSON.stringify(dbCol)}`;
-  const names = resolveObjectNames(entity, ctx.columnNamingStrategy);
-  const entry = names?.fields[field.name];
-  if (entry === undefined) return code`${JSON.stringify(dbCol)}`;
-  const namesSym = imp(
-    `${entity.name}Names@${siblingSpecifier(ctx.selfTarget, entity.package, `${entity.name}.names`, ctx.extStyle)}`,
-  );
-  return code`${namesSym}.fields.${field.name}.column`;
+  const names = namesRef(entity, ctx);
+  return columnExpr(names, field.name, dbCol);
 }
 
 /**

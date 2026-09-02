@@ -16,7 +16,10 @@ import {
   type MetaSource,
   SOURCE_ROLE_PRIMARY,
 } from "@metaobjectsdev/metadata";
+import { code, imp, type Code } from "ts-poet";
 import { CodegenError } from "./errors.js";
+import { crossEntitySpecifier } from "./import-path.js";
+import type { RenderContext } from "./render-context.js";
 
 export interface FieldNames { readonly name: string; readonly column: string; }
 
@@ -90,4 +93,89 @@ export function resolveObjectNames(
     readOnly: source.isReadOnly(),
     fields,
   };
+}
+
+/**
+ * §B2 — the shared builder every `<Object>Names` reference call site used to hand-roll:
+ * check whether the artifact exists in this run (`ctx.includeNames`), resolve the
+ * constant (`resolveObjectNames`), and build the ts-poet import symbol pointing at
+ * `<Object>.names.ts`. Returns undefined whenever the artifact does not exist for this
+ * object in this run — a PRESENCE guard ("is the artifact in this run at all"), never the
+ * divergence guard `resolveObjectNames` already owns above: this function never compares
+ * a resolved value to a literal, it only asks whether the constant exists.
+ *
+ * `fromPackage` is the package of the FILE BEING EMITTED — the file that will hold the
+ * `import { <Object>Names } from …` line — and defaults to `obj.package`, correct for
+ * every site that emits `obj`'s OWN module (the entity generator referencing its own
+ * names artifact, same object on both ends). A caller emitting a DIFFERENT object's file
+ * and reaching across packages for `obj`'s names artifact — an M:N routes file, which
+ * lives in the SOURCE entity's package, importing the junction/target's `<X>Names` — MUST
+ * pass the emitting file's own package explicitly. Making this an explicit parameter
+ * (rather than assuming same-package the way a plain sibling specifier does) is what
+ * surfaces that choice: see routes-file.ts's `resolveJunctionColumn`, the one site that
+ * got it wrong by assuming same-package.
+ */
+export function namesRef(
+  obj: MetaObject,
+  ctx: RenderContext,
+  fromPackage: string | undefined = obj.package,
+): { readonly resolved: ObjectNames; readonly symbol: Code } | undefined {
+  if (!ctx.includeNames) return undefined;
+  const resolved = resolveObjectNames(obj, ctx.columnNamingStrategy);
+  if (resolved === undefined) return undefined;
+  const symbol = code`${imp(
+    `${obj.name}Names@${crossEntitySpecifier(
+      ctx.selfTarget.outputLayout,
+      fromPackage,
+      obj.package,
+      `${obj.name}.names`,
+      ctx.extStyle,
+    )}`,
+  )}`;
+  return { resolved, symbol };
+}
+
+/**
+ * Adapts a `namesRef()` result to the `{ name, symbol }` shape `renderEntityConstants` /
+ * `renderEntityMetaFile` accept. Kept as a separate, narrower shape from `namesRef`'s own
+ * `{ resolved, symbol }` rather than folded together: those two functions' parameter
+ * predates this helper, and an adopter who already ejected the ADR-0034 reference
+ * template calls them with exactly this `{ name, symbol }` shape — widening the required
+ * shape to `resolved` would fail to compile in every such copy.
+ */
+export function namesConstArg(
+  names: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined,
+): { readonly name: string; readonly symbol: Code } | undefined {
+  return names === undefined ? undefined : { name: names.resolved.name, symbol: names.symbol };
+}
+
+/**
+ * The physical-name expression every §A6 `$table` / view-name site builds: the constant's
+ * `.name` when the artifact is present, the literal otherwise. No equality guard —
+ * `resolveObjectNames` already refuses (throws) any object whose two resolvers disagree,
+ * so a reference here is the single spelling, never a lookalike computed twice.
+ */
+export function physicalNameExpr(
+  names: { readonly symbol: Code } | undefined,
+  literal: string,
+): Code {
+  return names !== undefined ? code`${names.symbol}.name` : code`${JSON.stringify(literal)}`;
+}
+
+/**
+ * A field's physical-column expression. A lookup MISS — the artifact is present but does
+ * not carry this field (e.g. a TPH fold emitting columns for a subtype's own fields,
+ * which the base's names artifact never saw) — is a PRESENCE guard, not the forbidden
+ * divergence guard: it falls back to the literal, exactly as when the artifact isn't in
+ * the run at all.
+ */
+export function columnExpr(
+  names: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined,
+  fieldName: string,
+  literal: string,
+): Code {
+  const entry = names?.resolved.fields[fieldName];
+  return names !== undefined && entry !== undefined
+    ? code`${names.symbol}.fields.${fieldName}.column`
+    : code`${JSON.stringify(literal)}`;
 }

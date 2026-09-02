@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype,
-  withClientDirective, resolveObjectNames, siblingSpecifier, code, imp, type Code,
+  withClientDirective, namesRef, namesConstArg,
 } from "@metaobjectsdev/codegen-ts";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
 import { renderGridHookFile } from "./templates/grid-hook-file.js";
@@ -75,25 +75,19 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     // from the package. Emissions are byte-identical between generators, which the
     // runner collapses (#266).
     //
-    // §A6 fix round 3 — same resolveObjectNames + imp(...) pair every other §A6
-    // site builds, scoped to THIS generator's own render context (see
-    // tanstack-query.ts's matching comment for why `.meta.ts` needs its own
-    // target-scoped check rather than reusing the entity module's).
+    // §A6/§B2 — same `namesRef` pair every other §A6 site builds, scoped to THIS
+    // generator's own render context (see tanstack-query.ts's matching comment for why
+    // `.meta.ts` needs its own target-scoped check rather than reusing the entity
+    // module's).
     const rc = ctx.renderContext;
-    const metaNames = rc.includeNames ? resolveObjectNames(entity, rc.columnNamingStrategy) : undefined;
-    const metaNamesSym: Code | undefined =
-      metaNames === undefined
-        ? undefined
-        : code`${imp(`${entity.name}Names@${siblingSpecifier(rc.selfTarget, entity.package, `${entity.name}.names`, rc.extStyle)}`)}`;
+    const metaNames = namesRef(entity, rc);
     return [{
       path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
         entityMetaFileName(entity.name)),
       content: await formatTs(renderEntityMetaFile(
         entity,
         ctx.renderContext.apiPrefix,
-        metaNames !== undefined && metaNamesSym !== undefined
-          ? { name: metaNames.name, symbol: metaNamesSym }
-          : undefined,
+        namesConstArg(metaNames),
       )),
     }, {
       path: entityOutputPath(

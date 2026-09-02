@@ -32,7 +32,7 @@
 // primitives below, or (with a globally-installed / linked CLI, where the project and
 // the CLI resolve ts-poet to different physical copies) every section renders
 // standalone with its own duplicate import header.
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { joinCode, type Code } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
@@ -66,8 +66,8 @@ import {
   // engine plumbing:
   formatTs,
   entityOutputPath,
-  siblingSpecifier,
-  resolveObjectNames,
+  namesRef,
+  namesConstArg,
   GENERATED_HEADER,
 } from "@metaobjectsdev/codegen-ts";
 
@@ -86,16 +86,10 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
   }
   // Projection → read-only view declaration + read schema.
   if (isProjection(entity)) {
-    // §A6 — same resolveObjectNames + imp(...) pair renderDrizzleSchema builds, so the
-    // projection's view name + per-field dbCol reference the exact constant the names
-    // artifact exports (undefined when the artifact is not in this run).
-    const projectionNames = ctx.includeNames ? resolveObjectNames(entity, ctx.columnNamingStrategy) : undefined;
-    // `imp()` returns ts-poet's `Import`, not `Code` — wrap it so it satisfies the
-    // `{ symbol: Code }` shape `ProjectionDeclOpts.names` declares.
-    const projectionNamesSym: Code | undefined =
-      projectionNames === undefined
-        ? undefined
-        : code`${imp(`${entity.name}Names@${siblingSpecifier(ctx.selfTarget, entity.package, `${entity.name}.names`, ctx.extStyle)}`)}`;
+    // §A6/§B2 — same `namesRef` pair renderDrizzleSchema builds, so the projection's view
+    // name + per-field dbCol reference the exact constant the names artifact exports
+    // (undefined when the artifact is not in this run). `namesRef`'s `{ resolved, symbol }`
+    // return is exactly the shape `ProjectionDeclOpts.names` wants.
     return renderProjectionDecl(entity, ctx.loadedRoot, {
       columnNamingStrategy: ctx.columnNamingStrategy,
       dialect: ctx.dialect,
@@ -104,10 +98,7 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
       allowlists,
       ctx,
       includeViewDecl: runtime,
-      names:
-        projectionNames !== undefined && projectionNamesSym !== undefined
-          ? { resolved: projectionNames, symbol: projectionNamesSym }
-          : undefined,
+      names: namesRef(entity, ctx),
     });
   }
   // Value-only / contract target → interface + Zod, no Drizzle table.
@@ -126,28 +117,16 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
   const enumAliases = renderEnumTypeAliases(entity, ctx);
   const tphBlock = renderTphDiscriminatorUnion(entity, ctx.loadedRoot);
   const tphBase = tphBlock !== null && isTphDiscriminatorBase(entity, ctx.loadedRoot);
-  // §A6 — same resolveObjectNames + imp(...) pair renderDrizzleSchema (and the
-  // projection branch above) build, so the descriptor's $table references the exact
-  // constant the names artifact exports (undefined when the artifact is not in this run).
-  const constantsNames = ctx.includeNames ? resolveObjectNames(entity, ctx.columnNamingStrategy) : undefined;
-  // `imp()` returns ts-poet's `Import`, not `Code` — wrap it so it satisfies the
-  // `{ symbol: Code }` shape `renderEntityConstants`'s third parameter declares.
-  const constantsNamesSym: Code | undefined =
-    constantsNames === undefined
-      ? undefined
-      : code`${imp(`${entity.name}Names@${siblingSpecifier(ctx.selfTarget, entity.package, `${entity.name}.names`, ctx.extStyle)}`)}`;
+  // §A6/§B2 — same `namesRef` pair renderDrizzleSchema (and the projection branch above)
+  // build, so the descriptor's $table references the exact constant the names artifact
+  // exports (undefined when the artifact is not in this run).
+  const constantsNames = namesRef(entity, ctx);
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
     renderInferredTypes(entity, tphBase, ctx),
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity, ctx),
-    renderEntityConstants(
-      entity,
-      ctx.apiPrefix,
-      constantsNames !== undefined && constantsNamesSym !== undefined
-        ? { name: constantsNames.name, symbol: constantsNamesSym }
-        : undefined,
-    ),
+    renderEntityConstants(entity, ctx.apiPrefix, namesConstArg(constantsNames)),
     ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity)] : []),
     renderFilterType(entity),
     ...(tphBlock !== null ? [tphBlock] : []),

@@ -12,10 +12,10 @@ import {
   FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier, siblingSpecifier, valueObjectModuleSpecifier } from "../import-path.js";
+import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
 import { mapColumnType, type ColumnSpec, type EnumIntCustomType } from "../column-mapper.js";
 import { tableNameFromEntity, columnNameFromField } from "../naming.js";
-import { resolveObjectNames } from "../names.js";
+import { namesRef, physicalNameExpr, columnExpr } from "../names.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
@@ -37,46 +37,19 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const tableName = obj.dbTable ?? tableNameFromEntity(obj.name, ctx.columnNamingStrategy);
   const varName = ctx.collectionName(obj.name);
 
-  // §A6 — reference `<Entity>Names` instead of embedding the physical names a SECOND time.
-  // Both spellings come from `resolveObjectNames`, so the constant and this binding cannot
-  // be produced by different resolvers (§A3) — the constant is the same run's answer,
-  // not a lookalike computed twice.
-  //
-  // Conditional on the names generator being active in this run: it is opt-in under
-  // ADR-0034 scaffold-and-own (`meta gen` runs the adopter's own generator copies), so an
-  // unconditional import would break every project that has not enabled it. `includeNames`
-  // is the runner's aggregation of the suite's `emitsNames` markers, and defaults to false
-  // — which is what keeps output byte-identical for such a project.
-  const names = ctx.includeNames ? resolveObjectNames(obj, ctx.columnNamingStrategy) : undefined;
-  // Same target, same package as the entity module — namesFile() places its output through
-  // the same `entityOutputPath` this file's own generator does — so a sibling specifier is
-  // the whole computation. Derived, never concatenated: it has to honour extStyle (".js" by
-  // default, required by nodenext) AND outputLayout.
-  const namesSym = names === undefined
-    ? undefined
-    : imp(`${obj.name}Names@${siblingSpecifier(ctx.selfTarget, obj.package, `${obj.name}.names`, ctx.extStyle)}`);
-
-  // No per-site equality check: whenever the constant exists, it IS the name. `extends`
-  // can leave TWO differently-named role==="primary" sources on one object's effective
-  // children() (own-only primary-count validation, name-keyed child shadowing — see
-  // metadata/src/persistence/source/validate-source-roles.ts and
-  // metadata/src/shared/meta-data.ts), which is exactly when this file's OWN `tableName`
-  // local could disagree with the constant. `resolveObjectNames` refuses that once, in
-  // names.ts's `dbTable`-vs-`name` check, so this file never has to.
-  const tableNameExpr: Code =
-    namesSym !== undefined
-      ? code`${namesSym}.name`
-      : code`${JSON.stringify(tableName)}`;
-
+  // §A6/§B2 — reference `<Entity>Names` instead of embedding the physical names a SECOND
+  // time. `namesRef` is undefined whenever the names generator is not active in this run
+  // (opt-in under ADR-0034 scaffold-and-own — an unconditional import would break every
+  // project that has not enabled it) or the object has no primary source — both PRESENCE
+  // guards. No per-site equality check: whenever the constant exists, it IS the name;
+  // `resolveObjectNames` already refuses (throws) any object whose two resolvers disagree,
+  // so this file never has to re-check.
+  const names = namesRef(obj, ctx);
+  const tableNameExpr: Code = physicalNameExpr(names, tableName);
   // A column's constant, on the same terms. A lookup MISS is normal, not a defect: the TPH
   // fold below emits columns for fields that belong to SUBTYPE entities, and the base's
   // names artifact carries only the base's own fields.
-  const columnNameExpr = (field: MetaField, dbName: string): Code => {
-    const entry = names?.fields[field.name];
-    return namesSym !== undefined && entry !== undefined
-      ? code`${namesSym}.fields.${field.name}.column`
-      : code`${JSON.stringify(dbName)}`;
-  };
+  const columnNameExpr = (field: MetaField, dbName: string): Code => columnExpr(names, field.name, dbName);
 
   const primary = obj.primaryIdentity();
   const rawPkFields = primary?.attr(IDENTITY_ATTR_FIELDS);

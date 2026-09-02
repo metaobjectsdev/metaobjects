@@ -180,7 +180,15 @@ export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
 export { renderValueObjectFile } from "./templates/value-object-file.js";
 export { renderNamesDecl } from "./templates/names-decl.js";
-export { resolveObjectNames, type ObjectNames, type FieldNames } from "./names.js";
+export {
+  resolveObjectNames,
+  namesRef,
+  namesConstArg,
+  physicalNameExpr,
+  columnExpr,
+  type ObjectNames,
+  type FieldNames,
+} from "./names.js";
 export { renderProjectionDecl } from "./templates/projection-decl.js";
 export type { ProjectionDeclOpts } from "./templates/projection-decl.js";
 export { extractViewSpec } from "./projection/extract-view-spec.js";

@@ -51,6 +51,7 @@ import {
   FIELD_ATTR_REQUIRED,
 } from "@metaobjectsdev/metadata";
 import { resolveTableName, pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
+import { physicalNameExpr } from "../names.js";
 import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
 import { viewForContext, VIEW_CONTEXT_FORM } from "../view-context.js";
 
@@ -238,13 +239,12 @@ export function renderEntityConstants(
     fieldEntries.push(renderFieldEntry(child));
   }
 
-  // A6 — reference the constant whenever the artifact is in the run. No equality guard:
-  // resolveObjectNames refuses any object whose two resolvers disagree (Task 0), so a
-  // reference here is the single spelling, never a lookalike.
-  const tableLine: Code =
-    names !== undefined
-      ? code`  $table: ${names.symbol}.name`
-      : code`  $table: ${JSON.stringify(tableName)}`;
+  // A6/B2 — reference the constant whenever the artifact is in the run. No equality
+  // guard: resolveObjectNames refuses any object whose two resolvers disagree, so a
+  // reference here is the single spelling, never a lookalike. `physicalNameExpr` accepts
+  // any `{ symbol }`-shaped value, so it works with this function's `{ name, symbol }`
+  // parameter as well as `namesRef`'s own `{ resolved, symbol }`.
+  const tableLine: Code = code`  $table: ${physicalNameExpr(names, tableName)}`;
 
   const body = joinCode(
     [
