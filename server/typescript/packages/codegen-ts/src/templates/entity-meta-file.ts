@@ -20,7 +20,7 @@
 // consumer having wired an extra generator, since the entity generator is
 // scaffold-and-own (ADR-0034) and cannot be changed from the package.
 
-import { code } from "ts-poet";
+import { code, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
 import { renderEntityConstants } from "./entity-constants.js";
@@ -35,7 +35,16 @@ export function entityMetaSpecifier(entityName: string, extStyle: string | undef
   return `./${entityName}.meta${extStyle === "js" ? ".js" : ""}`;
 }
 
-export function renderEntityMetaFile(entity: MetaObject, apiPrefix = ""): string {
+export function renderEntityMetaFile(
+  entity: MetaObject,
+  apiPrefix = "",
+  // §A6 fix round 3. OPTIONAL, and it must stay optional: this function is called
+  // from codegen-ts-tanstack's reference/hooks.ts and reference/grid-hook.ts, both
+  // copied verbatim into adopter repos (ADR-0034). A required parameter would fail
+  // to compile in every ejected copy. Forwarded straight through to
+  // renderEntityConstants — same shape, same "no equality guard" rule.
+  names?: { readonly name: string; readonly symbol: Code } | undefined,
+): string {
   const body = code`
 // ${GENERATED_HEADER} — DO NOT EDIT.
 // Source metadata: ${entity.name}
@@ -45,7 +54,7 @@ export function renderEntityMetaFile(entity: MetaObject, apiPrefix = ""): string
 // from here so a client bundle never pulls the ORM in. \`${entity.name}.ts\` also
 // exports this descriptor, for server-side and pre-existing consumers.
 
-${renderEntityConstants(entity, apiPrefix)}
+${renderEntityConstants(entity, apiPrefix, names)}
 `;
   return body.toString();
 }

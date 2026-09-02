@@ -33,6 +33,11 @@ import {
   isTphSubtype,
  
   withClientDirective,
+  resolveObjectNames,
+  siblingSpecifier,
+  code,
+  imp,
+  type Code,
 } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -73,10 +78,30 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       // generator: the entity generator is scaffold-and-own (ADR-0034), so it cannot
       // be changed from the package. Emissions are byte-identical between generators,
       // which the runner collapses (#266).
+      //
+      // §A6 fix round 3 — same resolveObjectNames + imp(...) pair every other §A6
+      // site builds, scoped to THIS generator's own render context: `.meta.ts` is a
+      // UI-generator artifact that can sit on a DIFFERENT target from `namesFile()`
+      // (unlike the entity module, which shares a target with names by construction
+      // — see names-file.ts). `ctx.renderContext.includeNames` is already computed
+      // per-target by the runner, so it is false here whenever the names artifact
+      // does not land in THIS generator's own target — no separate check needed.
+      const rc = ctx.renderContext;
+      const metaNames = rc.includeNames ? resolveObjectNames(entity, rc.columnNamingStrategy) : undefined;
+      const metaNamesSym: Code | undefined =
+        metaNames === undefined
+          ? undefined
+          : code`${imp(`${entity.name}Names@${siblingSpecifier(rc.selfTarget, entity.package, `${entity.name}.names`, rc.extStyle)}`)}`;
       const metaFile = {
         path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
           entityMetaFileName(entity.name)),
-        content: await formatTs(renderEntityMetaFile(entity, ctx.renderContext.apiPrefix)),
+        content: await formatTs(renderEntityMetaFile(
+          entity,
+          ctx.renderContext.apiPrefix,
+          metaNames !== undefined && metaNamesSym !== undefined
+            ? { name: metaNames.name, symbol: metaNamesSym }
+            : undefined,
+        )),
       };
       return [metaFile, {
         path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),

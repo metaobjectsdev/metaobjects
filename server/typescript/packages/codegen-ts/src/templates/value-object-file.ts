@@ -8,7 +8,7 @@
 // false. The entity may still have read-only source.* children (those are
 // handled by the projection path before this one is reached).
 
-import { joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { renderValueObjectInterface, renderEnumTypeAliases } from "./inferred-types.js";
@@ -23,6 +23,8 @@ import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER } from "../constants.js";
+import { resolveObjectNames } from "../names.js";
+import { siblingSpecifier } from "../import-path.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
   const enumAliases = renderEnumTypeAliases(obj, ctx);
@@ -34,7 +36,33 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
   // FR-017 Tier 3: a TPH subtype also emits its field-metadata constants object
   // (the `<Sub>` const), so the React form generator can render per-field
   // labels / rules / inputs the same way it does for ordinary entities.
-  const tphConstants = tphSubtype ? renderEntityConstants(obj, apiPrefix) : null;
+  //
+  // §A6 fix round 3 — a TPH subtype declares no source.rdb of its own; it
+  // INHERITS the discriminator base's single shared table (`children()` is
+  // resolving — ADR-0039). `resolveObjectNames` therefore returns a DEFINED
+  // result for it (confirmed empirically: `name` is the BASE's physical table
+  // name, `fields` covers both the base's inherited columns and the subtype's
+  // own), and `namesFile()` really does emit a `<Sub>.names.ts` for it — this
+  // is not a case where the literal is correct and must stay. Same
+  // resolveObjectNames + imp(...) pair every other §A6 site builds; `ctx` is
+  // guaranteed present at every real call site (entity-file.ts and its
+  // reference/entity.ts mirror both always pass it) even though the parameter
+  // stays optional for a bare unit-test call.
+  const tphNames =
+    tphSubtype && ctx?.includeNames ? resolveObjectNames(obj, ctx.columnNamingStrategy) : undefined;
+  const tphNamesSym: Code | undefined =
+    tphNames === undefined || ctx === undefined
+      ? undefined
+      : code`${imp(`${obj.name}Names@${siblingSpecifier(ctx.selfTarget, obj.package, `${obj.name}.names`, ctx.extStyle)}`)}`;
+  const tphConstants = tphSubtype
+    ? renderEntityConstants(
+        obj,
+        apiPrefix,
+        tphNames !== undefined && tphNamesSym !== undefined
+          ? { name: tphNames.name, symbol: tphNamesSym }
+          : undefined,
+      )
+    : null;
   // FR-017 Tier 3: per-subtype filter + sort allowlists, excluding the
   // discriminator (it's pinned by the per-subtype route path, so a client must
   // not filter on it). Included fields are the subtype's own + inherited base

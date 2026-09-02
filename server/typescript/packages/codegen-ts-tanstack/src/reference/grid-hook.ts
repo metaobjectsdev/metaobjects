@@ -34,6 +34,11 @@ import {
   servesReadApi,
   isTphSubtype,
   withClientDirective,
+  resolveObjectNames,
+  siblingSpecifier,
+  code,
+  imp,
+  type Code,
 } from "@metaobjectsdev/codegen-ts";
 import {
   renderGridHookFile,
@@ -110,10 +115,27 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     // the entity generator is scaffold-and-own (ADR-0034), so it cannot be changed
     // from the package. Emissions are byte-identical between generators, which the
     // runner collapses (#266).
+    //
+    // §A6 fix round 3 — same resolveObjectNames + imp(...) pair every other §A6
+    // site builds, scoped to THIS generator's own render context (see hooks.ts's
+    // matching comment for why `.meta.ts` needs its own target-scoped check
+    // rather than reusing the entity module's).
+    const rc = ctx.renderContext;
+    const metaNames = rc.includeNames ? resolveObjectNames(entity, rc.columnNamingStrategy) : undefined;
+    const metaNamesSym: Code | undefined =
+      metaNames === undefined
+        ? undefined
+        : code`${imp(`${entity.name}Names@${siblingSpecifier(rc.selfTarget, entity.package, `${entity.name}.names`, rc.extStyle)}`)}`;
     return [{
       path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
         entityMetaFileName(entity.name)),
-      content: await formatTs(renderEntityMetaFile(entity, ctx.renderContext.apiPrefix)),
+      content: await formatTs(renderEntityMetaFile(
+        entity,
+        ctx.renderContext.apiPrefix,
+        metaNames !== undefined && metaNamesSym !== undefined
+          ? { name: metaNames.name, symbol: metaNamesSym }
+          : undefined,
+      )),
     }, {
       path: entityOutputPath(
         ctx.renderContext.outputLayout,
