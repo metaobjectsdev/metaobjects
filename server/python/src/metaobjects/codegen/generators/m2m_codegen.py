@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from metaobjects.codegen.source_resolution import resolve_table_name
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.naming import (
     DEFAULT_COLUMN_NAMING,
@@ -44,8 +45,7 @@ from metaobjects.meta.core.relationship.derive_m2m_fields import (
 )
 from metaobjects.meta.core.relationship.meta_relationship import MetaRelationship
 from metaobjects.meta.core.relationship.relationship_constants import CARDINALITY_MANY
-from metaobjects.meta.persistence.source.meta_source import MetaSource
-from metaobjects.shared.base_types import TYPE_IDENTITY, TYPE_SOURCE
+from metaobjects.shared.base_types import TYPE_IDENTITY
 from metaobjects.shared.separators import PACKAGE_SEP
 
 
@@ -76,25 +76,14 @@ def plural_lowercase(name: str) -> str:
     return name.lower() + "s"
 
 
-def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:
-    # ADR-0039 — RESOLVING (children()): an entity may inherit its source.rdb from
-    # an abstract base via extends (BaseEntity pattern); own_children() would emit
-    # nothing for such an entity. Mirrors the TS dbTable source lookup.
-    for c in entity.children():
-        if c.type == TYPE_SOURCE and isinstance(c, MetaSource):
-            return c
-    return None
-
-
 def _physical_table(entity: MetaObject) -> str:
-    """The entity's physical SQL table name (``source.rdb`` physical name),
-    falling back to the entity name when no source is declared."""
-    src = _primary_source_rdb(entity)
-    if src is not None:
-        name = src.physical_name()
-        if name:
-            return name
-    return entity.name
+    """The entity's physical SQL table name, via the shared
+    :func:`~metaobjects.codegen.source_resolution.resolve_table_name` resolver,
+    falling back to the bare entity name when it declares no primary source at
+    all. A legitimate M:N junction/target always has one; the fallback is
+    defensive parity with this helper's pre-existing (pre-shared-resolver)
+    behaviour rather than something the M:N path is expected to exercise."""
+    return resolve_table_name(entity) or entity.name
 
 
 def _column_of(

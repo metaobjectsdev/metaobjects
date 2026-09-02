@@ -4,7 +4,7 @@ This is the ACCURATE-BY-CONSTRUCTION half of the api-docs pipeline: every
 documented symbol name comes from the :mod:`metaobjects.apidocs.naming` seam (never
 re-concatenated here — the SAME seam the real generators delegate to), and every
 inclusion decision comes from an applies-predicate that REUSES the corresponding
-generator's own gate helpers (``emits_instance_artifacts`` / ``_primary_source_rdb``
+generator's own gate helpers (``emits_instance_artifacts`` / ``primary_rdb_source``
 + source kind / ``resolve_payload_vo`` / format check / ``is_tph_subtype``) rather
 than re-implementing the gate. The result is that what this builder documents ==
 what the generators emit, by SHARING the single source of truth.
@@ -47,9 +47,9 @@ from metaobjects.codegen.generators.payload_vo_generator import (
     is_field_required,
     resolve_payload_vo,
 )
-from metaobjects.codegen.generators.router_generator import _primary_source_rdb
 from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, is_abstract
+from metaobjects.codegen.source_resolution import primary_rdb_source
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -91,7 +91,7 @@ def _is_writable_table_entity(obj: MetaObject, object_index: dict[str, MetaObjec
         return False
     if is_tph_subtype(obj):
         return False
-    src = _primary_source_rdb(obj)
+    src = primary_rdb_source(obj)
     if src is None:
         return False
     return src.effective_kind() == SOURCE_KIND_TABLE

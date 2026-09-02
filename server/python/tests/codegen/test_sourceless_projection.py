@@ -2,7 +2,7 @@
 by any store, so the DB-bound codegen tier must emit nothing for it.
 
 This is the shape #210 makes common: a prompt payload becomes a sourceless projection.
-The router generator already handles it correctly — ``_primary_source_rdb`` does a
+The router generator already handles it correctly — ``primary_rdb_source`` does a
 RESOLVING lookup and returns ``None`` on absence, rather than dispatching on the object
 subtype — but nothing pinned that. A future edit reintroducing a subtype-keyed check
 would emit a FastAPI router over a table that does not exist.
@@ -19,10 +19,8 @@ import tempfile
 from pathlib import Path
 
 from metaobjects import MetaDataLoader
-from metaobjects.codegen.generators.router_generator import (
-    _primary_source_rdb,
-    render_router,
-)
+from metaobjects.codegen.generators.router_generator import render_router
+from metaobjects.codegen.source_resolution import primary_rdb_source
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 
@@ -89,7 +87,7 @@ def test_sourceless_projection_has_no_rdb_source():
     # Resolving: nothing inherited either — field-level extends carries field
     # properties, not object children.
     assert [c for c in payload.children() if c.type == TYPE_SOURCE] == []
-    assert _primary_source_rdb(payload) is None
+    assert primary_rdb_source(payload) is None
 
 
 def test_sourceless_projection_emits_no_router():
@@ -109,6 +107,6 @@ def test_sourced_entity_still_resolves_its_source():
     objects = _load()
     author = objects["Author"]
 
-    src = _primary_source_rdb(author)
+    src = primary_rdb_source(author)
     assert src is not None
     assert src.physical_name() == "authors"

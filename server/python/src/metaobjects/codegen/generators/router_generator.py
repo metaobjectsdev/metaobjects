@@ -49,6 +49,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
 )
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
+from metaobjects.codegen.source_resolution import primary_rdb_source
 from metaobjects.codegen.type_map import PyType, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.loader.validate_field_mutability import (
@@ -63,9 +64,8 @@ from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
-from metaobjects.shared.base_types import TYPE_IDENTITY, TYPE_SOURCE
+from metaobjects.shared.base_types import TYPE_IDENTITY
 from metaobjects.shared.separators import PACKAGE_SEP
 
 
@@ -74,18 +74,6 @@ def _effective_fqn(entity: MetaObject) -> str:
     package, else file-default, else ancestor) — multi-file-merge safe. Mirrors the
     entity-model generator's helper of the same name."""
     return entity.resolution_key()
-
-
-def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:
-    """Return the entity's ``source.rdb`` child, or ``None``.
-
-    ADR-0039 — RESOLVING (children()): an entity may inherit its source.rdb via
-    ``extends`` (BaseEntity); own_children() would miss it. Mirrors TS dbTable.
-    """
-    for c in entity.children():
-        if c.type == TYPE_SOURCE and isinstance(c, MetaSource):
-            return c
-    return None
 
 
 def _scalar_fields(entity: MetaObject) -> list[MetaField]:
@@ -815,7 +803,7 @@ class RouterGenerator:
         # emits no standalone router (its CRUD lives under the base's per-subtype segment).
         if object_index is not None and is_tph_subtype(entity):
             return None
-        src = _primary_source_rdb(entity)
+        src = primary_rdb_source(entity)
         if src is None:
             return None
         # FR-024 §7 (#214): a write-through entity read-view is writable (owns a table
