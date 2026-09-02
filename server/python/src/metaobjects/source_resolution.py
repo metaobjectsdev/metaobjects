@@ -11,8 +11,14 @@ which table the object physically lives in — and the runtime is the one that
 reads the rows back, so the codegen copies were the ones that were wrong.
 
 One definition, so a names generator (or anything else that needs a physical
-table name at codegen time) has exactly one resolver to call — a fifth
-hand-rolled copy is precisely what this module exists to forbid.
+table name) has exactly one resolver to call — a fifth hand-rolled copy is
+precisely what this module exists to forbid.
+
+It lives at the package root, not under ``codegen/``, because the runtime and
+the api-docs builder call it too. Under ``codegen/`` the runtime would have to
+either invert its layering to reach it or keep its own copy — and keeping its
+own copy is how the runtime came to be the one caller that fabricated a table
+name for an object declaring no source at all.
 
 **Cross-port divergence guard.** The C# (``CSharpNaming.ResolveObjectNames``)
 and TypeScript (``resolveObjectNames`` in ``codegen-ts/src/names.ts``) resolvers

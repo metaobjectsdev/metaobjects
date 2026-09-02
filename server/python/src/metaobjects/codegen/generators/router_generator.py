@@ -49,7 +49,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
 )
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
-from metaobjects.codegen.source_resolution import primary_rdb_source
+from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.codegen.type_map import PyType, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.loader.validate_field_mutability import (

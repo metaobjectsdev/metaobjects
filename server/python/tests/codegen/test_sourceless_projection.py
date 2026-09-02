@@ -20,7 +20,7 @@ from pathlib import Path
 
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.router_generator import render_router
-from metaobjects.codegen.source_resolution import primary_rdb_source
+from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 

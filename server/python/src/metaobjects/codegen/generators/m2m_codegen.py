@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from metaobjects.codegen.source_resolution import resolve_table_name
+from metaobjects.source_resolution import resolve_table_name
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.naming import (
     DEFAULT_COLUMN_NAMING,
@@ -78,7 +78,7 @@ def plural_lowercase(name: str) -> str:
 
 def _physical_table(entity: MetaObject, *, relation_context: str) -> str:
     """The entity's physical SQL table name, via the shared
-    :func:`~metaobjects.codegen.source_resolution.resolve_table_name` resolver.
+    :func:`~metaobjects.source_resolution.resolve_table_name` resolver.
 
     Raises :class:`M2MDerivationError` — naming *entity* and *relation_context*
     — when it declares (and inherits) no primary source at all. #248: DB

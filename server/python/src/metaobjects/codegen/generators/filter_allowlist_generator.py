@@ -39,7 +39,7 @@ from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, pe
 from metaobjects.codegen.generators.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
-from metaobjects.codegen.source_resolution import primary_rdb_source
+from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject

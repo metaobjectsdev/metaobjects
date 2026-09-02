@@ -7,7 +7,7 @@ no role filter at all. On any entity declaring a ``@role: replica`` source those
 two predicates disagree about which table the entity physically lives in — and
 the runtime is the one that reads the rows back.
 
-``metaobjects.codegen.source_resolution`` is the one resolver every codegen
+``metaobjects.source_resolution`` is the one resolver every codegen
 caller (and Task 9's names generator) must go through from here on.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ import json
 import pytest
 
 from metaobjects import load_string
-from metaobjects.codegen.source_resolution import (
+from metaobjects.source_resolution import (
     find_primary_writable_source,
     primary_rdb_source,
     resolve_table_name,

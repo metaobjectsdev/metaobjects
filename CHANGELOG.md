@@ -123,6 +123,18 @@ declaring no source (which the loader permits — the relationship check require
 from the entity name. It now raises, naming the entity and what it lacks, matching C#'s
 resolver for the identical shape.
 
+**Python's RUNTIME was doing it too, and it is the caller that matters most.**
+`ObjectManager` answered "which relation does this object live in?" with `entity.name`
+when no source was declared, so every read, write and delete it issued went to a relation
+nothing created. Codegen's `resolve_table_name` had returned `None` for that shape all
+along — the runtime was simply the one caller that kept its own copy of the predicate
+instead of calling the shared resolver, and guessed. It now calls it and raises.
+
+That resolver moved from `metaobjects.codegen.source_resolution` to
+`metaobjects.source_resolution`: the runtime and the api-docs builder call it too, and
+under `codegen/` the runtime had to either invert its layering to reach it or keep its own
+copy — which is how the fabricated name got there in the first place.
+
 ### Fixed — a cross-package M:N routes file imported names from the wrong directory
 
 Under `outputLayout: "package"`, a routes file for an entity in one package imported its

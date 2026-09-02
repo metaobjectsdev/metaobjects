@@ -11,7 +11,7 @@ repeating the literals.
 Participation derives from a declared/inherited primary source, never from the
 object subtype (#248): an ``object.value`` (no source, ever) and a sourceless
 ``object.projection`` both resolve to no artifact here, the same as any other
-consumer of :mod:`metaobjects.codegen.source_resolution` — THE resolver for
+consumer of :mod:`metaobjects.source_resolution` — THE resolver for
 "which ``source.rdb`` is this object's primary", so this generator does not
 hand-roll a sixth copy of that predicate.
 
@@ -27,7 +27,7 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.source_resolution import primary_rdb_source
+from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.naming import resolve_column_name, to_snake_case
 

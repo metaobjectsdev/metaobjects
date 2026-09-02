@@ -40,7 +40,7 @@ from ..naming import DEFAULT_COLUMN_NAMING, resolve_column_name
 from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.db import db_constants as dbc
 from ..meta.persistence.source.meta_source import MetaSource
-from ..meta.persistence.source import source_constants as sc
+from ..source_resolution import resolve_table_name
 from .n2m_resolver import (
     N2mDescriptor,
     collect_column_ids,
@@ -630,23 +630,33 @@ class ObjectManager:
         return e
 
     def _table_name(self, entity: MetaObject) -> str:
-        # FR-016 / ADR-0018 — physical_name implements the four-step rule
-        # (kind-matching alias → legacy @table → source.name → entity-name
-        # fallback), so this just delegates to the primary source.
-        #
-        # ADR-0039 — RESOLVING (children()) in a SINGLE pass, mirroring the TS
-        # ``resolveTableName``. Effective children (own + inherited via the super
-        # chain) mean a FR-017 TPH SUBTYPE — which declares no source of its own
-        # and inherits the discriminator base's single table — resolves to that
-        # base table; for an entity declaring its own source, own shadows inherited
-        # so the result is unchanged. (The prior own-first pass was the redundant
-        # "works-by-accident" pattern this ADR eliminates.)
-        for c in entity.children():
-            if isinstance(c, MetaSource) and c.role() == sc.SOURCE_ROLE_PRIMARY:
-                pn = c.physical_name()
-                if pn:
-                    return pn
-        return entity.name
+        """The physical relation *entity* lives in.
+
+        Delegates to :func:`~metaobjects.source_resolution.resolve_table_name` —
+        THE resolver, shared with codegen and the api-docs builder. It applies the
+        FR-016 / ADR-0018 four-step rule to the ``@role: primary`` source, and it
+        is RESOLVING (ADR-0039): a FR-017 TPH subtype, which declares no source of
+        its own and inherits the discriminator base's single table, resolves to
+        that base table, while an entity declaring its own source shadows the
+        inherited one and is unchanged.
+
+        Raises :class:`ValueError` when *entity* declares no primary source at all.
+        This used to fall back to ``entity.name`` — #248 says participation in
+        persistence derives from a DECLARED source, never from the object subtype,
+        so that fallback sent every read, write and delete to a relation nothing
+        created. Codegen's resolver already returned ``None`` for the shape and the
+        M:N descriptor already raised on it; the runtime was the one caller that
+        kept its own copy of the predicate and guessed.
+        """
+        table = resolve_table_name(entity)
+        if table is None:
+            raise ValueError(
+                f'{entity.name}: no primary source (source.rdb) is declared or '
+                f"inherited, so this object has no physical relation to read from "
+                f"or write to. Declare a source.rdb, or do not persist it through "
+                f"the ObjectManager."
+            )
+        return table
 
     def _read_source_name(self, entity: MetaObject) -> str:
         """The physical relation READS run against. FR-024 §7 (#214): a write-through

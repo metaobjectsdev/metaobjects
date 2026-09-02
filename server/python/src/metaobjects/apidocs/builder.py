@@ -49,7 +49,7 @@ from metaobjects.codegen.generators.payload_vo_generator import (
 )
 from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, is_abstract
-from metaobjects.codegen.source_resolution import primary_rdb_source
+from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
