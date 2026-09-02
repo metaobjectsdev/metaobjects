@@ -56,7 +56,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * columnNamingStrategy"*.
      */
     protected fun columnNaming(): String =
-        getArg(ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
+        getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -867,9 +867,6 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     // `protected companion` (was `private`) so subclasses overriding [buildObjectColumns] can
     // reference the @storage vocabulary constants.
     protected companion object {
-
-        /** Generator arg naming the column-naming strategy (see [columnNaming]). */
-        const val ARG_COLUMN_NAMING = "columnNaming"
 
         /** Cross-language @storage attr on field.object — values: flattened | jsonb (default). */
         const val ATTR_STORAGE = "storage"

@@ -12,6 +12,7 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.origin.AggregateOrigin
 import com.metaobjects.origin.MetaOrigin
+import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import com.metaobjects.template.MetaTemplate
 import com.metaobjects.validation.SymbolTable
@@ -137,6 +138,99 @@ public object KotlinGenUtil {
      */
     fun readOnlyRdbSource(obj: MetaObject): RdbSource? =
         obj.getSources(false).filterIsInstance<RdbSource>().firstOrNull { it.isReadOnly }
+
+    // =========================================================================
+    // R15/§A2/§A3 (spec) — the per-object physical-name artifact resolver
+    // ([KotlinNamesGenerator]). Mirrors the shipped C# `CSharpNaming.ResolveObjectNames`
+    // and the TS reference (`codegen-ts/src/names.ts`) EXACTLY: same role-scoped
+    // resolving source selection, same D4 divergence guard, same field resolution.
+    // Neither [firstRdbSource] (role-blind, first-declared) nor [writableRdbSource] /
+    // [readOnlyRdbSource] (own-only, role-agnostic) is the right selector here — this
+    // is a DIFFERENT question ("what does this object's PRIMARY source resolve to?"),
+    // not "does a table exist to bind to?" or "what is this write-through entity's own
+    // read/write pair?".
+    // =========================================================================
+
+    /** §A2/§A3 — physical name + logical field name for one field. */
+    data class KotlinFieldNames(val name: String, val column: String)
+
+    /**
+     * §A2/§A3 — the resolved physical-name shape for an object: what
+     * [KotlinNamesGenerator] emits as `<Entity>Names`, and what Task 6's Exposed table
+     * binding is meant to consume instead of re-deriving the same names independently.
+     */
+    data class KotlinObjectNames(
+        val kind: String,
+        val name: String,
+        val schema: String?,
+        val readOnly: Boolean,
+        val fields: Map<String, KotlinFieldNames>,
+    )
+
+    /**
+     * §A2/§A3 — the ONE place a data name is resolved for a generator run. Both
+     * [KotlinNamesGenerator] (the names artifact) and Task 6's Exposed table binding are
+     * meant to call this rather than each re-deriving physical names independently, so
+     * the constant and the binding it describes cannot be produced by two different
+     * resolvers or two different argument sets. A name computed twice is a name that
+     * can disagree with itself.
+     *
+     * Returns `null` when [obj] has no primary source — #248: participation in the
+     * database derives from a declared primary source, never from the object subtype.
+     */
+    fun resolveObjectNames(obj: MetaObject, strategy: String = DEFAULT_COLUMN_NAMING): KotlinObjectNames? {
+        // ADR-0039: getSources(true) resolves through extends, so an inherited primary
+        // source is seen. role == primary (not firstRdbSource's role-blind pick, and not
+        // writableRdbSource/readOnlyRdbSource's own-only role-agnostic pick).
+        val source = obj.getSources(true).filterIsInstance<RdbSource>()
+            .firstOrNull { MetaSource.ROLE_PRIMARY == it.role } ?: return null
+
+        // ADR-0039: metaFields is the RESOLVING accessor (getMetaFields() defaults to
+        // includeParentData=true) -- an inherited @column must resolve here, or the
+        // constant disagrees with the column Task 6's binding actually names.
+        val fields = obj.metaFields.associate { f ->
+            f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
+        }
+
+        val name = source.physicalName
+
+        // D4 -- every consumer downstream is meant to reference this name
+        // UNCONDITIONALLY, no per-site equality guard. Refuse here instead, once, so
+        // nothing downstream has to. This is REACHABLE on real C#/TS metadata (an
+        // abstract parent's own read-only primary source plus a child's own,
+        // differently-named, writable primary source both surviving the resolving
+        // source walk at once) -- ValidateOnePrimarySource enforces "exactly one
+        // primary" over OWN children only, so two DIFFERENTLY-NAMED source.rdb nodes at
+        // different levels of an extends chain never collide. On THIS port specifically
+        // (verified empirically, see KotlinNamesGeneratorTest / task-5-report.md) the
+        // shape could not be constructed: object.base cannot be instantiated as a
+        // concrete metadata node here (its registered impl class, MetaObject, is
+        // abstract), an object.entity's own primary source must always be writable
+        // (ERR_ENTITY_PRIMARY_SOURCE_READONLY), and an object.projection's source must
+        // always be read-only (ERR_PROJECTION_SOURCE_WRITABLE) while its extends chain
+        // may only contain OTHER projections (never an entity) -- so no loadable Kotlin
+        // model today puts a read-only role=primary source ahead of a writable one in
+        // the same resolved chain. The guard stays for cross-port symmetry and as a
+        // fail-closed backstop should a future metamodel change reopen that path.
+        val writable = obj.findPrimaryWritableSource().map { it.physicalName }.orElse(null)
+        if (writable != null && writable != name) {
+            throw GeneratorException(
+                "${obj.name}: the primary source resolves to physical name \"$name\" but the " +
+                    "primary WRITABLE source resolves to \"$writable\" -- two role=primary sources " +
+                    "disagree on the object's physical name. Give the read-only and writable " +
+                    "sources matching physical names, or drop the extra role=primary declaration.")
+        }
+
+        return KotlinObjectNames(
+            // effectiveKind, not a hand-rolled kind list -- derived from the source's own
+            // logic so a second read-only-kind list here can't drift from the loader's.
+            kind = source.effectiveKind,
+            name = name,
+            schema = source.schema,
+            readOnly = source.isReadOnly,
+            fields = fields,
+        )
+    }
 
     /**
      * True iff [field] is DERIVED — it carries an `origin.*` child (its value is computed from a
@@ -329,6 +423,15 @@ public object KotlinGenUtil {
     const val COLUMN_NAMING_LITERAL: String = ColumnNaming.LITERAL
     const val COLUMN_NAMING_KEBAB_CASE: String = ColumnNaming.KEBAB_CASE
     const val DEFAULT_COLUMN_NAMING: String = COLUMN_NAMING_SNAKE_CASE
+
+    /**
+     * R16 — generator arg naming the column-naming strategy (`<args><columnNaming>` in
+     * the pom). Hoisted here (was a private-to-[KotlinExposedTableGenerator] companion
+     * constant) so [KotlinNamesGenerator] reads the SAME arg name as
+     * [KotlinExposedTableGenerator] — a second `"columnNaming"` string literal beside a
+     * second default is exactly the bug this whole program exists to remove.
+     */
+    const val ARG_COLUMN_NAMING: String = "columnNaming"
 
     /** Apply a column-naming strategy to a bare name. */
     fun applyColumnNamingStrategy(name: String, strategy: String): String =

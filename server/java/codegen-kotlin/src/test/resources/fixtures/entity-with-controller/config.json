@@ -4,6 +4,7 @@
     "table",
     "controller",
     "filter-allowlist",
-    "repository"
+    "repository",
+    "names"
   ]
 }

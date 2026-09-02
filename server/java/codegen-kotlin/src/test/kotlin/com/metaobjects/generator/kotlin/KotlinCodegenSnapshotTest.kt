@@ -59,6 +59,7 @@ class KotlinCodegenSnapshotTest {
                     "filter-allowlist" -> KotlinFilterAllowlistGenerator()
                     "output-parser" -> KotlinOutputParserGenerator()
                     "output-prompt" -> KotlinOutputPromptGenerator()
+                    "names" -> KotlinNamesGenerator()
                     else -> fail("unknown generator name in config: $g")
                 }
                 val args = mutableMapOf("outputDir" to outDir.toString())

@@ -84,6 +84,13 @@ object KotlinNaming {
     fun filterAllowlistName(shortName: String): String = shortName + "FilterAllowlist"
 
     /**
+     * [KotlinNamesGenerator]: `shortName + "Names"` — the per-object physical database
+     * name constants artifact (table/view name, schema, column names). Mirrors the
+     * shipped C# `CSharpNaming.NamesClassName` / TS `<Entity>Names` reference.
+     */
+    fun namesObjectName(shortName: String): String = shortName + "Names"
+
+    /**
      * [KotlinSpringControllerGenerator] / [KotlinM2mSupport]: naive route-segment pluralisation —
      * lowercase + "s" (the same trivial rule TS / C# / Java use for the default route segment).
      */
