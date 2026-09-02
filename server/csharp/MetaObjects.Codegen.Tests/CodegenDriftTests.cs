@@ -1,3 +1,4 @@
+using MetaObjects.Cli;
 using MetaObjects.Codegen;
 using MetaObjects.Loader;
 using Xunit;
@@ -36,11 +37,11 @@ public sealed class CodegenDriftTests : IDisposable
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
-    // The default suite, resolved straight from the registry (the same names GenCommand
-    // uses) — keeps Codegen.Tests independent of the Cli project. Kept in sync with
-    // GenCommand.DefaultGeneratorNames (Python-parity eight; render-helper is opt-in).
-    private static readonly IReadOnlyList<string> DefaultNames =
-        ["entity", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"];
+    // Was a hand-copied duplicate of GenCommand.DefaultGeneratorNames, "kept in sync" by
+    // a source comment only -- nothing asserted it. A generator added to the real list
+    // and forgotten here is silently never drift-tested: a gate that loses coverage
+    // fails nothing. Derived instead.
+    private static readonly IReadOnlyList<string> DefaultNames = GenCommand.DefaultGeneratorNames;
 
     private static IReadOnlyList<IGenerator> DefaultGenerators() => GeneratorRegistry.Resolve(DefaultNames);
 

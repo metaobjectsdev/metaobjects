@@ -154,6 +154,13 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Factory = _ => new FilterAllowlistGenerator(),
             },
+            ["names"] = new()
+            {
+                Name = "names",
+                Description = "Per-object physical database name constants (table/view name, schema, columns).",
+                Tier = GeneratorTier.Native,
+                Factory = _ => new NamesGenerator(),
+            },
             ["template"] = new()
             {
                 Name = "template",

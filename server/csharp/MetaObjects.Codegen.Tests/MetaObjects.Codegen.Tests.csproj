@@ -17,5 +17,9 @@
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
     <ProjectReference Include="../MetaObjects.Codegen/MetaObjects.Codegen.csproj" />
     <ProjectReference Include="../MetaObjects.Render/MetaObjects.Render.csproj" />
+    <!-- CodegenDriftTests derives its default-suite list from GenCommand.DefaultGeneratorNames
+         instead of hand-copying it a second time (a hand-copy that drifted silently is the
+         reason this reference exists — see CodegenDriftTests.cs). -->
+    <ProjectReference Include="../MetaObjects.Cli/MetaObjects.Cli.csproj" />
   </ItemGroup>
 </Project>

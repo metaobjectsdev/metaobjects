@@ -37,13 +37,15 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines();
-        Assert.Equal(11, lines.Count);
+        Assert.Equal(12, lines.Count);
         foreach (var name in new[]
         {
             "entity", "db-context", "routes", "payload", "output-parser", "extractor",
             "output-prompt", "render-helper", "filter-allowlist", "template",
             // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
             "callable",
+            // Program A / §A5 — per-object physical database name constants.
+            "names",
         })
         {
             Assert.Contains(lines, l => l.Contains($" {name} —"));
@@ -51,13 +53,15 @@ public sealed class GenListAndSelectionTests : IDisposable
     }
 
     [Fact]
-    public void Default_suite_is_the_python_parity_eight_generators()
+    public void Default_suite_is_python_parity_plus_names()
     {
         // Parity with the Python default (entity / router / filter-allowlist / payload /
-        // output-parser / output-prompt / extractor). render-helper is opt-in (needs
-        // --template-root); template / callable stay opt-in.
+        // output-parser / output-prompt / extractor), plus `names` — C# ships the
+        // per-object physical-database-names artifact default ON (program spec §A5;
+        // Python has not built it yet). render-helper is opt-in (needs --template-root);
+        // template / callable stay opt-in.
         Assert.Equal(
-            ["entity", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"],
+            ["entity", "names", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"],
             GenCommand.DefaultGeneratorNames);
     }
 

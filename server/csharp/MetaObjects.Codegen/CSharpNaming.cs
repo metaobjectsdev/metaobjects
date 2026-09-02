@@ -8,8 +8,32 @@
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
+using static MetaObjects.Persistence.Source.SourceConstants;
 
 namespace MetaObjects.Codegen;
+
+/// <summary>Physical name + logical field name for one field (§A2/§A3 names artifact).</summary>
+public sealed record FieldNames(string Name, string Column);
+
+/// <summary>
+/// §A2/§A3 — the resolved physical-name shape for an object: what
+/// <see cref="Generators.NamesGenerator"/> emits as <c>&lt;Entity&gt;Names</c>, and what
+/// the EF Core bindings (entity/db-context generators) are meant to consume instead of
+/// re-deriving the same names independently. Mirrors the TS reference
+/// <c>ObjectNames</c>/<c>FieldNames</c> (codegen-ts/src/names.ts).
+/// </summary>
+public sealed record ObjectNames
+{
+    /// <summary>The <c>source.rdb @kind</c> value — table | view | materializedView | storedProc | tableFunction.</summary>
+    public required string Kind { get; init; }
+    /// <summary>The PHYSICAL name. Not necessarily a table: it comes from the primary
+    /// source's <see cref="MetaSource.PhysicalName"/> for whatever its <see cref="Kind"/> is,
+    /// so this can be a view or a proc name.</summary>
+    public required string Name { get; init; }
+    public string? Schema { get; init; }
+    public required bool ReadOnly { get; init; }
+    public required IReadOnlyDictionary<string, FieldNames> Fields { get; init; }
+}
 
 /// <summary>
 /// Column-naming strategy for fields with no <c>@column</c> override. C# port
@@ -199,6 +223,9 @@ public static class CSharpNaming
     /// <summary>The per-entity filter allowlist class name: <c>&lt;EntityPascal&gt;FilterAllowlist</c>.</summary>
     public static string FilterAllowlistName(MetaObject entity) => Pascal(entity.Name) + "FilterAllowlist";
 
+    /// <summary>The per-object physical database names class name: <c>&lt;EntityPascal&gt;Names</c>.</summary>
+    public static string NamesClassName(MetaObject entity) => Pascal(entity.Name) + "Names";
+
     /// <summary>The render-helper class name for a template: <c>&lt;TemplateName&gt;RenderHelper</c>.</summary>
     public static string RenderHelperName(string templateName) => templateName + "RenderHelper";
 
@@ -283,6 +310,83 @@ public static class CSharpNaming
             sb.Append(char.ToLowerInvariant(c));
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// #248 — true iff <paramref name="obj"/> declares (or inherits) a primary
+    /// <c>source.rdb</c> of ANY kind (table, view, proc, ...). The cheap existence half
+    /// of the names-artifact participation gate: whether a primary source exists does
+    /// not depend on <see cref="ColumnNamingStrategy"/>, so this never needs one. The
+    /// full resolution (and its divergence guard) is <see cref="ResolveObjectNames"/>.
+    /// ADR-0039: <c>Sources()</c> is the RESOLVING accessor — an inherited primary
+    /// source must be seen.
+    /// </summary>
+    public static bool HasPrimarySource(MetaObject obj) =>
+        obj.Sources().Any(s => s.Role == SOURCE_ROLE_PRIMARY);
+
+    /// <summary>
+    /// §A2/§A3 — the ONE place a data name is resolved for a generator run. Both
+    /// <see cref="Generators.NamesGenerator"/> (the names artifact) and the EF Core
+    /// bindings it backs (entity / db-context generators) are meant to call this rather
+    /// than each re-deriving <see cref="Table"/>/<see cref="Column"/> independently, so
+    /// the constant and the binding it describes cannot be produced by two different
+    /// resolvers or two different argument sets. A name computed twice is a name that
+    /// can disagree with itself.
+    /// <para>
+    /// Returns <c>null</c> when <paramref name="obj"/> has no primary source — #248:
+    /// participation in the database derives from a declared primary source, never from
+    /// the object subtype.
+    /// </para>
+    /// </summary>
+    public static ObjectNames? ResolveObjectNames(MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
+    {
+        // ADR-0039: Sources() is the RESOLVING accessor — an inherited primary source
+        // must be seen, or an entity extending an abstract base with its own primary
+        // source would wrongly read as unpersisted.
+        var source = obj.Sources().FirstOrDefault(s => s.Role == SOURCE_ROLE_PRIMARY);
+        if (source is null) return null;
+
+        var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
+        // ADR-0039: Fields() is the RESOLVING accessor — an inherited @column must
+        // resolve here, or the constant disagrees with the column EF actually binds.
+        foreach (var f in obj.Fields())
+            fields[f.Name] = new FieldNames(f.Name, Column(f, strategy));
+
+        var name = source.PhysicalName;
+
+        // Every consumer downstream is meant to reference this name UNCONDITIONALLY —
+        // no per-site equality guard. Refuse here instead, once, so nothing downstream
+        // has to. This is REACHABLE on real metadata: ValidateOnePrimarySource
+        // (Loader/ValidationPasses.cs) enforces "exactly one primary" over OWN children
+        // only, and MetaData.EffectiveChildren shadows an own child over a super child
+        // only on a (type, name) match. Two source.rdb children with DIFFERENT explicit
+        // names never collide, so an abstract parent's own read-only primary source and
+        // a child's own, differently-named, writable primary source both survive on the
+        // child's effective Sources() at once — two real nodes with role == primary.
+        // This resolver's looser FirstOrDefault(role == primary) returns the first
+        // (inherited, read-only) one; MetaObject.DbTable's stricter
+        // (role == primary && IsWritable()) skips it and matches the later, writable
+        // one. Two real, different, defined strings — this loads with ZERO errors.
+        var writable = obj.DbTable;
+        if (writable is not null && writable != name)
+        {
+            throw new InvalidOperationException(
+                $"{obj.Name}: the primary source resolves to physical name \"{name}\" but the " +
+                $"primary WRITABLE source resolves to \"{writable}\" — two role=primary sources " +
+                "disagree on the object's physical name. Give the read-only and writable sources " +
+                "matching physical names, or drop the extra role=primary declaration.");
+        }
+
+        return new ObjectNames
+        {
+            // EffectiveKind, not a hand-rolled kind list — derived from the source's own
+            // logic so a second read-only-kind list here can't drift from the loader's.
+            Kind = source.EffectiveKind,
+            Name = name,
+            Schema = source.Schema,
+            ReadOnly = source.IsReadOnly(),
+            Fields = fields,
+        };
     }
 
     /// <summary>

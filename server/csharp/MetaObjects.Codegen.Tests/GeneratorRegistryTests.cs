@@ -20,6 +20,8 @@ public sealed class GeneratorRegistryTests
         "output-prompt", "render-helper", "filter-allowlist", "template",
         // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
         "callable",
+        // Program A / §A5 — per-object physical database name constants.
+        "names",
     ];
 
     [Fact]

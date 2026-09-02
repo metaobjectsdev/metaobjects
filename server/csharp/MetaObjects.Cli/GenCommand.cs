@@ -32,9 +32,13 @@ public static class GenCommand
     /// <summary>
     /// The default generator suite's stable names (ADR-0021 D3). Brought to parity
     /// with the Python default (entity / router / filter-allowlist / payload /
-    /// output-parser / output-prompt / extractor): the C# suite is
-    /// <c>entity</c>, <c>db-context</c>, <c>routes</c>, <c>filter-allowlist</c>,
-    /// <c>payload</c>, <c>output-parser</c>, <c>output-prompt</c>, <c>extractor</c>.
+    /// output-parser / output-prompt / extractor), plus <c>names</c>: the C# suite is
+    /// <c>entity</c>, <c>names</c>, <c>db-context</c>, <c>routes</c>,
+    /// <c>filter-allowlist</c>, <c>payload</c>, <c>output-parser</c>,
+    /// <c>output-prompt</c>, <c>extractor</c>. C# is the best-wired port for the
+    /// per-object physical-database-names artifact — <c>ColumnNamingStrategy</c> is
+    /// already threaded to every emit site — so it ships default ON here (program
+    /// spec §A5) even though the Python port has not yet built it.
     /// The <c>render-helper</c> generator is intentionally NOT in the default suite —
     /// it requires <c>--template-root</c> for its build-time drift gate (matching the
     /// Python default, which also excludes the render helper). <c>template</c> /
@@ -42,7 +46,7 @@ public static class GenCommand
     /// a registered generator, selectable individually via <c>--generators</c>.
     /// </summary>
     public static readonly IReadOnlyList<string> DefaultGeneratorNames =
-        ["entity", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"];
+        ["entity", "names", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"];
 
     /// <summary>The default generator set, built from the registry by stable name.</summary>
     public static IReadOnlyList<IGenerator> DefaultGenerators() =>
