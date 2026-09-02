@@ -16,6 +16,7 @@ import {
   type MetaSource,
   SOURCE_ROLE_PRIMARY,
 } from "@metaobjectsdev/metadata";
+import { CodegenError } from "./errors.js";
 
 export interface FieldNames { readonly name: string; readonly column: string; }
 
@@ -52,13 +53,37 @@ export function resolveObjectNames(
     fields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
   }
 
+  const name = resolveTableName(obj);
+  // Every consumer downstream references this name unconditionally (no per-site equality
+  // guard — see drizzle-schema.ts). Refuse here instead, once, so nothing downstream has to.
+  //
+  // This CAN fire on real metadata: validateSourceRoles (metadata/src/persistence/source/
+  // validate-source-roles.ts) enforces "exactly one primary" over ownChildren() only, never
+  // over the effective inherited set, and _effectiveChildren (metadata/src/shared/
+  // meta-data.ts) shadows an own child over a super child only on a (type, name) match. Two
+  // source.rdb children with DIFFERENT explicit names never collide, so extending an
+  // abstract object whose own primary source is read-only with a child that adds its own,
+  // differently-named, writable primary source leaves BOTH on the effective children() list
+  // rather than one shadowing the other. resolveTableName's looser `find(role==="primary")`
+  // then returns the first (inherited, read-only) one; `dbTable`'s stricter
+  // `find(role==="primary" && isWritable())` skips it and matches the later, writable one —
+  // two real, different, defined strings.
+  const writable = obj.dbTable;
+  if (writable !== undefined && writable !== name) {
+    throw new CodegenError(
+      `${obj.name}: primary source resolves to "${name}" but the primary WRITABLE source ` +
+      `resolves to "${writable}". A read-only primary beside a writable replica has no single ` +
+      `physical name to bind; give the object one writable primary source.`,
+    );
+  }
+
   const schema = resolveTableSchema(obj);
   return {
     // `effectiveKind`, NOT a `kind` property — MetaSource exposes the @kind value through
     // that accessor, defaulting to "table" per ADR-0007 Rule 3, and resolving it through
     // `extends` so an inherited source's @kind is seen.
     kind: source.effectiveKind,
-    name: resolveTableName(obj),
+    name,
     ...(schema === undefined ? {} : { schema }),
     // Derived from the source's OWN logic, never a hand-rolled kind list here — a second
     // list would drift from the loader's the first time a read-only kind is added.

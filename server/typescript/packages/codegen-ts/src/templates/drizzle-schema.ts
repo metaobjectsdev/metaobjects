@@ -56,18 +56,15 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     ? undefined
     : imp(`${obj.name}Names@${siblingSpecifier(ctx.selfTarget, obj.package, `${obj.name}.names`, ctx.extStyle)}`);
 
-  // Emit the constant ONLY where it is provably the same string this binding already
-  // emitted. `<Entity>Names.name` is the PRIMARY source's physical name (resolveTableName);
-  // `obj.dbTable` is the primary WRITABLE source's. For every authorable object those are
-  // one source and one string — an entity's primary source must be writable
-  // (ERR_ENTITY_PRIMARY_SOURCE_READONLY), a value may hold no source at all, and a
-  // projection never reaches this function. They can only differ for an object whose
-  // primary source is read-only while a non-primary writable one exists, where the two
-  // resolvers are answering genuinely different questions and picking either one would
-  // rename a table. The equality check keeps this change value-preserving instead of
-  // silently arbitrating that; see the plan's Task 5 ruling.
+  // No per-site equality check: whenever the constant exists, it IS the name. `extends`
+  // can leave TWO differently-named role==="primary" sources on one object's effective
+  // children() (own-only primary-count validation, name-keyed child shadowing — see
+  // metadata/src/persistence/source/validate-source-roles.ts and
+  // metadata/src/shared/meta-data.ts), which is exactly when this file's OWN `tableName`
+  // local could disagree with the constant. `resolveObjectNames` refuses that once, in
+  // names.ts's `dbTable`-vs-`name` check, so this file never has to.
   const tableNameExpr: Code =
-    namesSym !== undefined && names !== undefined && names.name === tableName
+    namesSym !== undefined
       ? code`${namesSym}.name`
       : code`${JSON.stringify(tableName)}`;
 
@@ -76,7 +73,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // names artifact carries only the base's own fields.
   const columnNameExpr = (field: MetaField, dbName: string): Code => {
     const entry = names?.fields[field.name];
-    return namesSym !== undefined && entry !== undefined && entry.column === dbName
+    return namesSym !== undefined && entry !== undefined
       ? code`${namesSym}.fields.${field.name}.column`
       : code`${JSON.stringify(dbName)}`;
   };

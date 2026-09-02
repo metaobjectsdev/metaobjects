@@ -14,7 +14,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "../../src/index.js";
 import ts from "typescript";
@@ -149,5 +149,62 @@ describe("§A6 — the entity file consumes the names artifact", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  // Task 0 — the divergence resolveObjectNames refuses is REACHABLE through `extends`: an
+  // abstract parent's own read-only primary source and a child's own, differently-named,
+  // writable primary source both survive on the child's effective children() (own-only
+  // primary-count validation, name-keyed child shadowing — see names.test.ts's matching
+  // unit test for the mechanism). This is its own in-test model, not an edit to
+  // trainer-website-shape.json — nine other tests in this file depend on that shared
+  // fixture and none of them should start throwing.
+  //
+  // Asserted on message content, not `CodegenError` the class: runner.ts's generator loop
+  // deliberately re-wraps every thrown error (any class) as a plain `Error` tagged with
+  // the generator name (`[${generator.name}] ${msg}`) — pre-existing behavior, unrelated
+  // to this task, that loses the original prototype chain by design. The unit test in
+  // names.test.ts asserts the CodegenError class directly at the `resolveObjectNames`
+  // call; this test asserts the run-level CONTRACT — reject, don't silently emit a wrong
+  // literal — and that the original message (naming the object and both physical names)
+  // survives the wrap.
+  test("a divergent object fails the run rather than quietly reverting to the literal", async () => {
+    const json = JSON.stringify({ "metadata.root": { package: "test", children: [
+      {
+        "object.base": {
+          name: "ParentWeird",
+          abstract: true,
+          children: [
+            { "source.rdb": { name: "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
+            { "field.int": { name: "id" } },
+          ],
+        },
+      },
+      {
+        "object.base": {
+          name: "ChildWeird",
+          extends: "ParentWeird",
+          children: [
+            { "source.rdb": { name: "tableSrc", "@table": "child_table", "@role": "primary" } },
+          ],
+        },
+      },
+    ] } });
+    const loadResult = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    expect(loadResult.errors).toEqual([]);
+
+    const run = runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "js",
+        dbImport: "~/server/db",
+        dialect: "sqlite",
+        generators: [entityFile(), namesFile()],
+      }),
+      metadata: loadResult.root,
+    });
+    await expect(run).rejects.toThrow(Error);
+    await expect(run).rejects.toThrow(/ChildWeird/);
+    await expect(run).rejects.toThrow(/v_parent/);
+    await expect(run).rejects.toThrow(/child_table/);
   });
 });

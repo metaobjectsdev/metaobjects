@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
 import { resolveObjectNames } from "../src/names.js";
+import { CodegenError } from "../src/errors.js";
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
@@ -86,5 +87,79 @@ describe("resolveObjectNames", () => {
     ]);
     const n = resolveObjectNames(obj(root, "Thing"), "snake_case");
     expect(n?.fields.firstName?.column).toBe("given_name");
+  });
+
+  // Task 0 / §A6-adjacent: the divergence-refusal check added to resolveObjectNames.
+  //
+  // This shape puts BOTH sources on the SAME object (no extends involved), so there is
+  // only ever one node with role==="primary" — the read-only view. dbTable requires
+  // role==="primary" AND isWritable() on that SAME node, finds nothing (the writable
+  // source here is the non-primary replica), and returns undefined — not a second,
+  // disagreeing string. There is nothing for the two resolvers to disagree ABOUT: only
+  // one of them is looking at a real candidate. Contrast the next test, where `extends`
+  // puts two DIFFERENTLY-NAMED primary sources on one object's effective children() and
+  // the two resolvers genuinely pick different nodes.
+  test("a read-only primary beside a writable replica on one object loads, and resolves to the primary's own name", async () => {
+    const root = await load([{
+      "object.base": {
+        name: "Weird",
+        children: [
+          { "source.rdb": { "@kind": "view", "@table": "v_weird", "@role": "primary" } },
+          { "source.rdb": { "@table": "physical_weirds", "@role": "replica" } },
+          { "field.int": { name: "id" } },
+        ],
+      },
+    }]);
+    const weird = obj(root, "Weird");
+    // The shape this test documents: dbTable requires the SAME source to be both primary
+    // AND writable, so it finds nothing here (the primary is the read-only view; the
+    // writable source is the non-primary replica) — not a second, disagreeing string.
+    expect(weird.dbTable).toBeUndefined();
+    expect(() => resolveObjectNames(weird, "snake_case")).not.toThrow();
+    const n = resolveObjectNames(weird, "snake_case");
+    expect(n?.name).toBe("v_weird");
+    expect(n?.readOnly).toBe(true);
+  });
+
+  // The REACHABLE divergence: validateSourceRoles (metadata/src/persistence/source/
+  // validate-source-roles.ts) enforces "exactly one primary" over ownChildren() only,
+  // never over the effective inherited set, and _effectiveChildren
+  // (metadata/src/shared/meta-data.ts) shadows an own child over a super child only on a
+  // (type, name) match. Two source.rdb children with DIFFERENT explicit names never
+  // collide, so an abstract parent's own read-only primary and a child's own,
+  // differently-named, writable primary source both survive on the child's effective
+  // children() — two real nodes with role==="primary" at once. resolveTableName's looser
+  // `find(role==="primary")` returns the first (inherited, read-only); dbTable's stricter
+  // `find(role==="primary" && isWritable())` skips it and matches the later, writable one.
+  // Both defined, both different — this loads with ZERO errors.
+  test("a divergent primary/writable pair is refused, naming both", async () => {
+    const root = await load([
+      {
+        "object.base": {
+          name: "ParentWeird",
+          abstract: true,
+          children: [
+            { "source.rdb": { name: "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
+            { "field.int": { name: "id" } },
+          ],
+        },
+      },
+      {
+        "object.base": {
+          name: "ChildWeird",
+          extends: "ParentWeird",
+          children: [
+            { "source.rdb": { name: "tableSrc", "@table": "child_table", "@role": "primary" } },
+          ],
+        },
+      },
+    ]);
+    const child = obj(root, "ChildWeird");
+    expect(child.dbTable).toBe("child_table");
+    expect(() => resolveObjectNames(child, "snake_case")).toThrow(CodegenError);
+    // All three substrings asserted separately, so a message that drops one still fails.
+    expect(() => resolveObjectNames(child, "snake_case")).toThrow(/ChildWeird/);
+    expect(() => resolveObjectNames(child, "snake_case")).toThrow(/v_parent/);
+    expect(() => resolveObjectNames(child, "snake_case")).toThrow(/child_table/);
   });
 });
