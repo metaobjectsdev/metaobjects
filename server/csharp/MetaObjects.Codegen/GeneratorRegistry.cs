@@ -197,6 +197,20 @@ public static class GeneratorRegistry
         Entries.TryGetValue(id, out var e) ? e : null;
 
     /// <summary>
+    /// C1 — the ONE place that decides <see cref="GenConfig.IncludeNames"/> from a
+    /// resolved generator-name selection: true iff the stable id <c>"names"</c>
+    /// (<see cref="Generators.NamesGenerator"/>'s <c>Name</c>) is among <paramref
+    /// name="names"/>. Every caller that resolves a generator suite AND builds a
+    /// <see cref="GenConfig"/> from it (<c>GenCommand.Run</c>, <c>VerifyCommand</c>'s
+    /// codegen-drift gate) must compute <c>IncludeNames</c> through this method rather
+    /// than re-deriving it, or the two commands could disagree about whether a given
+    /// run's <c>&lt;Entity&gt;Names.g.cs</c> actually exists — the same class of bug
+    /// this method exists to close, at a second site.
+    /// </summary>
+    public static bool IncludesNames(IReadOnlyList<string> names) =>
+        names.Contains("names", StringComparer.Ordinal);
+
+    /// <summary>
     /// Build the generators for the given stable names, in the order requested.
     /// Throws <see cref="ArgumentException"/> naming the first unknown id.
     /// </summary>

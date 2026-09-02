@@ -391,18 +391,32 @@ public static class CSharpNaming
 
     /// <summary>
     /// §A6 — the <c>&lt;Owner&gt;Names.&lt;Field&gt;Column</c> constant reference for
-    /// <paramref name="field"/>, when <paramref name="owner"/>'s resolved names artifact
-    /// (<see cref="ResolveObjectNames"/>) carries it; the bare quoted physical-column
-    /// literal otherwise. A miss is NORMAL, never a divergence — ResolveObjectNames
-    /// already refuses a divergent primary/writable pair before this resolves — e.g. a
-    /// value-object-hosted field, whose owner has no primary source and so no names
-    /// artifact at all (FR-024 value purity forbids one). Entity and TPH-subtype fields
-    /// always hit: each owns its own <c>&lt;Owner&gt;Names.g.cs</c>, resolved over its
-    /// own <c>Fields()</c> (ADR-0039 resolving), the exact set this method iterates.
+    /// <paramref name="field"/>, when BOTH of two independent gates hold; the bare
+    /// quoted physical-column literal otherwise (the exact spelling every consumption
+    /// site used before Program A added the constant — git 488143e21). Neither gate is
+    /// the divergence check — a primary/writable-source disagreement has ALREADY
+    /// thrown, once, inside <see cref="ResolveObjectNames"/>, before this method ever
+    /// runs; this is presence and existence, not agreement.
+    /// <list type="bullet">
+    /// <item><b>C1 — RUN-LEVEL presence</b> (<paramref name="includeNames"/>): is the
+    /// <c>names</c> generator even part of THIS run? <c>--generators
+    /// entity,db-context</c> (a documented, individually-selectable subset —
+    /// <c>GenCommand.DefaultGeneratorNames</c>'s own doc comment says every default
+    /// name is selectable individually) emits no <c>&lt;Owner&gt;Names.g.cs</c> at all,
+    /// for any object, no matter what <see cref="ResolveObjectNames"/> would say — the
+    /// caller supplies this fact; it is never derived from the object.</item>
+    /// <item><b>I1 — PER-OBJECT existence</b> (<see cref="ResolveObjectNames"/> non-null):
+    /// does <paramref name="owner"/> resolve a names artifact AT ALL? A miss here is
+    /// NORMAL — e.g. a value-object-hosted field, whose owner has no primary source and
+    /// so no names artifact at all (FR-024 value purity forbids one). Entity and
+    /// TPH-subtype fields always hit (when C1 also holds): each owns its own
+    /// <c>&lt;Owner&gt;Names.g.cs</c>, resolved over its own <c>Fields()</c> (ADR-0039
+    /// resolving), the exact set this method iterates.</item>
+    /// </list>
     /// </summary>
-    public static string ColumnRef(MetaObject owner, MetaField field, ColumnNamingStrategy strategy)
+    public static string ColumnRef(MetaObject owner, MetaField field, ColumnNamingStrategy strategy, bool includeNames)
     {
-        var names = ResolveObjectNames(owner, strategy);
+        var names = includeNames ? ResolveObjectNames(owner, strategy) : null;
         return names is not null && names.Fields.ContainsKey(field.Name)
             ? $"{NamesClassName(owner)}.{Pascal(field.Name)}Column"
             : $"\"{Column(field, strategy)}\"";

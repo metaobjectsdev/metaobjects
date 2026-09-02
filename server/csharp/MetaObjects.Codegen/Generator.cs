@@ -44,6 +44,43 @@ public sealed record GenConfig
     public ColumnNamingStrategy ColumnNamingStrategy { get; init; } = ColumnNamingStrategy.Literal;
 
     /// <summary>
+    /// C1 — the RUN-LEVEL presence gate for the <c>&lt;Entity&gt;Names</c> artifact:
+    /// true iff the <c>names</c> generator (<c>Generators.NamesGenerator</c>) is part
+    /// of the generator suite THIS run selected. Consumption sites
+    /// (<c>CSharpNaming.ColumnRef</c>/<c>NameRef</c>, called from the entity + db-context
+    /// generators) gate on this before referencing <c>&lt;Owner&gt;Names.*</c> — without
+    /// it, <c>dotnet meta gen --generators entity,db-context</c> (a documented,
+    /// individually-selectable subset per <c>GenCommand.DefaultGeneratorNames</c>'s own
+    /// doc comment) emitted a reference to a class no generator in that run produces,
+    /// failing <c>CS0103</c> against a real EF Core compile.
+    /// <para>
+    /// This is PRESENCE, distinct from the per-object EXISTENCE question
+    /// <c>CSharpNaming.ResolveObjectNames</c> answers (null when an object has no
+    /// primary source — #248), and from the DIVERGENCE guard inside that same method
+    /// (a primary/writable-source disagreement throws, once, unconditionally — there is
+    /// no flag that suppresses it and never should be). A false positive here (claiming
+    /// names ran when it did not) would reintroduce exactly the defect this exists to
+    /// close; nothing may compare a constant's VALUE to a literal and fall back on a
+    /// mismatch — that is the forbidden shape. This only asks "was the generator even
+    /// invoked."
+    /// </para>
+    /// <para>
+    /// Defaults to <c>true</c>: this port's default suite has always included
+    /// <c>names</c> (program spec §A5), and every hand-built <c>GenConfig</c> in this
+    /// codebase's test suite constructs ONE generator in isolation rather than running
+    /// the full <c>GenCommand.Run</c>/<c>CodegenRunner</c> pipeline — a <c>false</c>
+    /// default would silently flip those tests' fallback-literal arm even though they
+    /// never meant to exercise it. <c>GenCommand.Run</c> and <c>VerifyCommand</c>'s
+    /// codegen-drift gate compute the real value from the resolved generator-name list
+    /// (<c>GeneratorRegistry.IncludesNames</c>) and set this explicitly on every actual
+    /// CLI invocation, so a project's real output is governed by what <c>--generators</c>
+    /// actually selected either way; this default only matters to a caller that builds
+    /// <c>GenConfig</c> directly and says nothing about which generators it plans to run.
+    /// </para>
+    /// </summary>
+    public bool IncludeNames { get; init; } = true;
+
+    /// <summary>
     /// When <c>false</c> (the default), abstract entities emit no shape artifact
     /// at all. When <c>true</c>, an abstract entity emits exactly one standalone
     /// <c>public abstract class &lt;Name&gt;</c> (properties only — no EF

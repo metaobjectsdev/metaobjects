@@ -193,6 +193,12 @@ public static class GenCommand
             // Literal (EF's property=column convention) — this port's historical
             // behaviour — and is selected per project with `--column-naming`.
             ColumnNamingStrategy = columnNaming,
+            // C1 — the presence gate: is `names` actually part of THIS resolved suite
+            // (`names` above — the default suite, or whatever `--generators` selected)?
+            // Computed the one way GeneratorRegistry.IncludesNames defines, so `gen` and
+            // `verify --codegen` (VerifyCommand.RunCodegenDrift) cannot independently
+            // drift on the answer.
+            IncludeNames = GeneratorRegistry.IncludesNames(names),
         };
         CodegenRunner.RunResult result;
         try

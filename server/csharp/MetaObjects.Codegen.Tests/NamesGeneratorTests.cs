@@ -425,4 +425,154 @@ public class NamesGeneratorTests
         Assert.Contains("v_parent", message);
         Assert.Contains("child_table", message);
     }
+
+    // -------------------------------------------------------------------------
+    // C1 (Critical) -- the RUN-LEVEL presence gate (GenConfig.IncludeNames). Every
+    // test above proves the ON arm: names IS part of the run, and every consumption
+    // site above resolves the constant. Before this gate existed, EntityGenerator and
+    // DbContextGenerator referenced <Entity>Names UNCONDITIONALLY -- with no notion of
+    // "is the names generator even in this run" -- so `dotnet meta gen --generators
+    // entity,db-context` (a documented, individually-selectable subset;
+    // GenCommand.DefaultGeneratorNames's own doc comment says every default name is
+    // selectable individually) emitted a dangling reference to a class NO generator in
+    // that run produces: 4x CS0103 against a real EF Core compile, reproduced
+    // independently twice.
+    //
+    // These tests prove the OFF arm: with `names` absent from the run, the EF bindings
+    // fall back to EXACTLY the literal spelling this codegen emitted before Program A
+    // added the constant (git 488143e21) -- byte for byte, not a substring both arms
+    // would satisfy. Every assertion below is paired: the literal IS present, and the
+    // constant-reference spelling it replaces is GONE.
+    // -------------------------------------------------------------------------
+
+    private static GenContext CtxWithoutNames(MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase) => new()
+    {
+        Entities = root.Objects(), Root = root,
+        Config = new GenConfig
+        {
+            OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy,
+            // The fact under test: this GenContext models a run where `names` was never
+            // selected (e.g. `--generators entity,db-context`). GenConfig.IncludeNames
+            // defaults to true (matching this port's default suite), so this is the one
+            // place in this test class that turns it off deliberately.
+            IncludeNames = false,
+        },
+    };
+
+    [Fact]
+    public void C1_with_names_absent_from_the_run_NamesGenerator_itself_emits_nothing_here()
+    {
+        // Establishes the premise the tests below depend on: in a run wired this way
+        // (NamesGenerator simply never included), no <Entity>Names.g.cs exists at all --
+        // this is a fact about which generators RAN, not a change to NamesGenerator
+        // itself (its own Filter/Generate never read GenConfig.IncludeNames).
+        var files = new List<EmittedFile>();
+        foreach (var gen in new IGenerator[] { new EntityGenerator(), new DbContextGenerator() })
+            files.AddRange(gen.Generate(CtxWithoutNames(Load(SubscriberModel))));
+        Assert.DoesNotContain(files, f => f.Path.Contains("Names", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void C1_with_names_absent_Entity_Table_and_Column_fall_back_to_the_pre_ProgramA_literal()
+    {
+        var ctx = CtxWithoutNames(Load(SubscriberModel));
+        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "Subscriber.g.cs").Content;
+
+        // The exact literal spellings EntityGenerator emitted before Program A referenced
+        // the constant (git 488143e21) -- present.
+        Assert.Contains("[Table(\"subscribers\")]", src);
+        Assert.Contains("[Column(\"created_at\")]", src);
+        Assert.Contains("[Column(\"purpose_code\")]", src);
+        Assert.Contains("[Column(\"id\")]", src);
+
+        // The constant-reference spelling this replaces -- GONE, not merely joined by
+        // the literal. A generator emitting both would satisfy every Contains above.
+        Assert.DoesNotContain("SubscriberNames", src);
+        Assert.DoesNotContain("[Table(SubscriberNames.Name)]", src);
+        Assert.DoesNotContain("[Column(SubscriberNames.CreatedAtColumn)]", src);
+        Assert.DoesNotContain("[Column(SubscriberNames.CallPurposeColumn)]", src);
+        Assert.DoesNotContain("[Column(SubscriberNames.IdColumn)]", src);
+    }
+
+    [Fact]
+    public void C1_with_names_absent_TPH_subtype_columns_fall_back_to_the_pre_ProgramA_literal()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme::auth", "children": [
+          { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb":       { "@table": "auths" } },
+            { "field.long":       { "name": "id" } },
+            { "field.enum":       { "name": "type", "@values": ["Bridge"] } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+          ]}},
+          { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity", "@required": true } }
+          ]}}
+        ]}}
+        """;
+        var ctx = CtxWithoutNames(Load(model), ColumnNamingStrategy.Literal);
+        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "BridgeAuth.g.cs").Content;
+
+        Assert.Contains("[Column(\"quantity\")]", src);
+        Assert.DoesNotContain("BridgeAuthNames", src);
+        Assert.DoesNotContain("[Column(BridgeAuthNames.QuantityColumn)]", src);
+    }
+
+    [Fact]
+    public void C1_with_names_absent_DbContext_ToView_and_ToJson_fall_back_to_the_pre_ProgramA_literal()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Config", "children": [
+            { "field.string": { "name": "flag" } }
+          ]}},
+          { "object.entity": { "name": "Customer", "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "config", "@objectRef": "Config" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}},
+          { "object.projection": { "name": "CustomerSummary", "children": [
+            { "source.rdb": { "@kind": "view", "@table": "v_customer_summary" } },
+            { "field.string": { "name": "tag" } }
+          ]}}
+        ]}}
+        """;
+        var ctx = CtxWithoutNames(Load(model), ColumnNamingStrategy.Literal);
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        // Exactly what these two lines emitted before Program A added the constant.
+        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(\"v_customer_summary\");", dbContext);
+        Assert.Contains("b.ToJson(\"config\")", dbContext);
+
+        Assert.DoesNotContain("CustomerSummaryNames", dbContext);
+        Assert.DoesNotContain("CustomerNames", dbContext);
+        Assert.DoesNotContain("ToView(CustomerSummaryNames.Name)", dbContext);
+        Assert.DoesNotContain("b.ToJson(CustomerNames.ConfigColumn)", dbContext);
+    }
+
+    [Fact]
+    public void C1_The_OFF_arm_reaches_the_CLI_a_narrowed_generators_selection_never_sets_IncludeNames()
+    {
+        // The end-to-end reproduction: `dotnet meta gen --generators entity,db-context`
+        // over an ordinary sourced entity. Before the fix, GenCommand.Run built GenConfig
+        // with no notion of which generators were selected, so EntityGenerator always
+        // referenced the constant -- this run would have written a Subscriber.g.cs
+        // naming a class no file in this run's output declares.
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(SubscriberModel, id: "gen.json")]);
+        Assert.Empty(load.Errors);
+
+        var tmp = Path.Combine(Path.GetTempPath(), "moc-names-c1-" + Guid.NewGuid().ToString("N"));
+        var outcome = GenCommand.Run(
+            load, outDir: Path.Combine(tmp, "out"), ns: "Acme.Generated", emitAbstractShapes: false,
+            generatorNames: ["entity", "db-context"], templateRoot: null, templateSpecPath: null, projectRoot: tmp);
+
+        Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
+        var outDir = Path.Combine(tmp, "out");
+        Assert.False(File.Exists(Path.Combine(outDir, "SubscriberNames.g.cs")));
+
+        var entitySrc = File.ReadAllText(Path.Combine(outDir, "Subscriber.g.cs"));
+        Assert.Contains("[Table(\"subscribers\")]", entitySrc);
+        Assert.DoesNotContain("SubscriberNames", entitySrc);
+    }
 }

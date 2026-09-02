@@ -266,7 +266,16 @@ public static class VerifyCommand
         if (!opts.NamespaceExplicit)
             ns = Codegen.CodegenDrift.InferNamespace(opts.OutDir) ?? opts.Namespace;
 
-        var config = new GenConfig { OutDir = opts.OutDir, Namespace = ns };
+        // C1 — same presence gate `gen` computes (GeneratorRegistry.IncludesNames over
+        // the SAME resolved `names` list above), or a regen under a `--generators`
+        // selection that excludes `names` would reference `<Entity>Names.*` while `gen`
+        // itself emits the literal for that identical selection — spurious drift in one
+        // direction, a false-clean pass in the other.
+        var config = new GenConfig
+        {
+            OutDir = opts.OutDir, Namespace = ns,
+            IncludeNames = GeneratorRegistry.IncludesNames(names),
+        };
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }
 

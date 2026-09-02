@@ -245,7 +245,7 @@ public class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
             {
                 member = ScalarProperty(entity, field, pkFields, withAttributes: true, strategy,
-                    AggregateResultScalar(field, ctx));
+                    includeNames: ctx.Config.IncludeNames, baseTypeOverride: AggregateResultScalar(field, ctx));
             }
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
             {
@@ -322,12 +322,17 @@ public class EntityGenerator : IGenerator
             var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
             sb.AppendLine($"[PrimaryKey({names})]");
         }
-        // A6 -- reference the constant unconditionally. NamesGenerator (run by default —
-        // GenCommand.DefaultGeneratorNames) has already refused any object whose primary
-        // and primary-writable sources disagree (CSharpNaming.ResolveObjectNames), so the
-        // reference IS the single spelling of this name in the run.
+        // A6/C1 -- reference the constant only when `names` is actually part of THIS
+        // run (ctx.Config.IncludeNames). A narrower --generators selection (e.g.
+        // `entity,db-context`) may exclude it, emitting no <Entity>Names.g.cs at all --
+        // falls back to the bare literal table name otherwise, exactly what this line
+        // emitted before Program A added the constant. This is presence, not the
+        // divergence check (that already threw, once, inside ResolveObjectNames,
+        // before this line ever runs).
         if (!isProjection)
-            sb.AppendLine($"[Table({CSharpNaming.NamesClassName(entity)}.Name)]");
+            sb.AppendLine(ctx.Config.IncludeNames
+                ? $"[Table({CSharpNaming.NamesClassName(entity)}.Name)]"
+                : $"[Table(\"{CSharpNaming.Table(entity)}\")]");
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping
@@ -457,7 +462,7 @@ public class EntityGenerator : IGenerator
             if (baseFieldNames.Contains(field.Name)) continue; // inherited from the base
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
-                member = TphSubtypeScalarProperty(entity, field, strategy);
+                member = TphSubtypeScalarProperty(entity, field, strategy, ctx.Config.IncludeNames);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
                 member = TphSubtypeEnumProperty(entity, field, ctx.Config, strategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
@@ -488,7 +493,8 @@ public class EntityGenerator : IGenerator
     // of CLR nullability (a row of another subtype stores NULL there), so a non-null CLR
     // type maps to a nullable column correctly — and matches adopters whose marker
     // interfaces declare these members non-null. Arrays keep the List<T> shape.
-    protected virtual string TphSubtypeScalarProperty(MetaObject entity, MetaField field, ColumnNamingStrategy strategy)
+    protected virtual string TphSubtypeScalarProperty(
+        MetaObject entity, MetaField field, ColumnNamingStrategy strategy, bool includeNames)
     {
         // ScalarForField resolves the ADR-0036 Wave 2 conditional field.timestamp binding.
         var baseType = CSharpNaming.ScalarForField(field)!;
@@ -497,14 +503,14 @@ public class EntityGenerator : IGenerator
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
-            arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]");
+            arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
             AppendArrayValidatorAttributes(arr, field);
             arr.Append($"    public ICollection<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]");
+        sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
         if (baseType == "string")
             AppendStringValidatorAttributes(sb, field);
         else
@@ -520,7 +526,7 @@ public class EntityGenerator : IGenerator
     {
         var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = PropertyName(field);
-        var colAttr = $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]\n";
+        var colAttr = $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
@@ -965,7 +971,7 @@ public class EntityGenerator : IGenerator
         // an inline enum keeps the per-object nested <Entity><Field> type name.
         var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = PropertyName(field);
-        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy)})]\n" : "";
+        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n" : "";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(entity, field);
@@ -986,9 +992,15 @@ public class EntityGenerator : IGenerator
     // When the field is an array (isArray: true), emit List<T> with an empty-list
     // initializer instead of a scalar T property. Arrays are always non-nullable
     // (the jsonb column holds the list; the list itself is never null in C#).
+    //
+    // includeNames (C1) is only consulted when withAttributes is true — it is the
+    // ctx.Config.IncludeNames run-level presence gate CSharpNaming.ColumnRef needs;
+    // defaults to false because a withAttributes:false caller (abstract shapes, VO
+    // POCOs) never reaches ColumnRef at all, so the default is inert there.
     protected virtual string ScalarProperty(
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
         bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
+        bool includeNames = false,
         string? baseTypeOverride = null, bool? withValidationAttributes = null)
     {
         var emitValidation = withValidationAttributes ?? withAttributes;
@@ -1008,7 +1020,7 @@ public class EntityGenerator : IGenerator
         {
             var arr = new StringBuilder();
             if (withAttributes)
-                arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy)})]");
+                arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy, includeNames)})]");
             // validator.array @min/@max → element-count bounds on the collection.
             if (emitValidation)
                 AppendArrayValidatorAttributes(arr, field);
@@ -1033,7 +1045,7 @@ public class EntityGenerator : IGenerator
         {
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
-            sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy)})]");
+            sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy, includeNames)})]");
         }
         // Validation DataAnnotations — mapped entities AND value-object POCOs (a VO's
         // own members are validated on POST/PATCH; Program D), never an attribute-free
@@ -1306,7 +1318,7 @@ public class EntityGenerator : IGenerator
     {
         var valueType = CSharpNaming.MapValueType(field);
         var propName = PropertyName(field);
-        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(owner, field, ctx.Config.ColumnNamingStrategy)})]\n" : "";
+        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)})]\n" : "";
         return $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ get; set; }} = new();";
     }
 

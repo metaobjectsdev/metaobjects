@@ -89,10 +89,14 @@ public class DbContextGenerator : IGenerator
         {
             var name = CSharpNaming.Pascal(p.Name);
             var noKey = p.PrimaryIdentity() is null ? ".HasNoKey()" : string.Empty;
-            // A6 -- unconditional, matching EntityGenerator's [Table]: a read-only
-            // projection reaching this loop always has a primary source (its own
-            // read-only view), so NamesGenerator always emits its <Name>Names artifact.
-            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NamesClassName(p)}.Name);");
+            // A6/C1 -- gated exactly like EntityGenerator's [Table]: reference the
+            // constant only when `names` is part of THIS run (ctx.Config.IncludeNames).
+            // Falls back to the bare literal view name (p.DbView, non-null in this
+            // branch) otherwise -- exactly what this line emitted before Program A
+            // added the constant.
+            modelLines.Add(ctx.Config.IncludeNames
+                ? $"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NamesClassName(p)}.Name);"
+                : $"        modelBuilder.Entity<{name}>(){noKey}.ToView(\"{p.DbView}\");");
             // Enum-typed projection columns persist as their string symbol in the view
             // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
             // string conversion EF defaults to the int-ordinal mapping and reads the text
@@ -804,7 +808,7 @@ public class DbContextGenerator : IGenerator
         // A6 -- the field itself belongs to `entity` (the JSON column's own physical
         // name, not the nested value object's), so it hits entity's own names artifact
         // unconditionally in practice — a lookup, not an assumption, per ColumnRef.
-        var parentColRef = CSharpNaming.ColumnRef(entity, field, strategy);
+        var parentColRef = CSharpNaming.ColumnRef(entity, field, strategy, ctx.Config.IncludeNames);
 
         // An @isArray object field is a COLLECTION of the value object (the EntityGenerator
         // emits it as ICollection<VO>), so EF must map it with .OwnsMany(...).ToJson(...) —
