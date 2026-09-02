@@ -9,7 +9,6 @@
 import {
   isMetaSource,
   resolveColumnName,
-  resolveTableName,
   resolveTableSchema,
   type ColumnNamingStrategy,
   type MetaObject,
@@ -56,7 +55,13 @@ export function resolveObjectNames(
     fields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
   }
 
-  const name = resolveTableName(obj);
+  // Read the physical name off the primary SOURCE ALREADY IN HAND, rather than re-finding
+  // it via resolveTableName() (which reapplies the identical find(role==="primary")
+  // predicate a second time — a name computed twice by two separate lookups is exactly
+  // the class of bug this file exists to prevent). Mirrors the C# port
+  // (CSharpNaming.ResolveObjectNames), and makes the throw below's comparison visibly
+  // "this primary source's own name vs the primary WRITABLE source's name".
+  const name = source.physicalName;
   // Every consumer downstream references this name unconditionally (no per-site equality
   // guard — see drizzle-schema.ts). Refuse here instead, once, so nothing downstream has to.
   //
@@ -67,16 +72,24 @@ export function resolveObjectNames(
   // source.rdb children with DIFFERENT explicit names never collide, so extending an
   // abstract object whose own primary source is read-only with a child that adds its own,
   // differently-named, writable primary source leaves BOTH on the effective children() list
-  // rather than one shadowing the other. resolveTableName's looser `find(role==="primary")`
+  // rather than one shadowing the other. This resolver's looser `find(role==="primary")`
   // then returns the first (inherited, read-only) one; `dbTable`'s stricter
   // `find(role==="primary" && isWritable())` skips it and matches the later, writable one —
   // two real, different, defined strings.
   const writable = obj.dbTable;
   if (writable !== undefined && writable !== name) {
+    // The shape that actually throws: TWO role==="primary" sources surviving on one
+    // object's effective children() (via extends — see the comment above), disagreeing on
+    // physical name. NOT a read-only primary beside a writable REPLICA on one object —
+    // that shape is legal and does not reach here (see names.test.ts, "a read-only
+    // primary beside a writable replica on one object loads..."). Wording matches the C#
+    // port (CSharpNaming.ResolveObjectNames) so the two ports stop diverging on this
+    // user-facing string.
     throw new CodegenError(
-      `${obj.name}: primary source resolves to "${name}" but the primary WRITABLE source ` +
-      `resolves to "${writable}". A read-only primary beside a writable replica has no single ` +
-      `physical name to bind; give the object one writable primary source.`,
+      `${obj.name}: the primary source resolves to physical name "${name}" but the ` +
+      `primary WRITABLE source resolves to "${writable}" — two role=primary sources ` +
+      `disagree on the object's physical name. Give the read-only and writable sources ` +
+      `matching physical names, or drop the extra role=primary declaration.`,
     );
   }
 

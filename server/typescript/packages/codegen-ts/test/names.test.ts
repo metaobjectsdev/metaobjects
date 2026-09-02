@@ -115,7 +115,6 @@ describe("resolveObjectNames", () => {
     // AND writable, so it finds nothing here (the primary is the read-only view; the
     // writable source is the non-primary replica) — not a second, disagreeing string.
     expect(weird.dbTable).toBeUndefined();
-    expect(() => resolveObjectNames(weird, "snake_case")).not.toThrow();
     const n = resolveObjectNames(weird, "snake_case");
     expect(n?.name).toBe("v_weird");
     expect(n?.readOnly).toBe(true);

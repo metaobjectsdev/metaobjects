@@ -496,10 +496,8 @@ describe("renderEntityFile — a projection's role:primary source wins regardles
   });
 
   test("primary declared FIRST: both resolvers already agreed, and still do after the fix", async () => {
-    const outOff = renderEntityFile(
-      (await loadMultiSourceProjectionFixture(false, false)).projection,
-      (await loadMultiSourceProjectionFixture(false, false)).ctx,
-    );
+    const { projection: projOff, ctx: ctxOff } = await loadMultiSourceProjectionFixture(false, false);
+    const outOff = renderEntityFile(projOff, ctxOff);
     expect(outOff).toContain('$view: "v_primary_name"');
 
     const { projection, ctx } = await loadMultiSourceProjectionFixture(true, false);

@@ -18,8 +18,11 @@
 //                gets no names artifact.
 // customize:     swap `renderNamesDecl` for your own shape; keep `resolveObjectNames` as the
 //                one resolver so the constant and the DDL it describes cannot disagree.
-// composes-with: entity.ts, queries.ts, routes.ts (a later task wires them to reference these
-//                constants instead of embedding the names a second time).
+// composes-with: entity.ts, routes.ts — both reference these constants instead of
+//                embedding the names a second time. queries.ts never embeds a physical
+//                name of its own: it reads/writes through the Drizzle table object
+//                entity.ts builds (columns keyed by FIELD name), so there is nothing in
+//                it to wire.
 //
 // The composition here is deliberately a SEPARATE generator, never a boolean on the entity
 // generator — a new artifact is a MINOR under docs/compatibility-policy.md and adds zero
