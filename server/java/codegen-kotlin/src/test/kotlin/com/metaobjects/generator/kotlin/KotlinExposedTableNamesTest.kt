@@ -72,4 +72,56 @@ class KotlinExposedTableNamesTest {
         assertTrue("varchar(\"purpose_code\", 40)" in src, src)
         assertFalse("AuthorNames" in src, src)
     }
+
+    // Fix 1 (Task 6 follow-up) -- an entity's OWN field.enum column previously kept its
+    // literal even with useNames=true: enumColumnSpec was a separate code path, never
+    // routed through emit()'s columnExprFor. `status` (enum) sits beside `reference`
+    // (plain string) so one emitted file proves BOTH sites substitute the same way.
+    private val ticketModel = """{
+      "metadata.root": { "package": "acme::demo", "children": [
+        { "object.entity": { "name": "Ticket", "children": [
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "reference", "@maxLength": 40 } },
+            { "field.enum":   { "name": "status", "@values": ["Open", "Closed"] } },
+            { "source.rdb":   { "@table": "tickets" } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    /** Same shape as [authorTableSrc], over [ticketModel] -- returns the emitted
+     *  TicketTable.kt text. */
+    private fun ticketTableSrc(tableArgs: Map<String, String> = emptyMap()): String {
+        val outDir = Files.createTempDirectory("ktbl-names-enum-")
+        try {
+            val loader = loadString("test", ticketModel)
+            KotlinNamesGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
+            KotlinExposedTableGenerator()
+                .apply { setArgs(tableArgs + mapOf("outputDir" to outDir.toString())) }
+                .execute(loader)
+            return outDir.resolve("acme/demo/TicketTable.kt").readText()
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `an own field-enum column references the name constant when names is enabled`() {
+        val src = ticketTableSrc(mapOf("useNames" to "true"))
+        // The non-enum sibling substitutes too (covered on its own by the Author tests
+        // above) -- asserted here so a fix that only patched the enum branch, and broke
+        // the plain-column branch it sits beside, can't pass this test either.
+        assertTrue("varchar(TicketNames.REFERENCE_COLUMN, 40)" in src, src)
+        assertTrue("enumerationByName(TicketNames.STATUS_COLUMN, 64, TicketStatus::class)" in src, src)
+        // The literal the strategy WOULD have produced must be GONE -- a positive
+        // assertion alone would still pass a generator emitting BOTH the constant
+        // reference and the old literal side by side.
+        assertFalse("enumerationByName(\"status\"" in src, src)
+    }
+
+    @Test fun `an own field-enum column keeps its literal by default`() {
+        val src = ticketTableSrc()
+        assertTrue("enumerationByName(\"status\", 64, TicketStatus::class)" in src, src)
+        assertTrue("varchar(\"reference\", 40)" in src, src)
+        assertFalse("TicketNames" in src, src)
+    }
 }

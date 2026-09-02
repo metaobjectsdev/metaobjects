@@ -681,7 +681,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // onto an abstract super in another package) — the full ClassName is
                     // kept so its package is available; the import itself is emitted (only
                     // when cross-package) via crossPackageEnumImports above.
-                    enumColumnSpec(field, entity)
+                    //
+                    // Task 6 — the entity's OWN field, same as the non-enum branch below:
+                    // route through columnExprFor so an enum column substitutes the
+                    // <Entity>Names.<MEMBER>_COLUMN constant exactly like every other
+                    // column here, instead of keeping its own separate literal.
+                    enumColumnSpec(field, entity, columnExprFor(field))
                 } else {
                     // Task 6 — the entity's OWN field, so its physical column is exactly
                     // what <Entity>Names.<MEMBER>_COLUMN names (KotlinNamesGenerator
@@ -718,7 +723,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // #246: same cross-package-aware handling as the base-column loop above — the
                     // import (when cross-package) is emitted via crossPackageEnumImports. Int-backed
                     // enums take the customEnumeration form here too.
-                    enumColumnSpec(field, entity)
+                    //
+                    // Task 6 — out of scope, same as the non-enum branch below: `field`
+                    // belongs to a TPH SUBTYPE, not `entity`, so its own physical column
+                    // is named by the SUBTYPE's <Sub>Names — a different Names object
+                    // than the one in scope here. Always literal; useNames() does not
+                    // reach this loop.
+                    enumColumnSpec(field, entity, "\"${KotlinGenUtil.resolveColumnName(field, columnNaming())}\"")
                 } else {
                     // Task 6 — out of scope: `field` here belongs to a TPH SUBTYPE, not
                     // `entity` (the discriminator base whose table this is). Its own
@@ -1598,14 +1609,19 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      *
      * ADR-0039: `@values` and `@intValueMap` are both read RESOLVING, so a field that
      * `extends` a shared abstract enum inherits the members AND their mapping.
+     *
+     * [colExpr] is the ready-to-splice Kotlin column-name expression — a quoted string
+     * literal, or (Task 6, `useNames()`) a bare `<Entity>Names.<MEMBER>_COLUMN`
+     * reference — supplied by the caller so this one code path (previously a
+     * hardcoded literal, never routed through [KotlinExposedTableGenerator.emit]'s
+     * `columnExprFor`) substitutes exactly like every other column site.
      */
-    private fun enumColumnSpec(field: EnumField, entity: MetaObject): String {
+    private fun enumColumnSpec(field: EnumField, entity: MetaObject, colExpr: String): String {
         val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
-        val colName = KotlinGenUtil.resolveColumnName(field, columnNaming())
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)
-            ?: return "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"
+            ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"
 
         // `; ` separates the branches: this is a one-line `when`, and space-separated
         // branches do not parse (`Foo.DRAFT 5 -> ...`).
@@ -1615,7 +1631,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // rather than substituting a member. The write side needs no `else` — it is
         // exhaustive over the enum by construction, since @intValueMap's keys are
         // validated to match @values exactly.
-        return "customEnumeration(\"$colName\", \"INTEGER\", " +
+        return "customEnumeration($colExpr, \"INTEGER\", " +
             "{ v -> when ((v as Number).toInt()) { $fromDb; " +
             "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
             "{ e -> when (e) { $toDb } })"
