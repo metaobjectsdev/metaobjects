@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from metaobjects.naming import DEFAULT_COLUMN_NAMING
+
 
 @dataclass
 class GenConfig:
@@ -15,23 +17,62 @@ class GenConfig:
     # ``<project>/.metaobjects/.gen-state``. COMMIT the manifest: it is the only thing
     # that makes hand-edit detection work on a machine that did not generate the code.
     gen_state_dir: str | None = None
-    output_layout: str = "flat"  # "flat" only in sub-project A
-    emit_abstract_shapes: bool = True  # Python concretes subclass the abstract base model
+    # Only "flat" is implemented; a non-default value is REFUSED below rather than
+    # silently ignored (see __post_init__).
+    output_layout: str = "flat"
+    # Python ALWAYS emits the abstract base model — concretes subclass it. Suppression
+    # is not implemented in this port (C# has it, behind `dotnet meta gen
+    # --emit-abstract-shapes`), so False is REFUSED rather than silently ignored.
+    emit_abstract_shapes: bool = True
     emit_package_init: bool = True  # emit an @generated __init__.py so the out dir imports as a package
     # FR-019 (ADR-0026): per-port resolution of a @provided enum's import module. The module
     # never lives in metadata (ADR-0001) — it is codegen config. ``provided_enum_packages``
     # maps a declaring metadata package ("acme::shop") to the Python import module; with a
     # single ``provided_enum_namespace`` fallback for the one-module case. A referenced
     # @provided enum whose package resolves to no module is a codegen-time error.
-    # NOTE: there is deliberately NO `column_naming` here. One existed and nothing read
-    # it, so `GenConfig(column_naming="snake_case")` ran clean, reported success and
-    # changed no output — while the docs named it as this port's codegen lever. It could
-    # not be wired, because Python codegen emits no physical column name at all: the
-    # models, create/patch shapes, router and filter allowlists all key by `field.name`,
-    # and persistence is the consumer's repository or `ObjectManager`. The strategy is a
-    # RUNTIME concern here — `ObjectManager(..., column_naming=...)` — plus the internal
-    # `resolve_m2m_descriptors(..., column_naming=...)` that builds junction FK column
-    # names for a consumer repository. If a generator ever emits a column name, add the
-    # field back TOGETHER with that generator, never ahead of it.
+    # The column-naming strategy is a RUNTIME concern in this port, not a codegen one:
+    # Python codegen emits no physical column name at all. Kept so the signature does
+    # not change, and REFUSED below for any value it cannot honour.
+    column_naming: str = DEFAULT_COLUMN_NAMING
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Refuse a value this port cannot honour, instead of accepting it and ignoring it.
+
+        Three fields here were read by NOTHING — `grep -rn "\\.<field>" src/` returned zero
+        for each — so setting one ran clean, reported success and changed not a byte.
+        `column_naming` was the worst of them: `docs/features/field-types.md` named it as
+        this port's codegen lever, and an adopter set it, got "wrote N file(s)", and
+        nothing happened. `emit_abstract_shapes` is a knob C# genuinely implements, which
+        made a cross-port divergence look like a shared option.
+
+        None of the three is WIRED here, because none can be without work this is not:
+        Python codegen names no column, always emits the abstract base model, and
+        implements one output layout. So each refuses the values it cannot deliver, and
+        names the surface that can. Detect-and-refuse, never silent-and-wrong — the same
+        call `apply_column_naming_strategy` already makes for an unknown strategy.
+
+        Defaults are untouched, so every existing call is unaffected.
+        """
+        if self.output_layout != "flat":
+            raise ValueError(
+                f"GenConfig.output_layout={self.output_layout!r}: only 'flat' is "
+                "implemented in this port."
+            )
+        if self.emit_abstract_shapes is not True:
+            raise ValueError(
+                "GenConfig.emit_abstract_shapes=False: this port always emits the abstract "
+                "base model — concretes subclass it — and suppressing it is not implemented "
+                "here. The C# port implements the same knob (`dotnet meta gen "
+                "--emit-abstract-shapes`); this one would have accepted the value and "
+                "emitted the shapes anyway."
+            )
+        if self.column_naming != DEFAULT_COLUMN_NAMING:
+            raise ValueError(
+                f"GenConfig.column_naming={self.column_naming!r}: Python codegen emits no "
+                "physical column name, so there is nothing here for a column-naming "
+                "strategy to name — models, create/patch shapes, router and filter "
+                "allowlists all key by field.name. Set it on the RUNTIME instead: "
+                "ObjectManager(..., column_naming=...). Per-field, `@column` overrides both."
+            )

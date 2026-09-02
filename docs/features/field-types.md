@@ -60,8 +60,9 @@ snake_case Postgres schema and a literal-column one.
 models, create/patch shapes, router and filter allowlists all key by `field.name`, and
 persistence is your repository or `ObjectManager` — so the strategy is a runtime setting
 there, and `@column` remains the per-field override. (A `GenConfig(column_naming=…)`
-existed through `0.24.5` and nothing read it: it ran clean, reported success and changed
-no output. It is gone rather than wired, because there was nothing to wire it into.)
+shipped through `0.24.5` and nothing read it: it ran clean, reported success and changed
+no output. It now refuses a non-default value and names `ObjectManager` instead, rather
+than being wired — there is nothing to wire it into.)
 
 **So a polyglot project must do one of two things** for any field whose name has a
 case boundary, or the generated data access will address a column the migration did

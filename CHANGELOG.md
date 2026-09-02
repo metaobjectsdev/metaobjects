@@ -7,11 +7,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-**⚠️ Contains one BREAKING change** — `GenConfig.column_naming` is removed from the Python
-package (it never did anything; setting it now raises `TypeError` instead of being
-ignored). That is a package-surface break, so the cut carrying it is a MINOR, not a patch.
-`metamodelVersion` is untouched — no vocabulary changes in this line.
-
 ### Fixed — a registered view subtype with no grid renderer printed its raw value (#355 residue)
 
 `#355` fixed the renderer map in one direction — every renderer key is now a registered view
@@ -248,6 +243,95 @@ backend — it reads the registry, so it needs no project. The skill's own step 
 `--detail` / `--format json` shapes for the same reason.
 
 All five `agent-context-conformance` corpora regenerated.
+
+### Fixed — the Python config silently dropped every key it did not read
+
+Reported by an adopter who set a column-naming key in `metaobjects.config.yaml`, got
+exit 0 and "wrote N file(s)", and nothing changed. Two independent defects behind it.
+
+**1. `load_project_config` accepted any key and read four.** It pulled `metadata`,
+`providers`, `libraries` and `targets` out with `raw.get(...)` and never looked at the
+rest, so a key you typed — a real one this port does not have, or a plain typo like
+`metadta:` — was dropped in silence. A deliberately bogus value was accepted the same
+way. That is the failure class the whole `0.24.x` line has been cut to remove: the tool
+reporting success for work it did not do.
+
+**The config's own published schema already forbade this.**
+`metaobjects-config.schema.json` has always declared `"additionalProperties": false`, at
+the top level and per target — so an editor validating against the shipped schema
+rejected the key while the loader, the thing that actually runs, waved it through. The
+loader now refuses an unknown key at either level and names the accepted set, because
+the fix for a typo is the correct spelling. It is the same call the `libraries` check in
+that function already made for an unknown package name — *"a name typed into a config
+file is a mistake worth failing on"* — now applied to the key as well as the value.
+
+**The drift ran in both directions**: `libraries` is a key the loader has long accepted
+and the schema never listed, so under `additionalProperties: false` a perfectly valid
+config was flagged invalid by any editor using it. Added. The test that exists to keep
+the two in step asserted `set(props) >= {…}` — a **superset** — so it could never see a
+key the loader accepts and the schema omits. It compares exact sets now, and a probe
+confirms it fails from either side.
+
+The second half of that report — a `GenConfig` knob that could never work — is its own
+entry below, along with the two more the hunt for it turned up.
+
+**Not a defect, and worth stating because it was reported alongside these:** a Python
+read model whose fields moved from `@column` to `field.name` in `0.24.5` did exactly
+what that release says it does. Before it, `<Entity>` keyed by `@column` while
+`<Entity>Create`, `<Entity>Patch`, the generated router and `ObjectManager` all keyed by
+`field.name` — one generated module disagreeing with itself. The camelCase field name is
+the wire name, cross-port; `@column` remains the physical column.
+
+### Fixed — three `GenConfig` fields were read by nothing, and a gate now says so (Python)
+
+Reported as one: an adopter set a column-naming key, got exit 0 and "wrote N file(s)", and
+nothing changed. `GenConfig.column_naming` was read by **nothing** — `grep -rn
+"\.column_naming" src/` returned zero — so setting it ran clean, reported success and
+changed not one byte, while `docs/features/field-types.md` named it as this port's codegen
+lever.
+
+**A detector written for that one field convicted three.** `output_layout` and
+`emit_abstract_shapes` are read by nothing either, and the second is the worse find: it is
+a knob **C# genuinely implements** (`dotnet meta gen --emit-abstract-shapes`), so an
+unimplemented option looked like a shared cross-port one — and
+`instance_artifacts.py`'s docstring stated the concern was *"handled in entity_model"*,
+which entity_model never did. `output_layout` had a test asserting its default, which made
+a dead field look covered.
+
+**None of the three is wired, because none can be without work this is not.** Python
+codegen names no physical column at all — models, create/patch shapes, router and filter
+allowlists all key by `field.name` (that is `0.24.5`'s own "Python's read model renamed
+itself to `@column`" fix), and persistence is the consumer's repository or `ObjectManager`.
+This port always emits the abstract base model, and implements one output layout. So each
+field now **refuses the values it cannot honour** and names the surface that can:
+`GenConfig(column_naming="snake_case")` raises and points at `ObjectManager(...,
+column_naming=...)`. Detect-and-refuse, never silent-and-wrong — the same call
+`apply_column_naming_strategy` already makes for an unknown strategy.
+
+**This is a PATCH, and the shape is why.** No signature changes and no default moves, so
+every existing call is unaffected; what changes is that a value previously *accepted and
+ignored* is now refused. That is the previously-wrong-acceptance correction that made the
+`@min` clamp (`0.19.1`) and the `like` case-sensitivity fix (`0.21.6`) patches. Deleting
+the fields would have been a package-surface break and a MINOR — for no gain, since the
+caller who set one wanted an answer, and now gets it. Adding the CLI flag first proposed
+for `column_naming` would have been *worse* than the silence: it would have looked
+honoured.
+
+**The gate is the durable half.** `test_no_dead_config_fields.py` asserts every `GenConfig`
+field is read by something under `src/`, or carries a written exemption naming the
+decision — with a tripwire failing any exemption that outlives the gap it explains, the
+same shape as the view-renderer exemptions in `codegen-ts-tanstack`. A field's own
+validator deliberately does not count as a read, or a refusal would satisfy the check and
+stop it looking. Probes confirm it convicts a newly-added dead field and calls a stale
+exemption stale.
+
+**Why the suite could not have caught this.** `test_column_naming_strategy.py` gated the
+pure `apply_column_naming_strategy` function in isolation — correct, and silent about
+whether anything CALLS it. `test_m2m_codegen.py`'s descriptor assertions all ran at the
+`literal` default, where a junction column name *equals* its field name, so every one
+passed whether the strategy was applied or ignored. The parts were tested; the connection
+was not. Both are now gated at the output level: a `snake_case` descriptor case asserting
+`post_id`, which `literal` cannot produce.
 
 ### Fixed — the Python config silently dropped every key it did not read
 
@@ -1171,7 +1255,8 @@ strategy, one port used `@column` for the wrong name entirely, and one ignored i
 - **`columnNamingStrategy` is now selectable in the four ports that lacked it** —
   `dotnet meta gen --column-naming`, Python `ObjectManager(…, column_naming=…)`
   (a `GenConfig(column_naming=…)` also shipped here and was DEAD — nothing read it; see
-  [Unreleased], where it is removed), Java `SimpleMappingHandlerDB.setColumnNaming(…)`,
+  [Unreleased], where it is made to refuse rather than ignore),
+  Java `SimpleMappingHandlerDB.setColumnNaming(…)`,
   Kotlin's `<columnNaming>` generator arg. **No default moves** (TS/Kotlin-codegen
   `snake_case`, C#/Python/Java `literal`): a default that moved would silently
   re-point live queries at columns that do not exist. An unknown value is refused
