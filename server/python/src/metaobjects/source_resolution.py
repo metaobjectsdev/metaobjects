@@ -20,46 +20,29 @@ either invert its layering to reach it or keep its own copy — and keeping its
 own copy is how the runtime came to be the one caller that fabricated a table
 name for an object declaring no source at all.
 
-**Cross-port divergence guard.** The C# (``CSharpNaming.ResolveObjectNames``)
-and TypeScript (``resolveObjectNames`` in ``codegen-ts/src/names.ts``) resolvers
-— and Kotlin's, by inheriting the JVM loader's validation — refuse an object
-whose primary source and primary WRITABLE source resolve to two different
-physical names. :func:`primary_rdb_source`'s own predicate is the LOOSE one (any
-role=primary source, readable or not); a stricter role=primary+writable source
-can survive alongside it when an abstract parent's own read-only primary source
-and a child's own, differently-named, writable primary source both land on the
-child's *effective* ``children()`` at once (own-only validation never sees the
-combination — see :func:`find_primary_writable_source`). That shape loads with
-zero errors, so this module — not a downstream consumer — is where it is
-caught, once, for every caller of :func:`primary_rdb_source`.
+**Cross-port divergence guard.** Every port refuses an object whose ``@role: primary``
+sources resolve to more than one physical name. The shape loads with ZERO errors:
+``validate_one_primary_source`` enforces "exactly one primary" over OWN children only,
+and effective-children shadowing matches an own child over a super child only on a
+``(type, name)`` pair — so two ``source.rdb`` nodes with DIFFERENT explicit names at two
+levels of an ``extends`` chain never collide, and both land on the child's *effective*
+``children()``. Downstream every consumer references one name unconditionally, so the
+refusal lives here, once, for every caller of :func:`primary_rdb_source`.
+
+The check is deliberately DIRECTION-BLIND, and that is a correction. It used to compare
+"the first primary source" against "the first primary WRITABLE source", which can only
+see a divergence when one of the two primaries is read-only — and since ``children()``
+places INHERITED entries before own, only when the read-only one is the *inherited* one.
+The mirror shape — a parent and a child each declaring their own differently-named
+WRITABLE primary — was silent, and silence there is the worse outcome: the child declares
+``@table`` and every generated artifact binds the parent's table instead. Both shapes load
+with zero errors; both are now refused.
 """
 from __future__ import annotations
 
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
-
-
-def find_primary_writable_source(entity: MetaObject) -> MetaSource | None:
-    """The primary WRITABLE ``source.rdb`` for *entity*, or ``None``.
-
-    Mirrors C#'s ``MetaObject.FindPrimaryWritableSource`` / TS's ``obj.dbTable``
-    predicate: ``@role: primary`` AND :meth:`MetaSource.is_writable`. Used ONLY
-    by :func:`primary_rdb_source`'s divergence guard below — callers wanting
-    "the" primary source (writable or not) call :func:`primary_rdb_source`
-    itself, never this.
-
-    ADR-0039 — ``children()`` RESOLVES, matching the loose predicate this is
-    compared against (an inherited writable source must be seen too).
-    """
-    for c in entity.children():
-        if (
-            isinstance(c, MetaSource)
-            and c.role() == SOURCE_ROLE_PRIMARY
-            and c.is_writable()
-        ):
-            return c
-    return None
 
 
 def primary_rdb_source(entity: MetaObject) -> MetaSource | None:
@@ -76,33 +59,31 @@ def primary_rdb_source(entity: MetaObject) -> MetaSource | None:
     ADR-0039 — ``children()`` RESOLVES: a source inherited via ``extends``
     (the ``BaseEntity`` pattern) is seen; ``own_children()`` would miss it.
 
-    Raises :class:`ValueError` — mirroring the C#/TS ports' wording exactly —
-    when a primary WRITABLE source also exists (see
-    :func:`find_primary_writable_source`) and resolves to a DIFFERENT physical
-    name than the one returned here. No downstream consumer re-checks this;
-    the refusal lives here, once, so every caller inherits it for free.
+    Raises :class:`ValueError` — mirroring the other four ports' wording exactly —
+    when the resolving children carry MORE THAN ONE ``@role: primary`` source and
+    they do not agree on a physical name. Direction-blind: it compares every
+    primary against every other, so it does not matter which of them is writable,
+    nor which was declared first. See the module docstring for why that matters.
+    No downstream consumer re-checks this; the refusal lives here, once, so every
+    caller inherits it for free.
     """
-    src: MetaSource | None = None
-    for c in entity.children():
-        if isinstance(c, MetaSource) and c.role() == SOURCE_ROLE_PRIMARY:
-            src = c
-            break
-    if src is None:
+    primaries = [
+        c
+        for c in entity.children()
+        if isinstance(c, MetaSource) and c.role() == SOURCE_ROLE_PRIMARY
+    ]
+    if not primaries:
         return None
 
-    writable = find_primary_writable_source(entity)
-    if writable is not None:
-        name = src.physical_name()
-        writable_name = writable.physical_name()
-        if writable_name != name:
-            raise ValueError(
-                f'{entity.name}: the primary source resolves to physical name "{name}" '
-                f"but the primary WRITABLE source resolves to "
-                f'"{writable_name}" — two role=primary sources disagree on the '
-                f"object's physical name. Give the read-only and writable sources "
-                f"matching physical names, or drop the extra role=primary declaration."
-            )
-    return src
+    names = sorted({s.physical_name() for s in primaries})
+    if len(names) > 1:
+        joined = ", ".join(f'"{n}"' for n in names)
+        raise ValueError(
+            f"{entity.name}: role=primary sources disagree on the object's physical "
+            f"name — {joined}. Every consumer binds ONE name. Give them matching "
+            f"physical names, or drop the extra role=primary declaration."
+        )
+    return primaries[0]
 
 
 def resolve_table_name(entity: MetaObject) -> str | None:

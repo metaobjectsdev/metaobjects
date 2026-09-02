@@ -120,45 +120,138 @@ describe("resolveObjectNames", () => {
     expect(n?.readOnly).toBe(true);
   });
 
-  // The REACHABLE divergence: validateSourceRoles (metadata/src/persistence/source/
-  // validate-source-roles.ts) enforces "exactly one primary" over ownChildren() only,
-  // never over the effective inherited set, and _effectiveChildren
-  // (metadata/src/shared/meta-data.ts) shadows an own child over a super child only on a
-  // (type, name) match. Two source.rdb children with DIFFERENT explicit names never
-  // collide, so an abstract parent's own read-only primary and a child's own,
-  // differently-named, writable primary source both survive on the child's effective
-  // children() — two real nodes with role==="primary" at once. resolveTableName's looser
-  // `find(role==="primary")` returns the first (inherited, read-only); dbTable's stricter
-  // `find(role==="primary" && isWritable())` skips it and matches the later, writable one.
-  // Both defined, both different — this loads with ZERO errors.
-  test("a divergent primary/writable pair is refused, naming both", async () => {
+  // The REACHABLE divergence, BOTH directions. validateSourceRoles
+  // (metadata/src/persistence/source/validate-source-roles.ts) enforces "exactly one
+  // primary" over ownChildren() only, never over the effective inherited set, and
+  // _effectiveChildren (metadata/src/shared/meta-data.ts) shadows an own child over a super
+  // child only on a (type, name) match — so two source.rdb children with DIFFERENT explicit
+  // names never collide, and a parent's and a child's own primary sources both survive on
+  // the child's effective children(). `load()` throws on any load error, so each fixture
+  // below is proven to be metadata the loader ACCEPTS before anything else is asserted.
+  //
+  // Direction 1 is the one the old check could see: the inherited primary is read-only, so
+  // dbTable (primary AND writable) skipped it and matched the child's. Direction 2 is the
+  // one it could not: both primaries are WRITABLE, so dbTable matched the same inherited
+  // node the loose scan did, the two agreed, and the guard stayed silent while every
+  // generated artifact bound the parent's table over the child's own declaration.
+  //
+  // Neither fixture uses object.base — which the JVM cannot instantiate at all — so the
+  // same two shapes are expressible in every port.
+  const DIVERGENT = [
+    {
+      id: "read-only inherited primary",
+      other: "v_parent",
+      // An object.entity may not carry a read-only primary
+      // (ERR_ENTITY_PRIMARY_SOURCE_READONLY), so the read-only half is an abstract
+      // object.projection. An ENTITY extending one is legal — only a PROJECTION is
+      // restricted to extending projections.
+      children: [
+        {
+          "object.entity": {
+            name: "Base",
+            children: [
+              { "source.rdb": { name: "s", "@table": "bases" } },
+              { "field.long": { name: "id" } },
+              { "identity.primary": { name: "pk", "@fields": "id" } },
+            ],
+          },
+        },
+        {
+          "object.projection": {
+            name: "ParentWeird",
+            abstract: true,
+            children: [
+              { "source.rdb": { name: "viewSrc", "@kind": "view", "@view": "v_parent" } },
+              { "field.long": { name: "id", extends: "Base.id" } },
+            ],
+          },
+        },
+        {
+          "object.entity": {
+            name: "ChildWeird",
+            extends: "ParentWeird",
+            children: [
+              { "source.rdb": { name: "tableSrc", "@table": "child_table" } },
+              { "identity.primary": { name: "pk", "@fields": "id" } },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      id: "both primaries writable",
+      other: "parent_table",
+      // Nothing exotic: two plain object.entity declarations, each naming its own table.
+      children: [
+        {
+          "object.entity": {
+            name: "ParentWeird",
+            abstract: true,
+            children: [
+              { "source.rdb": { name: "parentSrc", "@table": "parent_table" } },
+              { "field.long": { name: "id" } },
+            ],
+          },
+        },
+        {
+          "object.entity": {
+            name: "ChildWeird",
+            extends: "ParentWeird",
+            children: [
+              { "source.rdb": { name: "childSrc", "@table": "child_table" } },
+              { "identity.primary": { name: "pk", "@fields": "id" } },
+            ],
+          },
+        },
+      ],
+    },
+  ];
+
+  for (const shape of DIVERGENT) {
+    test(`a divergent primary pair is refused, naming both (${shape.id})`, async () => {
+      const root = await load(shape.children);
+      const child = obj(root, "ChildWeird");
+      // Pin the reachability MECHANISM: both sources survive the child merge. If one
+      // shadowed the other there would be no divergence and this would pass vacuously.
+      const primaries = child.children()
+        .filter((c) => c.type === "source" && (c as { role?: string }).role === "primary")
+        .map((c) => (c as { physicalName: string }).physicalName)
+        .sort();
+      expect(primaries).toEqual([shape.other, "child_table"].sort());
+
+      expect(() => resolveObjectNames(child, "snake_case")).toThrow(CodegenError);
+      // Each substring asserted separately, so a message that drops one still fails.
+      expect(() => resolveObjectNames(child, "snake_case")).toThrow(/ChildWeird/);
+      expect(() => resolveObjectNames(child, "snake_case")).toThrow(new RegExp(shape.other));
+      expect(() => resolveObjectNames(child, "snake_case")).toThrow(/child_table/);
+    });
+  }
+
+  test("two primaries AGREEING on a physical name are not refused", async () => {
+    // The guard is about DISAGREEMENT, not about the count. Refusing two primaries that
+    // name the same relation would make it stricter than the invariant it protects.
     const root = await load([
       {
-        "object.base": {
-          name: "ParentWeird",
+        "object.entity": {
+          name: "ParentSame",
           abstract: true,
           children: [
-            { "source.rdb": { name: "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
-            { "field.int": { name: "id" } },
+            { "source.rdb": { name: "parentSrc", "@table": "same_table" } },
+            { "field.long": { name: "id" } },
           ],
         },
       },
       {
-        "object.base": {
-          name: "ChildWeird",
-          extends: "ParentWeird",
+        "object.entity": {
+          name: "ChildSame",
+          extends: "ParentSame",
           children: [
-            { "source.rdb": { name: "tableSrc", "@table": "child_table", "@role": "primary" } },
+            { "source.rdb": { name: "childSrc", "@table": "same_table" } },
+            { "identity.primary": { name: "pk", "@fields": "id" } },
           ],
         },
       },
     ]);
-    const child = obj(root, "ChildWeird");
-    expect(child.dbTable).toBe("child_table");
-    expect(() => resolveObjectNames(child, "snake_case")).toThrow(CodegenError);
-    // All three substrings asserted separately, so a message that drops one still fails.
-    expect(() => resolveObjectNames(child, "snake_case")).toThrow(/ChildWeird/);
-    expect(() => resolveObjectNames(child, "snake_case")).toThrow(/v_parent/);
-    expect(() => resolveObjectNames(child, "snake_case")).toThrow(/child_table/);
+    expect(resolveObjectNames(obj(root, "ChildSame"), "snake_case")?.name).toBe("same_table");
   });
 });

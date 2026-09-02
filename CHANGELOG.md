@@ -79,6 +79,43 @@ These are behaviour changes on metadata that declares a non-primary source befor
 primary one. If your model declares exactly one source per object — the overwhelmingly
 common case — nothing moves.
 
+**And the guard that was supposed to catch a name resolved two ways only looked one
+direction — in all five ports.** Two `@role: primary` sources can survive on one object's
+effective children: the loader enforces "exactly one primary" over OWN children only, and
+own-over-super shadowing matches on a `(type, name)` pair, so two `source.rdb` nodes with
+different explicit names at two levels of an `extends` chain never collide. The guard
+compared *the first primary source* against *the first primary WRITABLE source*, which can
+only see a disagreement when one of the two is read-only — and since the resolving child
+list places inherited entries before own, only when the read-only one is the inherited one.
+
+The mirror shape is two plain entities, each declaring its own table:
+
+```jsonc
+{ "object.entity": { "name": "Parent", "abstract": true, "children": [
+    { "source.rdb": { "name": "parentSrc", "@table": "parent_table" } } ] } }
+{ "object.entity": { "name": "Child", "extends": "Parent", "children": [
+    { "source.rdb": { "name": "childSrc", "@table": "child_table" } } ] } }
+```
+
+That loads with **zero errors**, the guard says nothing, and every generated artifact binds
+`parent_table` — the child's own `@table` declaration is silently discarded. Silence is the
+worse outcome of the two, and it was the unguarded one.
+
+The check is now **direction-blind** in every port: it collects the distinct physical names
+of *all* `@role: primary` sources and refuses when there is more than one, so which of them
+is writable and which was declared first stop mattering. Two primaries **agreeing** on a
+name stay legal — the invariant is that an object has one physical name, not that it
+declares one source — and a read-only primary beside a writable *replica* on one object
+never reaches the check at all. The message changed with it (one wording, all five ports),
+since the old one named a "primary WRITABLE source" that need not exist.
+
+A comment in the two JVM ports claimed the shape "could not be constructed on this port"
+because `object.base` is not instantiable there. That reasoned from one shape and
+generalised: neither shape now pinned needs `object.base`, and an `object.entity` may
+extend an abstract `object.projection` (only a *projection* is restricted to extending
+projections). Each port's test asserts the fixture loads with zero errors, and that **both**
+sources survive the child merge, before asserting anything about the guard.
+
 **Kotlin's api-docs builder then had to follow them.** Fixing the two generators left the
 builder that documents them still selecting role-blind, so on the same shape they now
 disagree — and because the builder dispatches Table-doc versus Proc-doc on that source's

@@ -213,7 +213,11 @@ public object KotlinGenUtil {
         // R27: the ONE selection algorithm, shared with KotlinExposedTableGenerator's
         // single-object emission path -- see primaryRdbSource's doc for why neither
         // firstRdbSource nor writableRdbSource/readOnlyRdbSource is the right selector.
-        val source = primaryRdbSource(obj) ?: return null
+        // The full primary LIST is needed here (not just the first) for the
+        // direction-blind divergence guard below; primaryRdbSource returns its head.
+        val primaries = obj.getSources(true).filterIsInstance<RdbSource>()
+            .filter { MetaSource.ROLE_PRIMARY == it.role }
+        val source = primaries.firstOrNull() ?: return null
 
         // ADR-0039: metaFields is the RESOLVING accessor (getMetaFields() defaults to
         // includeParentData=true) -- an inherited @column must resolve here, or the
@@ -226,30 +230,42 @@ public object KotlinGenUtil {
 
         // D4 -- every consumer downstream is meant to reference this name
         // UNCONDITIONALLY, no per-site equality guard. Refuse here instead, once, so
-        // nothing downstream has to. This is REACHABLE on real C#/TS metadata (an
-        // abstract parent's own read-only primary source plus a child's own,
-        // differently-named, writable primary source both surviving the resolving
-        // source walk at once) -- ValidateOnePrimarySource enforces "exactly one
-        // primary" over OWN children only, so two DIFFERENTLY-NAMED source.rdb nodes at
-        // different levels of an extends chain never collide. On THIS port specifically
-        // the shape could not be constructed (confirmed by walking the loader's own
-        // registered validation rules, not by a dedicated fixture): object.base cannot
-        // be instantiated as a concrete metadata node here (its registered impl class,
-        // MetaObject, is abstract), an object.entity's own primary source must always
-        // be writable (ERR_ENTITY_PRIMARY_SOURCE_READONLY), and an object.projection's
-        // source must always be read-only (ERR_PROJECTION_SOURCE_WRITABLE) while its
-        // extends chain may only contain OTHER projections (never an entity) -- so no
-        // loadable Kotlin model today puts a read-only role=primary source ahead of a
-        // writable one in the same resolved chain. The guard stays for cross-port
-        // symmetry and as a fail-closed backstop should a future metamodel change
-        // reopen that path.
-        val writable = obj.findPrimaryWritableSource().map { it.physicalName }.orElse(null)
-        if (writable != null && writable != name) {
+        // nothing downstream has to. This is REACHABLE on metadata that loads with ZERO
+        // errors: ValidateOnePrimarySource enforces "exactly one primary" over OWN
+        // children only, and effective-children shadowing matches an own child over a
+        // super child only on a (type, name) pair -- so two DIFFERENTLY-NAMED source.rdb
+        // nodes at two levels of an extends chain never collide, and a parent's and a
+        // child's own primary sources both survive the resolving source walk.
+        //
+        // DIRECTION-BLIND, and that is a correction. The old check compared this first
+        // primary against findPrimaryWritableSource (the first primary WRITABLE one),
+        // which can only see a divergence when one of the two primaries is READ-ONLY --
+        // and since the resolving source list places inherited entries before own, only
+        // when the read-only one is the inherited one. The mirror shape, a parent and
+        // child each declaring their own differently-named WRITABLE primary, was silent,
+        // and silence is the worse outcome: the child declares its own physical name and
+        // every generated artifact binds the parent's.
+        //
+        // A previous revision of this comment claimed the shape "could not be constructed
+        // on THIS port" because object.base is not instantiable on the JVM. That reasoned
+        // from ONE of the shapes and generalised. Two others need no object.base at all:
+        // an object.entity may extend an abstract object.projection (only a PROJECTION is
+        // restricted to extending projections), which reaches direction 1; and two plain
+        // entities each declaring their own table reach direction 2. Both are pinned by
+        // KotlinNamesDivergentSourceTest, which asserts zero load errors first.
+        //
+        // Two primaries AGREEING on a name is not a divergence and stays legal -- the
+        // invariant is that an object has ONE physical name, not that it declares one
+        // source. A read-only primary beside a writable REPLICA on one object does not
+        // reach here either: a replica is not role == primary.
+        val distinct = primaries.map { it.physicalName }.distinct().sorted()
+        if (distinct.size > 1) {
+            // Sorted, so the message is identical in every port regardless of source order.
+            val joined = distinct.joinToString(", ") { "\"$it\"" }
             throw GeneratorException(
-                "${obj.name}: the primary source resolves to physical name \"$name\" but the " +
-                    "primary WRITABLE source resolves to \"$writable\" -- two role=primary sources " +
-                    "disagree on the object's physical name. Give the read-only and writable " +
-                    "sources matching physical names, or drop the extra role=primary declaration.")
+                "${obj.name}: role=primary sources disagree on the object's physical name -- " +
+                    "$joined. Every consumer binds ONE name. Give them matching physical names, " +
+                    "or drop the extra role=primary declaration.")
         }
 
         return KotlinObjectNames(

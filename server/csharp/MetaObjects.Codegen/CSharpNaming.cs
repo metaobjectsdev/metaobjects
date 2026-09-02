@@ -343,7 +343,8 @@ public static class CSharpNaming
         // ADR-0039: Sources() is the RESOLVING accessor — an inherited primary source
         // must be seen, or an entity extending an abstract base with its own primary
         // source would wrongly read as unpersisted.
-        var source = obj.Sources().FirstOrDefault(s => s.Role == SOURCE_ROLE_PRIMARY);
+        var primaries = obj.Sources().Where(s => s.Role == SOURCE_ROLE_PRIMARY).ToList();
+        var source = primaries.FirstOrDefault();
         if (source is null) return null;
 
         var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
@@ -360,21 +361,33 @@ public static class CSharpNaming
         // (Loader/ValidationPasses.cs) enforces "exactly one primary" over OWN children
         // only, and MetaData.EffectiveChildren shadows an own child over a super child
         // only on a (type, name) match. Two source.rdb children with DIFFERENT explicit
-        // names never collide, so an abstract parent's own read-only primary source and
-        // a child's own, differently-named, writable primary source both survive on the
-        // child's effective Sources() at once — two real nodes with role == primary.
-        // This resolver's looser FirstOrDefault(role == primary) returns the first
-        // (inherited, read-only) one; MetaObject.DbTable's stricter
-        // (role == primary && IsWritable()) skips it and matches the later, writable
-        // one. Two real, different, defined strings — this loads with ZERO errors.
-        var writable = obj.DbTable;
-        if (writable is not null && writable != name)
+        // names never collide, so a parent's and a child's own primary sources both
+        // survive on the child's effective Sources() at once — two real nodes with
+        // role == primary, on metadata that loads with ZERO errors.
+        //
+        // DIRECTION-BLIND, and that is a correction. The old check compared this first
+        // primary against MetaObject.DbTable (the first primary WRITABLE one), which can
+        // only see a divergence when one of the two primaries is READ-ONLY — and since
+        // the resolving source list places inherited entries before own, only when the
+        // read-only one is the inherited one. The mirror shape, a parent and child each
+        // declaring their own differently-named WRITABLE primary, was silent, and silence
+        // is the worse outcome: the child declares its own physical name and every
+        // generated artifact binds the parent's.
+        //
+        // Two primaries AGREEING on a name is not a divergence and stays legal — the
+        // invariant is that an object has ONE physical name, not that it declares one
+        // source. A read-only primary beside a writable REPLICA on one object does not
+        // reach here either: a replica is not role == primary.
+        var distinct = primaries.Select(s => s.PhysicalName).Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal).ToList();
+        if (distinct.Count > 1)
         {
+            // Sorted, so the message is identical in every port regardless of source order.
+            var joined = string.Join(", ", distinct.Select(n => $"\"{n}\""));
             throw new InvalidOperationException(
-                $"{obj.Name}: the primary source resolves to physical name \"{name}\" but the " +
-                $"primary WRITABLE source resolves to \"{writable}\" — two role=primary sources " +
-                "disagree on the object's physical name. Give the read-only and writable sources " +
-                "matching physical names, or drop the extra role=primary declaration.");
+                $"{obj.Name}: role=primary sources disagree on the object's physical name — " +
+                $"{joined}. Every consumer binds ONE name. Give them matching physical names, " +
+                "or drop the extra role=primary declaration.");
         }
 
         return new ObjectNames

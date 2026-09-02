@@ -43,9 +43,10 @@ export function resolveObjectNames(
   // isMetaSource, not `instanceof` — two physical copies of @metaobjectsdev/metadata in
   // one process give the class and the instance different identities, and the failure is
   // SILENT: the entity reads as "not backed by any store" and emits nothing.
-  const source = obj.children().find(
+  const primaries = obj.children().filter(
     (c): c is MetaSource => isMetaSource(c) && c.role === SOURCE_ROLE_PRIMARY,
   );
+  const source = primaries[0];
   if (source === undefined) return undefined;
 
   const fields: Record<string, FieldNames> = {};
@@ -56,11 +57,9 @@ export function resolveObjectNames(
   }
 
   // Read the physical name off the primary SOURCE ALREADY IN HAND, rather than re-finding
-  // it via resolveTableName() (which reapplies the identical find(role==="primary")
-  // predicate a second time — a name computed twice by two separate lookups is exactly
-  // the class of bug this file exists to prevent). Mirrors the C# port
-  // (CSharpNaming.ResolveObjectNames), and makes the throw below's comparison visibly
-  // "this primary source's own name vs the primary WRITABLE source's name".
+  // it via resolveTableName() (which reapplies the identical role==="primary" predicate a
+  // second time — a name computed twice by two separate lookups is exactly the class of bug
+  // this file exists to prevent). Mirrors the C# port (CSharpNaming.ResolveObjectNames).
   const name = source.physicalName;
   // Every consumer downstream references this name unconditionally (no per-site equality
   // guard — see drizzle-schema.ts). Refuse here instead, once, so nothing downstream has to.
@@ -69,27 +68,31 @@ export function resolveObjectNames(
   // validate-source-roles.ts) enforces "exactly one primary" over ownChildren() only, never
   // over the effective inherited set, and _effectiveChildren (metadata/src/shared/
   // meta-data.ts) shadows an own child over a super child only on a (type, name) match. Two
-  // source.rdb children with DIFFERENT explicit names never collide, so extending an
-  // abstract object whose own primary source is read-only with a child that adds its own,
-  // differently-named, writable primary source leaves BOTH on the effective children() list
-  // rather than one shadowing the other. This resolver's looser `find(role==="primary")`
-  // then returns the first (inherited, read-only) one; `dbTable`'s stricter
-  // `find(role==="primary" && isWritable())` skips it and matches the later, writable one —
-  // two real, different, defined strings.
-  const writable = obj.dbTable;
-  if (writable !== undefined && writable !== name) {
-    // The shape that actually throws: TWO role==="primary" sources surviving on one
-    // object's effective children() (via extends — see the comment above), disagreeing on
-    // physical name. NOT a read-only primary beside a writable REPLICA on one object —
-    // that shape is legal and does not reach here (see names.test.ts, "a read-only
-    // primary beside a writable replica on one object loads..."). Wording matches the C#
-    // port (CSharpNaming.ResolveObjectNames) so the two ports stop diverging on this
-    // user-facing string.
+  // source.rdb children with DIFFERENT explicit names never collide, so a parent and a child
+  // each declaring their own differently-named primary source leave BOTH on the effective
+  // children() list rather than one shadowing the other. Both shapes below load with ZERO
+  // errors (names.test.ts pins each, asserting no load errors first).
+  //
+  // DIRECTION-BLIND, and that is a correction. The old check compared this first primary
+  // against `obj.dbTable` (the first primary WRITABLE one), which can only see a divergence
+  // when one of the two primaries is READ-ONLY — and since children() places inherited
+  // entries before own, only when the read-only one is the inherited one. The mirror shape,
+  // a parent and child each declaring their own differently-named WRITABLE primary, was
+  // silent, and silence is the worse outcome: the child declares its own physical name and
+  // every generated artifact binds the parent's.
+  //
+  // Two primaries AGREEING on a name is not a divergence and stays legal — the invariant is
+  // that an object has one physical name, not that it declares one source. Nor does a
+  // read-only primary beside a writable REPLICA on one object reach here: a replica is not
+  // role==="primary" (see names.test.ts, "a read-only primary beside a writable replica...").
+  const distinct = [...new Set(primaries.map((s) => s.physicalName))].sort();
+  if (distinct.length > 1) {
+    // Sorted, so the message is identical in every port regardless of children() order.
+    const joined = distinct.map((n) => `"${n}"`).join(", ");
     throw new CodegenError(
-      `${obj.name}: the primary source resolves to physical name "${name}" but the ` +
-      `primary WRITABLE source resolves to "${writable}" — two role=primary sources ` +
-      `disagree on the object's physical name. Give the read-only and writable sources ` +
-      `matching physical names, or drop the extra role=primary declaration.`,
+      `${obj.name}: role=primary sources disagree on the object's physical name — ` +
+      `${joined}. Every consumer binds ONE name. Give them matching physical names, ` +
+      `or drop the extra role=primary declaration.`,
     );
   }
 

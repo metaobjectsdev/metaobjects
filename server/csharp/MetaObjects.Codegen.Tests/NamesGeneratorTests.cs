@@ -189,52 +189,105 @@ public class NamesGeneratorTests
         Assert.Contains("UserId", ex.Message);
     }
 
-    [Fact]
-    public void A_divergent_primary_and_writable_source_pair_is_refused_naming_both()
+    // The REACHABLE divergence, BOTH directions. ValidateOnePrimarySource enforces
+    // "exactly one primary" over OWN children only (MetaObjects/Loader/ValidationPasses.cs),
+    // and effective-children shadowing (MetaData.EffectiveChildren) matches an own child
+    // over a super child only on a (type, name) match — so two source.rdb children with
+    // DIFFERENT explicit names never collide, and a parent's and a child's own primary
+    // sources both survive on the child's effective Sources(). Each model is asserted to
+    // load with ZERO errors before anything else: a guard test whose fixture the loader
+    // would reject proves nothing.
+    //
+    // Direction 1 is the one the old check could see: the inherited primary is read-only,
+    // so DbTable (primary AND writable) skipped it and matched the child's. Direction 2 is
+    // the one it could not: both primaries are WRITABLE, so DbTable matched the same
+    // inherited node the loose scan did, the two agreed, and the guard stayed silent while
+    // every generated artifact bound the parent's table over the child's own declaration.
+    //
+    // Neither model uses object.base — which the JVM cannot instantiate at all — so the
+    // same two shapes are expressible in every port.
+
+    private const string DivergentReadOnlyInherited = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Base", "children": [
+        { "source.rdb": { "name": "s", "@table": "bases" } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ]}},
+      { "object.projection": { "name": "ParentWeird", "abstract": true, "children": [
+        { "source.rdb": { "name": "viewSrc", "@kind": "view", "@view": "v_parent" } },
+        { "field.long": { "name": "id", "extends": "Base.id" } }
+      ]}},
+      { "object.entity": { "name": "ChildWeird", "extends": "ParentWeird", "children": [
+        { "source.rdb": { "name": "tableSrc", "@table": "child_table" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ]}}
+    ]}}
+    """;
+
+    private const string DivergentBothWritable = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "ParentWeird", "abstract": true, "children": [
+        { "source.rdb": { "name": "parentSrc", "@table": "parent_table" } },
+        { "field.long": { "name": "id" } }
+      ]}},
+      { "object.entity": { "name": "ChildWeird", "extends": "ParentWeird", "children": [
+        { "source.rdb": { "name": "childSrc", "@table": "child_table" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ]}}
+    ]}}
+    """;
+
+    [Theory]
+    [InlineData(nameof(DivergentReadOnlyInherited), "v_parent")]
+    [InlineData(nameof(DivergentBothWritable), "parent_table")]
+    public void A_divergent_primary_source_pair_is_refused_naming_both(string which, string otherName)
     {
-        // The REACHABLE divergence (R-C): ValidateOnePrimarySource enforces "exactly
-        // one primary" over OWN children only (MetaObjects/Loader/ValidationPasses.cs),
-        // and effective-children shadowing (MetaData.EffectiveChildren) matches an own
-        // child over a super child only on a (type, name) match. Two source.rdb children
-        // with DIFFERENT explicit names never collide, so ParentWeird's own read-only
-        // primary source and ChildWeird's own, differently-named, writable primary
-        // source both survive on ChildWeird's effective Sources() at once — this loads
-        // with ZERO errors. CSharpNaming.ResolveObjectNames's looser
-        // FirstOrDefault(role==primary) returns the first (inherited, read-only) one;
-        // MetaObject.DbTable's stricter (role==primary && IsWritable()) skips it and
-        // matches the later, writable one. Two real, different, defined strings.
-        //
-        // object.base (not object.entity): FR-024/ADR-0028's ERR_ENTITY_PRIMARY_SOURCE_
-        // READONLY forbids a read-only primary source on an object.entity outright,
-        // which would trip before this check ever ran. object.base carries no
-        // subtype-specific validation ("a template — no rule"), so this shape loads.
-        const string model = """
-        { "metadata.root": { "package": "acme", "children": [
-          { "object.base": { "name": "ParentWeird", "abstract": true, "children": [
-            { "source.rdb": { "name": "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
-            { "field.int": { "name": "id" } }
-          ]}},
-          { "object.base": { "name": "ChildWeird", "extends": "ParentWeird", "children": [
-            { "source.rdb": { "name": "tableSrc", "@table": "child_table", "@role": "primary" } }
-          ]}}
-        ]}}
-        """;
+        var model = which == nameof(DivergentReadOnlyInherited)
+            ? DivergentReadOnlyInherited
+            : DivergentBothWritable;
         var root = Load(model);
         var child = root.Objects().Single(o => o.Name == "ChildWeird");
-        // Documents the shape: two real, different, defined strings — not a null vs. a
-        // string (contrast the "read-only primary beside a writable replica on ONE
-        // object" shape, where dbTable resolves to null and there is nothing to
-        // disagree ABOUT).
-        Assert.Equal("child_table", child.DbTable);
+
+        // Pin the reachability MECHANISM: both sources survive the child merge. If one
+        // shadowed the other there would be no divergence and this would pass vacuously.
+        var primaries = child.Sources()
+            .Where(s => s.Role == "primary")
+            .Select(s => s.PhysicalName)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(new[] { otherName, "child_table" }.OrderBy(n => n, StringComparer.Ordinal), primaries);
 
         var ex = Assert.Throws<InvalidOperationException>(
             () => new NamesGenerator().Generate(Ctx(root)).ToList());
         // All three substrings asserted separately, so a message that drops one still fails.
         Assert.Contains("ChildWeird", ex.Message);
-        Assert.Contains("v_parent", ex.Message);
+        Assert.Contains(otherName, ex.Message);
         Assert.Contains("child_table", ex.Message);
     }
 
+    [Fact]
+    public void Two_primaries_AGREEING_on_a_physical_name_are_not_refused()
+    {
+        // The guard is about DISAGREEMENT, not about the count. Refusing two primaries
+        // that name the same relation would make it stricter than the invariant it
+        // protects: an object has ONE physical name, not one source declaration.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "ParentSame", "abstract": true, "children": [
+            { "source.rdb": { "name": "parentSrc", "@table": "same_table" } },
+            { "field.long": { "name": "id" } }
+          ]}},
+          { "object.entity": { "name": "ChildSame", "extends": "ParentSame", "children": [
+            { "source.rdb": { "name": "childSrc", "@table": "same_table" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]}}
+        ]}}
+        """;
+        var root = Load(model);
+        var child = root.Objects().Single(o => o.Name == "ChildSame");
+        Assert.Equal("same_table", CSharpNaming.ResolveObjectNames(child)!.Name);
+    }
 
     // -------------------------------------------------------------------------
     // Task 4 (program A) — the EF bindings CONSUME the constants above instead

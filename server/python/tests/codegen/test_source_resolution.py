@@ -18,11 +18,11 @@ import pytest
 
 from metaobjects import load_string
 from metaobjects.source_resolution import (
-    find_primary_writable_source,
     primary_rdb_source,
     resolve_table_name,
 )
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.meta_root import MetaRoot
 from metaobjects.meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
 from metaobjects.runtime import ObjectManager
@@ -187,94 +187,126 @@ def test_codegen_and_runtime_agree_on_every_sourced_entity() -> None:
     assert checked == 3  # ReplicaFirst, Widget, PrimaryFirst
 
 
-def test_divergent_primary_and_writable_sources_is_refused_naming_both() -> None:
-    """R32 — cross-port parity with C#'s ``CSharpNaming.ResolveObjectNames`` / TS's
-    ``resolveObjectNames``: an object whose primary source and primary WRITABLE
-    source resolve to two DIFFERENT physical names must be refused, not silently
-    resolved to whichever the loose (any-role-primary) scan happens to find first.
 
-    This is NOT a hypothetical fabricated to force a throw — it is a genuinely
-    REACHABLE shape, loaded through the real loader with no validation bypassed.
-    ``_validate_one_primary_source`` (above) enforces "exactly one primary" over
-    ``own_children()`` only, and effective-``children()`` resolution shadows an
-    own child over a super child only on a (type, name) match — two
-    ``source.rdb`` children with DIFFERENT explicit names never collide. An
-    ``object.base`` (the registered "abstract template, no runtime semantics"
-    subtype — see ``object_constants.SUBTYPE_BASE``... via
-    ``metaobjects.shared.base_types.SUBTYPE_BASE``) carries NONE of the
-    subtype-specific structural rules the entity/value/projection branches
-    enforce — in particular, ``_validate_one_primary_source``'s own
-    ``ERR_ENTITY_PRIMARY_SOURCE_READONLY`` branch is scoped to
-    ``OBJECT_SUBTYPE_ENTITY`` and never fires for ``object.base``, so an
-    abstract ``object.base`` parent's own READ-ONLY primary source and a
-    concrete-ish ``object.base`` child's own, differently-named, WRITABLE
-    primary source both survive on the child's effective ``children()`` at
-    once. This model loads with ZERO errors.
 
-    Mirrors C#'s ``NamesGeneratorTests.
-    A_divergent_primary_and_writable_source_pair_is_refused_naming_both`` shape
-    for shape (same package-free names, same physical names, same wording) —
-    this is the SAME reachable divergence C#/TS already gate, not a Python-only
-    construction.
-    """
-    model = {
-        "metadata.root": {
-            "package": "acme",
-            "children": [
-                {
-                    "object.base": {
-                        "name": "ParentWeird",
-                        "abstract": True,
-                        "children": [
-                            {
-                                "source.rdb": {
-                                    "name": "viewSrc",
-                                    "@kind": "view",
-                                    "@view": "v_parent",
-                                    "@role": "primary",
-                                }
-                            },
-                            {"field.int": {"name": "id"}},
-                        ],
-                    }
-                },
-                {
-                    "object.base": {
-                        "name": "ChildWeird",
-                        "extends": "ParentWeird",
-                        "children": [
-                            {
-                                "source.rdb": {
-                                    "name": "tableSrc",
-                                    "@table": "child_table",
-                                    "@role": "primary",
-                                }
-                            },
-                        ],
-                    }
-                },
-            ],
-        }
+# ---------------------------------------------------------------------------
+# The divergence guard — BOTH directions.
+#
+# Two `@role: primary` sources can survive on one object's effective children():
+# `_validate_one_primary_source` enforces "exactly one primary" over own_children()
+# only, and effective-children resolution shadows an own child over a super child
+# only on a (type, name) match — so two source.rdb nodes with DIFFERENT explicit
+# names at two levels of an extends chain never collide. Both models below load
+# with ZERO errors, asserted before anything else, because a guard test whose
+# fixture the loader would reject proves nothing.
+#
+# The guard used to compare "the first primary" against "the first primary
+# WRITABLE" source, which can only see a divergence when one of the two is
+# read-only. Direction 2 below — a parent and child each declaring their own
+# differently-named WRITABLE primary — was therefore SILENT, and silence is the
+# worse outcome: the child declares its own @table and every generated artifact
+# binds the parent's instead.
+# ---------------------------------------------------------------------------
+
+# Direction 1: read-only inherited primary, writable own primary. An object.entity
+# may not carry a read-only primary (ERR_ENTITY_PRIMARY_SOURCE_READONLY), so the
+# read-only half is an abstract object.projection — an entity extending one is
+# legal (only a PROJECTION is restricted to extending projections).
+_DIVERGENT_READONLY_INHERITED = {
+    "metadata.root": {
+        "package": "acme",
+        "children": [
+            {"object.entity": {"name": "Base", "children": [
+                {"source.rdb": {"name": "s", "@table": "bases"}},
+                {"field.long": {"name": "id"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+            ]}},
+            {"object.projection": {"name": "ParentWeird", "abstract": True, "children": [
+                {"source.rdb": {"name": "viewSrc", "@kind": "view", "@view": "v_parent"}},
+                {"field.long": {"name": "id", "extends": "Base.id"}},
+            ]}},
+            {"object.entity": {"name": "ChildWeird", "extends": "ParentWeird", "children": [
+                {"source.rdb": {"name": "tableSrc", "@table": "child_table"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+            ]}},
+        ],
     }
+}
+
+# Direction 2: BOTH primaries writable, differently named. Nothing about this shape
+# is exotic — two plain object.entity declarations, each naming its own table.
+_DIVERGENT_BOTH_WRITABLE = {
+    "metadata.root": {
+        "package": "acme",
+        "children": [
+            {"object.entity": {"name": "ParentWeird", "abstract": True, "children": [
+                {"source.rdb": {"name": "parentSrc", "@table": "parent_table"}},
+                {"field.long": {"name": "id"}},
+            ]}},
+            {"object.entity": {"name": "ChildWeird", "extends": "ParentWeird", "children": [
+                {"source.rdb": {"name": "childSrc", "@table": "child_table"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+            ]}},
+        ],
+    }
+}
+
+
+def _child_of(model: dict) -> MetaObject:
     result = load_string(json.dumps(model))
     assert not result.errors, "; ".join(f"{e.code}: {e.message}" for e in result.errors)
-    root = result.root
-    child = next(c for c in root.children() if c.name == "ChildWeird")
+    child = next(c for c in result.root.children() if c.name == "ChildWeird")
     assert isinstance(child, MetaObject)
+    return child
 
-    # Documents the shape: two real, different, defined physical names — not a
-    # None vs. a string (contrast "a read-only primary beside a writable
-    # REPLICA on ONE object", which is legal and never reaches this guard: the
-    # replica isn't role=primary at all, so find_primary_writable_source and
-    # primary_rdb_source agree by construction).
-    writable = find_primary_writable_source(child)
-    assert writable is not None
-    assert writable.physical_name() == "child_table"
+
+@pytest.mark.parametrize(
+    "model,other_name",
+    [
+        (_DIVERGENT_READONLY_INHERITED, "v_parent"),
+        (_DIVERGENT_BOTH_WRITABLE, "parent_table"),
+    ],
+    ids=["readonly-inherited-primary", "both-primaries-writable"],
+)
+def test_divergent_primary_sources_are_refused_naming_both(model, other_name) -> None:
+    child = _child_of(model)
+
+    # The reachability mechanism, pinned: BOTH sources survive the child merge. If
+    # one shadowed the other there would be no divergence to detect and the
+    # assertions below would pass for the wrong reason.
+    surviving = [
+        c.physical_name()
+        for c in child.children()
+        if isinstance(c, MetaSource) and c.role() == SOURCE_ROLE_PRIMARY
+    ]
+    assert sorted(surviving) == sorted([other_name, "child_table"])
 
     with pytest.raises(ValueError) as exc_info:
         primary_rdb_source(child)
     message = str(exc_info.value)
-    # All three substrings asserted separately, so a message dropping one still fails.
+    # Each substring asserted separately, so a message dropping one still fails.
     assert "ChildWeird" in message
-    assert "v_parent" in message
+    assert other_name in message
     assert "child_table" in message
+
+
+def test_two_primaries_AGREEING_on_a_physical_name_are_not_refused() -> None:
+    """The guard is about DISAGREEMENT, not about the count. Two primaries naming
+    the same physical relation say one consistent thing, and refusing that would
+    make the fix stricter than the invariant it protects."""
+    model = {
+        "metadata.root": {
+            "package": "acme",
+            "children": [
+                {"object.entity": {"name": "ParentWeird", "abstract": True, "children": [
+                    {"source.rdb": {"name": "parentSrc", "@table": "same_table"}},
+                    {"field.long": {"name": "id"}},
+                ]}},
+                {"object.entity": {"name": "ChildWeird", "extends": "ParentWeird", "children": [
+                    {"source.rdb": {"name": "childSrc", "@table": "same_table"}},
+                    {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+                ]}},
+            ],
+        }
+    }
+    assert resolve_table_name(_child_of(model)) == "same_table"
