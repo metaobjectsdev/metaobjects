@@ -17,6 +17,9 @@ Two subcommands:
 
         --codegen    regenerate into a temp dir + diff against the committed
                      ``--out`` tree (Python's historical default behavior).
+                     ``--column-naming`` must match the strategy ``gen`` was
+                     run with (R31) or the ``names`` generator's constants
+                     report spurious drift.
         --templates  template/prompt ``{{field}}`` ↔ payload-VO drift — the
                      render ``verify()`` gate — resolving each ``template.*``
                      node's refs via a filesystem provider rooted at
@@ -418,6 +421,7 @@ def _generate(
     emit_package_init: bool = True,
     strict: bool = False,
     providers: list[object] | None = None,
+    column_naming: str = DEFAULT_COLUMN_NAMING,
 ) -> tuple[list[str], list[str]]:
     """Run the generator suite into ``out_dir``.
 
@@ -432,6 +436,10 @@ def _generate(
     ``(written_paths, errors)``. On a load error, ``errors`` is non-empty and no
     files are written. ``strict`` (ADR-0023, #96) is threaded to the load — the
     ``verify --codegen`` caller passes True; ``gen`` keeps the default False.
+    ``column_naming`` (R31) must match the strategy the committed output was
+    produced with, or the ``names`` generator's constants regenerate under the
+    wrong strategy and every ``<ENTITY>_<FIELD>_COLUMN`` reports spurious drift —
+    the caller reads it from the SAME ``--column-naming`` flag `gen` accepts.
     """
     root, errors = _load_root(metadata_dir, strict=strict, providers=providers)
     if root is None:
@@ -444,7 +452,10 @@ def _generate(
     # directory deleted seconds later. The real gen paths anchor their own manifest via
     # gen_state_dir_for().
     return (
-        _run_suite(root, out_dir, generators, entity_filter, emit_package_init, None),
+        _run_suite(
+            root, out_dir, generators, entity_filter, emit_package_init, None,
+            column_naming=column_naming,
+        ),
         [],
     )
 
@@ -1105,6 +1116,13 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     # ADR-0023 strict-by-default (#96): verify loads strict unless --lax is given,
     # so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
     strict = not getattr(args, "lax", False)
+    # R31: the `names` generator's constants are strategy-dependent (#248-adjacent —
+    # the same generator Task 9 turned on). A regen that defaults to `literal` while
+    # the committed output was produced with `gen --column-naming snake_case` (or any
+    # other non-default strategy) convicts every <ENTITY>_<FIELD>_COLUMN constant as
+    # drift — a gate failing work the product itself sanctions. Must match the `gen`
+    # invocation that produced --out, exactly like --entities above.
+    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
     providers, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
@@ -1127,7 +1145,8 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
         written, errors = _generate(
-            args.metadata_dir, tmp, None, entities, strict=strict, providers=providers
+            args.metadata_dir, tmp, None, entities, strict=strict, providers=providers,
+            column_naming=column_naming,
         )
         if errors:
             print("error: failed to load metadata:", file=sys.stderr)
@@ -1147,6 +1166,7 @@ def _verify_codegen(args: argparse.Namespace) -> int:
                 _generate(
                     args.metadata_dir, tmp, spec_gens, entities,
                     emit_package_init=False, strict=strict, providers=providers,
+                    column_naming=column_naming,
                 )
             except RenderError as exc:
                 print(
@@ -1185,6 +1205,10 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
         return 1
 
     strict = not getattr(args, "lax", False)
+    # R31 — see _verify_codegen: must match the strategy `gen` (this same rung)
+    # produced --out with, or the `names` generator's constants regenerate under
+    # the wrong strategy and report spurious drift.
+    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
     providers, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
@@ -1200,7 +1224,9 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
                 print(_strict_load_hint(), file=sys.stderr)
             return 1
 
-        _run_suite(root, tmp, None, entities, gen_state_dir=None)
+        _run_suite(
+            root, tmp, None, entities, gen_state_dir=None, column_naming=column_naming
+        )
         expected = _relative_set(Path(tmp))
         committed = _relative_set(Path(args.out))
 
@@ -1738,6 +1764,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--codegen",
         action="store_true",
         help="codegen drift: regenerate to a temp dir + diff vs --out (default)",
+    )
+    verify.add_argument(
+        "--column-naming",
+        dest="column_naming",
+        choices=COLUMN_NAMING_STRATEGIES,
+        default=DEFAULT_COLUMN_NAMING,
+        help=(
+            "column-naming strategy the committed --out was generated with (default: "
+            f"{DEFAULT_COLUMN_NAMING!r}, matching `gen`'s default). The `names` "
+            "generator's constants are strategy-dependent, so a --codegen regen must "
+            "use the SAME strategy `gen` was run with or every <ENTITY>_<FIELD>_COLUMN "
+            "constant reports spurious drift."
+        ),
     )
     verify.add_argument(
         "--templates",

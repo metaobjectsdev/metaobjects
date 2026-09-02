@@ -219,6 +219,46 @@ def test_verify_codegen_no_args_no_yaml_falls_back_to_neutral_config(
     assert main(["verify", "--codegen", "--out", "gen/models"]) == 1
 
 
+def test_verify_codegen_neutral_fallback_threads_column_naming(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """R31, at the `.metaobjects/config.json` fallback rung (no positional
+    <metadata_dir>, no metaobjects.config.yaml): `verify --codegen` must thread
+    `--column-naming` into its OWN regen here too, not only in explicit flag mode.
+    A `names_generator.py`-bearing `Program` gets its `PROGRAM_PRICE_CENTS_COLUMN`
+    constant emitted under the strategy `gen` was run with; a verify blind to the
+    flag at this rung would report every such constant as drift.
+    """
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "meta.fitness.json").write_text(FITNESS.read_text())
+    d = tmp_path / ".metaobjects"
+    d.mkdir()
+    (d / "config.json").write_text(
+        '{"schema_version": 1, "sources": [{"path": "model"}]}'
+    )
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen", "--out", "gen/models", "--column-naming", "snake_case"]) == 0
+
+    capsys.readouterr()
+    # Matching strategy -> clean.
+    rc_clean = main(
+        ["verify", "--codegen", "--out", "gen/models", "--column-naming", "snake_case"]
+    )
+    assert rc_clean == 0, capsys.readouterr().err
+
+    # Mismatched strategy -> the discriminating half: proves the flag is actually
+    # read at this rung, not merely accepted and dropped.
+    rc_drift = main(
+        ["verify", "--codegen", "--out", "gen/models", "--column-naming", "literal"]
+    )
+    err = capsys.readouterr().err
+    assert rc_drift == 1
+    assert "drifted:" in err
+    assert "program_names.py" in err
+
+
 def test_config_mode_refuses_template_spec_instead_of_ignoring_it(
     tmp_path: Path, capsys
 ) -> None:

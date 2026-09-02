@@ -237,3 +237,45 @@ def test_cli_column_naming_defaults_to_literal(tmp_path: Path) -> None:
     assert rc == 0
     content = (out / "program_names.py").read_text()
     assert 'PROGRAM_PRICE_CENTS_COLUMN: Final[str] = "priceCents"' in content
+
+
+def test_verify_codegen_with_matching_column_naming_is_clean(tmp_path: Path, capsys) -> None:
+    """R31 — `verify --codegen` must accept `--column-naming` and thread it into its
+    OWN regen. `gen --column-naming snake_case` emits `names` constants under that
+    strategy; a `verify --codegen` blind to the flag would regenerate under the
+    `literal` default and convict every `<ENTITY>_<FIELD>_COLUMN` constant as drift —
+    the exact "gate fails work the product itself sanctions" pattern this project's
+    own CHANGELOG names as a defect class. Passing the SAME strategy must report
+    clean.
+    """
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "out"
+    assert main(["gen", meta_dir, "--out", str(out), "--column-naming", "snake_case"]) == 0
+
+    capsys.readouterr()  # discard `gen`'s own stdout
+    rc = main(
+        ["verify", meta_dir, "--codegen", "--out", str(out), "--column-naming", "snake_case"]
+    )
+    captured = capsys.readouterr()
+    assert rc == 0, captured.err
+    assert "in sync" in captured.out
+
+
+def test_verify_codegen_with_mismatched_column_naming_reports_drift(tmp_path: Path, capsys) -> None:
+    """The discriminating half of the pair: a `verify --codegen` that silently
+    ignored `--column-naming` (or never threaded it into its regen) would also
+    pass the clean-case test above — only a MISMATCHED strategy proves the flag is
+    actually read rather than merely accepted by argparse.
+    """
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "out"
+    assert main(["gen", meta_dir, "--out", str(out), "--column-naming", "snake_case"]) == 0
+
+    capsys.readouterr()
+    rc = main(
+        ["verify", meta_dir, "--codegen", "--out", str(out), "--column-naming", "literal"]
+    )
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "drifted:" in captured.err
+    assert "program_names.py" in captured.err
