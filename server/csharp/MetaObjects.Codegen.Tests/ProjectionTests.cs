@@ -47,7 +47,10 @@ public class ProjectionTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // IncludeNames: true -- the ToView(...Names.Name) assertions below need the
+        // db-context generator to reference the names artifact; GenConfig.IncludeNames
+        // defaults to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
     };
 
     private static string EntitySrc(GenContext ctx, string name) =>

@@ -65,20 +65,25 @@ public sealed record GenConfig
     /// invoked."
     /// </para>
     /// <para>
-    /// Defaults to <c>true</c>: this port's default suite has always included
-    /// <c>names</c> (program spec §A5), and every hand-built <c>GenConfig</c> in this
-    /// codebase's test suite constructs ONE generator in isolation rather than running
-    /// the full <c>GenCommand.Run</c>/<c>CodegenRunner</c> pipeline — a <c>false</c>
-    /// default would silently flip those tests' fallback-literal arm even though they
-    /// never meant to exercise it. <c>GenCommand.Run</c> and <c>VerifyCommand</c>'s
+    /// Defaults to <c>false</c>. <c>GenCommand.Run</c> and <c>VerifyCommand</c>'s
     /// codegen-drift gate compute the real value from the resolved generator-name list
     /// (<c>GeneratorRegistry.IncludesNames</c>) and set this explicitly on every actual
     /// CLI invocation, so a project's real output is governed by what <c>--generators</c>
-    /// actually selected either way; this default only matters to a caller that builds
-    /// <c>GenConfig</c> directly and says nothing about which generators it plans to run.
+    /// selected either way; this default only reaches a caller that builds
+    /// <c>GenConfig</c> directly and says nothing about which generators it plans to run
+    /// — a programmatic embedder, or a hand-built test fixture. It fails in the SAFE
+    /// direction: <c>true</c> would reproduce, through this API surface, the exact
+    /// CS0103 defect this flag exists to close (running <c>EntityGenerator</c> alone
+    /// still emits a reference to a class nothing in that run produces); <c>false</c>
+    /// keeps the literal spelling, which always compiles and is still the right
+    /// physical name. This also mirrors the TypeScript reference port, where the
+    /// equivalent knob (<c>includeNames</c> in <c>render-context.ts</c>) defaults to
+    /// <c>false</c> — the two reference ports must not disagree on this default. Every
+    /// hand-built <c>GenConfig</c> in this codebase's test suite that actually exercises
+    /// the names artifact sets <c>IncludeNames = true</c> explicitly.
     /// </para>
     /// </summary>
-    public bool IncludeNames { get; init; } = true;
+    public bool IncludeNames { get; init; } = false;
 
     /// <summary>
     /// When <c>false</c> (the default), abstract entities emit no shape artifact

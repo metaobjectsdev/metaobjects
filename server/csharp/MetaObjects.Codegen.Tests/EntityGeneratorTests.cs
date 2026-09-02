@@ -33,7 +33,9 @@ public class EntityGeneratorTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // IncludeNames: true -- several tests below assert the entity references the
+        // <Entity>Names constants (§A6); GenConfig.IncludeNames now defaults to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
     };
 
     [Fact]
@@ -232,7 +234,9 @@ public class EntityGeneratorTests
     private static GenContext EnumCtx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // IncludeNames: true -- see Ctx() above; the [Column(OrderNames...)] assertion
+        // below needs the entity to reference the names artifact.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
     };
 
     [Fact]

@@ -105,7 +105,11 @@ public class DbContextCompileTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // IncludeNames: true -- Generated_AppDbContext_and_entities_compile_against_EF_Core_8
+        // below compiles the entity + db-context output alongside NamesGenerator's own
+        // artifact and is meant to prove that trio compiles together; GenConfig.IncludeNames
+        // defaults to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
     };
 
     // Build a MetadataReference list = TRUSTED_PLATFORM_ASSEMBLIES + EF Core assemblies.
@@ -247,14 +251,18 @@ public class DbContextCompileTests
         var r = new MetaDataLoader().Load([new InMemoryStringSource(SourcelessEntityModel, id: "sourceless.json")]);
         Assert.Empty(r.Errors);
 
-        // Default suite: no --generators selection, so GenConfig.IncludeNames defaults
-        // to true (matching GenCommand.Run's own default-suite computation) -- I1 is
-        // about the PER-OBJECT existence gate, not the C1 presence gate, so this test
-        // must exercise IncludeNames:true to isolate it.
+        // Default suite: no --generators selection means `names` WOULD run, so this
+        // models that suite by setting IncludeNames:true explicitly --
+        // GenConfig.IncludeNames itself now defaults to false (a bare GenConfig models
+        // no opinion about which generators ran, not the default suite). I1 is about
+        // the PER-OBJECT existence gate, not the C1 presence gate, so this test must
+        // exercise IncludeNames:true to isolate it: even with names "in the run",
+        // Ledger's own lack of a primary source (#248) still forces the literal
+        // fallback below.
         var ctx = new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
         };
 
         var entityFiles = new EntityGenerator().Generate(ctx).ToList();

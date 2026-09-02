@@ -34,7 +34,10 @@ public class NamesGeneratorTests
     private static GenContext Ctx(MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy },
+        // IncludeNames: true -- this is the ON-arm helper (see CtxWithoutNames below for
+        // the OFF arm); GenConfig.IncludeNames defaults to false, so the Task-4
+        // consumption-site assertions below need it set explicitly.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy, IncludeNames = true },
     };
 
     private static MetaRoot Load(string model)
@@ -453,8 +456,9 @@ public class NamesGeneratorTests
             OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy,
             // The fact under test: this GenContext models a run where `names` was never
             // selected (e.g. `--generators entity,db-context`). GenConfig.IncludeNames
-            // defaults to true (matching this port's default suite), so this is the one
-            // place in this test class that turns it off deliberately.
+            // now defaults to false too, but this sets it explicitly rather than relying
+            // on that default -- this class's Ctx() helper above is the ON arm, and this
+            // is the OFF arm; the point is which arm each test exercises, not the default.
             IncludeNames = false,
         },
     };
@@ -574,5 +578,31 @@ public class NamesGeneratorTests
         var entitySrc = File.ReadAllText(Path.Combine(outDir, "Subscriber.g.cs"));
         Assert.Contains("[Table(\"subscribers\")]", entitySrc);
         Assert.DoesNotContain("SubscriberNames", entitySrc);
+    }
+
+    [Fact]
+    public void GenConfig_IncludeNames_defaults_to_false_so_a_bare_config_falls_back_to_the_literal()
+    {
+        // Pins GenConfig.IncludeNames's DEFAULT itself, distinct from every test above
+        // (which all set the flag one way or the other explicitly). A GenConfig built
+        // with no opinion about IncludeNames models a caller who says nothing about
+        // which generators it plans to run -- a programmatic embedder, or a hand-built
+        // test fixture -- and must fail in the SAFE direction: the literal, not a
+        // dangling reference to a class that may not exist in that caller's output.
+        // Mirrors codegen-ts's render-context.ts `includeNames: opts.includeNames ?? false`
+        // -- the two reference ports must not disagree on this default.
+        var root = Load(SubscriberModel);
+        var ctx = new GenContext
+        {
+            Entities = root.Objects(), Root = root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" }, // IncludeNames unset
+        };
+        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "Subscriber.g.cs").Content;
+
+        // Positive: the literal spelling is present.
+        Assert.Contains("[Table(\"subscribers\")]", src);
+        // Negative, paired so this cannot pass vacuously: no reference to the names
+        // artifact's symbol appears anywhere in the emitted entity.
+        Assert.DoesNotContain("SubscriberNames", src);
     }
 }

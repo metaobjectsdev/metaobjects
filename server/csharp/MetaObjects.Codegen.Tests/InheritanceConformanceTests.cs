@@ -38,7 +38,10 @@ public class InheritanceConformanceTests
     {
         Entities = root.Objects(),
         Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Gen" },
+        // IncludeNames: true -- the [Table(ProductNames.Name)] assertion below needs
+        // the entity to reference the names artifact; GenConfig.IncludeNames defaults
+        // to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Gen", IncludeNames = true },
     };
 
     [Fact]

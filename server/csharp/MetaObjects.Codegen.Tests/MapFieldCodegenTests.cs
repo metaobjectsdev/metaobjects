@@ -41,7 +41,10 @@ public class MapFieldCodegenTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // IncludeNames: true -- the [Column(CustomerNames....Column)] assertions below
+        // need the entity to reference the names artifact; GenConfig.IncludeNames
+        // defaults to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
     };
 
     [Fact]

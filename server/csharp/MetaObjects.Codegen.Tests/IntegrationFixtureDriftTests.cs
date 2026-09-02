@@ -25,8 +25,12 @@ namespace MetaObjects.Codegen.Tests;
 public class IntegrationFixtureDriftTests
 {
     // The exact GenConfig the committed Generated/*.g.cs imply: literal column
-    // naming (priceCents, createdAt — not snake_case), no abstract shapes. This is
-    // the single source of truth for how the integration fixtures are produced.
+    // naming (priceCents, createdAt — not snake_case), no abstract shapes, and the
+    // names artifact referenced (the committed fixtures assume the default generator
+    // suite, which includes `names`; GenConfig.IncludeNames itself now defaults to
+    // false, so this fixture-modeling config sets it explicitly rather than relying
+    // on that default). This is the single source of truth for how the integration
+    // fixtures are produced.
     private const string IntegrationNamespace = "MetaObjects.IntegrationTests.Generated";
 
     private static GenConfig FixtureConfig() => new()
@@ -34,6 +38,7 @@ public class IntegrationFixtureDriftTests
         OutDir = "/unused", // the generators key off Path; OutDir is not embedded in content
         Namespace = IntegrationNamespace,
         ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+        IncludeNames = true,
         EmitAbstractShapes = false,
     };
 

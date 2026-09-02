@@ -52,7 +52,9 @@ public class TphCodegenTests
     {
         Entities = root.Objects(),
         Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
+        // IncludeNames: true -- the [Table(AuthNames.Name)] assertion below needs the
+        // entity to reference the names artifact; GenConfig.IncludeNames defaults to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal, IncludeNames = true },
     };
 
     private static MetaRoot Load()

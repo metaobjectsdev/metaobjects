@@ -52,7 +52,10 @@ public class WriteThroughTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // IncludeNames: true -- the [Table(OrderNames.Name)]/[Table(CustomerNames.Name)]
+        // assertions below need the entity to reference the names artifact;
+        // GenConfig.IncludeNames defaults to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
     };
 
     private static string Src(IEnumerable<EmittedFile> files, string path) =>

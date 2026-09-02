@@ -85,7 +85,10 @@ public class ScalarArrayCodegenTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // IncludeNames: true -- the [Column(ProductNames.TagsColumn)] assertion below
+        // needs the entity to reference the names artifact; GenConfig.IncludeNames
+        // defaults to false.
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
     };
 
     // -------------------------------------------------------------------------
