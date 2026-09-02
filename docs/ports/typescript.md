@@ -295,6 +295,54 @@ If you prefer un-extensioned imports (some legacy bundler setups), set
 `extStyle: "none"` in `metaobjects.config.ts` and use `"moduleResolution":
 "bundler"`.
 
+### `<Entity>Names` — the physical names, as constants
+
+`meta init` scaffolds a `names` generator, so a new project gets `<Entity>.names.ts`
+without configuring anything. It carries the physical database names for one object:
+
+```ts
+export const ProgramNames = {
+  kind: "table",
+  name: "programs",
+  readOnly: false,
+  fields: {
+    createdAt: { name: "createdAt", column: "created_at" },
+    id:        { name: "id",        column: "id" },
+  },
+} as const;
+```
+
+| key | means |
+|---|---|
+| `kind` | the source's `@kind` — `table`, `view`, `materializedView`, … |
+| `name` | the physical table/view name |
+| `schema` | the DB schema, emitted only when one is declared |
+| `readOnly` | derived from the source's own kind, never a hand-rolled list |
+| `fields.<field>.name` | the **logical** name — the field as your code and the wire call it |
+| `fields.<field>.column` | the **physical** column — `@column` if declared, else `name` through `columnNamingStrategy` |
+
+**Both `name` and `column` are always present, and `createdAt` / `created_at` is why.**
+They are two different names for one field, they differ the moment a case boundary or a
+`@column` appears, and a consumer that has only one of them cannot recover the other:
+`@column` is free-form, so `callPurpose` may map to `purpose_code`, which is neither the
+logical name nor any transformation of it.
+
+Existing projects (scaffolded before this generator existed) add one line:
+
+```ts
+import { namesFile } from "./codegen/generators/names";
+export default defineConfig({ generators: [/* … */, namesFile()] });
+```
+
+The generated entity module reads these constants rather than embedding the same physical
+names a second time, so the constant and the table binding cannot drift apart.
+
+**Prefer a typed handle where one exists.** If you are writing a Drizzle query, use the
+column object (`programs.createdAt`) — it is type-checked against the schema, and swapping
+it for `ProgramNames.fields.createdAt.column` trades a compile error for a runtime one.
+These constants are for the places that have no typed handle: raw SQL, a migration script,
+a log line, an external system's column mapping.
+
 ## Use
 
 The generated code runs without any MetaObjects runtime dependency — Drizzle +

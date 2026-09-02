@@ -373,6 +373,35 @@ by writing generator code. Do not conclude the port cannot be customized.
 Each port's `references/` fragment documents what its built-ins emit, which is what you
 compare your own emit against; they do not carry a step-by-step retargeting procedure.
 
+## Never hand-write a physical name — the generator emits them
+
+A table name, a column name, a schema — these are declared in metadata and derived by the
+same resolver the migration and the runtime use. A string literal for one is a magic string
+that no compiler checks and no gate catches, and it goes wrong silently: `@column` is
+free-form, so a field named `callPurpose` may map to a column named `purpose_code`, which is
+neither the field name nor any transformation of it. A consumer deriving the column as
+`to_snake_case(<the field's name>)` gets that case wrong and never finds out.
+
+Where the port emits a per-object names artifact, reference it:
+
+```ts
+import { ProgramNames } from "./generated/Program.names.js";
+
+ProgramNames.name                          // "programs"       — physical table
+ProgramNames.fields.createdAt.name         // "createdAt"      — logical / wire name
+ProgramNames.fields.createdAt.column       // "created_at"     — physical column
+```
+
+**But prefer a typed handle where one exists — this rule has a real limit.** If the ORM
+gives you a type-checked object for the same thing, use that. Replacing a Drizzle column
+object (`programs.createdAt`, checked against the schema at compile time) with a string
+constant makes the code **worse**: it trades an error the compiler catches for one the
+database raises at runtime. The constants are for the places with no typed handle — raw
+SQL, migration scripts, log lines, an external system's column mapping, a port whose
+generated model carries no persistence binding at all.
+
+The rule is *don't invent the string*, not *replace every name with a constant*.
+
 ## Dialects
 
 Generated DB schema/DDL targets a SQL **dialect**:
