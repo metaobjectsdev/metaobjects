@@ -4,12 +4,15 @@
 //   - vanilla entities still go through the Drizzle-table path
 
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource, resolveTableName } from "@metaobjectsdev/metadata";
 import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
+import { projectionViewName } from "../../src/projection/extract-view-spec.js";
+import { isProjection } from "../../src/projection/projection-detector.js";
+import { resolveObjectNames } from "../../src/names.js";
 
 // ---------------------------------------------------------------------------
 // Shared fixture loader
@@ -398,20 +401,20 @@ describe("renderEntityFile — a projection's dbCol + view name/columns referenc
 });
 
 // ---------------------------------------------------------------------------
-// §A6 Task 1 fix round 1 — a finding surfaced while converting $view: the two
-// functions that resolve a projection's view physical name are NOT the same
-// resolver. `projectionViewName()` (extract-view-spec.ts `viewName()`) is
-// own-only and picks the FIRST read-only source in declaration order, with no
-// role filter. `resolveTableName()` (what `resolveObjectNames` — and now every
-// §A6 site — uses) filters by `role === "primary"`, order-independent. For a
-// projection with exactly one source, or with its primary source declared
-// first, both agree (see loadProjectionNamesFixture above). They can DISAGREE
-// for a projection declaring a role:"replica" read-only source BEFORE its own
-// role:"primary" one — confirmed loadable (not a licensing violation) by this
-// fixture. This is a PRE-EXISTING divergence in `viewName()`'s own source
-// selection, not something this task introduces or fixes; it is pinned here so
-// the ON-arm behavior (constant references the PRIMARY source, order-
-// independent) is deliberate and visible, not an accident of conversion.
+// §A6 Task 1 fix round 1 found, fix round 2 CLOSED: `projectionViewName()`
+// (extract-view-spec.ts `viewName()`) and `resolveTableName()` (what
+// `resolveObjectNames` — and every §A6 site — uses) used to be different
+// resolvers. `viewName()` was own-only and picked the FIRST read-only source
+// in declaration order, with no role filter; `resolveTableName()` filters by
+// `role === "primary"`, order-independent. For a projection declaring a
+// role:"replica" read-only source BEFORE its own role:"primary" one, the two
+// disagreed — confirmed loadable (not a licensing violation) by this fixture.
+// Round 2 fixed `viewName()` itself to select by role, same as
+// `resolveTableName()` — this suite now pins that BOTH declaration orders
+// agree, and that the ON and OFF arms bind the SAME view name (the
+// role:"primary" source's) regardless of which was declared first. Kept
+// own-only per its own original charter: `ERR_PROJECTION_INHERITED_SOURCE`
+// (subtype-rules.ts) makes an inherited source unreachable here anyway.
 // ---------------------------------------------------------------------------
 
 async function loadMultiSourceProjectionFixture(includeNames: boolean, replicaFirst: boolean) {
@@ -457,31 +460,42 @@ async function loadMultiSourceProjectionFixture(includeNames: boolean, replicaFi
   return { root, projection, ctx };
 }
 
-describe("renderEntityFile — a projection with a role:replica source declared before its role:primary one (§A6 finding)", () => {
-  test("resolveTableName/resolveObjectNames picks the PRIMARY source's name regardless of declaration order", async () => {
+describe("renderEntityFile — a projection's role:primary source wins regardless of declaration order (§A6 fix round 2)", () => {
+  test("replica declared FIRST: viewName()/projectionViewName() now agrees with resolveTableName() — both name the PRIMARY source", async () => {
     const { projection, ctx: ctxOff } = await loadMultiSourceProjectionFixture(false, true);
     // Sanity: this shape loads at all (not a licensing violation) — the whole point.
     expect(projection.name).toBe("P");
-    // Off-arm literal, from viewName()/projectionViewName() — the OWN-only,
-    // order-first-read-only-source selection that does NOT filter by role.
+    // The OFF-arm literal comes straight from viewName()/projectionViewName() — post-fix,
+    // role-filtered, so it now names the PRIMARY source even though the REPLICA source
+    // was declared first in the fixture.
     const outOff = renderEntityFile(projection, ctxOff);
-    expect(outOff).toContain('$view: "v_replica_name"');
-    expect(outOff).toContain('sqliteView("v_replica_name"');
+    expect(outOff).toContain('$view: "v_primary_name"');
+    expect(outOff).toContain('sqliteView("v_primary_name"');
+    expect(outOff).not.toContain("v_replica_name");
   });
 
-  test("with the names generator ACTIVE, both $view and the view decl switch to the PRIMARY source's constant — a behavior change, not just a literal-to-reference swap, for this shape", async () => {
-    const { projection, ctx } = await loadMultiSourceProjectionFixture(true, true);
-    const out = renderEntityFile(projection, ctx);
+  // The assertion that encodes why this was in Task 1's own scope (RULING R13): the ON
+  // and OFF arms must bind the SAME physical view for the SAME metadata. Before this fix,
+  // flipping ctx.includeNames — an unrelated generator toggle — silently changed which
+  // database view a projection's generated code bound to. Now both arms agree.
+  test("replica declared FIRST: the ON arm binds the SAME view name as the OFF arm — no generator-toggle-dependent rebind", async () => {
+    const { projection: projOff, ctx: ctxOff } = await loadMultiSourceProjectionFixture(false, true);
+    const { projection: projOn, ctx: ctxOn } = await loadMultiSourceProjectionFixture(true, true);
 
-    // The constant is resolveObjectNames()'s answer: the PRIMARY source, "v_primary_name" —
-    // NOT "v_replica_name", which is what the OFF arm (and pre-§A6 behavior) emits.
-    expect(out).toContain("$view: PNames.name");
-    expect(out).toContain("sqliteView(PNames.name");
-    expect(out).not.toContain("v_replica_name");
-    expect(out).not.toContain('"v_primary_name"');
+    const outOff = renderEntityFile(projOff, ctxOff);
+    const outOn = renderEntityFile(projOn, ctxOn);
+
+    expect(outOff).toContain('$view: "v_primary_name"');
+    // The ON arm references the constant, but the constant's VALUE (asserted via
+    // resolveObjectNames in the probe behind this fixture, and by construction — PNames.name
+    // IS resolveTableName()'s answer) is the identical "v_primary_name" string.
+    expect(outOn).toContain("$view: PNames.name");
+    expect(outOn).toContain("sqliteView(PNames.name");
+    expect(outOn).not.toContain("v_replica_name");
+    // Neither arm ever emits the replica's name — this is the regression the fix closes.
   });
 
-  test("with the primary source declared first, both resolvers already agreed (no behavior change)", async () => {
+  test("primary declared FIRST: both resolvers already agreed, and still do after the fix", async () => {
     const outOff = renderEntityFile(
       (await loadMultiSourceProjectionFixture(false, false)).projection,
       (await loadMultiSourceProjectionFixture(false, false)).ctx,
@@ -491,5 +505,73 @@ describe("renderEntityFile — a projection with a role:replica source declared 
     const { projection, ctx } = await loadMultiSourceProjectionFixture(true, false);
     const outOn = renderEntityFile(projection, ctx);
     expect(outOn).toContain("$view: PNames.name");
+  });
+});
+
+// §A6 fix round 2, ruling R13 part (b) — reachability of the DIFFERENT no-source
+// fallback strings (`viewName()`'s "v_" + snake(name) vs `resolveTableName()`'s
+// pluralize(snake(name))). Empirically: for a projection with ZERO own sources,
+// `resolveObjectNames()` returns undefined (no primary source to find) BEFORE it
+// ever calls `resolveTableName()` — so resolveTableName()'s fallback branch is
+// never reached through this call graph at all, and no §A6 site ever has a names
+// artifact to reference for such an object; the ON and OFF arms both fall through
+// to viewName()'s OWN literal on the identical no-source condition. The two
+// fallback STRINGS differ, but that difference is unreachable as an observable
+// divergence — so the fallback was left unchanged, per the ruling.
+describe("a sourceless projection (§A6 fix round 2, reachability check)", () => {
+  async function loadSourcelessProjection() {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Base",
+          children: [
+            { "source.rdb": { "@table": "bases" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "Sourceless",
+          children: [
+            { "field.int": { name: "id", extends: "Base.id" } },
+            { "identity.primary": { "name": "id", extends: "Base.id" } },
+          ],
+        },
+      },
+    ]);
+    const projection = root.objects().find((o) => o.name === "Sourceless");
+    if (!projection) throw new Error("Sourceless not found");
+    return projection;
+  }
+
+  // Doubly unreachable, empirically: (1) `isProjection()` requires a read-only-KIND
+  // source to be true at all — a sourceless `object.projection` is neither a projection
+  // nor write-through by codegen's own dispatch (projection-detector.ts), so
+  // `renderEntityFile` routes it through the plain value-object path and NEVER calls
+  // `renderProjectionDecl`/`projectionViewName`/`viewName()` for it. (2) Even called
+  // directly, `resolveObjectNames()` returns `undefined` for a sourceless object (no
+  // primary source to find) BEFORE it ever calls `resolveTableName()` — so
+  // `resolveTableName()`'s DIFFERENT no-source fallback (`pluralize(snake(name))` vs
+  // `viewName()`'s `"v_" + snake(name)`) is never compared against `viewName()`'s
+  // answer through any §A6 site. The two fallback STRINGS differ (asserted below,
+  // calling both functions directly) but the divergence has no path to become
+  // observable — so the fallback was left unchanged, per ruling R13(b).
+  test("isProjection() is false — codegen's own dispatch never reaches viewName() for this shape", async () => {
+    const projection = await loadSourcelessProjection();
+    expect(isProjection(projection)).toBe(false);
+  });
+
+  test("resolveObjectNames() is undefined, so no §A6 site ever compares the two fallbacks", async () => {
+    const projection = await loadSourcelessProjection();
+    expect(resolveObjectNames(projection, "snake_case")).toBeUndefined();
+  });
+
+  test("the two fallback strings genuinely differ when called directly (documents the unreachable difference)", async () => {
+    const projection = await loadSourcelessProjection();
+    expect(projectionViewName(projection, "snake_case")).toBe("v_sourceless");
+    expect(resolveTableName(projection)).toBe("sourcelesses");
+    expect(projectionViewName(projection, "snake_case")).not.toBe(resolveTableName(projection));
   });
 });

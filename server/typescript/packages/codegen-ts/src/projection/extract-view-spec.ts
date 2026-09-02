@@ -6,6 +6,7 @@ import {
   TYPE_RELATIONSHIP,
   isMetaObject,
   isReadOnlySource,
+  SOURCE_ROLE_PRIMARY,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
@@ -334,13 +335,66 @@ function viewName(projection: MetaObject, ctx: ExtractContext): string {
   // source.name → entity-name fallback), so the call below correctly resolves
   // @view / @materializedView / legacy @table for projection sources.
   // ADR-0039: own — projection source classification (mirrors C# projection
-  // OwnSources / IsReadOnlyProjection): the view name comes from the projection's
-  // OWN read-only source, not one inherited via extends.
-  const viewSource = projection.ownChildren().find(isReadOnlySource);
+  // OwnSources / IsReadOnlyProjection): the view name comes from the object's
+  // OWN read-only source, not one inherited via extends. `ERR_PROJECTION_
+  // INHERITED_SOURCE` (subtype-rules.ts) already refuses a concrete projection
+  // that would otherwise inherit a source, so own-only never drops a legally
+  // reachable source here.
+  //
+  // This function is called for BOTH a plain projection AND a write-through
+  // ENTITY's replica view (extractViewSpec's `writeThrough` branch, #213/#214)
+  // — the parameter name is historical. The two shapes need DIFFERENT
+  // selection rules, which is why round 2 below is "prefer role:primary, else
+  // fall back to the first read-only source" rather than "require
+  // role:primary":
+  //   - A plain projection: EVERY own source must be read-only-kind
+  //     (ERR_PROJECTION_SOURCE_WRITABLE), so if it has any sources at all,
+  //     exactly one is role:"primary" (ERR_SOURCE_NO_PRIMARY /
+  //     ERR_SOURCE_MULTIPLE_PRIMARY) and that one IS read-only — the primary
+  //     branch always fires when there is a source.
+  //   - A write-through entity: its role:"primary" source is the WRITABLE
+  //     table (never read-only), so the primary branch never fires; its
+  //     read-only companion (the replica view) is intentionally NOT primary.
+  //     Requiring role:"primary" here (round 2's first attempt) found NOTHING
+  //     for this shape and broke #213's replica-view naming — caught by
+  //     `test/projection/issue-213-entity-read-view-emit.test.ts` going red.
+  //     The fallback preserves this function's ORIGINAL "any read-only own
+  //     source" behavior for the write-through case, unchanged.
+  //
+  // §A6 fix round 2 — select the role:"primary" read-only source PREFERENTIALLY
+  // over declaration order for the PROJECTION case, so this agrees with
+  // `resolveTableName()` (used by `resolveObjectNames`, the names-artifact
+  // resolver every §A6 site defers to): a projection with a role:"replica"
+  // source declared before its role:"primary" one used to bind a different
+  // physical view depending on whether the names generator happened to be in
+  // the run — the non-additivity §A6's own OFF-arm contract exists to
+  // prevent. Confirmed empirically both before AND after this fix (see the
+  // Task 1 report).
+  const readOnlySources = projection.ownChildren().filter(isReadOnlySource);
+  const viewSource =
+    readOnlySources.find((c) => c.role === SOURCE_ROLE_PRIMARY) ?? readOnlySources[0];
   const explicit = viewSource?.physicalName;
   // physicalName always returns a string; empty string means the source had
   // neither alias nor a name and the owning entity name was empty (impossible
   // for a real projection). Fall through to the helper anyway for safety.
+  //
+  // This fallback fires only when the object has NO own read-only source at
+  // all — for a plain projection that means no source at all (see above); for
+  // a write-through entity it would mean no replica-view companion, which
+  // `isWriteThrough()` (hasReadOnlyKindSource && hasWritableKindSource) already
+  // requires to be false before this function is ever reached for that shape.
+  // `resolveTableName()`'s DIFFERENT no-source fallback
+  // (`pluralize(toSnakeCase(name))` vs this function's `v_<snake(name)>`) is
+  // reachable as a raw function difference but not as an OBSERVABLE
+  // divergence: whenever a sourceless PROJECTION reaches this fallback,
+  // `resolveObjectNames()` also has no primary source to find and returns
+  // `undefined` before ever calling `resolveTableName()` — so no §A6 site ever
+  // has a names artifact to reference in that case, and both the ON and OFF
+  // arms fall through to THIS function's literal on the identical condition.
+  // A sourceless projection also fails `isProjection()` itself
+  // (projection-detector.ts requires `hasReadOnlyKindSource`), so codegen's
+  // dispatch never even reaches `renderProjectionDecl`/this function for it —
+  // doubly unreachable. See the Task 1 report for the empirical check.
   return explicit !== undefined && explicit !== ""
     ? explicit
     : viewNameFromProjection(projection.name, ctx.columnNamingStrategy);
