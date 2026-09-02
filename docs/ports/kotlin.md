@@ -9,7 +9,7 @@ wiring) via KotlinPoet.
 
 Two modules:
 
-- **`metaobjects-codegen-kotlin`** — 14 KotlinPoet-based generators.
+- **`metaobjects-codegen-kotlin`** — 15 KotlinPoet-based generators.
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
@@ -69,12 +69,13 @@ Two modules:
 
 ## Configure
 
-The 14 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
+The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
 | `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity`, `object.value`, and `object.projection` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | entities with `source.rdb` |
+| `KotlinNamesGenerator` | `<Entity>Names.kt` — physical database name constants (table/view name, schema, columns) | every object with a declared/inherited primary `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — persistence repository base (row-mapper + CRUD + patch) | writable entities (`source.rdb @kind="table"`) |
 | `KotlinFilterAllowlistGenerator` | `<Entity>FilterAllowlist.kt` — FR-009 filter allowlist (filterable field names + allowed ops per field) | writable entities (`source.rdb @kind="table"`) |
@@ -250,6 +251,74 @@ class AuthorService(private val db: Database) {
     }
 }
 ```
+
+### `<Entity>Names` — the physical names, as constants
+
+`names` (`KotlinNamesGenerator`) is **not** wired above — it is opt-in, like
+every Kotlin generator (there is no default suite on the JVM; `<generators>`
+in the pom is the complete list, per generator). Add it explicitly:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.kotlin.KotlinNamesGenerator</classname>
+  <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
+</generator>
+```
+
+It emits one `<Entity>Names.kt` per object with a declared or inherited
+primary `source.rdb`:
+
+```kotlin
+// generated/acme/blog/AuthorNames.kt (package line elided)
+object AuthorNames {
+    const val KIND: String = "table"
+    const val NAME: String = "authors"
+    const val READ_ONLY: Boolean = false
+
+    const val NAME_FIELD: String = "name"
+    const val NAME_COLUMN: String = "name"
+
+    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(
+        "name" to NAME_COLUMN,
+    )
+}
+```
+
+**Prefer a typed handle where one exists.** If the ORM gives you a
+type-checked object for the same thing, use that. Replacing it with a string
+constant trades an error the compiler catches for one the database raises at
+runtime. These constants are for the places with no typed handle: raw SQL, a
+migration script, a log line, an external system's column mapping.
+
+Here, that handle is the Exposed `Column` object on the generated `Table` —
+`AuthorTable.name`, not `AuthorNames.NAME_COLUMN`, is what a query should
+bind against; Exposed's DSL is already type-checked column-by-column. Reach
+for the constant instead in raw SQL, a Flyway migration, a log line, or an
+external system's column mapping — the places `AuthorTable` gives you nothing
+to hold onto.
+
+`KotlinExposedTableGenerator` can also be told to **read** these constants
+instead of independently re-deriving the same table/column names, via a
+second generator arg — `useNames`, which **defaults to `false`** (byte-identical
+output unless set):
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.kotlin.KotlinExposedTableGenerator</classname>
+  <args>
+    <outputDir>${project.build.directory}/generated-sources/kotlin</outputDir>
+    <useNames>true</useNames>
+  </args>
+</generator>
+```
+
+With `useNames` on, `AuthorTable` reads `Table(AuthorNames.NAME)` and
+`varchar(AuthorNames.NAME_COLUMN, 200)` rather than the literals shown above —
+useful once you have hand-written code depending on `AuthorNames` too, so the
+table binding and that code share one resolution instead of two independent
+ones that could drift. Both generators must be given the **same**
+`columnNaming` argument, or the table and the constants file disagree with
+each other about a column's name.
 
 ## FR-004 — render
 

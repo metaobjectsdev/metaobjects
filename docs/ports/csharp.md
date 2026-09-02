@@ -106,6 +106,61 @@ The codegen emits:
 - `AuthorFilterAllowlist.g.cs` — the server-side filter/sort allowlist feeding the
   generated list handler.
 
+### `<Entity>Names` — the physical names, as constants
+
+`names` ships in the **default generator suite** — a new project gets
+`<Entity>Names.g.cs` without configuring anything. It carries the physical
+database names for one object as `const string`s:
+
+```csharp
+// SubscriberNames.g.cs (using/namespace elided)
+public static class SubscriberNames
+{
+    public const string Kind = "table";
+    public const string Name = "subscribers";
+    public const bool ReadOnly = false;
+
+    public const string CreatedAtField = "createdAt";
+    public const string CreatedAtColumn = "created_at";
+    public const string IdField = "id";
+    public const string IdColumn = "id";
+
+    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    {
+        ["createdAt"] = CreatedAtColumn,
+        ["id"] = IdColumn,
+    };
+}
+```
+
+`const`, not `static readonly`: a `[Table("...")]`/`[Column("...")]` attribute
+argument must be a compile-time constant, and those two attributes are the
+whole reason this artifact can replace a literal there rather than sit beside
+one. The generated entity class and `AppDbContext` already reference these
+constants — `[Table(SubscriberNames.Name)]`, `[Column(SubscriberNames.CreatedAtColumn)]`
+— instead of embedding the same physical names a second time, so the constant
+and the EF mapping cannot drift apart.
+
+**Prefer a typed handle where one exists.** If the ORM gives you a
+type-checked object for the same thing, use that. Replacing it with a string
+constant trades an error the compiler catches for one the database raises at
+runtime. These constants are for the places with no typed handle: raw SQL, a
+migration script, a log line, an external system's column mapping.
+
+Here, that handle is the generated EF Core property. If you are writing a
+LINQ query, use it (`db.Subscribers.Where(s => s.CreatedAt > cutoff)`) — it is
+type-checked against the `DbContext` model, and swapping it for
+`SubscriberNames.CreatedAtColumn` trades a compile error for a runtime one.
+Reach for the constant instead in raw SQL (`FromSqlRaw`/`FromSqlInterpolated`),
+a migration script, a log line, or an external system's column mapping.
+
+The default column-naming strategy is `literal` here (unlike TypeScript's
+`snake_case`) — see the "Column naming" section of
+[`features/field-types.md`](../features/field-types.md) for why the defaults
+disagree across ports and what to do about it. Both `dotnet meta gen` and
+`dotnet meta verify` take the same `--column-naming` flag, so a
+`verify --codegen` regen resolves the identical column strings `gen` did.
+
 ## Use
 
 ```csharp

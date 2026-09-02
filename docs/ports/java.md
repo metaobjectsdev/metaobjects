@@ -268,12 +268,83 @@ into a Maven test (e.g. a JUnit assertion in the `test` phase).
 | `SpringDtoGenerator` | `metaobjects-codegen-spring` | One `<Entity>Dto.java` per entity as a Java 21 `record`. Wrapped-primitive components (`Long`, `Integer`, `Boolean`) so missing JSON properties deserialise to `null`. Currency = `Long` (integer minor units cross-port invariant). Used as both request and response body. |
 | `SpringRepositoryGenerator` | `metaobjects-codegen-spring` | One `<Entity>Repository.java` per writable entity as a hand-stubbed Java `interface` the consumer implements with their preferred persistence layer (Spring Data JPA / jOOQ / plain JDBC — all out of MetaObjects' concern). Nests the `SortClause` record the controller calls into. |
 | `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a `<Name>Extractor` and a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
+| `SpringNamesGenerator` | `metaobjects-codegen-spring` | One `<Entity>Names.java` per object with a declared/inherited primary `source.rdb` — `public static final` physical database name constants (table/view name, schema, per-field columns). See "`<Entity>Names`" below. |
 
 Wire any of the three Spring generators via the Maven plugin's `<generator>`
 entry pointing at `com.metaobjects.generator.spring.SpringControllerGenerator` /
 `SpringDtoGenerator` / `SpringRepositoryGenerator`. The three are
 independently configurable; typical use is all three together (controller +
 DTO + repository).
+
+### `<Entity>Names` — the physical names, as constants
+
+`SpringNamesGenerator` is opt-in, like every Java generator — there is no
+default suite on the JVM; `<generators>` in the pom is the complete list, one
+`<generator>` entry per generator you want:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.spring.SpringNamesGenerator</classname>
+  <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
+</generator>
+```
+
+It emits one `<Entity>Names.java` per object with a declared or inherited
+primary `source.rdb`:
+
+```java
+// generated/acme/blog/AuthorNames.java (package line + import elided)
+public final class AuthorNames {
+    public static final String KIND = "table";
+    public static final String NAME = "authors";
+    public static final boolean READ_ONLY = false;
+
+    public static final String NAME_FIELD = "name";
+    public static final String NAME_COLUMN = "name";
+
+    public static final Map<String, String> COLUMNS_BY_FIELD = Map.of(
+        "name", NAME_COLUMN
+    );
+
+    private AuthorNames() {}
+}
+```
+
+**Prefer a typed handle where one exists.** If the ORM gives you a
+type-checked object for the same thing, use that. Replacing it with a string
+constant trades an error the compiler catches for one the database raises at
+runtime. These constants are for the places with no typed handle: raw SQL, a
+migration script, a log line, an external system's column mapping.
+
+**In Java, that limit is never live advice — there is no typed handle to
+prefer, anywhere.** `codegen-spring` emits no physical name anywhere else: the
+generated `<Entity>Dto` is a record keyed by logical field names, and the
+generated `<Entity>Repository` is a bare interface the consumer implements
+with no JPA annotations — no `@Table`, no `@Column`. This artifact exists
+purely for the hand-written persistence layer the consumer supplies (Spring
+Data JPA, jOOQ, plain JDBC); nothing this toolchain itself generates ever
+reads it. It is the *only* route to a compile-checked physical name in this
+port, which is also why nothing else here can catch a wrong pairing for
+free — get `columnNaming` wrong and the constant simply names a column the
+migration never created.
+
+`SpringNamesGenerator` takes the same `columnNaming` generator arg as every
+other physical-naming lever in this program, defaulting to `literal` (matching
+`ObjectManagerDB`'s runtime resolution — deliberately not Kotlin's `snake_case`
+codegen default, since a Java artifact defaulting differently from the Java
+runtime would itself be the drift this program exists to remove):
+
+```xml
+<args>
+  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+  <columnNaming>snake_case</columnNaming>
+</args>
+```
+
+Codegen cannot see a runtime `SimpleMappingHandlerDB.setColumnNaming(...)`
+call — a project pairing that call with this generator must pass the same
+strategy string to both, by hand (see
+[`features/field-types.md`](../features/field-types.md)).
 
 ### Authoring your own — two paths
 

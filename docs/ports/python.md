@@ -169,6 +169,54 @@ app.include_router(author_router)
 app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(session)
 ```
 
+### `<entity>_names.py` — the physical names, as constants
+
+The `names` generator ships in the **default generator suite** — a new
+project gets `<entity>_names.py` without configuring anything. It carries the
+physical database names for one object as module-level `Final` constants:
+
+```python
+# generated/subscriber_names.py (excerpt)
+SUBSCRIBER_KIND: Final[str] = "table"
+SUBSCRIBER_NAME: Final[str] = "subscribers"
+SUBSCRIBER_READ_ONLY: Final[bool] = False
+
+SUBSCRIBER_CREATED_AT_FIELD: Final[str] = "createdAt"
+SUBSCRIBER_CREATED_AT_COLUMN: Final[str] = "created_at"
+
+SUBSCRIBER_COLUMNS_BY_FIELD: Final[dict[str, str]] = {
+    "createdAt": SUBSCRIBER_CREATED_AT_COLUMN,
+}
+```
+
+**Prefer a typed handle where one exists.** If the ORM gives you a
+type-checked object for the same thing, use that. Replacing it with a string
+constant trades an error the compiler catches for one the database raises at
+runtime. These constants are for the places with no typed handle: raw SQL, a
+migration script, a log line, an external system's column mapping.
+
+**In Python, that limit is never live advice — there is no typed handle to
+prefer, anywhere.** Python's models, create/patch shapes, router and filter
+allowlists all key by `field.name`; none of them names a physical column.
+Unlike TypeScript (Drizzle column objects) or C#/Kotlin (EF properties /
+Exposed `Column` objects), no generated Python object has an attribute bound
+to a physical column. A hand-written `ObjectManager` query, a raw SQL string,
+or a non-MetaObjects persistence layer (SQLAlchemy Core, `psycopg`) has
+exactly one alternative to respelling `"created_at"` as a literal: importing
+`SUBSCRIBER_CREATED_AT_COLUMN`. That is precisely why this generator ships on
+by default here, unlike the JVM ports where it is opt-in — it fills a gap
+every other Python generated artifact leaves completely open, rather than
+adding a convenience alongside an existing typed one.
+
+The constants resolve through the **same column-naming strategy**
+`ObjectManager` uses (`literal` by default) — pass the identical value to
+both (`--column-naming` at `metaobjects gen` time, `column_naming=` on
+`ObjectManager`), or the constant a consumer imports names a different column
+than the one a row actually lands in. `metaobjects verify` also takes
+`--column-naming`, defaulting to the same `literal`, so a `verify --codegen`
+regen resolves the same column strings `gen` did instead of reporting
+spurious drift against a differently-configured run.
+
 ### Declarative template-codegen (`--template-spec`)
 
 Beyond the built-in Pydantic/FastAPI suite, the `metaobjects gen` console-script
