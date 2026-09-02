@@ -20,6 +20,7 @@ const EXPECTED_NATIVE = [
   "routes",
   "routes-hono",
   "barrel",
+  "names",
   "prompt-render",
   "output-parser",
   "extractor",
@@ -92,5 +93,18 @@ describe("generator-registry (ADR-0021 D3)", () => {
     const entry = getGenerator("entity") as GeneratorRegistryEntry;
     expect(entry?.name).toBe("entity");
     expect(getGenerator("does-not-exist")).toBeUndefined();
+  });
+
+  test("names is selectable by stable name (the C#/Python parity path)", () => {
+    const entry = getGenerator("names");
+    expect(entry?.name).toBe("names");
+    expect(entry?.tier).toBe("native");
+    // The factory must construct without throwing — `--list` calls every factory.
+    const gen = entry?.factory();
+    expect(gen?.name).toBe("names");
+    // §A6: the marker the runner aggregates into includeNames. Registering the
+    // generator without it would emit the artifact while every template still
+    // embedded its own literal.
+    expect(gen?.emitsNames).toBe(true);
   });
 });

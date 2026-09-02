@@ -25,6 +25,7 @@ import {
   routesFile,
   routesFileHono,
   barrel,
+  namesFile,
   mermaidErDiagram,
   promptRender,
   outputParser,
@@ -110,6 +111,12 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => barrel(),
     options: "target?",
+  },
+  names: {
+    name: "names",
+    description: "Per-entity physical database name constants (table/view, schema, columns).",
+    tier: "native",
+    factory: () => namesFile(),
   },
   "prompt-render": {
     name: "prompt-render",

@@ -67,6 +67,11 @@
       "tier": "native",
       "ports": ["typescript"]
     },
+    "names": {
+      "concept": "Per-entity physical database name constants (table/view name, schema, column names).",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
     "prompt-render": {
       "concept": "Per-template prompt-render helper over the render engine.",
       "tier": "native",
