@@ -370,15 +370,26 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         SpringNamesGenerator gen = new SpringNamesGenerator();
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", outDir.toString());
-        // The canonical schema was produced under snake_case. Java's codegen DEFAULT
-        // is `literal` (see SpringNamesGenerator's javadoc) -- this run pins the
-        // RESOLVER against real DDL, not the default.
-        args.put("columnNaming", "snake_case");
+        // The canonical schema is pinned to the `literal` strategy -- see
+        // server/typescript/packages/integration-tests/src/canonical-schema.ts's
+        // CANONICAL_COLUMN_NAMING and fixtures/persistence-conformance/README.md's
+        // "Result format" section, which both say so outright. That is ALSO Java's
+        // own codegen default (see SpringNamesGenerator's javadoc), but it is passed
+        // explicitly here rather than left implicit, so this test keeps pinning the
+        // resolver against real DDL even if that default ever changes.
+        args.put("columnNaming", "literal");
         gen.setArgs(args);
         gen.execute(loader);
 
-        String src = Files.readString(outDir.resolve("fitness/PostNames.java"));
-        Set<String> ddlColumns = parseColumns(canonicalSchema, "posts");
+        // Program, not Post: every one of Post's fields is single-word, so `literal`
+        // and `snake_case` resolve every column identically and this assertion would
+        // pass no matter which strategy the generator actually used -- proving
+        // nothing. Program's `priceCents` field resolves to "priceCents" under
+        // `literal` (matching the DDL below) and to "price_cents" under
+        // `snake_case` (which the DDL does not have), so this fixture can actually
+        // tell the two strategies apart.
+        String src = Files.readString(outDir.resolve("fitness/ProgramNames.java"));
+        Set<String> ddlColumns = parseColumns(canonicalSchema, "programs");
 
         Matcher colConst = Pattern.compile("_COLUMN = \"([^\"]+)\";").matcher(src);
         boolean any = false;
