@@ -353,6 +353,7 @@ static int RunVerify(string[] rest)
     bool nsExplicit = false;
     string? generatorsCsv = null;
     string? templateRoot = null;
+    string? columnNamingRaw = null;
     bool templates = false, codegen = false, db = false, lax = false;
 
     for (int i = 0; i < rest.Length; i++)
@@ -373,10 +374,16 @@ static int RunVerify(string[] rest)
         else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
         else if (a == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
+        // The --codegen gate's own regen must match the strategy `gen` produced --out
+        // with (same choices/default as `gen`'s --column-naming — see RunGen above),
+        // or the `names` generator's physical-column constants regenerate under the
+        // wrong strategy and every one reports spurious drift on an otherwise-clean
+        // project.
+        else if (a == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
         else if (a.StartsWith('-'))
         {
             Console.Error.WriteLine($"dotnet meta verify: unknown option \"{a}\"");
-            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]");
+            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax]");
             return 2;
         }
         else if (metadataDir is null) metadataDir = a;
@@ -384,6 +391,17 @@ static int RunVerify(string[] rest)
         // (`verify <metadataDir> <templatesRoot>`) — keeps the historical default
         // reachable without an explicit subverb (so the subverb note prints).
         else templatesRoot ??= a;
+    }
+
+    // Same parsing + default + error handling as RunGen's --column-naming above — an
+    // unknown value is a usage error, never a silent fallback to the default.
+    var columnNaming = ColumnNamingStrategy.Literal;
+    if (columnNamingRaw is not null && !TryParseColumnNaming(columnNamingRaw, out columnNaming))
+    {
+        Console.Error.WriteLine(
+            $"error: unknown --column-naming \"{columnNamingRaw}\"; expected one of: " +
+            "literal, snake_case, kebab-case");
+        return 2;
     }
 
     // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
@@ -426,6 +444,7 @@ static int RunVerify(string[] rest)
         Db = db,
         // #96 / ADR-0023: verify is strict-by-default; --lax restores the legacy load.
         Strict = !lax,
+        ColumnNaming = columnNaming,
     };
 
     var result = VerifyCommand.RunSubverbs(opts);

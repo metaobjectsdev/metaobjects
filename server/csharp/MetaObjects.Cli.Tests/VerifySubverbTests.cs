@@ -1,4 +1,5 @@
 using MetaObjects.Cli;
+using MetaObjects.Codegen;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -247,6 +248,61 @@ public sealed class VerifySubverbTests : IDisposable
         Assert.True(r.RanTemplates);
         Assert.True(r.RanCodegen);
         Assert.Equal(2, r.ExitCode); // max(0, 2)
+    }
+
+    // -------------------- --column-naming (the codegen regen must be told) ----
+    // `gen --column-naming snake_case` emits `<Entity>Names.g.cs` physical-column
+    // constants under that strategy (see ColumnNamingFlagTests). A `verify --codegen`
+    // blind to the flag regenerates with the Literal default and convicts every one
+    // of them as drift on an otherwise-clean project — the "gate convicts a correct
+    // project" pattern this project's own CHANGELOG names as a defect class.
+    // `createdAt` carries a case boundary so the two strategies produce different
+    // committed content (EntityMetadata's `email` field above has none).
+    private const string ColumnNamingMetadata = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Subscriber", "children": [
+        { "source.rdb": { "@table": "subscribers" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "createdAt" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    private VerifyCommand.Options ColumnNamingOpts(ColumnNamingStrategy verifyStrategy) => new()
+    {
+        MetadataDir = MetaDir,
+        OutDir = OutDir,
+        Namespace = "Acme.Generated",
+        NamespaceExplicit = true,
+        Codegen = true,
+        ColumnNaming = verifyStrategy,
+    };
+
+    [Fact]
+    public void Codegen_with_matching_column_naming_is_clean()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), ColumnNamingMetadata);
+        GenCommand.Run(MetaDir, OutDir, "Acme.Generated", false, null, null, null, ColumnNamingStrategy.SnakeCase);
+
+        var r = VerifyCommand.RunSubverbs(ColumnNamingOpts(ColumnNamingStrategy.SnakeCase));
+        Assert.Equal(0, r.ExitCode);
+        Assert.True(r.Codegen!.Clean, string.Join("; ", r.Codegen!.Lines));
+    }
+
+    [Fact]
+    public void Codegen_with_mismatched_column_naming_reports_drift()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), ColumnNamingMetadata);
+        GenCommand.Run(MetaDir, OutDir, "Acme.Generated", false, null, null, null, ColumnNamingStrategy.SnakeCase);
+
+        // The discriminating half: a verify blind to --column-naming (accepting it but
+        // dropping it, or never reading Options.ColumnNaming) would ALSO pass the
+        // clean-case test above under its own hardcoded default — only a genuinely
+        // MISMATCHED strategy proves the flag is actually threaded into the regen.
+        var r = VerifyCommand.RunSubverbs(ColumnNamingOpts(ColumnNamingStrategy.Literal));
+        Assert.NotEqual(0, r.ExitCode);
+        Assert.Contains(r.Codegen!.DriftedFiles, f => f.EndsWith("SubscriberNames.g.cs"));
     }
 
     private static Dictionary<string, string> SnapshotDir(string dir)

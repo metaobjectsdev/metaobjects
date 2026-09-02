@@ -122,6 +122,18 @@ public static class VerifyCommand
         /// </summary>
         public bool Strict { get; init; } = true;
 
+        /// <summary>
+        /// The <c>--column-naming</c> strategy the committed <c>--out</c> was produced
+        /// with (default <see cref="ColumnNamingStrategy.Literal"/>, matching <c>gen</c>'s
+        /// default). Only consumed by the <c>--codegen</c> gate's own regen — see
+        /// <see cref="RunCodegenDrift"/>. A regen defaulting to <c>Literal</c> while the
+        /// committed output was produced with, say, <c>gen --column-naming snake_case</c>
+        /// convicts every <c>&lt;Entity&gt;Names.g.cs</c> physical-column constant as
+        /// drift on an otherwise-clean project — the gate must be told which strategy to
+        /// regenerate under, exactly like <c>--namespace</c> above.
+        /// </summary>
+        public ColumnNamingStrategy ColumnNaming { get; init; } = ColumnNamingStrategy.Literal;
+
         /// <summary>True when no explicit subverb flag was passed (bare verify).</summary>
         public bool NoExplicitSubverb => !Templates && !Codegen && !Db;
     }
@@ -275,6 +287,10 @@ public static class VerifyCommand
         {
             OutDir = opts.OutDir, Namespace = ns,
             IncludeNames = GeneratorRegistry.IncludesNames(names),
+            // Must match the strategy `gen` produced --out with, or the `names`
+            // generator's physical-column constants regenerate under the wrong
+            // strategy and every one reports spurious drift (see Options.ColumnNaming).
+            ColumnNamingStrategy = opts.ColumnNaming,
         };
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }
