@@ -185,6 +185,14 @@ public final class SpringNaming {
         return shortName + "FilterAllowlist";
     }
 
+    /**
+     * {@code SpringNamesGenerator}: {@code shortName + "Names"} — the per-object
+     * physical database name constants class (spec A1/A2/A6).
+     */
+    public static String namesName(String shortName) {
+        return shortName + "Names";
+    }
+
     /** {@code ExtractorCodeGenerator}: {@code className + "Extractor"} (entity class name). */
     public static String extractorName(String className) {
         return className + "Extractor";

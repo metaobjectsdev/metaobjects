@@ -6,6 +6,7 @@ import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
+import com.metaobjects.generator.spring.SpringNamesGenerator;
 import com.metaobjects.generator.spring.SpringOutputParserGenerator;
 import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
 import com.metaobjects.generator.spring.SpringPayloadGenerator;
@@ -126,6 +127,9 @@ public final class GeneratorRegistry {
         register(m, "trace-helper", LlmTraceHelperGenerator.class.getName(),
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
                     + "LlmCallBase-derived entities only).", Tier.NATIVE);
+        register(m, "names", SpringNamesGenerator.class.getName(),
+                "Per-object physical database name constants (table/view/schema/column) "
+                    + "for a hand-written consumer to reference instead of a string literal.", Tier.NATIVE);
         return Collections.unmodifiableMap(m);
     }
 
