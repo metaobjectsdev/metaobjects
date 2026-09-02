@@ -232,16 +232,17 @@ public object KotlinGenUtil {
         // source walk at once) -- ValidateOnePrimarySource enforces "exactly one
         // primary" over OWN children only, so two DIFFERENTLY-NAMED source.rdb nodes at
         // different levels of an extends chain never collide. On THIS port specifically
-        // (verified empirically, see KotlinNamesGeneratorTest / task-5-report.md) the
-        // shape could not be constructed: object.base cannot be instantiated as a
-        // concrete metadata node here (its registered impl class, MetaObject, is
-        // abstract), an object.entity's own primary source must always be writable
-        // (ERR_ENTITY_PRIMARY_SOURCE_READONLY), and an object.projection's source must
-        // always be read-only (ERR_PROJECTION_SOURCE_WRITABLE) while its extends chain
-        // may only contain OTHER projections (never an entity) -- so no loadable Kotlin
-        // model today puts a read-only role=primary source ahead of a writable one in
-        // the same resolved chain. The guard stays for cross-port symmetry and as a
-        // fail-closed backstop should a future metamodel change reopen that path.
+        // the shape could not be constructed (confirmed by walking the loader's own
+        // registered validation rules, not by a dedicated fixture): object.base cannot
+        // be instantiated as a concrete metadata node here (its registered impl class,
+        // MetaObject, is abstract), an object.entity's own primary source must always
+        // be writable (ERR_ENTITY_PRIMARY_SOURCE_READONLY), and an object.projection's
+        // source must always be read-only (ERR_PROJECTION_SOURCE_WRITABLE) while its
+        // extends chain may only contain OTHER projections (never an entity) -- so no
+        // loadable Kotlin model today puts a read-only role=primary source ahead of a
+        // writable one in the same resolved chain. The guard stays for cross-port
+        // symmetry and as a fail-closed backstop should a future metamodel change
+        // reopen that path.
         val writable = obj.findPrimaryWritableSource().map { it.physicalName }.orElse(null)
         if (writable != null && writable != name) {
             throw GeneratorException(

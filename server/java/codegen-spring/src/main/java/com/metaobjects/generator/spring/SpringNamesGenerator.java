@@ -130,9 +130,10 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // D4 -- every consumer downstream is meant to reference this name
         // UNCONDITIONALLY, no per-site equality guard. Refuse here instead, once, so
         // nothing downstream has to. Mirrors the Kotlin/C# guard exactly; see the
-        // KotlinGenUtil.resolveObjectNames javadoc for the full reachability analysis
-        // (task-5-report.md: on this shared JVM metadata module, no loadable model was
-        // found that reaches this throw -- kept as a fail-closed backstop).
+        // KotlinGenUtil.resolveObjectNames javadoc for the full reachability analysis:
+        // on this shared JVM metadata module (Java and Kotlin share the same
+        // loader/registry), no loadable model reaches this throw today -- kept as a
+        // fail-closed backstop.
         Optional<MetaSource> writableOpt = obj.findPrimaryWritableSource();
         String writable = writableOpt.map(MetaSource::getPhysicalName).orElse(null);
         if (writable != null && !writable.equals(name)) {
