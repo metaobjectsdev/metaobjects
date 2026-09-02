@@ -206,6 +206,27 @@ function guardRelativeRefInCanonical(
 }
 
 // ---------------------------------------------------------------------------
+// The one message for an authored `<type>.base`, so both doors say the same thing.
+//
+// Every registered `base` subtype is an ABSTRACT REGISTRY ANCHOR: the shared root that
+// concrete subtypes inherit their attrs and child rules from. It has no runtime semantics
+// and no concrete representation — `spec/metamodel/object.json` says so in as many words
+// ("Has no runtime semantics of its own; not authored directly"), and every `base` entry's
+// description opens with "Abstract".
+//
+// The JVM enforced this by accident (its impl classes are `public abstract`, so
+// instantiation fails); TypeScript, C# and Python accepted it. The same document therefore
+// loaded on three ports and failed to load on two — the cross-port conformance gap the
+// corpora exist to catch, and it survived because every `*.base` subtype sits in the
+// registry corpus's own `untestedSubTypes` list.
+function abstractSubtypeMessage(type: string): string {
+  return (
+    `"${type}.${SUBTYPE_BASE}" may not be authored — every "${SUBTYPE_BASE}" subtype is an ` +
+    `abstract registry anchor that concrete subtypes inherit from, with no runtime ` +
+    `semantics of its own. Declare a concrete ${type} subtype instead.`
+  );
+}
+
 // Internal helper — split a fused wrapper key into (type, subType).
 //
 // Canonical JSON always writes the full `type.subType`. An omitted subType
@@ -419,7 +440,21 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     }
 
     const rootDataObj = rootData as Record<string, unknown>;
-    const { type: rootType, subType: rootSubType } = splitTypeKey(rootKey, opts.registry);
+    const { type: rootType, subType: rootSubType, explicit: rootExplicit } =
+      splitTypeKey(rootKey, opts.registry);
+
+    // A `<type>.base` node may not be AUTHORED — see abstractSubtypeMessage. This is the
+    // ROOT door; the child door is in the child loop below. One rule, both doors: a check
+    // on one of two entry points is a rule that is only half true.
+    if (rootExplicit && rootSubType === SUBTYPE_BASE) {
+      _currentPath!.pushKey(rootKey);
+      const src = errSource();
+      _currentPath!.pop();
+      throw new ParseError(abstractSubtypeMessage(rootType), {
+        code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
+        source: src,
+      });
+    }
 
     // Check root type is registered (always throw — can't skip the root)
     if (!opts.registry.has(rootType, rootSubType)) {
@@ -1292,6 +1327,25 @@ function processChildren(
         _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
         continue; // skip this child
       }
+    }
+
+    // A `<type>.base` child may not be AUTHORED — the CHILD door (the root door is above).
+    // Gated on `explicit`, deliberately: `base` is also this parser's fallback for an
+    // OMITTED subtype whose registry default is unregistered (the branch directly above),
+    // and refusing that would break every node relying on the default. Placed before the
+    // attr branch so `attr.base` is covered by the same rule — an authored untyped attr is
+    // the same mistake as an authored untyped field.
+    if (explicit && childSubType === SUBTYPE_BASE) {
+      errors.push(
+        new ParseError(abstractSubtypeMessage(childType), {
+          code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
+          source: errSource(),
+        }),
+      );
+      _currentPath?.pop(); // pop child wrapper key
+      _currentPath?.pop(); // pop array index
+      _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
+      continue; // skip this child
     }
 
     // --- Special handling for "attr" child nodes ---

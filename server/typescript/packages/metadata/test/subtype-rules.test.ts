@@ -132,8 +132,15 @@ describe("subtype rule validation", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it("base objects are not subject to the rule (templates)", async () => {
-    const { errors, warnings } = await load(
+  it("an authored object.base is REFUSED — every base subtype is an abstract anchor", async () => {
+    // This test used to assert the opposite: that an `object.base` loads cleanly and is
+    // exempt from the entity-without-identity warning. It loaded on TypeScript, C# and
+    // Python and FAILED TO LOAD on the JVM, whose impl classes are `public abstract` —
+    // the same document, two verdicts. `spec/metamodel/object.json` had said which one
+    // was right all along ("Has no runtime semantics of its own; not authored directly").
+    // The exemption it was really testing is still covered by the abstract-entity case
+    // above, which is the supported way to declare a shape-only template.
+    const { errors } = await load(
       JSON.stringify({
         "metadata.root": {
           package: "demo",
@@ -148,8 +155,29 @@ describe("subtype rule validation", () => {
         },
       }),
     );
-    expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expect(codes(errors)).toContain("ERR_ABSTRACT_SUBTYPE_AUTHORED");
+    expect(errors[0]!.message).toContain("object.base");
+    expect(errors[0]!.message).toContain("abstract registry anchor");
+  });
+
+  it("an authored field.base is refused too — the rule is the whole base family", async () => {
+    const { errors } = await load(
+      JSON.stringify({
+        "metadata.root": {
+          package: "demo",
+          children: [
+            {
+              "object.entity": {
+                name: "Tagged",
+                children: [{ "field.base": { name: "label" } }],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(codes(errors)).toContain("ERR_ABSTRACT_SUBTYPE_AUTHORED");
+    expect(errors[0]!.message).toContain("field.base");
   });
 });
 

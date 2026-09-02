@@ -406,43 +406,37 @@ public class NamesGeneratorTests
     }
 
     [Fact]
-    public void R_E_EntityGenerator_and_DbContextGenerator_never_reach_the_divergent_object_base_shape()
+    public void The_entity_generator_ALSO_refuses_the_divergent_shape_with_names_OFF()
     {
-        // R-E: the divergence below (object.base carrying a read-only primary source
-        // inherited beside a child's own writable primary) can be REFUSED only by
-        // NamesGenerator (via CSharpNaming.ResolveObjectNames) — never observed by
-        // EntityGenerator or DbContextGenerator directly. Both filter their working set
-        // to IsEntity() || DbView is not null; object.base satisfies neither
-        // (FR-024/ADR-0028's ERR_ENTITY_PRIMARY_SOURCE_READONLY bans a read-only
-        // primary on object.entity outright, and DbView is OWN-only, so ChildWeird's
-        // own writable table source never registers as a DbView). Reusing the exact
-        // model from A_divergent_primary_and_writable_source_pair_is_refused_naming_both
-        // above — establishes the brief's Step 1 sketch
-        // (Assert.Throws<GeneratorException>(() => GenerateEntity("WeirdBase"))) cannot
-        // pass: neither generator ever resolves names for ChildWeird, so neither can
-        // throw on its behalf. The RUN-level guarantee is proven separately below.
-        const string model = """
-        { "metadata.root": { "package": "acme", "children": [
-          { "object.base": { "name": "ParentWeird", "abstract": true, "children": [
-            { "source.rdb": { "name": "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
-            { "field.int": { "name": "id" } }
-          ]}},
-          { "object.base": { "name": "ChildWeird", "extends": "ParentWeird", "children": [
-            { "source.rdb": { "name": "tableSrc", "@table": "child_table", "@role": "primary" } }
-          ]}}
-        ]}}
-        """;
-        var root = Load(model);
+        // This test used to assert the opposite, and its premise has been retired twice
+        // over. It asserted that only NamesGenerator could refuse a divergent object,
+        // because the shape was only expressible on an `object.base` — which satisfies
+        // neither IsEntity() nor DbView, so the entity and db-context generators filtered
+        // it out before ever resolving a name.
+        //
+        // Both halves of that are gone. `object.base` is an abstract registry anchor and
+        // may no longer be authored at all, and the divergence is expressible on two plain
+        // entities — which the entity generator DOES reach, and whose [Table] line names
+        // one of the two disagreeing relations.
+        //
+        // Ctx() leaves IncludeNames FALSE, which is the point: that is the arm a run takes
+        // when `names` is not in the selection, so ResolveObjectNames is never called and
+        // CSharpNaming.Table answers alone. Before the guard moved onto Table as well, this
+        // arm emitted [Table("parent_table")] for ChildWeird — binding the PARENT's table
+        // while the child declared its own — silently, on exactly the arm where nothing
+        // else looks. A refusal that depends on which generators ran is not a refusal.
+        //
+        // DbContextGenerator is deliberately NOT asserted here: it resolves a physical name
+        // only for a projection's .ToView(...), and takes an entity's table from the POCO's
+        // own [Table] attribute. It never names this object, so it cannot refuse it, and a
+        // test claiming otherwise would be asserting a guarantee the code does not make.
+        var root = Load(DivergentBothWritable);
 
-        var entityFiles = new EntityGenerator().Generate(Ctx(root)).ToList();
-        Assert.DoesNotContain(entityFiles, f => f.Path.Contains("Weird"));
-
-        // Neither ParentWeird nor ChildWeird is IsEntity() or DbView-bearing, so the
-        // DbSet/OnModelCreating loops never touch them either — DbContextGenerator
-        // emits no AppDbContext file at all for a model with nothing to map.
-        var dbContextFiles = new DbContextGenerator().Generate(Ctx(root)).ToList();
-        Assert.Empty(dbContextFiles);
-        Assert.All(dbContextFiles, f => Assert.DoesNotContain("Weird", f.Content));
+        var entityEx = Assert.Throws<InvalidOperationException>(
+            () => new EntityGenerator().Generate(Ctx(root)).ToList());
+        Assert.Contains("ChildWeird", entityEx.Message);
+        Assert.Contains("parent_table", entityEx.Message);
+        Assert.Contains("child_table", entityEx.Message);
     }
 
     [Fact]
@@ -457,18 +451,8 @@ public class NamesGeneratorTests
         // GenCommand.DefaultGeneratorNames, so a default `dotnet meta gen` over this
         // model fails via NamesGenerator's own InvalidOperationException, caught and
         // surfaced by GenCommand.Run as a clean Outcome failure naming both sides.
-        const string model = """
-        { "metadata.root": { "package": "acme", "children": [
-          { "object.base": { "name": "ParentWeird", "abstract": true, "children": [
-            { "source.rdb": { "name": "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
-            { "field.int": { "name": "id" } }
-          ]}},
-          { "object.base": { "name": "ChildWeird", "extends": "ParentWeird", "children": [
-            { "source.rdb": { "name": "tableSrc", "@table": "child_table", "@role": "primary" } }
-          ]}}
-        ]}}
-        """;
-        var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "gen.json")]);
+        var load = new MetaDataLoader().Load(
+            [new InMemoryStringSource(DivergentBothWritable, id: "gen.json")]);
         Assert.Empty(load.Errors);
 
         var tmp = Path.Combine(Path.GetTempPath(), "moc-names-run-" + Guid.NewGuid().ToString("N"));
@@ -479,7 +463,7 @@ public class NamesGeneratorTests
         Assert.False(outcome.Ok);
         var message = string.Join("\n", outcome.LoadErrors);
         Assert.Contains("ChildWeird", message);
-        Assert.Contains("v_parent", message);
+        Assert.Contains("parent_table", message);
         Assert.Contains("child_table", message);
     }
 

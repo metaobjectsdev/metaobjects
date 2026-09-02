@@ -1,10 +1,10 @@
 {
-  "metamodelVersion": "0.13",
+  "metamodelVersion": "0.14",
   "types": [
     {
       "type": "attr",
       "subType": "base",
-      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype).",
+      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype). Not authored directly: a `attr.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "attrs": [],
       "children": []
     },
@@ -81,7 +81,7 @@
     {
       "type": "field",
       "subType": "base",
-      "description": "Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).",
+      "description": "Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string). Not authored directly: a `field.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "attrs": [
         {
           "name": "column",
@@ -3006,7 +3006,7 @@
     {
       "type": "layout",
       "subType": "base",
-      "description": "Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs.",
+      "description": "Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs. Not authored directly: a `layout.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "attrs": [],
       "children": []
     },
@@ -3425,7 +3425,7 @@
     {
       "type": "origin",
       "subType": "base",
-      "description": "Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.",
+      "description": "Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs. Not authored directly: a `origin.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "attrs": [],
       "children": []
     },
@@ -3965,7 +3965,7 @@
     {
       "type": "source",
       "subType": "base",
-      "description": "Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider.",
+      "description": "Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider. Not authored directly: a `source.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "attrs": [],
       "children": []
     },
@@ -4070,7 +4070,7 @@
     {
       "type": "template",
       "subType": "base",
-      "description": "Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs.",
+      "description": "Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs. Not authored directly: a `template.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "rules": "A single MetaTemplate node class backs every template subtype (no subType→class dispatch); the subtype selects which reserved-attr set applies. @format (a closed-enum ATTRIBUTE, never a subtype) drives the render engine's escaper/whitespace behavior, so a new format costs one escaper + one enum value rather than a new subtype + cross-language port.",
       "attrs": [],
       "children": []
@@ -4381,7 +4381,7 @@
     {
       "type": "validator",
       "subType": "base",
-      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.",
+      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own. Not authored directly: a `validator.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "attrs": [
         {
           "name": "max",
@@ -4588,7 +4588,7 @@
     {
       "type": "view",
       "subType": "base",
-      "description": "Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own.",
+      "description": "Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own. Not authored directly: a `view.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "attrs": [],
       "children": []
     },

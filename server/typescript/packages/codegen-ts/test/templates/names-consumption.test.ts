@@ -189,22 +189,28 @@ describe("§A6 — the entity file consumes the names artifact", () => {
   // survives the wrap.
   test("a divergent object fails the run rather than quietly reverting to the literal", async () => {
     const json = JSON.stringify({ "metadata.root": { package: "test", children: [
+      // Two plain entities, each declaring its own differently-named table. Two
+      // role=primary sources survive on ChildWeird's effective children() (own-over-super
+      // shadowing matches on a (type, name) pair, and these names differ), so the run must
+      // refuse rather than bind whichever one it reached first. Deliberately NOT object.base
+      // — that subtype is an abstract registry anchor and no longer authorable.
       {
-        "object.base": {
+        "object.entity": {
           name: "ParentWeird",
           abstract: true,
           children: [
-            { "source.rdb": { name: "viewSrc", "@kind": "view", "@view": "v_parent", "@role": "primary" } },
+            { "source.rdb": { name: "parentSrc", "@table": "parent_table" } },
             { "field.int": { name: "id" } },
           ],
         },
       },
       {
-        "object.base": {
+        "object.entity": {
           name: "ChildWeird",
           extends: "ParentWeird",
           children: [
-            { "source.rdb": { name: "tableSrc", "@table": "child_table", "@role": "primary" } },
+            { "source.rdb": { name: "tableSrc", "@table": "child_table" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
           ],
         },
       },
@@ -224,7 +230,7 @@ describe("§A6 — the entity file consumes the names artifact", () => {
     });
     await expect(run).rejects.toThrow(Error);
     await expect(run).rejects.toThrow(/ChildWeird/);
-    await expect(run).rejects.toThrow(/v_parent/);
+    await expect(run).rejects.toThrow(/parent_table/);
     await expect(run).rejects.toThrow(/child_table/);
   });
 });

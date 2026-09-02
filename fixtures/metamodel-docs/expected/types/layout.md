@@ -12,7 +12,7 @@ documentation attributes are omitted here (see [providers.md](../providers.md)).
 
 ### layout.base
 
-Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs.
+Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs. Not authored directly: a `layout.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.
 
 **Owning provider:** metaobjects-core-types
 

@@ -9,13 +9,13 @@
           "@object": "com.acme.garage.Garage",
           "children": [
             {
-              "field.base": {
+              "field.long": {
                 "name": "id",
                 "extends": "acme::common::id"
               }
             },
             {
-              "field.base": {
+              "field.string": {
                 "name": "name",
                 "extends": "acme::common::name"
               }
@@ -66,19 +66,19 @@
           "@object": "com.acme.vehicle.Vehicle",
           "children": [
             {
-              "field.base": {
+              "field.long": {
                 "name": "id",
                 "extends": "acme::common::id"
               }
             },
             {
-              "field.base": {
+              "field.string": {
                 "name": "name",
                 "extends": "acme::common::name"
               }
             },
             {
-              "field.base": {
+              "field.string": {
                 "name": "vehicleDescription",
                 "extends": "acme::common::description"
               }
@@ -135,7 +135,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Car",
           "package": "::vehicle::car",
           "extends": "acme::vehicle::Vehicle",
@@ -200,7 +200,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Truck",
           "package": "::vehicle::truck",
           "extends": "acme::vehicle::Vehicle",
@@ -246,7 +246,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Motorcycle",
           "package": "::vehicle::motorcycle",
           "extends": "acme::vehicle::Vehicle",
@@ -288,7 +288,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Porsche",
           "package": "::vehicle::car::luxury",
           "extends": "acme::vehicle::car::Car",

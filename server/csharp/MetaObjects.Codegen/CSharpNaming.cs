@@ -271,8 +271,56 @@ public static class CSharpNaming
     /// <summary>
     /// The DB table name for an entity: the <c>dbTable</c> source override, else the
     /// raw object name. Shared so the schema DDL and the [Table] annotation agree.
+    /// <para>
+    /// Runs the SAME divergence refusal as <see cref="ResolveObjectNames"/>. It has to:
+    /// this is the arm a run takes when the <c>names</c> generator is NOT selected, and
+    /// without the check here a divergent object silently emitted
+    /// <c>[Table("&lt;the inherited primary's name&gt;")]</c> — binding the parent's table
+    /// while the child declared its own — on exactly the arm where nothing else looks.
+    /// A refusal that depends on which generators ran is not a refusal.
+    /// </para>
     /// </summary>
-    public static string Table(MetaObject entity) => entity.DbTable ?? entity.Name;
+    public static string Table(MetaObject entity)
+    {
+        RefusePrimarySourceDivergence(entity);
+        return entity.DbTable ?? entity.Name;
+    }
+
+    /// <summary>
+    /// Refuse an object whose <c>@role: primary</c> sources resolve to more than one
+    /// physical name. Two primaries can survive on one object's effective sources:
+    /// ValidateOnePrimarySource enforces "exactly one primary" over OWN children only, and
+    /// MetaData.EffectiveChildren shadows an own child over a super child only on a
+    /// (type, name) match — so two source.rdb nodes with DIFFERENT explicit names at two
+    /// levels of an extends chain never collide, on metadata that loads with ZERO errors.
+    /// <para>
+    /// DIRECTION-BLIND: it compares every primary against every other, so it does not
+    /// matter which of them is writable nor which was declared first. The earlier check
+    /// compared the first primary against the first primary WRITABLE one, which could only
+    /// see a divergence when one primary was read-only — and, since inherited sources come
+    /// first, only when the read-only one was the inherited one.
+    /// </para>
+    /// <para>
+    /// Two primaries AGREEING on a name is not a divergence and stays legal: the invariant
+    /// is that an object has ONE physical name, not that it declares one source.
+    /// </para>
+    /// </summary>
+    private static void RefusePrimarySourceDivergence(MetaObject obj)
+    {
+        var distinct = obj.Sources()
+            .Where(s => s.Role == SOURCE_ROLE_PRIMARY)
+            .Select(s => s.PhysicalName)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+        if (distinct.Count <= 1) return;
+        // Sorted, so the message is identical in every port regardless of source order.
+        var joined = string.Join(", ", distinct.Select(n => $"\"{n}\""));
+        throw new InvalidOperationException(
+            $"{obj.Name}: role=primary sources disagree on the object's physical name — " +
+            $"{joined}. Every consumer binds ONE name. Give them matching physical names, " +
+            "or drop the extra role=primary declaration.");
+    }
 
     /// <summary>
     /// The DB column name for a field: the <c>@column</c> override, else the raw

@@ -51,7 +51,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <strong>Allowed children</strong> lists the structural child rules with their cardinality
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>field.base</h3>
-<p>Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).</p>
+<p>Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string). Not authored directly: a <code>field.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>Attributes</strong></p>
 <table>

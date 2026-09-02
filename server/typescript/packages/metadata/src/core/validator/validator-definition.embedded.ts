@@ -12,7 +12,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
     {
       "type": "validator",
       "subType": "base",
-      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.",
+      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own. Not authored directly: a `validator.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "children": [
         {
           "type": "attr",

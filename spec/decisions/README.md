@@ -50,6 +50,7 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0030 — The declared API surface lives in core; protocol lives in bindings; the organization tier stays out](ADR-0030-declared-api-surface-and-org-tier-boundary.md) — *Accepted*
 - [ADR-0052 — A template's subtype axis is DIRECTION: `template.output` renders outbound, a response is parsed inbound](ADR-0052-template-direction-outbound-vs-inbound.md) — *Accepted*
 - [ADR-0053 — The reply's syntax is `@responseFormat` on `template.prompt`](ADR-0053-inbound-response-format.md) — *Accepted*
+- [ADR-0054 — A `<type>.base` subtype is a registry anchor, not an authorable node](ADR-0054-base-subtypes-are-not-authorable.md) — *Accepted*
 
 > **Index gap — ADR-0031 through ADR-0051 are on disk but not listed above.** The index stopped
 > being maintained after ADR-0030; the files are authoritative, this list is not. Read

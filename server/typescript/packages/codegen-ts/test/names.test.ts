@@ -1,5 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
+import {
+  MetaDataLoader,
+  InMemoryStringSource,
+  isMetaSource,
+  type MetaObject,
+  type MetaSource,
+} from "@metaobjectsdev/metadata";
 import { resolveObjectNames } from "../src/names.js";
 import { CodegenError } from "../src/errors.js";
 
@@ -89,31 +95,29 @@ describe("resolveObjectNames", () => {
     expect(n?.fields.firstName?.column).toBe("given_name");
   });
 
-  // Task 0 / §A6-adjacent: the divergence-refusal check added to resolveObjectNames.
+  // A single role==="primary" source that happens to be READ-ONLY, beside a non-primary
+  // replica. There is exactly one primary, so there is nothing for the divergence guard
+  // below to disagree ABOUT — it resolves to the primary's own name and does not throw.
+  // `dbTable` (primary AND writable on the SAME node) finds nothing here and returns
+  // undefined, which is why the OLD guard, comparing against it, could not have fired.
   //
-  // This shape puts BOTH sources on the SAME object (no extends involved), so there is
-  // only ever one node with role==="primary" — the read-only view. dbTable requires
-  // role==="primary" AND isWritable() on that SAME node, finds nothing (the writable
-  // source here is the non-primary replica), and returns undefined — not a second,
-  // disagreeing string. There is nothing for the two resolvers to disagree ABOUT: only
-  // one of them is looking at a real candidate. Contrast the next test, where `extends`
-  // puts two DIFFERENTLY-NAMED primary sources on one object's effective children() and
-  // the two resolvers genuinely pick different nodes.
-  test("a read-only primary beside a writable replica on one object loads, and resolves to the primary's own name", async () => {
+  // The replica is a second READ-ONLY source, not a writable one. The writable-replica
+  // spelling this test used to carry is no longer expressible on any concrete subtype:
+  // an object.entity's primary must be writable and an object.projection's sources must
+  // all be read-only, and the object.base it relied on is an abstract registry anchor
+  // that may no longer be authored.
+  test("a read-only primary beside a non-primary replica on one object loads, and resolves to the primary's own name", async () => {
     const root = await load([{
-      "object.base": {
+      "object.projection": {
         name: "Weird",
         children: [
-          { "source.rdb": { "@kind": "view", "@table": "v_weird", "@role": "primary" } },
-          { "source.rdb": { "@table": "physical_weirds", "@role": "replica" } },
+          { "source.rdb": { name: "primarySrc", "@kind": "view", "@view": "v_weird", "@role": "primary" } },
+          { "source.rdb": { name: "replicaSrc", "@kind": "view", "@view": "v_weird_replica", "@role": "replica" } },
           { "field.int": { name: "id" } },
         ],
       },
     }]);
     const weird = obj(root, "Weird");
-    // The shape this test documents: dbTable requires the SAME source to be both primary
-    // AND writable, so it finds nothing here (the primary is the read-only view; the
-    // writable source is the non-primary replica) — not a second, disagreeing string.
     expect(weird.dbTable).toBeUndefined();
     const n = resolveObjectNames(weird, "snake_case");
     expect(n?.name).toBe("v_weird");
@@ -213,9 +217,11 @@ describe("resolveObjectNames", () => {
       const child = obj(root, "ChildWeird");
       // Pin the reachability MECHANISM: both sources survive the child merge. If one
       // shadowed the other there would be no divergence and this would pass vacuously.
+      // isMetaSource, not a structural cast: the exported guard is how cross-package
+      // code identifies a node (CLAUDE.md), and it is what narrows the type for tsc.
       const primaries = child.children()
-        .filter((c) => c.type === "source" && (c as { role?: string }).role === "primary")
-        .map((c) => (c as { physicalName: string }).physicalName)
+        .filter((c) => isMetaSource(c) && c.role === "primary")
+        .map((c) => (c as MetaSource).physicalName)
         .sort();
       expect(primaries).toEqual([shape.other, "child_table"].sort());
 

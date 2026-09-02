@@ -13,6 +13,13 @@ class ErrorCode(str, Enum):
     ERR_TOP_LEVEL_NOT_OBJECT = "ERR_TOP_LEVEL_NOT_OBJECT"
     ERR_UNKNOWN_TYPE = "ERR_UNKNOWN_TYPE"
     ERR_UNKNOWN_SUBTYPE = "ERR_UNKNOWN_SUBTYPE"
+    # A document AUTHORS a `<type>.base` node. Every registered `base` subtype is an
+    # abstract registry anchor — the shared root concrete subtypes inherit from, with no
+    # runtime semantics of its own (spec/metamodel/object.json: "not authored directly").
+    # The JVM enforced this by accident (its impl classes are abstract, so instantiation
+    # fails); TypeScript, C# and Python accepted it, so one document loaded on three ports
+    # and failed on two.
+    ERR_ABSTRACT_SUBTYPE_AUTHORED = "ERR_ABSTRACT_SUBTYPE_AUTHORED"
     ERR_MISSING_SUBTYPE = "ERR_MISSING_SUBTYPE"
     ERR_DUPLICATE_NAME = "ERR_DUPLICATE_NAME"
     ERR_UNRESOLVED_SUPER = "ERR_UNRESOLVED_SUPER"

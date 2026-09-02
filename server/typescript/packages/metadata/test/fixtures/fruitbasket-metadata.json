@@ -42,13 +42,13 @@
           "@object": "com.metaobjects.loader.simple.fruitbasket.Basket",
           "children": [
             {
-              "field.base": {
+              "field.long": {
                 "name": "id",
                 "extends": "simple::common::id"
               }
             },
             {
-              "field.base": {
+              "field.string": {
                 "name": "name",
                 "extends": "simple::common::name"
               }
@@ -103,13 +103,13 @@
           "@object": "com.metaobjects.loader.simple.fruitbasket.Fruit",
           "children": [
             {
-              "field.base": {
+              "field.long": {
                 "name": "id",
                 "extends": "simple::common::id"
               }
             },
             {
-              "field.base": {
+              "field.string": {
                 "name": "name",
                 "extends": "simple::common::name"
               }
@@ -133,7 +133,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Apple",
           "extends": "Fruit",
           "@object": "com.metaobjects.loader.simple.fruitbasket.Apple",
@@ -152,14 +152,14 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Macintosh",
           "extends": "Apple",
           "@object": "com.metaobjects.loader.simple.fruitbasket.Macintosh"
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Orange",
           "extends": "Fruit",
           "@object": "com.metaobjects.loader.simple.fruitbasket.Orange",

@@ -51,7 +51,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <strong>Allowed children</strong> lists the structural child rules with their cardinality
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>attr.base</h3>
-<p>Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field&#39;s @default, whose value-type follows the owning field&#39;s subtype).</p>
+<p>Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field&#39;s @default, whose value-type follows the owning field&#39;s subtype). Not authored directly: a <code>attr.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>Attributes</strong></p>
 <p><em>No subtype-specific attributes.</em></p>

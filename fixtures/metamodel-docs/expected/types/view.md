@@ -12,7 +12,7 @@ documentation attributes are omitted here (see [providers.md](../providers.md)).
 
 ### view.base
 
-Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own.
+Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own. Not authored directly: a `view.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.
 
 **Owning provider:** metaobjects-core-types
 

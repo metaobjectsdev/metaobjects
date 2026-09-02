@@ -13,7 +13,7 @@ export const ATTR_DEFINITION: ProviderDefinition = {
       "type": "attr",
       "subType": "base",
       "dataType": "string",
-      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype)."
+      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype). Not authored directly: a `attr.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document."
     },
     {
       "type": "attr",

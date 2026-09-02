@@ -12,7 +12,7 @@ documentation attributes are omitted here (see [providers.md](../providers.md)).
 
 ### field.base
 
-Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).
+Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string). Not authored directly: a `field.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.
 
 **Owning provider:** metaobjects-core-types
 

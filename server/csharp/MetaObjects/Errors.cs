@@ -9,6 +9,16 @@ public enum ErrorCode
     ERR_TOP_LEVEL_NOT_OBJECT,
     ERR_UNKNOWN_TYPE,
     ERR_UNKNOWN_SUBTYPE,
+
+    /// <summary>
+    /// A document AUTHORS a <c>&lt;type&gt;.base</c> node. Every registered <c>base</c>
+    /// subtype is an abstract registry anchor — the shared root concrete subtypes inherit
+    /// from, with no runtime semantics of its own (spec/metamodel/object.json says so in as
+    /// many words: "not authored directly"). The JVM enforced this by accident, because its
+    /// impl classes are <c>abstract</c>; TypeScript, C# and Python accepted it, so one
+    /// document loaded on three ports and failed to load on two.
+    /// </summary>
+    ERR_ABSTRACT_SUBTYPE_AUTHORED,
     ERR_MISSING_SUBTYPE,
     ERR_DUPLICATE_NAME,
     ERR_UNRESOLVED_SUPER,

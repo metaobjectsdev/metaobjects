@@ -45,6 +45,20 @@ public enum ErrorCode {
     /** A node uses a subType not valid for its type. */
     ERR_UNKNOWN_SUBTYPE,
 
+    /**
+     * A document AUTHORS a {@code <type>.base} node. Every registered {@code base} subtype
+     * is an abstract registry anchor — the shared root concrete subtypes inherit from, with
+     * no runtime semantics of its own ({@code spec/metamodel/object.json} says so in as many
+     * words: "not authored directly").
+     *
+     * <p>This port already refused the shape, but by ACCIDENT and with an unhelpful message:
+     * its impl classes are {@code public abstract}, so instantiation failed with a raw
+     * {@code NoSuchMethodException}-shaped cause. TypeScript, C# and Python accepted it
+     * outright, so one document loaded on three ports and failed to load on two. The code
+     * exists so all five now refuse it the same way, for the same stated reason.</p>
+     */
+    ERR_ABSTRACT_SUBTYPE_AUTHORED,
+
     /** A node omits subType and the type has no default subType. */
     ERR_MISSING_SUBTYPE,
 

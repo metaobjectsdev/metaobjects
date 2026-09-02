@@ -1571,10 +1571,14 @@ describe("parseJson — @default (SUBTYPE_BASE / polymorphic) preserves value ty
     expect(v).toBe("active");
   });
 
-  it("attr.base child node with boolean value is stored type-preserved on parent", () => {
+  it("an inline @default with a boolean value is stored type-preserved on parent", () => {
     const registry = makeRegistry();
-    // Explicit attr child node with subtype "base" (the polymorphic subtype)
-    // carrying a boolean value — must NOT be stringified.
+    // The polymorphic `attr.base` subtype stores its value type-preserved (never
+    // stringified) — a field's @default takes its value type from the owning field's
+    // subtype. This used to be written as an authored `{ "attr.base": … }` child, which
+    // loaded here and FAILED TO LOAD on the JVM; the inline form is both the real
+    // authoring style and the path that actually reaches the polymorphic subtype, since
+    // the loader picks it rather than the author naming it.
     const input = JSON.stringify({
       "metadata.root": {
         children: [
@@ -1585,9 +1589,7 @@ describe("parseJson — @default (SUBTYPE_BASE / polymorphic) preserves value ty
                 {
                   "field.boolean": {
                     name: "enabled",
-                    children: [
-                      { "attr.base": { name: "default", value: false } },
-                    ],
+                    "@default": false,
                   },
                 },
               ],

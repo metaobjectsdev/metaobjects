@@ -20,6 +20,17 @@ export const ERROR_CODES = [
   "ERR_TOP_LEVEL_NOT_OBJECT",
   "ERR_UNKNOWN_TYPE",
   "ERR_UNKNOWN_SUBTYPE",
+  // A document AUTHORS a `<type>.base` node. Every registered `base` subtype is an
+  // abstract registry anchor — the shared root concrete subtypes inherit from, with no
+  // runtime semantics of its own (spec/metamodel/object.json says so in as many words:
+  // "not authored directly"). The JVM enforced this by accident, because its impl
+  // classes are `public abstract`; TypeScript, C# and Python accepted it, so the same
+  // document loaded on three ports and failed on two.
+  //
+  // Scoped to an EXPLICITLY authored subtype. `base` is also the parser's own fallback
+  // for an OMITTED subtype whose registry default is unregistered, and that path is
+  // untouched — refusing it would break every node that relies on the default.
+  "ERR_ABSTRACT_SUBTYPE_AUTHORED",
   "ERR_MISSING_SUBTYPE",
   "ERR_DUPLICATE_NAME",
   "ERR_UNRESOLVED_SUPER",

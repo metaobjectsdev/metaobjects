@@ -52,13 +52,13 @@
               }
             },
             {
-              "field.base": {
+              "field.long": {
                 "name": "id",
                 "extends": "simple::common::id"
               }
             },
             {
-              "field.base": {
+              "field.string": {
                 "name": "name",
                 "extends": "simple::common::name"
               }
@@ -150,13 +150,13 @@
               }
             },
             {
-              "field.base": {
+              "field.long": {
                 "name": "basketId",
                 "extends": "simple::common::id"
               }
             },
             {
-              "field.base": {
+              "field.long": {
                 "name": "fruitId",
                 "extends": "simple::common::id"
               }
@@ -191,19 +191,19 @@
               }
             },
             {
-              "field.base": {
+              "field.long": {
                 "name": "id",
                 "extends": "simple::common::id"
               }
             },
             {
-              "field.base": {
+              "field.string": {
                 "name": "name",
                 "extends": "simple::common::name"
               }
             },
             {
-              "field.base": {
+              "field.long": {
                 "name": "basketId",
                 "extends": "simple::common::id"
               }
@@ -227,7 +227,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Apple",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Apple",
@@ -246,14 +246,14 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Macintosh",
           "extends": "Apple",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Macintosh"
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Orange",
           "extends": "Fruit",
           "@object": "com.metaobjects.test.proxy.fruitbasket.Orange",

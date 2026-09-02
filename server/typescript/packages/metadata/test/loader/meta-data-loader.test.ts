@@ -282,7 +282,7 @@ describe("MetaDataLoader — unresolvable super ref produces ParseError", () => 
     const loader = new MetaDataLoader({ freeze: false });
     const json = JSON.stringify({
       "metadata.root": {
-        children: [{ "object.base": { name: "Widget", extends: "NonExistentBase" } }],
+        children: [{ "object.entity": { name: "Widget", extends: "NonExistentBase" } }],
       },
     });
     const result = await loader.load([new InMemoryStringSource(json)]);

@@ -12,7 +12,7 @@ documentation attributes are omitted here (see [providers.md](../providers.md)).
 
 ### source.base
 
-Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider.
+Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider. Not authored directly: a `source.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.
 
 **Owning provider:** metaobjects-core-types
 

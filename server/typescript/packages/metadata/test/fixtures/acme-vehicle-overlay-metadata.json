@@ -3,7 +3,7 @@
     "package": "acme",
     "children": [
       {
-        "object.base": {
+        "object.entity": {
           "name": "Garage",
           "package": "::garage",
           "overlay": true,
@@ -18,7 +18,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Vehicle",
           "package": "::vehicle",
           "overlay": true,
@@ -46,7 +46,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Porsche",
           "package": "::vehicle::car::luxury",
           "overlay": true,
@@ -61,7 +61,7 @@
         }
       },
       {
-        "object.base": {
+        "object.entity": {
           "name": "Motorcycle",
           "package": "::vehicle::motorcycle",
           "overlay": true,

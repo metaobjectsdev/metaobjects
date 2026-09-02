@@ -51,7 +51,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <strong>Allowed children</strong> lists the structural child rules with their cardinality
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>view.base</h3>
-<p>Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field&#39;s value is rendered or edited; the base carries no attrs of its own.</p>
+<p>Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field&#39;s value is rendered or edited; the base carries no attrs of its own. Not authored directly: a <code>view.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>Attributes</strong></p>
 <p><em>No subtype-specific attributes.</em></p>

@@ -1,8 +1,7 @@
 {
-  "registeredSubTypeCount": 69,
+  "registeredSubTypeCount": 59,
   "exercisedSubTypeCount": 46,
   "untestedSubTypes": [
-    "attr.base",
     "attr.boolean",
     "attr.class",
     "attr.double",
@@ -12,19 +11,10 @@
     "attr.intMap",
     "attr.long",
     "attr.string",
-    "field.base",
-    "layout.base",
-    "object.base",
-    "origin.base",
-    "relationship.base",
-    "source.base",
-    "template.base",
     "validator.atLeastOne",
-    "validator.base",
     "validator.comparison",
     "validator.presentIff",
-    "validator.requiredWhen",
-    "view.base"
+    "validator.requiredWhen"
   ],
   "untestedAttrsByExercisedSubType": [
     {
@@ -248,7 +238,6 @@
     {
       "key": "field.timestamp",
       "untestedAttrs": [
-        "column",
         "db.indexed",
         "dbColumnType",
         "default",
@@ -302,7 +291,6 @@
     {
       "key": "identity.secondary",
       "untestedAttrs": [
-        "expr",
         "orders",
         "using",
         "where"
@@ -311,9 +299,7 @@
     {
       "key": "index.lookup",
       "untestedAttrs": [
-        "expr",
-        "using",
-        "where"
+        "using"
       ]
     },
     {

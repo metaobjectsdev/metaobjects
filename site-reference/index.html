@@ -62,7 +62,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </thead>
 <tbody><tr>
 <td><code>attr.base</code></td>
-<td>Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field&#39;s @default, whose value-type follows the owning field&#39;s subtype).</td>
+<td>Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field&#39;s @default, whose value-type follows the owning field&#39;s subtype). Not authored directly: a <code>attr.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/attr.html#attrbase">types/attr.md#attrbase</a></td>
 </tr>
 <tr>
@@ -117,7 +117,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>field.base</code></td>
-<td>Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).</td>
+<td>Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string). Not authored directly: a <code>field.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/field.html#fieldbase">types/field.md#fieldbase</a></td>
 </tr>
 <tr>
@@ -227,7 +227,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>layout.base</code></td>
-<td>Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs.</td>
+<td>Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs. Not authored directly: a <code>layout.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/layout.html#layoutbase">types/layout.md#layoutbase</a></td>
 </tr>
 <tr>
@@ -267,7 +267,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>origin.base</code></td>
-<td>Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.</td>
+<td>Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs. Not authored directly: a <code>origin.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/origin.html#originbase">types/origin.md#originbase</a></td>
 </tr>
 <tr>
@@ -317,7 +317,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>source.base</code></td>
-<td>Abstract base source — the shared root subtype for declaring where an object&#39;s data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider.</td>
+<td>Abstract base source — the shared root subtype for declaring where an object&#39;s data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider. Not authored directly: a <code>source.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/source.html#sourcebase">types/source.md#sourcebase</a></td>
 </tr>
 <tr>
@@ -327,7 +327,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>template.base</code></td>
-<td>Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs.</td>
+<td>Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs. Not authored directly: a <code>template.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/template.html#templatebase">types/template.md#templatebase</a></td>
 </tr>
 <tr>
@@ -357,7 +357,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>validator.base</code></td>
-<td>Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.</td>
+<td>Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own. Not authored directly: a <code>validator.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/validator.html#validatorbase">types/validator.md#validatorbase</a></td>
 </tr>
 <tr>
@@ -397,7 +397,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>view.base</code></td>
-<td>Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field&#39;s value is rendered or edited; the base carries no attrs of its own.</td>
+<td>Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field&#39;s value is rendered or edited; the base carries no attrs of its own. Not authored directly: a <code>view.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/view.html#viewbase">types/view.md#viewbase</a></td>
 </tr>
 <tr>

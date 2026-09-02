@@ -119,7 +119,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><strong>Allowed children</strong></p>
 <p><em>No structural children.</em></p>
 <h3>validator.base</h3>
-<p>Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.</p>
+<p>Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own. Not authored directly: a <code>validator.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>Attributes</strong></p>
 <table>

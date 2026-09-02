@@ -5,6 +5,7 @@
     "ERR_TOP_LEVEL_NOT_OBJECT": "The metadata document root is not a JSON object.",
     "ERR_UNKNOWN_TYPE": "A node uses a type not registered in the registry.",
     "ERR_UNKNOWN_SUBTYPE": "A node uses a subType not valid for its type.",
+    "ERR_ABSTRACT_SUBTYPE_AUTHORED": "A document authors a `<type>.base` node. Every registered `base` subtype is an abstract registry anchor that concrete subtypes inherit from — it has no runtime semantics and is never authored directly. Declare a concrete subtype instead.",
     "ERR_MISSING_SUBTYPE": "A node omits subType and the type has no default subType.",
     "ERR_DUPLICATE_NAME": "Two sibling nodes share the same name.",
     "ERR_UNRESOLVED_SUPER": "An extends/super reference names a node that does not exist.",

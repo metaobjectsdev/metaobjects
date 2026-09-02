@@ -12,7 +12,7 @@ export const TEMPLATE_DEFINITION: ProviderDefinition = {
     {
       "type": "template",
       "subType": "base",
-      "description": "Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs.",
+      "description": "Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs. Not authored directly: a `template.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "rules": "A single MetaTemplate node class backs every template subtype (no subType→class dispatch); the subtype selects which reserved-attr set applies. @format (a closed-enum ATTRIBUTE, never a subtype) drives the render engine's escaper/whitespace behavior, so a new format costs one escaper + one enum value rather than a new subtype + cross-language port."
     },
     {

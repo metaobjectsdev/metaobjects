@@ -7,6 +7,48 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — BREAKING: a `<type>.base` node no longer loads (`metamodelVersion` 0.13 → 0.14)
+
+Every type family registers a `base` subtype — `attr.base`, `field.base`, `layout.base`,
+`object.base`, `origin.base`, `relationship.base`, `source.base`, `template.base`,
+`validator.base`, `view.base`. Each is the shared root its concrete subtypes inherit attrs and
+child rules from: no runtime semantics, no concrete representation. Every one of their
+descriptions in the byte-gated registry manifest opens with **Abstract**, and
+`spec/metamodel/object.json` had already said the rest out loud — *"not authored directly"*.
+
+**Three ports did not enforce that and two did.** Measured across all six `base` subtypes a
+document can name: TypeScript, C# and Python **loaded** every one; Java and Kotlin **failed to
+load** every one. The JVM refusal was accidental rather than designed — its implementation
+classes are `abstract`, so instantiation threw, and the message named a missing constructor
+rather than a rule. So one document had two verdicts depending on which toolchain read it,
+which is exactly the cross-language conformance gap the shared corpora exist to catch. It
+survived because **all ten `base` subtypes sat in the registry corpus's own `untestedSubTypes`
+list** — nothing exercised them, in either direction, anywhere.
+
+An authored `<type>.base` now fails the load in all five ports with
+**`ERR_ABSTRACT_SUBTYPE_AUTHORED`**, at both the root and child doors, and
+`fixtures/conformance/error-abstract-subtype-authored` gates it. The rule is written into the
+manifest prose for all ten, so no port infers it from another port's source.
+
+**Scoped to the EXPLICIT spelling, deliberately.** `base` is also each parser's internal
+fallback, and the polymorphic subtype an untyped `@default` resolves to so its value type
+follows the owning field — the loader picks that; an author never names it. The inline
+`"@default": false` form is unaffected. A **bare** `{"field": …}` key is unaffected too; bare
+keys have a divergence of their own, recorded in the ADR rather than silently folded in here.
+
+Migration — usually one substitution, naming the concrete subtype that was meant:
+[`docs/features/migrations/base-subtypes-are-not-authorable.md`](docs/features/migrations/base-subtypes-are-not-authorable.md).
+Reasoning, including the alternative that was rejected:
+[ADR-0054](spec/decisions/ADR-0054-base-subtypes-are-not-authorable.md).
+
+**One capability is genuinely removed rather than renamed, and it is stated rather than
+glossed:** `view.base` was the only way to author a view with no kind on a port that does not
+apply the TypeScript-side UI provider, so those ports now have `view.currency` and nothing else
+until they compose it. And **a shape three in-repo fixtures relied on becomes inexpressible** —
+an object with a read-only primary source beside a writable one, which `object.entity` and
+`object.projection` each refuse and which only ever loaded because `object.base` carries neither
+rule.
+
 ### Added — every physical database name has ONE spelling per run, in all five ports
 
 A generated per-object artifact now carries an object's physical database names — the

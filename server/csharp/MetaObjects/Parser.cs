@@ -293,6 +293,24 @@ public static class Parser
         return candidate;
     }
 
+    // The one message for an authored `<type>.base`, so both doors say the same thing.
+    //
+    // Every registered `base` subtype is an ABSTRACT REGISTRY ANCHOR: the shared root that
+    // concrete subtypes inherit their attrs and child rules from. It has no runtime
+    // semantics and no concrete representation — spec/metamodel/object.json says so in as
+    // many words ("Has no runtime semantics of its own; not authored directly"), and every
+    // `base` entry's description opens with "Abstract".
+    //
+    // The JVM enforced this by accident (its impl classes are `public abstract`, so
+    // instantiation fails); TypeScript, C# and Python accepted it. The same document
+    // therefore loaded on three ports and failed to load on two — the cross-port
+    // conformance gap the corpora exist to catch, and it survived because every `*.base`
+    // subtype sits in the registry corpus's own `untestedSubTypes` list.
+    private static string AbstractSubtypeMessage(string type) =>
+        $"\"{type}.{SUBTYPE_BASE}\" may not be authored — every \"{SUBTYPE_BASE}\" subtype " +
+        "is an abstract registry anchor that concrete subtypes inherit from, with no " +
+        $"runtime semantics of its own. Declare a concrete {type} subtype instead.";
+
     private static SplitKey SplitTypeKey(string key, TypeRegistry registry)
     {
         int dotIdx = key.IndexOf(TYPE_SUBTYPE_SEPARATOR, StringComparison.Ordinal);
@@ -416,6 +434,17 @@ public static class Parser
         SplitKey rootSplit = SplitTypeKey(rootKey, opts.Registry);
         string rootType = rootSplit.Type;
         string rootSubType = rootSplit.SubType;
+
+        // A `<type>.base` node may not be AUTHORED — see AbstractSubtypeMessage. This is
+        // the ROOT door; the child door is in the child loop below. One rule, both doors:
+        // a check on one of two entry points is a rule that is only half true.
+        if (rootSplit.Explicit && rootSubType == SUBTYPE_BASE)
+        {
+            throw new ParseException(
+                AbstractSubtypeMessage(rootType),
+                ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source, st.Builder.ToString(),
+                st.CurrentSource());
+        }
 
         // Check root type is registered (always throw — can't skip the root).
         if (!opts.Registry.Has(rootType, rootSubType))
@@ -1380,6 +1409,23 @@ public static class Parser
                                     st.CurrentSource()));
                                 continue; // skip this child
                             }
+                        }
+
+                        // A `<type>.base` child may not be AUTHORED — the CHILD door (the
+                        // root door is above). Gated on Explicit, deliberately: `base` is
+                        // also this parser's fallback for an OMITTED subType whose registry
+                        // default is unregistered (the branch directly above), and refusing
+                        // that would break every node relying on the default. Placed before
+                        // the attr branch so `attr.base` is covered by the same rule — an
+                        // authored untyped attr is the same mistake as an authored untyped
+                        // field.
+                        if (explicitSubType && childSubType == SUBTYPE_BASE)
+                        {
+                            st.Errors.Add(new MetaError(
+                                AbstractSubtypeMessage(childType),
+                                ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source,
+                                childNodePath, st.CurrentSource()));
+                            continue; // skip this child
                         }
 
                         // --- Special handling for "attr" child nodes ---

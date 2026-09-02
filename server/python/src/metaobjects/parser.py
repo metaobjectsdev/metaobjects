@@ -10,7 +10,14 @@ from .meta.meta_data import MetaData
 from .meta.meta_root import MetaRoot
 from .naming_refs import REF_BEARING_ATTR_NAMES, is_relative_ref
 from .registry import TypeRegistry
-from .shared.base_types import SUBTYPE_ROOT, TYPE_ATTR, TYPE_FIELD, TYPE_METADATA, TYPE_OBJECT
+from .shared.base_types import (
+    SUBTYPE_BASE,
+    SUBTYPE_ROOT,
+    TYPE_ATTR,
+    TYPE_FIELD,
+    TYPE_METADATA,
+    TYPE_OBJECT,
+)
 from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP
 from .shared.structural import (
     KEY_ABSTRACT,
@@ -187,6 +194,28 @@ def _parse_document_inner(doc: object, registry: TypeRegistry, source: str) -> P
     return result
 
 
+def _abstract_subtype_message(type_: str) -> str:
+    """The one message for an authored ``<type>.base``, shared by both doors.
+
+    Every registered ``base`` subtype is an ABSTRACT REGISTRY ANCHOR: the shared root
+    concrete subtypes inherit their attrs and child rules from. It has no runtime
+    semantics and no concrete representation — ``spec/metamodel/object.json`` says so in
+    as many words ("Has no runtime semantics of its own; not authored directly"), and
+    every ``base`` entry's description opens with "Abstract".
+
+    The JVM enforced this by accident (its impl classes are ``abstract``, so instantiation
+    fails); TypeScript, C# and Python accepted it. The same document therefore loaded on
+    three ports and failed to load on two — the cross-port conformance gap the corpora
+    exist to catch, which survived because every ``*.base`` subtype sits in the registry
+    corpus's own ``untestedSubTypes`` list.
+    """
+    return (
+        f"'{type_}.{SUBTYPE_BASE}' may not be authored — every '{SUBTYPE_BASE}' subtype "
+        f"is an abstract registry anchor that concrete subtypes inherit from, with no "
+        f"runtime semantics of its own. Declare a concrete {type_} subtype instead."
+    )
+
+
 def _build(
     wrapper: str,
     body: object,
@@ -215,6 +244,14 @@ def _build(
         result.errors.append(MetaError(
             f"node '{wrapper}' omits subType",
             ErrorCode.ERR_MISSING_SUBTYPE,
+            source,
+            envelope=_current_envelope(source, builder, yaml_position),
+        ))
+        return None
+    if sub_type == SUBTYPE_BASE:
+        result.errors.append(MetaError(
+            _abstract_subtype_message(type_),
+            ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED,
             source,
             envelope=_current_envelope(source, builder, yaml_position),
         ))
@@ -390,6 +427,17 @@ def _parse_attr_child(
     FR5b — *yaml_position* is the YAML line/col of the attr child's wrapper key
     (when YAML-loaded); stamped on the resulting attribute node's source.
     """
+    # An authored `attr.base` is refused like every other authored base subtype. The
+    # polymorphic attr subtype is real and reached by an INLINE `@default` (whose value
+    # type follows the owning field), where the loader picks it — an author never names it.
+    if sub_type == SUBTYPE_BASE:
+        result.errors.append(MetaError(
+            _abstract_subtype_message(TYPE_ATTR),
+            ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED,
+            source,
+            envelope=_current_envelope(source, builder, yaml_position),
+        ))
+        return
     body_dict: dict[str, object] = body if isinstance(body, dict) else {}
     attr_name = body_dict.get(KEY_NAME)
     if not isinstance(attr_name, str) or not attr_name:

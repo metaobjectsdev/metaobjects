@@ -482,6 +482,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             SplitKey rootSplit = splitTypeKey(rootKey);
             String rootType = rootSplit.type;
 
+            // A `<type>.base` node may not be AUTHORED — the ROOT door (the child door is
+            // in the child loop below). One rule, both doors: a check on one of two entry
+            // points is a rule that is only half true.
+            if (rootSplit.explicitSubType && MetaData.SUBTYPE_BASE.equals(rootSplit.subType)) {
+                throw new MetaDataException(
+                    abstractSubtypeMessage(rootType) + " [" + getFilename() + "]",
+                    ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, currentSourceEnvelope());
+            }
+
             // Validate that the root type is known
             if (!getTypeRegistry().hasType(rootType)) {
                 throw new MetaDataException(
@@ -605,6 +614,16 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     // an entirely unknown type → ERR_UNKNOWN_TYPE. In lax mode the
                     // legacy lenient skip+warn behavior is preserved so a downstream
                     // app can tolerate unenforced types.
+                    // A `<type>.base` child may not be AUTHORED — the CHILD door (the root
+                    // door is above). Gated on the subType being EXPLICIT: `base` is also
+                    // this parser's fallback for a BARE key, and refusing that here would
+                    // change a separate, pre-existing behaviour rather than close this gap.
+                    if (split.explicitSubType && MetaData.SUBTYPE_BASE.equals(subType)) {
+                        getLoader().addError(new MetaDataException(
+                            abstractSubtypeMessage(type) + " [" + getFilename() + "]",
+                            ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, currentSourceEnvelope()));
+                        continue;
+                    }
                     boolean knownType = getTypeRegistry().hasType(type);
                     boolean knownNode = knownType
                         && getTypeRegistry().getTypeDefinition(type, subType) != null;
@@ -1302,21 +1321,47 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         if (dotIdx < 0) {
             // Bare key with no dot — subType is the registry default
             // Fall back to "base" (MetaData.SUBTYPE_BASE) which all type hierarchies register.
-            return new SplitKey(key, MetaData.SUBTYPE_BASE);
+            return new SplitKey(key, MetaData.SUBTYPE_BASE, false);
         }
         String type    = key.substring(0, dotIdx);
         String subType = key.substring(dotIdx + TYPE_SUBTYPE_SEPARATOR.length());
-        return new SplitKey(type, subType);
+        return new SplitKey(type, subType, true);
     }
 
-    /** Simple pair holder for a type/subType split result. */
+    /**
+     * The one message for an AUTHORED {@code <type>.base}, so both doors say the same thing
+     * and every port says it identically.
+     *
+     * <p>Every registered {@code base} subtype is an ABSTRACT REGISTRY ANCHOR: the shared
+     * root that concrete subtypes inherit their attrs and child rules from. It has no
+     * runtime semantics and no concrete representation — {@code spec/metamodel/object.json}
+     * says so in as many words ("Has no runtime semantics of its own; not authored
+     * directly"), and every {@code base} entry's description opens with "Abstract".</p>
+     *
+     * <p>This port already refused the shape, but only because its impl classes are
+     * {@code abstract} and instantiation failed — the message named a missing constructor,
+     * not the rule. TypeScript, C# and Python accepted it, so the same document loaded on
+     * three ports and failed on two. The check is explicit here so the refusal states its
+     * reason and carries the shared code.</p>
+     */
+    private static String abstractSubtypeMessage(String type) {
+        return "'" + type + "." + MetaData.SUBTYPE_BASE + "' may not be authored — every '"
+            + MetaData.SUBTYPE_BASE + "' subtype is an abstract registry anchor that concrete "
+            + "subtypes inherit from, with no runtime semantics of its own. Declare a concrete "
+            + type + " subtype instead.";
+    }
+
+    /** Simple holder for a type/subType split result. */
     private static final class SplitKey {
         final String type;
         final String subType;
+        /** true when the subType was FUSED into the key; false when it was defaulted. */
+        final boolean explicitSubType;
 
-        SplitKey(String type, String subType) {
+        SplitKey(String type, String subType, boolean explicitSubType) {
             this.type    = type;
             this.subType = subType;
+            this.explicitSubType = explicitSubType;
         }
     }
 

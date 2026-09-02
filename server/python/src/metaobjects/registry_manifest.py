@@ -255,7 +255,7 @@ def _sorted_children(definition: TypeDefinition) -> list[dict[str, object]]:
     return children
 
 
-METAMODEL_VERSION = "0.13"
+METAMODEL_VERSION = "0.14"
 """Rolled-up spec-version for the cross-port registry manifest.
 
 ``"0"`` = pre-1.0 / unstable (semver major-0). Flips to ``"1.0"`` at the

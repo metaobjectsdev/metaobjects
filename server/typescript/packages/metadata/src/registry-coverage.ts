@@ -23,6 +23,7 @@ import {
   RESERVED_KEYS,
   TYPE_SUBTYPE_SEPARATOR,
 } from "./shared/structural.js";
+import { SUBTYPE_BASE } from "./shared/base-types.js";
 
 // ---------------------------------------------------------------------------
 // Manifest shape (a structural subset of fixtures/registry-conformance schema)
@@ -249,15 +250,35 @@ function compareStrings(a: string, b: string): number {
  * @param manifest the parsed registry manifest (the registered vocabulary)
  * @param roots    fixture-corpus directory roots to scan for usage
  */
+/**
+ * True for a `<type>.base` registry entry — an ABSTRACT ANCHOR, excluded from the coverage
+ * universe entirely.
+ *
+ * A `base` subtype is the shared root that concrete subtypes inherit their attrs and child
+ * rules from. It has no runtime semantics and no concrete representation, and authoring one
+ * is now a load error (ERR_ABSTRACT_SUBTYPE_AUTHORED), so no fixture can ever exercise it.
+ * Listing all ten as "untested vocabulary" described them as a backlog somebody could work
+ * off; they are the contract instead.
+ *
+ * Excluding them also keeps the attr accounting honest. The attrs a `base` entry declares
+ * are the ones its CONCRETE subtypes inherit — `@required` is declared on `field.base` and
+ * set on a `field.string` — so measuring them against fixtures that name `field.base` would
+ * report every shared field attr as untested the moment one negative fixture mentioned the
+ * subtype, which is what the corpus fixture for the new rule did.
+ */
+function isAbstractAnchor(type: { readonly subType: string }): boolean {
+  return type.subType === SUBTYPE_BASE;
+}
+
 export function computeCoverage(
   manifest: RegistryManifest,
   roots: readonly string[],
 ): CoverageReport {
   const usage = scanFixtureUsage(roots);
 
-  const registeredKeys = manifest.types.map(
-    (t) => `${t.type}${TYPE_SUBTYPE_SEPARATOR}${t.subType}`,
-  );
+  const registeredKeys = manifest.types
+    .filter((t) => !isAbstractAnchor(t))
+    .map((t) => `${t.type}${TYPE_SUBTYPE_SEPARATOR}${t.subType}`);
 
   const untestedSubTypes = registeredKeys
     .filter((key) => !usage.subTypes.has(key))
@@ -268,6 +289,7 @@ export function computeCoverage(
   // Per EXERCISED subtype, which declared attrs no fixture sets.
   const untestedAttrsByExercisedSubType: UntestedAttrs[] = [];
   for (const t of manifest.types) {
+    if (isAbstractAnchor(t)) continue; // abstract anchor — see isAbstractAnchor
     const key = `${t.type}${TYPE_SUBTYPE_SEPARATOR}${t.subType}`;
     if (!usage.subTypes.has(key)) continue; // skip untested subtypes (all-untested by definition)
     if (t.attrs.length === 0) continue;

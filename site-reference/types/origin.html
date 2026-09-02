@@ -126,7 +126,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><strong>Allowed children</strong></p>
 <p><em>No structural children.</em></p>
 <h3>origin.base</h3>
-<p>Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.</p>
+<p>Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs. Not authored directly: a <code>origin.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>Attributes</strong></p>
 <p><em>No subtype-specific attributes.</em></p>
