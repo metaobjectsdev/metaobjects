@@ -139,7 +139,7 @@ Maven wiring:
 
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
-The 14 generators above are a starting point, not the ceiling. When you need a shape
+The 15 generators above are a starting point, not the ceiling. When you need a shape
 none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
 real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
 
