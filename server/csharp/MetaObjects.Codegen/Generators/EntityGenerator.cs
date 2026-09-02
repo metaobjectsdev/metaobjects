@@ -44,15 +44,38 @@ public class EntityGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        // Entities + read-only projections get the full EF mapping.
-        var mapped = ctx.Entities
+        var candidates = ctx.Entities
             .Where(o => o.IsEntity() || o.DbView is not null)
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
 
+        // #248 — DB participation derives from a DECLARED (or inherited) source.rdb,
+        // never from the object subtype. A CONCRETE object with no source at all loads
+        // with zero errors and has no table, so it gets no EF mapping: no [Table] (which
+        // would be a fabricated physical name), no [Key], no [Column]. The four sibling
+        // gates that decide DbSet / routes / filter-allowlist eligibility narrow with it,
+        // through the shared InstanceArtifacts.EmitsInstanceArtifacts predicate — moving
+        // one of the five alone would only RELOCATE the defect onto whichever gate kept
+        // emitting against a class that no longer matches.
+        //
+        // ABSTRACT objects are exempt: they are shape-only by definition and never
+        // produce instance artifacts anyway, and the BaseEntity pattern has a shared
+        // abstract base declare no source of its own — gating it on a source would delete
+        // the shape its subtypes extend.
+        var mapped = candidates.Where(o => o.IsAbstract || InstanceArtifacts.HasAnyRdbSource(o)).ToList();
+
+        // A concrete sourceless object still needs its SHAPE — an adopter's code names the
+        // type, and a mapped entity's object-field may nest it. It is emitted through the
+        // same unmapped-POCO path a value object takes, which is exactly the choice the TS
+        // reference makes (a source-less object gets its interface + Zod schema and no
+        // Drizzle table). #248 governs whether the object is in the DATABASE, not whether a
+        // type exists for it.
+        var unmappedShapes = candidates.Where(o => !o.IsAbstract && !InstanceArtifacts.HasAnyRdbSource(o)).ToList();
+
         // Plain value objects targeted by an entity object-field become POCOs so the
-        // owned-type navigation properties compile.
-        var valueObjects = ReferencedValueObjects(mapped, ctx);
+        // owned-type navigation properties compile. Seeded from BOTH sets: an unmapped
+        // shape's object-fields reference value objects that still need their POCOs.
+        var valueObjects = ReferencedValueObjects([.. mapped, .. unmappedShapes], ctx);
 
         var files = new List<EmittedFile>();
 
@@ -101,6 +124,10 @@ public class EntityGenerator : IGenerator
             if (e.IsWriteThrough())
                 files.Add(EmitWriteThroughReadModel(e, ctx));
         }
+        // A concrete sourceless object (#248) shares the value object's emission: a plain
+        // POCO with the validation DataAnnotations and none of the EF mapping attributes.
+        foreach (var o in unmappedShapes)
+            files.Add(EmitValueObjectPoco(o, ctx));
         foreach (var vo in valueObjects)
             files.Add(EmitValueObjectPoco(vo, ctx));
 

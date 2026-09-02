@@ -87,6 +87,24 @@ generated code that does not compile, on the default path with no flags. The `[T
 is now gated on a declared primary source, matching issue #248 — participation in the
 database derives from a declared source, never from the object subtype.
 
+**The C# port then made that rule general.** The subtype-only test `IsEntity() || DbView is
+not null` was duplicated across **five** gates with no source check in any of them, so the
+same sourceless entity also received a `DbSet<>`, CRUD routes and a filter allowlist against
+a table nothing will ever create. Four of the five route through one predicate, so the source
+check now lives there — `InstanceArtifacts.EmitsInstanceArtifacts` is `!isAbstract &&
+hasAnyRdbSource`, exactly the TypeScript reference's shape — and the fifth, the entity
+generator's own mapped set, moves with it. **Moving one alone was measured and rejected**: it
+only relocates the defect onto whichever gate keeps emitting against a class that no longer
+matches.
+
+Adopter-visible: a concrete object with no source loses its `[Table]`, `[Key]`, `[Column]`,
+`DbSet<>`, routes and filter allowlist. It **keeps its class** — emitted as a plain unmapped
+POCO with its validation annotations, the same choice TypeScript makes (a sourceless object
+gets its interface and Zod schema, and no Drizzle table) — because #248 governs whether an
+object is in the database, not whether a type exists for an adopter to name. Abstract objects
+are exempt from the source check: they are shape-only by definition, and the `BaseEntity`
+pattern has a shared abstract base declare no source of its own.
+
 Python's M:N codegen had the same shape from the other direction: a `@through` junction
 declaring no source (which the loader permits — the relationship check requires two
 `identity.reference` children, never a source) had its physical table name **fabricated**

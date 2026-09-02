@@ -16,6 +16,7 @@ public class InstanceArtifactsTests
             { "field.long": { "name": "id" } }
           ] } },
           { "object.entity": { "name": "Concrete", "children": [
+            { "source.rdb": { "name": "primary", "@table": "concretes" } },
             { "field.long": { "name": "id" } },
             { "identity.primary": { "name": "pk", "@fields": ["id"] } }
           ] } }
@@ -48,6 +49,9 @@ public class InstanceArtifactsTests
         var concrete = Assert.Single(root.Objects(), o => o.Name == "Concrete");
 
         Assert.False(InstanceArtifacts.IsAbstract(concrete));
+        // Concrete declares a source.rdb — the OTHER half of the predicate (#248).
+        // The source axis on its own is covered by SourcelessEntityGatesTests.
+        Assert.True(InstanceArtifacts.HasAnyRdbSource(concrete));
         Assert.True(InstanceArtifacts.EmitsInstanceArtifacts(concrete));
     }
 }

@@ -1,6 +1,10 @@
 // DocCommentEmissionTests — verifies that XML-doc blocks and [Obsolete] attributes are
 // emitted on entity classes, field properties, and DbSet properties. Also verifies the
 // D5 contract: @notes content never reaches any generated output.
+//
+// Every fixture entity declares a `source.rdb`: these tests assert on the MAPPED
+// emission path ([Table(...)] ordering, DbSet<> doc comments), and #248 makes a
+// sourceless object.entity an unmapped shape with neither.
 
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -57,6 +61,7 @@ public class DocCommentEmissionTests
             "name": "User",
             "@description": "A registered account holder.",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id", "@generation": "increment" } }
             ]
@@ -87,6 +92,7 @@ public class DocCommentEmissionTests
             "name": "User",
             "@title": "Registered User",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -104,6 +110,7 @@ public class DocCommentEmissionTests
           "object.entity": {
             "name": "User",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "field.string": {
                   "name": "email",
@@ -129,6 +136,7 @@ public class DocCommentEmissionTests
           "object.entity": {
             "name": "User",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "field.string": {
                   "name": "email",
@@ -153,6 +161,7 @@ public class DocCommentEmissionTests
           "object.entity": {
             "name": "User",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "field.string": {
                   "name": "email",
@@ -176,6 +185,7 @@ public class DocCommentEmissionTests
             "name": "User",
             "@description": "A & B < C > D",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -193,6 +203,7 @@ public class DocCommentEmissionTests
           "object.entity": {
             "name": "User",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -217,6 +228,7 @@ public class DocCommentEmissionTests
             "@description": "Public.",
             "@notes": "__INTERNAL_MARKER__",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -234,6 +246,7 @@ public class DocCommentEmissionTests
           "object.entity": {
             "name": "U",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "field.string": { "name": "email", "@notes": "__FIELD_INTERNAL__" } },
               { "identity.primary": { "@fields": "id" } }
@@ -257,6 +270,7 @@ public class DocCommentEmissionTests
             "name": "User",
             "@description": "A registered account holder.",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -278,6 +292,7 @@ public class DocCommentEmissionTests
           "object.entity": {
             "name": "User",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]
@@ -297,6 +312,7 @@ public class DocCommentEmissionTests
             "@description": "Public.",
             "@notes": "__DBSET_INTERNAL__",
             "children": [
+              { "source.rdb": { "name": "primary", "@table": "users" } },
               { "field.long": { "name": "id" } },
               { "identity.primary": { "@fields": "id" } }
             ]

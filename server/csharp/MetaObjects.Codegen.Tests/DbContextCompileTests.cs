@@ -283,9 +283,13 @@ public class DbContextCompileTests
         Assert.Empty(namesFiles);
 
         var ledger = entityFiles.Single(f => f.Path == "Ledger.g.cs").Content;
-        Assert.Contains("[Table(\"Ledger\")]", ledger);
         Assert.DoesNotContain("LedgerNames", ledger);
         Assert.DoesNotContain("[Table(LedgerNames.Name)]", ledger);
+        // #248 — a sourceless entity is not in the database, so it carries no [Table] at
+        // all. It used to emit [Table("Ledger")]: a fabricated physical name for a table
+        // no migration will ever create. Its SHAPE survives as an unmapped POCO.
+        Assert.DoesNotContain("[Table(", ledger);
+        Assert.Contains("public class Ledger", ledger);
 
         var refs = BuildReferences();
         var trees = entityFiles
