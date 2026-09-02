@@ -27,6 +27,7 @@ from metaobjects.codegen.generators.extractor_generator import extractor_generat
 from metaobjects.codegen.generators.filter_allowlist_generator import (
     filter_allowlist_generator,
 )
+from metaobjects.codegen.generators.names_generator import names_generator
 from metaobjects.codegen.generators.output_parser_generator import (
     output_parser_generator,
 )
@@ -87,7 +88,7 @@ def _render_helper_default() -> Generator:
     return render_helper_generator(template_root="templates")
 
 
-#: Stable name -> GeneratorEntry. The 10 native generators whose manifest `ports`
+#: Stable name -> GeneratorEntry. The 11 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set-equality conformance-tested vs the manifest.
 GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     "entity": GeneratorEntry(
@@ -137,6 +138,12 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-entity REST filter allowlist (queryable-field guard).",
         tier="native",
         factory=filter_allowlist_generator,
+    ),
+    "names": GeneratorEntry(
+        name="names",
+        description="Per-entity physical database name constants (table/view name, schema, column names).",
+        tier="native",
+        factory=names_generator,
     ),
     "payload": GeneratorEntry(
         name="payload",

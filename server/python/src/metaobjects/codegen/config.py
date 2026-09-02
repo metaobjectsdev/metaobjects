@@ -30,9 +30,12 @@ class GenConfig:
     # maps a declaring metadata package ("acme::shop") to the Python import module; with a
     # single ``provided_enum_namespace`` fallback for the one-module case. A referenced
     # @provided enum whose package resolves to no module is a codegen-time error.
-    # The column-naming strategy is a RUNTIME concern in this port, not a codegen one:
-    # Python codegen emits no physical column name at all. Kept so the signature does
-    # not change, and REFUSED below for any value it cannot honour.
+    # The column-naming strategy: read by the ``names`` generator
+    # (codegen/generators/names_generator.py) for any field with no explicit
+    # ``@column``, matching whatever the runtime (``ObjectManager(...,
+    # column_naming=...)``) was told. The two must agree, or the constant this
+    # generator emits names a different column than the one a row actually lands
+    # in.
     column_naming: str = DEFAULT_COLUMN_NAMING
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
@@ -40,18 +43,19 @@ class GenConfig:
     def __post_init__(self) -> None:
         """Refuse a value this port cannot honour, instead of accepting it and ignoring it.
 
-        Three fields here were read by NOTHING — `grep -rn "\\.<field>" src/` returned zero
-        for each — so setting one ran clean, reported success and changed not a byte.
-        `column_naming` was the worst of them: `docs/features/field-types.md` named it as
-        this port's codegen lever, and an adopter set it, got "wrote N file(s)", and
-        nothing happened. `emit_abstract_shapes` is a knob C# genuinely implements, which
-        made a cross-port divergence look like a shared option.
+        Two fields here are read by NOTHING — `grep -rn "\\.<field>" src/` returns zero
+        for each — so setting one runs clean, reports success and changes not a byte.
+        `emit_abstract_shapes` is a knob C# genuinely implements, which made a
+        cross-port divergence look like a shared option. (`column_naming` used to be
+        the worst of these — `docs/features/field-types.md` named it as this port's
+        codegen lever while nothing read it — until the `names` generator gave it a
+        reader; see that field's own comment.)
 
-        None of the three is WIRED here, because none can be without work this is not:
-        Python codegen names no column, always emits the abstract base model, and
-        implements one output layout. So each refuses the values it cannot deliver, and
-        names the surface that can. Detect-and-refuse, never silent-and-wrong — the same
-        call `apply_column_naming_strategy` already makes for an unknown strategy.
+        Neither of the two is WIRED here, because neither can be without work this is
+        not: Python codegen always emits the abstract base model and implements one
+        output layout. So each refuses the value it cannot deliver, and names the
+        surface that can. Detect-and-refuse, never silent-and-wrong — the same call
+        `apply_column_naming_strategy` already makes for an unknown strategy.
 
         Defaults are untouched, so every existing call is unaffected.
         """
@@ -67,12 +71,4 @@ class GenConfig:
                 "here. The C# port implements the same knob (`dotnet meta gen "
                 "--emit-abstract-shapes`); this one would have accepted the value and "
                 "emitted the shapes anyway."
-            )
-        if self.column_naming != DEFAULT_COLUMN_NAMING:
-            raise ValueError(
-                f"GenConfig.column_naming={self.column_naming!r}: Python codegen emits no "
-                "physical column name, so there is nothing here for a column-naming "
-                "strategy to name — models, create/patch shapes, router and filter "
-                "allowlists all key by field.name. Set it on the RUNTIME instead: "
-                "ObjectManager(..., column_naming=...). Per-field, `@column` overrides both."
             )

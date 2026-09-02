@@ -35,6 +35,7 @@ from .meta.core.object.object_extract import (
     extract_schema_for,
 )
 from .meta.core.object.value_object import ValueObject
+from .naming import resolve_column_name
 
 # Module-level shortcuts: the 99% case for callers who don't need a
 # long-lived loader. Signatures + docstrings come straight from the
@@ -58,6 +59,7 @@ __all__ = [
     "load_directory",
     "load_uris",
     "load_string",
+    "resolve_column_name",
     # Runtime object model (Phase A)
     "ValueObject",
     "MetaObjectAware",

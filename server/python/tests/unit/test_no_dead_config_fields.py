@@ -52,16 +52,6 @@ INERT_BY_DESIGN: dict[str, str] = {
         "shared one, and instance_artifacts.py's docstring claimed entity_model handled it. "
         "REFUSED at construction; the exemption goes when this port implements suppression."
     ),
-    "column_naming": (
-        "Python codegen emits no physical column name AT ALL — models, create/patch shapes, "
-        "router and filter allowlists all key by field.name (0.24.5's read-model fix), and "
-        "persistence is the consumer's repository or ObjectManager. There is nothing for a "
-        "codegen-side strategy to name, so the field is REFUSED at construction for any "
-        "non-default value rather than silently accepted: GenConfig(column_naming='snake_case') "
-        "raises, naming ObjectManager(..., column_naming=...) as the surface that works. "
-        "Kept rather than deleted so the signature does not change; the exemption goes when a "
-        "generator emits a column name, together with that generator and never ahead of it."
-    ),
 }
 
 

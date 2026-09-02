@@ -83,6 +83,11 @@ def resolve_column_name(field: MetaField, strategy: str = DEFAULT_COLUMN_NAMING)
     else ``field.name`` through the project's strategy.
 
     ADR-0039: read RESOLVING — ``@column`` may be inherited through ``extends``.
+
+    Pass the SAME strategy the schema was created with. ``meta migrate`` defaults to
+    ``snake_case``; this port defaults to ``literal``. A caller that omits ``strategy``
+    against a migrate-created database gets ``createdAt`` for a column named
+    ``created_at``.
     """
     col = field.get_meta_attr(fc.FIELD_ATTR_COLUMN)
     if isinstance(col, str) and col:

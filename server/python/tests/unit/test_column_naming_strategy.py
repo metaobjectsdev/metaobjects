@@ -80,30 +80,26 @@ def test_an_unknown_strategy_is_refused_not_silently_defaulted() -> None:
 
 # WHERE THE STRATEGY ACTUALLY REACHES, in this port.
 #
-# `GenConfig.column_naming` existed and NOTHING read it — `grep -rn "\.column_naming"` over
-# `src/` returned zero hits — so `GenConfig(column_naming="snake_case")` ran clean, reported
-# success and changed not one byte of generated output. It was named in
-# docs/features/field-types.md as this port's codegen lever, which made a knob that could
-# never work look like the answer.
+# `GenConfig.column_naming` used to exist with NOTHING reading it — `grep -rn
+# "\.column_naming"` over `src/` returned zero hits — so `GenConfig(column_naming=
+# "snake_case")` ran clean, reported success and changed not one byte of generated
+# output. It was named in docs/features/field-types.md as this port's codegen lever,
+# which made a knob that could never work look like the answer. `GenConfig.__post_init__`
+# REFUSED any non-default value rather than silently accepting it.
 #
-# It cannot be fixed by wiring, because there is nothing to wire it INTO: Python codegen
-# emits no physical column name anywhere. The models, the create/patch shapes, the router
-# and the filter allowlists all key by `field.name` (deliberately — 0.24.5's "Python's read
-# model renamed itself to @column" fix), and persistence is the consumer's repository or
-# `ObjectManager`. A CLI flag for it would have been worse than the silence: it would have
-# looked honoured.
-#
-# So the field REFUSES what it cannot deliver — the signature is unchanged, and a value it
-# would have ignored now raises, naming the surface that works. These pin that, and the two
-# surfaces that do carry the strategy.
-def test_a_codegen_column_naming_strategy_is_refused_not_silently_ignored() -> None:
+# The `names` generator (codegen/generators/names_generator.py) gave the field a real
+# reader: one per-object `<entity>_names.py` module of physical database name constants,
+# default-ON, reading `ctx.config.column_naming` for any field with no explicit
+# `@column`. The refusal is gone — a non-default strategy now changes emitted output
+# instead of raising. See test_names_generator.py for the generator's own coverage
+# (explicit @column still wins, the collision guard, absent-schema omission, ...); this
+# just pins that GenConfig itself no longer refuses.
+def test_a_codegen_column_naming_strategy_is_no_longer_refused() -> None:
     from metaobjects.codegen.config import GenConfig
 
     # The default still constructs — nothing existing changes.
     assert GenConfig(out_dir="").column_naming == DEFAULT_COLUMN_NAMING
 
-    with pytest.raises(ValueError, match="ObjectManager"):
-        GenConfig(out_dir="", column_naming=COLUMN_NAMING_SNAKE_CASE)
-    # The message must route the caller somewhere real, not just say no.
-    with pytest.raises(ValueError, match="no physical column name"):
-        GenConfig(out_dir="", column_naming=COLUMN_NAMING_KEBAB_CASE)
+    # Every strategy now constructs cleanly — the `names` generator is the reader.
+    for strategy in (COLUMN_NAMING_LITERAL, COLUMN_NAMING_SNAKE_CASE, COLUMN_NAMING_KEBAB_CASE):
+        assert GenConfig(out_dir="", column_naming=strategy).column_naming == strategy

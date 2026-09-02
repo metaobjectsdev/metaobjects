@@ -17,5 +17,6 @@
   "generated/ts/requirements/subscriberCanBePausedWithoutErasingHistory.field.enum.test.ts": "a5d2494ce5340673da43f2ee3ef13d7505ee349724e8d85f377a84eafeea50ae",
   "subscriber_blurb_payload.py": "79fe8a6e989ee4e567d4bee122dd11fc29b38211c37c7390e65811634fd0b558",
   "subscriber_filter_allowlist.py": "73f9fbd1f29d3a1899bdb3362254e103566ff5e534370faa9b92d18bd8861af5",
+  "subscriber_names.py": "496cd0d0be0fb853f313933fc7470162b825d057e6b8adf9d4e096cfea49a88b",
   "subscriber_router.py": "acd0cbf39d14bd0b11e49f31375cf38446caebb3a3039d5f0b9f386638403aae"
 }

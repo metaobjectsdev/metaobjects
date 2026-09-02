@@ -52,17 +52,21 @@ snake_case Postgres schema and a literal-column one.
 | `meta migrate` (schema, every port — ADR-0015) | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts` |
 | TypeScript codegen + `ObjectManager` | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts`; `columnNamingStrategy` option on `ObjectManager` |
 | C# (`dotnet meta gen`) | `literal` | `--column-naming snake_case` |
-| Python (`ObjectManager` — codegen names no column) | `literal` | `ObjectManager(..., column_naming=...)` |
+| Python (`metaobjects gen` + `ObjectManager`) | `literal` | `--column-naming snake_case` (codegen); `ObjectManager(..., column_naming=...)` (runtime) |
 | Java (`ObjectManagerDB`) | `literal` | `SimpleMappingHandlerDB.setColumnNaming(...)` |
 | Kotlin (Exposed table codegen) | `snake_case` | `<args><columnNaming>literal</columnNaming></args>` in the pom |
 
-**Python has no codegen-side setting because Python codegen names no column.** Its
-models, create/patch shapes, router and filter allowlists all key by `field.name`, and
-persistence is your repository or `ObjectManager` — so the strategy is a runtime setting
-there, and `@column` remains the per-field override. (A `GenConfig(column_naming=…)`
-shipped through `0.24.5` and nothing read it: it ran clean, reported success and changed
-no output. It now refuses a non-default value and names `ObjectManager` instead, rather
-than being wired — there is nothing to wire it into.)
+**Python's models, create/patch shapes, router and filter allowlists still key by
+`field.name`** — none of those artifacts names a physical column — but the `names`
+generator (default-ON) does: one `<entity>_names.py` per object with a primary source,
+carrying `Final` constants for the table/view name and every field's physical column,
+resolved through the same strategy `ObjectManager` uses. Pass the SAME strategy both
+were told (`--column-naming` at `metaobjects gen` time, `column_naming=` on
+`ObjectManager`), or the constant a hand-written consumer imports names a different
+column than the one a row actually lands in. (`GenConfig(column_naming=…)` shipped
+through `0.24.5` with nothing reading it — it ran clean, reported success and changed no
+output; the `names` generator gave it a reader, and it no longer refuses a non-default
+value.)
 
 **So a polyglot project must do one of two things** for any field whose name has a
 case boundary, or the generated data access will address a column the migration did

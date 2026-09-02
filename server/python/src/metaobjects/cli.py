@@ -69,6 +69,7 @@ from metaobjects.codegen.generators.extractor_generator import extractor_generat
 from metaobjects.codegen.generators.filter_allowlist_generator import (
     filter_allowlist_generator,
 )
+from metaobjects.codegen.generators.names_generator import names_generator
 from metaobjects.codegen.generators.output_parser_generator import (
     output_parser_generator,
 )
@@ -88,6 +89,7 @@ from metaobjects.codegen.generators.render_helper_generator import (
     _resolve_payload_vo,
 )
 from metaobjects.meta.template import template_constants as tc
+from metaobjects.naming import COLUMN_NAMING_STRATEGIES, DEFAULT_COLUMN_NAMING
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -118,6 +120,7 @@ def _default_generators() -> list[Generator]:
         entity_model(),
         router_generator(),
         filter_allowlist_generator(),
+        names_generator(),
         payload_vo_generator(),
         output_parser_generator(),
         output_prompt_generator(),
@@ -369,6 +372,7 @@ def _run_suite(
     entity_filter: list[str] | None = None,
     emit_package_init: bool = True,
     gen_state_dir: str | None = None,
+    column_naming: str = DEFAULT_COLUMN_NAMING,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -397,6 +401,7 @@ def _run_suite(
         out_dir=out_dir,
         emit_package_init=emit_package_init,
         gen_state_dir=gen_state_dir,
+        column_naming=column_naming,
     )
     suite = generators if generators is not None else _default_generators()
     result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
@@ -776,7 +781,11 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             print(f"  {msg}", file=sys.stderr)
         return 1
     gen_state = gen_state_dir_for(args.metadata_dir)
-    written = _run_suite(root, args.out, generators, entities, gen_state_dir=gen_state)
+    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
+    written = _run_suite(
+        root, args.out, generators, entities,
+        gen_state_dir=gen_state, column_naming=column_naming,
+    )
     if spec_gens:
         # The template-spec pass renders user-supplied templates: a bad ref or a
         # wrong --templates dir raises RenderError (not OSError/ValueError, so it
@@ -786,7 +795,7 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         try:
             spec_written = _run_suite(
                 root, args.out, spec_gens, entities, emit_package_init=False,
-                gen_state_dir=gen_state,
+                gen_state_dir=gen_state, column_naming=column_naming,
             )
         except RenderError as exc:
             print(
@@ -897,7 +906,11 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
         return 1
 
     gen_state = str(root_dir.resolve() / ".metaobjects" / ".gen-state")
-    written = _run_suite(root, args.out, generators, entities, gen_state_dir=gen_state)
+    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
+    written = _run_suite(
+        root, args.out, generators, entities,
+        gen_state_dir=gen_state, column_naming=column_naming,
+    )
     for path in written:
         print(path)
     print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
@@ -1574,6 +1587,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="directory of metadata JSON/YAML files",
     )
     gen.add_argument("--out", default=None, help="output directory for generated code")
+    gen.add_argument(
+        "--column-naming",
+        dest="column_naming",
+        choices=COLUMN_NAMING_STRATEGIES,
+        default=DEFAULT_COLUMN_NAMING,
+        help=(
+            "column-naming strategy for a field with no explicit @column "
+            f"(default: {DEFAULT_COLUMN_NAMING!r}, matching this port's "
+            "ObjectManager default — NOT `meta migrate`'s snake_case). Read by "
+            "the `names` generator; pass the same strategy the schema was "
+            "created with."
+        ),
+    )
     gen.add_argument(
         "--generators",
         default=None,
