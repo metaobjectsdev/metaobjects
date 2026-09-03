@@ -8,7 +8,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for PostTag (spec A1/A2/A6).
 /// </summary>
-public static class PostTagNames
+public abstract class PostTagNames
 {
     public const string Kind = "table";
     public const string Name = "post_tags";

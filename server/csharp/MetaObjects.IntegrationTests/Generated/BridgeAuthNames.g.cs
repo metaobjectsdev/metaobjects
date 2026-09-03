@@ -8,22 +8,12 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for BridgeAuth (spec A1/A2/A6).
 /// </summary>
-public static class BridgeAuthNames
+public abstract class BridgeAuthNames : AuthNames
 {
-    public const string Kind = "table";
-    public const string Name = "auths";
-    public const bool ReadOnly = false;
-
-    public const string IdField = "id";
-    public const string IdColumn = "id";
     public const string QuantityField = "quantity";
     public const string QuantityColumn = "quantity";
-    public const string ReferenceField = "reference";
-    public const string ReferenceColumn = "reference";
-    public const string TypeField = "type";
-    public const string TypeColumn = "type";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {
         ["id"] = IdColumn,
         ["quantity"] = QuantityColumn,

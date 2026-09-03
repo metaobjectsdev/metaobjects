@@ -79,7 +79,11 @@ public class NamesGeneratorTests
     {
         var src = SubscriberSource();
 
-        Assert.Contains("public static class SubscriberNames", src);
+        // `abstract class`, not `static class`: a static class can neither inherit nor be
+        // inherited, and a names artifact now extends its parent's rather than restating it.
+        // Abstract keeps the "never instantiate" guarantee; a const is still inherited, so
+        // every consumption site is unchanged.
+        Assert.Contains("public abstract class SubscriberNames", src);
         Assert.Contains("public const string Kind = \"table\";", src);
         Assert.Contains("public const string Name = \"subscribers\";", src);
         Assert.Contains("public const bool ReadOnly = false;", src);

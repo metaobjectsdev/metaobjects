@@ -8,7 +8,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for AllTypes (spec A1/A2/A6).
 /// </summary>
-public static class AllTypesNames
+public abstract class AllTypesNames
 {
     public const string Kind = "table";
     public const string Name = "all_types";

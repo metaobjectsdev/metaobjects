@@ -8,7 +8,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for Asset (spec A1/A2/A6).
 /// </summary>
-public static class AssetNames
+public abstract class AssetNames
 {
     public const string Kind = "table";
     public const string Name = "assets";

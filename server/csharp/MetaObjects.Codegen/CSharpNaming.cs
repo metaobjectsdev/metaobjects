@@ -24,16 +24,47 @@ public sealed record FieldNames(string Name, string Column);
 /// </summary>
 public sealed record ObjectNames
 {
-    /// <summary>The <c>source.rdb @kind</c> value — table | view | materializedView | storedProc | tableFunction.</summary>
-    public required string Kind { get; init; }
+    /// <summary>The <c>source.rdb @kind</c> value — table | view | materializedView | storedProc | tableFunction.
+    /// <c>null</c> on a FRAGMENT: an abstract base with no source of its own, which contributes
+    /// columns to its children and has no physical name of its own to carry.</summary>
+    public string? Kind { get; init; }
     /// <summary>The PHYSICAL name. Not necessarily a table: it comes from the primary
     /// source's <see cref="MetaSource.PhysicalName"/> for whatever its <see cref="Kind"/> is,
-    /// so this can be a view or a proc name.</summary>
-    public required string Name { get; init; }
+    /// so this can be a view or a proc name. <c>null</c> on a fragment — see <see cref="Kind"/>.</summary>
+    public string? Name { get; init; }
     public string? Schema { get; init; }
-    public required bool ReadOnly { get; init; }
+    /// <summary><c>null</c> on a fragment — see <see cref="Kind"/>.</summary>
+    public bool? ReadOnly { get; init; }
+    /// <summary>
+    /// Every field, INHERITED INCLUDED. This is what a consumer looks a column up in, so a
+    /// lookup for an inherited field must hit — miss and the caller falls back to a literal
+    /// (see <see cref="CSharpNaming.ColumnRef"/>), which is the whole defect this artifact
+    /// exists to remove.
+    /// </summary>
     public required IReadOnlyDictionary<string, FieldNames> Fields { get; init; }
+    /// <summary>
+    /// The fields DECLARED HERE — what the artifact EMITS. Inherited ones are declared by
+    /// the super's artifact and reached through C# base-class inheritance, so a subtype
+    /// states each physical name once instead of restating its parent's.
+    /// <para>ADR-0039's ONE sanctioned own-accessor use, in the exact form the ADR names it:
+    /// codegen emitting a generated subclass, iterating own members so inherited ones are
+    /// not re-emitted.</para>
+    /// </summary>
+    public required IReadOnlyDictionary<string, FieldNames> OwnFields { get; init; }
+    /// <summary>The nearest ancestor carrying an artifact of its own, when there is one.</summary>
+    public SuperNames? SuperNames { get; init; }
+    /// <summary>
+    /// True when the primary source is the SUPER's rather than declared here — a TPH
+    /// subtype, which shares its base's single table. Structural (the two resolve to the
+    /// SAME source node), never an equality test on the resolved strings: the physical
+    /// name, kind, schema and read-only-ness then all come from the base class rather than
+    /// being restated.
+    /// </summary>
+    public bool InheritsSource { get; init; }
 }
+
+/// <summary>The object whose names artifact this one extends.</summary>
+public sealed record SuperNames(string Name, string? Package);
 
 /// <summary>
 /// Column-naming strategy for fields with no <c>@column</c> override. C# port
@@ -224,7 +255,10 @@ public static class CSharpNaming
     public static string FilterAllowlistName(MetaObject entity) => Pascal(entity.Name) + "FilterAllowlist";
 
     /// <summary>The per-object physical database names class name: <c>&lt;EntityPascal&gt;Names</c>.</summary>
-    public static string NamesClassName(MetaObject entity) => Pascal(entity.Name) + "Names";
+    public static string NamesClassName(MetaObject entity) => NamesClassName(entity.Name);
+
+    /// <summary>Overload taking a bare object name — used when only a super's NAME is in hand.</summary>
+    public static string NamesClassName(string objectName) => Pascal(objectName) + "Names";
 
     /// <summary>The render-helper class name for a template: <c>&lt;TemplateName&gt;RenderHelper</c>.</summary>
     public static string RenderHelperName(string templateName) => templateName + "RenderHelper";
@@ -365,6 +399,18 @@ public static class CSharpNaming
         // resolve here, or the constant disagrees with the column EF actually binds.
         foreach (var f in obj.Fields())
             fields[f.Name] = new FieldNames(f.Name, Column(f, strategy));
+        // ADR-0039's sanctioned own-accessor use: what this artifact DECLARES.
+        var ownFields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
+        foreach (var f in obj.OwnFields())
+            ownFields[f.Name] = new FieldNames(f.Name, Column(f, strategy));
+
+        var superObj = NamesArtifactSuperOf(obj);
+        // Identity of the resolved source NODE, not equality of the resolved strings: a
+        // divergence guard is exactly what this codebase forbids here, and the question
+        // being asked is structural — did this object declare a source, or is it using its
+        // parent's?
+        var inheritsSource = superObj is not null &&
+            ReferenceEquals(SourceResolution.PrimaryRdbSource(superObj), source);
 
         var name = source.PhysicalName;
 
@@ -388,6 +434,67 @@ public static class CSharpNaming
             Schema = source.Schema,
             ReadOnly = source.IsReadOnly(),
             Fields = fields,
+            OwnFields = ownFields,
+            SuperNames = SuperRefOf(superObj),
+            InheritsSource = inheritsSource,
+        };
+    }
+
+    /// <summary>
+    /// The nearest ancestor of <paramref name="obj"/> that carries a names artifact of its
+    /// own, or <c>null</c>.
+    /// <para>Walks PAST an ancestor with nothing to contribute — an abstract marker with no
+    /// fields and no source emits no artifact, so there is nothing to extend and the search
+    /// continues upward rather than stopping at a class that does not exist.</para>
+    /// </summary>
+    public static MetaObject? NamesArtifactSuperOf(MetaObject obj)
+    {
+        for (var cur = obj.SuperData; cur is not null; cur = cur.SuperData)
+        {
+            if (cur is MetaObject candidate &&
+                (candidate.OwnFields().Count > 0 || SourceResolution.PrimaryRdbSource(candidate) is not null))
+                return candidate;
+        }
+        return null;
+    }
+
+    private static SuperNames? SuperRefOf(MetaObject? sup) =>
+        sup is null ? null : new SuperNames(sup.Name, sup.Package);
+
+    /// <summary>
+    /// The names FRAGMENT for an object that a sourced object extends but which declares no
+    /// source of its own — the <c>BaseEntity</c> pattern: shared fields, no table.
+    /// <para>Separate from <see cref="ResolveObjectNames"/> on purpose, and the separation
+    /// is the #248 rule intact rather than weakened. "Has a primary source" still decides
+    /// whether an object is a database participant, so an <c>object.value</c> carrying
+    /// fields resolves to nothing here as it always has. A fragment is emitted only for an
+    /// object REACHED from a participant by walking <c>extends</c> upward — which is the
+    /// only context in which its fields are columns at all. It carries no
+    /// <c>Kind</c>/<c>Name</c>/<c>ReadOnly</c>, because it has no physical name and must
+    /// never acquire one.</para>
+    /// <para>Returns <c>null</c> when the object declares no fields of its own: an abstract
+    /// marker has nothing to extend, and emitting an empty class for it would put a name in
+    /// the namespace that says nothing.</para>
+    /// </summary>
+    public static ObjectNames? ResolveSuperFragmentNames(
+        MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
+    {
+        var own = obj.OwnFields();
+        if (own.Count == 0) return null;
+
+        var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
+        foreach (var f in obj.Fields())
+            fields[f.Name] = new FieldNames(f.Name, Column(f, strategy));
+        var ownFields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
+        foreach (var f in own)
+            ownFields[f.Name] = new FieldNames(f.Name, Column(f, strategy));
+
+        return new ObjectNames
+        {
+            Fields = fields,
+            OwnFields = ownFields,
+            SuperNames = SuperRefOf(NamesArtifactSuperOf(obj)),
+            InheritsSource = false,
         };
     }
 

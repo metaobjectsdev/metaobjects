@@ -8,7 +8,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for ProgramStat (spec A1/A2/A6).
 /// </summary>
-public static class ProgramStatNames
+public abstract class ProgramStatNames
 {
     public const string Kind = "view";
     public const string Name = "v_program_stat";

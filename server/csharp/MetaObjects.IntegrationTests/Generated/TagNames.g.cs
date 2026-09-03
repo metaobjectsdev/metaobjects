@@ -8,7 +8,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for Tag (spec A1/A2/A6).
 /// </summary>
-public static class TagNames
+public abstract class TagNames
 {
     public const string Kind = "table";
     public const string Name = "tags";

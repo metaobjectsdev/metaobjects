@@ -8,7 +8,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for Follow (spec A1/A2/A6).
 /// </summary>
-public static class FollowNames
+public abstract class FollowNames
 {
     public const string Kind = "table";
     public const string Name = "follows";

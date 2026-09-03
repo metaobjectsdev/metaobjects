@@ -8,22 +8,12 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for CopayAuth (spec A1/A2/A6).
 /// </summary>
-public static class CopayAuthNames
+public abstract class CopayAuthNames : AuthNames
 {
-    public const string Kind = "table";
-    public const string Name = "auths";
-    public const bool ReadOnly = false;
-
     public const string CopayAmountField = "copayAmount";
     public const string CopayAmountColumn = "copayAmount";
-    public const string IdField = "id";
-    public const string IdColumn = "id";
-    public const string ReferenceField = "reference";
-    public const string ReferenceColumn = "reference";
-    public const string TypeField = "type";
-    public const string TypeColumn = "type";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {
         ["copayAmount"] = CopayAmountColumn,
         ["id"] = IdColumn,

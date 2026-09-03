@@ -8,7 +8,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for Week (spec A1/A2/A6).
 /// </summary>
-public static class WeekNames
+public abstract class WeekNames
 {
     public const string Kind = "table";
     public const string Name = "weeks";
