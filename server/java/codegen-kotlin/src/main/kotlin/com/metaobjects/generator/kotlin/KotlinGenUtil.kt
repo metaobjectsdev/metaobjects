@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.generator.EmitsPhysicalNameConstants
 import com.metaobjects.MetaData
 import com.metaobjects.field.DateField
 import com.metaobjects.field.MetaField
@@ -483,16 +484,23 @@ public object KotlinGenUtil {
     const val ARG_COLUMN_NAMING: String = "columnNaming"
 
     /**
-     * Task 6 — generator arg gating [KotlinExposedTableGenerator]'s substitution of the
-     * table-name and column-name string literals for `<Entity>Names.NAME` /
-     * `<Entity>Names.<FIELD>_COLUMN` constant references. Defaults OFF: Kotlin generators
-     * are selected by FQCN in the pom with no runner aggregating markers, so a project
-     * running the table generator WITHOUT [KotlinNamesGenerator] in the same run would
-     * reference a type nothing generated and fail to compile. This is a PRESENCE guard
-     * ("is the names artifact in this run"), never a divergence/equality guard — see
-     * [primaryRdbSource].
+     * Generator arg gating [KotlinExposedTableGenerator]'s substitution of the table-name
+     * and column-name string literals for `<Entity>Names.NAME` /
+     * `<Entity>Names.<FIELD>_COLUMN` constant references. A PRESENCE guard ("is the names
+     * artifact in this run"), never a divergence/equality guard — see [primaryRdbSource].
+     *
+     * Aliased to the shared SPI constant rather than respelled, because the party that
+     * SETS it is not in this module: the Maven mojo derives it from the run's generator
+     * set via [com.metaobjects.generator.EmitsPhysicalNameConstants], so a full suite gets
+     * the constants with no project configuration and a narrowed suite that drops the
+     * names generator falls back to literals rather than referencing a type nothing
+     * generated. Two spellings of one arg name is exactly how that wiring would silently
+     * stop working.
+     *
+     * The default stays "false" for a caller that builds a generator directly and never
+     * goes through that derivation.
      */
-    const val ARG_USE_NAMES: String = "useNames"
+    const val ARG_USE_NAMES: String = EmitsPhysicalNameConstants.ARG_USE_NAMES
 
     /** Apply a column-naming strategy to a bare name. */
     fun applyColumnNamingStrategy(name: String, strategy: String): String =

@@ -9,6 +9,7 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.loader.LoaderConfigurable;
 import com.metaobjects.loader.LoaderConfigurationConstants;
 import com.metaobjects.loader.LoaderOptions;
+import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
@@ -138,6 +139,11 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     protected List<Generator> buildGenerators(ClassLoader projectClassLoader,
                                               Map<GeneratorParam, Map<String, String>> argOverridesByGenerator) {
         List<Generator> generatorImpls = new ArrayList<>();
+        // The args each generator will receive, in the same order — held back until the
+        // whole suite is built. See the EmitsPhysicalNameConstants pass below: a generator
+        // cannot answer "will <Entity>Names exist alongside my output?" on its own, and this
+        // method is the one place that knows the answer.
+        List<Map<String, String>> argsByGenerator = new ArrayList<>();
 
         if ( getGenerators() != null ) {
             for ( GeneratorParam g : getGenerators() ) {
@@ -156,7 +162,6 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                         Map<String, String> overrides = argOverridesByGenerator.get(g);
                         if ( overrides != null ) allargs.putAll(overrides);
                     }
-                    impl.setArgs(allargs);
 
                     // Merge loader filters and generator filters
                     List<String> allFilters = new ArrayList<>();
@@ -168,11 +173,24 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                     if ( g.getScripts() != null ) impl.setScripts(g.getScripts());
 
                     generatorImpls.add( impl );
+                    argsByGenerator.add( allargs );
                 }
                 catch( Exception e ) {
                     throw new MetaDataException( "Error running generator ["+g.getClassname()+"]: "+e, e );
                 }
             }
+        }
+
+        // NO MAGIC STRINGS — derive `useNames` from the SUITE, then hand every generator its
+        // args. A generator that references `<Entity>Names.NAME` in a run with no names
+        // generator emits code referencing a type nothing generated, so the substitution
+        // shipped as an opt-in defaulting OFF and stayed off in practice. This is the
+        // aggregation point that makes it safe to default from the run instead: the same
+        // decision TypeScript makes from its `emitsNames` generator marker and C# from
+        // GeneratorRegistry.IncludesNames. An explicit `<useNames>` in the pom still wins.
+        for ( int i = 0; i < generatorImpls.size(); i++ ) {
+            generatorImpls.get(i).setArgs(
+                EmitsPhysicalNameConstants.deriveUseNames( argsByGenerator.get(i), generatorImpls ) );
         }
 
         return generatorImpls;

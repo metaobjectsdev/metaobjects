@@ -428,18 +428,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             "${KotlinNaming.namesObjectName(shortName)}.NAME"
         else "\"$tableName\""
 
-        // Task 6 — the rendered column-name EXPRESSION for one of [entity]'s OWN fields:
-        // either the quoted physical-name literal, or (useNames()) a reference to
-        // <Entity>Names.<MEMBER>_COLUMN. Unlike tableExpr this is NOT scoped to
-        // objectNameOverride == null -- a field's column name does not depend on which
-        // of a write-through entity's two own sources this emit() call is targeting, so
-        // it is correct for both the write table and the read view.
-        fun columnExprFor(f: MetaField<*>): String {
-            val literal = "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
-            return if (useNames())
-                "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
-            else literal
-        }
+        // Task 6 — see [ownColumnExpr]. Kept as a local alias so the many call sites in
+        // this function stay short; the rule itself lives in one place, shared with
+        // buildObjectColumns.
+        fun columnExprFor(f: MetaField<*>): String = ownColumnExpr(entity, f)
 
         // Walk the `extends` chain so identities declared on an abstract base
         // entity (the BaseEntity pattern: `identity.primary` on `id`) are
@@ -795,6 +787,30 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
     protected enum class ObjectColumnKind { FLATTENED, JSONB }
 
+    /**
+     * The rendered column-name EXPRESSION for one of [entity]'s OWN fields: either the
+     * quoted physical-name literal, or — when the names artifact is in this run
+     * ([useNames]) — a reference to `<Entity>Names.<MEMBER>_COLUMN`.
+     *
+     * Unlike the TABLE-name reference this is NOT scoped to `objectNameOverride == null`:
+     * a field's column name does not depend on which of a write-through entity's two own
+     * sources the emit call is targeting, so it is correct for both the write table and
+     * the read view.
+     *
+     * EVERY site that names a column of [entity] goes through here — the scalar loop, the
+     * enum spec, and the single-jsonb `field.object` / `field.map` columns in
+     * [buildObjectColumns]. Those last two used to build their own literal, which is how a
+     * `@storage: jsonb` value-object column went on spelling its physical name in a run
+     * where every scalar beside it referenced a constant. A second copy of a substitution
+     * rule is a second chance to miss a branch.
+     */
+    protected fun ownColumnExpr(entity: MetaObject, f: MetaField<*>): String {
+        val (_, shortName) = PackageMapping.splitFqn(entity.name)
+        return if (useNames())
+            "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
+        else "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+    }
+
     /** A single Exposed column derived from a `field.object` (one per flattened sub-field, or one total for jsonb). */
     protected data class ObjectColumnSpec(
         val propertyName: String,
@@ -839,13 +855,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val parentName = field.name
                 val parentNullable = parentName !in primaryFieldNames &&
                     !KotlinGenUtil.isRequiredField(field)
-                val colName = KotlinGenUtil.resolveColumnName(field, columnNaming())
+                // The map column IS a field of `entity`, so it reaches the names artifact like
+                // any scalar — see [ownColumnExpr].
+                val colExpr = ownColumnExpr(entity, field)
                 // Jackson codec: a Map<String, V> stored in one JSONB column, encoded/decoded via
                 // the shared metaJsonbMapper (MetaJsonbMapper.kt support file). A TypeReference
                 // captures the erased generic so the read decodes back to Map<String, V> — NOT the
                 // reified `Json.encodeToString(it)` (which needs the kotlinx compiler plugin).
                 val valueType = mapValueTypeFqn(field, loader)
-                val expr = "jsonb(\"$colName\", { metaJsonbMapper.writeValueAsString(it) }, " +
+                val expr = "jsonb($colExpr, { metaJsonbMapper.writeValueAsString(it) }, " +
                     "{ metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, $valueType>>() {}) })"
                 val full = if (parentNullable) "$expr.nullable()" else expr
                 result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
@@ -887,7 +905,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // that plugin is enabled every VO carrying a java.util.UUID / java.time.* /
                 // java.math.BigDecimal / java.net.* field fails to compile. Jackson round-trips them
                 // via its kotlin + jsr310 modules with zero per-type plumbing.
-                val colName = KotlinGenUtil.resolveColumnName(field, columnNaming())
+                // Like the map branch above: a single-jsonb value-object column is ONE field of
+                // `entity`, so it carries a constant — see [ownColumnExpr]. (The flattened
+                // branch above is the genuine exception: its composite belongs to no single
+                // field of either object.)
+                val colExpr = ownColumnExpr(entity, field)
                 val ref = readObjectRef(field)
                 val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
                 val decode = if (target != null) {
@@ -904,7 +926,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // generic Jackson tree so the column still type-checks without kotlinx.
                     "metaJsonbMapper.readValue(it, com.fasterxml.jackson.databind.JsonNode::class.java)"
                 }
-                val expr = "jsonb(\"$colName\", { metaJsonbMapper.writeValueAsString(it) }, { $decode })"
+                val expr = "jsonb($colExpr, { metaJsonbMapper.writeValueAsString(it) }, { $decode })"
                 val full = if (parentNullable) "$expr.nullable()" else expr
                 result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
             }

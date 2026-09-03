@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.generator.EmitsPhysicalNameConstants
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -25,9 +26,11 @@ import java.nio.file.Paths
  * TS reference (`codegen-ts/src/names.ts` + `templates/names-decl.ts`) member for
  * member, with Kotlin casing (SCREAMING_SNAKE per-field members instead of PascalCase).
  *
- * Task 6 (a separate task in this program, not this generator) is expected to make
- * [KotlinExposedTableGenerator] consume these constants instead of re-deriving the
- * same names independently.
+ * [KotlinExposedTableGenerator] consumes these constants instead of re-deriving the same
+ * names independently. Because this class carries [EmitsPhysicalNameConstants], a run that
+ * includes it turns that substitution ON without any project configuration; a run that
+ * narrows the suite and drops it goes back to literals rather than emitting a reference to
+ * a type nothing generated.
  *
  * Args:
  *  - `outputDir` (required): output directory root.
@@ -36,7 +39,8 @@ import java.nio.file.Paths
  *    run resolves the column string this artifact declares and the column
  *    [KotlinExposedTableGenerator] binds through the identical resolver + argument.
  */
-open class KotlinNamesGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinNamesGenerator :
+    MultiFileDirectGeneratorBase<MetaObject>(), EmitsPhysicalNameConstants {
 
     /** See [KotlinExposedTableGenerator.columnNaming] — same arg, same default. */
     protected fun columnNaming(): String =

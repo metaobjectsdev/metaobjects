@@ -2,6 +2,7 @@ package com.metaobjects.generator.spring;
 
 import com.metaobjects.database.ColumnNaming;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
@@ -57,7 +58,8 @@ import java.util.Map;
  *       {@code docs/features/field-types.md}).</li>
  * </ul>
  */
-public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
+public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObject>
+        implements EmitsPhysicalNameConstants {
 
     @Override
     protected Class<MetaObject> getFilterClass() {

@@ -10,11 +10,17 @@ import kotlin.test.assertTrue
 /**
  * Task 6 — [KotlinExposedTableGenerator]'s Exposed table binding references
  * `<Entity>Names.NAME` / `<Entity>Names.<FIELD>_COLUMN` instead of respelling the
- * physical table/column names as string literals, behind the `useNames` generator arg
- * (default OFF — see [KotlinGenUtil.ARG_USE_NAMES]). Kotlin generators are selected by
- * FQCN in the pom with no runner aggregating markers, so a project running the table
- * generator WITHOUT [KotlinNamesGenerator] in the same run would reference a type
- * nothing generated and fail to compile — hence the opt-in, defaulting OFF.
+ * physical table/column names as string literals, gated on the `useNames` generator arg
+ * (see [KotlinGenUtil.ARG_USE_NAMES]).
+ *
+ * These two tests pin the ARG's two arms directly, constructing the generator by hand: a
+ * caller that never goes through a runner still gets literals by default, because a
+ * reference to a type nothing generated does not compile. What DECIDES the arg in a real
+ * build is the Maven mojo, which derives it from the run's generator set via
+ * `EmitsPhysicalNameConstants` — so a full suite gets the constants with no project
+ * configuration. That derivation is pinned by `UseNamesDerivationTest` in maven-plugin,
+ * and the end-to-end claim ("no generated file spells a physical name literally") by
+ * [NoMagicPhysicalNamesTest].
  *
  * See [KotlinExposedTableSourceSelectionTest] for R27 — the prerequisite fix to WHICH
  * source the table generator names, independent of this substitution.
@@ -64,9 +70,9 @@ class KotlinExposedTableNamesTest {
     }
 
     @Test fun `the table binding keeps its literals by default`() {
-        // Kotlin generators are pom-selected. A project that runs the table generator
-        // without the names generator must still compile, so OFF is the default and
-        // the output stays byte-identical.
+        // A caller constructing the generator directly, with no runner to derive the arg
+        // from the suite: the table generator must still compile without the names
+        // generator, so OFF is the default and the output stays byte-identical.
         val src = authorTableSrc()
         assertTrue("Table(\"authors\")" in src, src)
         assertTrue("varchar(\"purpose_code\", 40)" in src, src)
