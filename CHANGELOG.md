@@ -80,21 +80,162 @@ object's table" through two different functions.
 **Enablement differs per port, deliberately.** C# and Python ship it in the default
 generator suite. TypeScript wires it in `metaobjects.config.ts` like any other generator.
 The JVM ports have no default suite at all — generators are selected by FQCN in `pom.xml` —
-so it is opt-in there, and Kotlin's Exposed binding reads the constants only behind a
-`useNames` generator arg defaulting **off**, so a project that runs the table generator
-without the names generator still compiles.
+so it is opt-in there; wire the names generator alongside the table generator and the
+Maven plugin turns the constant substitution on for you (see the next entry, which
+replaced the `useNames` arg's hardcoded default with a derivation from the run).
 
-**Java's artifact has no generated consumer, and that is a real limitation rather than an
-oversight.** `codegen-spring` emits no physical name anywhere — its DTOs use logical field
-names and its repository is a consumer-implemented interface — so the constants exist for
-the persistence layer you write, not for anything MetaObjects generates. It is the port
-with the most to gain and the least to demonstrate.
+**Java's and Python's artifacts have no generated consumer, and that is their architecture
+rather than a gap.** Neither port generates SQL: `codegen-spring` emits DTOs with logical
+field names and a consumer-implemented repository interface, and Python emits Pydantic
+models and FastAPI routers over a repository `Protocol`. In both, the physical layer is
+the adopter's code — which is exactly who the constants are for. A cross-port gate now
+proves the claim rather than asserting it (see below): zero physical names escape to
+generated output in either port.
 
 **Generated C# output changes for every adopter**: `[Table("subscribers")]` becomes
 `[Table(SubscriberNames.Name)]`, and each `[Column("...")]` likewise, because `names` is in
 the default suite. A run that does *not* include the names generator keeps the literals —
 the reference is gated on the artifact actually being produced, never on comparing its
 value to a literal.
+
+### Added — a de-blinded gate proving generated code references the constant, in all five ports
+
+`<Entity>Names` exists so a physical database name is spelled ONCE per run. That guarantee
+was worth nothing unless every generator actually REFERENCES it, and nothing proved it: the
+gaps were found by reading generators one at a time, which is exactly the method that
+misses the next one.
+
+The gate is a DE-BLINDED fixture. Every physical name in it is `zz_phys_*` and deliberately
+impossible for a generator to produce by derivation — not the snake_case of its field name,
+not the pluralization of its object name — so a generator that embeds a literal cannot be
+confused with one that derived the same string by coincidence. If the token appears in a
+file, that file hard-coded it. This is the same de-blinding that unmasked the `@column`
+defects in the persistence corpus at `0.24.5`.
+
+Each port runs its whole generator suite REGISTRY-DRIVEN rather than hand-listed — a
+generator added later is gated the day it is registered, not the day someone remembers — and
+asserts four things. The strongest is the last: the set of `zz_phys_*` tokens escaping to
+non-names files must EQUAL the declared known-literal set, in both directions. A new escape
+fails without anyone listing it; so does a known literal quietly fixed, which is how a
+"known gaps" list ends up describing a codebase that moved on.
+
+Two categories are pinned as literal, each with the reason it is not a gap: a flattened
+value-object column is a COMPOSITE (`<owner field column>_<member column>`) belonging to no
+single field of either object, and a write-through entity's replica VIEW name has no slot in
+an artifact that holds its object's PRIMARY source's name. Java's and Python's sets are
+EMPTY — those ports emit no physical name at all.
+
+Every assertion was proved to discriminate by breaking the behaviour and watching exactly
+that test fail. Wired into `scripts/ci-local.sh`, with a gate over the gate
+(`check-no-magic-gate-coverage.sh`) that fails if a port's gate file disappears or drops
+out of a lane that selects tests by name.
+
+### Fixed — the write-through read view lost every column constant to a name it never held
+
+A write-through entity's generated `.existing()` view declaration spelled its column names
+as literals — `integer("zz_phys_col_acct")` — while the very same file bound the table side
+through `AccountNames.fields.id.column`.
+
+The cause is a conflation. `ViewDeclOpts.names` was doing two jobs: supplying the COLUMN
+constants, and supplying the view's OWN physical name. Those two answers come apart on
+exactly one shape. A projection's primary source IS its view, so one artifact answers both.
+A write-through entity has TWO physical names and `<Entity>Names` holds the table's — so
+passing the artifact would have emitted the TABLE name as the view's. The caller therefore
+omitted it altogether, and paid for a name it could not use with every column reference it
+could. The view's name is now the caller's to pass; the artifact supplies columns only.
+
+### Fixed — the JVM did have a runner aggregating markers, so `useNames` is derived rather than defaulted
+
+Kotlin's constant substitution shipped behind a `useNames` generator arg defaulting OFF, on
+a stated premise: "Kotlin generators are selected by FQCN in the pom with no runner
+aggregating markers", so a run without `KotlinNamesGenerator` would reference a type nothing
+generated. The risk is real; the premise is not. `AbstractMetaDataMojo.buildGenerators`
+builds the WHOLE generator list before executing any of it — that is the aggregation point,
+and it was already there.
+
+`codegen-base` gains `EmitsPhysicalNameConstants`, a marker the Kotlin and Spring names
+generators carry; the mojo holds each generator's args back until the suite is built, then
+derives the flag from whether the suite contains one. A full suite gets the constants with
+no project configuration; a narrowed suite that drops `names` falls back to literals rather
+than emitting code that will not compile; an explicit `<useNames>` in the pom still wins.
+The three ports now make one decision the same way — TypeScript's `emitsNames` generator
+marker, C#'s `GeneratorRegistry.IncludesNames`, and this.
+
+That flipped six of the seven de-blinded tokens in the Kotlin gate. The seventh was a second
+defect the flag could never have fixed: a `@storage: jsonb` value-object column built its own
+literal in `buildObjectColumns` instead of going through the emit path's substitution, so it
+went on spelling its physical name in a run where every scalar beside it referenced a
+constant. Both `field.object` and `field.map` jsonb columns now route through one shared
+helper.
+
+### Changed — a names artifact extends its parent's instead of restating it (all five ports)
+
+A TPH subtype's artifact restated its base's table name and every one of its columns; an
+entity extending an abstract base restated every inherited column. Each restatement is a
+second place one physical name is spelled — the exact defect this artifact exists to remove,
+reintroduced one level up. On the persistence corpus's three-subtype TPH hierarchy alone,
+the C# output sheds 30 restated lines.
+
+The shape is per-language, the guarantee is not. **C# and Java** use real inheritance —
+`class CopayAuthNames : AuthNames` / `extends AuthNames` — since both languages inherit
+static members, so `CopayAuthNames.IdColumn` resolves through the base. **TypeScript**
+spreads (`...AuthNames.fields`). **Kotlin and Python** have no static inheritance at all, so
+they re-export the parent's constants BY REFERENCE.
+
+Two emitted forms, decided STRUCTURALLY rather than by comparing resolved strings: an object
+with its OWN source declares its own kind/name/schema/read-only-ness and inherits only
+columns; one that INHERITS its source — a TPH subtype sharing its base's single table —
+takes all of them from the base, so the table name is stated once.
+
+An abstract base that a persisted object extends now gets an artifact of its own: a
+FRAGMENT carrying the columns it declares and NO physical name, because it has none and must
+never acquire one. **#248 is intact and that is what the separate resolver is for**: "has a
+primary source" still decides database participation, so an `object.value` carrying fields
+resolves to nothing as it always has. A fragment is emitted only for an object REACHED by
+walking `extends` UPWARD from a participant — the only context in which its fields are
+columns at all — and every port pins that with a test asserting a value object still gets
+nothing.
+
+**Adopter-visible:** C# `<Entity>Names` changes from `public static class` to
+`public abstract class` (a static class can neither inherit nor be inherited; abstract keeps
+the "never instantiate" guarantee), and Java's from `public final class` with a private
+constructor to `public abstract class` with a protected one — a private constructor made
+every generated subclass fail to compile on its implicit `super()`. Every consumption site
+is unchanged. A subtype's `ColumnsByField` / `COLUMNS_BY_FIELD` stays COMPLETE: it is the
+lookup surface, and a miss on an inherited field is the fallback-to-literal this artifact
+removes.
+
+Each port's gate is a real COMPILE, not string assertions — Roslyn for C#, `tsc` for
+TypeScript, the Kotlin compiler, and an actual module import for Python — because only a
+compiler proves an inherited member still resolves. Two bugs were caught that way and by
+nothing else: a seeding error that made the TypeScript base artifact never emit at all
+(every text assertion passed), and a Python module that raised `NameError` on import
+because the generator imported the per-field constants but not the source-level ones.
+
+### Fixed — the ADR-0034 reference `entity.ts` emitted a second Drizzle table for a TPH subtype
+
+The template `meta init` scaffolds gated on `hasWritableRdbSource`, which is TRUE for a TPH
+subtype under the ADR-0039 resolving read, and was missing the built-in's
+`|| isTphSubtype(entity)` clause. So it fell through to the vanilla path and emitted a
+SECOND Drizzle table bound to the base's physical name, carrying only the subtype's own
+columns.
+
+The parity gate that exists to catch exactly this — the built-in and the copyable template
+must be byte-identical — had five fixtures and not one of them carried an `extends` at all.
+The new `extends-chain` fixture found this on its first run.
+
+### Fixed — `type=class` with no `flavor` crashed the Java entity generator on any model
+
+With no `flavor` the generator emits INTERFACES: the legacy writer's getter/setter emitters
+throw for any other type. But `getSupportedTypes()` advertises `class`, so configuration
+waved the combination through and the run opened a class body it never populated or closed.
+What surfaced was the writer's close-time balance check — `"The indenting increment is not
+back to root level, invalid logic"` — naming an output file that has nothing wrong with it.
+
+Now refused at configuration, with a message naming both concrete flavors and the interface
+alternative. Found by running the Java generator registry's whole NATIVE suite over one
+model, which is the first thing in this repo that had ever asked that generator to run with
+a bare `type=class`.
 
 ### Added — a column-naming lever in the two ports that lacked one, and on `verify`
 
