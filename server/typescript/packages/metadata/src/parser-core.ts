@@ -494,8 +494,12 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     // A `<type>.base` node may not be AUTHORED — see abstractSubtypeMessage. This is the
     // ROOT door; the child door is in the child loop below. One rule, both doors: a check
     // on one of two entry points is a rule that is only half true.
-    if ((rootSubType === SUBTYPE_BASE && isAbstractAnchorFor(rootType, opts.registry))
-      || (!rootExplicit && rootSubType === "")) {
+    // Registration first: an UNREGISTERED type has no default either, so without this a typo'd
+    // root key is diagnosed as a registered type that merely lacks a default. The registration
+    // check below owns that case and phrases it correctly.
+    if (opts.registry.allSubTypesOf(rootType).length > 0
+      && ((rootSubType === SUBTYPE_BASE && isAbstractAnchorFor(rootType, opts.registry))
+        || (!rootExplicit && rootSubType === ""))) {
       _currentPath!.pushKey(rootKey);
       const src = errSource();
       _currentPath!.pop();
@@ -1354,11 +1358,36 @@ function processChildren(
     const childDataObj = childData as Record<string, unknown>;
     const { type: childType, subType: childSubTypeRaw, explicit } = splitTypeKey(childKey, registry);
 
+    let childSubType = childSubTypeRaw;
+    // A `<type>.base` may not be AUTHORED, and a bare key for a type with no declared default
+    // is a MISSING subType. BEFORE the registered-type check below, matching the root door and
+    // the JVM: run it after, and a bare key for a type that registers no `base` at all
+    // (identity, index, requirement) falls into that check's else-arm first and is reported as
+    // an UNKNOWN TYPE — a message asserting the type does not exist, about a type that does,
+    // with its name mangled to `"identity."`. Order is the whole rule here.
+    if ((childSubType === SUBTYPE_BASE && isAbstractAnchorFor(childType, registry))
+      || (!explicit && childSubType === "")) {
+      errors.push(
+        explicit
+          ? new ParseError(abstractSubtypeMessage(childType), {
+              code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
+              source: errSource(),
+            })
+          : new ParseError(missingSubtypeMessage(childType), {
+              code: "ERR_MISSING_SUBTYPE",
+              source: errSource(),
+            }),
+      );
+      _currentPath?.pop(); // pop child wrapper key
+      _currentPath?.pop(); // pop array index
+      _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
+      continue; // skip this child
+    }
+
     // --- Check if this child type is registered ---
     // An EXPLICIT unknown subType (fused into the key) is an error — never
     // silently downgraded to base. An OMITTED subType that resolves to an
     // unregistered default falls back to base.
-    let childSubType = childSubTypeRaw;
     if (!registry.has(childType, childSubType)) {
       if (!explicit && registry.has(childType, SUBTYPE_BASE)) {
         childSubType = SUBTYPE_BASE;
@@ -1389,25 +1418,6 @@ function processChildren(
     // and refusing that would break every node relying on the default. Placed before the
     // attr branch so `attr.base` is covered by the same rule — an authored untyped attr is
     // the same mistake as an authored untyped field.
-    if ((childSubType === SUBTYPE_BASE && isAbstractAnchorFor(childType, registry))
-      || (!explicit && childSubType === "")) {
-      errors.push(
-        explicit
-          ? new ParseError(abstractSubtypeMessage(childType), {
-              code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
-              source: errSource(),
-            })
-          : new ParseError(missingSubtypeMessage(childType), {
-              code: "ERR_MISSING_SUBTYPE",
-              source: errSource(),
-            }),
-      );
-      _currentPath?.pop(); // pop child wrapper key
-      _currentPath?.pop(); // pop array index
-      _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
-      continue; // skip this child
-    }
-
     // --- Special handling for "attr" child nodes ---
     if (childType === TYPE_ATTR) {
       parseAttrChild(parent, childType, childSubType, childDataObj, registry, warnings, strict, source, childNodePath);

@@ -116,7 +116,7 @@ public class DbContextCompileTests
     // TRUSTED_PLATFORM_ASSEMBLIES already includes the BCL and EF Core may or may not be
     // listed there depending on the test runner; using typeof(...).Assembly.Location and
     // deduplicating by path is the safe approach.
-    private static List<MetadataReference> BuildReferences()
+    internal static List<MetadataReference> BuildReferences()
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

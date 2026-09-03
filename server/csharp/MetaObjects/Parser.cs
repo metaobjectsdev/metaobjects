@@ -477,8 +477,13 @@ public static class Parser
         // A `<type>.base` node may not be AUTHORED — see AbstractSubtypeMessage. This is
         // the ROOT door; the child door is in the child loop below. One rule, both doors:
         // a check on one of two entry points is a rule that is only half true.
-        if ((rootSubType == SUBTYPE_BASE && IsAbstractAnchorFor(rootType, opts.Registry))
-            || (!rootSplit.Explicit && rootSubType.Length == 0))
+        // AllSubTypesOf(...).Count > 0 first: an UNREGISTERED type has no default either, so
+        // without this guard a typo'd root key is reported as a registered type that merely
+        // lacks a default, instead of as the unknown type it is. The registration check below
+        // owns that case and phrases it correctly.
+        if (opts.Registry.AllSubTypesOf(rootType).Count > 0
+            && ((rootSubType == SUBTYPE_BASE && IsAbstractAnchorFor(rootType, opts.Registry))
+                || (!rootSplit.Explicit && rootSubType.Length == 0)))
         {
             throw rootSplit.Explicit
                 ? new ParseException(
@@ -1432,6 +1437,29 @@ public static class Parser
                         string childSubType = childSplit.SubType;
                         bool explicitSubType = childSplit.Explicit;
 
+                        // A `<type>.base` may not be AUTHORED, and a bare key for a type with
+                        // no declared default is a MISSING subType. BEFORE the registered-type
+                        // check below, matching the root door and the JVM: run it after, and a
+                        // bare key for a type registering no `base` at all (identity, index,
+                        // requirement) falls into that check's else-arm first and is reported
+                        // as an UNKNOWN TYPE — a message asserting the type does not exist,
+                        // about a type that does. Order is the whole rule here.
+                        if ((childSubType == SUBTYPE_BASE
+                                && IsAbstractAnchorFor(childType, st.Registry))
+                            || (!explicitSubType && childSubType.Length == 0))
+                        {
+                            st.Errors.Add(explicitSubType
+                                ? new MetaError(
+                                    AbstractSubtypeMessage(childType),
+                                    ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source,
+                                    childNodePath, st.CurrentSource())
+                                : new MetaError(
+                                    MissingSubtypeMessage(childType),
+                                    ErrorCode.ERR_MISSING_SUBTYPE, st.Source,
+                                    childNodePath, st.CurrentSource()));
+                            continue; // skip this child
+                        }
+
                         // --- Check if this child type is registered ---
                         // An EXPLICIT unknown subType (fused into the key) is an error —
                         // never silently downgraded to base. An OMITTED subType that resolves
@@ -1464,22 +1492,6 @@ public static class Parser
                         // the attr branch so `attr.base` is covered by the same rule — an
                         // authored untyped attr is the same mistake as an authored untyped
                         // field.
-                        if ((childSubType == SUBTYPE_BASE
-                                && IsAbstractAnchorFor(childType, st.Registry))
-                            || (!explicitSubType && childSubType.Length == 0))
-                        {
-                            st.Errors.Add(explicitSubType
-                                ? new MetaError(
-                                    AbstractSubtypeMessage(childType),
-                                    ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source,
-                                    childNodePath, st.CurrentSource())
-                                : new MetaError(
-                                    MissingSubtypeMessage(childType),
-                                    ErrorCode.ERR_MISSING_SUBTYPE, st.Source,
-                                    childNodePath, st.CurrentSource()));
-                            continue; // skip this child
-                        }
-
                         // --- Special handling for "attr" child nodes ---
                         if (childType == TYPE_ATTR)
                         {

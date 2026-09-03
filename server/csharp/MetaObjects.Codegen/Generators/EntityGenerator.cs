@@ -158,7 +158,16 @@ public class EntityGenerator : IGenerator
         // #234 — the strict field.uri / field.inet System.Text.Json converters, ONCE per namespace
         // that has such a field (the same-namespace MetaNetValidation each entity property binds
         // through via [JsonConverter(typeof(…))]).
-        foreach (var ns in mapped.Where(HasStrictNetField)
+        //
+        // Seeded from EVERY set that can emit that attribute, not just `mapped`. The unmapped
+        // shapes and the value-object POCOs stamp it through the same ScalarProperty path
+        // (withValidationAttributes: true → AppendNetConverterAttribute), so seeding from
+        // `mapped` alone emits a [JsonConverter(typeof(MetaNetValidation.…))] reference with no
+        // MetaNetValidation.g.cs to resolve it — CS0246 on output that otherwise looks fine.
+        // A sourceless entity with a field.uri hit this the moment #248 moved it out of `mapped`;
+        // the value-object arm was the same hole, reachable already whenever no MAPPED entity in
+        // the namespace happened to carry a strict uri/inet.
+        foreach (var ns in mapped.Concat(unmappedShapes).Concat(valueObjects).Where(HasStrictNetField)
             .Select(e => PackageBindingResolver.Resolve(
                 ctx.Config, PackageBindingResolver.EffectivePackage(e), e.Name, fallbackContext: e.Name))
             .Distinct(StringComparer.Ordinal))

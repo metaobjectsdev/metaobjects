@@ -4,7 +4,7 @@
     {
       "type": "object",
       "subType": "base",
-      "description": "Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly.",
+      "description": "Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly. A `object.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "children": [
         { "type": "field", "subType": "*", "name": "*", "min": 0, "max": null },
         { "type": "identity", "subType": "*", "name": "*", "min": 0, "max": null },

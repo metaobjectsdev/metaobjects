@@ -20,6 +20,8 @@
 // shape-only by definition, and the `BaseEntity` pattern has a shared abstract
 // base declare no source of its own.
 
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -34,7 +36,8 @@ public class SourcelessEntityGatesTests
     // Booking: concrete object.entity WITH a source.rdb — the control arm, so every
     // assertion below distinguishes "the gate narrowed" from "the generator emits nothing".
     // AbstractBase: abstract + sourceless — must stay exempt.
-    // Booked: extends AbstractBase and declares the source; Derived: extends Booking and
+    // Sourceless: concrete + sourceless + a strict field.uri (the converter-file case).
+    // Derived: extends Booking and
     // INHERITS its source (ADR-0039 resolving — an own-only source read would wrongly
     // classify it as sourceless).
     private const string Model = """
@@ -58,6 +61,10 @@ public class SourcelessEntityGatesTests
           ] } },
           { "object.entity": { "name": "AbstractBase", "abstract": true, "children": [
             { "field.long": { "name": "id" } }
+          ] } },
+          { "object.entity": { "name": "Sourceless", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.uri":  { "name": "homepage" } }
           ] } }
         ]
       }
@@ -81,6 +88,23 @@ public class SourcelessEntityGatesTests
 
     private static MetaObject Obj(GenContext ctx, string name) =>
         Assert.Single(ctx.Entities, o => o.Name == name);
+
+    /// <summary>Roslyn-compile every emitted file together and return the errors.</summary>
+    private static List<string> CompileTogether(IEnumerable<EmittedFile> files)
+    {
+        var trees = files
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToList();
+        var comp = CSharpCompilation.Create(
+            "sourceless_gates_" + Guid.NewGuid().ToString("N"),
+            trees,
+            DbContextCompileTests.BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        return comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Id}: {d.GetMessage()}")
+            .ToList();
+    }
 
     // ---- the shared predicate -------------------------------------------------
 
@@ -146,6 +170,30 @@ public class SourcelessEntityGatesTests
     }
 
     // ---- gate 2 + 3: DbContextGenerator (AppliesTo + the model config) --------
+
+    [Fact]
+    public void Gate1_an_unmapped_shape_carrying_a_strict_uri_still_gets_its_converter_file()
+    {
+        // #234's MetaNetValidation.g.cs is emitted once per NAMESPACE that has a strict
+        // field.uri / field.inet, and every property carrying one binds through it via
+        // [JsonConverter(typeof(MetaNetValidation.…))]. Its emit loop was seeded from the
+        // MAPPED set — so the moment #248 moved a sourceless entity OUT of that set, the
+        // attribute was still stamped on its property while the file it names stopped being
+        // emitted: CS0246 on output that reads as perfectly ordinary.
+        //
+        // Compiled, not string-matched: the reference and the file it resolves to live in two
+        // different emissions, which is exactly the seam a contains-check cannot see.
+        var ctx = Ctx();
+        var files = new EntityGenerator().Generate(ctx).ToList();
+
+        var sourceless = Assert.Single(files, f => f.Path == "Sourceless.g.cs").Content;
+        Assert.Contains("MetaNetValidation", sourceless);
+        Assert.Contains(files, f => f.Path.EndsWith("MetaNetValidation.g.cs", StringComparison.Ordinal));
+
+        var errors = CompileTogether(files);
+        Assert.True(errors.Count == 0,
+            "generated output must compile:\n" + string.Join("\n", errors));
+    }
 
     [Fact]
     public void Gate2_the_sourceless_entity_gets_no_DbSet_and_no_model_configuration()

@@ -209,6 +209,28 @@ describe("subtype rule validation", () => {
     expect(errors[0]!.message).toContain("has no default subType");
   });
 
+  it("the ROOT door refuses an authored .base too — not just the child door", async () => {
+    // Every parser states "one rule, both doors" in a comment and only the CHILD door was
+    // ever tested, in any port. The root door is a separate code path with a separate throw.
+    const { errors } = await load(JSON.stringify({ "object.base": { name: "P" } }));
+    expect(codes(errors)).toContain("ERR_ABSTRACT_SUBTYPE_AUTHORED");
+    expect(errors[0]!.message).toContain("abstract registry anchor");
+  });
+
+  it("the ROOT door refuses a bare key with no declared default too", async () => {
+    const { errors } = await load(JSON.stringify({ field: { name: "f" } }));
+    expect(codes(errors)).toContain("ERR_MISSING_SUBTYPE");
+    expect(errors[0]!.message).toContain("has no default subType");
+  });
+
+  it("an UNREGISTERED bare root type is still reported as an unknown TYPE", async () => {
+    // The missing-subtype throw runs before the registration check, so without a guard a
+    // typo'd root key is diagnosed as a registered type that merely lacks a default.
+    const { errors } = await load(JSON.stringify({ bogus: { name: "P" } }));
+    expect(codes(errors)).toContain("ERR_UNKNOWN_TYPE");
+    expect(errors[0]!.message).toContain("not registered");
+  });
+
   it("a BARE object key still resolves to object.entity — the chartered default", async () => {
     // The control the refusal above must not swallow. `object` DECLARES a default, and
     // `fixtures/yaml-conformance/yaml-bare-default-subtypes` pins bare `object:` desugaring

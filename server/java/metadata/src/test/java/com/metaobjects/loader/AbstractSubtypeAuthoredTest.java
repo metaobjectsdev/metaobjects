@@ -25,6 +25,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * An authored {@code <type>.base} is refused with {@code ERR_ABSTRACT_SUBTYPE_AUTHORED}.
@@ -138,6 +139,54 @@ public class AbstractSubtypeAuthoredTest extends SharedRegistryTestBase {
                 "expected ERR_MISSING_SUBTYPE for bare '" + label + "'; got " + loader.getErrors()));
         assertTrue(err.getMessage(), err.getMessage().contains(label));
         assertTrue(err.getMessage(), err.getMessage().contains("has no default subType"));
+    }
+
+    // The ROOT door. Every parser states "one rule, both doors" in a comment, and only the
+    // CHILD door was ever tested — in any port. The root wrapper key is a separate code path
+    // with a separate throw.
+
+    private MetaDataLoader loadRoot(String json, String id) {
+        MetaDataLoader loader = createTestLoader(
+            "AbstractSubtypeAuthoredTest-" + id, Collections.emptyList());
+        loader.load(List.of(new InMemoryStringSource(json, id + ".json")));
+        return loader;
+    }
+
+    /**
+     * The root door THROWS rather than collecting — a document whose root wrapper key is
+     * unusable has no tree to build around the failure, unlike a child, which is recorded and
+     * skipped so the rest of the tree still loads. Asserting on {@code getErrors()} here would
+     * pass vacuously if the throw were ever replaced by a collected error.
+     */
+    private void assertRootCode(String json, String id, ErrorCode expected) {
+        try {
+            loadRoot(json, id);
+            fail("expected " + expected + " to be thrown from the root door");
+        } catch (MetaDataException e) {
+            assertEquals(e.getMessage(), expected, e.getCode().orElse(null));
+        }
+    }
+
+    @Test
+    public void theRootDoorRefusesAnAuthoredBase() {
+        assertRootCode("{ \"object.base\": { \"name\": \"P\" } }", "root-base",
+            ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED);
+    }
+
+    @Test
+    public void theRootDoorRefusesABareKeyWithNoDeclaredDefault() {
+        assertRootCode("{ \"field\": { \"name\": \"f\" } }", "root-bare",
+            ErrorCode.ERR_MISSING_SUBTYPE);
+    }
+
+    /**
+     * The missing-subtype throw runs before the registration check, so without a guard a
+     * typo'd root key is diagnosed as a registered type that merely lacks a default.
+     */
+    @Test
+    public void anUnregisteredBareRootTypeIsStillAnUnknownType() {
+        assertRootCode("{ \"bogus\": { \"name\": \"P\" } }", "root-bogus",
+            ErrorCode.ERR_UNKNOWN_TYPE);
     }
 
     /**

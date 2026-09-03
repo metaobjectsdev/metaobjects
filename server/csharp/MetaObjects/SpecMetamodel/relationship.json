@@ -4,7 +4,7 @@
     {
       "type": "relationship",
       "subType": "base",
-      "description": "Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly.",
+      "description": "Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly. A `relationship.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
       "rules": "@cardinality is an open string at the metamodel level ('one'/'many', and Java-canonical composite forms such as 'many-to-one'); @objectRef names the target entity. M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. @onDelete/@onUpdate carry referential actions (cascade/set-null/restrict/no-action).",
       "children": [
         { "type": "attr", "subType": "string", "name": "cardinality", "min": 0, "max": 1, "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')." },

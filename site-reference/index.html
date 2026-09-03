@@ -242,7 +242,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>object.base</code></td>
-<td>Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly.</td>
+<td>Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly. A <code>object.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/object.html#objectbase">types/object.md#objectbase</a></td>
 </tr>
 <tr>
@@ -297,7 +297,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 </tr>
 <tr>
 <td><code>relationship.base</code></td>
-<td>Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly.</td>
+<td>Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly. A <code>relationship.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</td>
 <td><a href="types/relationship.html#relationshipbase">types/relationship.md#relationshipbase</a></td>
 </tr>
 <tr>

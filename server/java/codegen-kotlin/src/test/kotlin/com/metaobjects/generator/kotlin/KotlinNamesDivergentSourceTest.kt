@@ -68,6 +68,10 @@ class KotlinNamesDivergentSourceTest {
 
     private fun assertRefused(fixture: String, id: String, otherName: String) {
         val loader = loadString(id, fixture)
+        // The header claims this; assert it rather than trust it. `loadString` COLLECTS
+        // child-level errors instead of throwing, so without this line a fixture that
+        // stopped loading would sail through every assertion below.
+        assertEquals(emptyList(), loader.getErrors().map { it.message }, "fixture must load cleanly")
         val child = loader.metaObjects.single { it.name.endsWith("::ChildWeird") }
 
         // Pin the reachability MECHANISM: both sources survive the child merge. If one

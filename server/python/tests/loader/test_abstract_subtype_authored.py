@@ -133,3 +133,27 @@ def test_a_bare_object_key_still_resolves_to_object_entity() -> None:
     assert not result.errors
     product = next(c for c in result.root.children() if c.name.endswith("Product"))
     assert product.sub_type == "entity"
+
+
+# ---------------------------------------------------------------------------
+# The ROOT door. Every parser states "one rule, both doors" in a comment, and only
+# the CHILD door was ever tested — in any port. The root wrapper key is a separate
+# code path with a separate error site.
+# ---------------------------------------------------------------------------
+
+
+def test_the_root_door_refuses_an_authored_base() -> None:
+    result = load_string(json.dumps({"object.base": {"name": "P"}}))
+    assert ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED in [e.code for e in result.errors]
+
+
+def test_the_root_door_refuses_a_bare_key_with_no_declared_default() -> None:
+    result = load_string(json.dumps({"field": {"name": "f"}}))
+    assert ErrorCode.ERR_MISSING_SUBTYPE in [e.code for e in result.errors]
+
+
+def test_an_unregistered_bare_root_type_is_still_an_unknown_TYPE() -> None:
+    """The missing-subtype check runs before the registration check, so without a guard
+    a typo'd root key is diagnosed as a registered type that merely lacks a default."""
+    result = load_string(json.dumps({"bogus": {"name": "P"}}))
+    assert ErrorCode.ERR_UNKNOWN_TYPE in [e.code for e in result.errors]

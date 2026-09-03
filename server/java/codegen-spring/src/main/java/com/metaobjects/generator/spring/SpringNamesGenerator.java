@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Generator: one {@code <Entity>Names.java} per object with a declared (or inherited)
@@ -145,11 +146,11 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
                 .map(MetaSource::getPhysicalName).distinct().sorted().toList();
         if (distinct.size() > 1) {
             // Sorted, so the message is identical in every port regardless of source order.
-            StringBuilder joined = new StringBuilder();
-            for (String n : distinct) {
-                if (joined.length() > 0) joined.append(", ");
-                joined.append('"').append(n).append('"');
-            }
+            // Same idiom as the Kotlin sibling implementing this check
+            // (KotlinGenUtil: distinct.joinToString(", ") { "\"$it\"" }).
+            String joined = distinct.stream()
+                    .map(n -> "\"" + n + "\"")
+                    .collect(Collectors.joining(", "));
             throw new GeneratorException(
                 obj.getName() + ": role=primary sources disagree on the object's physical "
                     + "name -- " + joined + ". Every consumer binds ONE name. Give them "

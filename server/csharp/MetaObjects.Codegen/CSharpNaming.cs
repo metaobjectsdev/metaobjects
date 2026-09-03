@@ -305,10 +305,22 @@ public static class CSharpNaming
     /// is that an object has ONE physical name, not that it declares one source.
     /// </para>
     /// </summary>
-    private static void RefusePrimarySourceDivergence(MetaObject obj)
+    private static void RefusePrimarySourceDivergence(MetaObject obj) =>
+        RefusePrimarySourceDivergence(obj, PrimarySourcesOf(obj));
+
+    /// <summary>All <c>@role: primary</c> sources of <paramref name="obj"/>, resolving.</summary>
+    private static List<MetaSource> PrimarySourcesOf(MetaObject obj) =>
+        obj.Sources().Where(s => s.Role == SOURCE_ROLE_PRIMARY).ToList();
+
+    /// <summary>
+    /// The refusal itself, over a primary list the caller already has. ONE implementation and
+    /// ONE copy of the message: a check written twice is a check that can disagree with itself,
+    /// which is the same defect this file exists to prevent one level down (a NAME resolved
+    /// twice). The message is a cross-port contract string — four other ports carry it verbatim.
+    /// </summary>
+    private static void RefusePrimarySourceDivergence(MetaObject obj, IReadOnlyList<MetaSource> primaries)
     {
-        var distinct = obj.Sources()
-            .Where(s => s.Role == SOURCE_ROLE_PRIMARY)
+        var distinct = primaries
             .Select(s => s.PhysicalName)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal)
@@ -391,7 +403,7 @@ public static class CSharpNaming
         // ADR-0039: Sources() is the RESOLVING accessor — an inherited primary source
         // must be seen, or an entity extending an abstract base with its own primary
         // source would wrongly read as unpersisted.
-        var primaries = obj.Sources().Where(s => s.Role == SOURCE_ROLE_PRIMARY).ToList();
+        var primaries = PrimarySourcesOf(obj);
         var source = primaries.FirstOrDefault();
         if (source is null) return null;
 
@@ -426,17 +438,7 @@ public static class CSharpNaming
         // invariant is that an object has ONE physical name, not that it declares one
         // source. A read-only primary beside a writable REPLICA on one object does not
         // reach here either: a replica is not role == primary.
-        var distinct = primaries.Select(s => s.PhysicalName).Distinct(StringComparer.Ordinal)
-            .OrderBy(n => n, StringComparer.Ordinal).ToList();
-        if (distinct.Count > 1)
-        {
-            // Sorted, so the message is identical in every port regardless of source order.
-            var joined = string.Join(", ", distinct.Select(n => $"\"{n}\""));
-            throw new InvalidOperationException(
-                $"{obj.Name}: role=primary sources disagree on the object's physical name — " +
-                $"{joined}. Every consumer binds ONE name. Give them matching physical names, " +
-                "or drop the extra role=primary declaration.");
-        }
+        RefusePrimarySourceDivergence(obj, primaries);
 
         return new ObjectNames
         {

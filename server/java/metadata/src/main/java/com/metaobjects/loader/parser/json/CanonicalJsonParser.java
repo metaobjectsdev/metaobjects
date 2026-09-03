@@ -485,8 +485,12 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // A `<type>.base` node may not be AUTHORED — the ROOT door (the child door is
             // in the child loop below). One rule, both doors: a check on one of two entry
             // points is a rule that is only half true.
-            if ((MetaData.SUBTYPE_BASE.equals(rootSplit.subType) && isAbstractAnchorFor(rootType))
-                    || (!rootSplit.explicitSubType && rootSplit.subType.isEmpty())) {
+            // Registration first: an UNREGISTERED type has no default either, so without this a
+            // typo'd root key is diagnosed as a registered type that merely lacks a default.
+            // The registration check below owns that case and phrases it correctly.
+            if (getTypeRegistry().hasType(rootType)
+                    && ((MetaData.SUBTYPE_BASE.equals(rootSplit.subType) && isAbstractAnchorFor(rootType))
+                        || (!rootSplit.explicitSubType && rootSplit.subType.isEmpty()))) {
                 throw rootSplit.explicitSubType
                     ? new MetaDataException(
                         abstractSubtypeMessage(rootType) + " [" + getFilename() + "]",
@@ -1372,22 +1376,6 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     }
 
     /**
-     * The same rule reached by the OTHER spelling: a BARE wrapper key ({@code {"field": …}},
-     * no fused subType) whose registry default resolves to the abstract anchor. The author did
-     * not type {@code .base}, so this is a MISSING subtype rather than an authored-anchor
-     * error — and {@code ERR_MISSING_SUBTYPE} is the shared code already chartered for it
-     * ("a node omits subType and the type has no default subType").
-     *
-     * <p>Python has always emitted it here; this port and TypeScript/C# did not, so a bare key
-     * was a SECOND way one document got two verdicts: TS and C# resolved it to the anchor and
-     * loaded, while this port resolved it identically and then failed to INSTANTIATE, with a
-     * message naming a missing constructor rather than the rule. Closing the authored spelling
-     * alone would have left the rule half true, reachable by dropping four characters.</p>
-     *
-     * <p>Scoped to "the default IS the anchor", never to bare keys as such: a type that
-     * declares a CONCRETE default keeps resolving through it.</p>
-     */
-    /**
      * Is {@code <type>.base} an ABSTRACT ANCHOR for this type — i.e. does the type register at
      * least one OTHER subtype for it to anchor?
      *
@@ -1404,6 +1392,22 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             .anyMatch(sub -> !MetaData.SUBTYPE_BASE.equals(sub));
     }
 
+    /**
+     * The same rule reached by the OTHER spelling: a BARE wrapper key ({@code {"field": …}},
+     * no fused subType) whose registry default resolves to the abstract anchor. The author did
+     * not type {@code .base}, so this is a MISSING subtype rather than an authored-anchor
+     * error — and {@code ERR_MISSING_SUBTYPE} is the shared code already chartered for it
+     * ("a node omits subType and the type has no default subType").
+     *
+     * <p>Python has always emitted it here; this port and TypeScript/C# did not, so a bare key
+     * was a SECOND way one document got two verdicts: TS and C# resolved it to the anchor and
+     * loaded, while this port resolved it identically and then failed to INSTANTIATE, with a
+     * message naming a missing constructor rather than the rule. Closing the authored spelling
+     * alone would have left the rule half true, reachable by dropping four characters.</p>
+     *
+     * <p>Scoped to "the default IS the anchor", never to bare keys as such: a type that
+     * declares a CONCRETE default keeps resolving through it.</p>
+     */
     private static String missingSubtypeMessage(String type) {
         return "type '" + type + "' has no default subType; write the full '"
             + type + ".<subType>'";

@@ -1535,7 +1535,7 @@ public class MetaDataRegistry {
         return typeDefinitions.keySet().stream()
             .filter(typeId -> type.equals(typeId.type()))
             .map(MetaDataTypeId::subType)
-            .collect(java.util.stream.Collectors.toSet());
+            .collect(Collectors.toSet());
     }
     
     // Deprecated loader registration methods removed

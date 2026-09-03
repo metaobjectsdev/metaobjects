@@ -71,8 +71,10 @@ def test_a_sourceless_entity_raises_instead_of_fabricating_a_table_name() -> Non
     message = str(exc.value)
     assert "Ledger" in message
     assert "source.rdb" in message
-    # It must never offer the fabricated name as if it were an answer.
-    assert 'table "Ledger"' not in message
+    # It must name what is MISSING, not offer the fabricated fallback as an answer. The
+    # pre-fix behaviour returned "Ledger" silently rather than raising at all, so the
+    # discriminating assertion is that a raise happens AND says what to declare.
+    assert "no primary source" in message
 
 
 def test_a_sourced_entity_resolves_its_declared_physical_name() -> None:

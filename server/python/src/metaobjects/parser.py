@@ -209,6 +209,14 @@ def _is_abstract_anchor_for(type_: str, registry: TypeRegistry) -> bool:
     return any(sub != SUBTYPE_BASE for sub in registry.all_sub_types_of(type_))
 
 
+def _missing_subtype_message(type_: str) -> str:
+    """The one message for a bare wrapper key whose type declares no default subType.
+
+    Shared by every door, so the attr route and the structural route cannot drift.
+    """
+    return f"type '{type_}' has no default subType; write the full '{type_}.<subType>'"
+
+
 def _abstract_subtype_message(type_: str) -> str:
     """The one message for an authored ``<type>.base``, shared by both doors.
 
@@ -264,9 +272,12 @@ def _build(
         # (registration order, falling back to ``base``), and the JVM guessed the same way
         # and then failed to instantiate the anchor. Four ports, three answers, one question.
         sub_type = registry.default_sub_type_of(type_) or ""
-    if not sub_type:
+    if not sub_type and registry.has_type(type_):
+        # has_type first: an UNREGISTERED type has no default either, so without this an
+        # unknown bare type is diagnosed as a registered one that merely lacks a default.
+        # The unknown-type check below owns that case and phrases it correctly.
         result.errors.append(MetaError(
-            f"type '{type_}' has no default subType; write the full '{type_}.<subType>'",
+            _missing_subtype_message(type_),
             ErrorCode.ERR_MISSING_SUBTYPE,
             source,
             envelope=_current_envelope(source, builder, yaml_position),
@@ -451,6 +462,22 @@ def _parse_attr_child(
     FR5b — *yaml_position* is the YAML line/col of the attr child's wrapper key
     (when YAML-loaded); stamped on the resulting attribute node's source.
     """
+    # A BARE `{"attr": …}` child resolves the declared default first, exactly as `_build`
+    # does for every other child type. Without this the attr route was the ONE door that
+    # skipped default resolution: ``sub_type`` arrived as "", ``registry.find(TYPE_ATTR, "")``
+    # returned None, and the node LOADED with no subtype at all — while TypeScript, C# and
+    # the JVM all refused the same document. One key, two verdicts, through the only branch
+    # that did not go through the shared path.
+    if not sub_type:
+        sub_type = registry.default_sub_type_of(TYPE_ATTR) or ""
+    if not sub_type:
+        result.errors.append(MetaError(
+            _missing_subtype_message(TYPE_ATTR),
+            ErrorCode.ERR_MISSING_SUBTYPE,
+            source,
+            envelope=_current_envelope(source, builder, yaml_position),
+        ))
+        return
     # An authored `attr.base` is refused like every other authored base subtype. The
     # polymorphic attr subtype is real and reached by an INLINE `@default` (whose value
     # type follows the owning field), where the loader picks it — an author never names it.

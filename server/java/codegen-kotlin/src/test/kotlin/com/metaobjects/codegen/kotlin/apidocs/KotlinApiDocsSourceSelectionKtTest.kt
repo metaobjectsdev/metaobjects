@@ -65,6 +65,9 @@ class KotlinApiDocsSourceSelectionKtTest {
     @BeforeTest
     fun setUp() {
         loader = loadString("apidocs-source-selection", fixture)
+        // Asserted, not assumed: `loadString` collects child-level errors rather than
+        // throwing, so a fixture that stopped loading would pass every assertion below.
+        assertEquals(emptyList(), loader.getErrors().map { it.message }, "fixture must load cleanly")
         outDir = Files.createTempDirectory("kapidocs-src-")
         val dir = outDir.toString()
         run(KotlinEntityGenerator(), mapOf("outputDir" to dir))

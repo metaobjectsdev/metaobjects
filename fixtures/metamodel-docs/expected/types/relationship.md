@@ -64,7 +64,7 @@ _No structural children._
 
 ### relationship.base
 
-Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly.
+Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly. A `relationship.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.
 
 **Owning provider:** metaobjects-core-types
 

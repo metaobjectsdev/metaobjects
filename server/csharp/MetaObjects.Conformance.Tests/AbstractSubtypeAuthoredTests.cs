@@ -63,6 +63,36 @@ public class AbstractSubtypeAuthoredTests
         Assert.Contains("has no default subType", err.Message);
     }
 
+    // The ROOT door. Every parser states "one rule, both doors" in a comment, and only the
+    // CHILD door was ever tested — in any port. The root wrapper key is a separate code path
+    // with a separate throw.
+
+    [Fact]
+    public void The_root_door_refuses_an_authored_base()
+    {
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(
+            """{ "object.base": { "name": "P" } }""", id: "root.json")]);
+        Assert.Contains(result.Errors, e => e.Code == ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED);
+    }
+
+    [Fact]
+    public void The_root_door_refuses_a_bare_key_with_no_declared_default()
+    {
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(
+            """{ "field": { "name": "f" } }""", id: "root.json")]);
+        Assert.Contains(result.Errors, e => e.Code == ErrorCode.ERR_MISSING_SUBTYPE);
+    }
+
+    [Fact]
+    public void An_unregistered_bare_root_type_is_still_an_unknown_TYPE()
+    {
+        // The missing-subtype throw runs before the registration check, so without a guard a
+        // typo'd root key is diagnosed as a registered type that merely lacks a default.
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(
+            """{ "bogus": { "name": "P" } }""", id: "root.json")]);
+        Assert.Contains(result.Errors, e => e.Code == ErrorCode.ERR_UNKNOWN_TYPE);
+    }
+
     [Fact]
     public void A_bare_object_key_still_resolves_to_object_entity()
     {

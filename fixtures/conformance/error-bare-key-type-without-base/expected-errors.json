@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_MISSING_SUBTYPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.accounts.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[2].identity"
+      }
+    }
+  ],
+  "warnings": []
+}
