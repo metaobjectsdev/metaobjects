@@ -64,6 +64,37 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
     static final String PROVIDER_FQN = PROVIDER_PACKAGE + "." + PROVIDER_SIMPLE_NAME;
 
     /**
+     * Refuse {@code type=class} without a concrete {@code flavor}, before a single file is
+     * written.
+     *
+     * <p>The combination is incoherent, and it FAILED — just unreadably. With no flavor
+     * {@link #createWriter} returns the legacy {@link JavaCodeWriter}, which emits
+     * interfaces: its {@code writeGetter}/{@code writeSetter} throw
+     * {@code UnsupportedOperationException} for any other type. So the run opened a class
+     * body it then never populated or closed, and what surfaced was the writer's close-time
+     * balance check — {@code "The indenting increment is not back to root level, invalid
+     * logic"} — naming an output file that has nothing wrong with it. Meanwhile
+     * {@link JavaCodeGenerator#getSupportedTypes()} advertises {@code class}, so
+     * {@code parseArgs} waved the run through.</p>
+     *
+     * <p>{@code class} IS supported — by the two concrete flavors, which is what they are
+     * for. This says so at the point of configuration, where the answer is actionable,
+     * rather than letting an emitter fail in the middle and blame a file.
+     * {@link JavaCodeGenerator} is never used standalone (this is its only subclass), so
+     * this covers every reachable path to the legacy writer.</p>
+     */
+    @Override
+    protected void parseArgs() {
+        super.parseArgs();
+        if (TYPE_CLASS.equals(getArg(ARG_TYPE)) && !isConcreteFlavor()) {
+            throw new GeneratorException(ARG_TYPE + "=" + TYPE_CLASS + " needs a concrete "
+                + ARG_FLAVOR + " (" + FLAVOR_POJO_AWARE + " or " + FLAVOR_VALUE_OBJECT + "): "
+                + "with no flavor this generator emits INTERFACES, and cannot write a class body. "
+                + "Either add the flavor argument, or use " + ARG_TYPE + "=" + TYPE_INTERFACE + ".");
+        }
+    }
+
+    /**
      * Runs the standard multi-file emission, then — for a concrete flavor — emits ONE
      * self-registering {@link ObjectClassBindingProvider} covering every generated object
      * (keyed on the package-folded metadata resolution key {@code pkg::Name}, which is what
