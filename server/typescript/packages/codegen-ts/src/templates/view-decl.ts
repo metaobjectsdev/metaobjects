@@ -14,7 +14,7 @@ import {
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { mapColumnType } from "../column-mapper.js";
 import { zodTypeFor } from "./field-meta.js";
-import { columnExpr, physicalNameExpr, type ObjectNames } from "../names.js";
+import { columnExpr, type ObjectNames } from "../names.js";
 
 export interface ViewDeclOpts {
   readonly dialect: "postgres" | "sqlite";
@@ -40,13 +40,17 @@ export interface ViewDeclOpts {
    */
   readonly pkFieldNames: ReadonlySet<string>;
   /**
-   * §A6 — the resolved names artifact for the object this view declaration belongs to,
+   * §A6 — the resolved names artifact supplying this declaration's COLUMN constants,
    * plus the ts-poet symbol reference (`imp()`'d import of `<Object>Names`), when the
-   * names generator is in the run. Only a caller whose `ObjectNames.name` genuinely
-   * names THIS view may supply it — true for a projection (its primary source IS the
-   * view), never derivable for a write-through entity's replica view (a SECONDARY
-   * source `resolveObjectNames` does not resolve at all), so that caller omits it and
-   * keeps the literal. Absent ⇒ every emission here stays exactly what it is today.
+   * names generator is in the run. Absent ⇒ every column stays a literal.
+   *
+   * Deliberately says nothing about the view's OWN physical name: the two answers come
+   * apart on a write-through entity, whose artifact holds the TABLE's name (its primary
+   * source) while this declaration binds the REPLICA view. Conflating them cost the
+   * write-through read model its column constants — it had to omit `names` entirely to
+   * stop `<Entity>Names.name` being emitted as the view name, and lost every
+   * `.fields.<f>.column` reference with it. The view's name is now the caller's to pass
+   * (see the `viewName` parameter), which is the only place that knows.
    */
   readonly names?: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined;
 }
@@ -109,7 +113,13 @@ function viewColumnLine(f: MetaField, opts: ViewDeclOpts): Code {
  */
 export function renderExistingViewDecl(
   fields: readonly MetaField[],
-  viewName: string,
+  /**
+   * The view's own physical name: a plain string is emitted as a literal, a `Code` is
+   * emitted verbatim (a caller whose names artifact genuinely names THIS view passes
+   * `physicalNameExpr(names, viewName)`). See `ViewDeclOpts.names` for why this is not
+   * derived from that artifact here.
+   */
+  viewName: string | Code,
   viewVar: string,
   opts: ViewDeclOpts,
 ): Code {
@@ -117,10 +127,7 @@ export function renderExistingViewDecl(
   const viewModule = opts.dialect === "postgres" ? "drizzle-orm/pg-core" : "drizzle-orm/sqlite-core";
   const viewSym = imp(`${viewFn}@${viewModule}`);
   const viewColumnLines = fields.map((f) => viewColumnLine(f, opts));
-  // A6 — reference the constant for the view's own physical name too. No lookup-miss
-  // case here (unlike a per-field column): when `opts.names` is present at all, its
-  // `ObjectNames.name` IS this view's physical name (see ViewDeclOpts.names).
-  const viewNameExpr = physicalNameExpr(opts.names, viewName);
+  const viewNameExpr = typeof viewName === "string" ? code`${JSON.stringify(viewName)}` : viewName;
   return code`
 // View declaration — Drizzle uses this for typed SELECT queries.
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle

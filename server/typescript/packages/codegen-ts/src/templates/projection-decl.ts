@@ -195,7 +195,7 @@ export function renderProjectionDecl(
   const pkFieldNames: ReadonlySet<string> = new Set(primaryIdentityFieldNames(projection));
   const sections: Code[] = [
     ...(includeViewDecl
-      ? [renderExistingViewDecl(allFields, viewName, `${camelName}View`, {
+      ? [renderExistingViewDecl(allFields, physicalNameExpr(names, viewName), `${camelName}View`, {
           dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames, names,
         })]
       : []),

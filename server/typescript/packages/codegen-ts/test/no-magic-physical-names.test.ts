@@ -44,24 +44,61 @@ const COL_FK = "zz_phys_col_owner";       // NOT snake("customerId")
 const ORDER_TABLE = "zz_phys_tbl_beta";   // NOT pluralize(snake("Order"))
 const ORDER_ID = "zz_phys_col_okey";
 const VIEW = "zz_phys_view_gamma";        // NOT "v_" + snake("CustomerSummary")
-const VO_COL = "zz_phys_col_street";      // a flattened value-object member
+const VO_COL = "zz_phys_col_street";
+const JSONB_COL = "zz_phys_col_blob";     // a single-jsonb-column value object
+const WT_TABLE = "zz_phys_tbl_delta";     // a write-through entity's table...
+const WT_VIEW = "zz_phys_view_delta";     // ...and its replica view
+const WT_ID = "zz_phys_col_acct";         // the write-through entity's key column
+
+/**
+ * How a physical name is expected to reach generated output today.
+ *
+ * A `knownLiteral` is PINNED, not exempted: the gate asserts the literal is still there,
+ * so the day a generator starts referencing a constant instead, the pin fails and says
+ * "promote it". A known gap that stops being a gap without anyone noticing is how a
+ * ledger rots.
+ */
+type Reach = "constant" | "knownLiteral";
 
 /** Every de-blinded token, with the constant a generator should have referenced. */
-const TOKENS: ReadonlyArray<{ readonly literal: string; readonly shouldUse: string }> = [
-  { literal: TABLE,       shouldUse: "CustomerNames.name" },
-  { literal: COL_ID,      shouldUse: "CustomerNames.fields.id.column" },
-  { literal: COL_EMAIL,   shouldUse: "CustomerNames.fields.email.column" },
-  { literal: ORDER_TABLE, shouldUse: "OrderNames.name" },
-  { literal: ORDER_ID,    shouldUse: "OrderNames.fields.id.column" },
-  { literal: COL_FK,      shouldUse: "OrderNames.fields.customerId.column" },
-  { literal: VIEW,        shouldUse: "CustomerSummaryNames.name" },
-  { literal: VO_COL,      shouldUse: "CustomerNames.fields.<flattened member>.column" },
+const TOKENS: ReadonlyArray<{
+  readonly literal: string;
+  readonly shouldUse: string;
+  readonly reach: Reach;
+  readonly why?: string;
+}> = [
+  { literal: TABLE,       shouldUse: "CustomerNames.name",                  reach: "constant" },
+  { literal: COL_ID,      shouldUse: "CustomerNames.fields.id.column",      reach: "constant" },
+  { literal: COL_EMAIL,   shouldUse: "CustomerNames.fields.email.column",   reach: "constant" },
+  { literal: ORDER_TABLE, shouldUse: "OrderNames.name",                     reach: "constant" },
+  { literal: ORDER_ID,    shouldUse: "OrderNames.fields.id.column",         reach: "constant" },
+  { literal: COL_FK,      shouldUse: "OrderNames.fields.customerId.column", reach: "constant" },
+  { literal: VIEW,        shouldUse: "CustomerSummaryNames.name",           reach: "constant" },
+  { literal: VO_COL,      shouldUse: "CustomerNames.fields.street.column",  reach: "constant" },
+  { literal: JSONB_COL,   shouldUse: "CustomerNames.fields.profile.column", reach: "constant" },
+  { literal: WT_TABLE,    shouldUse: "AccountNames.name",                   reach: "constant" },
+  { literal: WT_ID,       shouldUse: "AccountNames.fields.id.column",       reach: "constant" },
+  {
+    literal: WT_VIEW, shouldUse: "(no constant exists)", reach: "knownLiteral",
+    why:
+      "A write-through entity has TWO physical names; <Entity>Names carries the PRIMARY " +
+      "source's only (resolveObjectNames). The replica view name has no slot in the " +
+      "artifact's schema, so there is nothing for the read path to reference.",
+  },
 ];
 
 const MODEL = {
   "metadata.root": {
     package: "acme",
     children: [
+      {
+        // A value object: no source, so no `AddressNames` — its members reach output only
+        // through the owning entity's column.
+        "object.value": {
+          name: "Address",
+          children: [{ "field.string": { name: "road", "@column": "zz_phys_col_road" } }],
+        },
+      },
       {
         "object.entity": {
           name: "Customer",
@@ -70,6 +107,7 @@ const MODEL = {
             { "field.long":   { name: "id",    "@column": COL_ID } },
             { "field.string": { name: "email", "@column": COL_EMAIL, "@required": true } },
             { "field.string": { name: "street", "@column": VO_COL } },
+            { "field.object": { name: "profile", "@column": JSONB_COL, "@objectRef": "Address", "@storage": "jsonb" } },
             { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
           ],
         },
@@ -102,6 +140,19 @@ const MODEL = {
                 name: "customer", "@cardinality": "one", "@objectRef": "Customer",
               },
             },
+          ],
+        },
+      },
+      {
+        // Write-through: writes go to the table, reads to the replica view — TWO physical
+        // names on one object, only one of which the names artifact can hold today.
+        "object.entity": {
+          name: "Account",
+          children: [
+            { "source.rdb": { "@table": WT_TABLE, "@role": "primary" } },
+            { "source.rdb": { "@kind": "view", "@view": WT_VIEW, "@role": "replica" } },
+            { "field.long": { name: "id", "@column": WT_ID } },
+            { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
@@ -162,7 +213,10 @@ describe("no magic physical names in generated output", () => {
     // pass vacuously (nothing to find the literal in, nothing to compare against).
     expect(names.length).toBeGreaterThan(0);
     const all = names.map(([, c]) => c).join("\n");
-    for (const { literal } of TOKENS) expect(all).toContain(literal);
+    const missing = TOKENS
+      .filter((t) => t.reach === "constant" && !all.includes(t.literal))
+      .map((t) => `${t.literal} appears in no names artifact — ${t.shouldUse} cannot exist`);
+    expect(missing.sort()).toEqual([]);
   });
 
   it("references the constant everywhere else — no generated file spells one literally", async () => {
@@ -170,7 +224,8 @@ describe("no magic physical names in generated output", () => {
     const offenders: string[] = [];
     for (const [path, content] of Object.entries(tree)) {
       if (isNamesArtifact(path)) continue;
-      for (const { literal, shouldUse } of TOKENS) {
+      for (const { literal, shouldUse, reach } of TOKENS) {
+        if (reach !== "constant") continue;
         if (content.includes(literal)) {
           offenders.push(`${path}: hard-codes "${literal}" — should reference ${shouldUse}`);
         }
@@ -193,8 +248,24 @@ describe("no magic physical names in generated output", () => {
     const consumers = Object.entries(tree).filter(([p]) => !isNamesArtifact(p));
     const body = consumers.map(([, c]) => c).join("\n");
     const unreferenced = TOKENS
-      .filter(({ shouldUse }) => !shouldUse.includes("<") && !body.includes(shouldUse))
+      .filter((t) => t.reach === "constant" && !body.includes(t.shouldUse))
       .map(({ literal, shouldUse }) => `${shouldUse} (for "${literal}") is referenced by no generated file`);
     expect(unreferenced.sort()).toEqual([]);
+  });
+
+  it("pins each known-literal category, so fixing one fails this test rather than passing silently", async () => {
+    // A knownLiteral row is a claim about TODAY, and a claim nothing re-checks is how a
+    // "known gaps" list ends up describing a codebase that moved on. Each row asserts the
+    // literal is STILL emitted: close the gap and this test tells you to promote the row
+    // to "constant" rather than letting the ledger quietly go stale.
+    const tree = await generate();
+    const body = Object.entries(tree)
+      .filter(([p]) => !isNamesArtifact(p))
+      .map(([, c]) => c)
+      .join("\n");
+    const healed = TOKENS
+      .filter((t) => t.reach === "knownLiteral" && !body.includes(t.literal))
+      .map((t) => `"${t.literal}" is no longer emitted literally — promote its row to "constant". Was: ${t.why}`);
+    expect(healed.sort()).toEqual([]);
   });
 });

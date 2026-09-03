@@ -152,6 +152,13 @@ export function renderEntityFile(
       // PK fields type non-null in the replica-view decl + read schema even
       // without @required (a PK is never NULL; see ViewDeclOpts.pkFieldNames).
       pkFieldNames: new Set(primaryIdentityFieldNames(entity)) as ReadonlySet<string>,
+      // §A6 — the entity's names artifact supplies this view's COLUMN constants. A
+      // replica view exposes the entity's own fields, so `<Entity>Names.fields.<f>.column`
+      // is the same physical name the table side binds; a derived field the artifact
+      // does not carry falls back to the literal via `columnExpr`. The view's own NAME
+      // is passed separately below and stays a literal — the artifact holds the primary
+      // (table) source's name, not this one.
+      names: namesRef(entity, ctx),
     };
     const z = imp("z@zod");
     const docs = renderDocsFor(entity);
