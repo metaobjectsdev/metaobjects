@@ -129,14 +129,18 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
     @Test
     public void emitsStaticFinalConstantsForTableAndColumns() throws IOException {
         String src = emitFor("Author");
-        assertTrue(src, src.contains("public final class AuthorNames {"));
+        // `abstract`, not `final`: a names class is now a base others EXTEND rather than
+        // restate. Abstract keeps the "no instances" guarantee final + a private
+        // constructor gave; the constructor is protected so a subclass's implicit super()
+        // call compiles.
+        assertTrue(src, src.contains("public abstract class AuthorNames {"));
         assertTrue(src, src.contains("public static final String KIND = \"table\";"));
         assertTrue(src, src.contains("public static final String NAME = \"authors\";"));
         assertTrue(src, src.contains("public static final boolean READ_ONLY = false;"));
         assertTrue(src, src.contains("public static final String CREATED_AT_FIELD = \"createdAt\";"));
         // Java's default strategy is `literal`, matching ObjectManagerDB -- NOT snake_case.
         assertTrue(src, src.contains("public static final String CREATED_AT_COLUMN = \"createdAt\";"));
-        assertTrue(src, src.contains("private AuthorNames() {}"));
+        assertTrue(src, src.contains("protected AuthorNames() {}"));
     }
 
     @Test
@@ -223,8 +227,25 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
             }
             """;
         String src = emit(model, "acme/ConcreteThingNames.java", Map.of());
-        assertTrue(src, src.contains("public static final String EXTERNAL_REF_FIELD = \"externalRef\";"));
-        assertTrue(src, src.contains("public static final String EXTERNAL_REF_COLUMN = \"ext_ref\";"));
+        // The constants now live on the BASE's class, which the child extends rather than
+        // restates — so the child must NOT respell them, and the inherited column must
+        // still be reachable. Both halves are asserted: a positive-only check would pass
+        // for a generator emitting the extends AND the restated literal.
+        assertTrue(src, src.contains("public abstract class ConcreteThingNames extends BaseThingNames {"));
+        assertFalse(src, src.contains("EXTERNAL_REF_COLUMN = \"ext_ref\""));
+        // COLUMNS_BY_FIELD stays COMPLETE — it is the lookup surface — and reaches the
+        // inherited column through the base's own constant rather than repeating "ext_ref".
+        assertTrue(src, src.contains("Map.entry(\"externalRef\", EXTERNAL_REF_COLUMN)"));
+
+        // The base gets a class of its own now — reached by walking `extends` UPWARD from
+        // ConcreteThing, which is what keeps #248 intact (see anObjectWithNoPrimarySourceEmitsNothing).
+        String base = emit(model, "acme/BaseThingNames.java", Map.of());
+        assertTrue(base, base.contains("public static final String EXTERNAL_REF_FIELD = \"externalRef\";"));
+        assertTrue(base, base.contains("public static final String EXTERNAL_REF_COLUMN = \"ext_ref\";"));
+        // The base declares no source: a NAME here would be a physical name invented for an
+        // object that declares none — the phantom-table failure #248 exists to prevent.
+        assertFalse(base, base.contains("public static final String NAME ="));
+        assertFalse(base, base.contains("public static final String KIND ="));
     }
 
     @Test

@@ -1,12 +1,15 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.generator.GeneratorException
+import com.tschuchort.compiletesting.KotlinCompilation
+import com.tschuchort.compiletesting.SourceFile
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -35,6 +38,7 @@ import kotlin.test.assertTrue
  * NOT carry the distinguishing fields these behaviours need — every model here is
  * authored inline, per task-5-brief's own correction.
  */
+@OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class KotlinNamesGeneratorTest {
 
     // Author carries the two distinguishing fields:
@@ -162,6 +166,13 @@ class KotlinNamesGeneratorTest {
         // includeParentData=true) must see a field AND @column declared on an abstract
         // parent -- an own-only read would silently drop it, so the constant would
         // disagree with the column Task 6's Exposed table binding actually names.
+        //
+        // The inherited constant now reaches the child BY REFERENCE to the base's object.
+        // Kotlin has no static inheritance — an `object` cannot extend another — so the
+        // reference is what "extend the parent, do not redo the names" looks like here:
+        // the literal `ext_ref` is spelled once, on BaseThingNames. Both halves are
+        // asserted, because a positive-only check would pass for a generator emitting the
+        // reference AND the restated literal.
         val model = """{
           "metadata.root": { "package": "acme", "children": [
             { "object.entity": { "name": "BaseThing", "abstract": true, "children": [
@@ -174,9 +185,23 @@ class KotlinNamesGeneratorTest {
             ] } }
           ] }
         }""".trimIndent()
-        val src = emit(model).getValue("acme/ConcreteThingNames.kt")
-        assertTrue("const val EXTERNAL_REF_FIELD: String = \"externalRef\"" in src, src)
-        assertTrue("const val EXTERNAL_REF_COLUMN: String = \"ext_ref\"" in src, src)
+        val files = emit(model)
+        val src = files.getValue("acme/ConcreteThingNames.kt")
+        assertTrue("const val EXTERNAL_REF_FIELD: String = BaseThingNames.EXTERNAL_REF_FIELD" in src, src)
+        assertTrue("const val EXTERNAL_REF_COLUMN: String = BaseThingNames.EXTERNAL_REF_COLUMN" in src, src)
+        assertFalse("\"ext_ref\"" in src, src)
+        // COLUMNS_BY_FIELD stays COMPLETE — it is the lookup surface, and a miss on an
+        // inherited field is the fallback-to-literal this artifact removes.
+        assertTrue("\"externalRef\" to EXTERNAL_REF_COLUMN" in src, src)
+
+        // The base gets an object of its own now — reached by walking `extends` UPWARD from
+        // ConcreteThing, which is what keeps #248 intact (see the test below).
+        val base = files.getValue("acme/BaseThingNames.kt")
+        assertTrue("const val EXTERNAL_REF_COLUMN: String = \"ext_ref\"" in base, base)
+        // It declares no source: a NAME here would be a physical name invented for an object
+        // that declares none — the phantom-table failure #248 exists to prevent.
+        assertFalse("const val NAME" in base, base)
+        assertFalse("const val KIND" in base, base)
     }
 
     @Test fun `an object with no primary source emits nothing`() {
@@ -252,4 +277,72 @@ class KotlinNamesGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    // -------------------------------------------------------------------------
+    // "Those names objects should extend from the parent, not just redo all the names."
+    // -------------------------------------------------------------------------
+    @Test fun `a TPH subtype references the base's shared table name rather than restating it`() {
+        val model = """{
+          "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "Auth", "@discriminator": "kind", "children": [
+                { "source.rdb":   { "@table": "zz_auths" } },
+                { "field.long":   { "name": "id" } },
+                { "field.enum":   { "name": "kind", "@values": ["Copay"] } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay",
+              "children": [
+                { "field.long": { "name": "copayAmount", "@column": "zz_copay_cents" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val src = emit(model).getValue("acme/CopayAuthNames.kt")
+        // The subtype INHERITS its base's source, so the shared table name comes from the
+        // base object rather than being restated here.
+        assertTrue("const val NAME: String = AuthNames.NAME" in src, src)
+        assertTrue("const val ID_COLUMN: String = AuthNames.ID_COLUMN" in src, src)
+        assertTrue("const val COPAY_AMOUNT_COLUMN: String = \"zz_copay_cents\"" in src, src)
+        // The whole point: the subtype used to restate the base's table name and columns.
+        assertFalse("zz_auths" in src, src)
+    }
+
+    @Test fun `the emitted objects compile, so a cross-object const reference really resolves`() {
+        // The teeth. Every assertion above is about TEXT; only a compiler proves that
+        // `CopayAuthNames.NAME`, declared as a reference to `AuthNames.NAME`, is a legal
+        // `const val` — Kotlin requires a compile-time constant initialiser, and a
+        // cross-object reference qualifies only because the target is itself `const`.
+        val model = """{
+          "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "BaseThing", "abstract": true, "children": [
+                { "field.string": { "name": "externalRef", "@column": "ext_ref" } }
+            ] } },
+            { "object.entity": { "name": "ConcreteThing", "extends": "BaseThing", "children": [
+                { "source.rdb": { "@table": "concrete_things" } },
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val files = emit(model)
+        val probe = """
+            package acme
+            object ZzProbe {
+                // An INHERITED constant, reached through the reference the generator emitted.
+                const val A: String = ConcreteThingNames.EXTERNAL_REF_COLUMN
+                val count: Int = ConcreteThingNames.COLUMNS_BY_FIELD.size
+            }
+        """.trimIndent()
+        val sources = files.map { (path, text) ->
+            SourceFile.kotlin(path.substringAfterLast('/'), text)
+        } + SourceFile.kotlin("ZzProbe.kt", probe)
+
+        val result = KotlinCompilation().apply {
+            this.sources = sources
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
+            "generated names objects failed to compile:\n${result.messages}")
+    }
+
 }

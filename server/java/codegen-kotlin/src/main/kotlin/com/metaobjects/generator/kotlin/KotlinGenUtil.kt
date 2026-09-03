@@ -214,13 +214,90 @@ public object KotlinGenUtil {
      * [KotlinNamesGenerator] emits as `<Entity>Names`, and what Task 6's Exposed table
      * binding is meant to consume instead of re-deriving the same names independently.
      */
+    /**
+     * The resolved physical-name shape for an object.
+     *
+     * [fields] is every field, INHERITED INCLUDED: it is the lookup surface, and a miss on
+     * an inherited field is exactly the fallback-to-literal this artifact removes.
+     * [ownFields] is what the object DECLARES — inherited constants live on the super's
+     * object and are re-exported by REFERENCE, so a subtype states each physical name once
+     * instead of restating its parent's. That is ADR-0039's ONE sanctioned own-accessor
+     * use, in the exact form the ADR names it.
+     *
+     * [kind]/[name]/[schema] are null and [readOnly] false on a FRAGMENT — an abstract base
+     * with no source of its own, which contributes columns to its children and has no
+     * physical name to carry.
+     *
+     * [inheritsSource] is true when the primary source is the SUPER'S rather than declared
+     * here (a TPH subtype sharing its base's single table). Reference identity of the
+     * resolved source NODE, never an equality test on the resolved strings: a divergence
+     * guard is precisely what this codebase forbids at a substitution site, and the
+     * question being asked is structural.
+     */
     data class KotlinObjectNames(
-        val kind: String,
-        val name: String,
+        val kind: String?,
+        val name: String?,
         val schema: String?,
         val readOnly: Boolean,
         val fields: Map<String, KotlinFieldNames>,
+        val ownFields: Map<String, KotlinFieldNames> = emptyMap(),
+        val superObject: MetaObject? = null,
+        val inheritsSource: Boolean = false,
     )
+
+    /**
+     * The nearest ancestor of [obj] carrying a names object of its own, or null.
+     *
+     * Walks PAST an ancestor with nothing to contribute — an abstract marker with no fields
+     * and no source emits no object, so there is nothing to reference and the search
+     * continues upward rather than stopping at a name that does not exist.
+     */
+    fun namesArtifactSuperOf(obj: MetaObject): MetaObject? {
+        // getSuperData(), not the `superData` property: Kotlin resolves the bare name to
+        // MetaData's PRIVATE field rather than the public generic getter.
+        var cur: MetaData? = obj.getSuperData<MetaData>()
+        while (cur != null) {
+            if (cur is MetaObject &&
+                (cur.getMetaFields(false).isNotEmpty() || primaryRdbSource(cur) != null)
+            ) return cur
+            cur = cur.getSuperData<MetaData>()
+        }
+        return null
+    }
+
+    /**
+     * The names FRAGMENT for an object that a sourced object extends but which declares no
+     * source of its own — the `BaseEntity` pattern: shared fields, no table.
+     *
+     * Separate from [resolveObjectNames] on purpose, and the separation is the #248 rule
+     * intact rather than weakened. "Has a primary source" still decides whether an object is
+     * a database participant, so an `object.value` carrying fields resolves to nothing here
+     * as it always has. A fragment is emitted only for an object REACHED from a participant
+     * by walking `extends` upward — the only context in which its fields are columns at all.
+     * It carries no kind/name/schema/readOnly, because it has no physical name and must
+     * never acquire one.
+     *
+     * Returns null when the object declares no fields of its own: an abstract marker has
+     * nothing to reference, and emitting an empty object for it would put a name in the
+     * package that says nothing.
+     */
+    fun resolveSuperFragmentNames(
+        obj: MetaObject,
+        strategy: String = DEFAULT_COLUMN_NAMING,
+    ): KotlinObjectNames? {
+        val own = obj.getMetaFields(false)
+        if (own.isEmpty()) return null
+        return KotlinObjectNames(
+            kind = null, name = null, schema = null, readOnly = false,
+            fields = obj.metaFields.associate { f ->
+                f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
+            },
+            ownFields = own.associate { f ->
+                f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
+            },
+            superObject = namesArtifactSuperOf(obj),
+        )
+    }
 
     /**
      * §A2/§A3 — the ONE place a data name is resolved for a generator run. Both
@@ -247,6 +324,11 @@ public object KotlinGenUtil {
         val fields = obj.metaFields.associate { f ->
             f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
         }
+        // ADR-0039's sanctioned own-accessor use: what this object DECLARES.
+        val ownFields = obj.getMetaFields(false).associate { f ->
+            f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
+        }
+        val superObject = namesArtifactSuperOf(obj)
 
         val name = source.physicalName
 
@@ -279,6 +361,12 @@ public object KotlinGenUtil {
             schema = source.schema,
             readOnly = source.isReadOnly,
             fields = fields,
+            ownFields = ownFields,
+            superObject = superObject,
+            // Reference identity of the resolved source NODE, not equality of the resolved
+            // strings: the question is structural — did this object declare a source, or is
+            // it using its parent's?
+            inheritsSource = superObject != null && primaryRdbSource(superObject) === source,
         )
     }
 
