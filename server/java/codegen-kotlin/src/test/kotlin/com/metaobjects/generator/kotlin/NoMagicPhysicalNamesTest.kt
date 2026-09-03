@@ -28,6 +28,15 @@ import kotlin.test.assertTrue
  * is PINNED, not exempted: the gate asserts the literal is still there, so the day a
  * generator starts referencing the constant instead, this test fails and says "promote
  * it". A known gap that stops being a gap without anyone noticing is how a ledger rots.
+ *
+ * ONE category is out of this method's reach, and it is worth naming rather than leaving a
+ * reader to assume otherwise: a RELATIONSHIP-SYNTHESIZED foreign-key column — the column a
+ * parent-side `relationship.composition @cardinality: many` contributes to the child's
+ * table when the child declares no field for it. That name is DERIVED (the relationship's
+ * short name + "Id", through the naming strategy), never declared, so there is no physical
+ * name to de-blind and nothing for a generator to restate. It is a different defect class —
+ * a name computed twice by two derivations — and `<Entity>Names` has no constant for it
+ * because it belongs to no field of any object.
  */
 class NoMagicPhysicalNamesTest {
 

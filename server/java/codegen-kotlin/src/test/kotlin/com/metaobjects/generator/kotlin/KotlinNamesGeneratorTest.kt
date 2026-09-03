@@ -345,4 +345,31 @@ class KotlinNamesGeneratorTest {
             "generated names objects failed to compile:\n${result.messages}")
     }
 
+
+    @Test fun `a child field colliding with an INHERITED one is refused, naming the model`() {
+        // The guard has to see the WHOLE field set, not just what this object declares. Once
+        // a child stopped restating its inherited constants, an own-only check could no
+        // longer see a collision that spans the `extends` boundary — and here both constants
+        // land in the SAME object (the child re-exports the inherited one under its own
+        // name), so the emitted file would not even compile, blaming a generated file for a
+        // model problem.
+        val model = """{
+          "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "BaseRow", "abstract": true, "children": [
+                { "field.timestamp": { "name": "createdAt" } }
+            ] } },
+            { "object.entity": { "name": "Row", "extends": "BaseRow", "children": [
+                { "source.rdb": { "@table": "rows" } },
+                { "field.long":      { "name": "id" } },
+                { "field.timestamp": { "name": "created_at" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val e = assertFailsWith<GeneratorException> { emit(model) }
+        assertTrue("createdAt" in e.message!!, e.message!!)
+        assertTrue("created_at" in e.message!!, e.message!!)
+        assertTrue("CREATED_AT" in e.message!!, e.message!!)
+    }
+
 }

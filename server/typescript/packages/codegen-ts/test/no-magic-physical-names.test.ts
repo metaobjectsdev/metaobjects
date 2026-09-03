@@ -21,6 +21,15 @@
 // This is the same de-blinding that unmasked the `@column` defects in the persistence
 // corpus (0.24.5): a fixture whose physical names ARE the derivable ones cannot tell a
 // reference from a re-derivation.
+//
+// ONE category is out of this method's reach, and it is worth naming rather than leaving a
+// reader to assume otherwise: a RELATIONSHIP-SYNTHESIZED foreign-key column — the column a
+// parent-side `relationship.composition @cardinality: many` contributes to the child's
+// table when the child declares no field for it. That name is DERIVED (the relationship's
+// short name + "Id", through the naming strategy), never declared, so there is no physical
+// name to de-blind and nothing for a generator to restate. It is a different defect class —
+// a name computed twice by two derivations — and `<Entity>Names` has no constant for it
+// because it belongs to no field of any object.
 
 import { describe, it, expect } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";

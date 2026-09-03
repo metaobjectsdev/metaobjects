@@ -257,9 +257,16 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // members. javac would refuse to compile the file, but the error would name a
         // generated .java and read as a codegen bug rather than a model one. Fail here,
         // naming the entity and both offending field names instead.
+        //
+        // Checked over the WHOLE field set, never just what this class declares: once a
+        // child stopped restating its inherited constants, an own-only check could no
+        // longer see a collision that spans the `extends` boundary — and javac would not
+        // catch it either, because a subclass field HIDES the inherited one rather than
+        // clashing with it. The file would compile while COLUMNS_BY_FIELD mapped the
+        // inherited field name to the child's column.
         Map<String, List<String>> fieldsByMember = new LinkedHashMap<>();
-        for (String[] row : rows) {
-            fieldsByMember.computeIfAbsent(row[0], k -> new ArrayList<>()).add(row[1]);
+        for (FieldNames f : names.fields().values()) {
+            fieldsByMember.computeIfAbsent(namesMember(f.name()), k -> new ArrayList<>()).add(f.name());
         }
         for (Map.Entry<String, List<String>> e : fieldsByMember.entrySet()) {
             if (e.getValue().size() > 1) {

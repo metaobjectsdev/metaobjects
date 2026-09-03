@@ -249,6 +249,39 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void aChildFieldCollidingWithAnInheritedOneIsRefusedNamingTheModel() throws IOException {
+        // The guard has to see the WHOLE field set, not just what this class declares. Once a
+        // child stopped restating its inherited constants, an own-only check could no longer
+        // see a collision that spans the `extends` boundary — and javac would not catch it
+        // either: a subclass field HIDES the inherited one rather than clashing with it, so
+        // the file compiles while COLUMNS_BY_FIELD maps the INHERITED field name to the
+        // CHILD's column.
+        String model = """
+            {
+              "metadata.root": { "package": "acme", "children": [
+                { "object.entity": { "name": "BaseRow", "abstract": true, "children": [
+                    { "field.timestamp": { "name": "createdAt" } }
+                ] } },
+                { "object.entity": { "name": "Row", "extends": "BaseRow", "children": [
+                    { "source.rdb": { "@table": "rows" } },
+                    { "field.long":      { "name": "id" } },
+                    { "field.timestamp": { "name": "created_at" } },
+                    { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }
+            """;
+        try {
+            emit(model, "acme/RowNames.java", Map.of());
+            fail("expected a GeneratorException: createdAt and created_at both yield CREATED_AT");
+        } catch (GeneratorException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("createdAt"));
+            assertTrue(e.getMessage(), e.getMessage().contains("created_at"));
+            assertTrue(e.getMessage(), e.getMessage().contains("CREATED_AT"));
+        }
+    }
+
+    @Test
     public void anObjectWithNoPrimarySourceEmitsNothing() throws IOException {
         // #248 -- participation derives from a declared/inherited primary source,
         // never from the object subtype. AddressValue (object.value) carries no

@@ -320,6 +320,27 @@ ones that could drift. Both generators must be given the **same**
 `columnNaming` argument, or the table and the constants file disagree with
 each other about a column's name.
 
+Wire `KotlinNamesGenerator` into the same run and you can leave `useNames` unset: the
+Maven plugin derives it from the generator set, so a suite containing the names generator
+turns the substitution on and one without it keeps the literals (which is what makes the
+output compile either way). An explicit `<useNames>` still wins.
+
+**It follows `extends`, so a constant you do not find in an object is in its parent's.**
+Kotlin has no static inheritance — an `object` cannot extend another — so an artifact whose
+object extends another re-exports the inherited constants by REFERENCE:
+
+```kotlin
+object CopayAuthNames {
+    const val NAME: String = AuthNames.NAME            // the SHARED table, spelled once
+    const val ID_COLUMN: String = AuthNames.ID_COLUMN
+    const val COPAY_AMOUNT_COLUMN: String = "copay_cents"
+    // COLUMNS_BY_FIELD stays complete — inherited entries included.
+}
+```
+
+An abstract base a persisted entity extends gets an object of its own carrying the columns
+it declares and **no `NAME`** — it has no table, and must never acquire one.
+
 ## FR-004 — render
 
 `metadata-ktx` wraps the Java `Renderer` in an idiomatic Kotlin builder.

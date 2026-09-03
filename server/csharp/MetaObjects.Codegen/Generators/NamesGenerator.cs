@@ -96,10 +96,19 @@ public sealed class NamesGenerator : PerEntityGenerator
         // Two fields whose Pascal forms collide would emit duplicate const members.
         // C# would refuse to compile it, but the error would name a generated file and
         // read as a codegen bug rather than a model one. Fail here, naming the model.
-        var dupe = fields.GroupBy(t => t.Member).FirstOrDefault(g => g.Count() > 1);
+        //
+        // Checked over the WHOLE field set, never just what this class declares: once a
+        // child stopped restating its inherited constants, an own-only check could no
+        // longer see a collision that spans the inheritance boundary — and the compiler
+        // would not catch it either, because a derived `const` HIDES the base's rather than
+        // clashing with it. The file would compile while ColumnsByField mapped the
+        // inherited field name to the child's column.
+        var dupe = names.Fields.Values
+            .Select(f => (Member: CSharpNaming.Pascal(f.Name), f.Name))
+            .GroupBy(t => t.Member).FirstOrDefault(g => g.Count() > 1);
         if (dupe is not null)
             throw new InvalidOperationException(
-                $"{entity.Name}: fields {string.Join(", ", dupe.Select(d => d.Name))} all yield the " +
+                $"{entity.Name}: fields {string.Join(", ", dupe.Select(d => d.Name).OrderBy(n => n, StringComparer.Ordinal))} all yield the " +
                 $"constant member \"{dupe.Key}\". Rename one, or give it an explicit @column.");
 
         var sb = new StringBuilder();

@@ -324,9 +324,32 @@ public final class AuthorNames {
         Map.entry("name", NAME_COLUMN)
     );
 
-    private AuthorNames() {}
+    protected AuthorNames() {}
 }
 ```
+
+**It follows `extends`, so a constant you do not find on a class is on its
+base.** The class is `abstract` rather than `final` precisely so it can be
+inherited (the constructor is `protected` for the same reason — a subclass's
+implicit `super()` has to reach it), and an object that extends another
+produces a class that extends the other's:
+
+```java
+public abstract class CopayAuthNames extends AuthNames {
+    public static final String COPAY_AMOUNT_FIELD = "copayAmount";
+    public static final String COPAY_AMOUNT_COLUMN = "copay_cents";
+    // KIND / NAME / READ_ONLY / ID_COLUMN / … are the base's. Java inherits static
+    // members, so CopayAuthNames.NAME and CopayAuthNames.ID_COLUMN both resolve.
+}
+```
+
+Two forms, and which one you get is structural. An object with its OWN source
+declares its own `KIND`/`NAME`/`SCHEMA`/`READ_ONLY`; one that INHERITS its
+source — a TPH subtype sharing its base's single table — takes all of them from
+the base. An abstract base a persisted entity extends gets a class of its own
+carrying the columns it declares and **no `NAME`** — it has no table, and must
+never acquire one. `COLUMNS_BY_FIELD` stays complete on every class, inherited
+entries included.
 
 **Prefer a typed handle where one exists.** If the ORM gives you a
 type-checked object for the same thing, use that. Replacing it with a string

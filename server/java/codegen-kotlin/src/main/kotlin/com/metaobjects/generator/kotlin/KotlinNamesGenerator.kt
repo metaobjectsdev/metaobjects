@@ -117,11 +117,22 @@ open class KotlinNamesGenerator :
         // Two fields whose SCREAMING_SNAKE forms collide would emit duplicate const
         // members. Kotlin would refuse to compile it, but the error would name a
         // generated file and read as a codegen bug. Fail here, naming the model instead.
-        rows.groupBy { it.first }.filterValues { it.size > 1 }.forEach { (member, dupes) ->
-            throw GeneratorException(
-                "${entity.name}: fields ${dupes.joinToString { it.second }} all yield the " +
-                    "constant member '$member'. Rename one, or give it an explicit @column.")
-        }
+        //
+        // Checked over the WHOLE field set, never just what this object declares: once a
+        // child stopped restating its inherited constants, an own-only check could no
+        // longer see a collision that spans the `extends` boundary — and here the two
+        // constants land in the SAME object (the child re-exports the inherited one under
+        // its own name), so the emitted file would not even compile, blaming a generated
+        // file for a model problem.
+        names.fields.values
+            .map { KotlinNaming.namesMember(it.name) to it.name }
+            .groupBy({ it.first }, { it.second })
+            .filterValues { it.size > 1 }
+            .forEach { (member, dupes) ->
+                throw GeneratorException(
+                    "${entity.name}: fields ${dupes.sorted().joinToString()} all yield the " +
+                        "constant member '$member'. Rename one, or give it an explicit @column.")
+            }
 
         val out = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")

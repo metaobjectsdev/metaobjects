@@ -20,6 +20,13 @@ noticing is how a ledger rots.
 Python's answer differs from the other ports' and the difference is the POINT of
 running the gate here rather than reasoning about it: see
 ``test_no_generated_file_outside_the_names_module_spells_a_physical_name``.
+
+ONE category is out of this method's reach in the ports that DO bind an ORM, and it is
+worth naming rather than leaving a reader to assume otherwise: a RELATIONSHIP-SYNTHESIZED
+foreign-key column — the column a parent-side ``relationship.composition @cardinality:
+many`` contributes to the child's table when the child declares no field for it. That name
+is DERIVED (the relationship's short name + "Id", through the naming strategy), never
+declared, so there is no physical name to de-blind and nothing for a generator to restate.
 """
 from __future__ import annotations
 

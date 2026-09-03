@@ -154,6 +154,27 @@ type-checked against the `DbContext` model, and swapping it for
 Reach for the constant instead in raw SQL (`FromSqlRaw`/`FromSqlInterpolated`),
 a migration script, a log line, or an external system's column mapping.
 
+**It follows `extends`, so a constant you do not find on a class is on its base.**
+`<Entity>Names` is a `public abstract class` — abstract rather than static precisely so it
+can be inherited — and an object that extends another produces a class that extends the
+other's:
+
+```csharp
+public abstract class CopayAuthNames : AuthNames
+{
+    public const string CopayAmountField = "copayAmount";
+    public const string CopayAmountColumn = "copay_cents";
+    // Kind / Name / ReadOnly / IdColumn / … are the base's. A C# const is inherited, so
+    // CopayAuthNames.Name and CopayAuthNames.IdColumn both resolve.
+}
+```
+
+Two forms, and which one you get is structural. An object with its OWN source declares its
+own `Kind`/`Name`/`Schema`/`ReadOnly`; one that INHERITS its source — a TPH subtype sharing
+its base's single table — takes all of them from the base. An abstract base a persisted
+entity extends gets a class of its own carrying the columns it declares and **no `Name`** —
+it has no table. `ColumnsByField` stays complete on every class, inherited entries included.
+
 The default column-naming strategy is `literal` here (unlike TypeScript's
 `snake_case`) — see the "Column naming" section of
 [`features/field-types.md`](../features/field-types.md) for why the defaults

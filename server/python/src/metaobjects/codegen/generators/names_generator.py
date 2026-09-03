@@ -117,6 +117,12 @@ def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -
     # constant to the other (the later assignment wins) rather than fail loud.
     # Mirrors the C#/Kotlin ports' guard — fail here, naming the model, rather
     # than emitting a module with a lost constant.
+    #
+    # Checked over the WHOLE field set (``rows``), never just what this module declares:
+    # once a child stopped restating its inherited constants, an own-only check could no
+    # longer see a collision that spans the ``extends`` boundary — and here the two
+    # constants land in the SAME module (the child re-exports the inherited one under its
+    # own name), so the later assignment would silently win.
     by_member: dict[str, list[str]] = {}
     for name, _column in rows:
         by_member.setdefault(_member(name), []).append(name)

@@ -189,6 +189,27 @@ SUBSCRIBER_COLUMNS_BY_FIELD: Final[dict[str, str]] = {
 }
 ```
 
+**It follows `extends`, so a constant you do not find in a module is imported
+from its parent's.** Python has no static inheritance, so an artifact whose
+object extends another re-exports the inherited constants by REFERENCE:
+
+```python
+# generated/copay_auth_names.py (excerpt)
+from .auth_names import AUTH_ID_COLUMN, AUTH_ID_FIELD, AUTH_KIND, AUTH_NAME, AUTH_READ_ONLY
+
+COPAYAUTH_NAME: Final[str] = AUTH_NAME              # the SHARED table, spelled once
+COPAYAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN
+COPAYAUTH_COPAY_AMOUNT_COLUMN: Final[str] = "copay_cents"
+```
+
+Two forms, and which one you get is structural. An object with its OWN source
+declares its own `_KIND`/`_NAME`/`_SCHEMA`/`_READ_ONLY`; one that INHERITS its
+source — a TPH subtype sharing its base's single table — takes all of them
+from the base module. An abstract base a persisted entity extends gets a
+module of its own carrying the columns it declares and **no `_NAME`** — it has
+no table, and must never acquire one. `_COLUMNS_BY_FIELD` stays complete in
+every module, inherited entries included.
+
 **Prefer a typed handle where one exists.** If the ORM gives you a
 type-checked object for the same thing, use that. Replacing it with a string
 constant trades an error the compiler catches for one the database raises at

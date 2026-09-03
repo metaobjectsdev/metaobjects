@@ -171,3 +171,56 @@ def test_the_emitted_modules_import_and_an_inherited_constant_resolves(tmp_path:
         sys.path.remove(str(tmp_path))
         sys.modules.pop("gen.copay_auth_names", None)
         assert tree  # keep the generated tree referenced for a readable failure
+
+
+def test_a_child_field_colliding_with_an_inherited_one_is_refused_naming_the_model(tmp_path: Path) -> None:
+    """The guard has to see the WHOLE field set, not just what this module declares.
+
+    Once a child stopped restating its inherited constants, an own-only check could no
+    longer see a collision that spans the ``extends`` boundary — and here both constants
+    land in the SAME module (the child re-exports the inherited one under its own name), so
+    the later assignment would silently win and ``COLUMNS_BY_FIELD`` would map the inherited
+    field name to the child's column.
+    """
+    import pytest
+
+    from metaobjects.codegen.generators.names_generator import render_names
+
+    model = {
+        "metadata.root": {
+            "package": "acme",
+            "children": [
+                {
+                    "object.entity": {
+                        "name": "BaseRow",
+                        "abstract": True,
+                        "children": [{"field.timestamp": {"name": "createdAt"}}],
+                    }
+                },
+                {
+                    "object.entity": {
+                        "name": "Row",
+                        "extends": "BaseRow",
+                        "children": [
+                            {"source.rdb": {"@table": "rows"}},
+                            {"field.long": {"name": "id"}},
+                            {"field.timestamp": {"name": "created_at"}},
+                            {"identity.primary": {"name": "pk", "@fields": "id", "@generation": "increment"}},
+                        ],
+                    }
+                },
+            ],
+        }
+    }
+    result = MetaDataLoader().load([
+        InMemoryStringSource(json.dumps(model), format=MetaDataFormat.JSON, id="collide.json"),
+    ])
+    assert [str(e) for e in result.errors] == []
+    row = next(o for o in result.root.own_children() if o.name == "Row")
+
+    with pytest.raises(ValueError) as exc:
+        render_names(row, "snake_case")
+    message = str(exc.value)
+    assert "createdAt" in message
+    assert "created_at" in message
+    assert "CREATED_AT" in message

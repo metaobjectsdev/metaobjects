@@ -44,6 +44,14 @@ import static org.junit.Assert.assertTrue;
  * <p>Java's answer differs from the ORM-binding ports' and the difference is the POINT of
  * running the gate here rather than reasoning about it — see
  * {@link #the_run_emits_real_output_so_the_clean_result_above_is_not_vacuous()}.</p>
+ *
+ * <p>ONE category is out of this method's reach in the ports that DO bind an ORM, and it is
+ * worth naming rather than leaving a reader to assume otherwise: a RELATIONSHIP-SYNTHESIZED
+ * foreign-key column — the column a parent-side {@code relationship.composition
+ * @cardinality: many} contributes to the child's table when the child declares no field for
+ * it. That name is DERIVED (the relationship's short name + "Id", through the naming
+ * strategy), never declared, so there is no physical name to de-blind and nothing for a
+ * generator to restate.</p>
  */
 public class NoMagicPhysicalNamesTest {
 

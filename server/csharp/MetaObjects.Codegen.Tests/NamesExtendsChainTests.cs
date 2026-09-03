@@ -160,4 +160,39 @@ public class NamesExtendsChainTests
         Assert.Contains("[\"id\"] = IdColumn,", sub);
         Assert.Contains("[\"copayAmount\"] = CopayAmountColumn,", sub);
     }
+
+    [Fact]
+    public void A_child_field_colliding_with_an_INHERITED_one_is_refused_naming_the_model()
+    {
+        // The guard has to see the WHOLE field set, not just what this class declares.
+        // Once a child stopped declaring its inherited constants, an own-only check could no
+        // longer see a collision that spans the inheritance boundary — and C# would not
+        // catch it either: a derived `const string CreatedAtColumn` HIDES the base's rather
+        // than clashing with it, so the file compiles (with a warning at most) while
+        // ColumnsByField silently maps the INHERITED field name to the CHILD's column.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "BaseRow", "abstract": true, "children": [
+            { "field.timestamp": { "name": "createdAt" } }
+          ]}},
+          { "object.entity": { "name": "Row", "extends": "BaseRow", "children": [
+            { "source.rdb": { "@table": "rows" } },
+            { "field.long":      { "name": "id" } },
+            { "field.timestamp": { "name": "CreatedAt" } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "collide.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/unused", Namespace = "Acme.Generated", IncludeNames = true },
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => new NamesGenerator().Generate(ctx).ToList());
+        Assert.Contains("createdAt", ex.Message);
+        Assert.Contains("CreatedAt", ex.Message);
+    }
 }

@@ -343,6 +343,28 @@ it for `ProgramNames.fields.createdAt.column` trades a compile error for a runti
 These constants are for the places that have no typed handle: raw SQL, a migration script,
 a log line, an external system's column mapping.
 
+**It follows `extends`, so a name you do not find here is on the parent.** An artifact
+whose object extends another spreads the parent's rather than restating it:
+
+```ts
+export const CopayAuthNames = {
+  ...AuthNames,                       // kind, name, readOnly — the SHARED table
+  fields: {
+    ...AuthNames.fields,
+    copayAmount: { name: "copayAmount", column: "copay_cents" },
+  },
+} as const;
+```
+
+Two forms, and which one you get is structural. An object with its OWN source declares its
+own `kind`/`name`/`schema`/`readOnly` and spreads only `fields`. One that INHERITS its
+source — a TPH subtype, which shares its base's single table — spreads the whole parent, so
+the table name is stated once, on the base.
+
+An abstract base a persisted entity extends gets an artifact of its own, carrying the
+columns it declares and **no `name`** — it has no table, and must never acquire one. Reading
+`CopayAuthNames.name` still works: the spread resolves it, with the literal types intact.
+
 ## Use
 
 The generated code runs without any MetaObjects runtime dependency — Drizzle +
