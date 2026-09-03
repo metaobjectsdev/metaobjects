@@ -1517,6 +1517,26 @@ public class MetaDataRegistry {
         return typeDefinitions.keySet().stream()
             .anyMatch(typeId -> type.equals(typeId.type()));
     }
+
+    /**
+     * Every registered subType for {@code type}.
+     *
+     * <p>Mirrors {@code TypeRegistry.allSubTypesOf} in TS, {@code AllSubTypesOf} in C# and
+     * {@code all_sub_types_of} in Python. The parser needs it to tell an ABSTRACT ANCHOR
+     * ({@code <type>.base} with concrete siblings) from a type whose only registered member
+     * happens to be named {@code base}.</p>
+     *
+     * @param type Primary type name (e.g. "field", "object")
+     * @return the registered subType names; empty when the type is unregistered
+     */
+    public Set<String> allSubTypesOf(String type) {
+        Objects.requireNonNull(type, "Type cannot be null");
+
+        return typeDefinitions.keySet().stream()
+            .filter(typeId -> type.equals(typeId.type()))
+            .map(MetaDataTypeId::subType)
+            .collect(java.util.stream.Collectors.toSet());
+    }
     
     // Deprecated loader registration methods removed
     

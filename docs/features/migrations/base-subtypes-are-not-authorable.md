@@ -85,9 +85,27 @@ carries neither rule. What you probably want is a **write-through entity**: an `
 with a writable `@role: primary` table and a read-only `@role: replica` view. See
 [FR-024 §7 / `docs/features/api-contract.md`](../api-contract.md).
 
-## Bare type keys are NOT part of this change
+## Bare type keys in JSON now behave the way YAML always has
 
-A bare `{"field": …}` or `{"object": …}` key — no `.subType` fused in — is untouched here. It
-resolves through each parser's own default and is unaffected by this rule, which refuses only the
-spelled-out `.base` form. Bare keys have a divergence of their own between the ports; it is
-recorded in ADR-0054's closing section and is a separate decision.
+A bare `{"object": …}` key — no `.subType` fused in — resolves to the type's **declared default**.
+That was always the contract: the YAML desugar has used it forever, and the shared corpus pins it
+(bare `object:` becomes `object.entity`). The four JSON parsers were not asking the registry —
+TypeScript and C# guessed at registration order, the JVM hardcoded the anchor, and Python refused
+bare keys outright — so the same key meant up to four different things.
+
+**If you write bare keys in JSON, one changes and the rest were already broken:**
+
+| Bare key | Before | Now |
+|---|---|---|
+| `{"object": …}` | anchor (TS/C#), instantiation failure (JVM), refused (Python) | `object.entity`, everywhere |
+| `{"field": …}`, `{"source": …}`, `{"view": …}`, … | same mess | `ERR_MISSING_SUBTYPE` — those types declare no default |
+
+For the second row, write the subtype:
+
+```jsonc
+{ "field": { "name": "label" } }          // refused — `field` declares no default
+{ "field.string": { "name": "label" } }   // write this
+```
+
+If a type later declares a concrete default, its bare key starts resolving again — purely additive,
+nothing to redo.

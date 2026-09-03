@@ -282,16 +282,22 @@ public static class Parser
 
     private readonly record struct SplitKey(string Type, string SubType, bool Explicit);
 
-    private static string DefaultSubTypeFor(string type, TypeRegistry registry)
-    {
-        IReadOnlyList<string> subs = registry.AllSubTypesOf(type);
-        string candidate = subs.Count > 0 ? subs[0] : SUBTYPE_BASE;
-        if (!registry.Has(type, candidate) && registry.Has(type, SUBTYPE_BASE))
-        {
-            return SUBTYPE_BASE;
-        }
-        return candidate;
-    }
+    /// <summary>
+    /// The subType a BARE wrapper key (<c>{"object": …}</c>) resolves to: the type's DECLARED
+    /// default, or <c>null</c> when it declares none.
+    /// <para>
+    /// <see cref="TypeRegistry.DefaultSubTypeOf"/> is the same accessor the YAML desugar
+    /// consults, and the shared corpus already pins the contract
+    /// (<c>fixtures/yaml-conformance/yaml-bare-default-subtypes</c>: bare <c>object:</c>
+    /// becomes <c>object.entity</c>). This used to GUESS instead — <c>AllSubTypesOf()[0]</c>,
+    /// i.e. registration order, falling back to <c>base</c> — so the two layers answered the
+    /// same question two different ways, and registration order put the abstract anchor first.
+    /// A name resolved twice by two different functions is a name that can disagree with
+    /// itself.
+    /// </para>
+    /// </summary>
+    private static string? DefaultSubTypeFor(string type, TypeRegistry registry) =>
+        registry.DefaultSubTypeOf(type);
 
     // The one message for an authored `<type>.base`, so both doors say the same thing.
     //
@@ -306,10 +312,43 @@ public static class Parser
     // therefore loaded on three ports and failed to load on two — the cross-port
     // conformance gap the corpora exist to catch, and it survived because every `*.base`
     // subtype sits in the registry corpus's own `untestedSubTypes` list.
+    /// <summary>
+    /// Is <c>&lt;type&gt;.base</c> an ABSTRACT ANCHOR for this type — i.e. does the type
+    /// register at least one OTHER subtype for it to anchor?
+    /// <para>
+    /// Registry-driven, not name-driven, and the distinction is load-bearing. All ten core
+    /// anchors have concrete siblings (<c>object.base</c> beside entity/value/projection,
+    /// <c>source.base</c> beside rdb, …), so the rule catches every one. A third-party
+    /// provider may register <c>base</c> as a type's ONLY member, and there it anchors
+    /// nothing: refusing it would leave the type unauthorable, a capability removal the
+    /// contract never asked for. The manifest describes the CORE registry; this is how that
+    /// scope is expressed without hardcoding the core's type list.
+    /// </para>
+    /// </summary>
+    private static bool IsAbstractAnchorFor(string type, TypeRegistry registry) =>
+        registry.AllSubTypesOf(type).Any(sub => sub != SUBTYPE_BASE);
+
     private static string AbstractSubtypeMessage(string type) =>
         $"\"{type}.{SUBTYPE_BASE}\" may not be authored — every \"{SUBTYPE_BASE}\" subtype " +
         "is an abstract registry anchor that concrete subtypes inherit from, with no " +
         $"runtime semantics of its own. Declare a concrete {type} subtype instead.";
+
+    // The same rule reached by the OTHER spelling: a BARE wrapper key (`{"field": …}`, no
+    // fused subType) whose registry default resolves to the abstract anchor. The author did
+    // not type `.base`, so this is a MISSING subtype rather than an authored-anchor error —
+    // and ERR_MISSING_SUBTYPE is the shared code already chartered for it ("a node omits
+    // subType and the type has no default subType").
+    //
+    // Python has always emitted it here; C#, TypeScript and the JVM did not, so a bare key
+    // was a SECOND way one document got two verdicts: C# and TS resolved it to the anchor and
+    // loaded, the JVM resolved it identically and then failed to instantiate. Closing the
+    // authored spelling alone would have left the rule half true, reachable by dropping four
+    // characters.
+    //
+    // Scoped to "the default IS the anchor", never to bare keys as such: a type that declares
+    // a CONCRETE default keeps resolving through it.
+    private static string MissingSubtypeMessage(string type) =>
+        $"type \"{type}\" has no default subType; write the full \"{type}.<subType>\"";
 
     private static SplitKey SplitTypeKey(string key, TypeRegistry registry)
     {
@@ -317,7 +356,7 @@ public static class Parser
         if (dotIdx < 0)
         {
             // Bare type, no fused subType — resolve via the registry default.
-            return new SplitKey(key, DefaultSubTypeFor(key, registry), false);
+            return new SplitKey(key, DefaultSubTypeFor(key, registry) ?? "", false);
         }
         string type = key[..dotIdx];
         string subType = key[(dotIdx + TYPE_SUBTYPE_SEPARATOR.Length)..];
@@ -438,12 +477,18 @@ public static class Parser
         // A `<type>.base` node may not be AUTHORED — see AbstractSubtypeMessage. This is
         // the ROOT door; the child door is in the child loop below. One rule, both doors:
         // a check on one of two entry points is a rule that is only half true.
-        if (rootSplit.Explicit && rootSubType == SUBTYPE_BASE)
+        if ((rootSubType == SUBTYPE_BASE && IsAbstractAnchorFor(rootType, opts.Registry))
+            || (!rootSplit.Explicit && rootSubType.Length == 0))
         {
-            throw new ParseException(
-                AbstractSubtypeMessage(rootType),
-                ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source, st.Builder.ToString(),
-                st.CurrentSource());
+            throw rootSplit.Explicit
+                ? new ParseException(
+                    AbstractSubtypeMessage(rootType),
+                    ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source, st.Builder.ToString(),
+                    st.CurrentSource())
+                : new ParseException(
+                    MissingSubtypeMessage(rootType),
+                    ErrorCode.ERR_MISSING_SUBTYPE, st.Source, st.Builder.ToString(),
+                    st.CurrentSource());
         }
 
         // Check root type is registered (always throw — can't skip the root).
@@ -1419,12 +1464,19 @@ public static class Parser
                         // the attr branch so `attr.base` is covered by the same rule — an
                         // authored untyped attr is the same mistake as an authored untyped
                         // field.
-                        if (explicitSubType && childSubType == SUBTYPE_BASE)
+                        if ((childSubType == SUBTYPE_BASE
+                                && IsAbstractAnchorFor(childType, st.Registry))
+                            || (!explicitSubType && childSubType.Length == 0))
                         {
-                            st.Errors.Add(new MetaError(
-                                AbstractSubtypeMessage(childType),
-                                ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source,
-                                childNodePath, st.CurrentSource()));
+                            st.Errors.Add(explicitSubType
+                                ? new MetaError(
+                                    AbstractSubtypeMessage(childType),
+                                    ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, st.Source,
+                                    childNodePath, st.CurrentSource())
+                                : new MetaError(
+                                    MissingSubtypeMessage(childType),
+                                    ErrorCode.ERR_MISSING_SUBTYPE, st.Source,
+                                    childNodePath, st.CurrentSource()));
                             continue; // skip this child
                         }
 

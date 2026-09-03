@@ -88,3 +88,48 @@ def test_an_inline_default_still_reaches_the_polymorphic_attr_subtype() -> None:
     item = next(c for c in result.root.children() if c.name.endswith("Item"))
     enabled = next(f for f in item.fields() if f.name == "enabled")
     assert enabled.attrs().get("default") is False
+
+
+# ---------------------------------------------------------------------------
+# The OTHER spelling. A BARE wrapper key omits the subType, so the type's
+# DECLARED default decides — the same accessor the YAML desugar consults, whose
+# contract the shared corpus already pins
+# (fixtures/yaml-conformance/yaml-bare-default-subtypes: bare ``object:`` becomes
+# ``object.entity``). Only a type declaring NO default is refused, and then with
+# ERR_MISSING_SUBTYPE: the author omitted a subType, they did not author an anchor.
+#
+# Four ports gave three answers here. This one refused every bare key outright, so
+# raw JSON and desugared YAML meant different things; TypeScript and C# GUESSED
+# (registration order, falling back to ``base``) and loaded the anchor; the JVM
+# guessed the same way and then failed to instantiate it.
+# ---------------------------------------------------------------------------
+
+BARE_CASES = {
+    "field": {"object.entity": {"name": "B1", "children": [{"field": {"name": "f"}}]}},
+    "source": {"object.entity": {"name": "B2", "children": [
+        {"source": {"name": "s"}},
+        {"field.long": {"name": "id"}},
+    ]}},
+    "view": {"object.entity": {"name": "B3", "children": [
+        {"field.string": {"name": "s", "children": [{"view": {"name": "v"}}]}},
+    ]}},
+}
+
+
+@pytest.mark.parametrize("label", sorted(BARE_CASES))
+def test_a_bare_wrapper_key_resolving_to_the_anchor_is_refused(label: str) -> None:
+    result = _load(BARE_CASES[label])
+    codes = [e.code for e in result.errors]
+    assert ErrorCode.ERR_MISSING_SUBTYPE in codes, codes
+
+
+def test_a_bare_object_key_still_resolves_to_object_entity() -> None:
+    """The control the refusal above must not swallow. ``object`` DECLARES a default,
+    and the YAML corpus pins bare ``object:`` to ``object.entity`` cross-port; a JSON
+    bare key has to agree, or the two input formats mean different things."""
+    result = _load({"object": {"name": "Product", "children": [
+        {"field.string": {"name": "sku"}},
+    ]}})
+    assert not result.errors
+    product = next(c for c in result.root.children() if c.name.endswith("Product"))
+    assert product.sub_type == "entity"

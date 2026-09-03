@@ -113,6 +113,7 @@ import {
   TYPE_ATTR,
   TYPE_METADATA,
   SUBTYPE_ROOT,
+  SUBTYPE_BASE,
   CHILD_RULE_WILDCARD,
 } from "@metaobjectsdev/metadata";
 
@@ -187,6 +188,26 @@ export const forgeTypesProvider: MetaDataTypeProvider = {
     for (const subType of FORGE_FAILURE_SUBTYPES) {
       registry.register(def(FORGE_TYPE_FAILURE, subType, `Forge failure record (${subType})`, forgeChildRules));
     }
+
+    // A BARE wrapper key (`{ "decision": … }`) resolves to the type's DECLARED default —
+    // the same accessor the YAML desugar has always used, which core declares for `object`
+    // (`object` → `object.entity`). The forge types are authored bare in memory files, with
+    // the subType in the body, so each declares its first member as its default.
+    //
+    // This used to work by accident: the JSON parsers GUESSED at registration order
+    // (`allSubTypesOf()[0]`) rather than asking the registry, and for a single-subtype type
+    // the guess happened to be right. Declaring the default makes it true on purpose, and
+    // survives someone registering a second subtype ahead of it.
+    // The first CONCRETE member where there is one, else the type's only member. `decision`
+    // and `principle` list `base` first with real siblings after it, so `[0]` would declare
+    // the anchor as the default — the very thing a bare key must not resolve to.
+    const concreteDefault = (subs: readonly string[]): string =>
+      subs.find((sub) => sub !== SUBTYPE_BASE) ?? subs[0]!;
+    registry.setDefaultSubType(FORGE_TYPE_DECISION, concreteDefault(FORGE_DECISION_SUBTYPES));
+    registry.setDefaultSubType(FORGE_TYPE_PRINCIPLE, concreteDefault(FORGE_PRINCIPLE_SUBTYPES));
+    registry.setDefaultSubType(FORGE_TYPE_CONVENTION, concreteDefault(FORGE_CONVENTION_SUBTYPES));
+    registry.setDefaultSubType(FORGE_TYPE_GLOSSARY, concreteDefault(FORGE_GLOSSARY_SUBTYPES));
+    registry.setDefaultSubType(FORGE_TYPE_FAILURE, concreteDefault(FORGE_FAILURE_SUBTYPES));
 
     // #96 — the @forge* provenance attrs are common (admissible on any node).
     registry.registerCommonAttrs([...FORGE_ATTR_SCHEMAS]);

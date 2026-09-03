@@ -116,6 +116,69 @@ public class AbstractSubtypeAuthoredTest extends SharedRegistryTestBase {
                 + " { \"attr.base\": { \"name\": \"a\", \"value\": \"x\" } } ] } } ] } }", "attr");
     }
 
+    // --- the OTHER spelling ---------------------------------------------------
+    //
+    // A BARE wrapper key omits the subType, so the type's DECLARED default decides — the same
+    // accessor the YAML desugar consults, whose contract the shared corpus already pins
+    // (yaml-bare-default-subtypes: bare `object:` becomes `object.entity`). Only a type
+    // declaring NO default is refused, and then with ERR_MISSING_SUBTYPE: the author omitted a
+    // subType, they did not author an anchor.
+    //
+    // Four ports gave three answers here. This one hardcoded the anchor and then failed to
+    // INSTANTIATE it, naming a missing constructor rather than the rule; TypeScript and C#
+    // guessed at registration order (landing on the anchor too) and LOADED; Python refused
+    // every bare key outright, so raw JSON and desugared YAML meant different things there.
+
+    private void assertBareRefused(String label, String node, String id) {
+        MetaDataLoader loader = load(node, id);
+        MetaDataException err = loader.getErrors().stream()
+            .filter(e -> e.getCode().orElse(null) == ErrorCode.ERR_MISSING_SUBTYPE)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "expected ERR_MISSING_SUBTYPE for bare '" + label + "'; got " + loader.getErrors()));
+        assertTrue(err.getMessage(), err.getMessage().contains(label));
+        assertTrue(err.getMessage(), err.getMessage().contains("has no default subType"));
+    }
+
+    /**
+     * The control the refusals must not swallow. {@code object} DECLARES a default, and the
+     * YAML corpus pins bare {@code object:} to {@code object.entity} cross-port; a JSON bare
+     * key has to agree, or the two input formats mean different things.
+     */
+    @Test
+    public void bareObjectKeyStillResolvesToObjectEntity() {
+        MetaDataLoader loader = load(
+            "{ \"object\": { \"name\": \"Product\", \"children\": ["
+                + " { \"field.string\": { \"name\": \"sku\" } } ] } }", "bare-obj");
+        assertEquals("expected a clean load, got " + loader.getErrors(),
+            0, loader.getErrors().size());
+        assertEquals("entity", loader.getMetaObjects().stream()
+            .filter(o -> o.getName().endsWith("::Product")).findFirst().orElseThrow().getSubType());
+    }
+
+    @Test
+    public void bareFieldKeyIsRefused() {
+        assertBareRefused("field",
+            "{ \"object.entity\": { \"name\": \"B1\", \"children\": ["
+                + " { \"field\": { \"name\": \"f\" } } ] } }", "bare-fld");
+    }
+
+    @Test
+    public void bareSourceKeyIsRefused() {
+        assertBareRefused("source",
+            "{ \"object.entity\": { \"name\": \"B2\", \"children\": ["
+                + " { \"source\": { \"name\": \"s\" } },"
+                + " { \"field.long\": { \"name\": \"id\" } } ] } }", "bare-src");
+    }
+
+    @Test
+    public void bareViewKeyIsRefused() {
+        assertBareRefused("view",
+            "{ \"object.entity\": { \"name\": \"B3\", \"children\": ["
+                + " { \"field.string\": { \"name\": \"s\", \"children\": ["
+                + " { \"view\": { \"name\": \"v\" } } ] } } ] } }", "bare-view");
+    }
+
     /** The control arm. Without it, a check that refused every node would pass above. */
     @Test
     public void theConcreteSiblingOfEveryRefusedCaseStillLoads() {

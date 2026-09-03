@@ -30,11 +30,25 @@ An authored `<type>.base` now fails the load in all five ports with
 `fixtures/conformance/error-abstract-subtype-authored` gates it. The rule is written into the
 manifest prose for all ten, so no port infers it from another port's source.
 
-**Scoped to the EXPLICIT spelling, deliberately.** `base` is also each parser's internal
-fallback, and the polymorphic subtype an untyped `@default` resolves to so its value type
-follows the owning field — the loader picks that; an author never names it. The inline
-`"@default": false` form is unaffected. A **bare** `{"field": …}` key is unaffected too; bare
-keys have a divergence of their own, recorded in the ADR rather than silently folded in here.
+**Chasing the other spelling found a second, separate defect: the four JSON parsers never asked
+the registry what a bare key means.** A bare `{"object": …}` resolves to the type's DECLARED
+default — `defaultSubTypeOf` — which the YAML desugar has always used and which the shared corpus
+pins (bare `object:` becomes `object.entity`, exactly as `CLAUDE.md` documents). The JSON parsers
+answered it four other ways: TypeScript and C# **guessed at registration order** (which put the
+abstract anchor in the answer, and loaded it), the JVM **hardcoded the anchor** and then failed to
+instantiate it, and Python **refused every bare key**, so raw JSON and desugared YAML meant
+different things there. All four now consult the registry.
+
+So this is the same defect as the rest of the line — *a name resolved twice by two different
+functions* — reached through the one door nobody had pointed at the registry. Adopter-visible: a
+bare `{"object": …}` in JSON now loads as `object.entity` in every port, and a bare key for a type
+declaring **no** default (`field`, `source`, `view`, …) is `ERR_MISSING_SUBTYPE` with the desugar's
+own wording. It also makes the anchor unreachable via a bare key, so the refusal above is the only
+way to meet one.
+
+What stays untouched is what the LOADER chooses rather than an author: the polymorphic subtype an
+untyped `@default` resolves to, so its value type follows the owning field. The inline
+`"@default": false` form is unaffected.
 
 Migration — usually one substitution, naming the concrete subtype that was meant:
 [`docs/features/migrations/base-subtypes-are-not-authorable.md`](docs/features/migrations/base-subtypes-are-not-authorable.md).

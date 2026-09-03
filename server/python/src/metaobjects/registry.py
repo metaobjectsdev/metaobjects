@@ -202,6 +202,14 @@ class TypeRegistry:
         self._check_not_sealed(f'set_default_sub_type("{type_}")')
         self._default_sub_types[type_] = sub_type
 
+    def all_sub_types_of(self, type_: str) -> list[str]:
+        """Every registered subType for *type_*, in registration order.
+
+        Mirrors ``TypeRegistry.allSubTypesOf`` in TS and ``AllSubTypesOf`` in C#; this port
+        was the one without it, so callers reached into ``_defs``.
+        """
+        return [sub for (reg_type, sub) in self._defs if reg_type == type_]
+
     def default_sub_type_of(self, type_: str) -> str | None:
         """Return the designated default subType for *type_*, or None if none.
 

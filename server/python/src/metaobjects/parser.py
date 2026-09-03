@@ -194,6 +194,21 @@ def _parse_document_inner(doc: object, registry: TypeRegistry, source: str) -> P
     return result
 
 
+def _is_abstract_anchor_for(type_: str, registry: TypeRegistry) -> bool:
+    """Is ``<type>.base`` an ABSTRACT ANCHOR for this type — i.e. does the type register at
+    least one OTHER subtype for it to anchor?
+
+    Registry-driven, not name-driven, and the distinction is load-bearing. All ten core
+    anchors have concrete siblings (``object.base`` beside entity/value/projection,
+    ``source.base`` beside rdb, …), so the rule catches every one. A third-party provider may
+    register ``base`` as a type's ONLY member, and there it is not anchoring anything:
+    refusing it would leave the type unauthorable, a capability removal the contract never
+    asked for. The manifest describes the CORE registry; this is how that scope is expressed
+    without hardcoding the core's type list.
+    """
+    return any(sub != SUBTYPE_BASE for sub in registry.all_sub_types_of(type_))
+
+
 def _abstract_subtype_message(type_: str) -> str:
     """The one message for an authored ``<type>.base``, shared by both doors.
 
@@ -241,14 +256,23 @@ def _build(
     """
     type_, _, sub_type = wrapper.partition(FUSED_KEY_SEP)
     if not sub_type:
+        # A BARE wrapper key resolves to the type's DECLARED default — the same accessor
+        # the YAML desugar consults, whose contract the shared corpus already pins
+        # (fixtures/yaml-conformance/yaml-bare-default-subtypes: bare ``object:`` becomes
+        # ``object.entity``). This port refused every bare key outright, so raw JSON and
+        # desugared YAML meant different things here; TypeScript and C# GUESSED instead
+        # (registration order, falling back to ``base``), and the JVM guessed the same way
+        # and then failed to instantiate the anchor. Four ports, three answers, one question.
+        sub_type = registry.default_sub_type_of(type_) or ""
+    if not sub_type:
         result.errors.append(MetaError(
-            f"node '{wrapper}' omits subType",
+            f"type '{type_}' has no default subType; write the full '{type_}.<subType>'",
             ErrorCode.ERR_MISSING_SUBTYPE,
             source,
             envelope=_current_envelope(source, builder, yaml_position),
         ))
         return None
-    if sub_type == SUBTYPE_BASE:
+    if sub_type == SUBTYPE_BASE and _is_abstract_anchor_for(type_, registry):
         result.errors.append(MetaError(
             _abstract_subtype_message(type_),
             ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED,
@@ -430,7 +454,7 @@ def _parse_attr_child(
     # An authored `attr.base` is refused like every other authored base subtype. The
     # polymorphic attr subtype is real and reached by an INLINE `@default` (whose value
     # type follows the owning field), where the loader picks it — an author never names it.
-    if sub_type == SUBTYPE_BASE:
+    if sub_type == SUBTYPE_BASE and _is_abstract_anchor_for(TYPE_ATTR, registry):
         result.errors.append(MetaError(
             _abstract_subtype_message(TYPE_ATTR),
             ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED,

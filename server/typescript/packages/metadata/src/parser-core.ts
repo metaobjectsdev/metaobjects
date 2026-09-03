@@ -219,11 +219,48 @@ function guardRelativeRefInCanonical(
 // loaded on three ports and failed to load on two — the cross-port conformance gap the
 // corpora exist to catch, and it survived because every `*.base` subtype sits in the
 // registry corpus's own `untestedSubTypes` list.
+/**
+ * Is `<type>.base` an ABSTRACT ANCHOR for this type — i.e. does the type register at least one
+ * OTHER subtype for it to anchor?
+ *
+ * Registry-driven, not name-driven, and the distinction is load-bearing. All ten core anchors
+ * have concrete siblings (`object.base` beside entity/value/projection, `source.base` beside
+ * rdb, …), so the rule catches every one. A third-party provider may register `base` as a
+ * type's ONLY member — the SDK's forge `convention`/`glossary`/`failure` do — and there it is
+ * not anchoring anything: refusing it would leave the type unauthorable, which is a
+ * capability removal the contract never asked for. The manifest describes the CORE registry;
+ * this predicate is how that scope is expressed without hardcoding the core's type list.
+ */
+function isAbstractAnchorFor(type: string, registry: TypeRegistry): boolean {
+  return registry.allSubTypesOf(type).some((sub) => sub !== SUBTYPE_BASE);
+}
+
 function abstractSubtypeMessage(type: string): string {
   return (
     `"${type}.${SUBTYPE_BASE}" may not be authored — every "${SUBTYPE_BASE}" subtype is an ` +
     `abstract registry anchor that concrete subtypes inherit from, with no runtime ` +
     `semantics of its own. Declare a concrete ${type} subtype instead.`
+  );
+}
+
+// The same rule reached by the OTHER spelling: a BARE wrapper key (`{"field": …}`, no fused
+// subType) whose registry default resolves to the abstract anchor. The author did not type
+// `.base`, so this is a MISSING subtype rather than an authored-anchor error — and
+// ERR_MISSING_SUBTYPE is the shared code already chartered for it ("a node omits subType and
+// the type has no default subType").
+//
+// Python has always emitted it here; TypeScript, C# and the JVM did not, so a bare key was a
+// SECOND way one document got two verdicts: TS and C# resolved it to the anchor and loaded,
+// the JVM resolved it identically and then failed to instantiate with a message naming a
+// missing constructor. Closing the authored spelling alone would have left the rule half
+// true, reachable by dropping four characters.
+//
+// Scoped to "the default IS the anchor", never to bare keys as such: a type that declares a
+// CONCRETE default keeps resolving through it, which is the door a future default-subtype
+// decision walks through (ADR-0054's closing section).
+function missingSubtypeMessage(type: string): string {
+  return (
+    `type "${type}" has no default subType; write the full "${type}.<subType>"`
   );
 }
 
@@ -241,20 +278,31 @@ interface SplitKey {
   explicit: boolean;
 }
 
-function defaultSubTypeFor(type: string, registry: TypeRegistry): string {
-  const subs = registry.allSubTypesOf(type);
-  const candidate = subs.length > 0 ? subs[0]! : SUBTYPE_BASE;
-  if (!registry.has(type, candidate) && registry.has(type, SUBTYPE_BASE)) {
-    return SUBTYPE_BASE;
-  }
-  return candidate;
+/**
+ * The subType a BARE wrapper key (`{"object": …}`) resolves to: the type's DECLARED default,
+ * or `undefined` when it declares none.
+ *
+ * `registry.defaultSubTypeOf` is the same accessor the YAML desugar consults, and the shared
+ * corpus already pins the contract (`fixtures/yaml-conformance/yaml-bare-default-subtypes`:
+ * bare `object:` becomes `object.entity`). This used to guess instead — `allSubTypesOf()[0]`,
+ * i.e. registration order, falling back to `base` — so the two layers answered the same
+ * question two different ways. Registration order put `base` first, so a bare key in JSON
+ * resolved to the abstract anchor: it loaded here and in C#, while the JVM resolved it
+ * identically and then failed to INSTANTIATE, because its impl classes are abstract.
+ *
+ * A name resolved twice by two different functions is a name that can disagree with itself —
+ * the defect class this file's own header exists to prevent, reached through the one door
+ * nobody had pointed at the registry.
+ */
+function defaultSubTypeFor(type: string, registry: TypeRegistry): string | undefined {
+  return registry.defaultSubTypeOf(type);
 }
 
 function splitTypeKey(key: string, registry: TypeRegistry): SplitKey {
   const dotIdx = key.indexOf(TYPE_SUBTYPE_SEPARATOR);
   if (dotIdx < 0) {
     // Bare type, no fused subType — resolve via the registry default.
-    return { type: key, subType: defaultSubTypeFor(key, registry), explicit: false };
+    return { type: key, subType: defaultSubTypeFor(key, registry) ?? "", explicit: false };
   }
   const type = key.slice(0, dotIdx);
   const subType = key.slice(dotIdx + TYPE_SUBTYPE_SEPARATOR.length);
@@ -446,14 +494,20 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     // A `<type>.base` node may not be AUTHORED — see abstractSubtypeMessage. This is the
     // ROOT door; the child door is in the child loop below. One rule, both doors: a check
     // on one of two entry points is a rule that is only half true.
-    if (rootExplicit && rootSubType === SUBTYPE_BASE) {
+    if ((rootSubType === SUBTYPE_BASE && isAbstractAnchorFor(rootType, opts.registry))
+      || (!rootExplicit && rootSubType === "")) {
       _currentPath!.pushKey(rootKey);
       const src = errSource();
       _currentPath!.pop();
-      throw new ParseError(abstractSubtypeMessage(rootType), {
-        code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
-        source: src,
-      });
+      throw rootExplicit
+        ? new ParseError(abstractSubtypeMessage(rootType), {
+            code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
+            source: src,
+          })
+        : new ParseError(missingSubtypeMessage(rootType), {
+            code: "ERR_MISSING_SUBTYPE",
+            source: src,
+          });
     }
 
     // Check root type is registered (always throw — can't skip the root)
@@ -1335,12 +1389,18 @@ function processChildren(
     // and refusing that would break every node relying on the default. Placed before the
     // attr branch so `attr.base` is covered by the same rule — an authored untyped attr is
     // the same mistake as an authored untyped field.
-    if (explicit && childSubType === SUBTYPE_BASE) {
+    if ((childSubType === SUBTYPE_BASE && isAbstractAnchorFor(childType, registry))
+      || (!explicit && childSubType === "")) {
       errors.push(
-        new ParseError(abstractSubtypeMessage(childType), {
-          code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
-          source: errSource(),
-        }),
+        explicit
+          ? new ParseError(abstractSubtypeMessage(childType), {
+              code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
+              source: errSource(),
+            })
+          : new ParseError(missingSubtypeMessage(childType), {
+              code: "ERR_MISSING_SUBTYPE",
+              source: errSource(),
+            }),
       );
       _currentPath?.pop(); // pop child wrapper key
       _currentPath?.pop(); // pop array index

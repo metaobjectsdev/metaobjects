@@ -41,6 +41,40 @@ public class AbstractSubtypeAuthoredTests
         Assert.Contains("abstract registry anchor", err.Message);
     }
 
+    // The OTHER spelling. A BARE wrapper key omits the subType, so the type's DECLARED
+    // default decides — the same accessor the YAML desugar consults, whose contract the shared
+    // corpus already pins (yaml-bare-default-subtypes: bare `object:` becomes `object.entity`).
+    // Only a type declaring NO default is refused, and then with ERR_MISSING_SUBTYPE: the
+    // author omitted a subType, they did not author an anchor.
+    //
+    // Four ports gave three answers here. This one and TypeScript GUESSED (registration order,
+    // falling back to `base`) and loaded the anchor; the JVM guessed the same way and then
+    // failed to instantiate it; Python refused every bare key outright, so raw JSON and
+    // desugared YAML meant different things there.
+    [Theory]
+    [InlineData("field", """{ "object.entity": { "name": "B1", "children": [ { "field": { "name": "f" } } ] } }""")]
+    [InlineData("source", """{ "object.entity": { "name": "B2", "children": [ { "source": { "name": "s" } }, { "field.long": { "name": "id" } } ] } }""")]
+    [InlineData("view", """{ "object.entity": { "name": "B3", "children": [ { "field.string": { "name": "s", "children": [ { "view": { "name": "v" } } ] } } ] } }""")]
+    public void A_bare_wrapper_key_resolving_to_the_anchor_is_refused(string label, string node)
+    {
+        var result = Load(node);
+        var err = Assert.Single(result.Errors, e => e.Code == ErrorCode.ERR_MISSING_SUBTYPE);
+        Assert.Contains(label, err.Message);
+        Assert.Contains("has no default subType", err.Message);
+    }
+
+    [Fact]
+    public void A_bare_object_key_still_resolves_to_object_entity()
+    {
+        // The control the refusal above must not swallow. `object` DECLARES a default, and
+        // the YAML corpus pins bare `object:` to `object.entity` cross-port; a JSON bare key
+        // has to agree, or the two input formats mean different things.
+        var result = Load("""{ "object": { "name": "Product", "children": [ { "field.string": { "name": "sku" } } ] } }""");
+        Assert.Empty(result.Errors);
+        var product = Assert.Single(result.Root.Objects(), o => o.Name == "Product");
+        Assert.Equal("entity", product.SubType);
+    }
+
     [Fact]
     public void The_concrete_sibling_of_every_refused_case_still_loads()
     {

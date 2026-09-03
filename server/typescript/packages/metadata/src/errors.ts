@@ -6,7 +6,6 @@ import type { ErrorSource, LoaderError, NodeContext } from "./source.js";
 // NOTE: The following codes are forward-declared (no emitting site in the current
 // TS parser/loader — the condition is not yet detected):
 //   - ERR_DUPLICATE_NAME: parser silently reuses existing same-name nodes (find-or-create).
-//   - ERR_MISSING_SUBTYPE: missing subType is resolved to the registry default, never an error.
 //   - ERR_INVALID_SUBTYPE_CHILD: no child-rule validation pass exists yet.
 // Cross-language conformance consumers should not expect these codes from the TS adapter.
 //

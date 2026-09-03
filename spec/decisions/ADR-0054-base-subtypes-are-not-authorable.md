@@ -51,11 +51,13 @@ to a general conclusion that was wrong on two other shapes.
 
 Three clauses make that precise:
 
-1. **Scoped to the EXPLICIT spelling.** `base` is also each parser's internal fallback: for a bare
-   `{"field": …}` key whose registry default is unregistered, and — in the loader, never by an
-   author — as the polymorphic subtype an untyped `@default` resolves to, so its value type follows
-   the owning field. Those paths are untouched. The rule refuses what an author WROTE, not what a
-   loader CHOSE.
+1. **Two spellings, two codes, one rule.** An explicitly authored `<type>.base` is
+   `ERR_ABSTRACT_SUBTYPE_AUTHORED`. A BARE key (`{"field": …}`) whose registry default resolves to
+   the anchor is `ERR_MISSING_SUBTYPE` — the author did not type `.base`, so what they omitted is a
+   subType, and that is the code already chartered for it (see Consequences). What stays untouched
+   is what the LOADER chooses rather than an author: the polymorphic subtype an untyped `@default`
+   resolves to, so its value type follows the owning field. The rule refuses what a document SAYS,
+   never what the loader picks on its behalf.
 
 2. **Both doors, in every port.** The root wrapper key and the child wrapper key are separate entry
    points in all five parsers. A check on one of two doors is a rule that is only half true.
@@ -90,14 +92,27 @@ The fixtures that needed a two-primary divergence moved to shapes the concrete s
 `object.entity` extending an abstract `object.projection`, and two plain entities each declaring
 their own table.
 
-**What this ADR does NOT decide, stated because measuring it is what produced this one.** A BARE
-type key (`{"field": …}`, `{"object": …}`) resolves to `<type>.base` in TypeScript and loads there,
-while the JVM resolves the same key the same way and then fails to instantiate it — so bare keys
-diverge across the ports exactly as the explicit spelling did. `CLAUDE.md` documents a third
-behaviour again ("a bare `object:` key resolves to entity") that no port implements. That is a
-distinct question about what a default subtype should BE, with its own blast radius, and folding it
-into this decision would have settled it by accident. It is recorded here so the next reader does
-not have to rediscover it.
+**The BARE spelling turned out to be a different defect, and closing it needed no new rule at
+all.** A bare key (`{"object": …}`) omits the subType, so a default decides. There is a DECLARED
+default per type on the registry — `defaultSubTypeOf` — and the YAML desugar has always used it;
+`fixtures/yaml-conformance/yaml-bare-default-subtypes` pins the contract cross-port: bare `object:`
+becomes `object.entity`, which is what `CLAUDE.md` documents.
+
+**The four JSON parsers did not ask it.** TypeScript and C# guessed at registration order
+(`allSubTypesOf()[0]`, falling back to `base`) — which put the abstract anchor in the answer, and
+loaded it. The JVM hardcoded the anchor outright and then failed to instantiate it. Python refused
+every bare key, so raw JSON and desugared YAML meant different things there. Four ports, three
+answers, and a fourth answer in the layer above them.
+
+So this is the same defect as everything else in this line — **a name resolved twice by two
+different functions** — reached through the one door nobody had pointed at the registry. All four
+parsers now consult `defaultSubTypeOf`, bare `object` resolves to `object.entity` everywhere, and a
+type declaring NO default is `ERR_MISSING_SUBTYPE` with the desugar's own wording. That also makes
+the anchor unreachable via a bare key, so the refusal above is now the only way to meet one.
+
+**What this ADR still does NOT decide.** Whether types other than `object` SHOULD declare a concrete
+default. That stays open and is strictly additive: declaring one turns today's `ERR_MISSING_SUBTYPE`
+back into a load, with no adopter stranded in between.
 
 ## Alternatives considered
 

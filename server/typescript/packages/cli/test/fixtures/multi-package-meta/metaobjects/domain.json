@@ -13,13 +13,13 @@
               }
             },
             {
-              "field": {
+              "field.long": {
                 "name": "id",
                 "extends": "demo::common::id"
               }
             },
             {
-              "field": {
+              "field.timestamp": {
                 "name": "createdAt",
                 "extends": "demo::common::createdAt"
               }

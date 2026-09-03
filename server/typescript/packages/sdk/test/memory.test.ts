@@ -359,7 +359,10 @@ describe("loadMemory — the retired workspace peer walk", () => {
                 "object.entity": {
                   name: "Widget",
                   children: [
-                    { field: { name: "id", extends: "acme::common::id" } },
+                    // `field.long`, not a bare `field`: `field` declares no default subType,
+                    // so a bare key would now fail as ERR_MISSING_SUBTYPE and mask the
+                    // ERR_UNRESOLVED_SUPER this test is actually about.
+                    { "field.long": { name: "id", extends: "acme::common::id" } },
                   ],
                 },
               },

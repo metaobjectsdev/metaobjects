@@ -485,10 +485,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // A `<type>.base` node may not be AUTHORED — the ROOT door (the child door is
             // in the child loop below). One rule, both doors: a check on one of two entry
             // points is a rule that is only half true.
-            if (rootSplit.explicitSubType && MetaData.SUBTYPE_BASE.equals(rootSplit.subType)) {
-                throw new MetaDataException(
-                    abstractSubtypeMessage(rootType) + " [" + getFilename() + "]",
-                    ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, currentSourceEnvelope());
+            if ((MetaData.SUBTYPE_BASE.equals(rootSplit.subType) && isAbstractAnchorFor(rootType))
+                    || (!rootSplit.explicitSubType && rootSplit.subType.isEmpty())) {
+                throw rootSplit.explicitSubType
+                    ? new MetaDataException(
+                        abstractSubtypeMessage(rootType) + " [" + getFilename() + "]",
+                        ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, currentSourceEnvelope())
+                    : new MetaDataException(
+                        missingSubtypeMessage(rootType) + " [" + getFilename() + "]",
+                        ErrorCode.ERR_MISSING_SUBTYPE, currentSourceEnvelope());
             }
 
             // Validate that the root type is known
@@ -618,10 +623,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     // door is above). Gated on the subType being EXPLICIT: `base` is also
                     // this parser's fallback for a BARE key, and refusing that here would
                     // change a separate, pre-existing behaviour rather than close this gap.
-                    if (split.explicitSubType && MetaData.SUBTYPE_BASE.equals(subType)) {
-                        getLoader().addError(new MetaDataException(
-                            abstractSubtypeMessage(type) + " [" + getFilename() + "]",
-                            ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, currentSourceEnvelope()));
+                    if ((MetaData.SUBTYPE_BASE.equals(subType) && isAbstractAnchorFor(type))
+                            || (!split.explicitSubType && subType.isEmpty())) {
+                        getLoader().addError(split.explicitSubType
+                            ? new MetaDataException(
+                                abstractSubtypeMessage(type) + " [" + getFilename() + "]",
+                                ErrorCode.ERR_ABSTRACT_SUBTYPE_AUTHORED, currentSourceEnvelope())
+                            : new MetaDataException(
+                                missingSubtypeMessage(type) + " [" + getFilename() + "]",
+                                ErrorCode.ERR_MISSING_SUBTYPE, currentSourceEnvelope()));
                         continue;
                     }
                     boolean knownType = getTypeRegistry().hasType(type);
@@ -1319,9 +1329,19 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     private SplitKey splitTypeKey(String key) {
         int dotIdx = key.indexOf(TYPE_SUBTYPE_SEPARATOR);
         if (dotIdx < 0) {
-            // Bare key with no dot — subType is the registry default
-            // Fall back to "base" (MetaData.SUBTYPE_BASE) which all type hierarchies register.
-            return new SplitKey(key, MetaData.SUBTYPE_BASE, false);
+            // A BARE wrapper key resolves to the type's DECLARED default — the same accessor
+            // the YAML desugar consults, whose contract the shared corpus already pins
+            // (fixtures/yaml-conformance/yaml-bare-default-subtypes: bare `object:` becomes
+            // `object.entity`). "" when the type declares none, which the callers report as
+            // ERR_MISSING_SUBTYPE.
+            //
+            // This used to hardcode SUBTYPE_BASE, so every bare key resolved to the abstract
+            // anchor and then failed to INSTANTIATE, because the impl classes are abstract —
+            // a message naming a missing constructor rather than the rule. TypeScript and C#
+            // guessed at registration order (which also landed on the anchor) and LOADED;
+            // Python refused bare keys outright. Four ports, three answers, one question.
+            String declared = getTypeRegistry().defaultSubTypeOf(key);
+            return new SplitKey(key, declared == null ? "" : declared, false);
         }
         String type    = key.substring(0, dotIdx);
         String subType = key.substring(dotIdx + TYPE_SUBTYPE_SEPARATOR.length());
@@ -1349,6 +1369,44 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             + MetaData.SUBTYPE_BASE + "' subtype is an abstract registry anchor that concrete "
             + "subtypes inherit from, with no runtime semantics of its own. Declare a concrete "
             + type + " subtype instead.";
+    }
+
+    /**
+     * The same rule reached by the OTHER spelling: a BARE wrapper key ({@code {"field": …}},
+     * no fused subType) whose registry default resolves to the abstract anchor. The author did
+     * not type {@code .base}, so this is a MISSING subtype rather than an authored-anchor
+     * error — and {@code ERR_MISSING_SUBTYPE} is the shared code already chartered for it
+     * ("a node omits subType and the type has no default subType").
+     *
+     * <p>Python has always emitted it here; this port and TypeScript/C# did not, so a bare key
+     * was a SECOND way one document got two verdicts: TS and C# resolved it to the anchor and
+     * loaded, while this port resolved it identically and then failed to INSTANTIATE, with a
+     * message naming a missing constructor rather than the rule. Closing the authored spelling
+     * alone would have left the rule half true, reachable by dropping four characters.</p>
+     *
+     * <p>Scoped to "the default IS the anchor", never to bare keys as such: a type that
+     * declares a CONCRETE default keeps resolving through it.</p>
+     */
+    /**
+     * Is {@code <type>.base} an ABSTRACT ANCHOR for this type — i.e. does the type register at
+     * least one OTHER subtype for it to anchor?
+     *
+     * <p>Registry-driven, not name-driven, and the distinction is load-bearing. All ten core
+     * anchors have concrete siblings ({@code object.base} beside entity/value/projection,
+     * {@code source.base} beside rdb, …), so the rule catches every one. A provider may
+     * register {@code base} as a type's ONLY member, and there it anchors nothing: refusing it
+     * would leave the type unauthorable, a capability removal the contract never asked for.
+     * The manifest describes the CORE registry; this is how that scope is expressed without
+     * hardcoding the core's type list.</p>
+     */
+    private boolean isAbstractAnchorFor(String type) {
+        return getTypeRegistry().allSubTypesOf(type).stream()
+            .anyMatch(sub -> !MetaData.SUBTYPE_BASE.equals(sub));
+    }
+
+    private static String missingSubtypeMessage(String type) {
+        return "type '" + type + "' has no default subType; write the full '"
+            + type + ".<subType>'";
     }
 
     /** Simple holder for a type/subType split result. */

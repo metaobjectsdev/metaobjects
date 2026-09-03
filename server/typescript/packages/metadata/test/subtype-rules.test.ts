@@ -179,6 +179,55 @@ describe("subtype rule validation", () => {
     expect(codes(errors)).toContain("ERR_ABSTRACT_SUBTYPE_AUTHORED");
     expect(errors[0]!.message).toContain("field.base");
   });
+
+  it("a BARE wrapper key for a type with NO declared default is refused", async () => {
+    // The other spelling. A bare key omits the subType, so the type's DECLARED default
+    // decides — the same accessor the YAML desugar consults, whose contract the shared corpus
+    // already pins (yaml-bare-default-subtypes: bare `object:` becomes `object.entity`).
+    // `field` declares no default, so this is ERR_MISSING_SUBTYPE with the desugar's own
+    // wording; the author omitted a subType, they did not author an anchor.
+    //
+    // The JSON parser used to GUESS instead — registration order, falling back to `base` —
+    // which put the abstract anchor in the answer. See the bare-object case below for the
+    // half that must keep loading.
+    const { errors } = await load(
+      JSON.stringify({
+        "metadata.root": {
+          package: "demo",
+          children: [
+            {
+              "object.entity": {
+                name: "Tagged",
+                children: [{ field: { name: "label" } }],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(codes(errors)).toContain("ERR_MISSING_SUBTYPE");
+    expect(errors[0]!.message).toContain("has no default subType");
+  });
+
+  it("a BARE object key still resolves to object.entity — the chartered default", async () => {
+    // The control the refusal above must not swallow. `object` DECLARES a default, and
+    // `fixtures/yaml-conformance/yaml-bare-default-subtypes` pins bare `object:` desugaring
+    // to `object.entity` cross-port. A JSON bare key has to agree with it, or the two input
+    // formats mean different things — which is exactly what the guessing resolver did.
+    const { errors, root } = await load(
+      JSON.stringify({
+        "metadata.root": {
+          package: "demo",
+          children: [
+            { object: { name: "Product", children: [{ "field.string": { name: "sku" } }] } },
+          ],
+        },
+      }),
+    );
+    expect(errors).toHaveLength(0);
+    const product = root.children().find((c) => c.name === "Product")!;
+    expect(product.subType).toBe("entity");
+  });
 });
 
 // ---------------------------------------------------------------------------
