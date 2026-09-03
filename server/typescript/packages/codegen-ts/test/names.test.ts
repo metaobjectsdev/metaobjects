@@ -3,11 +3,16 @@ import {
   MetaDataLoader,
   InMemoryStringSource,
   isMetaSource,
+  SOURCE_ROLE_PRIMARY,
   type MetaObject,
   type MetaSource,
+  // MetaModelError, not codegen-ts's CodegenError: the refusal moved into
+  // @metaobjectsdev/metadata's primaryRdbSource so that resolveTableName,
+  // resolveTableSchema and MetaObject.dbTable inherit it too — the refusal must not
+  // depend on whether the `names` generator was in the run.
+  MetaModelError,
 } from "@metaobjectsdev/metadata";
 import { resolveObjectNames } from "../src/names.js";
-import { CodegenError } from "../src/errors.js";
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
@@ -220,12 +225,12 @@ describe("resolveObjectNames", () => {
       // isMetaSource, not a structural cast: the exported guard is how cross-package
       // code identifies a node (CLAUDE.md), and it is what narrows the type for tsc.
       const primaries = child.children()
-        .filter((c) => isMetaSource(c) && c.role === "primary")
-        .map((c) => (c as MetaSource).physicalName)
+        .filter((c): c is MetaSource => isMetaSource(c) && c.role === SOURCE_ROLE_PRIMARY)
+        .map((s) => s.physicalName)
         .sort();
       expect(primaries).toEqual([shape.other, "child_table"].sort());
 
-      expect(() => resolveObjectNames(child, "snake_case")).toThrow(CodegenError);
+      expect(() => resolveObjectNames(child, "snake_case")).toThrow(MetaModelError);
       // Each substring asserted separately, so a message that drops one still fails.
       expect(() => resolveObjectNames(child, "snake_case")).toThrow(/ChildWeird/);
       expect(() => resolveObjectNames(child, "snake_case")).toThrow(new RegExp(shape.other));

@@ -272,67 +272,18 @@ public static class CSharpNaming
     /// The DB table name for an entity: the <c>dbTable</c> source override, else the
     /// raw object name. Shared so the schema DDL and the [Table] annotation agree.
     /// <para>
-    /// Runs the SAME divergence refusal as <see cref="ResolveObjectNames"/>. It has to:
-    /// this is the arm a run takes when the <c>names</c> generator is NOT selected, and
-    /// without the check here a divergent object silently emitted
+    /// Runs the SAME divergence refusal as <see cref="ResolveObjectNames"/>, and now from
+    /// the same code: <see cref="MetaObject.DbTable"/> resolves through
+    /// <c>FindPrimaryWritableSource</c>, which calls
+    /// <see cref="SourceResolution.RefuseDivergentPrimaries"/>. It has to: this is the arm
+    /// a run takes when the <c>names</c> generator is NOT selected, and without the check
+    /// a divergent object silently emitted
     /// <c>[Table("&lt;the inherited primary's name&gt;")]</c> — binding the parent's table
     /// while the child declared its own — on exactly the arm where nothing else looks.
     /// A refusal that depends on which generators ran is not a refusal.
     /// </para>
     /// </summary>
-    public static string Table(MetaObject entity)
-    {
-        RefusePrimarySourceDivergence(entity);
-        return entity.DbTable ?? entity.Name;
-    }
-
-    /// <summary>
-    /// Refuse an object whose <c>@role: primary</c> sources resolve to more than one
-    /// physical name. Two primaries can survive on one object's effective sources:
-    /// ValidateOnePrimarySource enforces "exactly one primary" over OWN children only, and
-    /// MetaData.EffectiveChildren shadows an own child over a super child only on a
-    /// (type, name) match — so two source.rdb nodes with DIFFERENT explicit names at two
-    /// levels of an extends chain never collide, on metadata that loads with ZERO errors.
-    /// <para>
-    /// DIRECTION-BLIND: it compares every primary against every other, so it does not
-    /// matter which of them is writable nor which was declared first. The earlier check
-    /// compared the first primary against the first primary WRITABLE one, which could only
-    /// see a divergence when one primary was read-only — and, since inherited sources come
-    /// first, only when the read-only one was the inherited one.
-    /// </para>
-    /// <para>
-    /// Two primaries AGREEING on a name is not a divergence and stays legal: the invariant
-    /// is that an object has ONE physical name, not that it declares one source.
-    /// </para>
-    /// </summary>
-    private static void RefusePrimarySourceDivergence(MetaObject obj) =>
-        RefusePrimarySourceDivergence(obj, PrimarySourcesOf(obj));
-
-    /// <summary>All <c>@role: primary</c> sources of <paramref name="obj"/>, resolving.</summary>
-    private static List<MetaSource> PrimarySourcesOf(MetaObject obj) =>
-        obj.Sources().Where(s => s.Role == SOURCE_ROLE_PRIMARY).ToList();
-
-    /// <summary>
-    /// The refusal itself, over a primary list the caller already has. ONE implementation and
-    /// ONE copy of the message: a check written twice is a check that can disagree with itself,
-    /// which is the same defect this file exists to prevent one level down (a NAME resolved
-    /// twice). The message is a cross-port contract string — four other ports carry it verbatim.
-    /// </summary>
-    private static void RefusePrimarySourceDivergence(MetaObject obj, IReadOnlyList<MetaSource> primaries)
-    {
-        var distinct = primaries
-            .Select(s => s.PhysicalName)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(n => n, StringComparer.Ordinal)
-            .ToList();
-        if (distinct.Count <= 1) return;
-        // Sorted, so the message is identical in every port regardless of source order.
-        var joined = string.Join(", ", distinct.Select(n => $"\"{n}\""));
-        throw new InvalidOperationException(
-            $"{obj.Name}: role=primary sources disagree on the object's physical name — " +
-            $"{joined}. Every consumer binds ONE name. Give them matching physical names, " +
-            "or drop the extra role=primary declaration.");
-    }
+    public static string Table(MetaObject entity) => entity.DbTable ?? entity.Name;
 
     /// <summary>
     /// The DB column name for a field: the <c>@column</c> override, else the raw
@@ -376,8 +327,10 @@ public static class CSharpNaming
     /// #248 — true iff <paramref name="obj"/> declares (or inherits) a primary
     /// <c>source.rdb</c> of ANY kind (table, view, proc, ...). The cheap existence half
     /// of the names-artifact participation gate: whether a primary source exists does
-    /// not depend on <see cref="ColumnNamingStrategy"/>, so this never needs one. The
-    /// full resolution (and its divergence guard) is <see cref="ResolveObjectNames"/>.
+    /// not depend on <see cref="ColumnNamingStrategy"/>, so this never needs one. It
+    /// resolves no NAME, which is why it carries no divergence refusal: that lives in
+    /// <see cref="SourceResolution.RefuseDivergentPrimaries"/>, reached by every caller
+    /// that does resolve one.
     /// ADR-0039: <c>Sources()</c> is the RESOLVING accessor — an inherited primary
     /// source must be seen.
     /// </summary>
@@ -400,11 +353,11 @@ public static class CSharpNaming
     /// </summary>
     public static ObjectNames? ResolveObjectNames(MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
-        // ADR-0039: Sources() is the RESOLVING accessor — an inherited primary source
-        // must be seen, or an entity extending an abstract base with its own primary
-        // source would wrongly read as unpersisted.
-        var primaries = PrimarySourcesOf(obj);
-        var source = primaries.FirstOrDefault();
+        // SourceResolution.PrimaryRdbSource, not a scan of our own: ADR-0039's RESOLVING
+        // source accessor (an inherited primary must be seen, or an entity extending an
+        // abstract base with its own primary source would wrongly read as unpersisted),
+        // AND the divergence refusal that used to live in this method — see below.
+        var source = SourceResolution.PrimaryRdbSource(obj);
         if (source is null) return null;
 
         var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
@@ -415,30 +368,16 @@ public static class CSharpNaming
 
         var name = source.PhysicalName;
 
-        // Every consumer downstream is meant to reference this name UNCONDITIONALLY —
-        // no per-site equality guard. Refuse here instead, once, so nothing downstream
-        // has to. This is REACHABLE on real metadata: ValidateOnePrimarySource
-        // (Loader/ValidationPasses.cs) enforces "exactly one primary" over OWN children
-        // only, and MetaData.EffectiveChildren shadows an own child over a super child
-        // only on a (type, name) match. Two source.rdb children with DIFFERENT explicit
-        // names never collide, so a parent's and a child's own primary sources both
-        // survive on the child's effective Sources() at once — two real nodes with
-        // role == primary, on metadata that loads with ZERO errors.
-        //
-        // DIRECTION-BLIND, and that is a correction. The old check compared this first
-        // primary against MetaObject.DbTable (the first primary WRITABLE one), which can
-        // only see a divergence when one of the two primaries is READ-ONLY — and since
-        // the resolving source list places inherited entries before own, only when the
-        // read-only one is the inherited one. The mirror shape, a parent and child each
-        // declaring their own differently-named WRITABLE primary, was silent, and silence
-        // is the worse outcome: the child declares its own physical name and every
-        // generated artifact binds the parent's.
-        //
-        // Two primaries AGREEING on a name is not a divergence and stays legal — the
-        // invariant is that an object has ONE physical name, not that it declares one
-        // source. A read-only primary beside a writable REPLICA on one object does not
-        // reach here either: a replica is not role == primary.
-        RefusePrimarySourceDivergence(obj, primaries);
+        // The divergence refusal — an object whose @role: primary sources resolve to more
+        // than one physical name — used to live HERE, and that was the defect. Every
+        // consumer downstream references this name UNCONDITIONALLY, with no per-site
+        // equality guard, but this method runs only when the `names` generator is in the
+        // run — so the M:N RUNTIME resolver, which reads MetaObject.DbTable and executes
+        // SQL against it, got no refusal at all. It now lives in
+        // MetaObjects.Meta.SourceResolution, reached through PrimaryRdbSource above and
+        // through FindPrimaryWritableSource for DbTable, so codegen and runtime inherit
+        // one implementation. See that class's doc for the reachability analysis — the
+        // shape loads with ZERO errors — and for why the check is DIRECTION-BLIND.
 
         return new ObjectNames
         {
@@ -457,9 +396,10 @@ public static class CSharpNaming
     /// <paramref name="field"/>, when BOTH of two independent gates hold; the bare
     /// quoted physical-column literal otherwise (the exact spelling every consumption
     /// site used before Program A added the constant — git 488143e21). Neither gate is
-    /// the divergence check — a primary/writable-source disagreement has ALREADY
-    /// thrown, once, inside <see cref="ResolveObjectNames"/>, before this method ever
-    /// runs; this is presence and existence, not agreement.
+    /// the divergence check — an object whose <c>@role: primary</c> sources disagree on a
+    /// physical name has ALREADY thrown, once, inside
+    /// <see cref="SourceResolution.RefuseDivergentPrimaries"/>, which every caller that
+    /// resolves a name goes through; this is presence and existence, not agreement.
     /// <list type="bullet">
     /// <item><b>C1 — RUN-LEVEL presence</b> (<paramref name="includeNames"/>): is the
     /// <c>names</c> generator even part of THIS run? <c>--generators
@@ -506,9 +446,9 @@ public static class CSharpNaming
     /// will never exist for it.
     /// </para>
     /// <para>
-    /// Neither gate is the divergence check — a primary/writable-source disagreement
-    /// has ALREADY thrown, once, inside <see cref="ResolveObjectNames"/>, before this
-    /// method ever runs.
+    /// Neither gate is the divergence check — an object whose <c>@role: primary</c>
+    /// sources disagree on a physical name has ALREADY thrown, once, inside
+    /// <see cref="SourceResolution.RefuseDivergentPrimaries"/>.
     /// </para>
     /// </summary>
     public static string NameRef(MetaObject obj, ColumnNamingStrategy strategy, bool includeNames, string literal) =>

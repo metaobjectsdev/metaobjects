@@ -240,8 +240,9 @@ export function renderEntityConstants(
   }
 
   // A6/B2 — reference the constant whenever the artifact is in the run. No equality
-  // guard: resolveObjectNames refuses any object whose two resolvers disagree, so a
-  // reference here is the single spelling, never a lookalike. `physicalNameExpr` accepts
+  // guard: primaryRdbSource (@metaobjectsdev/metadata) refuses any object whose
+  // @role: primary sources disagree on a physical name, and both the constant and the
+  // literal below resolve through it, so a reference here is the single spelling. `physicalNameExpr` accepts
   // any `{ symbol }`-shaped value, so it works with this function's `{ name, symbol }`
   // parameter as well as `namesRef`'s own `{ resolved, symbol }`.
   const tableLine: Code = code`  $table: ${physicalNameExpr(names, tableName)}`;

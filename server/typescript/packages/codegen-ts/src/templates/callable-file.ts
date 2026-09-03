@@ -20,6 +20,7 @@
 // `args` parameter and calls `fn_x()`.
 
 import {
+  primaryRdbSource,
   type MetaObject,
   type MetaSource,
   isMetaSource,
@@ -59,6 +60,18 @@ function callableSource(entity: MetaObject): MetaSource | undefined {
 /** Render the full file content for an entity's callable wrapper. Caller
  *  is responsible for formatting (prettier / biome) and writing to disk. */
 export function renderCallableFile(entity: MetaObject): string {
+  // Run the primary-source DIVERGENCE refusal before resolving a physical name.
+  // `callableSource` selects by @kind with NO role filter, so it is a THIRD door into
+  // "what relation does this object name" — and it is reached by `callableFile()` alone,
+  // with no table-name resolver anywhere on the path. Without this an object whose
+  // @role: primary sources disagree emitted a wrapper bound to the inherited parent's
+  // procedure, on a model every other tier refuses. A refusal that depends on which
+  // generators ran is not a refusal.
+  //
+  // The SELECTION below is deliberately unchanged: divergence is about the NAME, while
+  // this function additionally asks "which source is callable?". Same shape as
+  // MetaObject.dbTable and the JVM/C# findPrimaryWritableSource.
+  primaryRdbSource(entity);
   const source = callableSource(entity);
   if (source === undefined) {
     throw new Error(

@@ -7,16 +7,13 @@
  * disagree with itself.
  */
 import {
-  isMetaSource,
+  primaryRdbSource,
   resolveColumnName,
   resolveTableSchema,
   type ColumnNamingStrategy,
   type MetaObject,
-  type MetaSource,
-  SOURCE_ROLE_PRIMARY,
 } from "@metaobjectsdev/metadata";
 import { code, imp, type Code } from "ts-poet";
-import { CodegenError } from "./errors.js";
 import { crossEntitySpecifier } from "./import-path.js";
 import type { RenderContext } from "./render-context.js";
 
@@ -40,13 +37,11 @@ export function resolveObjectNames(
   // #248: an object participates in the database iff it declares (or inherits) a primary
   // source. Never gate on the object subtype. ADR-0039: resolving children().
   //
-  // isMetaSource, not `instanceof` — two physical copies of @metaobjectsdev/metadata in
-  // one process give the class and the instance different identities, and the failure is
-  // SILENT: the entity reads as "not backed by any store" and emits nothing.
-  const primaries = obj.children().filter(
-    (c): c is MetaSource => isMetaSource(c) && c.role === SOURCE_ROLE_PRIMARY,
-  );
-  const source = primaries[0];
+  // primaryRdbSource, not a scan of our own: it is THE primary-source lookup for the whole
+  // toolchain, and it carries the divergence refusal that used to live in this function
+  // (see below). A second scan here would be a lookup written twice — the same defect one
+  // level down from the one this file exists to prevent (a NAME resolved twice).
+  const source = primaryRdbSource(obj);
   if (source === undefined) return undefined;
 
   const fields: Record<string, FieldNames> = {};
@@ -56,45 +51,29 @@ export function resolveObjectNames(
     fields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
   }
 
-  // Read the physical name off the primary SOURCE ALREADY IN HAND, rather than re-finding
-  // it via resolveTableName() (which reapplies the identical role==="primary" predicate a
-  // second time — a name computed twice by two separate lookups is exactly the class of bug
-  // this file exists to prevent). Mirrors the C# port (CSharpNaming.ResolveObjectNames).
+  // Read the physical name off the primary SOURCE ALREADY IN HAND rather than calling
+  // resolveTableName() for it. Both now delegate to primaryRdbSource, so this is no longer
+  // about avoiding a second, differently-written lookup — it is that resolveTableName adds
+  // a no-source FALLBACK (pluralize(snake(name))) this function must not take: an object
+  // with no primary source returns undefined above, and must never acquire a table name it
+  // never declared. Mirrors the C# port (CSharpNaming.ResolveObjectNames).
   const name = source.physicalName;
-  // Every consumer downstream references this name unconditionally (no per-site equality
-  // guard — see drizzle-schema.ts). Refuse here instead, once, so nothing downstream has to.
+
+  // The divergence refusal — an object whose @role: primary sources resolve to more than
+  // one physical name — used to live HERE, and that was the defect. Every consumer
+  // downstream references this name unconditionally (no per-site equality guard; see
+  // drizzle-schema.ts), but this function runs only when the `names` generator is in the
+  // run, so with namesFile() unwired nothing refused at all: `meta migrate` emitted DDL
+  // against the PARENT's table and ObjectManager read and wrote it, silently, on every
+  // run. A refusal that depends on which consumer asked is not a refusal.
   //
-  // This CAN fire on real metadata: validateSourceRoles (metadata/src/persistence/source/
-  // validate-source-roles.ts) enforces "exactly one primary" over ownChildren() only, never
-  // over the effective inherited set, and _effectiveChildren (metadata/src/shared/
-  // meta-data.ts) shadows an own child over a super child only on a (type, name) match. Two
-  // source.rdb children with DIFFERENT explicit names never collide, so a parent and a child
-  // each declaring their own differently-named primary source leave BOTH on the effective
-  // children() list rather than one shadowing the other. Both shapes below load with ZERO
-  // errors (names.test.ts pins each, asserting no load errors first).
-  //
-  // DIRECTION-BLIND, and that is a correction. The old check compared this first primary
-  // against `obj.dbTable` (the first primary WRITABLE one), which can only see a divergence
-  // when one of the two primaries is READ-ONLY — and since children() places inherited
-  // entries before own, only when the read-only one is the inherited one. The mirror shape,
-  // a parent and child each declaring their own differently-named WRITABLE primary, was
-  // silent, and silence is the worse outcome: the child declares its own physical name and
-  // every generated artifact binds the parent's.
-  //
-  // Two primaries AGREEING on a name is not a divergence and stays legal — the invariant is
-  // that an object has one physical name, not that it declares one source. Nor does a
-  // read-only primary beside a writable REPLICA on one object reach here: a replica is not
-  // role==="primary" (see names.test.ts, "a read-only primary beside a writable replica...").
-  const distinct = [...new Set(primaries.map((s) => s.physicalName))].sort();
-  if (distinct.length > 1) {
-    // Sorted, so the message is identical in every port regardless of children() order.
-    const joined = distinct.map((n) => `"${n}"`).join(", ");
-    throw new CodegenError(
-      `${obj.name}: role=primary sources disagree on the object's physical name — ` +
-      `${joined}. Every consumer binds ONE name. Give them matching physical names, ` +
-      `or drop the extra role=primary declaration.`,
-    );
-  }
+  // It now lives in primaryRdbSource (@metaobjectsdev/metadata's naming.ts), called
+  // above, so resolveTableName, resolveTableSchema, MetaObject.dbTable and this function
+  // all inherit it from one implementation. See that function's doc for the reachability
+  // analysis — the shape loads with ZERO errors — and for why the check must be
+  // DIRECTION-BLIND rather than comparing against the first primary WRITABLE source.
+  // names.test.ts pins both directions through this entry point; naming.test.ts (in
+  // @metaobjectsdev/metadata) pins the other three doors.
 
   const schema = resolveTableSchema(obj);
   return {
@@ -117,8 +96,8 @@ export function resolveObjectNames(
  * constant (`resolveObjectNames`), and build the ts-poet import symbol pointing at
  * `<Object>.names.ts`. Returns undefined whenever the artifact does not exist for this
  * object in this run — a PRESENCE guard ("is the artifact in this run at all"), never the
- * divergence guard `resolveObjectNames` already owns above: this function never compares
- * a resolved value to a literal, it only asks whether the constant exists.
+ * divergence refusal that `primaryRdbSource` owns: this function never compares a
+ * resolved value to a literal, it only asks whether the constant exists.
  *
  * `fromPackage` is the package of the FILE BEING EMITTED — the file that will hold the
  * `import { <Object>Names } from …` line — and defaults to `obj.package`, correct for
@@ -167,9 +146,18 @@ export function namesConstArg(
 
 /**
  * The physical-name expression every §A6 `$table` / view-name site builds: the constant's
- * `.name` when the artifact is present, the literal otherwise. No equality guard —
- * `resolveObjectNames` already refuses (throws) any object whose two resolvers disagree,
- * so a reference here is the single spelling, never a lookalike computed twice.
+ * `.name` when the artifact is present, the literal otherwise. No equality guard — but the
+ * two branches earn that two different ways, and both are worth naming:
+ *
+ * - A TABLE literal (`drizzle-schema.ts`, `entity-constants.ts`) comes from
+ *   `dbTable`/`resolveTableName`, which delegate to `primaryRdbSource` — the same lookup
+ *   `resolveObjectNames` uses — so a disagreeing object has already thrown.
+ * - A VIEW literal (`projection-decl.ts`, `view-decl.ts`) comes from `viewName()`
+ *   (`extract-view-spec.ts`), which reads OWN read-only sources only. That cannot diverge:
+ *   a concrete projection may not inherit a source (`ERR_PROJECTION_INHERITED_SOURCE`) and
+ *   the loader allows one own primary, so there is nothing for it to disagree with.
+ *
+ * Either way a reference here is the single spelling, never a lookalike computed twice.
  */
 export function physicalNameExpr(
   names: { readonly symbol: Code } | undefined,

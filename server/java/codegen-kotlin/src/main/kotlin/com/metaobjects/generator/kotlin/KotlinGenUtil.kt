@@ -14,6 +14,7 @@ import com.metaobjects.origin.AggregateOrigin
 import com.metaobjects.origin.MetaOrigin
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
+import com.metaobjects.source.SourceResolution
 import com.metaobjects.template.MetaTemplate
 import com.metaobjects.validation.SymbolTable
 
@@ -143,7 +144,10 @@ public object KotlinGenUtil {
     // R15/§A2/§A3 (spec) — the per-object physical-name artifact resolver
     // ([KotlinNamesGenerator]). Mirrors the shipped C# `CSharpNaming.ResolveObjectNames`
     // and the TS reference (`codegen-ts/src/names.ts`) EXACTLY: same role-scoped
-    // resolving source selection, same D4 divergence guard, same field resolution.
+    // resolving source selection, same field resolution, and the same D4 divergence
+    // refusal — which all three now inherit from ONE implementation rather than each
+    // carrying a copy ([SourceResolution] here, `primaryRdbSource` in TS,
+    // `MetaObjects.Meta.SourceResolution` in C#).
     // Neither [firstRdbSource] (role-blind, first-declared) nor [writableRdbSource] /
     // [readOnlyRdbSource] (own-only, role-agnostic) is the right selector here — this
     // is a DIFFERENT question ("what does this object's PRIMARY source resolve to?"),
@@ -178,9 +182,28 @@ public object KotlinGenUtil {
      * `source.rdb` resolves exactly one, since `@role` defaults to `primary` and
      * `ValidateOnePrimarySource` requires exactly one primary among each level's OWN
      * children).
+     *
+     * Runs [SourceResolution.refuseDivergentPrimaries], the ONE implementation for the
+     * JVM ports, so this helper, `SpringNamesGenerator` and OMDB all inherit the same
+     * primary-source DIVERGENCE refusal from the same code. That refusal used to live in
+     * [resolveObjectNames], which runs only when the names generator is in the run — so
+     * [KotlinExposedTableGenerator] and [KotlinStoredProcGenerator], which call THIS
+     * function and not that one, got no refusal at all and bound the inherited parent's
+     * table while the child declared its own. A refusal that depends on which consumer
+     * asked is not a refusal.
+     *
+     * @throws com.metaobjects.MetaDataException when [obj]'s `@role: primary` sources
+     *   disagree on a physical name
      */
-    fun primaryRdbSource(obj: MetaObject): RdbSource? =
-        obj.getSources(true).filterIsInstance<RdbSource>().firstOrNull { MetaSource.ROLE_PRIMARY == it.role }
+    fun primaryRdbSource(obj: MetaObject): RdbSource? {
+        // The refusal, from the ONE JVM implementation. The RdbSource narrowing below
+        // stays rather than casting SourceResolution's MetaSource result: a cast that
+        // misses would return null, and null here means "this object has no table" --
+        // the generators then emit NOTHING for it, silently.
+        SourceResolution.refuseDivergentPrimaries(obj)
+        return obj.getSources(true).filterIsInstance<RdbSource>()
+            .firstOrNull { MetaSource.ROLE_PRIMARY == it.role }
+    }
 
     /** §A2/§A3 — physical name + logical field name for one field. */
     data class KotlinFieldNames(val name: String, val column: String)
@@ -213,11 +236,9 @@ public object KotlinGenUtil {
         // R27: the ONE selection algorithm, shared with KotlinExposedTableGenerator's
         // single-object emission path -- see primaryRdbSource's doc for why neither
         // firstRdbSource nor writableRdbSource/readOnlyRdbSource is the right selector.
-        // The full primary LIST is needed here (not just the first) for the
-        // direction-blind divergence guard below; primaryRdbSource returns its head.
-        val primaries = obj.getSources(true).filterIsInstance<RdbSource>()
-            .filter { MetaSource.ROLE_PRIMARY == it.role }
-        val source = primaries.firstOrNull() ?: return null
+        // It also carries the divergence refusal that used to live in THIS function; see
+        // below.
+        val source = primaryRdbSource(obj) ?: return null
 
         // ADR-0039: metaFields is the RESOLVING accessor (getMetaFields() defaults to
         // includeParentData=true) -- an inherited @column must resolve here, or the
@@ -229,22 +250,17 @@ public object KotlinGenUtil {
         val name = source.physicalName
 
         // D4 -- every consumer downstream is meant to reference this name
-        // UNCONDITIONALLY, no per-site equality guard. Refuse here instead, once, so
-        // nothing downstream has to. This is REACHABLE on metadata that loads with ZERO
-        // errors: ValidateOnePrimarySource enforces "exactly one primary" over OWN
-        // children only, and effective-children shadowing matches an own child over a
-        // super child only on a (type, name) pair -- so two DIFFERENTLY-NAMED source.rdb
-        // nodes at two levels of an extends chain never collide, and a parent's and a
-        // child's own primary sources both survive the resolving source walk.
-        //
-        // DIRECTION-BLIND, and that is a correction. The old check compared this first
-        // primary against findPrimaryWritableSource (the first primary WRITABLE one),
-        // which can only see a divergence when one of the two primaries is READ-ONLY --
-        // and since the resolving source list places inherited entries before own, only
-        // when the read-only one is the inherited one. The mirror shape, a parent and
-        // child each declaring their own differently-named WRITABLE primary, was silent,
-        // and silence is the worse outcome: the child declares its own physical name and
-        // every generated artifact binds the parent's.
+        // UNCONDITIONALLY, no per-site equality guard, so an object whose @role: primary
+        // sources disagree on a physical name must be REFUSED rather than resolved to one
+        // of them. That refusal used to live HERE, and that was the defect: this function
+        // runs only when the names generator is in the run, while
+        // KotlinExposedTableGenerator and KotlinStoredProcGenerator call primaryRdbSource
+        // directly and got no refusal at all. It now lives in SourceResolution
+        // (metadata module), reached through primaryRdbSource above, so those two
+        // generators, SpringNamesGenerator and OMDB all inherit it. See that class's doc
+        // for the reachability analysis -- the shape loads with ZERO errors -- and for why
+        // the check must be DIRECTION-BLIND rather than comparing against
+        // findPrimaryWritableSource.
         //
         // A previous revision of this comment claimed the shape "could not be constructed
         // on THIS port" because object.base is not instantiable on the JVM. That reasoned
@@ -253,20 +269,6 @@ public object KotlinGenUtil {
         // restricted to extending projections), which reaches direction 1; and two plain
         // entities each declaring their own table reach direction 2. Both are pinned by
         // KotlinNamesDivergentSourceTest, which asserts zero load errors first.
-        //
-        // Two primaries AGREEING on a name is not a divergence and stays legal -- the
-        // invariant is that an object has ONE physical name, not that it declares one
-        // source. A read-only primary beside a writable REPLICA on one object does not
-        // reach here either: a replica is not role == primary.
-        val distinct = primaries.map { it.physicalName }.distinct().sorted()
-        if (distinct.size > 1) {
-            // Sorted, so the message is identical in every port regardless of source order.
-            val joined = distinct.joinToString(", ") { "\"$it\"" }
-            throw GeneratorException(
-                "${obj.name}: role=primary sources disagree on the object's physical name -- " +
-                    "$joined. Every consumer binds ONE name. Give them matching physical names, " +
-                    "or drop the extra role=primary declaration.")
-        }
 
         return KotlinObjectNames(
             // effectiveKind, not a hand-rolled kind list -- derived from the source's own

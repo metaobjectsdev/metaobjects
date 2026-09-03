@@ -61,8 +61,8 @@ export interface ProjectionDeclOpts {
    * in the run. Built by the caller via `resolveObjectNames` + `imp(...)` — the same
    * pair `drizzle-schema.ts` builds — so this file never resolves names itself; it
    * only decides, per field, whether to reference the constant or fall back to the
-   * literal (a lookup MISS, never a divergence — `resolveObjectNames` already refused
-   * any object whose two resolvers disagree). Threaded into `renderExistingViewDecl`
+   * literal (a lookup MISS, never a divergence — `primaryRdbSource` already refused any
+   * object whose `@role: primary` sources disagree on a physical name). Threaded into `renderExistingViewDecl`
    * too, since a projection's primary source IS the view its `ObjectNames.name` names.
    */
   readonly names?: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined;

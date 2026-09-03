@@ -56,9 +56,11 @@ public sealed record GenConfig
     /// <para>
     /// This is PRESENCE, distinct from the per-object EXISTENCE question
     /// <c>CSharpNaming.ResolveObjectNames</c> answers (null when an object has no
-    /// primary source — #248), and from the DIVERGENCE guard inside that same method
-    /// (a primary/writable-source disagreement throws, once, unconditionally — there is
-    /// no flag that suppresses it and never should be). A false positive here (claiming
+    /// primary source — #248), and from the DIVERGENCE refusal, which lives in
+    /// <c>MetaObjects.Meta.SourceResolution</c> rather than in any generator (an object
+    /// whose <c>@role: primary</c> sources disagree on a physical name throws, once,
+    /// unconditionally — there is no flag that suppresses it and never should be, and
+    /// putting it below codegen is what makes it reach the runtime too). A false positive here (claiming
     /// names ran when it did not) would reintroduce exactly the defect this exists to
     /// close; nothing may compare a constant's VALUE to a literal and fall back on a
     /// mismatch — that is the forbidden shape. This only asks "was the generator even

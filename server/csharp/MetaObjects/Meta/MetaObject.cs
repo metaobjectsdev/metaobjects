@@ -12,8 +12,13 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
 {
     /// <summary>
     /// All effective <c>source.*</c> children (own + inherited via extends).
-    /// Mirrors Java's <c>getSources(true)</c>; ordering preserves declaration order
-    /// (own-first, then super chain).
+    /// Answers the same question as Java's <c>getSources(true)</c>, but NOT in the same
+    /// ORDER: this delegates to <c>Children()</c> / EffectiveChildren, which starts from
+    /// the super's list and appends non-overriding own children, so INHERITED sources come
+    /// first (TypeScript's <c>_effectiveChildren</c> matches). Java concatenates own first,
+    /// then walks the super chain. Order is not part of the contract — every consumer
+    /// filters by role or kind — but a comment reasoning about "the first primary" has to
+    /// name the right port.
     /// </summary>
     public IReadOnlyList<MetaSource> Sources()
     {
@@ -41,6 +46,16 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     /// </summary>
     public MetaSource? FindPrimaryWritableSource()
     {
+        // Run the primary-source DIVERGENCE refusal before answering — outside the memo,
+        // so it runs on every call. DbTable resolves through this method, and DbTable is
+        // read by the M:N RUNTIME resolver (MetaObjects.Codegen/Runtime/M2MResolver.
+        // TableOf), which executes SQL against the answer and goes through no generator at
+        // all — so while the refusal lived in CSharpNaming it never ran for that caller,
+        // and a divergent object silently bound the inherited PARENT's relation. A refusal
+        // that depends on which consumer asked is not a refusal. The narrowing below
+        // stays: divergence is about the NAME, and this method additionally asks "is that
+        // primary the WRITE target?".
+        SourceResolution.RefuseDivergentPrimaries(this);
         return Cached("primaryWritableSource", () =>
             Sources().FirstOrDefault(s => s.Role == SOURCE_ROLE_PRIMARY && s.IsWritable()));
     }

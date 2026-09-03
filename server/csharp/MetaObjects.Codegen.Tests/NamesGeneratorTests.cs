@@ -13,10 +13,11 @@
 //  - #248: an object with no primary source emits nothing — participation is never
 //    gated on the object subtype.
 //  - Two fields colliding on their Pascal member name is refused, naming the model.
-//  - R-B/R-C: a primary source that disagrees with the primary WRITABLE source
+//  - R-B/R-C: an object whose @role: primary sources disagree on a physical name
 //    (reachable via an abstract parent's own differently-named primary source plus a
-//    child's own, differently-named, writable primary source — see CSharpNaming.
-//    ResolveObjectNames) is refused, naming the object and BOTH names. There is no
+//    child's own, differently-named one — see MetaObjects.Meta.SourceResolution, which
+//    owns the refusal for codegen AND runtime) is refused, naming the object and BOTH
+//    names. There is no
 //    fallback-to-literal: every consumption site references the resolved constant
 //    unconditionally, so a name that cannot be agreed on must be a build error.
 
@@ -437,6 +438,34 @@ public class NamesGeneratorTests
         Assert.Contains("ChildWeird", entityEx.Message);
         Assert.Contains("parent_table", entityEx.Message);
         Assert.Contains("child_table", entityEx.Message);
+    }
+
+    [Fact]
+    public void The_RUNTIME_physical_name_accessor_ALSO_refuses_the_divergent_shape()
+    {
+        // The door no generator opens. MetaObjects.Codegen/Runtime/M2MResolver.TableOf is
+        // `obj.DbTable ?? obj.DbView`, and it executes SQL against the answer — it runs at
+        // request time, with no generator anywhere in the process. While the refusal lived
+        // in CSharpNaming it therefore never ran for that caller, and a divergent object
+        // silently resolved "parent_table" for an entity that declares "child_table":
+        // wrong rows, no error.
+        //
+        // The refusal now lives in MetaObjects.Meta.SourceResolution and is called from
+        // MetaObject.FindPrimaryWritableSource, which DbTable resolves through — so this
+        // asserts the exact expression TableOf evaluates. CSharpNaming.Table inherits it
+        // through the same accessor rather than carrying a second copy of the check.
+        var root = Load(DivergentBothWritable);
+        var child = root.Objects().Single(o => o.Name == "ChildWeird");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _ = child.DbTable);
+        // All three substrings asserted separately, so a message that drops one still fails.
+        Assert.Contains("ChildWeird", ex.Message);
+        Assert.Contains("parent_table", ex.Message);
+        Assert.Contains("child_table", ex.Message);
+
+        // SourceResolution's own two entry points, on the same fixture.
+        Assert.Throws<InvalidOperationException>(() => SourceResolution.PrimaryRdbSource(child));
+        Assert.Throws<InvalidOperationException>(() => SourceResolution.RefuseDivergentPrimaries(child));
     }
 
     [Fact]

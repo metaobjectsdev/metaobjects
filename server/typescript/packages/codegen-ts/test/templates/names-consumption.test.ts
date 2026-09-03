@@ -183,7 +183,7 @@ describe("§A6 — the entity file consumes the names artifact", () => {
   // deliberately re-wraps every thrown error (any class) as a plain `Error` tagged with
   // the generator name (`[${generator.name}] ${msg}`) — pre-existing behavior, unrelated
   // to this task, that loses the original prototype chain by design. The unit test in
-  // names.test.ts asserts the CodegenError class directly at the `resolveObjectNames`
+  // names.test.ts asserts the MetaModelError class directly at the `resolveObjectNames`
   // call; this test asserts the run-level CONTRACT — reject, don't silently emit a wrong
   // literal — and that the original message (naming the object and both physical names)
   // survives the wrap.

@@ -16,6 +16,7 @@ import {
   SOURCE_ROLE_PRIMARY,
 } from "../../persistence/source/source-constants.js";
 import { MetaSource } from "../../persistence/source/meta-source.js";
+import { primaryRdbSource } from "../../naming.js";
 import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
@@ -40,6 +41,16 @@ import type { MetaValidator } from "../validator/meta-validator.js";
 
 export class MetaObject extends MetaData {
   get dbTable(): string | undefined {
+    // Run the primary-source DIVERGENCE refusal before answering — OUTSIDE the memo, so
+    // it does not depend on cached()'s behaviour on a throwing compute, and so it reads
+    // the same as the C# and Java siblings. This is the other door into "what is this
+    // object's physical name": codegen-ts's drizzle-schema reads it and never goes
+    // through resolveTableName, so without the call here an object whose @role: primary
+    // sources disagree would silently bind the FIRST primary writable one (the inherited
+    // parent's table) on exactly the arm where nothing else looks. A refusal that depends
+    // on which consumer asked is not a refusal. The narrowing below stays: divergence is
+    // about the NAME, and dbTable additionally asks "is that primary the WRITE target?".
+    primaryRdbSource(this);
     return this.cached("dbTable", () => {
       // The primary writable source carries the physical table name. FR-016:
       // physicalName respects per-kind aliases + the four-step resolution rule.

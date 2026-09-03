@@ -9,6 +9,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.source.SourceResolution;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -21,7 +22,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Generator: one {@code <Entity>Names.java} per object with a declared (or inherited)
@@ -88,41 +88,18 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             Map<String, FieldNames> fields) {}
 
     /**
-     * R27 — the role-scoped PRIMARY {@code source.*} of {@code obj}, resolving through
-     * the {@code extends} super chain (ADR-0039): {@code role == primary}, NEVER a
-     * role-blind first-declared pick (that is {@link SpringNaming#firstRdbSource}, a
-     * DIFFERENT question — "does a table exist to bind to?" — used by the other
-     * generators in this package). {@code getSources(true)} is the RESOLVING accessor
-     * (an inherited primary source must be seen, or an entity extending an abstract
-     * base with its own primary source would wrongly read as unpersisted).
-     *
-     * @return the primary source, or {@code null} when {@code obj} has no {@code role
-     *     == primary} source anywhere in its resolved chain (#248: participation in the
-     *     database derives from a declared primary source, never from the object
-     *     subtype)
-     */
-    static MetaSource primaryRdbSource(MetaObject obj) {
-        for (MetaSource src : obj.getSources(true)) {
-            if (MetaSource.ROLE_PRIMARY.equals(src.getRole())) return src;
-        }
-        return null;
-    }
-
-    /**
      * §A2/§A3 — the ONE place a data name is resolved for a generator run. Returns
      * {@code null} when {@code obj} has no primary source — #248: participation in the
      * database derives from a declared primary source, never from the object subtype.
      */
     static ObjectNames resolveObjectNames(MetaObject obj, String strategy) {
-        // The full primary LIST, not just the first: the direction-blind divergence
-        // guard below compares every primary against every other. primaryRdbSource
-        // returns this list's head.
-        List<MetaSource> primaries = new ArrayList<>();
-        for (MetaSource src : obj.getSources(true)) {
-            if (MetaSource.ROLE_PRIMARY.equals(src.getRole())) primaries.add(src);
-        }
-        if (primaries.isEmpty()) return null;
-        MetaSource source = primaries.get(0);
+        // primaryRdbSource, not a scan of our own: it carries the divergence refusal that
+        // used to live in this method, and it lives in the metadata module so that OMDB
+        // and every other generator inherit it too. This method runs only when the
+        // `names` generator is in the run, so a refusal that lived only here was no
+        // refusal at all -- see SourceResolution's class doc.
+        MetaSource source = SourceResolution.primaryRdbSource(obj);
+        if (source == null) return null;
 
         // ADR-0039: getMetaFields() is the RESOLVING accessor (includeParentData
         // defaults to true) -- an inherited @column must resolve here, or the emitted
@@ -133,29 +110,6 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         }
 
         String name = source.getPhysicalName();
-
-        // D4 -- every consumer downstream is meant to reference this name
-        // UNCONDITIONALLY, no per-site equality guard. Refuse here instead, once, so
-        // nothing downstream has to. Mirrors the Kotlin/C#/TS/Python guard exactly; see
-        // KotlinGenUtil.resolveObjectNames for the full reachability analysis, including
-        // the two shapes that reach it on metadata loading with ZERO errors and why the
-        // check must be DIRECTION-BLIND rather than comparing against the primary
-        // WRITABLE source (which can only see a divergence when one primary is
-        // read-only, and only when that one is the inherited one).
-        List<String> distinct = primaries.stream()
-                .map(MetaSource::getPhysicalName).distinct().sorted().toList();
-        if (distinct.size() > 1) {
-            // Sorted, so the message is identical in every port regardless of source order.
-            // Same idiom as the Kotlin sibling implementing this check
-            // (KotlinGenUtil: distinct.joinToString(", ") { "\"$it\"" }).
-            String joined = distinct.stream()
-                    .map(n -> "\"" + n + "\"")
-                    .collect(Collectors.joining(", "));
-            throw new GeneratorException(
-                obj.getName() + ": role=primary sources disagree on the object's physical "
-                    + "name -- " + joined + ". Every consumer binds ONE name. Give them "
-                    + "matching physical names, or drop the extra role=primary declaration.");
-        }
 
         return new ObjectNames(
             // getEffectiveKind(), not a hand-rolled kind list -- derived from the

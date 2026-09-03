@@ -288,6 +288,7 @@ export {
   toSnakeCase, toKebabCase, pluralize,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveTableName, resolveColumnName, resolveTableSchema,
+  primaryRdbSource,
   buildNameMap,
   stripPackage,
 } from "./naming.js";

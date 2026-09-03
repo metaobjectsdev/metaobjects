@@ -21,8 +21,10 @@ public sealed class NamesGenerator : PerEntityGenerator
 
     // #248: participation derives from a declared primary source, never from the
     // object subtype — never gate on IsEntity()/abstract/etc. A cheap existence check;
-    // the strategy-sensitive full resolve (and its divergence guard) happens once, in
-    // GenerateOne, against the real ctx.Config.ColumnNamingStrategy.
+    // the strategy-sensitive full resolve happens once, in GenerateOne, against the real
+    // ctx.Config.ColumnNamingStrategy. The divergence refusal is not this generator's to
+    // own and never was — it lives in MetaObjects.Meta.SourceResolution, which every
+    // caller that resolves a physical name goes through, codegen and runtime alike.
     protected override bool Filter(MetaObject entity) => CSharpNaming.HasPrimarySource(entity);
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)

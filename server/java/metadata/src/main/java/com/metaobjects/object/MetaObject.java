@@ -16,6 +16,7 @@ import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.source.SourceResolution;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.view.MetaView;
 import static com.metaobjects.MetaData.ATTR_IS_ABSTRACT;
@@ -948,6 +949,15 @@ public abstract class MetaObject extends MetaData {
      * @return the primary writable source, or empty if none
      */
     public Optional<MetaSource> findPrimaryWritableSource() {
+        // Run the primary-source DIVERGENCE refusal before answering. This method feeds
+        // getPrimaryRdbTableName(), which is how OMDB decides which physical table to read
+        // and write and how the mustache helper registry names a table — so without the
+        // check here an object whose @role: primary sources disagree silently binds the
+        // FIRST primary writable one (the inherited parent's table) while the child
+        // declares its own. A refusal that depends on which consumer asked is not a
+        // refusal. The narrowing below stays: divergence is about the NAME, and this
+        // method additionally asks "is that primary the WRITE target?".
+        SourceResolution.refuseDivergentPrimaries(this);
         for (MetaSource src : getSources(true)) {
             if (MetaSource.ROLE_PRIMARY.equals(src.getRole()) && src.isWritable()) {
                 return Optional.of(src);

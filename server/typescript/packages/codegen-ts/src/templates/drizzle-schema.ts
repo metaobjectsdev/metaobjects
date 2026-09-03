@@ -42,8 +42,11 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // (opt-in under ADR-0034 scaffold-and-own — an unconditional import would break every
   // project that has not enabled it) or the object has no primary source — both PRESENCE
   // guards. No per-site equality check: whenever the constant exists, it IS the name;
-  // `resolveObjectNames` already refuses (throws) any object whose two resolvers disagree,
-  // so this file never has to re-check.
+  // `primaryRdbSource` (@metaobjectsdev/metadata) already refuses (throws) any object
+  // whose `@role: primary` sources disagree on a name, and BOTH branches reach it — the
+  // constant through `resolveObjectNames`, and `obj.dbTable` above on its own — so this
+  // file never has to re-check, and the literal arm is refused too rather than silently
+  // binding the inherited parent's table when the names generator is out of the run.
   const names = namesRef(obj, ctx);
   const tableNameExpr: Code = physicalNameExpr(names, tableName);
   // A column's constant, on the same terms. A lookup MISS is normal, not a defect: the TPH

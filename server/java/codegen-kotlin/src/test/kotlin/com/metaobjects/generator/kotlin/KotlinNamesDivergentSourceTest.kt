@@ -1,6 +1,6 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.generator.GeneratorException
+import com.metaobjects.MetaDataException
 import com.metaobjects.metadata.ktx.loadString
 import com.metaobjects.source.RdbSource
 import com.metaobjects.source.MetaSource
@@ -82,11 +82,24 @@ class KotlinNamesDivergentSourceTest {
             .sorted()
         assertEquals(listOf(otherName, "child_table").sorted(), primaries)
 
-        val ex = assertFailsWith<GeneratorException> { KotlinGenUtil.resolveObjectNames(child) }
+        // MetaDataException, not GeneratorException: the refusal moved into the metadata
+        // module (SourceResolution) so that OMDB and the two generators calling
+        // primaryRdbSource directly inherit it too. A refusal that only codegen can raise
+        // is a refusal the runtime does not get.
+        val ex = assertFailsWith<MetaDataException> { KotlinGenUtil.resolveObjectNames(child) }
         // Each substring asserted separately, so a message dropping one still fails.
         assertTrue("ChildWeird" in ex.message!!, ex.message!!)
         assertTrue(otherName in ex.message!!, ex.message!!)
         assertTrue("child_table" in ex.message!!, ex.message!!)
+
+        // The SECOND door, which resolveObjectNames alone never covered:
+        // KotlinExposedTableGenerator and KotlinStoredProcGenerator call primaryRdbSource
+        // and never this function, so with the names generator out of the run they bound
+        // the inherited parent's relation with no refusal at all.
+        val direct = assertFailsWith<MetaDataException> { KotlinGenUtil.primaryRdbSource(child) }
+        assertTrue("ChildWeird" in direct.message!!, direct.message!!)
+        assertTrue(otherName in direct.message!!, direct.message!!)
+        assertTrue("child_table" in direct.message!!, direct.message!!)
     }
 
     @Test

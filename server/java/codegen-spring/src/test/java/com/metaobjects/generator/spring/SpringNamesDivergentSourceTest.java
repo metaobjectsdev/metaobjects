@@ -1,6 +1,6 @@
 package com.metaobjects.generator.spring;
 
-import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
@@ -85,6 +85,12 @@ public class SpringNamesDivergentSourceTest extends SharedRegistryTestBase {
 
     private MetaObject childOf(String fixture, String baseName, String childName) throws IOException {
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.getRoot().toPath(), baseName, fixture);
+        // Asserted, not assumed. loadFixture COLLECTS child-level errors instead of
+        // throwing, so without this a fixture the loader had begun REFUSING would still
+        // build a tree carrying both primaries, the refusal would still fire, and every
+        // test below would stay green while pinning a shape nobody can author. The Kotlin
+        // and metadata-module siblings assert the same thing.
+        assertEquals("fixture must load cleanly", Collections.emptyList(), loader.getErrors());
         for (MetaObject o : loader.getMetaObjects()) {
             if (o.getName().endsWith("::" + childName)) return o;
         }
@@ -105,15 +111,26 @@ public class SpringNamesDivergentSourceTest extends SharedRegistryTestBase {
         Collections.sort(expected);
         assertEquals(expected, primaries);
 
+        // MetaDataException, not GeneratorException: the refusal moved into the metadata
+        // module (SourceResolution) so that OMDB -- which resolves a physical table name
+        // through MetaObject.getPrimaryRdbTableName() and never through any generator --
+        // inherits it too. A refusal that only codegen can raise is a refusal the runtime
+        // does not get.
         try {
             SpringNamesGenerator.resolveObjectNames(child, "literal");
-            fail("expected a GeneratorException naming both physical names");
-        } catch (GeneratorException e) {
+            fail("expected a MetaDataException naming both physical names");
+        } catch (MetaDataException e) {
             // Each substring asserted separately, so a message dropping one still fails.
             assertTrue(e.getMessage(), e.getMessage().contains("ChildWeird"));
             assertTrue(e.getMessage(), e.getMessage().contains(otherName));
             assertTrue(e.getMessage(), e.getMessage().contains("child_table"));
         }
+
+        // There is no SECOND door left in this generator to test: the role-scoped selector
+        // it used to expose was a pass-through with no production caller (resolveObjectNames
+        // calls SourceResolution directly), so it was deleted rather than guarded. The
+        // resolver itself is pinned by SourceResolutionDivergenceTest in the metadata module,
+        // which also covers the runtime accessor OMDB goes through.
     }
 
     @Test

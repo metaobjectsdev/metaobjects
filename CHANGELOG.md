@@ -184,6 +184,51 @@ Reachability is pinned by the test rather than asserted: the two sources carry *
 explicit names**, because two same-named children of one type collide and shadow — a fixture
 using unnamed sources proves nothing about a shape where both survive.
 
+### Fixed — that guard only ran for code generation, so the runtime never got it
+
+Making the check direction-blind fixed *what* it compares. It left *where it lives* wrong in
+four of the five ports: inside the codegen function that resolves the `<Entity>Names`
+artifact. **That function runs only when the `names` generator is in the run** — and on the
+JVM and in TypeScript it is opt-in — so with it unwired nothing refused anything. A refusal
+that depends on which generators ran is not a refusal.
+
+The doors it never covered are not hypothetical, and three of them are the RUNTIME:
+
+- **TypeScript** — `resolveTableName` is the table-name resolver for `migrate-ts`'s expected
+  schema and for `runtime-ts`'s `ObjectManager` and query builder, and `MetaObject.dbTable`
+  is what the Drizzle schema template reads. None goes through the names artifact. On the
+  divergent shape `meta migrate` emitted DDL against the PARENT's table and `ObjectManager`
+  read and wrote it, silently, on every run.
+- **Java** — OMDB decides which physical table it reads and writes through
+  `MetaObject.getPrimaryRdbTableName()`, which reaches no generator at all; the mustache
+  helper registry names a table the same way.
+- **Kotlin** — the Exposed table generator, the stored-proc generator and the api-docs
+  builder each call `primaryRdbSource` directly and never the names function.
+- **C#** — `M2MResolver.TableOf` is `obj.DbTable ?? obj.DbView` and executes SQL against the
+  answer, at request time, with no generator in the process. C# had already moved the check
+  onto `CSharpNaming.Table` for the same reason one level up; this is the caller that move
+  did not reach.
+
+**Python is the port that had it right, and it is the shape the other four now take:** the
+refusal lives inside `source_resolution.primary_rdb_source`, so its codegen, api-docs and
+runtime callers inherit it for free. Each port now has ONE copy of the refusal, at the
+physical-name lookup the whole toolchain shares — `primaryRdbSource` in
+`@metaobjectsdev/metadata`, a new `com.metaobjects.source.SourceResolution` in the JVM
+`metadata` module (shared by `codegen-spring`, `codegen-kotlin`, `codegen-mustache` and
+OMDB), and a new `MetaObjects.Meta.SourceResolution` in the core C# assembly. The codegen
+copies are deleted, not left beside it: a check written twice is a check that can disagree
+with itself, which is the same defect one level down from the one this whole line is about.
+
+Because the refusal moved out of codegen, so did its exception type. TypeScript throws
+`MetaModelError` (exported from `@metaobjectsdev/metadata`) where it threw `CodegenError`;
+Java and Kotlin throw `MetaDataException` — `GeneratorException`'s own supertype — where they
+threw `GeneratorException`. C# already threw `InvalidOperationException` and still does. The
+message is unchanged except on the JVM, whose two ports had been spelling its one em dash as
+`--` while the other three used `—`; one implementation leaves one spelling.
+
+The JVM and C# messages are also now reachable from the runtime, which is the point: a
+divergent model fails at the first read rather than returning the wrong rows.
+
 ### Fixed — a sourceless object no longer gets a table name it never declared
 
 A concrete `object.entity` with no `source.rdb` at all loads cleanly, and C# emitted
