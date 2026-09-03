@@ -7,6 +7,7 @@ import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.streams.toList
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -61,6 +62,8 @@ class NoMagicPhysicalNamesTest {
     // is not a column at all, only the prefix each member column is built from.
     private val flatPrefix = "zz_phys_col_pfx"
     private val voMemberCol = "zz_phys_col_road"
+    // What the flattened branch actually emits: parent column + "_" + member column.
+    private val flatCol = flatPrefix + "_" + voMemberCol
 
     private val tokens = listOf(
         Token(table, "CustomerNames.NAME"),
@@ -71,10 +74,11 @@ class NoMagicPhysicalNamesTest {
         Token(colFk, "OrderNames.CUSTOMER_ID_COLUMN"),
         Token(jsonbCol, "CustomerNames.PROFILE_COLUMN"),
         Token(
-            voMemberCol, "(no constant exists)", Reach.KNOWN_LITERAL,
-            "A value object carries no source (FR-024 value purity) and so no <Vo>Names artifact. " +
-                "Its member columns reach output only through the owning entity's jsonb/flattened " +
-                "column, which the owner's artifact names as ONE field.",
+            flatCol, "(no constant exists)", Reach.KNOWN_LITERAL,
+            "A flattened object.value's nested column is a COMPOSITE (owner field column + \"_\" + " +
+                "member column). The value object has no source (FR-024 value purity) and so no " +
+                "<Vo>Names, and the owner's artifact carries one constant per FIELD, not per " +
+                "flattened member — there is no single constant to reference.",
         ),
     )
 
@@ -185,13 +189,22 @@ class NoMagicPhysicalNamesTest {
     }
 
     @Test
-    fun `pins each known-literal category so fixing one fails this test rather than passing silently`() {
-        // A KNOWN_LITERAL row is a claim about TODAY, and a claim nothing re-checks is how a
-        // "known gaps" list ends up describing a codebase that moved on.
-        val body = generate().filterKeys { !isNamesArtifact(it) }.values.joinToString("\n")
-        val healed = tokens.filter { it.reach == Reach.KNOWN_LITERAL && it.literal !in body }
-            .map { """"${it.literal}" is no longer emitted literally — promote its row to CONSTANT. Was: ${it.why}""" }
-            .sorted()
-        assertTrue(healed.isEmpty(), healed.joinToString("\n"))
+    fun `lets no physical name escape that is not a declared known literal`() {
+        // The exhaustive form, and the strongest statement this gate can make. [tokens] says
+        // what each KNOWN name should do; this says there is nothing ELSE. Every physical name
+        // in the fixture is `zz_phys_`-prefixed, so any such token appearing outside a names
+        // artifact is a physical name that escaped, whether or not anyone thought to list it.
+        //
+        // Equality in BOTH directions. A new escape fails — including one from a generator
+        // added after this test was written, which a hand-maintained list would miss. And so
+        // does a KNOWN_LITERAL quietly fixed: a "known gaps" list nothing re-checks is how a
+        // ledger ends up describing a codebase that moved on.
+        val escaped = generate()
+            .filterKeys { !isNamesArtifact(it) }
+            .values
+            .flatMap { Regex("""zz_phys_\w+""").findAll(it).map { m -> m.value } }
+            .toSortedSet()
+        val declared = tokens.filter { it.reach == Reach.KNOWN_LITERAL }.map { it.literal }.toSortedSet()
+        assertEquals(declared, escaped)
     }
 }

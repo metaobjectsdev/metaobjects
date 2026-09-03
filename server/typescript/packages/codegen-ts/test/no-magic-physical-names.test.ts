@@ -253,19 +253,23 @@ describe("no magic physical names in generated output", () => {
     expect(unreferenced.sort()).toEqual([]);
   });
 
-  it("pins each known-literal category, so fixing one fails this test rather than passing silently", async () => {
-    // A knownLiteral row is a claim about TODAY, and a claim nothing re-checks is how a
-    // "known gaps" list ends up describing a codebase that moved on. Each row asserts the
-    // literal is STILL emitted: close the gap and this test tells you to promote the row
-    // to "constant" rather than letting the ledger quietly go stale.
+  it("lets no physical name escape that is not a declared known literal", async () => {
+    // The exhaustive form, and the strongest statement this gate can make. TOKENS says what
+    // each KNOWN name should do; this says there is nothing ELSE. Every physical name in the
+    // fixture is `zz_phys_`-prefixed, so any such token appearing outside a names artifact is
+    // a physical name that escaped, whether or not anyone thought to list it.
+    //
+    // Equality in BOTH directions. A new escape fails — including one from a generator added
+    // after this test was written, which a hand-maintained list would miss. And so does a
+    // knownLiteral quietly fixed: a "known gaps" list nothing re-checks is how a ledger ends
+    // up describing a codebase that moved on.
     const tree = await generate();
-    const body = Object.entries(tree)
-      .filter(([p]) => !isNamesArtifact(p))
-      .map(([, c]) => c)
-      .join("\n");
-    const healed = TOKENS
-      .filter((t) => t.reach === "knownLiteral" && !body.includes(t.literal))
-      .map((t) => `"${t.literal}" is no longer emitted literally — promote its row to "constant". Was: ${t.why}`);
-    expect(healed.sort()).toEqual([]);
+    const escaped = new Set(
+      Object.entries(tree)
+        .filter(([p]) => !isNamesArtifact(p))
+        .flatMap(([, c]) => c.match(/zz_phys_\w+/g) ?? []),
+    );
+    const declared = TOKENS.filter((t) => t.reach === "knownLiteral").map((t) => t.literal);
+    expect([...escaped].sort()).toEqual(declared.sort());
   });
 });

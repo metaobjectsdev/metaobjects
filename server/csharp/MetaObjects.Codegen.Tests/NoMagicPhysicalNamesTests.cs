@@ -19,6 +19,7 @@ using MetaObjects.Cli;
 using MetaObjects.Codegen;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
@@ -219,19 +220,25 @@ public class NoMagicPhysicalNamesTests
     }
 
     [Fact]
-    public void The_known_literal_categories_are_pinned_so_fixing_one_fails_this_test_rather_than_passing_silently()
+    public void Lets_no_physical_name_escape_that_is_not_a_declared_known_literal()
     {
-        // A KnownLiteral row is a claim about TODAY, and a claim nothing re-checks is how a
-        // "known gaps" list ends up describing a codebase that moved on. Each row asserts
-        // the literal is STILL emitted: close the gap and this test tells you to promote the
-        // row to Reach.Constant rather than letting the ledger quietly go stale.
-        var body = string.Join("\n", Generate().Where(f => !IsNamesArtifact(f.Path)).Select(f => f.Content));
-        var healed = Tokens
-            .Where(t => t.Reach == Reach.KnownLiteral)
-            .Where(t => !body.Contains(t.Literal, StringComparison.Ordinal))
-            .Select(t => $"\"{t.Literal}\" is no longer emitted literally — promote its row to Reach.Constant. Was: {t.Why}")
-            .OrderBy(s => s, StringComparer.Ordinal).ToList();
+        // The exhaustive form, and the strongest statement this gate can make. Tokens says
+        // what each KNOWN name should do; this says there is nothing ELSE. Every physical
+        // name in the fixture is `zz_phys_`-prefixed, so any such token appearing outside a
+        // names artifact is a physical name that escaped, whether or not anyone thought to
+        // list it.
+        //
+        // Equality in BOTH directions. A new escape fails — including one from a generator
+        // added after this test was written, which a hand-maintained list would miss. And so
+        // does a KnownLiteral quietly fixed: a "known gaps" list nothing re-checks is how a
+        // ledger ends up describing a codebase that moved on.
+        var escaped = Generate()
+            .Where(f => !IsNamesArtifact(f.Path))
+            .SelectMany(f => Regex.Matches(f.Content, @"zz_phys_\w+").Select(m => m.Value))
+            .Distinct().OrderBy(s => s, StringComparer.Ordinal).ToList();
+        var declared = Tokens.Where(t => t.Reach == Reach.KnownLiteral)
+            .Select(t => t.Literal).OrderBy(s => s, StringComparer.Ordinal).ToList();
 
-        Assert.True(healed.Count == 0, string.Join("\n", healed));
+        Assert.Equal(declared, escaped);
     }
 }
