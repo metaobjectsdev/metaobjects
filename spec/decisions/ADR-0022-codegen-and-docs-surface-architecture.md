@@ -95,6 +95,42 @@ nature differ.
 implementing language?* **No** (the model) → `meta docs`. **Yes** (the generated
 API surface) → `api-docs`.
 
+## Amendment 1 (2026-09-03) — the JVM half of D3 was never built, and D4 named a class no pom can wire
+
+Two clauses above describe JVM mechanisms that do not exist, both stated in the present
+tense, and each produced a defect downstream. They are corrected here rather than in the
+docs alone, because the docs were reading this ADR correctly.
+
+**D3 — there is no `GeneratorRegistryProvider` ServiceLoader SPI.** Nothing of that name
+exists in any port, and `GeneratorParam` — the pom's `<generator>` element — carries only
+`classname`, `args`, `filters`, `scripts`: no name field for a stable name to arrive in.
+JVM generator selection is, and stays, **FQCN-in-pom**. Java's `GeneratorRegistry` is a
+stable-name contract and a conformance anchor, exactly as its own javadoc says, with no
+production consumer; `gen --list` and cross-port name identity are what it buys. The
+`<classname>` back-compat clause is therefore not back-compat — it is the mechanism. This
+is not a reversal of D3's intent (stable names still spell identically across ports, still
+gated against the manifest); it is a correction of what shipped on one port, and the
+follow-up to wire selection through the registry remains open and unscheduled.
+
+**D4 — the supersession target for a pom is `TemplateScopeGenerator`.**
+`render/templategen/TemplateGenerator` is a static factory that takes a walk callback, has
+a private constructor, and deliberately does not implement `Generator` — so
+`AbstractMetaDataMojo`'s `(Generator) newInstance()` cannot build it. The deprecation
+notice on `MustacheTemplateGenerator` told adopters to switch to it anyway, and Java's
+registry named it under `template`, which is why the registry could not be used to
+construct a suite the way every other port's can. The wirable class is
+`com.metaobjects.generator.template.TemplateScopeGenerator` (SP-1b, `codegen-base`), which
+renders *through* the conformance-pinned factory — so D4's substance is unchanged: the
+byte-pinned engine supersedes the legacy one. Only the name an adopter types was wrong.
+
+**The durable lesson is the missing check.** Java's registry conformance gate asserted
+every entry's classname was non-blank and never that it RESOLVED, let alone that it was a
+`Generator` with a no-arg constructor. A non-blank string naming an unusable class passed
+for as long as nobody typed it. `everyRegisteredClassnameLoadsAndIsAWirableGenerator` now
+asserts it, with the one legitimate exception PINNED: `extractor` is fused into `entity` on
+this port (`JavaObjectCodeGenerator.execute` emits it), so its output ships but it is not
+separately wirable.
+
 ## Consequences
 
 - One canonical place for the codegen + docs architecture (this ADR). A

@@ -76,6 +76,13 @@ generated output or the per-port idiomatic emission — only how generators are
 cross-port conformance-pinned `render/templategen/TemplateGenerator`. Kept working
 with an `@Deprecated` + javadoc note; removed in a later major.
 
+> **Corrected by [ADR-0022](ADR-0022-codegen-and-docs-surface-architecture.md)
+> Amendment 1 (2026-09-03):** the class an adopter names in a `<generator>` is
+> `com.metaobjects.generator.template.TemplateScopeGenerator`, which renders through
+> `render/templategen/TemplateGenerator`. That factory takes a walk callback and does
+> not implement `Generator`, so a pom cannot instantiate it — this notice sent adopters
+> to a dead end for as long as it stood. The substance of D4 is unchanged.
+
 ## Scope of THIS change (reference-first, per the chosen approach)
 
 Implement the **reference in TypeScript** + the **contained cross-port fixes**;

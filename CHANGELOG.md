@@ -459,6 +459,51 @@ registry gains a generator the page does not name. That gate is deliberately
 one-directional: it can prove a generator is *named*, and it does not pretend to check that
 what the row *says* is still true.
 
+### Fixed — Java's `template` generator named a class no `pom.xml` could wire
+
+Three places told a Java adopter to reach the cross-port Mustache primitive through
+`com.metaobjects.render.templategen.TemplateGenerator`: the `template` row of Java's
+`GeneratorRegistry`, the `@Deprecated` notice on `MustacheTemplateGenerator` (*"New
+configurations should use…"*), and the port page's generator table. **A `<generator>` naming
+it cannot be built.** That class is a static factory taking a walk callback, with a private
+constructor, and its own javadoc says it deliberately does not implement `Generator` —
+`AbstractMetaDataMojo` does `(Generator) constructor.newInstance()`, so following the
+deprecation notice ends in a reflection failure, not a generator. The legacy class it
+deprecates *does* implement `Generator`, so the advice moved an adopter from something that
+worked to something that could not run.
+
+The wirable class already existed and shipped with SP-1b: **`TemplateScopeGenerator`**
+(`codegen-base`), the declarative adapter that takes `template` / `scope` / `outputPattern` /
+`templatesDir` as ordinary pom args and renders *through* the conformance-pinned factory. All
+three places now name it. Nothing about the byte-pinned engine changes — only the class an
+adopter types.
+
+**The second-order cost is why this is worth a paragraph.** Java's registry was the one port's
+registry that could not be iterated to construct a generation suite, because two of its
+fourteen rows named classes that are not `Generator`s. The no-magic-strings gate — whose whole
+method is "run every NATIVE generator the registry knows, so a generator added later is gated
+the day it is registered" — had to skip them and pin the skipped set. One of the two is now
+fixed and `template` runs in that suite; the other, `extractor`, is a **fusion rather than a
+gap** and is documented as one: `JavaObjectCodeGenerator.execute` emits an extractor for every
+non-abstract object, so its output ships whenever `entity` runs, it is simply not separately
+selectable the way the other four ports expose it. `docs/ports/java.md` now says so where an
+adopter would otherwise try to wire it.
+
+**The missing check, which is the durable half:** the registry conformance gate asserted every
+entry's classname was *non-blank*, and never that it resolved — let alone that it was a
+`Generator` with a no-arg constructor. A non-blank string naming an unusable class passes that
+test forever, and did.
+`GeneratorRegistryConformanceTest.everyRegisteredClassnameLoadsAndIsAWirableGenerator` now
+asserts what the mojo actually requires, with the one fusion PINNED in both directions so a
+new unwirable row fails and so does a fixed one.
+
+Also corrected at the source: **[ADR-0022](spec/decisions/ADR-0022-codegen-and-docs-surface-architecture.md)
+Amendment 1**. D3 stated in the present tense that "Java/Kotlin Maven resolve `<name>` via a
+`GeneratorRegistryProvider` ServiceLoader SPI" — **no such SPI exists in any port**, and
+`GeneratorParam` has no name field for a stable name to arrive in. JVM selection is
+FQCN-in-pom and stays that way; `docs/features/own-your-codegen.md` had reproduced the ADR's
+claim faithfully, which is why the fix belongs in the ADR and not only in the doc.
+
 ### Fixed — a `runGen` caller could not tell a `CodegenError` from a crash
 
 `runner.ts` caught every generator throw and re-threw a plain `Error` carrying only the

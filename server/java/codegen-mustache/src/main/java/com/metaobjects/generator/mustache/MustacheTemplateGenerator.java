@@ -30,13 +30,20 @@ import java.util.HashMap;
  *
  * @since 6.0.0
  * @deprecated As of ADR-0021 D4, superseded by
- *             {@link com.metaobjects.render.templategen.TemplateGenerator}, the
- *             conformance-pinned cross-port Mustache generator whose output is
- *             byte-pinned against the shared cross-port render conformance corpus.
+ *             {@code com.metaobjects.generator.template.TemplateScopeGenerator}, which
+ *             renders through the conformance-pinned cross-port
+ *             {@link com.metaobjects.render.templategen.TemplateGenerator} — so its output
+ *             is byte-pinned against the shared cross-port render conformance corpus.
  *             This legacy generator is kept for backward compatibility with existing
  *             Maven {@code pom.xml} configurations that reference it by class name;
  *             it will be removed in a later major release. New configurations should
- *             use {@code com.metaobjects.render.templategen.TemplateGenerator}.
+ *             use {@code com.metaobjects.generator.template.TemplateScopeGenerator}.
+ *             <p>Note the indirection: {@code render.templategen.TemplateGenerator} is a
+ *             static factory taking a walk callback and does NOT implement
+ *             {@link com.metaobjects.generator.Generator}, so a {@code <generator>} naming
+ *             it cannot be instantiated by the Maven plugin. {@code TemplateScopeGenerator}
+ *             is the pom-wirable adapter over it ({@code template} / {@code scope} /
+ *             {@code outputPattern} / {@code templatesDir} args).
  */
 @Deprecated
 public class MustacheTemplateGenerator implements Generator {

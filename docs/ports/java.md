@@ -287,12 +287,18 @@ name in every port.
 | `render-helper` | `SpringRenderHelperGenerator` | `metaobjects-codegen-spring` | One `<Template>RenderHelper` per `template.output`, wrapping the JVM `Renderer` with a typed `render(payload, provider)`. `@kind: document` renders `@textRef` to a `String`; `@kind: email` renders subject + html (+ optional text) into an `EmailDocument`. **It also runs the mustache↔payload drift check at BUILD time** — an unresolvable text, or one with a non-warning `Verify` error, fails the build rather than emitting. |
 | `extractor` | `ExtractorCodeGenerator` | `metaobjects-codegen-base` | One `<Name>Extractor` wrapping the runtime tolerant extract, turning dirty LLM text into a fully-typed flavored object graph (nested objects + arrays-of-objects populated) in one call. It names `MetaObjectExtractor` (in `metaobjects-om`) by FQN string only, so `codegen-base` keeps no compile dependency on `om` — the reference resolves on the consumer's classpath. |
 | `trace-helper` | `LlmTraceHelperGenerator` | `metaobjects-codegen-spring` | One `<Entity>TraceHelper` per concrete entity that transitively `extends` `metaobjects::ai::LlmCallBase` **and** nests a `template.prompt` carrying `@responseRef` — a static `record<Entity>(...)` that extracts the typed response, builds the `LlmCallBase` trace row, and persists it. Emits nothing for any other entity. |
-| `template` | `TemplateGenerator` | `metaobjects-render` | The generic Mustache primitive: walk a caller-supplied root, render one shared template per walk result, return `List<EmittedFile>`. The declarative alternative to writing a generator class — see [Declarative template-codegen](#declarative-template-codegen-templatescopegenerator) below. |
+| `template` | `TemplateScopeGenerator` | `metaobjects-codegen-base` | The generic Mustache primitive: walk the model by a named `scope`, render one shared template per walk result, write each file. The declarative alternative to writing a generator class — see [Declarative template-codegen](#declarative-template-codegen-templatescopegenerator) below. It renders through `render.templategen.TemplateGenerator`, the byte-pinned cross-port factory; that factory takes a walk callback and is not itself a `Generator`, so `TemplateScopeGenerator` is the class a pom names. |
 
 Wire any generator via the Maven plugin's `<generator>` entry pointing at its class.
 Every one is independently configurable; the typical starting set is
 `SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator`
 (controller + DTO + repository).
+
+**One exception: `extractor` is not separately wirable on this port.** It is emitted by
+`entity` — `JavaObjectCodeGenerator` runs `ExtractorCodeGenerator` for every non-abstract
+object it emits — so its output ships whenever `entity` is in your `<generators>`, and
+there is no `<generator>` entry for it. The other four ports expose `extractor` as a
+standalone generator; Java fuses it, which is why it carries a stable name here at all.
 
 ### `<Entity>Names` — the physical names, as constants
 

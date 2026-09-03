@@ -13,7 +13,7 @@ import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.generator.spring.SpringValueObjectGenerator;
-import com.metaobjects.render.templategen.TemplateGenerator;
+import com.metaobjects.generator.template.TemplateScopeGenerator;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -110,9 +110,11 @@ public final class GeneratorRegistry {
         register(m, "render-helper", SpringRenderHelperGenerator.class.getName(),
                 "Per-template.output render helper (document/email typed wrappers).", Tier.NATIVE);
         register(m, "extractor", ExtractorCodeGenerator.class.getName(),
-                "Per-template strict typed extract<Name> helper.", Tier.NATIVE);
-        register(m, "template", TemplateGenerator.class.getName(),
-                "Generic Mustache template primitive (walk + template -> files).", Tier.NATIVE);
+                "Per-template strict typed extract<Name> helper. FUSED into `entity` on this "
+                    + "port — emitted by JavaObjectCodeGenerator, not separately wirable.", Tier.NATIVE);
+        register(m, "template", TemplateScopeGenerator.class.getName(),
+                "Generic Mustache template primitive (walk + template -> files) — the "
+                    + "Maven-wirable declarative form over the conformance-pinned renderer.", Tier.NATIVE);
         register(m, "filter-allowlist", SpringFilterAllowlistGenerator.class.getName(),
                 "Per-entity REST filter allowlist (queryable-field guard).", Tier.NATIVE);
         register(m, "payload", SpringPayloadGenerator.class.getName(),

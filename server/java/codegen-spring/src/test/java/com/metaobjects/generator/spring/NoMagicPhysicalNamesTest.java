@@ -3,6 +3,7 @@ package com.metaobjects.generator.spring;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
+import com.metaobjects.generator.GeneratorRegistryConformanceTest;
 import com.metaobjects.loader.MetaDataLoader;
 import org.junit.Rule;
 import org.junit.Test;
@@ -148,6 +149,15 @@ public class NoMagicPhysicalNamesTest {
         Path templateRoot = tmp.newFolder("tpl").toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "no-magic", MODEL);
 
+        // The `template` generator renders a USER-authored Mustache; write one so the whole
+        // registry is runnable. Deliberately trivial and physical-name-free: the declarative
+        // data dict (TemplateData) carries no @table/@column at all, so this generator cannot
+        // spell a physical name — running it proves the registry row BUILDS, which is the
+        // property this suite depends on.
+        Path probeTemplate = templateRoot.resolve("no-magic").resolve("probe.mustache");
+        Files.createDirectories(probeTemplate.getParent());
+        Files.writeString(probeTemplate, "{{name}}\n");
+
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", outDir.toString());
         args.put("pkgPrefix", "acme.gen");
@@ -158,6 +168,11 @@ public class NoMagicPhysicalNamesTest {
         // Required by the entity generator (JavaObjectCodeGenerator), ignored by the rest.
         args.put("type", "class");
         args.put("flavor", "pojoAware");
+        // Required by TemplateScopeGenerator (the `template` row), ignored by the rest.
+        args.put("templatesDir", templateRoot.toString());
+        args.put("template", "no-magic/probe");
+        args.put("scope", "perEntity");
+        args.put("outputPattern", "template-scope/{Name}.txt");
 
         List<Generator> suite = new ArrayList<>();
         Set<String> notGenerators = new TreeSet<>();
@@ -172,18 +187,11 @@ public class NoMagicPhysicalNamesTest {
         }
         // A registry entry that cannot be built as a Generator is skipped — but the SET of
         // them is PINNED, because silently dropping entries is how a generator escapes this
-        // gate. Two rows are in that state today, and both name a class that is not a
-        // Generator at all, so Java's registry — unlike every other port's — cannot be used
-        // to construct a suite:
-        //   `extractor` -> ExtractorCodeGenerator, an emission HELPER driven by
-        //                  JavaObjectCodeGenerator.execute;
-        //   `template`  -> render.templategen.TemplateGenerator, a caller-driven factory
-        //                  taking a walk callback.
-        // Neither emits a physical name (both are template/extract tier), so neither can
-        // hide a magic string — but adding a third such row, or fixing one, fails here
-        // rather than quietly shrinking what this gate covers.
+        // gate. The pin is GeneratorRegistryConformanceTest.FUSED_NOT_WIRABLE, which owns
+        // the question and states the reason; asserting it here too means this suite cannot
+        // quietly start covering less than that ruling says it does.
         assertEquals("registry entries that are not Generators",
-            new TreeSet<>(List.of("extractor", "template")), notGenerators);
+            new TreeSet<>(GeneratorRegistryConformanceTest.FUSED_NOT_WIRABLE), notGenerators);
         // Derive `useNames` from the suite through the SHIPPED helper — the identical call
         // AbstractMetaDataMojo.buildGenerators makes. Re-implementing it here would leave
         // the gate measuring the test's own logic.
