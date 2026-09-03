@@ -165,6 +165,14 @@ gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-p
 # checks names. Offline; one manifest.
 gate_script_name_hooks() { node scripts/check-script-name-hooks.mjs; }
 
+# ── the no-magic-physical-names gate is wired in all five ports ───────────────
+# Each port carries a de-blinded gate proving its generated code REFERENCES the
+# <Entity>Names constants instead of respelling a physical database name. A cross-port
+# claim held up by five independent files decays one port at a time — delete one, or drop
+# it from a lane that selects tests by name, and the other four go on passing while the
+# sentence stops being true. This checks the wiring itself.
+gate_no_magic_coverage() { scripts/check-no-magic-gate-coverage.sh; }
+
 # ── release hygiene: no pre-release version may be committed ──────────────────
 # scripts/prerelease.mjs bumps every version declaration in place and restores them on
 # exit; a crashed run (or a hand-run sed) can leave an -rc.N behind. That is not cosmetic:
@@ -448,7 +456,7 @@ gate_conf_java() {
       && mvn -pl metadata,render,codegen-spring -am install -DskipTests -q \
       && mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest,RegistryManifestConformanceTest' -q \
       && mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q \
-      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest' -q )
+      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest' -q )
 }
 gate_conf_python() {
   # FULL suite, not cherry-picked paths. Until 2026-07-19 this ran only
@@ -471,7 +479,7 @@ gate_conf_python() {
 gate_conf_kotlin() {
   ( cd server/java \
       && mvn -pl codegen-kotlin -am install -DskipTests -q \
-      && mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest' -q )
+      && mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest,NoMagicPhysicalNamesTest' -q )
 }
 
 # ── conformance.yml — full reactor + drift/mutation gates ─────────────────────
@@ -539,6 +547,7 @@ if want gates; then step    "publish-intent parity"            gate_publish_inte
 if want gates; then step    "publish-set parity"               gate_publish_set;            fi
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
 if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
+if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi

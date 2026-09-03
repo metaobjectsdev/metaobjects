@@ -120,6 +120,7 @@ All live in `metaobjects-codegen-kotlin` under
 | `KotlinRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` (once per project) |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + the startup validator (once per project) |
+| `KotlinNamesGenerator` | `<Entity>Names.kt` — an `object` of `const val` physical database names (`KIND`/`NAME`/`SCHEMA`/`READ_ONLY`, a `<FIELD>_FIELD`/`<FIELD>_COLUMN` pair each, and a complete `COLUMNS_BY_FIELD`). Emitted for every object with a declared or inherited primary source, PLUS a fragment for any abstract base such an object extends (columns only, no `NAME`). Kotlin has no static inheritance — an `object` cannot extend another — so an artifact whose object extends another **re-exports** the parent's constants by reference (`const val ID_COLUMN: String = AuthNames.ID_COLUMN`) instead of restating the literal. Wire it alongside `KotlinExposedTableGenerator`: the Maven plugin then turns the table binding's constant substitution ON automatically (`AuthorTable : Table(AuthorNames.NAME)`); a run without it keeps the literals, so the output still compiles. |
 | `KotlinStoredProcGenerator` | stored-procedure call wrappers for `source.rdb` `@kind="storedProc"` |
 | `KotlinFilterAllowlistGenerator` | per-entity filter allowlist |
 
