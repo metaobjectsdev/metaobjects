@@ -19,15 +19,72 @@ import type { RenderContext } from "./render-context.js";
 
 export interface FieldNames { readonly name: string; readonly column: string; }
 
-export interface ObjectNames {
-  /** The `source.rdb @kind` value — `table` | `view` | `materializedView` | … */
-  readonly kind: string;
-  /** The PHYSICAL name. Not necessarily a table: resolveTableName delegates to
-   *  source.physicalName for every @kind, so this can be a view or a proc. */
+/** The object whose names artifact this one extends. */
+export interface SuperNames {
   readonly name: string;
-  readonly schema?: string;
-  readonly readOnly: boolean;
+  readonly package?: string | undefined;
+}
+
+export interface ObjectNames {
+  /**
+   * The `source.rdb @kind` value — `table` | `view` | `materializedView` | …
+   * Absent on a FRAGMENT: an abstract base with no source of its own, which contributes
+   * columns to its children and has no physical name of its own to carry.
+   */
+  readonly kind?: string | undefined;
+  /** The PHYSICAL name. Not necessarily a table: resolveTableName delegates to
+   *  source.physicalName for every @kind, so this can be a view or a proc.
+   *  Absent on a fragment — see `kind`. */
+  readonly name?: string | undefined;
+  readonly schema?: string | undefined;
+  /** Absent on a fragment — see `kind`. */
+  readonly readOnly?: boolean | undefined;
+  /**
+   * Every field, INHERITED INCLUDED. This is what a consumer looks a column up in, so a
+   * lookup for an inherited field must hit — miss and the caller falls back to a literal
+   * (see `columnExpr`), which is the whole defect this artifact exists to remove.
+   */
   readonly fields: Readonly<Record<string, FieldNames>>;
+  /**
+   * The fields DECLARED HERE — what the artifact EMITS. Inherited ones are declared by
+   * the super's artifact and reached through it, so a subtype states each physical name
+   * once instead of restating its parent's.
+   *
+   * ADR-0039's ONE sanctioned own-accessor use, in the exact form the ADR names: codegen
+   * emitting a generated subclass, iterating own members so inherited ones are not
+   * re-emitted.
+   */
+  readonly ownFields: Readonly<Record<string, FieldNames>>;
+  /** The nearest ancestor carrying an artifact of its own, when there is one. */
+  readonly superNames?: SuperNames | undefined;
+  /**
+   * True when the primary source is the SUPER's rather than declared here — a TPH
+   * subtype, which shares its base's single table. Structural (the two resolve to the
+   * SAME source node), never an equality test on the resolved strings: the physical
+   * name, kind, schema and read-only-ness then all come from the super's artifact rather
+   * than being restated.
+   */
+  readonly inheritsSource: boolean;
+}
+
+/**
+ * The nearest ancestor of `obj` that carries a names artifact of its own, or undefined.
+ *
+ * Walks past an ancestor with nothing to contribute — an abstract marker with no fields
+ * and no source emits no artifact, so there is nothing to extend and the search continues
+ * upward rather than stopping at a name that does not exist.
+ */
+export function namesArtifactSuperOf(obj: MetaObject): MetaObject | undefined {
+  let cur = obj.superData;
+  while (cur !== undefined) {
+    const candidate = cur as MetaObject;
+    if (typeof candidate.ownFields === "function" &&
+        (candidate.ownFields().length > 0 || primaryRdbSource(candidate) !== undefined)) {
+      return candidate;
+    }
+    cur = cur.superData;
+  }
+  return undefined;
 }
 
 export function resolveObjectNames(
@@ -43,6 +100,7 @@ export function resolveObjectNames(
   // level down from the one this file exists to prevent (a NAME resolved twice).
   const source = primaryRdbSource(obj);
   if (source === undefined) return undefined;
+  const ownFieldList = obj.ownFields();
 
   const fields: Record<string, FieldNames> = {};
   // ADR-0039: fields() is the RESOLVING accessor — inherited fields must appear, and an
@@ -50,6 +108,22 @@ export function resolveObjectNames(
   for (const f of obj.fields()) {
     fields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
   }
+  // ADR-0039's sanctioned own-accessor use: what this artifact DECLARES. See ObjectNames.
+  const ownFields: Record<string, FieldNames> = {};
+  for (const f of ownFieldList) {
+    ownFields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
+  }
+
+  const superObj = namesArtifactSuperOf(obj);
+  const superNames: SuperNames | undefined = superObj === undefined
+    ? undefined
+    : { name: superObj.name, package: superObj.package };
+  // Identity of the resolved source NODE, not equality of the resolved strings: a
+  // divergence guard is exactly what this codebase forbids here, and the question being
+  // asked is structural — did this object declare a source, or is it using its parent's?
+  const inheritsSource = source !== undefined && superObj !== undefined &&
+    primaryRdbSource(superObj) === source;
+
 
   // Read the physical name off the primary SOURCE ALREADY IN HAND rather than calling
   // resolveTableName() for it. Both now delegate to primaryRdbSource, so this is no longer
@@ -87,6 +161,51 @@ export function resolveObjectNames(
     // list would drift from the loader's the first time a read-only kind is added.
     readOnly: source.isReadOnly(),
     fields,
+    ownFields,
+    superNames,
+    inheritsSource,
+  };
+}
+
+/**
+ * The names FRAGMENT for an object that a sourced object extends but which declares no
+ * source of its own — the `BaseEntity` pattern: shared fields, no table.
+ *
+ * Separate from {@link resolveObjectNames} on purpose, and the separation is the #248 rule
+ * intact rather than weakened. "Has a primary source" still decides whether an object is a
+ * database participant, so an `object.value` carrying fields resolves to nothing here as it
+ * always has. A fragment is emitted only for an object REACHED from a participant by
+ * walking `extends` upward — which is the only context in which its fields are columns at
+ * all. It carries no `kind`/`name`/`readOnly`, because it has no physical name and must
+ * never acquire one.
+ *
+ * Returns undefined when the object declares no fields of its own: an abstract marker has
+ * nothing to extend, and emitting an empty artifact for it would put a name in the import
+ * graph that says nothing.
+ */
+export function resolveSuperFragmentNames(
+  obj: MetaObject,
+  strategy?: ColumnNamingStrategy,
+): ObjectNames | undefined {
+  const ownFieldList = obj.ownFields();
+  if (ownFieldList.length === 0) return undefined;
+
+  const fields: Record<string, FieldNames> = {};
+  for (const f of obj.fields()) {
+    fields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
+  }
+  const ownFields: Record<string, FieldNames> = {};
+  for (const f of ownFieldList) {
+    ownFields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
+  }
+  const superObj = namesArtifactSuperOf(obj);
+  return {
+    fields,
+    ownFields,
+    superNames: superObj === undefined
+      ? undefined
+      : { name: superObj.name, package: superObj.package },
+    inheritsSource: false,
   };
 }
 
@@ -141,7 +260,13 @@ export function namesRef(
 export function namesConstArg(
   names: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined,
 ): { readonly name: string; readonly symbol: Code } | undefined {
-  return names === undefined ? undefined : { name: names.resolved.name, symbol: names.symbol };
+  // `resolved.name` is optional because a FRAGMENT (an abstract base contributing columns,
+  // with no source of its own) genuinely has no physical name. No caller reaches here with
+  // one — `namesRef` goes through `resolveObjectNames`, which requires a primary source —
+  // but returning undefined rather than asserting keeps the fragment case from acquiring a
+  // `$table` it never declared, which is the phantom-table failure #248 exists to prevent.
+  if (names === undefined || names.resolved.name === undefined) return undefined;
+  return { name: names.resolved.name, symbol: names.symbol };
 }
 
 /**

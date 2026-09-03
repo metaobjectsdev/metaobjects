@@ -32,6 +32,12 @@ const FIXTURES = [
   "cross-package-vo.json",
   "trainer-website-shape.json",
   "packaged-shape.json",
+  // An `extends` chain — an abstract base a sourced entity extends, plus a TPH subtype
+  // sharing its base's table. Added because the names artifact learned to EXTEND its
+  // parent's rather than restate it, and not one of the five fixtures above carries an
+  // `extends` at all: the built-in and the reference copy could have diverged on the whole
+  // new branch while this gate stayed green.
+  "extends-chain.json",
 ];
 
 let tmp: string;

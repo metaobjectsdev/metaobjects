@@ -61,6 +61,7 @@ import {
   isWriteThrough,
   isAbstract,
   hasWritableRdbSource,
+  isTphSubtype,
   // engine composer — used for the delegated write-through variant:
   renderEntityFile,
   // engine plumbing:
@@ -102,7 +103,14 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
     });
   }
   // Value-only / contract target → interface + Zod, no Drizzle table.
-  if (!runtime || !hasWritableRdbSource(entity)) {
+  //
+  // A TPH subtype (FR-017) routes here too. It INHERITS the discriminator base's writable
+  // source.rdb through `extends`, so `hasWritableRdbSource` is true for it under the
+  // ADR-0039 resolving read — but the base owns the single shared table. Without the
+  // isTphSubtype clause this template fell through to the vanilla path and emitted a
+  // SECOND Drizzle table bound to the base's physical name, carrying only the subtype's
+  // own columns.
+  if (!runtime || !hasWritableRdbSource(entity) || isTphSubtype(entity)) {
     return renderValueObjectFile(entity, ctx.apiPrefix, ctx);
   }
   // #214 — a write-through entity read-view (writable table + a read-only replica view +

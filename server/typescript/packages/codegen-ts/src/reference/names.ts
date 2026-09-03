@@ -15,7 +15,9 @@
 // emits:         <target>/<Entity>.names.ts per concrete object with a primary source
 //                (under outputLayout: "package", <target>/<pkg>/<Entity>.names.ts — beside
 //                the entity module it describes). An object with no primary source (#248)
-//                gets no names artifact.
+//                gets no names artifact — EXCEPT an abstract base that a sourced object
+//                extends, which gets a fragment (columns, no physical name) so its
+//                children extend it instead of restating every inherited column.
 // customize:     swap `renderNamesDecl` for your own shape; keep `resolveObjectNames` as the
 //                one resolver so the constant and the DDL it describes cannot disagree.
 // composes-with: entity.ts, routes.ts — both reference these constants instead of
@@ -29,11 +31,16 @@
 // bytes to existing files, where a flag would move every $table-carrying golden for the
 // same functionality.
 import {
+  crossEntitySpecifier,
   entityOutputPath,
-  perEntity,
+  namesArtifactSuperOf,
   renderNamesDecl,
+  resolveObjectNames,
+  type EmittedFile,
+  type GenContext,
   type Generator,
 } from "@metaobjectsdev/codegen-ts";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 
 export function namesFile(): Generator {
   return {
@@ -42,21 +49,70 @@ export function namesFile(): Generator {
     // entity generator can tell whether this artifact will exist. Exactly the mechanism
     // routesFileHono already uses via emitsHonoRoutes/includeHonoRoutes.
     emitsNames: true,
-    generate: perEntity((entity, ctx) => {
+    generate: (ctx: GenContext): EmittedFile[] => {
+      const layout = ctx.config.outputLayout ?? "flat";
+      const extStyle = ctx.config.extStyle ?? "js";
       // The strategy lives on the RENDER CONTEXT, not on ResolvedGenConfig — `ctx.config`
       // carries outDir/extStyle/dbImport/dialect and nothing about naming.
-      const body = renderNamesDecl(entity, ctx.renderContext?.columnNamingStrategy);
-      if (body === "") return [];   // no primary source ⇒ no names artifact (#248)
-      // entityOutputPath, not a bare filename: §A6 makes the entity module IMPORT these
-      // constants, so the artifact has to land in the same directory the entity module
-      // does. Under outputLayout: "package" a bare name puts it at the target ROOT while
-      // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
-      // conflicting-duplicate-path failure as soon as two packages declare a
-      // same-bare-named entity.
-      return [{
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.names.ts`),
-        content: body,
-      }];
-    }),
+      const strategy = ctx.renderContext?.columnNamingStrategy;
+
+      const pathOf = (obj: MetaObject): string =>
+        // entityOutputPath, not a bare filename: §A6 makes the entity module IMPORT these
+        // constants, so the artifact has to land in the same directory the entity module
+        // does. Under outputLayout: "package" a bare name puts it at the target ROOT while
+        // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
+        // conflicting-duplicate-path failure as soon as two packages declare a
+        // same-bare-named entity.
+        entityOutputPath(layout, obj.package, `${obj.name}.names.ts`);
+
+      const superSpecifierFor = (obj: MetaObject): string | undefined => {
+        const sup = namesArtifactSuperOf(obj);
+        return sup === undefined
+          ? undefined
+          : crossEntitySpecifier(layout, obj.package, sup.package, `${sup.name}.names`, extStyle);
+      };
+
+      const out: EmittedFile[] = [];
+      // Pass 1 — every matched object that participates in the database (#248).
+      // `emitted` tracks what pass 1 actually WROTE, not what it looked at: a matched
+      // abstract base emits nothing here, and seeding it as already-emitted is what would
+      // make pass 2 skip the very object it exists to produce.
+      const emitted = new Set<string>();
+      const participants = ctx.entities.filter(ctx.matches);
+      for (const entity of participants) {
+        const content = renderNamesDecl(entity, {
+          strategy, superSpecifier: superSpecifierFor(entity),
+        });
+        if (content === "") continue;   // no primary source ⇒ no names artifact (#248)
+        emitted.add(entity.resolutionKey());
+        out.push({ path: pathOf(entity), content });
+      }
+
+      // Pass 2 — the abstract bases those participants EXTEND. Each carries the columns it
+      // declares, so a child states them once rather than restating its parent's.
+      //
+      // Reached by walking UP from a participant, never by scanning for abstracts: that is
+      // what keeps #248 intact. A sourceless object nothing persistable extends — an
+      // `object.value`, say — is not reached, so it acquires no artifact and no phantom
+      // participation. Two children of one base both reach it and emit the same file at
+      // the same path with the same bytes; the runner collapses byte-identical duplicates
+      // (#266), so it is written once. `emitted` keeps that from even arising, and keeps
+      // the walk from re-rendering the same base once per child.
+      for (const entity of participants) {
+        if (resolveObjectNames(entity, strategy) === undefined) continue;
+        for (let sup = namesArtifactSuperOf(entity); sup !== undefined;
+             sup = namesArtifactSuperOf(sup)) {
+          const key = sup.resolutionKey();
+          if (emitted.has(key)) break;   // already emitted, and so is everything above it
+          emitted.add(key);
+          const content = renderNamesDecl(sup, {
+            strategy, superSpecifier: superSpecifierFor(sup), fragment: true,
+          });
+          if (content === "") continue;
+          out.push({ path: pathOf(sup), content });
+        }
+      }
+      return out;
+    },
   };
 }

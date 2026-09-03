@@ -12,7 +12,7 @@ import {
   // depend on whether the `names` generator was in the run.
   MetaModelError,
 } from "@metaobjectsdev/metadata";
-import { resolveObjectNames } from "../src/names.js";
+import { resolveObjectNames, resolveSuperFragmentNames } from "../src/names.js";
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "test", children } });
@@ -264,5 +264,116 @@ describe("resolveObjectNames", () => {
       },
     ]);
     expect(resolveObjectNames(obj(root, "ChildSame"), "snake_case")?.name).toBe("same_table");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inheritance — "those names classes should extend from the parent class, not
+// just redo all the names."
+// ---------------------------------------------------------------------------
+//
+// A concrete entity extending an abstract base used to restate every inherited
+// column, and a TPH subtype additionally restated the base's table name. Every
+// restatement is a second place one physical name is spelled — the exact defect
+// <Entity>Names exists to remove, reintroduced one level up.
+describe("resolveObjectNames — extends chain", () => {
+  const BASE_AND_CHILD = [
+    {
+      "object.entity": {
+        name: "BaseEntity",
+        abstract: true,
+        children: [
+          { "field.long": { name: "id" } },
+          { "field.timestamp": { name: "createdAt", "@column": "made_at" } },
+        ],
+      },
+    },
+    {
+      "object.entity": {
+        name: "Author",
+        extends: "BaseEntity",
+        children: [
+          { "source.rdb": { "@table": "authors" } },
+          { "field.string": { name: "email", "@column": "email_addr" } },
+          { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        ],
+      },
+    },
+  ];
+
+  test("an abstract base that a sourced entity extends gets its own artifact", async () => {
+    const root = await load(BASE_AND_CHILD);
+    // #248 intact: the base is not a database participant, so resolveObjectNames still
+    // says nothing about it. The FRAGMENT resolver is what the generator reaches for once
+    // it has walked up from a participant.
+    expect(resolveObjectNames(obj(root, "BaseEntity"), "snake_case")).toBeUndefined();
+    const n = resolveSuperFragmentNames(obj(root, "BaseEntity"), "snake_case");
+    expect(n).toBeDefined();
+    // It has no source, so it has no physical name — and must never acquire one.
+    expect(n?.name).toBeUndefined();
+    expect(Object.keys(n?.ownFields ?? {}).sort()).toEqual(["createdAt", "id"]);
+  });
+
+  test("the child declares ONLY its own fields, and names the base it extends", async () => {
+    const root = await load(BASE_AND_CHILD);
+    const n = resolveObjectNames(obj(root, "Author"), "snake_case");
+    // `fields` stays RESOLVED — every consumer looks a column up by field name and must
+    // find an inherited one, or it would fall back to a literal (see columnExpr).
+    expect(Object.keys(n?.fields ?? {}).sort()).toEqual(["createdAt", "email", "id"]);
+    // ...while what the artifact DECLARES is only what is declared here.
+    expect(Object.keys(n?.ownFields ?? {}).sort()).toEqual(["email"]);
+    expect(n?.superNames?.name).toBe("BaseEntity");
+    // The child declares its own source, so its physical name is its own.
+    expect(n?.inheritsSource).toBe(false);
+    expect(n?.name).toBe("authors");
+  });
+
+  test("a TPH subtype inherits the base's SOURCE, so its physical name is the base's too", async () => {
+    const root = await load([
+      {
+        "object.entity": {
+          name: "Auth",
+          "@discriminator": "type",
+          children: [
+            { "source.rdb": { "@table": "auths" } },
+            { "field.long": { name: "id" } },
+            { "field.enum": { name: "type", "@values": ["Copay"] } },
+            { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "CopayAuth",
+          extends: "Auth",
+          "@discriminatorValue": "Copay",
+          children: [{ "field.long": { name: "copayAmount", "@column": "copay_cents" } }],
+        },
+      },
+    ]);
+    const n = resolveObjectNames(obj(root, "CopayAuth"), "snake_case");
+    expect(n?.superNames?.name).toBe("Auth");
+    // The whole point of the TPH case: the subtype restated `auths` and every base column.
+    expect(n?.inheritsSource).toBe(true);
+    expect(Object.keys(n?.ownFields ?? {})).toEqual(["copayAmount"]);
+  });
+
+  test("a base with no own fields and no source is NOT an artifact — there is nothing to extend", async () => {
+    const root = await load([
+      { "object.entity": { name: "Marker", abstract: true, children: [] } },
+      {
+        "object.entity": {
+          name: "Thing",
+          extends: "Marker",
+          children: [
+            { "source.rdb": { "@table": "things" } },
+            { "field.long": { name: "id" } },
+            { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+          ],
+        },
+      },
+    ]);
+    expect(resolveSuperFragmentNames(obj(root, "Marker"), "snake_case")).toBeUndefined();
+    expect(resolveObjectNames(obj(root, "Thing"), "snake_case")?.superNames).toBeUndefined();
   });
 });

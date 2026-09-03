@@ -1,0 +1,50 @@
+{
+  "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.timestamp": { "name": "createdAt", "@column": "made_at" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Author",
+          "extends": "BaseEntity",
+          "children": [
+            { "source.rdb": { "@table": "authors" } },
+            { "field.string": { "name": "email", "@column": "email_addr", "@required": true } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Auth",
+          "@discriminator": "kind",
+          "children": [
+            { "source.rdb": { "@table": "auths" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "kind", "@values": ["Copay"] } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "CopayAuth",
+          "extends": "Auth",
+          "@discriminatorValue": "Copay",
+          "children": [
+            { "field.long": { "name": "copayAmount", "@column": "copay_cents" } }
+          ]
+        }
+      }
+    ]
+  }
+}
