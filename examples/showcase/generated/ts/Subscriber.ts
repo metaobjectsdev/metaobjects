@@ -90,8 +90,7 @@ export const Subscriber = {
   status: {
     name: "status",
     label: "Status",
-    view: "text",
-    htmlType: "text",
+    view: "dropdown",
     rules: { required: "Status is required" },
   },
   createdAt: {

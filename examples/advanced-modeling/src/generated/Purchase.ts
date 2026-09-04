@@ -92,7 +92,7 @@ export const Purchase = {
     currency: "USD",
     locale: "en-US",
   },
-  status: { name: "status", label: "Status", view: "text", htmlType: "text" },
+  status: { name: "status", label: "Status", view: "dropdown" },
   purchasedAt: {
     name: "purchasedAt",
     label: "Purchased At",

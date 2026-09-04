@@ -29,6 +29,7 @@ import {
   VIEW_SUBTYPE_NUMBER,
   VIEW_SUBTYPE_CHECKBOX,
   VIEW_SUBTYPE_CURRENCY,
+  VIEW_SUBTYPE_DROPDOWN,
   FIELD_ATTR_CURRENCY,
   FIELD_ATTR_CURRENCY_DEFAULT,
   VIEW_CURRENCY_ATTR_LOCALE,
@@ -74,6 +75,22 @@ function defaultViewForSubType(subType: string): string {
       return VIEW_SUBTYPE_DATE;
     case FIELD_SUBTYPE_CURRENCY:
       return VIEW_SUBTYPE_CURRENCY;
+    case FIELD_SUBTYPE_ENUM:
+      // A closed member set is a CHOICE, and the generated form has always rendered it as
+      // one: `codegen-ts-react`'s `viewKindFor` returns `dropdown` for an enum declaring no
+      // view, and emits a `<select>` with an `<option>` per member.
+      //
+      // This branch was missing, so the same question had two answers. The emitted
+      // `<Entity>` descriptor — which `useEntityForm` reads at RUNTIME — fell through to
+      // `text` and told every consumer the control was a free-text input, for the one field
+      // subtype where free text is exactly what the model forbids. The form was right and
+      // the descriptor describing it was wrong.
+      //
+      // Fixed HERE rather than in the react tier because this is the shared resolver: the
+      // descriptor, the `agent/ui.md` page and the form must give one answer, and pinning
+      // the agreement in the tier that renders it would leave the two other readers still
+      // computing their own.
+      return VIEW_SUBTYPE_DROPDOWN;
     default:
       return VIEW_SUBTYPE_TEXT;
   }

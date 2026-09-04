@@ -106,7 +106,7 @@ export const Program = {
       maxLength: { value: 200, message: "Must be 200 characters or fewer" },
     },
   },
-  status: { name: "status", label: "Status", view: "text", htmlType: "text" },
+  status: { name: "status", label: "Status", view: "dropdown" },
   summary: {
     name: "summary",
     label: "Summary",

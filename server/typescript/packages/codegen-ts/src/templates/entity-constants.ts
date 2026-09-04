@@ -29,196 +29,64 @@
 // picks them up from this object automatically.
 
 import { code, joinCode, type Code } from "ts-poet";
-import type { MetaData } from "@metaobjectsdev/metadata";
-import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
-import {
-  VIEW_SUBTYPE_TEXT,
-  VIEW_SUBTYPE_TEXTAREA,
-  VIEW_SUBTYPE_NUMBER,
-  VIEW_SUBTYPE_CHECKBOX,
-  VIEW_SUBTYPE_DATE,
-  VIEW_SUBTYPE_PASSWORD,
-  VIEW_SUBTYPE_HIDDEN,
-  VIEW_SUBTYPE_DROPDOWN,
-  VIEW_SUBTYPE_RADIO,
-  VALIDATOR_SUBTYPE_REQUIRED,
-  VALIDATOR_SUBTYPE_LENGTH,
-  VALIDATOR_SUBTYPE_REGEX,
-  VALIDATOR_ATTR_MIN,
-  VALIDATOR_ATTR_MAX,
-  VALIDATOR_ATTR_PATTERN,
-  FIELD_ATTR_MAX_LENGTH,
-  FIELD_ATTR_REQUIRED,
-} from "@metaobjectsdev/metadata";
-import { resolveTableName, pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
+import { MetaObject } from "@metaobjectsdev/metadata";
+import { resolveTableName } from "@metaobjectsdev/metadata";
 import { physicalNameExpr } from "../names.js";
-import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
-import { viewForContext, VIEW_CONTEXT_FORM } from "../view-context.js";
+import {
+  buildEntityUiDescriptor,
+  resourcePath,
+  type UiFieldDescriptor,
+  type UiRule,
+} from "./entity-ui-descriptor.js";
 
-/** Convert a camelCase or PascalCase field name to a human-friendly label. */
-function humanize(s: string): string {
-  return s
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
-}
-
-/**
- * REST resource path for an entity. Pluralized + snake_cased + lowercased.
- *   "Subscriber" → "/subscribers"
- *   "WorkoutEvent" → "/workout_events"
- */
-export function resourcePath(entity: MetaData): string {
-  // ADR-0039: resolving — a concrete entity may inherit @routePath via extends.
-  const overrideAttr = entity.attr("routePath");
-  if (typeof overrideAttr === "string" && overrideAttr.length > 0) {
-    return overrideAttr.startsWith("/") ? overrideAttr : `/${overrideAttr}`;
-  }
-  return `/${pluralize(toSnakeCase(entity.name))}`;
-}
+// `resourcePath` moved to entity-ui-descriptor.ts with the rest of the form derivation.
+// Re-exported here because it is part of this module's published surface (the package
+// barrel re-exports it from this path, and api-model.ts imports it from here).
+export { resourcePath };
 
 /**
- * Resolve the view subtype: the explicit `view` child declared for the FORM (own
- * or inherited) wins, else inferred from field subType.
+ * Render one rule entry as the RHF-shaped code fragment the descriptor emits.
  *
- * #356 — the descriptor's surface is the form. Everything beside `view` in a
- * field entry (`htmlType`, `placeholder`, `helpText`, `rules`) is a form-input
- * attribute, and `useEntityForm` is the descriptor's only consumer; the grid tiers
- * compute their own view kind at codegen time and never read this. So a field
- * declaring several views drives this from the one named "form" — the same view
- * the generated `<Entity>.form.tsx` renders, which is what keeps the two agreeing.
+ * Order is the descriptor's, which is declaration order — see the ordering note in
+ * entity-ui-descriptor.ts for why that is not incidental.
  */
-function resolveView(field: MetaField): { view: string; viewNode?: MetaData } {
-  const viewChild = viewForContext(field, VIEW_CONTEXT_FORM);
-  if (viewChild) {
-    return { view: viewChild.subType, viewNode: viewChild };
-  }
-  return { view: inferViewKind(field, VIEW_CONTEXT_FORM) };
-}
-
-/**
- * Map a MetaView subtype to a real HTML <input type=...> value. Returns
- * undefined for views that don't map to <input> at all (textarea, dropdown,
- * radio) — consumers render the right element type themselves.
- */
-function htmlTypeFromView(view: string, override?: string): string | undefined {
-  if (typeof override === "string" && override.length > 0) return override;
-  switch (view) {
-    case VIEW_SUBTYPE_TEXT:
-      return "text";
-    case VIEW_SUBTYPE_NUMBER:
-      return "number";
-    case VIEW_SUBTYPE_DATE:
-      return "date";
-    case VIEW_SUBTYPE_PASSWORD:
-      return "password";
-    case VIEW_SUBTYPE_CHECKBOX:
-      return "checkbox";
-    case VIEW_SUBTYPE_HIDDEN:
-      return "hidden";
-    case VIEW_SUBTYPE_RADIO:
-      return "radio";
-    case "month":
-      return "month";
-    case "email":
-      return "email";
-    case VIEW_SUBTYPE_TEXTAREA:
-    case VIEW_SUBTYPE_DROPDOWN:
-      return undefined;
-    default:
-      return undefined;
-  }
-}
-
-/**
- * Build RHF rules JSON-ish code from a field's validator children plus
- * field-level attrs (`@required`, `@maxLength`). Returns the code string
- * (e.g. `{ required: "X", maxLength: { value: 255, message: "..." } }`)
- * or undefined when there are no rules to emit.
- */
-function renderFieldRules(field: MetaField): string | undefined {
-  const ruleParts: string[] = [];
-
-  let hasRequired = false;
-  let hasMaxLength = false;
-
-  // ADR-0039: resolving — a validator may inherit its config attrs (@min/@max/
-  // @pattern/@message/…) via extends.
-  for (const child of field.validators()) {
-    if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
-      const msg = (child.attr("message") as string | undefined) ?? `${humanize(field.name)} is required`;
-      ruleParts.push(`required: ${JSON.stringify(msg)}`);
-      hasRequired = true;
-    } else if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const min = child.attr(VALIDATOR_ATTR_MIN);
-      const max = child.attr(VALIDATOR_ATTR_MAX);
-      if (typeof min === "number") {
-        const msg = (child.attr("minMessage") as string | undefined) ?? `Must be at least ${min} characters`;
-        ruleParts.push(`minLength: { value: ${min}, message: ${JSON.stringify(msg)} }`);
-      }
-      if (typeof max === "number") {
-        const msg = (child.attr("maxMessage") as string | undefined) ?? `Must be ${max} characters or fewer`;
-        ruleParts.push(`maxLength: { value: ${max}, message: ${JSON.stringify(msg)} }`);
-        hasMaxLength = true;
-      }
-    } else if (child.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
-      if (typeof pattern === "string") {
-        const msg = (child.attr("message") as string | undefined) ?? "Invalid format";
-        // Emit as RegExp literal /.../ — `as const` preserves the value-ref.
-        // Forward-slash inside the pattern is escaped so the literal closes correctly.
-        const safe = pattern.replace(/\\/g, "\\\\").replace(/\//g, "\\/");
-        ruleParts.push(`pattern: { value: /${safe}/, message: ${JSON.stringify(msg)} }`);
-      }
+function renderRule(r: UiRule): string {
+  switch (r.kind) {
+    case "required":
+      return `required: ${JSON.stringify(r.message)}`;
+    case "minLength":
+      return `minLength: { value: ${r.value}, message: ${JSON.stringify(r.message)} }`;
+    case "maxLength":
+      return `maxLength: { value: ${r.value}, message: ${JSON.stringify(r.message)} }`;
+    case "pattern": {
+      // Emit as a RegExp literal /.../ — `as const` preserves the value-ref. The
+      // descriptor carries the RAW pattern; forward-slash and backslash are escaped
+      // HERE, because closing a TypeScript regex literal is an emission concern.
+      const safe = r.pattern.replace(/\\/g, "\\\\").replace(/\//g, "\\/");
+      return `pattern: { value: /${safe}/, message: ${JSON.stringify(r.message)} }`;
     }
   }
-
-  // Field-level @required attr (if not already covered by validator).
-  if (!hasRequired && field.attr(FIELD_ATTR_REQUIRED) === true) {
-    ruleParts.push(`required: ${JSON.stringify(`${humanize(field.name)} is required`)}`);
-  }
-
-  // Field-level @maxLength attr (if not already covered).
-  const maxLenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
-  if (!hasMaxLength && typeof maxLenAttr === "number") {
-    ruleParts.push(
-      `maxLength: { value: ${maxLenAttr}, message: ${JSON.stringify(`Must be ${maxLenAttr} characters or fewer`)} }`,
-    );
-  }
-
-  if (ruleParts.length === 0) return undefined;
-  return `{ ${ruleParts.join(", ")} }`;
 }
 
 /** Build one nested field-object entry like `email: { name, label, ... },`. */
-function renderFieldEntry(field: MetaField): string {
-  const { view, viewNode } = resolveView(field);
-  const label = labelFor(field, VIEW_CONTEXT_FORM);
-  // ADR-0039: resolving — a view node may inherit @placeholder/@helpText/@htmlType via extends.
-  const placeholder = viewNode?.attr("placeholder") as string | undefined;
-  const helpText = viewNode?.attr("helpText") as string | undefined;
-  const htmlType = htmlTypeFromView(view, viewNode?.attr("htmlType") as string | undefined);
-  const rules = renderFieldRules(field);
-
+function renderFieldEntry(f: UiFieldDescriptor): string {
   const entries: string[] = [
-    `name: ${JSON.stringify(field.name)}`,
-    `label: ${JSON.stringify(label)}`,
-    `view: ${JSON.stringify(view)}`,
+    `name: ${JSON.stringify(f.name)}`,
+    `label: ${JSON.stringify(f.label)}`,
+    `view: ${JSON.stringify(f.view)}`,
   ];
-  if (htmlType !== undefined) entries.push(`htmlType: ${JSON.stringify(htmlType)}`);
-  if (placeholder !== undefined) entries.push(`placeholder: ${JSON.stringify(placeholder)}`);
-  if (helpText !== undefined) entries.push(`helpText: ${JSON.stringify(helpText)}`);
-  if (rules !== undefined) entries.push(`rules: ${rules}`);
+  if (f.htmlType !== undefined) entries.push(`htmlType: ${JSON.stringify(f.htmlType)}`);
+  if (f.placeholder !== undefined) entries.push(`placeholder: ${JSON.stringify(f.placeholder)}`);
+  if (f.helpText !== undefined) entries.push(`helpText: ${JSON.stringify(f.helpText)}`);
+  if (f.rules.length > 0) entries.push(`rules: { ${f.rules.map(renderRule).join(", ")} }`);
 
   // Currency-specific keys: only emitted for currency-subtype fields.
-  const currencyMeta = currencyMetaFor(field, VIEW_CONTEXT_FORM);
-  if (currencyMeta !== null) {
-    entries.push(`currency: ${JSON.stringify(currencyMeta.currency)}`);
-    entries.push(`locale: ${JSON.stringify(currencyMeta.locale)}`);
+  if (f.currency !== undefined) {
+    entries.push(`currency: ${JSON.stringify(f.currency.currency)}`);
+    entries.push(`locale: ${JSON.stringify(f.currency.locale)}`);
   }
 
-  return `  ${field.name}: {\n    ${entries.join(",\n    ")},\n  }`;
+  return `  ${f.name}: {\n    ${entries.join(",\n    ")},\n  }`;
 }
 
 export function renderEntityConstants(
@@ -229,15 +97,15 @@ export function renderEntityConstants(
   // arguments. A required parameter would fail to compile in every ejected copy.
   names?: { readonly name: string; readonly symbol: Code } | undefined,
 ): Code {
-  const entityName = obj.name;
+  // ONE derivation of the form surface, shared with the `agent/ui.md` docs page — see
+  // entity-ui-descriptor.ts. The descriptor already walks the RESOLVING fields(), so
+  // inherited fields (from extends:/super:) appear here as they always have.
+  const descriptor = buildEntityUiDescriptor(obj);
+  const entityName = descriptor.entity;
   const tableName = resolveTableName(obj);
-  const path = resourcePath(obj);
+  const path = descriptor.path;
 
-  const fieldEntries: string[] = [];
-  // Use fields() so inherited fields (from extends:/super:) appear in constants.
-  for (const child of obj.fields()) {
-    fieldEntries.push(renderFieldEntry(child));
-  }
+  const fieldEntries: string[] = descriptor.fields.map(renderFieldEntry);
 
   // A6/B2 — reference the constant whenever the artifact is in the run. No equality
   // guard: primaryRdbSource (@metaobjectsdev/metadata) refuses any object whose
