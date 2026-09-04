@@ -14,7 +14,7 @@ import {
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
 import { mapColumnType, type ColumnSpec, type EnumIntCustomType } from "../column-mapper.js";
-import { tableNameFromEntity, columnNameFromField } from "../naming.js";
+import { tableNameFromEntity } from "../naming.js";
 import { namesRef, physicalNameExpr, columnExpr } from "../names.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
@@ -160,7 +160,16 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   for (const sec of secondaryIdentities) {
     const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
     if (!Array.isArray(fields) || fields.length === 0) continue;
-    const indexName = `idx_${tableName}_${fields.map((f) => columnNameFromField(f, ctx.columnNamingStrategy)).join("_")}`;
+    // The identity's OWN name, which is what migrate puts in the database
+    // (`expected-schema.ts`, secondary-identity pass) and what `index.lookup` three
+    // blocks below already emits. This used to compose `idx_<table>_<col>...` by running
+    // the naming strategy over the FIELD names — two defects in one expression: the name
+    // disagreed with migrate's (so a DROP INDEX written from generated source failed, and
+    // any schema diff reported a difference that was not real), and running the strategy
+    // over a field NAME cannot see `@column`, so a declared physical column was invisible
+    // to it. Gated by `secondary-index-name-parity.test.ts`, whose fixture is de-blinded
+    // against exactly that second defect.
+    const indexName = sec.name;
     const indexSym = imp(`uniqueIndex@${importModule}`);
     // Use the callback param `table` (not the outer varName) so TS doesn't see
     // the table referencing itself inside its own initializer (TS7022/TS7024).

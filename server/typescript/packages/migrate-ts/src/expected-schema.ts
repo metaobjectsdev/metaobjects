@@ -595,8 +595,13 @@ function buildSecondaryIndexes(
   }
 
   // (b) Explicit secondary identities — always unique (uniqueness is in the type).
-  // Drizzle emits the index using the identity's @name attr directly (no table
-  // prefix), so the expected name must match.
+  // The index carries the identity's own name, with no table prefix. This side is the
+  // AUTHORITY: these names are already in live databases, so changing them would emit
+  // DROP/CREATE INDEX churn against production. codegen was the side that disagreed —
+  // it composed `idx_<table>_<col>...` — and this comment previously asserted that it
+  // did not, which is how the divergence went unnoticed in both files at once. The two
+  // are now compared by `codegen-ts`'s `secondary-index-name-parity.test.ts` rather than
+  // by a claim in a comment.
   for (const identity of entity.secondaryIdentities()) {
     // ADR-0039: effective attrs — a secondary identity's attrs may be inherited via extends.
     const exprRaw = identity.attr(IDENTITY_ATTR_EXPR);

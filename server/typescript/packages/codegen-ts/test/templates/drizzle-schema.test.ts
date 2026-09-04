@@ -330,7 +330,10 @@ describe("renderDrizzleSchema — secondary identity", () => {
     const out = renderDrizzleSchema(root.findObject("Subscriber")!, ctx).toString();
     expect(out).toContain(".unique()");                  // .unique() on email column
     expect(out).toContain("uniqueIndex");                // table callback
-    expect(out).toContain('"idx_subscribers_email"');    // index name in snake_case
+    // The identity's OWN name — what migrate writes to the database. This assertion
+    // used to pin `idx_subscribers_email`, the composed name that disagreed with
+    // migrate; see secondary-index-name-parity.test.ts.
+    expect(out).toContain('"uniqueEmail"');
   });
 
   test("composite secondary identity emits multi-column uniqueIndex", () => {
@@ -356,7 +359,9 @@ describe("renderDrizzleSchema — secondary identity", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
-    expect(out).toContain('"idx_users_first_name_last_name"');
+    // The identity's own name, not a composition of its column names — see
+    // secondary-index-name-parity.test.ts for why migrate is the authority here.
+    expect(out).toContain('"uniqueName"');
     // .on() should reference both fields
     // Index callbacks use the (table) => ... param to avoid TS self-init issues.
     expect(out).toMatch(/\.on\(table\.firstName,\s*table\.lastName\)/);

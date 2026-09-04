@@ -459,6 +459,42 @@ registry gains a generator the page does not name. That gate is deliberately
 one-directional: it can prove a generator is *named*, and it does not pretend to check that
 what the row *says* is still true.
 
+### Fixed — codegen and migrate named an `identity.secondary`'s unique index two different ways
+
+**Adopter-visible: the name in a generated Drizzle table changes.** This is #293's defect
+class on a second constraint kind, and it survived that fix because the fix compared CHECK
+names and nothing else.
+
+`codegen-ts` composed `idx_<table>_<col>[_<col>…]`; `migrate-ts` writes the identity's own
+name. So the name in the generated source was never the name in the database — a
+`DROP INDEX` written from generated source fails, and any reconciliation between the two
+(`drizzle-kit` introspect/push, a schema diff run as a sanity check) reports a difference
+that is not real. **Migrate is the authority**, for the same reason as #293: those names are
+already in live databases, so flipping migrate would emit DROP/CREATE INDEX churn against
+production for a cosmetic fix, while codegen's name lands in regenerated source where
+changing it costs nothing. It also makes the secondary path agree with its own sibling three
+blocks below — `index.lookup` already emitted `lookup.name`.
+
+**The same expression carried a second defect.** It built the name by running the
+column-naming strategy over the FIELD names, so a declared `@column` was invisible to it: a
+field `emailAddr` with `@column: contact_mail` produced `idx_contacts_email_addr`, naming a
+column that does not exist. That is the structural blindness the name-constants program
+fixed elsewhere, still live in this one line.
+
+**Why nothing caught it, which is the durable half.** Two tests asserted on this index and
+both stopped at `toContain("uniqueIndex(")` — neither pinned the name, so both passed with
+the emitters disagreeing. Worse, `migrate-ts` carried a comment asserting the opposite —
+*"Drizzle emits the index using the identity's `@name` attr directly (no table prefix), so
+the expected name must match"* — a false premise about the codegen it was aligning to, which
+is why reading either file alone left you sure the two agreed. The new
+`secondary-index-name-parity.test.ts` compares the two emitters on one fixture, and that
+fixture is **de-blinded**: its `@column` is deliberately not the snake_case of its field
+name, so a codegen that cannot see `@column` fails it. Found by an adversarial cross-port
+audit that built probe fixtures for shapes the existing gates' fixtures do not contain.
+
+If you regenerate and your migration tooling derives DDL from the Drizzle schema rather than
+from `meta migrate`, expect one index rename in the next migration.
+
 ### Fixed — Java's `template` generator named a class no `pom.xml` could wire
 
 Three places told a Java adopter to reach the cross-port Mustache primitive through
