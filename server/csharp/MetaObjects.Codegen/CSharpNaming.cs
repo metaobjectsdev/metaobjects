@@ -559,9 +559,21 @@ public static class CSharpNaming
     /// </para>
     /// </summary>
     public static string NameRef(MetaObject obj, ColumnNamingStrategy strategy, bool includeNames, string literal) =>
-        includeNames && ResolveObjectNames(obj, strategy) is not null
-            ? $"{NamesClassName(obj)}.Name"
+        NamesClassIfReferenced(obj, strategy, includeNames) is { } cls
+            ? $"{cls}.Name"
             : $"\"{literal}\"";
+
+    /// <summary>
+    /// The <c>&lt;Owner&gt;Names</c> class a consumption site may reference for
+    /// <paramref name="obj"/> — when both of <see cref="NameRef"/>'s gates hold (C1: the
+    /// <c>names</c> generator is part of THIS run; the object resolves a names artifact at
+    /// all) — or <c>null</c>, meaning "spell the literal". <see cref="NameRef"/> and
+    /// <see cref="ColumnRef"/> hand back a ready-made expression; this is for a site that
+    /// composes the constant into something other than a bare attribute argument — a raw-SQL
+    /// string, a doc comment — and so must know WHICH arm it is on. Same two gates, one place.
+    /// </summary>
+    public static string? NamesClassIfReferenced(MetaObject obj, ColumnNamingStrategy strategy, bool includeNames) =>
+        includeNames && ResolveObjectNames(obj, strategy) is not null ? NamesClassName(obj) : null;
 
     /// <summary>
     /// The bare object name from a possibly package-qualified reference (the segment

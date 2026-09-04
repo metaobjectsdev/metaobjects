@@ -1,7 +1,17 @@
 // callable-generator — FR-015. Emits one <Entity>.callable.g.cs per entity backed by
 // a callable source.rdb (@kind: "storedProc" | "tableFunction"): a static EF Core
-// calling method that runs `SELECT * FROM <schema.>proc(<args...>)` via
-// FromSqlInterpolated and returns the (read-only projection) entity rows.
+// calling method that runs `SELECT * FROM <schema.>proc(<args...>)` and returns the
+// (read-only projection) entity rows.
+//
+// Two emitted forms, decided by whether the `names` generator is part of this run
+// (ctx.Config.IncludeNames — ADR-0034's opt-in arm):
+//   • names ON  — the procedure's name is REFERENCED (`<Entity>Names.Name`), spliced into a
+//     FromSqlRaw string with `{n}` placeholders for the arguments. It has to be raw: a
+//     FromSqlInterpolated hole binds a PARAMETER, and an identifier cannot be one — the C#
+//     analogue of the drizzle `sql.raw` the TS reference uses for the same reason.
+//   • names OFF — the name is spelled literally inside FromSqlInterpolated, the documented
+//     fallback and byte-identical to what this generator always emitted.
+// Either way every ARGUMENT is a parameter, never spliced text.
 //
 // The call-site argument list is derived from the @parameterRef value-object's field
 // children IN DECLARATION ORDER — the same order contract the TS reference uses
@@ -40,7 +50,15 @@ public class CallableGenerator : PerEntityGenerator
 
         // Schema-qualified physical proc/function name (e.g. analytics.fn_phase_summary).
         var physical = source.PhysicalName;
-        var procName = string.IsNullOrEmpty(source.Schema) ? physical : $"{source.Schema}.{physical}";
+        var schemaPrefix = string.IsNullOrEmpty(source.Schema) ? "" : $"{source.Schema}.";
+        var procName = $"{schemaPrefix}{physical}";
+
+        // §A6 — the names class to reference for the procedure's name, or null for the
+        // literal arm (see the file header). The @schema half stays a spelled literal on BOTH
+        // arms: <Entity>Names.Schema exists and is deliberately not read here — schema
+        // qualification is being ruled on separately across the ports, and this is the one
+        // C# site that qualifies at all (the entity's [Table(...)] does not).
+        var namesCls = CSharpNaming.NamesClassIfReferenced(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
 
         // Resolve the @parameterRef value-object (same root as the entity). Its field
         // children — in declaration order — are the call-site arguments.
@@ -57,14 +75,23 @@ public class CallableGenerator : PerEntityGenerator
 
         // ADR-0039: OwnFields is the deliberate cross-port form here (TS reads argsObject.ownChildren())
         // — the callable's SQL binds exactly the params the args value-object DECLARES, in declaration
-        // order; the VO is the authored parameter list, not an extends participant. The SQL binds
-        // {args.<Prop>} per field; FromSqlInterpolated parameterises each interpolation hole safely.
+        // order; the VO is the authored parameter list, not an extends participant. Each argument is
+        // a PARAMETER on both arms: an interpolation hole under FromSqlInterpolated, a `{n}`
+        // placeholder under FromSqlRaw.
         var argProps = argsObject is null
             ? []
             : argsObject.OwnFields().Select(f => CSharpNaming.Pascal(f.Name)).ToList();
 
         var sqlArgs = string.Join(", ", argProps.Select(p => $"{{args.{p}}}"));
         var hasArgs = argsObject is not null;
+        // The names-ON call: `FromSqlRaw("SELECT * FROM <schema.>" + <Entity>Names.Name + "({0}, {1})", args.A, args.B)`.
+        // The concatenation is of compile-time constants, so the SQL EF receives is one string with
+        // the identifier already in place; only the `{n}` holes become DbParameters.
+        var rawPlaceholders = string.Join(", ", argProps.Select((_, i) => $"{{{i}}}"));
+        var rawArgs = string.Concat(argProps.Select(p => $", args.{p}"));
+        var fromSql = namesCls is null
+            ? $"FromSqlInterpolated($\"SELECT * FROM {procName}({sqlArgs})\")"
+            : $"FromSqlRaw(\"SELECT * FROM {schemaPrefix}\" + {namesCls}.Name + \"({rawPlaceholders})\"{rawArgs})";
         var ctxType = ctx.Config.ContextTypeName;
         // Use the resolved args VO's C# type name — @parameterRef (and source.ParameterRef)
         // can be a package-qualified FQN ("acme::reporting::FooArgs"), and the "::" separator
@@ -102,8 +129,13 @@ public class CallableGenerator : PerEntityGenerator
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
         var kindNoun = source.EffectiveKind == SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function";
+        // The doc summary names the procedure the same way the SQL does — by the constant on
+        // the names-ON arm (with the schema, when any, still spelled), literally otherwise.
+        var procDoc = namesCls is null
+            ? $"the <c>{procName}</c> {kindNoun}"
+            : $"the {kindNoun} named by <c>{namesCls}.Name</c>{(schemaPrefix.Length == 0 ? "" : $" in schema <c>{source.Schema}</c>")}";
         sb.AppendLine("/// <summary>");
-        sb.AppendLine($"/// FR-015: typed wrapper around the <c>{procName}</c> {kindNoun}. Arguments bind in");
+        sb.AppendLine($"/// FR-015: typed wrapper around {procDoc}. Arguments bind in");
         sb.AppendLine($"/// declaration order from the @parameterRef value-object{(hasArgs ? $" (<c>{argsObjectName}</c>)" : string.Empty)}.");
         sb.AppendLine("/// </summary>");
         sb.AppendLine($"public static class {cls}Callable");
@@ -111,7 +143,7 @@ public class CallableGenerator : PerEntityGenerator
         sb.AppendLine($"    public static async Task<IReadOnlyList<{cls}>> Call({signature})");
         sb.AppendLine("    {");
         sb.AppendLine($"        return await db.Set<{cls}>()");
-        sb.AppendLine($"            .FromSqlInterpolated($\"SELECT * FROM {procName}({sqlArgs})\")");
+        sb.AppendLine($"            .{fromSql}");
         sb.AppendLine("            .AsNoTracking()");
         sb.AppendLine("            .ToListAsync();");
         sb.AppendLine("    }");

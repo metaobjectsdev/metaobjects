@@ -134,11 +134,14 @@ public class NoMagicPhysicalNamesTests
     private const string Proc = "zz_phys_proc_alpha";       // a storedProc source's physical name
     private const string ProcArgCol = "zz_phys_col_since";
     private const string ProcOutCol = "zz_phys_col_total";
-    // A field.enum hosted ON the value object. The scalar VO members take the
-    // `withAttributes: false` path; the enum member does not (EntityGenerator.cs, the VO
-    // member loop — `EnumProperty(vo, field, ...)` with `withAttributes` left at its default
-    // of true), so it is the one VO member that emits a [Column(...)] at all.
+    // A field.enum hosted ON the value object. Every VO member — scalar and enum alike — is
+    // emitted with NO EF-mapping attribute (a VO's column mapping is fluent / JSON, decided
+    // by each OWNER), so this literal must appear in no generated file: on a jsonb owner it
+    // is dead but misleading, and on a FLATTENED owner EF HONOURS a bare [Column(...)] and
+    // binds an UNPREFIXED column the migration never creates. Under @storage: flattened the
+    // member's physical column is the composite FlatEnumCol, named by the DbContext.
     private const string VoEnumCol = "zz_phys_col_mood";
+    private const string FlatEnumCol = FlatPrefix + "_" + VoEnumCol;
     // An @isArray value-object column (OwnsMany ... ToJson). Its OWN entity, so that the
     // routes tier's post-save array-null clear — which builds a raw UPDATE from the table,
     // the json column and the PK column — lands its findings on tokens of its own rather
@@ -203,44 +206,32 @@ public class NoMagicPhysicalNamesTests
             "wiring @schema fails this row and says 'promote it' instead of passing unnoticed."),
 
         // --- the callable (stored procedure) ----------------------------------------------
-        (Proc,        "ProcOutNames.Name",             Reach.Escape,
-            "CallableGenerator spells `source.PhysicalName` directly — in the XML doc summary and " +
-            "inside the FromSqlInterpolated SQL — with no CSharpNaming.NameRef lookup at all, while " +
-            "ProcOutNames.Name exists in this same run. Note the emitted form matters: the name is " +
-            "inside an interpolated-string SQL literal, so referencing the constant means composing " +
-            "the SQL from it, not binding it as a parameter."),
+        // The emitted form is the part that matters here: the name sits inside the callable's
+        // SQL, and a FromSqlInterpolated hole binds a PARAMETER — an identifier cannot be one —
+        // so the constant is spliced into a FromSqlRaw string (the C# analogue of drizzle's
+        // `sql.raw`) rather than interpolated.
+        (Proc,        "ProcOutNames.Name",             Reach.Constant, ""),
         (ProcOutCol,  "ProcOutNames.TotalColumn",      Reach.Constant, ""),
 
         // --- a field.enum ON the value object ---------------------------------------------
-        (VoEnumCol,   "(no constant exists)", Reach.KnownLiteral,
-            "EntityGenerator.cs, the value-object member loop: the scalar arm calls ScalarProperty(..., " +
-            "withAttributes: false) — \"VO POCO members carry NO EF-mapping attrs\" — but the enum arm " +
-            "calls EnumProperty(vo, field, config, strategy) with `withAttributes` left at its default " +
-            "of TRUE, so the VO enum member emits a [Column(...)] the scalar members correctly omit. " +
-            "A value object has no source and so no <Vo>Names (FR-024 value purity), so ColumnRef " +
-            "falls back to the bare literal. This is pinned as a KnownLiteral because no constant " +
-            "exists to promote it to — but it is a DEFECT of a different kind: the attribute should " +
-            "not be emitted at all. The fix is `withAttributes: false`, after which this literal " +
-            "disappears and the exhaustive test fails this row and says 'delete it'. " +
-            "Whether it is a BEHAVIOUR bug depends on the owner's @storage, and was measured " +
-            "against EF Core 8 + Sqlite rather than assumed: on a jsonb owner (OwnsOne(...).ToJson) " +
-            "EF ignores [Column] — the stored JSON keys off JsonPropertyName — so there it is dead " +
-            "but misleading; on a FLATTENED owner (table-split OwnsOne) EF HONOURS it, and because " +
-            "DbContextGenerator.OwnedTypeConfig fluent-names only ScalarFor(...) members (enum is " +
-            "deliberately not one), the enum member's physical column becomes the UNPREFIXED " +
-            "@column while migrate-ts (flattenObjectField) names it `<parent_col>_<member_col>`."),
+        // VoEnumCol has NO row: a VO POCO member carries no [Column(...)] at all — the enum arm
+        // of EntityGenerator's value-object member loop passes `withAttributes: false` like the
+        // scalar arm — so the bare literal must appear nowhere, and the exhaustive test convicts
+        // it if the attribute ever comes back. Under @storage: flattened its physical column is
+        // the composite below.
+        (FlatEnumCol, "(no constant exists)", Reach.KnownLiteral,
+            "As FlatCol — the flattened value object's enum member, `<owner field column>_<member " +
+            "column>`, which DbContextGenerator.OwnedTypeConfig now names the way the scalar members " +
+            "are named (and migrate-ts's flattenObjectField names it), so the column EF binds is the " +
+            "one the migration creates. A composite of two names, one of which (the value object's " +
+            "member) has no constant anywhere — the same structural impossibility as FlatCol."),
 
         // --- an @isArray value-object column: the routes tier's raw-SQL null clear ---------
-        (TaggerTable, "TaggerNames.Name",              Reach.Escape,
-            "RoutesGenerator.AppendArrayNullClears builds `UPDATE \"<table>\" SET \"<json column>\" = " +
-            "NULL WHERE \"<pk column>\" = {0}` from CSharpNaming.Table(entity) / Column(pkf) / " +
-            "Column(f) — the raw resolvers, not NameRef/ColumnRef — so all three physical names are " +
-            "spelled a second time inside a SQL string, while TaggerNames carries every one of them."),
-        (TaggerId,    "TaggerNames.IdColumn",          Reach.Escape,
-            "As TaggerTable — the PK column of the same UPDATE."),
-        (LabelsCol,   "TaggerNames.LabelsColumn",      Reach.Escape,
-            "As TaggerTable — the json column of the same UPDATE. The DbContext's OwnsMany(...).ToJson(" +
-            "TaggerNames.LabelsColumn) DOES reference the constant; this is the second site."),
+        // Composed against TaggerNames inside a compile-time-constant string (the identifiers
+        // cannot be parameters; only the PK VALUE is), so all three travel as references.
+        (TaggerTable, "TaggerNames.Name",              Reach.Constant, ""),
+        (TaggerId,    "TaggerNames.IdColumn",          Reach.Constant, ""),
+        (LabelsCol,   "TaggerNames.LabelsColumn",      Reach.Constant, ""),
     ];
 
     // Placeholder substitution rather than raw-string interpolation: the fixture is JSON,

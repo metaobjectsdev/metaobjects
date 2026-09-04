@@ -727,7 +727,13 @@ public class EntityGenerator : IGenerator
                 // DataAnnotations (the VO is validated in full on POST/PATCH; Program D).
                 member = ScalarProperty(vo, field, [], withAttributes: false, withValidationAttributes: true);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy);
+                // Same rule as the scalar arm: no [Column(...)]. A VO's column mapping is decided
+                // by each OWNER (fluent, in the DbContext — .ToJson or the flattened per-member
+                // HasColumnName), never by the shared POCO. Left at its default of true this
+                // emitted a bare [Column("<member @column>")] which EF IGNORES on a jsonb owner
+                // but HONOURS on a flattened one — binding an unprefixed column the migration
+                // never creates.
+                member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy, withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 member = nav;
             else if (field.SubType == FIELD_SUBTYPE_MAP)

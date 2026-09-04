@@ -2,23 +2,32 @@
 //
 // A source.rdb @kind:"storedProc" | "tableFunction" entity gets a generated calling
 // method (one <Entity>.callable.cs per callable entity). Per the FR-015 spec, the C#
-// emission uses EF Core FromSqlInterpolated:
+// emission uses EF Core FromSqlInterpolated when the names artifact is NOT in the run:
 //
 //   public static Task<IReadOnlyList<PhaseSummary>> Call(AppDbContext db, PhaseSummaryArgs args)
 //       => db.Set<PhaseSummary>()
 //             .FromSqlInterpolated($"SELECT * FROM analytics.fn_phase_summary({args.CaseId}, {args.AsOfDate})")
 //             .ToListAsync()...;
 //
-// Args bind in the @parameterRef value-object's field DECLARATION order. A callable
-// with no @parameterRef emits a zero-arg overload calling fn_x().
+// and, when it IS (the default suite — §A6 / no-magic-physical-names), references the
+// procedure's name through FromSqlRaw, because an interpolation hole is a PARAMETER and an
+// identifier cannot be one:
+//
+//             .FromSqlRaw("SELECT * FROM analytics." + PhaseSummaryNames.Name + "({0}, {1})", args.CaseId, args.AsOfDate)
+//
+// Args bind in the @parameterRef value-object's field DECLARATION order on both arms. A
+// callable with no @parameterRef emits a zero-arg overload calling fn_x().
 //
 // Mirrors the TS reference (codegen-ts templates/callable-file.ts), which emits one
-// call<Entity>(db, args) per callable with the same SQL arg-order contract.
+// call<Entity>(db, args) per callable with the same SQL arg-order contract (and splices the
+// constant through drizzle's `sql.raw` for the same reason).
 
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
@@ -137,6 +146,95 @@ public class Fr015CodegenTests
         // Empty parameter list in the SQL.
         Assert.Contains("FromSqlInterpolated($\"SELECT * FROM fn_all_phases()\")", c);
         Assert.Contains("Task<IReadOnlyList<AllPhases>>", c);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // The names-ON arm (§A6 / no-magic-physical-names): the procedure's physical name is
+    // REFERENCED from <Entity>Names rather than spelled a second time. The emitted FORM is
+    // the point of these tests: a FromSqlInterpolated hole binds a PARAMETER, and an
+    // identifier cannot be one, so the constant is spliced into a FromSqlRaw string with
+    // `{n}` placeholders for the arguments — the C# analogue of the drizzle `sql.raw` the TS
+    // reference uses. The tests above run the OFF arm (GenConfig.IncludeNames defaults to
+    // false) and pin it byte-identical to what this generator always emitted.
+    // ---------------------------------------------------------------------------------
+    private static GenContext NamesCtx(MetaRoot root) => new()
+    {
+        Entities = root.Objects(),
+        Root = root,
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal, IncludeNames = true },
+    };
+
+    private static IReadOnlyList<EmittedFile> NamesOnFiles()
+        => new CallableGenerator().Generate(NamesCtx(Load())).ToList();
+
+    [Fact]
+    public void NamesOn_references_the_constant_through_FromSqlRaw_with_the_schema_still_spelled()
+    {
+        var c = Content(NamesOnFiles(), "PhaseSummary.callable.g.cs");
+        // The identifier is text; each argument is a `{n}` placeholder → a DbParameter.
+        Assert.Contains(
+            ".FromSqlRaw(\"SELECT * FROM analytics.\" + PhaseSummaryNames.Name + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
+            c);
+        Assert.DoesNotContain("FromSqlInterpolated", c);
+        // The @schema half stays a literal on this arm too: <Entity>Names.Schema exists and is
+        // deliberately NOT read — schema qualification is ruled on separately across the ports.
+        Assert.DoesNotContain("PhaseSummaryNames.Schema", c);
+        // The doc summary names it the same way the SQL does.
+        Assert.Contains("typed wrapper around the stored procedure named by <c>PhaseSummaryNames.Name</c> in schema <c>analytics</c>.", c);
+        // The physical name itself appears nowhere in the file.
+        Assert.DoesNotContain("fn_phase_summary", c);
+    }
+
+    [Fact]
+    public void NamesOn_table_function_without_schema_has_no_prefix()
+    {
+        var c = Content(NamesOnFiles(), "ActivePhases.callable.g.cs");
+        Assert.Contains(
+            ".FromSqlRaw(\"SELECT * FROM \" + ActivePhasesNames.Name + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
+            c);
+        Assert.Contains("typed wrapper around the table function named by <c>ActivePhasesNames.Name</c>.", c);
+        Assert.DoesNotContain("fn_active_phases", c);
+    }
+
+    [Fact]
+    public void NamesOn_zero_arg_callable_passes_no_parameters()
+    {
+        var c = Content(NamesOnFiles(), "AllPhases.callable.g.cs");
+        Assert.Contains(".FromSqlRaw(\"SELECT * FROM \" + AllPhasesNames.Name + \"()\")", c);
+        Assert.DoesNotContain("fn_all_phases", c);
+    }
+
+    // A text assertion proves what the generated code SAYS; only a compiler proves the
+    // expression RESOLVES. Compile the callables together with the entities, the DbContext
+    // and the names artifact they reference, against the real EF Core 8 assemblies —
+    // `FromSqlRaw(string, params object[])` is a Relational extension, and the concatenation
+    // must be a legal argument for it. The engine-level half (the identifier reaching
+    // Postgres as text, the arguments as parameters) was measured against a live database
+    // when this arm was built; it is not reproducible in this Docker-free suite.
+    [Fact]
+    public void NamesOn_callables_compile_against_EF_Core_8_with_the_names_artifact()
+    {
+        var ctx = NamesCtx(Load());
+        var sources = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx))
+            .Concat(new DbContextGenerator().Generate(ctx))
+            .Concat(new CallableGenerator().Generate(ctx))
+            .ToList();
+        Assert.Equal(3, sources.Count(f => f.Path.EndsWith(".callable.g.cs", StringComparison.Ordinal)));
+
+        var trees = sources.Select(f =>
+            CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
+        var comp = CSharpCompilation.Create(
+            "fr015_names_on_" + Guid.NewGuid().ToString("N"),
+            trees, DbContextCompileTests.BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Id}: {d.GetMessage()}")
+            .ToList();
+        Assert.True(errors.Count == 0,
+            "names-ON callables should compile against EF Core 8 alongside the names artifact, but got:\n"
+                + string.Join("\n", errors));
     }
 
     [Fact]
