@@ -107,7 +107,23 @@ public class ObjectFieldCodegenTests
         Assert.Contains("private static T UnmappedEnumValue<T>(int stored, string field)", dbContext);
         // Default (no @storage): single json column. §A6 (task 4) — converted: the
         // field belongs to Customer itself, which always has a names artifact.
-        Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b => b.ToJson(CustomerNames.ConfigColumn));", dbContext);
+        //
+        // The VO's enum members carry an explicit string conversion INSIDE the JSON document.
+        // EF Core 8's default for an unconfigured enum is its int ORDINAL, so without these
+        // lines `kind` stored as `{"kind": 0}` where TS, Java, Kotlin and Python all store the
+        // member SYMBOL — a silent cross-port wire break. Note `grade` converts to a STRING here
+        // despite carrying @intValueMap: the int map is a COLUMN-storage concern and there is no
+        // column inside a JSON document (the flattened arm above is where its int pair belongs).
+        Assert.Contains(
+            """
+                    modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b =>
+                    {
+                        b.ToJson(CustomerNames.ConfigColumn);
+                        b.Property(p => p.Kind).HasConversion<string>();
+                        b.Property(p => p.Grade).HasConversion<string>();
+                    });
+            """,
+            dbContext);
     }
 
     // Program D — the routes tier's post-save null clear for the nullable @isArray jsonb
@@ -127,7 +143,12 @@ public class ObjectFieldCodegenTests
             "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"\" + CustomerNames.Name + " +
             "\"\\\" SET \\\"\" + CustomerNames.TagsColumn + \"\\\" = NULL WHERE \\\"\" + CustomerNames.IdColumn + \"\\\" = {0}\", id);",
             routes);
-        Assert.DoesNotContain("\"customers\"", routes);
+        // The needle is the ESCAPED form as it appears in the emitted C# source — `\"customers\"`
+        // — not `"customers"`. The generated line spells the table inside a C# string literal, so
+        // the character after `customers` is a backslash, never a quote: the unescaped needle
+        // matched neither the constant-referencing output above NOR the literal output the sibling
+        // test pins, and passed identically either way. It was pinning nothing.
+        Assert.DoesNotContain("\\\"customers\\\"", routes);
     }
 
     [Fact]
@@ -156,7 +177,19 @@ public class ObjectFieldCodegenTests
         // so EF must map it with .OwnsMany(...).ToJson(...) — .OwnsOne over a collection fails
         // at EF model finalization ("must be a non-interface reference type to be used as an
         // entity type"). Regression gate for the array-of-VO jsonb path.
-        Assert.Contains("modelBuilder.Entity<Customer>().OwnsMany(x => x.Tags, b => b.ToJson(CustomerNames.TagsColumn));", dbContext); // §A6
+        // §A6. The VO's enum members take the same string conversion here as on the OwnsOne
+        // arm — an array of value objects is still a JSON document, and each element's `kind`
+        // must serialize as the member symbol rather than EF's ordinal.
+        Assert.Contains(
+            """
+                    modelBuilder.Entity<Customer>().OwnsMany(x => x.Tags, b =>
+                    {
+                        b.ToJson(CustomerNames.TagsColumn);
+                        b.Property(p => p.Kind).HasConversion<string>();
+                        b.Property(p => p.Grade).HasConversion<string>();
+                    });
+            """,
+            dbContext);
         Assert.DoesNotContain("OwnsOne(x => x.Tags", dbContext);
     }
 

@@ -826,11 +826,23 @@ public class DbContextGenerator : IGenerator
         // single JSON column (flattening N objects onto fixed columns is nonsensical), so it
         // never takes the flattened branch below. ResolvedIsArray per ADR-0039 (array-ness is
         // inheritable via extends).
+        // An enum member inside the JSON document needs the SAME string conversion the
+        // entity-level path gives a top-level enum, and for the same stated reason ("else enum
+        // arrays persist as int ordinals", EmitFieldTypeConfig). EF Core 8's default for an
+        // unconfigured enum is its ORDINAL, so an unconverted member stored `{"mood": 0}` where
+        // every sibling port stores the member SYMBOL — a cross-port wire-contract break, and a
+        // positionally fragile one: reordering @values silently re-maps already-stored data,
+        // which is precisely why @intValueMap was specified as a MAP rather than an array.
+        var jsonEnums = JsonEnumConversions(vo, ctx);
         if (field.ResolvedIsArray())
-            return $"        modelBuilder.Entity<{owner}>().OwnsMany(x => x.{nav}, b => b.ToJson({parentColRef}));";
+            return jsonEnums.Count == 0
+                ? $"        modelBuilder.Entity<{owner}>().OwnsMany(x => x.{nav}, b => b.ToJson({parentColRef}));"
+                : OwnedJsonBlock("OwnsMany", owner, nav, parentColRef, jsonEnums);
 
         if (field.Storage != STORAGE_FLATTENED)
-            return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));";
+            return jsonEnums.Count == 0
+                ? $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));"
+                : OwnedJsonBlock("OwnsOne", owner, nav, parentColRef, jsonEnums);
 
         // Flattened-column prefix for each nested member: `<parent field's column>_`. This is
         // migrate-ts's rule (expected-schema.ts flattenObjectField), and TS owns the schema
@@ -871,6 +883,58 @@ public class DbContextGenerator : IGenerator
             var conversion = isEnum ? $".{EnumConversionCall(CSharpNaming.Pascal(vo.Name), vo, nf, ctx.Config)}" : "";
             sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\"){conversion};");
         }
+        sb.Append("        });");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The per-member <c>b.Property(...)</c> lines an owned-JSON value object needs so its enum
+    /// members serialize as member SYMBOLS rather than EF's default int ordinals. Empty when the
+    /// value object declares no enum member, which keeps the single-line
+    /// <c>OwnsOne/OwnsMany(..., b =&gt; b.ToJson(...))</c> form byte-identical for every VO that
+    /// had no divergence to begin with.
+    /// </summary>
+    /// <remarks>
+    /// <para>The conversion is <c>HasConversion&lt;string&gt;()</c> UNCONDITIONALLY — deliberately
+    /// NOT <see cref="EnumConversionCall"/>. <c>@intValueMap</c> is a COLUMN-storage concern
+    /// (0.23.2: it switches the column from <c>varchar</c> + string CHECK to <c>integer</c> + int
+    /// CHECK) and there is no column inside a JSON document. It reaches no port's value-object
+    /// path — in the TypeScript reference `intValueMap` has zero hits under `templates/
+    /// value-object-file.ts` and `inferred-types.ts`, so TS emits a plain string-literal union and
+    /// writes the symbol whether or not the enum is int-backed. Routing the int map in here would
+    /// have swapped one cross-port divergence for another.</para>
+    /// <para>The array arm mirrors the entity-level rule exactly (EF Core 8 primitive collection
+    /// with a per-element conversion); the two must not drift, because a VO member and a top-level
+    /// field of the same declared subtype describe the same stored value.</para>
+    /// </remarks>
+    private static List<string> JsonEnumConversions(MetaObject vo, GenContext ctx)
+    {
+        _ = ctx;
+        var lines = new List<string>();
+        foreach (var nf in vo.Fields())
+        {
+            if (nf.SubType != FIELD_SUBTYPE_ENUM) continue;
+            var prop = CSharpNaming.Pascal(nf.Name);
+            // ADR-0039: resolving — array-ness is inheritable via extends.
+            lines.Add(nf.ResolvedIsArray()
+                ? $"            b.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion<string>();"
+                : $"            b.Property(p => p.{prop}).HasConversion<string>();");
+        }
+        return lines;
+    }
+
+    /// <summary>
+    /// The multi-line owned-JSON config: <c>.ToJson(col)</c> plus the per-member conversions.
+    /// <paramref name="ownsCall"/> is <c>OwnsOne</c> or <c>OwnsMany</c>.
+    /// </summary>
+    private static string OwnedJsonBlock(
+        string ownsCall, string owner, string nav, string parentColRef, List<string> memberLines)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"        modelBuilder.Entity<{owner}>().{ownsCall}(x => x.{nav}, b =>");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            b.ToJson({parentColRef});");
+        foreach (var line in memberLines) sb.AppendLine(line);
         sb.Append("        });");
         return sb.ToString();
     }
