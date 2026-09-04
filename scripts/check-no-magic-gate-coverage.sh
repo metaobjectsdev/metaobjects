@@ -26,7 +26,17 @@
 # gate claims to cover is exactly as reliable as the claim it is supposed to verify. The
 # markers below are metamodel type and attribute names, which appear in each gate's
 # embedded model regardless of host language (JSON keys, quoted the same way in a TS object
-# literal, a Python dict, a Kotlin raw string and a Java escaped string).
+# literal, a Python dict, a Kotlin raw string, a Java text block — and, since this bit the
+# check on its first run, a Java `\"`-escaped string too.
+#
+# That last one is worth stating because it is the same failure the whole gate is about. In an
+# escaped Java string every CLOSING quote is preceded by a backslash, so the bytes read
+# `\"object.value\"` and the substring `"object.value"` never occurs: the marker matched the
+# opening quote and missed the closing one, and the Java gate reported itself as modelling
+# NOTHING while its fixture already had two of the shapes. A check that answers "absent" for a
+# shape that is present is worse than no check, because it fills the ledger with false gaps and
+# trains a reader to ignore it. Every marker therefore tolerates an optional backslash before
+# its closing quote, and the ledger below is empty rather than papering over the difference.
 #
 # The honest limit: a marker could in principle be matched by prose rather than by the
 # model. That is why every marker is a QUOTED metamodel token or a `<key>: true` pair, both
@@ -73,19 +83,19 @@ done
 # makes a fixture without it unable to speak for it.
 shapes() {
   cat <<'SHAPES'
-tph_base \"@discriminator\"
-tph_subtype \"@discriminatorValue\"
-enum \"field\.enum\"
-enum_int_backed \"@intValueMap\"
-secondary_identity \"identity\.secondary\"
-lookup_index \"index\.lookup\"
-callable_source \"storedProc\"
-schema \"@schema\"
-array_field isArray\"?[[:space:]]*:[[:space:]]*[tT]rue
-abstract_base abstract\"?[[:space:]]*:[[:space:]]*[tT]rue
-projection \"object\.projection\"
-value_object \"object\.value\"
-write_through_role \"@role\"
+tph_base \"@discriminator\\?\"
+tph_subtype \"@discriminatorValue\\?\"
+enum \"field\.enum\\?\"
+enum_int_backed \"@intValueMap\\?\"
+secondary_identity \"identity\.secondary\\?\"
+lookup_index \"index\.lookup\\?\"
+callable_source \"storedProc\\?\"
+schema \"@schema\\?\"
+array_field isArray\\?\"?[[:space:]]*:[[:space:]]*[tT]rue
+abstract_base abstract\\?\"?[[:space:]]*:[[:space:]]*[tT]rue
+projection \"object\.projection\\?\"
+value_object \"object\.value\\?\"
+write_through_role \"@role\\?\"
 SHAPES
 }
 
@@ -115,31 +125,6 @@ PORTS
 # four are being widened against.
 known_gaps() {
   cat <<'GAPS'
-java:tph_base
-java:tph_subtype
-java:enum
-java:enum_int_backed
-java:secondary_identity
-java:lookup_index
-java:callable_source
-java:schema
-java:array_field
-java:abstract_base
-java:projection
-java:value_object
-java:write_through_role
-kotlin:tph_base
-kotlin:tph_subtype
-kotlin:enum
-kotlin:enum_int_backed
-kotlin:secondary_identity
-kotlin:lookup_index
-kotlin:callable_source
-kotlin:schema
-kotlin:array_field
-kotlin:abstract_base
-kotlin:projection
-kotlin:write_through_role
 GAPS
 }
 
