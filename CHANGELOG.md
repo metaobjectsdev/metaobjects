@@ -63,6 +63,124 @@ an object with a read-only primary source beside a writable one, which `object.e
 `object.projection` each refuse and which only ever loaded because `object.base` carries neither
 rule.
 
+### Fixed — BEHAVIOUR: `@schema` is honoured by every table, view and callable binding
+
+**A `@schema` object's generated code addressed the wrong schema.** `migrate-ts` creates it
+where it says — `CREATE TABLE "sales"."widgets"` — and under ADR-0015 it owns where a table
+lives. No code generator in any port read the attribute: the names artifact carried it in
+TypeScript, C#, Kotlin and Java, and every binding then dropped it, so generated queries
+addressed `public.widgets` while the migration built `sales.widgets`.
+
+Whether that surfaced depended entirely on the adopter's `search_path` — configured one way
+the generated code silently read a DIFFERENT table, configured another it worked. **This is
+therefore a behaviour change on upgrade for anyone whose `search_path` was masking it**: their
+generated code will now address the schema the model declares. Nothing in this repo sets
+`search_path`, so there was no layer compensating; three shipped conformance fixtures declare
+a non-default `@schema`, so the shape is not theoretical. Pin the old behaviour by removing
+`@schema` (and letting the connection resolve the name), not by configuration.
+
+Each port binds it in the form its target expresses, through the constant:
+`pgSchema(WidgetNames.schema).table(…)` in TypeScript (a different CALL shape, not a third
+argument), `[Table(WidgetNames.Name, Schema = WidgetNames.Schema)]` in C#, and
+`Table(WidgetNames.SCHEMA + "." + WidgetNames.NAME)` in Kotlin. Views and stored-proc
+wrappers are included — fixing tables alone would leave the two halves disagreeing with each
+other as well as with the database. sqlite/d1 are excluded and that is correct rather than a
+gap: SQLite has no schema concept and migrate already refuses a non-default `@schema` there.
+
+A write-through entity's **replica view** takes its own schema, not the entity's: the object's
+primary source there is the WRITABLE table, so the obvious lookup would have qualified the
+view with the write table's schema — a name paired with someone else's schema, which is worse
+than no schema at all.
+
+**The gate said `@schema` was unread, and that was false when it was written.** The C# row
+asserted "NO generator reads it" while `CallableGenerator` had been reading it and splicing it
+into emitted SQL as a spelled literal since before this work stream; the row still read
+`dropped` only because the fixture put `@schema` on a plain entity and not on the one
+generator that qualified. It is on both now. The TypeScript row's "NO generator anywhere reads
+it" was wrong for a different reason — the projection view-DDL builder has always read it.
+
+### Fixed — a jsonb value-object enum was stored as EF's integer ordinal (C#)
+
+A value object stored as owned JSON had no enum conversion on either `.ToJson` arm, so EF Core
+8's default applied and a member persisted as its **ordinal** — `{"mood": 0}` — where
+TypeScript, Java, Kotlin and Python all store the member SYMBOL. A silent cross-port wire
+break, and a positionally fragile one: reordering `@values` silently re-maps already-stored
+rows, which is exactly why `@intValueMap` was specified as a map rather than an array.
+
+The conversion is `HasConversion<string>()` unconditionally, deliberately **not** the
+`@intValueMap` pair the flattened arm uses: the int map is a COLUMN-storage concern and there
+is no column inside a JSON document. It reaches no port's value-object path, so routing it in
+here would have swapped one cross-port divergence for another.
+
+### Fixed — three flattened value-object member kinds bound a column no migration creates (C#)
+
+`@storage: flattened` spreads a value object onto the owning table as
+`<parent column>_<member column>`, and migrate's `flattenObjectField` iterates the value
+object's fields **unconditionally**. The generator named scalars and non-array enums only, so
+an array enum and a nested value object fell through to EF's `<Nav>_<Prop>` default and bound
+a column the migration never creates (Postgres `42703`). Both are now named. `field.map` is
+still not, deliberately — this port configures a top-level `field.map` nowhere either, so
+there is no proven mapping to mirror and forcing one risks a broken model build; it now emits
+a **gen-time warning** naming the member and the exact column migrate will create, and is
+recorded as G9 in the port's `KNOWN_GAPS.md`.
+
+### Fixed — the gate over the gates counted PROSE as coverage, and inverted its own verdict
+
+`scripts/check-no-magic-gate-coverage.sh` matched each shape marker against the whole gate
+file, and a javadoc line reading ``contains {@code "object.value"} as a substring`` satisfied
+`java:value_object` on its own — so the ledger would have reported "no gap" with both real
+declarations deleted. Markers now match with comment-only lines stripped.
+
+The first fix carried a worse bug than the one it fixed: piping the stripper into `grep -q`
+under `set -o pipefail` meant a MATCH was reported as a GAP, because `grep -q` closes the pipe
+on its first hit and the upstream dies of SIGPIPE. It briefly reported 22 gaps that did not
+exist. Same inversion as the pre-release pin detector's `grep | head`, and the more dangerous
+half of the pair — a check that inverts is worse than one that merely misses.
+
+### Fixed — four of five gates asserted "the fixture loads clean" against a LAX loader
+
+Every no-magic gate carries the line *"A gate whose fixture the loader would reject proves
+nothing"* above an `errors == []` assertion. In TypeScript, C#, Python and Kotlin that
+assertion could not fail on an unknown attribute, because the loader was not strict — so it
+proved the fixture PARSES, never that it is legal under the sealed registry (ADR-0023), which
+is the rule an adopter's model faces. All four now load strict; all four fixtures were already
+clean under it, so no fixture changed — only what the gate is entitled to claim.
+
+Kotlin needed an API fix, and that is the durable half: `loadString` was the one loader entry
+point with **no options parameter**, while its own siblings `loadUris`/`loadResources` took
+`LoaderOptions` precisely so a caller could ask for strict. An inline model is what every
+codegen test loads, so the one shape that could never be checked strictly was the one shape
+the tests all use. `MetaDataLoader.fromString` and the ktx `loadString` now take options and
+pass them through; the existing 3-arg forms delegate with null.
+
+### Fixed — FR-015 was documented as shipping cross-port, and Kotlin bound an unregistered attribute
+
+`AGENTS.md` claimed the projection codegen fan-out including "FR-015 proc-callables" was
+"shipped cross-port". It was not: callable generators exist in TypeScript and C# only, **Java
+and Python have none at all**, and Kotlin's bound its arguments from `@param`, an attribute
+that port invented and no provider registers. Under the sealed registry no metadata carrying
+it can load, so the predicate answered false for every field of every loadable model: every
+wrapper was silently zero-argument, while an adopter following the documented contract and
+declaring `@parameterRef` had their arguments ignored without a word.
+
+Kotlin now binds the registered `@parameterRef`; `@param` is deleted from the repository
+rather than merely unread. The claim is corrected, and the Java and Python shortfall is
+recorded in each port's `KNOWN_GAPS.md` — building those two generators is feature work and is
+additionally blocked on `@exposeAsRoute`, which the originating plan left explicitly undecided.
+
+### Fixed — an index's physical attributes never reached the generated schema (TypeScript)
+
+The two index emitters were reconciled on NAME earlier in this line and still disagreed on
+SHAPE. `@expr`, `@using`, `@orders` and `@where` all reach migrate and none reached codegen:
+an `@expr`-only index emitted **nothing** (both loops required a non-empty `@fields` while
+migrate keys an expression index off `@expr`), `@where` never arrived so a PARTIAL unique index
+read as a **fully** unique one, and `@orders` was dropped so a DESC index read as ASC. The last
+had a test pinning it — asserting the direction was absent, over a fixture whose own comment
+says "customerId + placedAt DESC".
+
+The two near-identical loops are now one function, because a rule written twice is a rule that
+can be forgotten twice, which is how these came to be honoured by neither.
+
 ### Added — every physical database name has ONE spelling per run, in all five ports
 
 A generated per-object artifact now carries an object's physical database names — the
