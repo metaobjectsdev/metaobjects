@@ -22,6 +22,7 @@ import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
+import { computeDocsDrift } from "../lib/docs-drift.js";
 import {
   checkRequirements, summariseRequirements, scanRequirements, type Diagnostic,
 } from "../lib/requirement-check.js";
@@ -34,7 +35,7 @@ import {
   type WranglerRunner,
 } from "../lib/wrangler.js";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
-import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
+import { buildProjectionViews, resolveDocsConfig } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, inferDialect, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import {
@@ -157,10 +158,12 @@ export async function verifyCommand(
   // The schema gate is selected by the presence of --db, or --dialect d1 (#225 —
   // D1 has no URL connection); that check lives inside runSchemaVerify.
   const runCodegen = flags.codegen;
+  const runDocs = flags.docs;
   if (!flags.anyExplicit) {
     say(
       "meta verify — running --templates (default). Explicit subverbs: " +
         "--templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift), " +
+        "--docs (docs drift), " +
         "--replay/--replay-snapshot (the committed migration chain replays from empty).",
     );
   }
@@ -319,6 +322,7 @@ export async function verifyCommand(
   const templateExit = runTemplates ? runTemplateVerify() : 0;
   const schemaExit = await runSchemaVerify();
   const codegenExit = runCodegen ? await runCodegenVerify() : 0;
+  const docsExit = runDocs ? await runDocsVerify() : 0;
   // Requirements have no subverb: `requirement.*` nodes are metadata, so they
   // are checked on every `meta verify`. Opt-in by DECLARATION — a model with no
   // requirement nodes is silent, not in drift.
@@ -335,7 +339,14 @@ export async function verifyCommand(
   // noisy project (both opt-outs work on `meta verify` and `meta gen`).
   runAntiPatternAdvisory();
 
-  const exitCode = Math.max(templateExit, schemaExit, codegenExit, requirementExit, replayExit);
+  const exitCode = Math.max(
+    templateExit,
+    schemaExit,
+    codegenExit,
+    docsExit,
+    requirementExit,
+    replayExit,
+  );
 
   if (structured) {
     emitStructured(
@@ -348,6 +359,7 @@ export async function verifyCommand(
           // failure mode this whole change exists to remove.
           { gate: "schema", ran: ranSchemaGate, ok: schemaExit === 0 },
           { gate: "codegen", ran: runCodegen, ok: codegenExit === 0 },
+          { gate: "docs", ran: runDocs, ok: docsExit === 0 },
           { gate: "requirements", ran: true, ok: requirementExit === 0 },
           { gate: "replay", ran: flags.replay || flags.replaySnapshot, ok: replayExit === 0 },
         ],
@@ -1195,6 +1207,64 @@ export async function verifyCommand(
     );
     for (const line of result.lines) log.error(`  ${line}`);
     log.error("Run 'meta gen' to regenerate, then commit the result.");
+    return 1;
+  }
+
+  // -- docs drift -------------------------------------------------------------
+  // Gated on --docs. Runs `meta docs` into a temp dir and diffs the committed docs
+  // tree. See lib/docs-drift.ts for the two deliberate differences from --codegen
+  // (a byte difference IS drift here, and a committed file a regen would not emit is
+  // never reported — `docs.outDir` is full of files MetaObjects did not write).
+  //
+  // It needs a config for the same reason `--codegen` does: `docs.outDir` says which
+  // tree to compare against, and the `agent` surface will not even materialise
+  // without one.
+  async function runDocsVerify(): Promise<number> {
+    if (forgeConfig === undefined) {
+      log.error(
+        "verify --docs: no metaobjects.config.ts found (or it is invalid) — " +
+          "cannot locate the committed docs tree to diff against. " +
+          "Run 'meta init' to scaffold one, or run without --docs.",
+      );
+      return 2;
+    }
+
+    // Resolved through the SAME resolver `meta docs` uses, so a project that moved its
+    // docs elsewhere is checked where its docs actually are. `outputLayout` is the
+    // documented fallback for `docs.layout`.
+    const docsCfg = resolveDocsConfig(forgeConfig.docs, {}, forgeConfig.outputLayout ?? "flat");
+    let result;
+    try {
+      result = await computeDocsDrift({
+        projectRoot: genConfigDir,
+        docsDir: resolvePath(genConfigDir, docsCfg.outDir),
+        cwd: genConfigDir,
+      });
+    } catch (err) {
+      log.error(`verify --docs: regeneration failed: ${(err as Error).message}`);
+      return 1;
+    }
+
+    if (result.error !== undefined) {
+      log.error(result.error);
+      return 2;
+    }
+
+    if (result.clean) {
+      // The denominator is what was actually COMPARED, so the passing line and the
+      // failing line below count the same set. A gate whose two halves divide by
+      // different numbers is how `verify --templates` came to report seven templates
+      // vanishing between a red run and a green one.
+      say(`meta verify — ${result.checked} docs page(s) match a fresh 'meta docs' (no docs drift).`);
+      return 0;
+    }
+
+    log.error(
+      `meta verify — docs drift (${result.driftedFiles.length} of ${result.checked} page(s) ` +
+        `differ from a fresh 'meta docs'):`,
+    );
+    for (const line of result.lines) log.error(`  ${line}`);
+    log.error("Run 'meta docs' to regenerate, then commit the result.");
     return 1;
   }
 }

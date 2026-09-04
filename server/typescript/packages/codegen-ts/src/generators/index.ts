@@ -51,6 +51,15 @@ export { buildTemplateDocData } from "./template-doc-builder.js";
 // behaviour composes its own generator instead of filing an issue here.
 export { requirementTests } from "./requirement-tests.js";
 export { requirementsFile } from "./requirements-file.js";
+// The `agent` docs surface — internal engine of `meta docs --agent`, like docsFile()
+// and apiDocsFile(). Not a `meta gen` config generator.
+export { agentDocsFile, type AgentDocsFileOpts } from "./agent-docs-file.js";
+export type {
+  AgentSchemaInput,
+  SchemaColumnLike,
+  SchemaTableLike,
+  SchemaViewLike,
+} from "./agent-schema-input.js";
 export type { RequirementRow } from "./requirements-view.js";
 export type {
   RequirementTestsOpts,

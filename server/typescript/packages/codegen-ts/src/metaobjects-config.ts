@@ -232,7 +232,7 @@ export interface NormalizedMetaobjectsGenConfig
   targets: Record<string, ResolvedTarget>;
 }
 
-export type DocsSurface = "model" | "api" | "requirements";
+export type DocsSurface = "model" | "api" | "requirements" | "agent";
 
 export interface ApiSurface {
   lang: string;
@@ -302,7 +302,15 @@ export function resolveDocsConfig(
     // files for a project declaring no `requirement.*` node — not an empty page. A
     // project without a ledger sees byte-identical output to before the surface
     // existed; see requirements-file.ts.
-    surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api", "requirements"],
+    //
+    // `agent` defaults ON for the same reason and under the same discipline: each of
+    // its three pages renders "" when its tier has nothing to describe, and an empty
+    // render emits no file. It is additionally gated on a loadable gen config, exactly
+    // as `api` is — physical names, the dialect and view dispatch all come from there,
+    // so without one there is nothing true to say. Turning it on by default is what
+    // makes the always-on agent-context pointer able to name the files: a pointer to a
+    // page an adopter has to opt into is a pointer at nothing.
+    surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api", "requirements", "agent"],
     apiSurfaces: cli.apiSurfaces ?? block?.apiSurfaces ?? [{ lang: "ts", subDir: "api" }],
   };
 }

@@ -254,6 +254,18 @@ export interface VerifyFlags {
   /** Run the codegen-drift gate (regenerate-to-temp and diff committed output). */
   codegen: boolean;
   /**
+   * Run the docs-drift gate: regenerate the `meta docs` surfaces into a temp dir and diff
+   * them against the committed docs tree.
+   *
+   * A SEPARATE subverb rather than part of `--codegen`, because they check different
+   * trees under different ownership rules: `--codegen` regenerates `outDir`/`targets` and
+   * must respect the hand edits `meta gen` preserves, while the docs tree has no merge,
+   * no manifest, and lives in a directory (`./docs` by default) full of hand-written
+   * files it does not own. Folding them together would have to pick one of those rules
+   * for both.
+   */
+  docs: boolean;
+  /**
    * Replay the committed migration chain into an empty throwaway database and assert
    * it applies (#313). Needs no `--db`: the engine is local and disposable (PGlite
    * for postgres, a temp sqlite file), so the gate provisions nothing.
@@ -266,7 +278,7 @@ export interface VerifyFlags {
    * read as that flag's opposite rather than as a replay depth.
    */
   replaySnapshot: boolean;
-  /** Whether ANY explicit subverb flag (--templates/--db/--codegen/--replay*) was passed. */
+  /** Whether ANY explicit subverb flag (--templates/--db/--codegen/--docs/--replay*) was passed. */
   anyExplicit: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
@@ -305,6 +317,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       "skip-schema": { type: "boolean", default: false },
       templates: { type: "boolean", default: false },
       codegen: { type: "boolean", default: false },
+      docs: { type: "boolean", default: false },
       replay: { type: "boolean", default: false },
       "replay-snapshot": { type: "boolean", default: false },
       "no-antipatterns": { type: "boolean", default: false },
@@ -337,6 +350,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
 
   const templates = !!values.templates;
   const codegen = !!values.codegen;
+  const docs = !!values.docs;
   const replay = !!values.replay;
   const replaySnapshot = !!values["replay-snapshot"];
   // --db is itself an explicit subverb selector: passing a connection URL means
@@ -345,7 +359,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
   // must be listed here or `meta verify --replay` would ALSO run the template gate
   // as the bare-verify default.
   const anyExplicit =
-    templates || codegen || values.db !== undefined || dialect === "d1" || replay || replaySnapshot;
+    templates || codegen || docs || values.db !== undefined || dialect === "d1" || replay || replaySnapshot;
 
   return {
     prompts: values.prompts,
@@ -355,6 +369,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     skipSchema: !!values["skip-schema"],
     templates,
     codegen,
+    docs,
     replay,
     replaySnapshot,
     anyExplicit,

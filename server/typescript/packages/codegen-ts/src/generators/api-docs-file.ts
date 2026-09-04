@@ -18,12 +18,16 @@
 // Part 3) — so it appears in `gen --list` and is selectable by its stable name
 // `api-docs`. It is NOT a `meta docs` mode.
 //
-// It is NOT (yet) part of the default `meta gen` scaffold suite: it is
-// registry-listed but not auto-run. Turning it on by default in the scaffold,
-// and surfacing the agent form (AGENT-API.md) to a coding agent via a pointer
-// from the installed `.metaobjects/` context, are tracked as agent-context-
-// coordination follow-ups — deliberately deferred here to avoid colliding with
-// the live agent-context work.
+// It is NOT part of the default `meta gen` scaffold suite: it is registry-listed but not
+// auto-run. `meta docs` is the door that emits it.
+//
+// THE POINTER IS NO LONGER DEFERRED. This header used to record "surfacing the agent form
+// (AGENT-API.md) to a coding agent via a pointer from the installed `.metaobjects/`
+// context" as an agent-context-coordination follow-up. It was deferred, no roadmap item
+// tracked it, and for as long as that held, the page existed and nothing routed an agent
+// to it. `agent-context/templates/always-on.md.mustache` now names this file and the three
+// `agent/` pages, and says when to read each. If you rename or move this artifact, that
+// template is the other half.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";

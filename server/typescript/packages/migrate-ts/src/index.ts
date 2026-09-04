@@ -28,6 +28,9 @@ export { computeDrift, computeDriftFromActual, type ComputeDriftOptions, type Dr
 export { classifyDrift, driftAgainstSnapshot } from "./drift/classify.js";
 export type { DriftClassification } from "./drift/classify.js";
 export { emit } from "./emit/index.js";
+// The dialect SQL type for a snapshot column, delegating to the SAME renderer the
+// DDL emitters use — see column-type-sql.ts for why it is not a switch at the call site.
+export { columnTypeSql } from "./column-type-sql.js";
 export { writeMigration } from "./write-migration.js";
 export { writeMigrationD1 } from "./write-migration-d1.js";
 export { writeMigrationFlyway } from "./write-migration-flyway.js";

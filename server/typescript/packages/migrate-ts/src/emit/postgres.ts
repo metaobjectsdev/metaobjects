@@ -287,7 +287,7 @@ function renderColumn(c: ColumnDescriptor): string {
   return s;
 }
 
-function pgType(t: SqlType): string {
+export function pgType(t: SqlType): string {
   switch (t.kind) {
     case "text":      return t.maxLength !== undefined ? `VARCHAR(${t.maxLength})` : "TEXT";
     case "integer":   return t.bits === 64 ? "BIGINT" : "INTEGER";

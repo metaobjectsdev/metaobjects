@@ -1,13 +1,16 @@
 import { test, expect } from "bun:test";
 import { resolveDocsConfig } from "../src/metaobjects-config.js";
 
-// `requirements` joined the default set deliberately. That is only safe because
-// requirementsFile() emits ZERO files for a project declaring no `requirement.*` node
-// — not an empty page — so a project without a ledger sees byte-identical output.
-// If that guard is ever weakened, this default must go back to opt-in.
+// `requirements` and `agent` joined the default set deliberately, and BOTH depend on the
+// same guard: each emits ZERO FILES when it has nothing to describe — not an empty page —
+// so a project without a ledger, a schema or a generated UI sees byte-identical output.
+// If that guard is ever weakened for either surface, its default must go back to opt-in.
+//
+// `agent` additionally only materialises with a loadable gen config, the way `api` does;
+// that gate lives in the docs COMMAND, not in this resolver, so it is not visible here.
 test("defaults when no docs block and no overrides", () => {
   const r = resolveDocsConfig(undefined, {}, "package");
-  expect(r).toEqual({ outDir: "./docs", layout: "package", baseUrl: "", surfaces: ["model", "api", "requirements"], apiSurfaces: [{ lang: "ts", subDir: "api" }] });
+  expect(r).toEqual({ outDir: "./docs", layout: "package", baseUrl: "", surfaces: ["model", "api", "requirements", "agent"], apiSurfaces: [{ lang: "ts", subDir: "api" }] });
 });
 
 test("docs block supplies values; fallbackLayout ignored when layout set", () => {

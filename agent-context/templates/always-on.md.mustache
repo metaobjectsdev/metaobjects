@@ -8,6 +8,25 @@
 MetaObjects is a metadata standard: typed metadata in `metaobjects/` is the durable
 spine; generated code is the disposable artifact. Regenerate with `{{codegenCommand}}`.
 
+## Read the generated reference before you touch a tier
+`meta docs` writes four reference files under this project's docs output directory
+(`./docs` unless `docs.outDir` in `metaobjects.config.ts` says otherwise). They are
+generated from THIS project's metadata, so they describe what it actually is rather than
+what the framework does in general — and reading the relevant one first is how you avoid
+inferring the answer from generated code, which is the disposable half.
+
+- **`agent/schema.md`** — before touching persistence. Tables, columns, the field each
+  column came from, keys, foreign keys, constraints.
+- **`api/AGENT-API.md`** — before calling generated code. The types, endpoints and filter
+  operators the generators actually emitted.
+- **`agent/ui.md`** — before touching a form or a grid. The control, label, rules and
+  filterability per field, and each declared grid.
+- **`agent/requirements.md`** — before adding a capability. What is already claimed, and
+  what was deliberately **retired** — an entry saying a capability must not be rebuilt is
+  the one thing you cannot learn from the code, because the code is gone.
+
+Not there? Run `meta docs`. It reads the metadata and the config and needs nothing else.
+
 ## Principles
 - **Adopting onto existing code? Metadata FOLLOWS the code.** On a migration (existing working code / live DB), author metadata + tune codegen to *reproduce* what the code already is — native types (`field.uuid` when the code uses `UUID`, not `field.string`), names, nullability — so regen changes as little existing code as possible. The only existing code that should change is the hand-written layer codegen replaces; ask when a modeling choice is ambiguous. (Greenfield: model-first, below.)
 - Pattern-derivable from metadata = codegen, never hand-write — FKs, CRUD, validators, finders, and the database schema and migrations. The schema is a disposable, generated artifact: change the metadata and regenerate. Don't hand-write divergent SQL; where a stack owns its own migration files, GENERATE them — `meta migrate --migration-format flyway` emits the paired `V<n>__`/`U<n>__` files a Flyway runner expects, and leaves applying them to Flyway.

@@ -335,7 +335,7 @@ function renderColumnInline(c: ColumnDescriptor, isSinglePk = false): string {
   return s;
 }
 
-function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): string {
+export function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): string {
   if (identity === "increment") return "INTEGER";
   if (identity === "uuid")      return "TEXT";
   switch (t.kind) {

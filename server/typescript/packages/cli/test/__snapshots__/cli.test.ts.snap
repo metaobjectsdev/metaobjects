@@ -17,7 +17,7 @@ COMMANDS:
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
-  verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
+  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
@@ -59,6 +59,11 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --templates           Template/prompt {{field}}↔payload drift (the bare-verify default)
   --codegen             Codegen drift — regenerate to a temp dir and diff the committed
                         output (config outDir/targets). Needs metaobjects.config.ts; exit 2 if absent.
+  --docs                Docs drift — run 'meta docs' into a temp dir and diff the committed
+                        docs tree (docs.outDir). Reports a page that changed or that a fresh
+                        run would emit; never reports an extra file, because docs.outDir
+                        holds hand-written documentation MetaObjects did not write.
+                        Needs metaobjects.config.ts; exit 2 if absent.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.

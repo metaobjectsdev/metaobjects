@@ -241,6 +241,16 @@ export { buildTemplateDocData } from "./generators/template-doc-builder.js";
 // worse than the bug report this is meant to avoid.
 export { requirementTests } from "./generators/requirement-tests.js";
 export { requirementsFile } from "./generators/requirements-file.js";
+// The `agent` docs surface. `AgentSchemaInput` is exported because the CLI SUPPLIES it —
+// codegen-ts deliberately does not compute the physical schema (see agent-schema-input.ts).
+export { agentDocsFile } from "./generators/agent-docs-file.js";
+export type { AgentDocsFileOpts } from "./generators/agent-docs-file.js";
+export type {
+  AgentSchemaInput,
+  SchemaColumnLike,
+  SchemaTableLike,
+  SchemaViewLike,
+} from "./generators/agent-schema-input.js";
 export type { RequirementRow } from "./generators/requirements-view.js";
 // The projection itself, not just its type: it is the authority on WHICH doc slots a
 // requirement surface actually renders, and `meta verify`'s authoring lint tells an

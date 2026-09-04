@@ -22,6 +22,7 @@ import {
   makeRenderContext,
   buildPkMap,
   buildRelationMap,
+  buildProjectionViews,
   resolveDocsConfig,
   apiLabel,
 } from "@metaobjectsdev/codegen-ts";
@@ -31,10 +32,19 @@ import type {
   ResolvedDocsConfig,
   DocsSurface,
 } from "@metaobjectsdev/codegen-ts";
-import { docsFile, apiDocsFile, requirementsFile } from "@metaobjectsdev/codegen-ts/generators";
+import { docsFile, apiDocsFile, requirementsFile, agentDocsFile } from "@metaobjectsdev/codegen-ts/generators";
 import { composeRegistry, coreProviders, renderCoreMetamodelDocs } from "@metaobjectsdev/metadata";
 import type { MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
+// The `agent` schema surface takes the physical schema as an ARGUMENT with its resolvers
+// injected — codegen-ts deliberately owns none of it (see agent-schema-input.ts). THIS is
+// where the two packages meet: `meta docs` already depends on both.
+import {
+  buildExpectedSchemaWithProvenance,
+  columnTypeSql,
+  qualifiedDbName,
+} from "@metaobjectsdev/migrate-ts";
+import type { AgentSchemaInput, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
 
 type DocsLayout = "flat" | "package";
 
@@ -106,6 +116,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let wantModel = false;
   let wantApi = false;
   let wantRequirements = false;
+  let wantAgent = false;
   let wantMetamodel = false;
   let wantSite = false;
   let wantScaffoldSite = false;
@@ -133,6 +144,8 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       wantApi = true;
     } else if (a === "--requirements") {
       wantRequirements = true;
+    } else if (a === "--agent") {
+      wantAgent = true;
     } else if (a === "--metamodel") {
       wantMetamodel = true;
     } else if (a === "--site") {
@@ -175,6 +188,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   if (wantModel) surfaces.push("model");
   if (wantApi) surfaces.push("api");
   if (wantRequirements) surfaces.push("requirements");
+  if (wantAgent) surfaces.push("agent");
   return {
     // `<project-root>` is the project root that CONTAINS the metadata; default
     // cwd (mirrors how migrate/gen treat the working directory as the root).
@@ -197,7 +211,28 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   };
 }
 
-export async function docsCommand(args: string[], cwd: string): Promise<number> {
+/**
+ * How a caller other than the CLI wants `meta docs` to behave.
+ *
+ * `verify --docs` runs this exact command into a temp directory and diffs the result, so
+ * that the gate and the door can never be two implementations of "what the docs are". The
+ * only thing it needs differently is silence: a verify run announcing "meta docs — wrote 8
+ * entity pages" in the middle of its own report describes work the user is not getting.
+ */
+export interface DocsCommandOptions {
+  /** Suppress the informational output. Warnings and errors still print — a docs run that
+   *  degraded is something a verify caller must see, not something to swallow. */
+  silent?: boolean;
+}
+
+export async function docsCommand(
+  args: string[],
+  cwd: string,
+  opts?: DocsCommandOptions,
+): Promise<number> {
+  // Informational output only. `log.warn` / `log.error` are deliberately NOT routed
+  // through this: a skipped surface or a failed render is a finding either way.
+  const info = opts?.silent === true ? (_m: string): void => {} : log.info;
   let flags: DocsFlags;
   try {
     flags = parseDocsArgs(args, cwd);
@@ -525,16 +560,78 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
       // Surfaces owned by other ports: link only, with a pointer to where they
       // get produced.
       for (const s of labeled.filter((s) => s.lang !== "ts")) {
-        log.info(
+        info(
           `meta docs: api surface '${s.lang}' (${s.subDir}) is produced by that port's docs command — run it to populate those pages.`,
         );
       }
     } else if (hasConfig) {
       // Config present but failed to load — already warned above; don't claim an
       // api surface we couldn't build.
-      log.info("meta docs: api surface skipped — metaobjects.config.ts failed to load.");
+      info("meta docs: api surface skipped — metaobjects.config.ts failed to load.");
     } else {
-      log.info("meta docs: api surface skipped — no metaobjects.config.ts (nothing generated to document).");
+      info("meta docs: api surface skipped — no metaobjects.config.ts (nothing generated to document).");
+    }
+  }
+
+  // AGENT surface — three pages an agent reads BEFORE touching a tier (`agent/schema.md`
+  // before persistence, `agent/ui.md` before a form or grid, `agent/requirements.md`
+  // before adding a capability). The fourth file the always-on pointer names,
+  // `api/AGENT-API.md`, belongs to the api surface above.
+  //
+  // Gated on a loadable gen config exactly as `api` is, and for a stronger reason: the
+  // physical schema depends on the project's DIALECT and column-naming strategy, and
+  // `meta docs` otherwise runs on the neutral "sqlite" placeholder above. Documenting a
+  // schema under a dialect the project does not use would be worse than documenting none.
+  if (docsCfg.surfaces.includes("agent")) {
+    if (loadedConfig !== undefined) {
+      // The physical schema, built by the package that OWNS it, with its own resolvers
+      // handed across — see codegen-ts's agent-schema-input.ts for why the docs generator
+      // refuses to compute any of this itself.
+      const dialect = loadedConfig.dialect ?? "sqlite";
+      const strategy = loadedConfig.columnNamingStrategy ?? "snake_case";
+      let schema: AgentSchemaInput | undefined;
+      try {
+        const built = buildExpectedSchemaWithProvenance(root, {
+          dialect,
+          columnNamingStrategy: strategy,
+          // Views come from codegen-ts (migrate-ts never generates view DDL), exactly as
+          // `verify --db` threads them.
+          views: buildProjectionViews(root, { dialect, columnNamingStrategy: strategy }),
+        });
+        schema = {
+          dialect,
+          tables: built.snapshot.tables,
+          views: built.snapshot.views,
+          provenance: built.provenance,
+          // The structural `SchemaColumnLike` is migrate-ts's own ColumnDescriptor,
+          // narrowed to what the page reads; the cast hands the full descriptor back to
+          // the renderer that produced it.
+          columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
+          qualify: qualifiedDbName,
+        };
+      } catch (err) {
+        // A model the schema builder refuses is a real condition (a primary-key move, a
+        // duplicate physical name) that `meta migrate` will report properly. Docs must not
+        // be the command that fails on it, so the schema page is skipped and the other two
+        // agent pages still emit.
+        log.warn(
+          `docs: agent/schema.md skipped — the expected schema could not be built ` +
+            `(${(err as Error).message}). Run 'meta migrate' for the full diagnosis.`,
+        );
+      }
+      emit.push(
+        ...(await agentDocsFile({
+          ...(schema !== undefined && { schema }),
+          columnNamingStrategy: strategy,
+        }).generate(ctx)),
+      );
+    } else if (hasConfig) {
+      info("meta docs: agent surface skipped — metaobjects.config.ts failed to load.");
+    } else {
+      info(
+        "meta docs: agent surface skipped — no metaobjects.config.ts (the physical schema " +
+          "and the generated UI are what it describes).",
+      );
     }
   }
 
@@ -575,7 +672,15 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // did not run — the opposite of the silence the empty-ledger guard exists to produce.
   const requirementFiles = emit.filter((f) => f.path.startsWith("requirements.")).length;
   const reqSummary = requirementFiles > 0 ? `; ${requirementFiles} requirement file(s)` : "";
-  log.info(`meta docs — wrote ${modelSummary}; ${apiSummary}${reqSummary} → ${outDir}`);
+  // Same rule as the requirements line: NAMED rather than counted, and only when written.
+  // Each agent page is skipped when its tier has nothing to describe, so "3 agent pages"
+  // would leave a reader unable to tell which three — and the pages are the thing the
+  // always-on agent context points at by name.
+  const agentPages = emit
+    .filter((f) => f.path.startsWith("agent/"))
+    .map((f) => basename(f.path));
+  const agentSummary = agentPages.length > 0 ? `; agent/${agentPages.sort().join(" + agent/")}` : "";
+  info(`meta docs — wrote ${modelSummary}; ${apiSummary}${reqSummary}${agentSummary} → ${outDir}`);
   return 0;
 }
 

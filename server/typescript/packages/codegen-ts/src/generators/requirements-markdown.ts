@@ -86,14 +86,48 @@ function renderOne(r: RequirementRow): string {
  * The generator keys on that to emit no file at all, which is in turn what lets the
  * surface default to on without changing output for any project lacking a ledger.
  */
-export function renderRequirementsMarkdown(rows: readonly RequirementRow[]): string {
+export interface RequirementsMarkdownOpts {
+  /**
+   * Render the ledger as a SECTION of a larger page rather than as the page.
+   *
+   * The `agent/requirements.md` surface carries this ledger under its own `## The ledger`
+   * heading, and an embedded copy that keeps its `# Requirements` title gives the page two
+   * H1s and reparents every entry as a sibling of the section that contains it — the
+   * document silently loses its outline. So the title is dropped and every heading moves
+   * down one level.
+   *
+   * A POST-HOC REGEX OVER THIS FUNCTION'S OUTPUT would do the same thing and would be the
+   * wrong shape: heading depth is this renderer's decision (it already caps at h6), and a
+   * caller rewriting it from outside would have to re-derive that cap and would drift from
+   * it the next time this file changes.
+   */
+  readonly embedded?: boolean;
+}
+
+export function renderRequirementsMarkdown(
+  rows: readonly RequirementRow[],
+  opts?: RequirementsMarkdownOpts,
+): string {
   if (rows.length === 0) return "";
 
+  const body = rows.map(renderOne);
+  if (opts?.embedded === true) {
+    return [
+      `${rows.length} declared requirement${rows.length === 1 ? "" : "s"}, in declaration order.`,
+      "",
+      // One extra `#` on every heading line, capped at h6 exactly as `heading()` caps.
+      ...body.map((entry) =>
+        entry.replace(/^(#{1,6}) /gm, (_m, hashes: string) =>
+          `${"#".repeat(Math.min(hashes.length + 1, 6))} `,
+        ),
+      ),
+    ].join("\n");
+  }
   return [
     "# Requirements",
     "",
     `${rows.length} declared requirement${rows.length === 1 ? "" : "s"}, in declaration order.`,
     "",
-    ...rows.map(renderOne),
+    ...body,
   ].join("\n");
 }
