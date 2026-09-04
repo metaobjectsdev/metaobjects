@@ -125,17 +125,6 @@ csharp:callable_source
 csharp:schema
 csharp:array_field
 csharp:abstract_base
-python:tph_base
-python:tph_subtype
-python:enum
-python:enum_int_backed
-python:secondary_identity
-python:lookup_index
-python:callable_source
-python:schema
-python:array_field
-python:abstract_base
-python:write_through_role
 java:tph_base
 java:tph_subtype
 java:enum
