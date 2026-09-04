@@ -17,7 +17,9 @@ public class ObjectFieldCodegenTests
     { "metadata.root": { "package": "acme", "children": [
       { "object.value": { "name": "Address", "children": [
         { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
-        { "field.string": { "name": "city", "@maxLength": 80 } }
+        { "field.string": { "name": "city", "@maxLength": 80 } },
+        { "field.enum":   { "name": "kind",  "@values": ["HOME", "WORK"] } },
+        { "field.enum":   { "name": "grade", "@values": ["LO", "HI"], "@intValueMap": { "LO": 1, "HI": 2 } } }
       ]}},
       { "object.entity": { "name": "Customer", "children": [
         { "source.rdb": { "@table": "customers" } },
@@ -88,9 +90,60 @@ public class ObjectFieldCodegenTests
         Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.HomeAddress, b =>", dbContext);
         Assert.Contains("b.Property(p => p.Street).HasColumnName(\"homeAddress_street\");", dbContext);
         Assert.Contains("b.Property(p => p.City).HasColumnName(\"homeAddress_city\");", dbContext);
+        // The value object's ENUM members are flattened the same way — migrate-ts's
+        // flattenObjectField prefixes EVERY nested member, and TS owns the schema — and carry
+        // the same conversion an entity-level enum gets: string-backed → the member symbol in a
+        // text column; @intValueMap → the declared integers. Before this, an enum member fell
+        // through to EF's own defaults (`HomeAddress_Kind`, integer) and bound a column the
+        // migration never created — measured against a real Postgres, not inferred.
+        Assert.Contains("b.Property(p => p.Kind).HasColumnName(\"homeAddress_kind\").HasConversion<string>();", dbContext);
+        Assert.Contains(
+            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(v => v == Address.AddressGrade.LO ? 1 : 2, " +
+            "v => v == 1 ? Address.AddressGrade.LO : v == 2 ? Address.AddressGrade.HI : UnmappedEnumValue<Address.AddressGrade>(v, \"grade\"));",
+            dbContext);
+        // ...and the fail-fast helper that converter names is declared, even though the ONLY
+        // int-backed enum in this model lives on the value object, which is not an emitted
+        // DbSet and so is invisible to a scan of the mapped objects' own fields.
+        Assert.Contains("private static T UnmappedEnumValue<T>(int stored, string field)", dbContext);
         // Default (no @storage): single json column. §A6 (task 4) — converted: the
         // field belongs to Customer itself, which always has a names artifact.
         Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b => b.ToJson(CustomerNames.ConfigColumn));", dbContext);
+    }
+
+    // Program D — the routes tier's post-save null clear for the nullable @isArray jsonb
+    // column (`tags`) is a raw UPDATE whose table / json-column / PK-column IDENTIFIERS
+    // cannot be parameters, so they are spliced into the SQL text. With the names artifact
+    // in the run they are the <Entity>Names constants, concatenated (still a compile-time
+    // constant); without it the single literal string this generator always emitted — the
+    // ADR-0034 fallback arm, byte-identical. The no-magic gate proves the ON arm spells no
+    // physical name; this pins the exact emitted form of BOTH arms.
+    [Fact]
+    public void Routes_array_null_clear_composes_its_identifiers_from_the_names_constants()
+    {
+        var routes = new RoutesGenerator().Generate(Ctx(Load()))
+            .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
+        // `tags` is the THIRD value-object field (after homeAddress and config), hence __clearVo2.
+        Assert.Contains(
+            "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"\" + CustomerNames.Name + " +
+            "\"\\\" SET \\\"\" + CustomerNames.TagsColumn + \"\\\" = NULL WHERE \\\"\" + CustomerNames.IdColumn + \"\\\" = {0}\", id);",
+            routes);
+        Assert.DoesNotContain("\"customers\"", routes);
+    }
+
+    [Fact]
+    public void Routes_array_null_clear_spells_the_literals_when_the_names_artifact_is_not_in_the_run()
+    {
+        var root = Load();
+        var ctx = new GenContext
+        {
+            Entities = root.Objects(), Root = root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = false },
+        };
+        var routes = new RoutesGenerator().Generate(ctx).Single(f => f.Path == "CustomerRoutes.g.cs").Content;
+        Assert.Contains(
+            "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"customers\\\" SET \\\"tags\\\" = NULL WHERE \\\"id\\\" = {0}\", id);",
+            routes);
+        Assert.DoesNotContain("CustomerNames", routes);
     }
 
     [Fact]

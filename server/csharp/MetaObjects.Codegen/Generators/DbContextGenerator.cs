@@ -218,7 +218,7 @@ public class DbContextGenerator : IGenerator
         EmitUsings(sb, needsMetadataUsing, ctx);
         EmitDbSetDeclarations(sb, objects, ctx);
         EmitOnModelCreatingBody(sb, modelLines, ctx);
-        if (NeedsUnmappedEnumHelper(objects)) EmitUnmappedEnumHelper(sb);
+        if (NeedsUnmappedEnumHelper(objects, ctx.Root)) EmitUnmappedEnumHelper(sb);
         sb.AppendLine("}");
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
@@ -620,11 +620,19 @@ public class DbContextGenerator : IGenerator
     /// True when any emitted converter will reference <see cref="UnmappedEnumHelperName"/>
     /// — i.e. the model carries at least one int-backed <c>field.enum</c>. Mirrors the
     /// fields <see cref="EmitFieldTypeConfig"/> configures (enum fields of every emitted
-    /// object, plus a write-through entity's read-model view over the same field set).
+    /// object, plus a write-through entity's read-model view over the same field set) AND
+    /// the enum members of every FLATTENED value object those objects own, which
+    /// <see cref="OwnedTypeConfig"/> gives the same converter — a value object is not in
+    /// <paramref name="objects"/>, so scanning only their own fields would emit a converter
+    /// that names a helper this file never declares.
     /// </summary>
-    private static bool NeedsUnmappedEnumHelper(IEnumerable<MetaObject> objects) =>
+    private static bool NeedsUnmappedEnumHelper(IEnumerable<MetaObject> objects, MetaRoot root) =>
         objects.Any(o => o.Fields().Any(f =>
-            f.SubType == FIELD_SUBTYPE_ENUM && IntValueMapOf(f) is not null));
+            (f.SubType == FIELD_SUBTYPE_ENUM && IntValueMapOf(f) is not null)
+            || (f.SubType == FIELD_SUBTYPE_OBJECT && f.Storage == STORAGE_FLATTENED && !f.ResolvedIsArray()
+                && f.ObjectRef is { } oref && root.FindObject(CSharpNaming.StripPkg(oref)) is { } vo
+                && vo.Fields().Any(nf =>
+                    nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray() && IntValueMapOf(nf) is not null))));
 
     /// <summary>
     /// The complete <c>HasConversion</c> call for an enum property: the generic
@@ -824,11 +832,14 @@ public class DbContextGenerator : IGenerator
         if (field.Storage != STORAGE_FLATTENED)
             return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));";
 
-        // Flattened-column prefix for each nested scalar. Defaults to "{parentCol}_"
-        // (EF's owned-type convention). An explicit @embeddedColumnPrefix overrides it —
-        // including "" for un-prefixed columns (the prefix is owner-specific, so it lives
-        // on the owner's object-field, not on the shared value object).
-        var prefix = field.Attr("embeddedColumnPrefix") as string ?? $"{parentCol}_";
+        // Flattened-column prefix for each nested member: `<parent field's column>_`. This is
+        // migrate-ts's rule (expected-schema.ts flattenObjectField), and TS owns the schema
+        // (ADR-0015) — so it is the convention, NOT EF's, whose own owned-type default is
+        // `<Nav>_<Prop>` (`Address_Mood`) and binds a column no migration creates. A former
+        // `@embeddedColumnPrefix` override is gone from here: it was registered in no
+        // provider (unloadable under the strict registry, ADR-0023) and migrate never read
+        // it, so honouring it could only ever bind a column the migration does not create.
+        var prefix = $"{parentCol}_";
 
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
@@ -838,10 +849,27 @@ public class DbContextGenerator : IGenerator
         // all — CSharpNaming.ColumnRef would miss on every nf, always. And even with
         // one, nestedCol is a COMPOSITE string (prefix + column), not the bare physical
         // name a names constant holds — there is no single constant this could reference.
-        foreach (var nf in vo.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
+        //
+        // Every member the migration flattens is named here, in the value object's
+        // declaration order: the scalar members, and the (non-array) enum members. An enum
+        // was missing — it is deliberately not a ScalarFor(...) type — so it fell through to
+        // the POCO's own mapping: a bare [Column("<member column>")] (an unprefixed column)
+        // before the POCO stopped carrying that attribute, EF's `<Nav>_<Prop>` default after.
+        // Neither is the column the migration created. An enum member also needs the SAME
+        // conversion the entity-level path gives it (HasConversion<string>() / the @intValueMap
+        // pair): migrate flattens it to the text/integer column it would be as a top-level
+        // field, while EF's default for an unconfigured enum is an integer column — so a
+        // string-backed enum named correctly but left unconverted still fails at the engine.
+        foreach (var nf in vo.Fields())
         {
+            var isScalar = CSharpNaming.ScalarFor(nf.SubType) is not null;
+            var isEnum = nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray();
+            if (!isScalar && !isEnum) continue;
             var nestedCol = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
-            sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\");");
+            // The enum type nests in the value object's class (EntityGenerator's
+            // EmitValueObjectPoco), so the VO is the `owner` the conversion qualifies it by.
+            var conversion = isEnum ? $".{EnumConversionCall(CSharpNaming.Pascal(vo.Name), vo, nf, ctx.Config)}" : "";
+            sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\"){conversion};");
         }
         sb.Append("        });");
         return sb.ToString();

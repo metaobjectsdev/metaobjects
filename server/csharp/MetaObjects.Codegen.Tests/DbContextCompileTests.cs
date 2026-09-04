@@ -8,7 +8,10 @@
 // OwnedNavigationBuilder), even though the string appears valid.
 //
 // The fixture exercises the full EF surface in one model:
-//   - object.value Address (owned type target)
+//   - object.value Address (owned type target) carrying a string-backed AND an int-backed
+//     field.enum, so the FLATTENED owner's per-member `.HasColumnName(...).HasConversion(...)`
+//     chain — on an OwnedNavigationBuilder's PropertyBuilder<TEnum?>, naming the VO-nested
+//     enum type and the UnmappedEnumValue<T> helper — is proven to resolve, not just to read
 //   - object.entity Order with:
 //       scalar enum "status"             → .HasConversion<string>()
 //       array enum  "statuses" (isArray) → .PrimitiveCollection().ElementType().HasConversion<string>()
@@ -53,7 +56,9 @@ public class DbContextCompileTests
         "@intValueMap": { "LOW": 1, "HIGH": 9 } } },
       { "object.value": { "name": "Address", "children": [
         { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
-        { "field.string": { "name": "city",   "@maxLength": 80 } }
+        { "field.string": { "name": "city",   "@maxLength": 80 } },
+        { "field.enum":   { "name": "kind",   "@values": ["HOME", "WORK"] } },
+        { "field.enum":   { "name": "tier",   "@values": ["A", "B"], "@intValueMap": { "A": 1, "B": 2 } } }
       ]}},
       { "object.entity": { "name": "Order", "children": [
         { "source.rdb": { "@table": "orders" } },

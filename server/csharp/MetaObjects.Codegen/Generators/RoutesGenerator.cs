@@ -100,7 +100,7 @@ public class RoutesGenerator : PerEntityGenerator
         // the generic PATCH merge loop's FindProperty misses them; the create handler's
         // top-level TryValidateObject also does NOT recurse into them. The generator emits
         // typed per-field merge arms + per-field POST validation for each.
-        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy);
+        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
         // Issue #203 — @autoSet timestamp columns the generated CRUD stamps with now()
         // (insert stamps all; update stamps onUpdate; the merge loop skips them; an
         // InsertPreserving escape hatch is emitted when any exist).
@@ -109,11 +109,13 @@ public class RoutesGenerator : PerEntityGenerator
         // FR-037 R1 — readOnly / writeOnce are excluded from the PATCH merge.
         var frozenNavs = FrozenNavs(entity);
         // Physical table + PK column for the post-save array-null clear (EF OwnsMany ToJson
-        // writes [] for a null nav, so a nullable array column is NULLed via raw SQL).
-        var table = CSharpNaming.Table(entity);
-        var pkColumn = pkFields.Count == 1 && entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) is { } pkf
-            ? CSharpNaming.Column(pkf, ctx.Config.ColumnNamingStrategy)
-            : "id";
+        // writes [] for a null nav, so a nullable array column is NULLed via raw SQL). Both
+        // are C# EXPRESSIONS — the <Entity>Names constant when the names artifact is in this
+        // run, the quoted literal otherwise — spliced into that SQL by AppendArrayNullClears.
+        var tableRef = CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity));
+        var pkColumnRef = pkFields.Count == 1 && entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) is { } pkf
+            ? CSharpNaming.ColumnRef(entity, pkf, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)
+            : "\"id\"";
         if (!hasItem)
             ctx.Warn($"{Name}: \"{entity.Name}\" has no single-column primary key — emitting collection GET only.");
 
@@ -246,7 +248,7 @@ public class RoutesGenerator : PerEntityGenerator
             AppendUpdateAutoSet(sb, autoSetFields);
             AppendPartialMergeLoop(sb, null, voFields, autoSetNavs, frozenNavs);
             sb.AppendLine("            await db.SaveChangesAsync();");
-            AppendArrayNullClears(sb, voFields, table, pkColumn);
+            AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
             // through the replica view by PK so the returned body carries the derived fields.
             if (writeThrough)
@@ -541,13 +543,15 @@ public class RoutesGenerator : PerEntityGenerator
     // resolves to an object.value (single or @isArray). The generated create + PATCH handlers
     // deserialize, validate, and assign these as CLR owned-nav properties. WireName is the
     // metadata (camelCase) field name; Nav is the PascalCase property; DeserType is the VO
-    // POCO type (or List<VO> for an array); JsonColumn is the physical jsonb column (the
-    // .ToJson name); IsArray / Required drive the merge semantics (present-null: a nullable
-    // single/array clears, a @required column 400s).
+    // POCO type (or List<VO> for an array); JsonColumnRef is the physical jsonb column (the
+    // .ToJson name) as a C# EXPRESSION — `<Entity>Names.<Field>Column` when the names artifact
+    // is in the run, the quoted literal otherwise (CSharpNaming.ColumnRef's contract) — for
+    // splicing into the post-save null-clear SQL; IsArray / Required drive the merge semantics
+    // (present-null: a nullable single/array clears, a @required column 400s).
     private sealed record VoField(
-        string WireName, string Nav, string DeserType, string JsonColumn, bool IsArray, bool Required);
+        string WireName, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
 
-    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy)
+    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames)
     {
         var list = new List<VoField>();
         foreach (var f in entity.Fields())
@@ -562,7 +566,7 @@ public class RoutesGenerator : PerEntityGenerator
                 WireName: f.Name,
                 Nav: CSharpNaming.Pascal(f.Name),
                 DeserType: isArray ? $"System.Collections.Generic.List<{voType}>" : voType,
-                JsonColumn: CSharpNaming.Column(f, strategy),
+                JsonColumnRef: CSharpNaming.ColumnRef(entity, f, strategy, includeNames),
                 IsArray: isArray,
                 Required: f.IsRequired));
         }
@@ -695,10 +699,14 @@ public class RoutesGenerator : PerEntityGenerator
     // to present-null. EF Core 8 OwnsMany(...).ToJson persists a null collection nav as `[]`
     // (never SQL NULL), so the merge loop sets the CLR nav to null (for the returned row) AND
     // flags the column; here we run a targeted UPDATE to actually NULL the jsonb column AFTER
-    // SaveChanges (the fixed table/column names are codegen constants; the PK value is
-    // parameterized). Emits nothing when the entity has no nullable array-of-VO column.
+    // SaveChanges. Only the PK VALUE is a parameter ({0}). The table, json-column and PK-column
+    // IDENTIFIERS cannot be parameters, so they are spliced into the SQL text as C# expressions
+    // — `tableRef` / `pkColumnRef` / VoField.JsonColumnRef: the <Entity>Names constants when the
+    // names artifact is in this run (the string stays a compile-time constant, concatenated),
+    // the bare literals otherwise (ADR-0034's documented fallback, byte-identical to before).
+    // Emits nothing when the entity has no nullable array-of-VO column.
     private static void AppendArrayNullClears(
-        StringBuilder sb, IReadOnlyList<VoField> voFields, string table, string pkColumn)
+        StringBuilder sb, IReadOnlyList<VoField> voFields, string tableRef, string pkColumnRef)
     {
         for (int i = 0; i < voFields.Count; i++)
         {
@@ -706,9 +714,17 @@ public class RoutesGenerator : PerEntityGenerator
             if (!vf.IsArray || vf.Required) continue;
             sb.AppendLine(
                 $"            if (__clearVo{i}) await db.Database.ExecuteSqlRawAsync(" +
-                $"\"UPDATE \\\"{table}\\\" SET \\\"{vf.JsonColumn}\\\" = NULL WHERE \\\"{pkColumn}\\\" = {{0}}\", id);");
+                $"\"UPDATE \\\"{SqlSplice(tableRef)}\\\" SET \\\"{SqlSplice(vf.JsonColumnRef)}\\\" = NULL WHERE \\\"{SqlSplice(pkColumnRef)}\\\" = {{0}}\", id);");
         }
     }
+
+    // A physical-name expression (NameRef / ColumnRef's contract: `<Cls>.<Member>` or a quoted
+    // literal) placed INSIDE an emitted C# string literal. A quoted literal is folded into the
+    // surrounding text, so the literal arm emits the single string it always did; a constant
+    // reference closes the literal, concatenates, and reopens it — every piece is a compile-time
+    // constant, so the whole expression still is one.
+    private static string SqlSplice(string nameExpr) =>
+        nameExpr.StartsWith('"') ? nameExpr[1..^1] : $"\" + {nameExpr} + \"";
 
     // Program D — validate each present value-object column on CREATE. The top-level
     // TryValidateObject (AppendCreateValidation) does NOT recurse into an owned-nav VO, so a
