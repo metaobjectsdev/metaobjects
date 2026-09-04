@@ -241,6 +241,6 @@ the same "idiomatic per port" principle as generator ownership (ADR-0035 §3).
 ## Deprecated (removed at 1.0)
 
 Importing the built-in generators from `@metaobjectsdev/codegen-ts/generators`
-(`entityFile`, `queriesFile`, `routesFile`, `namesFile`, `barrel`) is **deprecated** (ADR-0034) and
+(`entityFile`, `queriesFile`, `routesFile`, `barrel`) is **deprecated** (ADR-0034) and
 **removed at the 1.0/8.0 release**. Use the owned copies `meta init` scaffolds into
 `codegen/generators/*` and import those from your `metaobjects.config.ts`.

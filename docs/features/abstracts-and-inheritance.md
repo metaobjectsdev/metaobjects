@@ -110,8 +110,9 @@ metadata:
 
 Every port's codegen propagates the constraint:
 
-- Drizzle column: `text(CouncilNames.fields.id.column).notNull()` + a CHECK
-  constraint matching the regex
+- Drizzle column: `varchar(CouncilNames.fields.id.column, { length: 8 }).primaryKey()`
+  on Postgres (`text(...)` on SQLite). The regex becomes a DB CHECK via `meta migrate`
+  and a `.regex(...)` in the generated Zod schema — Drizzle carries no CHECK for it.
 - Zod validator: `z.string().length(8).regex(/^[A-Z2-9]{8}$/)`
 - Migration SQL: `CHECK (length(id) = 8 AND id REGEXP '^[A-Z2-9]{8}$')`
 

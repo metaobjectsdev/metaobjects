@@ -261,14 +261,16 @@ read-only finder, and `meta migrate` emits the `CREATE VIEW` DDL inferred from t
 
 ```ts
 // generated/acme/blog/AuthorView.ts
-import { pgView, bigint, text, varchar } from "drizzle-orm/pg-core";
+import { pgView, bigint, text } from "drizzle-orm/pg-core";
 import { AuthorViewNames } from "./AuthorView.names";
 
 // View declaration — Drizzle uses this for typed SELECT queries. The SQL view is
 // created/managed by migrate-ts; .existing() tells Drizzle not to emit DDL for it.
-export const authorView = pgView(AuthorViewNames.name, {
+export const authorViewView = pgView(AuthorViewNames.name, {
   id:        bigint(AuthorViewNames.fields.id.column, { mode: "number" }).notNull(),
-  name:      varchar(AuthorViewNames.fields.name.column, { length: 200 }).notNull(),
+  // `text`, not `varchar(200)`: origin.passthrough does not inherit the source field's
+  // attrs, so the projection's `name` carries no @maxLength of its own.
+  name:      text(AuthorViewNames.fields.name.column).notNull(),
   postCount: bigint(AuthorViewNames.fields.postCount.column, { mode: "number" }),
 }).existing();
 

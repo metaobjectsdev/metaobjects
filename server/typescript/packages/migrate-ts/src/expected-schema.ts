@@ -368,6 +368,18 @@ export function buildExpectedSchemaWithProvenance(
     addOwner(resolveTableSchema(entity), tableName, `table ${entity.resolutionKey()}`);
   }
   for (const v of views) addOwner(v.schema, v.name, `view "${v.name}"`);
+  // Indexes share this namespace. On Postgres an index is a `pg_class` relation like a
+  // table or a view, so it collides with those too; on SQLite an index name is
+  // database-global. An `identity.secondary` carries its own name with no table
+  // qualifier, so an identity declared on an ABSTRACT base collides once per concrete
+  // entity that extends it — invisible in the metadata, because each entity reads
+  // correctly on its own. Refused here rather than emitted, since the failure would
+  // otherwise land at apply time on a migration this tool wrote.
+  for (const t of tables) {
+    for (const idx of t.indexes) {
+      addOwner(t.schema, idx.name, `index "${idx.name}" on table "${t.name}"`);
+    }
+  }
   const collisions = [...sqlNameOwners.entries()].filter(([, owners]) => owners.length > 1);
   if (collisions.length > 0) {
     const detail = collisions

@@ -538,8 +538,11 @@ column that does not exist. That is the structural blindness the name-constants 
 fixed elsewhere, still live in this one line.
 
 **Why nothing caught it, which is the durable half.** Two tests asserted on this index and
-both stopped at `toContain("uniqueIndex(")` — neither pinned the name, so both passed with
-the emitters disagreeing. Worse, `migrate-ts` carried a comment asserting the opposite —
+both **pinned the composed name** (`idx_subscribers_email`, `idx_users_first_name_last_name`) —
+they had enshrined the wrong contract, which is a worse failure than being too weak to
+notice, because a test that agrees with the defect actively defends it. (Only
+`index-lookup-codegen.test.ts` stops at `toContain("uniqueIndex(")`.) Worse still,
+`migrate-ts` carried a comment asserting the opposite —
 *"Drizzle emits the index using the identity's `@name` attr directly (no table prefix), so
 the expected name must match"* — a false premise about the codegen it was aligning to, which
 is why reading either file alone left you sure the two agreed. The new
@@ -550,6 +553,36 @@ audit that built probe fixtures for shapes the existing gates' fixtures do not c
 
 If you regenerate and your migration tooling derives DDL from the Drizzle schema rather than
 from `meta migrate`, expect one index rename in the next migration.
+
+**What this does NOT close, stated rather than implied.** The two emitters now agree on the
+NAME of a plain `@fields` secondary index. They still diverge on the rest of the shape, all
+pre-existing: an `@expr` expression index is emitted by migrate and by codegen **not at
+all**; `@using` / `@where` / `@orders` reach migrate and are dropped by codegen, so the same
+name describes a different index; and a single-column secondary emits BOTH `.unique()` on the
+column and the `uniqueIndex(...)`, where migrate emits only the index — so a `drizzle-kit`
+push still proposes an extra unique constraint. Aligning the name was the correctness half;
+the shape is a separate piece of work.
+
+### Fixed — `ERR_DUPLICATE_SQL_NAME` now covers index names, not only tables and views
+
+An index name is database-global on SQLite and, on Postgres, a `pg_class` relation sharing
+one namespace per schema with tables and views. `identity.secondary` carries its own name
+with no table qualifier, so **two objects declaring the same identity name generate two
+indexes with one database name** and the second `CREATE UNIQUE INDEX` fails at apply. The
+readiest way to reach it is an identity declared on an ABSTRACT base: every concrete entity
+that `extends` it inherits the same name, so the collision scales with the number of
+subtypes and is invisible in the metadata, because each entity reads correctly on its own.
+
+The guard that already refuses this for tables and views simply did not loop over indexes.
+It does now, and it also catches an index colliding with a table or view name, which the
+shared Postgres namespace makes equally fatal. Detect-and-refuse at build time, per the #258
+precedent, rather than emitting a migration this tool knows cannot be applied.
+
+Found by an adversarial review of the index-name fix above: **that fix made codegen
+reproduce this**, because codegen's old composed `idx_<table>_<col>` name happened to be
+collision-free. Aligning the two emitters was still right — but it moved a latent migrate
+defect into generated source, and "those names are already in live databases" is not true of
+a name that has never been appliable.
 
 ### Fixed — Java's `template` generator named a class no `pom.xml` could wire
 
