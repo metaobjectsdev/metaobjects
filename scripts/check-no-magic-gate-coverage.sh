@@ -115,16 +115,6 @@ PORTS
 # four are being widened against.
 known_gaps() {
   cat <<'GAPS'
-csharp:tph_base
-csharp:tph_subtype
-csharp:enum
-csharp:enum_int_backed
-csharp:secondary_identity
-csharp:lookup_index
-csharp:callable_source
-csharp:schema
-csharp:array_field
-csharp:abstract_base
 python:tph_base
 python:tph_subtype
 python:enum
