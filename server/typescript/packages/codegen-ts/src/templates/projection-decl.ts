@@ -10,7 +10,7 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import {
   MetaField, MetaObject, type MetaRoot, isMetaObject,
-  FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName,
+  FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
 import { toSnakeCase, pluralize } from "../naming.js";
@@ -189,6 +189,8 @@ export function renderProjectionDecl(
   // one used to return a different, declaration-order-dependent string. That is why
   // both spellings here must come from the constant rather than from two resolvers.
   const viewLine: Code = code`$view:      ${physicalNameExpr(names, viewName)}`;
+  // @schema for the view binding below. postgres-only downstream (view-decl gates on dialect).
+  const projectionSchema = resolveTableSchema(projection);
 
   // The projection's primary-identity fields type non-null in the view decl +
   // read schema even without @required (a PK is never NULL; see ViewDeclOpts).
@@ -197,6 +199,11 @@ export function renderProjectionDecl(
     ...(includeViewDecl
       ? [renderExistingViewDecl(allFields, physicalNameExpr(names, viewName), `${camelName}View`, {
           dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames, names,
+          // A projection's own artifact names its own view, so the constant IS this view's
+          // schema — unlike the write-through replica case in entity-file.ts.
+          schema: projectionSchema === undefined ? undefined
+            : names !== undefined ? code`${names.symbol}.schema`
+            : projectionSchema,
         })]
       : []),
     code`

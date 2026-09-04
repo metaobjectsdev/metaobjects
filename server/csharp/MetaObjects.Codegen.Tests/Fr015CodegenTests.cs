@@ -168,21 +168,23 @@ public class Fr015CodegenTests
         => new CallableGenerator().Generate(NamesCtx(Load())).ToList();
 
     [Fact]
-    public void NamesOn_references_the_constant_through_FromSqlRaw_with_the_schema_still_spelled()
+    public void NamesOn_references_the_constant_through_FromSqlRaw_including_the_schema()
     {
         var c = Content(NamesOnFiles(), "PhaseSummary.callable.g.cs");
         // The identifier is text; each argument is a `{n}` placeholder → a DbParameter.
+        // BOTH halves of the qualified name are constants now. The schema used to stay a
+        // spelled literal here while PhaseSummaryNames.Schema sat unread, justified by "schema
+        // qualification is ruled on separately across the ports" — it has been ruled on, every
+        // port qualifies, and this was the one C# site that qualified at all.
         Assert.Contains(
-            ".FromSqlRaw(\"SELECT * FROM analytics.\" + PhaseSummaryNames.Name + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
+            ".FromSqlRaw(\"SELECT * FROM \" + PhaseSummaryNames.Schema + \".\" + PhaseSummaryNames.Name + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
             c);
         Assert.DoesNotContain("FromSqlInterpolated", c);
-        // The @schema half stays a literal on this arm too: <Entity>Names.Schema exists and is
-        // deliberately NOT read — schema qualification is ruled on separately across the ports.
-        Assert.DoesNotContain("PhaseSummaryNames.Schema", c);
         // The doc summary names it the same way the SQL does.
-        Assert.Contains("typed wrapper around the stored procedure named by <c>PhaseSummaryNames.Name</c> in schema <c>analytics</c>.", c);
-        // The physical name itself appears nowhere in the file.
+        Assert.Contains("typed wrapper around the stored procedure named by <c>PhaseSummaryNames.Name</c> in schema <c>PhaseSummaryNames.Schema</c>.", c);
+        // Neither physical name appears in the file — the proc name OR the schema.
         Assert.DoesNotContain("fn_phase_summary", c);
+        Assert.DoesNotContain("\"analytics", c);
     }
 
     [Fact]

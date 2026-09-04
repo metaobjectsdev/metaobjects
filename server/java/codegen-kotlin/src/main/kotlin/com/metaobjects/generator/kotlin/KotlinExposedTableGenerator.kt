@@ -443,6 +443,29 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             "${KotlinNaming.namesObjectName(shortName)}.NAME"
         else "\"$tableName\""
 
+        // @schema — Exposed takes the qualified name in the SAME string argument
+        // (`Table("sales.widgets")`), so qualification is a prefix on `tableExpr` rather than
+        // a separate parameter. It must be honoured because migrate-ts creates the table
+        // qualified (`CREATE TABLE "sales"."widgets"`) and owns where a table lives under
+        // ADR-0015; an unqualified Exposed table binds whatever the connection's search_path
+        // resolves to, so the generated code read the right table or a different one
+        // depending on the deployment, never failing loudly either way.
+        //
+        // Read off the SAME source node this call is binding, not off the entity, so a
+        // write-through entity's replica view keeps its own schema rather than borrowing the
+        // write table's. On the names arm it concatenates the constant; on the literal arm it
+        // spells the schema, and both produce the same string at runtime.
+        val tableSchema = sourceRdb.schema?.takeIf { it.isNotEmpty() }
+        val qualifiedTableExpr = when {
+            tableSchema == null -> tableExpr
+            useNames() && sourceRdb === KotlinGenUtil.primaryRdbSource(entity) ->
+                "${KotlinNaming.namesObjectName(shortName)}.SCHEMA + \".\" + $tableExpr"
+            // Every remaining case has `tableExpr` in its literal form (names off, or a
+            // write-through replica view, which has no slot in the artifact), so fold the two
+            // literals into one rather than emitting `"sales." + "widgets"`.
+            else -> "\"$tableSchema.$tableName\""
+        }
+
         // Task 6 — see [columnExpr]. Kept as a local alias so the many call sites in this
         // function stay short; the rule itself lives in one place. Both column loops below
         // — the entity's own fields AND the TPH fold of its subtypes' fields — go through
@@ -657,7 +680,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
             }
             append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
-            append("object $tableObjectName : Table($tableExpr) {\n")
+            append("object $tableObjectName : Table($qualifiedTableExpr) {\n")
             // PK column(s) FIRST so a self-referential FK column (e.g.
             // `parentId = uuid(...).references(SelfTable.id)`) can reference the
             // PK `val id` — Kotlin object initializers run top-to-bottom, so a

@@ -20,7 +20,7 @@ import { renderTphDiscriminatorUnion, isTphDiscriminatorBase } from "./tph-discr
 import { GENERATED_HEADER } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
-import { projectionViewName } from "../projection/extract-view-spec.js";
+import { projectionViewName, projectionViewSchema } from "../projection/extract-view-spec.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
@@ -159,6 +159,12 @@ export function renderEntityFile(
       // is passed separately below and stays a literal — the artifact holds the primary
       // (table) source's name, not this one.
       names: namesRef(entity, ctx),
+      // The replica view's OWN @schema, from the same source node projectionViewName picks —
+      // never the entity's, which is the WRITE TABLE's and would qualify this view with a
+      // schema that belongs to something else. Passed as a literal for the same reason the
+      // view's NAME is one: <Entity>Names resolves the primary (table) source, so it carries
+      // no constant for this node.
+      schema: projectionViewSchema(entity),
     };
     const z = imp("z@zod");
     const docs = renderDocsFor(entity);

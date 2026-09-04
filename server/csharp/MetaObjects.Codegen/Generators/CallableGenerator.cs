@@ -54,11 +54,19 @@ public class CallableGenerator : PerEntityGenerator
         var procName = $"{schemaPrefix}{physical}";
 
         // §A6 — the names class to reference for the procedure's name, or null for the
-        // literal arm (see the file header). The @schema half stays a spelled literal on BOTH
-        // arms: <Entity>Names.Schema exists and is deliberately not read here — schema
-        // qualification is being ruled on separately across the ports, and this is the one
-        // C# site that qualifies at all (the entity's [Table(...)] does not).
+        // literal arm (see the file header). The @schema half used to stay a spelled literal
+        // on BOTH arms while <Entity>Names.Schema sat right there unread, on the grounds that
+        // schema qualification was "being ruled on separately". It has been: every port now
+        // qualifies, so this reads the constant like everything else. The prefix expression
+        // below is therefore an EXPRESSION, not a string — on the names arm it concatenates
+        // the constant, on the literal arm it is the spelled schema, and both produce the
+        // same SQL.
         var namesCls = CSharpNaming.NamesClassIfReferenced(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+        // The schema prefix as it appears INSIDE the FromSqlRaw concatenation on the names
+        // arm: `" + XNames.Schema + "."`. Empty when the callable declares no @schema.
+        var schemaPrefixExpr = string.IsNullOrEmpty(source.Schema) || namesCls is null
+            ? schemaPrefix
+            : $"\" + {namesCls}.Schema + \".";
 
         // Resolve the @parameterRef value-object (same root as the entity). Its field
         // children — in declaration order — are the call-site arguments.
@@ -91,7 +99,7 @@ public class CallableGenerator : PerEntityGenerator
         var rawArgs = string.Concat(argProps.Select(p => $", args.{p}"));
         var fromSql = namesCls is null
             ? $"FromSqlInterpolated($\"SELECT * FROM {procName}({sqlArgs})\")"
-            : $"FromSqlRaw(\"SELECT * FROM {schemaPrefix}\" + {namesCls}.Name + \"({rawPlaceholders})\"{rawArgs})";
+            : $"FromSqlRaw(\"SELECT * FROM {schemaPrefixExpr}\" + {namesCls}.Name + \"({rawPlaceholders})\"{rawArgs})";
         var ctxType = ctx.Config.ContextTypeName;
         // Use the resolved args VO's C# type name — @parameterRef (and source.ParameterRef)
         // can be a package-qualified FQN ("acme::reporting::FooArgs"), and the "::" separator
@@ -133,7 +141,7 @@ public class CallableGenerator : PerEntityGenerator
         // the names-ON arm (with the schema, when any, still spelled), literally otherwise.
         var procDoc = namesCls is null
             ? $"the <c>{procName}</c> {kindNoun}"
-            : $"the {kindNoun} named by <c>{namesCls}.Name</c>{(schemaPrefix.Length == 0 ? "" : $" in schema <c>{source.Schema}</c>")}";
+            : $"the {kindNoun} named by <c>{namesCls}.Name</c>{(schemaPrefix.Length == 0 ? "" : $" in schema <c>{namesCls}.Schema</c>")}";
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// FR-015: typed wrapper around {procDoc}. Arguments bind in");
         sb.AppendLine($"/// declaration order from the @parameterRef value-object{(hasArgs ? $" (<c>{argsObjectName}</c>)" : string.Empty)}.");

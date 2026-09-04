@@ -201,16 +201,12 @@ class NoMagicPhysicalNamesTest {
         // by REFERENCE on WidgetNames (Kotlin has no static inheritance) — the table binding
         // references WidgetNames.ID_COLUMN, so that is the reference the body must carry.
         Token(absCol, "WidgetNames.ID_COLUMN"),
-        Token(
-            schema, "WidgetNames.SCHEMA", Reach.DROPPED,
-            "`@schema` reaches the names artifact (KotlinGenUtil.resolveObjectNames carries " +
-                "source.schema) and NO generator anywhere reads it: KotlinExposedTableGenerator " +
-                "emits `Table(<Entity>Names.NAME)` with no schema, so the table lands in the " +
-                "connection's default schema. TS's postgres binding and C#'s Table() do the same. " +
-                "This is a BEHAVIOUR bug that happens to show up here, not a naming nit — and it " +
-                "is pinned rather than merely absent so that wiring @schema fails this row and " +
-                "says 'promote it' instead of passing unnoticed.",
-        ),
+        // Promoted from DROPPED, by the row doing exactly what it was pinned to do — it failed
+        // with "WidgetNames.SCHEMA IS referenced now — promote it". Exposed takes the qualified
+        // name in the same string argument, so the binding is now
+        // `Table(WidgetNames.SCHEMA + "." + WidgetNames.NAME)`, and the stored-proc wrapper
+        // qualifies its PROC_NAME the same way.
+        Token(schema, "WidgetNames.SCHEMA"),
 
         // --- the callable (stored procedure) ----------------------------------------------
         // The wrapper's `PROC_NAME` is initialised FROM the constant, so the ONE resolver

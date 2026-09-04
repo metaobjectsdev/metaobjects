@@ -7,6 +7,7 @@ import {
   isMetaObject,
   isReadOnlySource,
   SOURCE_ROLE_PRIMARY,
+  SOURCE_ATTR_SCHEMA,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
@@ -404,6 +405,24 @@ export function projectionViewName(
   columnNamingStrategy: ColumnNamingStrategy,
 ): string {
   return viewName(projection, { columnNamingStrategy });
+}
+
+/**
+ * The `@schema` of the SAME source node {@link projectionViewName} names, or undefined.
+ *
+ * It re-uses that function's selection rule ("prefer role:primary read-only, else the first
+ * read-only own source") deliberately, rather than asking the object for its schema: for a
+ * write-through ENTITY the object's primary source is the WRITABLE table, so
+ * `resolveTableSchema` would hand back the table's schema and qualify the replica view with
+ * it. A view and the table it replicates need not live in the same schema, and a name paired
+ * with someone else's schema is worse than no schema at all — it is confidently wrong.
+ */
+export function projectionViewSchema(projection: MetaObject): string | undefined {
+  const readOnlySources = projection.ownChildren().filter(isReadOnlySource);
+  const viewSource =
+    readOnlySources.find((c) => c.role === SOURCE_ROLE_PRIMARY) ?? readOnlySources[0];
+  const schema = viewSource?.attr(SOURCE_ATTR_SCHEMA);
+  return typeof schema === "string" && schema !== "" ? schema : undefined;
 }
 
 /**

@@ -16,6 +16,7 @@ import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path
 import { mapColumnType, type ColumnSpec, type EnumIntCustomType } from "../column-mapper.js";
 import { tableNameFromEntity } from "../naming.js";
 import { namesRef, physicalNameExpr, columnExpr } from "../names.js";
+import { resolveTableSchema } from "@metaobjectsdev/metadata";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
@@ -49,6 +50,30 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // binding the inherited parent's table when the names generator is out of the run.
   const names = namesRef(obj, ctx);
   const tableNameExpr: Code = physicalNameExpr(names, tableName);
+
+  // @schema — the table binding must land in the SAME schema the migration creates the table
+  // in. migrate-ts qualifies every table, view, index and FK it emits (`CREATE TABLE
+  // "sales"."widgets"`), and under ADR-0015 it owns where a table lives; codegen dropping the
+  // schema meant generated queries hit `public.widgets` while the migration built
+  // `sales.widgets`. Whether that surfaced depended entirely on the adopter's `search_path`,
+  // which is the worst kind of bug — it works on the machine that has it configured.
+  //
+  // Drizzle expresses this with a DIFFERENT call shape rather than a third argument:
+  // `pgSchema("sales").table(name, …)`. It is built inline rather than hoisted to a `const`
+  // so two tables in one file sharing a schema cannot collide on a generated identifier; a
+  // schema object is just a descriptor, so a second call costs nothing.
+  //
+  // sqlite/d1 are excluded because SQLite has no schema concept at all — migrate already
+  // REFUSES a non-default @schema there (expected-schema.ts), so there is nothing to honour
+  // and no divergence to close.
+  const tableSchema = dialect === "sqlite" ? undefined : resolveTableSchema(obj);
+  const schemaExpr: Code | undefined =
+    tableSchema === undefined ? undefined
+    : names !== undefined ? code`${names.symbol}.schema`
+    : code`${JSON.stringify(tableSchema)}`;
+  const tableCall: Code = schemaExpr === undefined
+    ? code`${tableFnSym}`
+    : code`${imp(`pgSchema@${importModule}`)}(${schemaExpr}).table`;
   // A column's constant, on the same terms — but resolved against the entity that DECLARES
   // the field, which is not always `obj`. Under TPH the fold below emits a subtype's own
   // columns into this base's table, and those columns live in the SUBTYPE's names artifact;
@@ -251,7 +276,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   let tableBlock: Code;
   if (callbackEntries.length > 0) {
     tableBlock = code`
-export const ${varName} = ${tableFnSym}(${tableNameExpr}, {
+export const ${varName} = ${tableCall}(${tableNameExpr}, {
 ${joinCode(columnLines, { on: ",\n", trim: false })}
 }, (table) => [
   ${joinCode(callbackEntries, { on: ",\n  ", trim: false })}
@@ -259,7 +284,7 @@ ${joinCode(columnLines, { on: ",\n", trim: false })}
 `;
   } else {
     tableBlock = code`
-export const ${varName} = ${tableFnSym}(${tableNameExpr}, {
+export const ${varName} = ${tableCall}(${tableNameExpr}, {
 ${joinCode(columnLines, { on: ",\n", trim: false })}
 });
 `;

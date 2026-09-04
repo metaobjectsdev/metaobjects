@@ -368,7 +368,8 @@ public class EntityGenerator : IGenerator
         // which generators ran). Falls back to the bare literal table name otherwise --
         // exactly what this line emitted before Program A added the constant.
         if (!isProjection)
-            sb.AppendLine($"[Table({CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity))})]");
+            sb.AppendLine($"[Table({CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity))}"
+                + $"{CSharpNaming.TableSchemaArg(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)})]");
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping

@@ -197,13 +197,16 @@ public class NoMagicPhysicalNamesTests
         (ArrayCol,    "WidgetNames.TagsColumn",        Reach.Constant, ""),
         (AltCol,      "WidgetNames.AltColumn",         Reach.Constant, ""),
         (AbsCol,      "WidgetNames.IdColumn",          Reach.Constant, ""),
-        (Schema,      "WidgetNames.Schema",            Reach.Dropped,
-            "`@schema` reaches the names artifact (`public const string Schema`) and NO generator " +
-            "reads it: EntityGenerator's [Table(...)] is CSharpNaming.NameRef → <Entity>Names.Name " +
-            "with no schema argument, and nothing emits ToTable(name, schema) or HasDefaultSchema, so " +
-            "the table lands in the connection's default schema. This is a BEHAVIOUR bug that happens " +
-            "to show up here, not a naming nit — and it is pinned rather than merely absent so that " +
-            "wiring @schema fails this row and says 'promote it' instead of passing unnoticed."),
+        // Promoted from Dropped, by the row doing exactly what it was pinned to do. Two things
+        // were wrong with the old state and only one of them was the missing feature. The row's
+        // prose claimed "NO generator reads it", which was already FALSE when written —
+        // CallableGenerator read source.Schema and spliced it into the emitted SQL as a spelled
+        // literal. And the Dropped label survived only because this fixture put @schema on a
+        // plain entity and NOT on the callable, the one generator that qualified: move it there
+        // and the literal lands in the output. It is on BOTH now, so neither half can go quiet
+        // again — [Table(Name, Schema = WidgetNames.Schema)] on the entity, and the callable's
+        // FromSqlRaw concatenating ProcOutNames.Schema.
+        (Schema,      "WidgetNames.Schema",            Reach.Constant, ""),
 
         // --- the callable (stored procedure) ----------------------------------------------
         // The emitted form is the part that matters here: the name sits inside the callable's
@@ -295,7 +298,7 @@ public class NoMagicPhysicalNamesTests
         { "field.long": { "name": "since", "@column": "__PROC_ARG_COL__" } }
       ]}},
       { "object.projection": { "name": "ProcOut", "children": [
-        { "source.rdb": { "@kind": "storedProc", "@proc": "__PROC__", "@parameterRef": "ProcArgs" } },
+        { "source.rdb": { "@kind": "storedProc", "@proc": "__PROC__", "@schema": "__SCHEMA__", "@parameterRef": "ProcArgs" } },
         { "field.long": { "name": "total", "@column": "__PROC_OUT_COL__" } }
       ]}},
       { "object.entity": { "name": "Tagger", "children": [

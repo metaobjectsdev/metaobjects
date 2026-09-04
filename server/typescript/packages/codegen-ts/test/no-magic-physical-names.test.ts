@@ -126,12 +126,25 @@ const PROC_OUT_COL = "zz_phys_col_total";
 type Reach = "constant" | "knownLiteral" | "escape" | "dropped";
 
 /** Every de-blinded token, with the constant a generator should have referenced. */
-const TOKENS: ReadonlyArray<{
+type Dialect = (typeof DIALECTS)[number];
+
+interface Token {
   readonly literal: string;
   readonly shouldUse: string;
   readonly reach: Reach;
+  // A reach that differs by DIALECT. Only `@schema` needs this so far, and it needs it for a
+  // real reason rather than a convenience: SQLite has no schema concept at all, and migrate
+  // REFUSES a non-default @schema on that dialect, so there is nothing for codegen to bind
+  // and nothing to diverge from. Postgres is where the name exists and where dropping it put
+  // the table in the wrong schema. Collapsing the two would force one arm to lie.
+  readonly reachByDialect?: Readonly<Partial<Record<Dialect, Reach>>>;
   readonly why?: string;
-}> = [
+}
+
+/** This token's reach ON THIS DIALECT — the per-dialect override when there is one. */
+const reachOf = (t: Token, d: Dialect): Reach => t.reachByDialect?.[d] ?? t.reach;
+
+const TOKENS: ReadonlyArray<Token> = [
   { literal: TABLE,       shouldUse: "CustomerNames.name",                  reach: "constant" },
   { literal: COL_ID,      shouldUse: "CustomerNames.fields.id.column",      reach: "constant" },
   { literal: COL_EMAIL,   shouldUse: "CustomerNames.fields.email.column",   reach: "constant" },
@@ -164,16 +177,18 @@ const TOKENS: ReadonlyArray<{
   { literal: ARRAY_COL,     shouldUse: "WidgetNames.fields.tags.column",      reach: "constant" },
   { literal: ALT_COL,       shouldUse: "WidgetNames.fields.alt.column",       reach: "constant" },
   { literal: ABS_COL,       shouldUse: "WidgetNames.fields.id.column",        reach: "constant" },
+  // Promoted from `dropped`, by the row doing exactly what it was pinned to do: wiring
+  // @schema up failed it and said "promote it". The postgres binding is now
+  // `pgSchema(WidgetNames.schema).table(WidgetNames.name, …)`, so the table lands in the
+  // schema the migration actually creates it in rather than in `public`.
   {
-    literal: SCHEMA, shouldUse: "WidgetNames.schema", reach: "dropped",
+    literal: SCHEMA, shouldUse: "WidgetNames.schema", reach: "constant",
+    reachByDialect: { sqlite: "dropped" },
     why:
-      "`@schema` reaches the names artifact and NO generator anywhere reads it: TS's " +
-      "resolveTableSchema feeds names.ts and the view-DDL builder only, so the postgres " +
-      "binding emits `pgTable(Names.name, …)` with no schema and the table lands in the " +
-      "default schema. C# (Table() is DbTable ?? Name) and Kotlin Exposed do the same. " +
-      "This is a BEHAVIOUR bug that happens to show up here, not a naming nit — and it " +
-      "is pinned rather than merely absent so that wiring @schema fails this row and " +
-      "says 'promote it' instead of passing unnoticed.",
+      "On sqlite `@schema` is DROPPED and that is correct, not a gap: SQLite has no schema " +
+      "concept, and migrate refuses a non-default @schema on that dialect outright " +
+      "(expected-schema.ts), so there is no column, table or constraint for the name to " +
+      "qualify. The postgres arm is where it is a constant.",
   },
 
   // --- the callable (stored procedure) ----------------------------------------------
@@ -422,7 +437,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
       // A composite escape (`shouldUse` is a template expression) is COMPOSED from two
       // constants rather than being one, so no artifact carries it whole; the names it
       // restates each carry a row of their own.
-      .filter((t) => t.reach !== "knownLiteral" && !t.shouldUse.startsWith("`"))
+      .filter((t) => reachOf(t, dialect) !== "knownLiteral" && !t.shouldUse.startsWith("`"))
       .filter((t) => !all.includes(t.literal))
       .map((t) => `${t.literal} appears in no names artifact — ${t.shouldUse} cannot exist`);
     expect(missing.sort()).toEqual([]);
@@ -440,7 +455,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
     // masking the short one first dismantles the composite so it never matches, leaving
     // the table name it wraps to be reported as a standalone hit it is not.
     const declaredLiterals = TOKENS
-      .filter((t) => t.reach === "escape" || t.reach === "knownLiteral")
+      .filter((t) => reachOf(t, dialect) === "escape" || reachOf(t, dialect) === "knownLiteral")
       .map((t) => t.literal)
       .sort((a, b) => b.length - a.length);
     const masked = (content: string): string =>
@@ -448,8 +463,9 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
     for (const [path, content] of Object.entries(tree)) {
       if (isNamesArtifact(path)) continue;
       const body = masked(content);
-      for (const { literal, shouldUse, reach } of TOKENS) {
-        if (reach !== "constant") continue;
+      for (const t of TOKENS) {
+        const { literal, shouldUse } = t;
+        if (reachOf(t, dialect) !== "constant") continue;
         if (body.includes(literal)) {
           offenders.push(`${path}: hard-codes "${literal}" — should reference ${shouldUse}`);
         }
@@ -472,7 +488,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
     const consumers = Object.entries(tree).filter(([p]) => !isNamesArtifact(p));
     const body = consumers.map(([, c]) => c).join("\n");
     const unreferenced = TOKENS
-      .filter((t) => t.reach === "constant" && !body.includes(t.shouldUse))
+      .filter((t) => reachOf(t, dialect) === "constant" && !body.includes(t.shouldUse))
       .map(({ literal, shouldUse }) => `${shouldUse} (for "${literal}") is referenced by no generated file`);
     expect(unreferenced.sort()).toEqual([]);
   });
@@ -494,7 +510,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
         .flatMap(([, c]) => c.match(/zz_phys_\w+/g) ?? []),
     );
     const declared = TOKENS
-      .filter((t) => t.reach === "knownLiteral" || t.reach === "escape")
+      .filter((t) => reachOf(t, dialect) === "knownLiteral" || reachOf(t, dialect) === "escape")
       .map((t) => t.literal);
     expect([...escaped].sort()).toEqual(declared.sort());
   });
@@ -509,7 +525,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
     const tree = await generate(dialect);
     const names = Object.entries(tree).filter(([p]) => isNamesArtifact(p)).map(([, c]) => c).join("\n");
     const unreachable = TOKENS
-      .filter((t) => t.reach === "escape")
+      .filter((t) => reachOf(t, dialect) === "escape")
       // The composite CHECK names are built FROM two constants rather than being one, so
       // the reachability question for them is about their parts, which have rows of their own.
       .filter((t) => !t.shouldUse.startsWith("`"))
@@ -528,7 +544,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
     const tree = await generate(dialect);
     const names = Object.entries(tree).filter(([p]) => isNamesArtifact(p)).map(([, c]) => c).join("\n");
     const body = Object.entries(tree).filter(([p]) => !isNamesArtifact(p)).map(([, c]) => c).join("\n");
-    const wrong = TOKENS.filter((t) => t.reach === "dropped").flatMap((t) => [
+    const wrong = TOKENS.filter((t) => reachOf(t, dialect) === "dropped").flatMap((t) => [
       ...(names.includes(t.literal) ? [] : [`${t.literal} is marked dropped but no names artifact carries it`]),
       ...(body.includes(t.shouldUse) ? [`${t.shouldUse} IS referenced now — promote "${t.literal}" to reach: "constant"`] : []),
     ]);

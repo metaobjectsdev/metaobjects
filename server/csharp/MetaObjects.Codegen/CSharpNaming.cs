@@ -564,6 +564,25 @@ public static class CSharpNaming
             : $"\"{literal}\"";
 
     /// <summary>
+    /// The <c>Schema = ...</c> argument for an EF <c>[Table]</c> attribute, or the empty
+    /// string when the object declares no <c>@schema</c>.
+    /// </summary>
+    /// <remarks>
+    /// migrate-ts qualifies every table it creates (<c>CREATE TABLE "sales"."widgets"</c>)
+    /// and owns where a table lives (ADR-0015); an unqualified <c>[Table]</c> binds whatever
+    /// the connection's <c>search_path</c> resolves to, which is the adopter's configuration
+    /// rather than the model's intent. Dropping it did not fail loudly — it silently read a
+    /// different table, or the right one, depending on the deployment.
+    /// </remarks>
+    public static string TableSchemaArg(MetaObject obj, ColumnNamingStrategy strategy, bool includeNames)
+    {
+        if (ResolveObjectNames(obj, strategy) is not { Schema: { Length: > 0 } schema }) return "";
+        return NamesClassIfReferenced(obj, strategy, includeNames) is { } cls
+            ? $", Schema = {cls}.Schema"
+            : $", Schema = \"{schema}\"";
+    }
+
+    /// <summary>
     /// The <c>&lt;Owner&gt;Names</c> class a consumption site may reference for
     /// <paramref name="obj"/> — when both of <see cref="NameRef"/>'s gates hold (C1: the
     /// <c>names</c> generator is part of THIS run; the object resolves a names artifact at

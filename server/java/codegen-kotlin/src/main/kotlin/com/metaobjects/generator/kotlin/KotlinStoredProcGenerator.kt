@@ -138,7 +138,17 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         // KDoc names the constant rather than restating the literal. The literal arm is
         // the documented fallback for a run without the names generator.
         val namesObject = if (useNames()) KotlinNaming.namesObjectName(shortName) else null
-        val procNameExpr = if (namesObject != null) "$namesObject.NAME" else "\"$procName\""
+        // @schema qualifies the procedure exactly as it qualifies a table. A callable's
+        // schema was dropped here for the same reason it was dropped from the table binding:
+        // nothing read it. The name reaches the SQL, so an unqualified proc resolves through
+        // the connection's search_path rather than through the model.
+        val procSchema = sourceRdb.schema?.takeIf { it.isNotEmpty() }
+        val procNameExpr = when {
+            namesObject != null && procSchema != null -> "$namesObject.SCHEMA + \".\" + $namesObject.NAME"
+            namesObject != null -> "$namesObject.NAME"
+            procSchema != null -> "\"$procSchema.$procName\""
+            else -> "\"$procName\""
+        }
         val procNameDoc = if (namesObject != null)
             "the stored procedure named by `$namesObject.NAME`"
         else "stored procedure `$procName`"

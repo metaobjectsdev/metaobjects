@@ -53,6 +53,17 @@ export interface ViewDeclOpts {
    * (see the `viewName` parameter), which is the only place that knows.
    */
   readonly names?: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined;
+  /**
+   * The view's `@schema` — a bare name, or an EXPRESSION for it (a names constant).
+   *
+   * Passed in rather than derived from `names`, and for the same reason `viewName` is: a
+   * write-through entity's REPLICA view is a different source node from the one
+   * `<Entity>Names` resolves, so the artifact's `schema` there is the WRITE TABLE's and
+   * would be a confidently wrong answer. A caller whose artifact genuinely names this view
+   * passes the constant expression; the replica-view caller passes its own literal, which
+   * is consistent with that view's NAME already being a known literal for the same reason.
+   */
+  readonly schema?: string | Code | undefined;
 }
 
 /**
@@ -128,11 +139,25 @@ export function renderExistingViewDecl(
   const viewSym = imp(`${viewFn}@${viewModule}`);
   const viewColumnLines = fields.map((f) => viewColumnLine(f, opts));
   const viewNameExpr = typeof viewName === "string" ? code`${JSON.stringify(viewName)}` : viewName;
+
+  // @schema — a view lands in a schema exactly as a table does, and migrate qualifies the
+  // `CREATE VIEW` it emits. Fixing the table binding and leaving this one would be the more
+  // dangerous half-job: the two would then disagree with each OTHER as well as with the
+  // database. Drizzle spells it with the same shape as the table case, `pgSchema(s).view(...)`
+  // — PgSchema carries `view` alongside `table`. sqlite is excluded for the same reason as
+  // there: no schema concept, and migrate refuses a non-default @schema on that dialect.
+  const viewSchemaExpr: Code | undefined =
+    opts.dialect !== "postgres" || opts.schema === undefined ? undefined
+    : typeof opts.schema === "string" ? code`${JSON.stringify(opts.schema)}`
+    : opts.schema;
+  const viewCall: Code = viewSchemaExpr === undefined
+    ? code`${viewSym}`
+    : code`${imp(`pgSchema@${viewModule}`)}(${viewSchemaExpr}).view`;
   return code`
 // View declaration — Drizzle uses this for typed SELECT queries.
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
 // not to attempt DDL for this declaration.
-export const ${viewVar} = ${viewSym}(${viewNameExpr}, {
+export const ${viewVar} = ${viewCall}(${viewNameExpr}, {
 ${joinCode(viewColumnLines, { on: ",\n" })}
 }).existing();
 `;
