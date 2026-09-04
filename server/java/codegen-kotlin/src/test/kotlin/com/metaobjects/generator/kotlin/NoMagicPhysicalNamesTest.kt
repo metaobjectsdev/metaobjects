@@ -166,17 +166,10 @@ class NoMagicPhysicalNamesTest {
                 "flattened member — there is no single constant to reference.",
         ),
         Token(view, "CustomerSummaryNames.NAME"),
-        Token(
-            wtTable, "AccountNames.NAME", Reach.ESCAPE,
-            "emitWriteThrough calls emit() twice for one entity and passes objectNameOverride on " +
-                "BOTH calls (<Short>Table for the write table, <Short>View for the read view), while " +
-                "the TABLE-name substitution is scoped to objectNameOverride == null. The scope was " +
-                "justified for the READ view only — its own comment says the constant is \"correct " +
-                "for the write call, WRONG for the read view\" — yet it excludes the write call too, " +
-                "so AccountTable.kt spells `Table(\"…\")` literally in the same object whose columns " +
-                "reference AccountNames.ID_COLUMN. AccountNames.NAME names exactly this writable " +
-                "primary source and exists in this same run.",
-        ),
+        // The write-through entity's WRITE table. Its physical name IS the role=primary source
+        // that AccountNames.NAME resolves from, so the write call references the constant;
+        // only the replica view below has no slot.
+        Token(wtTable, "AccountNames.NAME"),
         Token(wtId, "AccountNames.ID_COLUMN"),
         Token(
             wtView, "(no constant exists)", Reach.KNOWN_LITERAL,
@@ -191,16 +184,11 @@ class NoMagicPhysicalNamesTest {
         Token(tphTable, "VehicleNames.NAME"),
         Token(tphId, "VehicleNames.ID_COLUMN"),
         Token(tphDisc, "VehicleNames.KIND_COLUMN"),
-        Token(
-            tphSubCol, "CarNames.DOORS_COLUMN", Reach.ESCAPE,
-            "The TPH fold in KotlinExposedTableGenerator emits the SUBTYPE's columns into the " +
-                "BASE's table through a separate loop over collectSubtypeFields, and that loop " +
-                "builds a quoted literal (\"Always literal; useNames() does not reach this loop\") " +
-                "instead of going through ownColumnExpr — because the constant it needs belongs to " +
-                "the SUBTYPE's names object, not the base's in scope. CarNames.DOORS_COLUMN exists " +
-                "in this same run; C# is the reference (EntityGenerator passes the subtype to " +
-                "ColumnRef so the lookup hits the subtype's own artifact).",
-        ),
+        // A subtype's own column is folded into the BASE's table, and the base's artifact
+        // does not carry it — the SUBTYPE's does. The fold resolves the declaring entity's
+        // artifact on that miss (this entity's first, so the abstract-base row below stays
+        // on WidgetNames, never redirected to a fragment).
+        Token(tphSubCol, "CarNames.DOORS_COLUMN"),
 
         // --- the enum / index / schema / abstract-base entity ------------------------------
         Token(widgetTable, "WidgetNames.NAME"),
@@ -224,26 +212,14 @@ class NoMagicPhysicalNamesTest {
         ),
 
         // --- the callable (stored procedure) ----------------------------------------------
-        Token(
-            proc, "ProcOutNames.NAME", Reach.ESCAPE,
-            "KotlinStoredProcGenerator resolves the procedure name through its OWN resolver " +
-                "(resolveProcName: `procName` → `proc` → `table` → lowercase short name) and " +
-                "spells the result into `const val PROC_NAME = \"…\"`, never reaching " +
-                "<Entity>Names — a second resolver for a name the names artifact already " +
-                "carries (ProcOutNames.NAME exists in this same run, via getPhysicalName's " +
-                "storedProc → @proc alias). Two resolvers for one name is precisely the " +
-                "disagreement this artifact exists to make impossible.",
-        ),
-        Token(
-            procOutCol, "ProcOutNames.TOTAL_COLUMN", Reach.DROPPED,
-            "KotlinStoredProcGenerator's result-row loop reads every column by the FIELD name " +
-                "(rsGetterCall: `rs.getLong(\"total\")`), never by @column — so the wrapper asks the " +
-                "result set for a column the procedure does not return, at runtime, while " +
-                "ProcOutNames.TOTAL_COLUMN carries the real name and nothing reads it. Spelled " +
-                "zero times, so every literal scan passes; pinned here so that routing the getter " +
-                "through the constant fails this row and says 'promote it'. (KotlinExposedTableGenerator " +
-                "skips storedProc sources outright, so no other file could reference it either.)",
-        ),
+        // The wrapper's `PROC_NAME` is initialised FROM the constant, so the ONE resolver
+        // (RdbSource.getPhysicalName, FR-016) decides the procedure name in both artifacts.
+        Token(proc, "ProcOutNames.NAME"),
+        // The result-row loop reads each column by its PHYSICAL name through the constant —
+        // previously by FIELD name, which asked the result set for a column the procedure
+        // never returns (a runtime failure, not a naming nit). KotlinExposedTableGenerator
+        // skips storedProc sources, so the wrapper is the one consumer of this constant.
+        Token(procOutCol, "ProcOutNames.TOTAL_COLUMN"),
 
         // --- index names: a category with no slot in the artifact -------------------------
         Token(

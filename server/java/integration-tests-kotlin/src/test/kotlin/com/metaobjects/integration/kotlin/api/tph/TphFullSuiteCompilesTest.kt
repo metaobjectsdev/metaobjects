@@ -3,18 +3,21 @@ package com.metaobjects.integration.kotlin.api.tph
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
+import com.metaobjects.generator.kotlin.KotlinNamesGenerator
 import com.metaobjects.generator.kotlin.KotlinRelationsGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
 import com.metaobjects.generator.kotlin.KotlinValidatorGenerator
 import com.metaobjects.metadata.ktx.loadString
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
+import org.jetbrains.exposed.sql.Table
 import java.nio.file.Files
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * FR-017 TPH — compile-gate for the FULL codegen-kotlin generator suite over a discriminator
@@ -104,6 +107,62 @@ class TphFullSuiteCompilesTest {
 
             assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
                 "TPH full generator suite (with composition) failed to compile:\n${result.messages}")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `FR-017 full TPH generator suite with the names artifact in the run compiles and folds the subtype columns`() {
+        // Task 6 — the names-ON arm. The base's AuthTable references `<Sub>Names.<COL>_COLUMN`
+        // for every SUBTYPE column it folds in (quantity / copayAmount / tier / priorAuthNumber
+        // belong to the subtypes' artifacts, not AuthNames). A text assertion proves the
+        // reference is SPELLED; only the compiler proves it RESOLVES, and only the compiled
+        // Exposed object proves it folds to the column the database has.
+        val outDir = Files.createTempDirectory("tph-suite-names-")
+        try {
+            val loader = loadString("tph-suite-names", tphWithCompositionFixture)
+            for (gen in listOf(
+                KotlinEntityGenerator(),
+                KotlinNamesGenerator(),
+                KotlinExposedTableGenerator(),
+                KotlinSpringControllerGenerator(),
+                KotlinFilterAllowlistGenerator(),
+                KotlinRelationsGenerator(),
+                KotlinValidatorGenerator(),
+            )) {
+                val args = mutableMapOf("outputDir" to outDir.toString(), "useNames" to "true")
+                if (gen is KotlinValidatorGenerator) args["packageName"] = "acme.auth.validation"
+                gen.setArgs(args)
+                gen.execute(loader)
+            }
+
+            val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
+            val authTable = emitted.first { it.fileName.toString() == "AuthTable.kt" }.readText()
+            assertTrue("integer(BridgeAuthNames.QUANTITY_COLUMN).nullable()" in authTable, authTable)
+            assertTrue("decimal(CopayAuthNames.COPAY_AMOUNT_COLUMN, 10, 2).nullable()" in authTable, authTable)
+            assertTrue("varchar(PriorAuthAuthNames.PRIOR_AUTH_NUMBER_COLUMN, 80).nullable()" in authTable, authTable)
+            assertTrue("enumerationByName(CopayAuthNames.TIER_COLUMN, 64, AuthTier::class).nullable()" in authTable, authTable)
+
+            val sources = emitted.map { path ->
+                SourceFile.kotlin(outDir.relativize(path).toString().replace('/', '_'), path.readText())
+            }
+            val result = KotlinCompilation().apply {
+                this.sources = sources
+                inheritClassPath = true
+                messageOutputStream = System.out
+            }.compile()
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
+                "TPH full generator suite (names ON) failed to compile:\n${result.messages}")
+
+            // The compiled Exposed object carries the folded columns under the names the
+            // subtypes' artifacts declare — the references folded to the right strings.
+            val table = result.classLoader.loadClass("acme.auth.AuthTable").getDeclaredField("INSTANCE").get(null) as Table
+            assertEquals("auths", table.tableName)
+            val columns = table.columns.map { it.name }.toSet()
+            for (col in listOf("id", "type", "reference", "quantity", "copay_amount", "tier", "prior_auth_number")) {
+                assertTrue(col in columns, "AuthTable is missing column $col; has $columns")
+            }
         } finally {
             outDir.toFile().deleteRecursively()
         }

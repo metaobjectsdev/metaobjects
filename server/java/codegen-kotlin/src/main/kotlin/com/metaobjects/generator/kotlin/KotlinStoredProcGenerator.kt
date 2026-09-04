@@ -11,6 +11,7 @@ import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
+import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -33,7 +34,10 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  *       `"inout"`) become typed parameters of the generated `call(...)` function,
  *       preserving authoring order.</li>
  *   <li>Fields WITHOUT `@param` become result-row columns mapped back to the
- *       companion entity data class via `rs.getX("col")` calls.</li>
+ *       companion entity data class via `rs.getX(<column>)` calls, where `<column>` is
+ *       the field's PHYSICAL column — its `@column`, else its name through the project's
+ *       column-naming strategy — exactly what every other generator in this port binds
+ *       for the same field.</li>
  * </ul>
  *
  * <p>Emission shapes (chosen automatically per entity):
@@ -49,19 +53,44 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  *       parameter-binding list.</li>
  * </ol>
  *
- * <p>Proc-name resolution order (first non-null wins):
- * <ol>
- *   <li>{@code source.rdb @procName} — explicit binding.</li>
- *   <li>{@code source.rdb @table} — re-uses the table-name slot.</li>
- *   <li>The entity's lowercased short name — last-resort fallback.</li>
- * </ol>
+ * <p>The procedure's physical name comes from ONE resolver — [RdbSource.getPhysicalName],
+ * the FR-016 four-step rule (`@proc` for `@kind: storedProc` → legacy `@table` → the
+ * source's structural `name` via snake_case → `pluralize(snake_case(entity))`) — the same
+ * resolver `<Entity>Names.NAME` is built from. This generator used to carry a resolver of
+ * its own that read a `@procName` attribute no provider registers (ADR-0018 lists that
+ * spelling as rejected; a strict load refuses it as `ERR_UNKNOWN_ATTR`), skipped the
+ * structural-name step, and fell back to the lowercased short name where the canonical
+ * rule pluralizes — so the wrapper and the names artifact could name two different
+ * procedures for one object. A name resolved twice is a name that can disagree with
+ * itself; there is one now.
  *
  * <p>Args:
  * <ul>
  *   <li>{@code outputDir} (required): output directory root.</li>
+ *   <li>{@code columnNaming} (optional): the column-naming strategy — the SAME arg
+ *       [KotlinExposedTableGenerator] and [KotlinNamesGenerator] read, so the column a
+ *       result row is read by and the column the names artifact declares resolve through
+ *       the identical resolver + argument.</li>
+ *   <li>{@code useNames} (optional, derived by the Maven mojo — see
+ *       [com.metaobjects.generator.EmitsPhysicalNameConstants]): when the names artifact is
+ *       in the run, `PROC_NAME` is initialised from `<Entity>Names.NAME` and each result
+ *       column is read through `<Entity>Names.<MEMBER>_COLUMN`, so neither physical name
+ *       is spelled a second time.</li>
  * </ul>
  */
 open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+
+    /** See [KotlinExposedTableGenerator.columnNaming] — same arg, same default. */
+    protected fun columnNaming(): String =
+        getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
+
+    /**
+     * See [KotlinExposedTableGenerator.useNames] — same arg, same default, same reason for
+     * the default: a PRESENCE guard for a direct programmatic call, never a divergence
+     * guard. In a Maven run the mojo derives it from the suite.
+     */
+    protected fun useNames(): Boolean =
+        (getArg(KotlinGenUtil.ARG_USE_NAMES, "false") ?: "false").toBoolean()
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -78,11 +107,10 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             // Abstract entities are inheritance scaffolding — never emit a stored-proc binding.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // R27 (Task 6): the role-scoped PRIMARY source, resolving through `extends`
-            // (ADR-0039) — NOT firstRdbSource's role-blind first-DECLARED pick. This
-            // generator emits its own PROC_NAME constant from sourceRdb.physicalName, so
-            // a role-blind selector can name a DIFFERENT source than the one an object's
-            // `@role: primary` designates (an entity with a replica proc source declared
-            // before its primary one previously bound PROC_NAME to the replica).
+            // (ADR-0039) — NOT firstRdbSource's role-blind first-DECLARED pick. This is
+            // the SAME selector KotlinGenUtil.resolveObjectNames uses to build
+            // <Entity>Names.NAME, so the name this wrapper binds and the constant it
+            // references (when useNames) resolve from one source node.
             val sourceRdb = KotlinGenUtil.primaryRdbSource(entity) ?: continue
             if (sourceRdb.effectiveKind != MetaSource.KIND_STORED_PROC) continue
             emit(entity, sourceRdb, outRoot)
@@ -96,7 +124,24 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val objectName = KotlinNaming.procObjectName(shortName)
-        val procName = resolveProcName(sourceRdb, shortName)
+        // FR-016: the ONE physical-name resolver (see the class doc). Empty only for a
+        // synthetic source with no parent and no name — not a shape the loader produces —
+        // and a wrapper around a procedure with no name is not worth emitting.
+        val procName = sourceRdb.physicalName?.takeIf { it.isNotEmpty() }
+            ?: throw GeneratorException(
+                "${entity.name}: its storedProc source.rdb resolves no physical name; " +
+                    "declare @proc on the source")
+
+        // Task 6 — the procedure name is spelled ONCE per run: when the names generator
+        // is in the run, PROC_NAME is initialised FROM <Entity>Names.NAME (a const val
+        // may be initialised from another const val — the compiler folds it), and the
+        // KDoc names the constant rather than restating the literal. The literal arm is
+        // the documented fallback for a run without the names generator.
+        val namesObject = if (useNames()) KotlinNaming.namesObjectName(shortName) else null
+        val procNameExpr = if (namesObject != null) "$namesObject.NAME" else "\"$procName\""
+        val procNameDoc = if (namesObject != null)
+            "the stored procedure named by `$namesObject.NAME`"
+        else "stored procedure `$procName`"
 
         val allFields = entity.metaFields.toList()
         val params = allFields.filter { isParamField(it) }
@@ -104,9 +149,9 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
 
         // Backward-compat path: no fields at all → emit the documented stub.
         val source = if (allFields.isEmpty()) {
-            renderStub(pkg, shortName, objectName, procName)
+            renderStub(pkg, shortName, objectName, procNameExpr, procNameDoc)
         } else {
-            renderCallObject(pkg, shortName, objectName, procName, params, resultFields)
+            renderCallObject(pkg, shortName, objectName, procNameExpr, procNameDoc, params, resultFields)
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$objectName.kt")
@@ -116,19 +161,24 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     /**
      * Render the Phase-L documented stub (entity carries metadata only — no fields):
      * just `PROC_NAME` plus a KDoc example showing the hand-write wrapper shape.
+     *
+     * [procNameExpr] is the Kotlin EXPRESSION `PROC_NAME` is initialised from — a quoted
+     * literal, or `<Entity>Names.NAME` — and [procNameDoc] the phrase the KDoc uses for
+     * it, so the doc names the constant when the code does.
      */
     protected open fun renderStub(
         pkg: String,
         shortName: String,
         objectName: String,
-        procName: String,
+        procNameExpr: String,
+        procNameDoc: String,
     ): String = buildString {
         if (pkg.isNotEmpty()) {
             append("package $pkg\n\n")
         }
         append("import org.jetbrains.exposed.sql.Transaction\n\n")
         append("/**\n")
-        append(" * GENERATED — stub for stored procedure `$procName`.\n")
+        append(" * GENERATED — stub for $procNameDoc.\n")
         append(" *\n")
         append(" * The $shortName entity carries no field declarations, so the call signature\n")
         append(" * and row-mapping body are consumer-specific. Fill in the wrapper with your\n")
@@ -143,7 +193,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         append(" * }\n")
         append(" */\n")
         append("object $objectName {\n")
-        append("    const val PROC_NAME = \"$procName\"\n")
+        append("    const val PROC_NAME = $procNameExpr\n")
         append("}\n")
     }
 
@@ -151,12 +201,14 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
      * Render the upgraded `<Entity>Proc` object with a real `call(...)` function:
      * typed parameters (from `@param` fields, in authoring order) and a result-row
      * loop that maps each `ResultSet` column back into the companion entity data class.
+     * See [renderStub] for [procNameExpr] / [procNameDoc].
      */
     protected open fun renderCallObject(
         pkg: String,
         shortName: String,
         objectName: String,
-        procName: String,
+        procNameExpr: String,
+        procNameDoc: String,
         params: List<MetaField<*>>,
         resultFields: List<MetaField<*>>,
     ): String = buildString {
@@ -166,9 +218,9 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         append("import org.jetbrains.exposed.sql.Transaction\n")
         append("import org.jetbrains.exposed.sql.transactions.transaction\n\n")
 
-        append("/** GENERATED — wrapper for stored procedure `$procName`. */\n")
+        append("/** GENERATED — wrapper for $procNameDoc. */\n")
         append("object $objectName {\n")
-        append("    const val PROC_NAME = \"$procName\"\n\n")
+        append("    const val PROC_NAME = $procNameExpr\n\n")
         append("    /** Call the procedure and map result rows into [$shortName]. */\n")
 
         // Function signature.
@@ -199,7 +251,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             append("                results.add($shortName())\n")
         } else {
             val rowMapping = resultFields.joinToString(",\n") { rf ->
-                "                    ${rf.name} = ${rsGetterCall(rf)}"
+                "                    ${rf.name} = ${rsGetterCall(rf, columnExpr(shortName, rf))}"
             }
             append("                results.add($shortName(\n")
             append(rowMapping)
@@ -213,24 +265,20 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     }
 
     /**
-     * Resolve the SQL proc name from (in order):
-     *   1. {@code @procName} — Kotlin-specific override.
-     *   2. {@code @proc} (FR-016 canonical for {@code @kind: "storedProc"}).
-     *   3. {@code @table} (FR-016 legacy spelling; warned by the loader).
-     *   4. The entity's lowercased short name.
+     * The column-name EXPRESSION a result-row getter reads by: `<Entity>Names.<MEMBER>_COLUMN`
+     * when the names artifact is in the run, else the quoted PHYSICAL column literal —
+     * [KotlinGenUtil.resolveColumnName] through the same strategy arg the names artifact is
+     * built with, so the two arms name the same column.
      *
-     * Procs are not tables — the lowercase fallback intentionally diverges
-     * from {@link RdbSource#getPhysicalName} (which pluralizes + snake-cases
-     * for table-kind entities). FR-016 aliases are honored explicitly so a
-     * source declared with {@code @proc} works without going through the
-     * table-oriented physical-name chain.
+     * The same rule as [KotlinExposedTableGenerator.ownColumnExpr]: a result field IS a field
+     * of this entity (the proc-backed projection), so its constant lives on this entity's own
+     * artifact; the reference and the value it stands for derive from one shared transform
+     * ([KotlinNaming.namesMember]).
      */
-    protected open fun resolveProcName(sourceRdb: RdbSource, entityShortName: String): String {
-        readStringAttr(sourceRdb, ATTR_PROC_NAME)?.let { return it }
-        readStringAttr(sourceRdb, "proc")?.let { return it }
-        readStringAttr(sourceRdb, "table")?.let { return it }
-        return entityShortName.lowercase()
-    }
+    private fun columnExpr(shortName: String, field: MetaField<*>): String =
+        if (useNames())
+            "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(field.name)}_COLUMN"
+        else "\"${KotlinGenUtil.resolveColumnName(field, columnNaming())}\""
 
     /**
      * Is this field declared as a stored-proc call parameter? Truthy values:
@@ -251,16 +299,6 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             }
             else -> false
         }
-    }
-
-    /**
-     * Read a string attr off the rdb source. ADR-0039: source.* attrs (@proc/@table/
-     * @procName) are inheritable effective source properties — a projection or subtype
-     * that inherits its source via extends must still see them. RESOLVE (default true).
-     */
-    private fun readStringAttr(rdb: RdbSource, attrName: String): String? {
-        if (!rdb.hasMetaAttr(attrName)) return null
-        return runCatching { rdb.getMetaAttr(attrName).valueAsString }.getOrNull()
     }
 
     /**
@@ -309,34 +347,32 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     }
 
     /**
-     * `ResultSet` getter expression for a result-row field. The column name passed
-     * to `rs.getX("...")` is the field's logical name (matches the data class
-     * property); SELECT * + AS-alias handling is the consumer's responsibility if
-     * physical column names diverge from logical.
+     * `ResultSet` getter expression for a result-row field. [colExpr] is the column-name
+     * EXPRESSION the getter reads by — see [columnExpr] — the field's PHYSICAL column, so
+     * the wrapper asks the result set for the column the procedure actually returns.
+     *
+     * This used to pass the field's LOGICAL name and document "AS-alias handling" as the
+     * consumer's job when the two diverged: a wrapper that asked for `totalCents` on a
+     * procedure returning `total_cents` failed at runtime, while the names artifact carried
+     * the real column and nothing read it.
      */
-    private fun rsGetterCall(field: MetaField<*>): String {
-        val col = field.name
-        return when (field) {
-            is StringField    -> "rs.getString(\"$col\")"
-            is IntegerField   -> "rs.getInt(\"$col\")"
-            is LongField      -> "rs.getLong(\"$col\")"
-            is DoubleField    -> "rs.getDouble(\"$col\")"
-            is BooleanField   -> "rs.getBoolean(\"$col\")"
-            is DateField      -> "rs.getDate(\"$col\").toLocalDate()"
-            is TimestampField -> "rs.getTimestamp(\"$col\").toInstant()"
-            is CurrencyField  -> "rs.getLong(\"$col\")"
-            is EnumField      -> "rs.getString(\"$col\")"
-            is UuidField      -> "rs.getObject(\"$col\", java.util.UUID::class.java)"
-            else -> throw IllegalArgumentException(
-                "unsupported ResultSet getter for ${field::class.simpleName} '${field.name}'"
-            )
-        }
+    private fun rsGetterCall(field: MetaField<*>, colExpr: String): String = when (field) {
+        is StringField    -> "rs.getString($colExpr)"
+        is IntegerField   -> "rs.getInt($colExpr)"
+        is LongField      -> "rs.getLong($colExpr)"
+        is DoubleField    -> "rs.getDouble($colExpr)"
+        is BooleanField   -> "rs.getBoolean($colExpr)"
+        is DateField      -> "rs.getDate($colExpr).toLocalDate()"
+        is TimestampField -> "rs.getTimestamp($colExpr).toInstant()"
+        is CurrencyField  -> "rs.getLong($colExpr)"
+        is EnumField      -> "rs.getString($colExpr)"
+        is UuidField      -> "rs.getObject($colExpr, java.util.UUID::class.java)"
+        else -> throw IllegalArgumentException(
+            "unsupported ResultSet getter for ${field::class.simpleName} '${field.name}'"
+        )
     }
 
     private companion object {
-        /** Attr on `source.rdb` naming the SQL procedure to call. */
-        const val ATTR_PROC_NAME = "procName"
-
         /** Attr on a `field.*` declaring it as a stored-proc call parameter. */
         const val ATTR_PARAM = "param"
     }

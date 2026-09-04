@@ -421,26 +421,33 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             ?: (shortName.lowercase() + "s")
 
         // Task 6 / R27 — reference the constant whenever the names generator is in the
-        // run (gated on the arg, never on equality: primaryRdbSource above is the SAME
-        // selector KotlinGenUtil.resolveObjectNames uses, so a reference here IS the
-        // single spelling — see that function's doc). The TABLE-NAME reference is
-        // scoped to objectNameOverride == null (the vanilla, non-write-through path)
-        // ONLY: emitWriteThrough calls this function twice for ONE entity, against two
-        // DIFFERENT own sources (the writable table and the read-only replica view).
-        // <Entity>Names.NAME always names the entity's role=primary source, which for an
-        // object.entity must be the WRITABLE one (ERR_ENTITY_PRIMARY_SOURCE_READONLY) —
-        // correct for the write call, WRONG for the read view's own, differently-named
-        // physical table. (Column-name substitution below has no such conflict — a
-        // field's column name does not depend on which of the two sources this call is
-        // emitting — and is gated on useNames() alone, not this scope.)
-        val tableExpr = if (useNames() && objectNameOverride == null)
+        // run (gated on the arg, never on string equality — see KotlinGenUtil.primaryRdbSource's
+        // doc). <Entity>Names.NAME names ONE source: the entity's role=primary one, the node
+        // KotlinGenUtil.resolveObjectNames resolves. So the reference is right exactly when
+        // the source THIS call binds IS that node — reference identity of the resolved
+        // source, the same structural test KotlinObjectNames.inheritsSource makes, never a
+        // comparison of the two names. emitWriteThrough calls this function twice for ONE
+        // entity against two DIFFERENT own sources: the writable table (which for an
+        // object.entity must be the primary — ERR_ENTITY_PRIMARY_SOURCE_READONLY — so it
+        // hits) and the read-only replica view (a different node with its own physical
+        // name and no slot in the artifact, so it keeps its literal — deliberately).
+        //
+        // This used to be scoped to `objectNameOverride == null`, which excluded BOTH
+        // write-through calls: the override is passed on each, so the WRITE table — whose
+        // name is precisely the primary source's — spelled `Table("…")` literally beside
+        // columns already referencing <Entity>Names. The comment justified the exclusion
+        // for the view alone and the code applied it to the pair. (Column-name substitution
+        // has no such split — a field's column name does not depend on which of the two
+        // sources this call is emitting — and is gated on useNames() alone.)
+        val tableExpr = if (useNames() && sourceRdb === KotlinGenUtil.primaryRdbSource(entity))
             "${KotlinNaming.namesObjectName(shortName)}.NAME"
         else "\"$tableName\""
 
-        // Task 6 — see [ownColumnExpr]. Kept as a local alias so the many call sites in
-        // this function stay short; the rule itself lives in one place, shared with
-        // buildObjectColumns.
-        fun columnExprFor(f: MetaField<*>): String = ownColumnExpr(entity, f)
+        // Task 6 — see [columnExpr]. Kept as a local alias so the many call sites in this
+        // function stay short; the rule itself lives in one place. Both column loops below
+        // — the entity's own fields AND the TPH fold of its subtypes' fields — go through
+        // it, so "which artifact carries this column" is decided once.
+        fun columnExprFor(f: MetaField<*>): String = columnExpr(entity, f)
 
         // Walk the `extends` chain so identities declared on an abstract base
         // entity (the BaseEntity pattern: `identity.primary` on `id`) are
@@ -718,26 +725,23 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // FR-017 TPH: a discriminator base's single table also carries every subtype-only
             // column, emitted NULLABLE (a row of another subtype stores null there, even when the
             // field is @required on its subtype). collectSubtypeFields is empty for a non-TPH entity.
+            //
+            // Task 6 — these columns go through the SAME columnExprFor as the base's own fields
+            // above. Each `field` belongs to a TPH SUBTYPE, not `entity`, so the base's
+            // <Entity>Names does not carry it; [columnExpr] resolves that miss against the
+            // SUBTYPE's own artifact (`<Sub>Names.<MEMBER>_COLUMN`, emitted in the same run
+            // because a subtype inherits the base's source). This loop used to build a quoted
+            // literal under a comment calling itself out of the substitution's reach — it never
+            // was: the constant existed the whole time, one object over.
             for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
                 if (field is ObjectField || field is MapField) continue
                 val baseSpec = if (field is EnumField) {
                     // #246: same cross-package-aware handling as the base-column loop above — the
                     // import (when cross-package) is emitted via crossPackageEnumImports. Int-backed
                     // enums take the customEnumeration form here too.
-                    //
-                    // Task 6 — out of scope, same as the non-enum branch below: `field`
-                    // belongs to a TPH SUBTYPE, not `entity`, so its own physical column
-                    // is named by the SUBTYPE's <Sub>Names — a different Names object
-                    // than the one in scope here. Always literal; useNames() does not
-                    // reach this loop.
-                    enumColumnSpec(field, entity, "\"${KotlinGenUtil.resolveColumnName(field, columnNaming())}\"")
+                    enumColumnSpec(field, entity, columnExprFor(field))
                 } else {
-                    // Task 6 — out of scope: `field` here belongs to a TPH SUBTYPE, not
-                    // `entity` (the discriminator base whose table this is). Its own
-                    // physical column is named by the SUBTYPE's <Sub>Names, a different
-                    // Names object than the one in scope in this function. Always
-                    // literal; useNames() does not reach this loop.
-                    KotlinTypeMapper.exposedColumnSpec(field, "\"${KotlinGenUtil.resolveColumnName(field, columnNaming())}\"")
+                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field))
                 }
                 append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $baseSpec.nullable()\n")
             }
@@ -797,27 +801,78 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     protected enum class ObjectColumnKind { FLATTENED, JSONB }
 
     /**
-     * The rendered column-name EXPRESSION for one of [entity]'s OWN fields: either the
-     * quoted physical-name literal, or — when the names artifact is in this run
-     * ([useNames]) — a reference to `<Entity>Names.<MEMBER>_COLUMN`.
+     * The rendered column-name EXPRESSION for a field the table of [entity] binds: either
+     * the quoted physical-name literal, or — when the names artifact is in this run
+     * ([useNames]) — a reference to the `<MEMBER>_COLUMN` constant on the artifact that
+     * CARRIES the field.
      *
-     * Unlike the TABLE-name reference this is NOT scoped to `objectNameOverride == null`:
-     * a field's column name does not depend on which of a write-through entity's two own
-     * sources the emit call is targeting, so it is correct for both the write table and
-     * the read view.
+     * THIS entity's artifact first. It already carries every field [entity] resolves —
+     * inherited ones included, re-exported by reference from an abstract base's fragment
+     * (see [KotlinNamesGenerator]) — so an `extends` chain needs no redirect, and taking one
+     * would be wrong: a column an abstract base declares must reference `<Entity>Names`,
+     * the object whose table this is, not the fragment it happens to be spelled in.
      *
-     * EVERY site that names a column of [entity] goes through here — the scalar loop, the
-     * enum spec, and the single-jsonb `field.object` / `field.map` columns in
-     * [buildObjectColumns]. Those last two used to build their own literal, which is how a
-     * `@storage: jsonb` value-object column went on spelling its physical name in a run
-     * where every scalar beside it referenced a constant. A second copy of a substitution
-     * rule is a second chance to miss a branch.
+     * A MISS means the field belongs to a different entity entirely — under TPH, exactly
+     * the subtype whose own columns this base's table absorbs. Only then is the reference
+     * resolved against the DECLARING entity's artifact, reached through the field's own
+     * parent link. C# is the reference (its emitter passes the subtype to `ColumnRef`);
+     * TypeScript resolves the same way. The declaring object's artifact is emitted in this
+     * same run: every object under a TPH base — concrete subtype or abstract intermediate —
+     * inherits the base's source, and [KotlinNamesGenerator] emits for any object with a
+     * declared OR inherited primary source (#248), so the reference resolves.
+     *
+     * Unlike the TABLE-name reference this is not scoped to which source the emit call
+     * targets: a field's column name does not depend on which of a write-through entity's
+     * two own sources is being emitted, so it is correct for both the write table and the
+     * read view.
+     *
+     * EVERY site that names a column goes through here or [ownColumnExpr] — the scalar
+     * loop, the enum spec, the TPH fold, and the single-jsonb `field.object` / `field.map`
+     * columns in [buildObjectColumns]. Those last two used to build their own literal, which
+     * is how a `@storage: jsonb` value-object column went on spelling its physical name in
+     * a run where every scalar beside it referenced a constant; the TPH fold did the same
+     * for longer. A second copy of a substitution rule is a second chance to miss a branch.
+     */
+    protected fun columnExpr(entity: MetaObject, f: MetaField<*>): String {
+        if (!useNames()) return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        // ADR-0039: metaFields is the RESOLVING accessor — an inherited field is a HIT here,
+        // and the artifact of `entity` is where its constant is read from.
+        if (entity.metaFields.any { it.name == f.name }) return ownColumnExpr(entity, f)
+        // getDeclaringObject() is the field's actual parent node — for a field reached
+        // through a subtype's resolving accessor, the object that DECLARES it. Null only for
+        // a root-level abstract field, which no table loop can hand us; the literal is the
+        // same last-resort fallback as running without the names generator.
+        val declaring: MetaObject = f.declaringObject
+            ?: return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        return "${namesObjectRef(entity, declaring)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
+    }
+
+    /**
+     * The rendered column-name EXPRESSION for one of [entity]'s OWN (or inherited) fields —
+     * the hit arm of [columnExpr]. Reads `<Entity>Names.<MEMBER>_COLUMN` unconditionally:
+     * [KotlinNamesGenerator] builds that constant from this SAME entity's resolving
+     * metaFields via the SAME resolveColumnName, so the reference and the value it stands
+     * for derive from one shared transform ([KotlinNaming.namesMember]) and cannot disagree.
      */
     protected fun ownColumnExpr(entity: MetaObject, f: MetaField<*>): String {
         val (_, shortName) = PackageMapping.splitFqn(entity.name)
         return if (useNames())
             "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
         else "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+    }
+
+    /**
+     * The `<To>Names` object as referenced from a file emitted for [from]: bare when both
+     * live in the same Kotlin package (or [to] has none), package-qualified otherwise. A
+     * TPH subtype may live in a different package from its base, and this generator
+     * hand-rolls its file body, so a cross-package reference must be fully qualified or it
+     * does not resolve. Same rule [KotlinNamesGenerator] applies to a super reference.
+     */
+    private fun namesObjectRef(from: MetaObject, to: MetaObject): String {
+        val (fromPkg, _) = PackageMapping.splitFqn(from.name)
+        val (toPkg, toShort) = PackageMapping.splitFqn(to.name)
+        val obj = KotlinNaming.namesObjectName(toShort)
+        return if (toPkg == fromPkg || toPkg.isEmpty()) obj else "$toPkg.$obj"
     }
 
     /** A single Exposed column derived from a `field.object` (one per flattened sub-field, or one total for jsonb). */
