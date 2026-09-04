@@ -44,7 +44,7 @@ command surface splits in two:
 Historically `verify` meant *different things per port* (TS/C# = template drift,
 Java/Python = codegen drift, `--db` = schema drift) and the modes were not
 parallel. [ADR-0021 D2](../../spec/decisions/ADR-0021-codegen-surface-coherence.md)
-fixes that: **`verify` is one verb with three explicit subverbs**, one
+fixes that: **`verify` is one verb with explicit subverbs**, one
 vocabulary everywhere, each port implementing the modes it supports.
 
 | Subverb | What it checks | Touches a DB? |
@@ -52,6 +52,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
 | `verify --codegen` | **Codegen drift** — regenerate from metadata into a temp dir and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). | no |
+| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, or if a page a fresh run emits was never committed. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
 
 Rules of the contract:
 
@@ -65,6 +66,14 @@ Rules of the contract:
   against the configured `outDir` (and any per-target `outDir`) from
   `metaobjects.config.ts`. With no config it errors clearly (exit 2) rather than
   silently passing — there is nothing to diff against.
+- **`--docs` needs the same, and diffs `docs.outDir`.** Two things it does
+  DIFFERENTLY from `--codegen`, both deliberate. A byte difference IS drift: a docs
+  page is read, never imported, so there is no three-way merge to honour and nothing
+  records what was written. And it **never reports a file as extra** — `docs.outDir`
+  defaults to `./docs`, which in a real repository is full of hand-written
+  documentation MetaObjects did not write, and with no manifest to prove ownership
+  the gate has no standing to convict one. The cost is stated plainly: a page for an
+  entity you DELETED stays committed and the gate stays green.
 - **Unknown/invalid flag → exit 2** with usage.
 
 **Port status (staged per ADR-0021):** the **TypeScript Node `meta` is the
@@ -91,6 +100,53 @@ at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
 Node-only by the ADR-0015 design — see below.)
+
+## `meta docs` surfaces — and the `agent/` one
+
+`meta docs` writes MARKDOWN, from metadata, into `docs.outDir` (default `./docs`). It
+emits four surfaces, each selectable with its own flag; passing none emits every surface
+the project has something to say with.
+
+| Surface | Flag | What it is | Needs a gen config? |
+|---|---|---|---|
+| model | `--model` | The NEUTRAL per-entity + per-template pages plus a README index. Makes no language assumption at all (ADR-0020). | no |
+| api | `--api` | The generated SDK reference — types, endpoints, filter operators — plus `AGENT-API.md`, its condensed agent form. | yes |
+| requirements | `--requirements` | The declared ledger, as `requirements.md` + `requirements.toon`. | no |
+| agent | `--agent` | Three pages an agent reads BEFORE touching a tier (below). | yes |
+
+### The `agent/` surface
+
+- **`agent/schema.md`** — before touching persistence. Per table: the column, the FIELD
+  that declared it, the declared type, the dialect SQL type, nullability, default and key
+  role; then indexes, foreign keys and checks; then views with their `origin.*` lineage,
+  relationships, and enums with their member sets. It **cites the migrations rather than
+  restating the DDL** — the migration files are the DDL, they are generated, and a page
+  that reproduces `CREATE TABLE` is a second spelling that goes stale.
+- **`agent/ui.md`** — before touching a form or a grid. Per field: the control the form
+  renders, label, HTML type, rules, form-excluded, and what the LIST endpoint accepts for
+  filtering and sorting; plus each declared `layout.dataGrid`.
+- **`agent/requirements.md`** — before adding a capability. The ledger plus a **node
+  index**: every claimed node → the requirements claiming it, at every grain, with the
+  literal FQN on every line.
+
+Two properties worth knowing:
+
+**Every page is derived from a builder that already exists**, and none has a derivation of
+its own. The schema page reads the expected-schema snapshot `meta migrate` diffs and emits
+from; the UI page reads the same descriptor emitted as the `<Entity>` const that
+`useEntityForm` consumes at runtime; the requirements page reads the same walk the ledger
+surface and the generated test stubs are built on. A page an agent is told to trust has to
+be true, and this is the only way to keep three more of them true.
+
+**An empty page is no file.** Each renders nothing when its tier has nothing to describe —
+no physical schema, no generated UI, no ledger — so a project sees only the pages it has
+content for, and one with none sees no `agent/` directory at all.
+
+It is **config-gated like the api surface**: physical names, the dialect and view dispatch
+all come from `metaobjects.config.ts`, so without one there is nothing true to say. The
+neutral model surface is unaffected and stays neutral.
+
+`meta verify --docs` (above) is what keeps the committed pages honest.
 
 ## Declarative config (`metaobjects.config.yaml`) — Python codegen
 

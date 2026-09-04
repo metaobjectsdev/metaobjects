@@ -7,6 +7,95 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — an `agent/` docs surface, the pointer that routes to it, and `verify --docs`
+
+`meta docs` gains a fourth surface. Three pages, each read BEFORE touching a tier:
+`agent/schema.md` (the physical schema — column, the FIELD that declared it, dialect type,
+nullability, default, key role, then indexes / FKs / checks, views with their `origin.*`
+lineage, relationships and enums), `agent/ui.md` (per field: the control the FORM renders,
+label, HTML type, rules, form-excluded, and what the LIST endpoint accepts for filter and
+sort; plus each `layout.dataGrid`), and `agent/requirements.md` (the ledger plus a NODE
+index — every claimed node to the requirements claiming it, at every grain, literal FQN on
+every line).
+
+**Every page is derived from a builder that already exists, and none has a derivation of its
+own.** That is the design constraint rather than an implementation note: a surface an agent
+is told to trust has to be TRUE, and the only way to keep three more pages true is to give
+them nothing of their own to be wrong about. The schema page reads the expected-schema
+snapshot `meta migrate` diffs and emits from, plus `resolveObjectNames` — the field-to-column
+resolver the names artifact and the DDL already share. The UI page reads
+`buildEntityUiDescriptor`, the same derivation emitted as the `<Entity>` const that
+`useEntityForm` consumes at runtime. The requirements page reads `walkRequirements` +
+`requirementRows`, the same walk the ledger surface and the generated test stubs are built on.
+
+`codegen-ts` deliberately computes NO part of the physical schema. The snapshot, a column's
+dialect type and the qualified name a table is keyed by are `migrate-ts`'s answers, and a
+second derivation would give an adopter a page describing a schema the tool does not produce
+— invisibly, because a documentation page looks authoritative and nothing compares it to the
+migration. The surface takes the schema as an ARGUMENT with the resolvers injected, and `meta
+docs` (which already depends on both) is where they meet. `migrate-ts` gains one export,
+`columnTypeSql`, which DELEGATES to the same `pgType`/`sqliteType` the DDL emitters use.
+
+**On by default and config-gated like `api`.** Physical names, the dialect and view dispatch
+come from `metaobjects.config.ts`, so without one there is nothing true to say. Safe to
+default on for the same reason `requirements` is: each page renders nothing when its tier has
+nothing to describe, and an empty render emits NO FILE — a project with no ledger, no schema
+or no generated UI sees no `agent/` directory rather than pages of headings. The neutral
+model surface is untouched and stays neutral (ADR-0020).
+
+**The always-on agent context now names all four files and when to read each** —
+`agent/schema.md` before persistence, `api/AGENT-API.md` before calling generated code,
+`agent/ui.md` before a form or a grid, `agent/requirements.md` before adding a capability —
+and says to run `meta docs` if they are absent. `api-docs-file.ts`'s header had recorded that
+pointer as a deferred follow-up; it was deferred, nothing tracked it, and for as long as that
+held `AGENT-API.md` existed while nothing routed anyone to it.
+
+**`meta verify --docs`** runs the docs command into a temp dir and diffs the committed tree,
+catching the drift nothing checked at all: `--codegen` regenerates only `outDir`/`targets`, so
+a model could move and every committed page keep describing the previous one indefinitely with
+every gate green. It CALLS the docs command rather than reimplementing it, so the gate and the
+door cannot become two answers to what the docs are. Two deliberate differences from
+`--codegen`, both away from convicting the innocent: **a byte difference IS drift** here (a
+docs page is read, never imported — no three-way merge to honour, nothing recording what was
+written), and it **never reports a file as extra**, because `docs.outDir` defaults to `./docs`,
+which in a real repository is full of hand-written documentation. `--codegen` may convict an
+orphan because `.gen-state` proves it wrote the file; with no manifest to appeal to, making
+that call here would repeat the jurisdiction mistake `--codegen`'s orphan branch was corrected
+for in 0.24.3. The cost is stated rather than hidden: a page for a DELETED entity stays
+committed and the gate stays green.
+
+The gate is shown to CONVICT, not merely to run — a changed page, an uncommitted page, and the
+model moving with nobody re-running `meta docs` each fail it, with a hand-written file in the
+docs directory as the control that must stay green.
+
+`agent/schema.md` also NUDGES when a model declares no `description` anywhere: business
+semantics beside the schema is the highest-value content the page can carry, it is what tells a
+reader which of two plausible columns to use, and it is the same text `meta migrate` emits as a
+`COMMENT ON`. Rendering a page of bare names in silence teaches an adopter the lever does not
+exist.
+
+### Fixed — a `field.enum` shipped a descriptor saying its control was free text
+
+The generated form has rendered a `<select>` for an enum since form-control dispatch landed.
+The SHARED resolver behind `<Entity>.meta.ts` — the descriptor `useEntityForm` reads at
+RUNTIME — had no enum branch at all and fell through to `text`, telling every consumer the
+control was a free-text input, for the one field subtype where free text is what the model
+forbids. Two answers to one question, and the wrong one was the one shipped to consumers;
+visible in both shipped examples, where `Program.status`, `Purchase.status` and
+`Subscriber.status` each carried `view: "text", htmlType: "text"` next to a form rendering a
+select.
+
+Fixed in the shared resolver rather than the react tier, because the descriptor, the form and
+the new `agent/ui.md` page must give one answer. `htmlType` correctly becomes absent for an
+enum — a dropdown maps to no `<input type=…>`, so a consumer keying an `<input>` off it would
+render the wrong element.
+
+**Nothing caught it because no fixture had one.** Every `view: "text"` line in the golden
+snapshots is a string field, so no golden moved when the branch was added and the defect could
+have stayed indefinitely with every gate green. The new test loads ONE entity carrying both an
+enum and a plain string and asserts all three tiers against it, with the string field as the
+control so a green result cannot come from the default having moved wholesale.
+
 ### Changed — BREAKING: a `<type>.base` node no longer loads (`metamodelVersion` 0.13 → 0.14)
 
 Every type family registers a `base` subtype — `attr.base`, `field.base`, `layout.base`,

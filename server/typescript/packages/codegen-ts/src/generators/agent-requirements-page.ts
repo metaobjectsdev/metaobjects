@@ -21,6 +21,16 @@
 // it. Resolution severity depends on `@status` and belongs to `meta verify`; a docs page
 // that rendered a dangling reference as though it pointed somewhere would be asserting
 // the opposite of what the gate says.
+//
+// THE LEDGER IS EMBEDDED BELOW THE INDEX, and that duplication is deliberate rather than
+// an oversight — the same content also lives at `requirements.md` when that surface is on.
+// The node index alone would omit exactly the entries the mechanism is MEASURED on: a
+// `retired` capability may carry no `@implementedBy` at all (FR-039 forbids it), so it
+// resolves to no node and appears in no node index. The one controlled finding behind this
+// whole vocabulary is that a retired capability goes unnoticed without a ledger — 0 of 24
+// against 19 of 40 — and the page an agent is told to read *before adding a capability* is
+// the last place to drop it. The cost is bytes on a large estate; the alternative is a page
+// that silently loses the only part with evidence behind it.
 
 import { REQUIREMENT_ATTR_STATEMENT } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
@@ -129,6 +139,11 @@ export function renderAgentRequirementsPage(root: MetaData): string {
   out.push(
     "- The **node index** below answers *\"does anything claim the thing I am about to " +
       "change?\"*. Match the literal FQN.",
+  );
+  out.push(
+    "- **The ledger under it is not the same list.** A retired capability carries no " +
+      "`@implementedBy` — there is nothing left to point at — so it appears there and " +
+      "in no index. Read it before you conclude a capability does not exist yet.",
   );
   out.push("");
 
