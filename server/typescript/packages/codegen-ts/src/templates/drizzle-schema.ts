@@ -7,6 +7,7 @@ import { MetaObject, MetaField, MetaIndex, isMetaObject, stripPackage } from "@m
 import {
   FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
+  IDENTITY_ATTR_EXPR, IDENTITY_ATTR_USING, IDENTITY_ATTR_ORDERS, IDENTITY_ATTR_WHERE,
   GENERATION_INCREMENT, GENERATION_UUID,
   FIELD_ATTR_AUTO_SET,
   FIELD_ATTR_OBJECT_REF,
@@ -235,10 +236,78 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     callbackEntries.push(buildCompositeKeyCallback(pkFieldNames, importModule));
   }
 
+  /**
+   * One index callback entry, for BOTH `identity.secondary` (unique) and `index.lookup`
+   * (non-unique). The two shapes differ only in that boolean, and migrate treats their
+   * physical attributes identically — `@expr`/`@using`/`@orders`/`@where` are registered on
+   * both by the same provider — so they are emitted by ONE function here. They used to be
+   * two near-identical loops, which is how the physical attributes came to be honoured by
+   * neither: a rule written twice is a rule that can be forgotten twice.
+   *
+   * What was missing is a SHAPE divergence, not a naming one (the names were reconciled
+   * separately). An `@expr`-only index emitted NOTHING at all here, because both loops
+   * required a non-empty `@fields` — while migrate emits it, keying off `@expr`. And
+   * `@where` never reached this file, so a PARTIAL unique index read as a FULLY unique one
+   * in the generated schema: `drizzle-kit push` would propose replacing the database's
+   * partial index with a total one, and any diff written from generated source disagreed
+   * with the database over a difference that was not real. Same class as the sqlite
+   * emitter dropping these in 0.15.21.
+   */
+  const indexEntry = (
+    node: { name: string; attr: (n: string) => unknown },
+    fieldNames: string[],
+    unique: boolean,
+  ): Code | undefined => {
+    const str = (n: string): string | undefined => {
+      const raw = node.attr(n);
+      return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : undefined;
+    };
+    const expr = str(IDENTITY_ATTR_EXPR);
+    // An expression index keys off @expr; a plain one needs @fields. Mirrors migrate's
+    // `if (fieldNames.length === 0 && expr === undefined) continue`.
+    if (fieldNames.length === 0 && expr === undefined) return undefined;
+
+    const sqlSym = imp("sql@drizzle-orm");
+    const indexSym = imp(`${unique ? "uniqueIndex" : "index"}@${importModule}`);
+
+    // @orders is positional against @fields; migrate only serializes it when at least one
+    // entry is `desc`, because an all-ascending array must be indistinguishable from no
+    // orders at all for diff stability. Match that exactly or the two disagree on a
+    // no-op.
+    const ordersRaw = node.attr(IDENTITY_ATTR_ORDERS);
+    const orders = Array.isArray(ordersRaw)
+      ? fieldNames.map((_, i) => (ordersRaw[i] === "desc" ? "desc" : "asc"))
+      : [];
+    const anyDesc = orders.some((o) => o === "desc");
+    const colRefs = fieldNames.map((f, i) =>
+      anyDesc ? `table.${f}.${orders[i] === "desc" ? "desc" : "asc"}()` : `table.${f}`);
+
+    // sqlite's `.on()` accepts only columns — no SQL — so an expression index is not
+    // expressible there. It is skipped rather than emitted wrong; migrate still creates it,
+    // and a Drizzle declaration that silently indexed a COLUMN instead of the expression
+    // would be a worse answer than an absent one.
+    if (expr !== undefined && dialect === "sqlite") return undefined;
+
+    // @using selects the access method and takes the columns itself, so it REPLACES .on().
+    // Postgres-only: SQLite has no USING clause. migrate omits a `btree` value as the
+    // default, and so does this — emitting it would be a spurious difference.
+    const using = dialect === "sqlite" ? undefined : str(IDENTITY_ATTR_USING);
+    const target: Code =
+      expr !== undefined ? code`${sqlSym}\`${expr}\``
+      : code`${colRefs.join(", ")}`;
+    const head: Code =
+      using !== undefined && using !== "btree"
+        ? code`${indexSym}(${JSON.stringify(node.name)}).using(${JSON.stringify(using)}, ${target})`
+        : code`${indexSym}(${JSON.stringify(node.name)}).on(${target})`;
+
+    // @where — the partial-index predicate, available on both dialects.
+    const where = str(IDENTITY_ATTR_WHERE);
+    return where === undefined ? head : code`${head}.where(${sqlSym}\`${where}\`)`;
+  };
+
   // identity.secondary — always unique (uniqueness is in the type, no boolean).
   for (const sec of secondaryIdentities) {
     const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
-    if (!Array.isArray(fields) || fields.length === 0) continue;
     // The identity's OWN name, which is what migrate puts in the database
     // (`expected-schema.ts`, secondary-identity pass) and what `index.lookup` three
     // blocks below already emits. This used to compose `idx_<table>_<col>...` by running
@@ -248,21 +317,16 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // over a field NAME cannot see `@column`, so a declared physical column was invisible
     // to it. Gated by `secondary-index-name-parity.test.ts`, whose fixture is de-blinded
     // against exactly that second defect.
-    const indexName = sec.name;
-    const indexSym = imp(`uniqueIndex@${importModule}`);
-    // Use the callback param `table` (not the outer varName) so TS doesn't see
+    // Column refs use the callback param `table` (not the outer varName) so TS does not see
     // the table referencing itself inside its own initializer (TS7022/TS7024).
-    const cols = fields.map((f) => `table.${f}`).join(", ");
-    callbackEntries.push(code`${indexSym}(${JSON.stringify(indexName)}).on(${cols})`);
+    const entry = indexEntry(sec, Array.isArray(fields) ? fields : [], /* unique */ true);
+    if (entry !== undefined) callbackEntries.push(entry);
   }
 
   // index.lookup — always non-unique. Use MetaIndex.fields() per ADR-0039.
   for (const lookup of obj.lookupIndexes()) {
-    const fields = lookup.fields();
-    if (fields.length === 0) continue;
-    const indexSym = imp(`index@${importModule}`);
-    const cols = fields.map((f) => `table.${f}`).join(", ");
-    callbackEntries.push(code`${indexSym}(${JSON.stringify(lookup.name)}).on(${cols})`);
+    const entry = indexEntry(lookup, lookup.fields(), /* unique */ false);
+    if (entry !== undefined) callbackEntries.push(entry);
   }
 
   // Emit table-level CHECK constraints for enum fields. Both halves are composed by

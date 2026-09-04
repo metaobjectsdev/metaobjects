@@ -173,6 +173,15 @@ gate_script_name_hooks() { node scripts/check-script-name-hooks.mjs; }
 # sentence stops being true. This checks the wiring itself.
 gate_no_magic_coverage() { scripts/check-no-magic-gate-coverage.sh; }
 
+# ── a comment that names a test file must name one that exists ────────────────
+# Several load-bearing comments delegate a guarantee to a test in ANOTHER package ("the two
+# are now compared by codegen-ts's `secondary-index-name-parity.test.ts` rather than by a
+# claim in a comment"), which is the right thing to write — it replaces an assertion the
+# reader must trust with one they can run. The coupling is a bare filename across a package
+# boundary, so a rename leaves every reference reading as a live guarantee while pointing at
+# nothing: worse than never promising, because the comment still says the case is covered.
+gate_test_references() { scripts/check-test-references.sh; }
+
 # ── release hygiene: no pre-release version may be committed ──────────────────
 # scripts/prerelease.mjs bumps every version declaration in place and restores them on
 # exit; a crashed run (or a hand-run sed) can leave an -rc.N behind. That is not cosmetic:
@@ -548,6 +557,7 @@ if want gates; then step    "publish-set parity"               gate_publish_set;
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
 if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
 if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
+if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi

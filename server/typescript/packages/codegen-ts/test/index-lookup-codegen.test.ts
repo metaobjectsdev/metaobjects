@@ -98,7 +98,7 @@ describe("renderDrizzleSchema — index.lookup emits non-unique index", () => {
     expect(out).toContain('"orders_customer_placed_idx"');
   });
 
-  test("index.lookup emits .on(table.customerId, table.placedAt)", () => {
+  test("index.lookup emits .on(table.customerId.asc(), table.placedAt.desc()) — @orders honoured", () => {
     const order = makeOrderWithLookupIndex();
     const root = makeRoot([order]);
     const ctx = makeRenderContext({
@@ -110,7 +110,72 @@ describe("renderDrizzleSchema — index.lookup emits non-unique index", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderDrizzleSchema(root.findObject("Order")!, ctx).toString();
-    expect(out).toMatch(/\.on\(table\.customerId,\s*table\.placedAt\)/);
+    // The fixture's own comment says "customerId + placedAt DESC" and it sets
+    // @orders ["asc","desc"], yet this assertion used to require the direction to be
+    // ABSENT — pinning the defect rather than the intent. migrate emits the DESC, so the
+    // generated schema declared a differently-ordered index than the database has.
+    expect(out).toMatch(/\.on\(table\.customerId\.asc\(\),\s*table\.placedAt\.desc\(\)\)/);
+  });
+
+  // The physical escapes (@expr / @where / @using) reached migrate and never reached this
+  // file at all, which is a SHAPE divergence rather than a naming one: a PARTIAL unique index
+  // read as a fully unique one in the generated schema, and an @expr-only index emitted
+  // nothing whatsoever because both loops required a non-empty @fields. `drizzle-kit push`
+  // would then propose replacing the database's index with the wrong one.
+  test("@where emits a partial index — a partial UNIQUE must not read as a total one", () => {
+    const user = makeUserWithSecondary();
+    const sec = user.children().find((c) => c.name === "idx_email")!;
+    sec.setAttr("where", "deleted_at IS NULL");
+    const root = makeRoot([user]);
+    const ctx = makeRenderContext({
+      dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
+    expect(out).toMatch(/\.where\(sql`deleted_at IS NULL`\)/);
+  });
+
+  test("@expr emits an expression index, which used to emit NOTHING", () => {
+    const user = makeUserWithSecondary();
+    const sec = user.children().find((c) => c.name === "idx_email")!;
+    // An expression index keys off @expr, not @fields — migrate emits it on @expr alone.
+    sec.setAttr("fields", []);
+    sec.setAttr("expr", "lower(email)");
+    const root = makeRoot([user]);
+    const ctx = makeRenderContext({
+      dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
+    expect(out).toContain('uniqueIndex("idx_email")');
+    expect(out).toMatch(/\.on\(sql`lower\(email\)`\)/);
+  });
+
+  test("@using selects the access method and replaces .on()", () => {
+    const user = makeUserWithSecondary();
+    const sec = user.children().find((c) => c.name === "idx_email")!;
+    sec.setAttr("using", "gin");
+    const root = makeRoot([user]);
+    const ctx = makeRenderContext({
+      dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
+    expect(out).toMatch(/\.using\("gin", table\.email\)/);
+  });
+
+  test("@using btree is omitted — migrate treats it as the default, so emitting it would differ", () => {
+    const user = makeUserWithSecondary();
+    const sec = user.children().find((c) => c.name === "idx_email")!;
+    sec.setAttr("using", "btree");
+    const root = makeRoot([user]);
+    const ctx = makeRenderContext({
+      dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
+    expect(out).not.toContain(".using(");
+    expect(out).toMatch(/\.on\(table\.email\)/);
   });
 
   test("index.lookup does NOT add .unique() to the indexed columns", () => {
