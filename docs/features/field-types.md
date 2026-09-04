@@ -217,15 +217,22 @@ For `flattened`, the generated table gets `address_street`, `address_city`,
 
 ### TypeScript
 
+The physical names the strategy above resolved are emitted **once**, into
+`Author.names.ts` (`AuthorNames.fields.createdAt.column === "created_at"`); every other
+generated file references that constant rather than respelling it. So the table binding
+below names no column directly — to read the resolved spelling, open the names artifact.
+
 ```ts
 // generated/acme/blog/Author.ts
-export const author = pgTable("authors", {
-  id:         bigserial("id", { mode: "number" }).primaryKey(),
-  name:       varchar("name", { length: 200 }).notNull(),
-  bio:        varchar("bio", { length: 2000 }),
-  priceCents: bigint("price_cents", { mode: "number" }).notNull(),  // currency: minor units
-  status:     varchar("status", { length: 32 }).notNull(),          // enum: CHECK constraint emitted by meta migrate
-  createdAt:  timestamp("created_at", { withTimezone: true }).notNull(),
+import { AuthorNames } from "./Author.names";
+
+export const author = pgTable(AuthorNames.name, {
+  id:         bigserial(AuthorNames.fields.id.column, { mode: "number" }).primaryKey(),
+  name:       varchar(AuthorNames.fields.name.column, { length: 200 }).notNull(),
+  bio:        varchar(AuthorNames.fields.bio.column, { length: 2000 }),
+  priceCents: bigint(AuthorNames.fields.priceCents.column, { mode: "number" }).notNull(),  // currency: minor units
+  status:     varchar(AuthorNames.fields.status.column, { length: 32 }).notNull(),         // enum: CHECK constraint emitted by meta migrate
+  createdAt:  timestamp(AuthorNames.fields.createdAt.column, { withTimezone: true }).notNull(),
 });
 
 export const AuthorSchema = z.object({

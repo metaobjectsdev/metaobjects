@@ -61,10 +61,19 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     /**
      * Task 6 — whether the table binding references `<Entity>Names.NAME` /
      * `<Entity>Names.<FIELD>_COLUMN` instead of respelling the physical name/column as a
-     * string literal. Defaults OFF: Kotlin generators are selected by FQCN in the pom
-     * with no runner aggregating markers, so a project running this generator WITHOUT
-     * [KotlinNamesGenerator] in the same run would reference a type nothing generated
-     * and fail to compile. A PRESENCE guard, not a divergence/equality guard — see
+     * string literal.
+     *
+     * The literal fallback below is the answer for a DIRECT programmatic call only. In a
+     * Maven run the arg is DERIVED: [com.metaobjects.generator.EmitsPhysicalNameConstants]
+     * marks [KotlinNamesGenerator], and `AbstractMetaDataMojo.buildGenerators` builds the
+     * whole `<generators>` list before executing any of it, so a pom that wires the names
+     * generator gets `useNames=true` without asking. An explicit `<useNames>` still wins.
+     *
+     * (The premise this defaulted OFF for — "Kotlin generators are selected by FQCN with no
+     * runner aggregating markers" — was simply false; the mojo IS that aggregation point.
+     * The default stays `false` because it is the honest answer when nothing aggregated:
+     * referencing `<Entity>Names` in a run without the names generator emits code that does
+     * not compile.) A PRESENCE guard, not a divergence/equality guard — see
      * [KotlinGenUtil.primaryRdbSource].
      */
     protected fun useNames(): Boolean =

@@ -110,8 +110,8 @@ metadata:
 
 Every port's codegen propagates the constraint:
 
-- Drizzle column: `text("id").notNull()` + a CHECK constraint matching the
-  regex
+- Drizzle column: `text(CouncilNames.fields.id.column).notNull()` + a CHECK
+  constraint matching the regex
 - Zod validator: `z.string().length(8).regex(/^[A-Z2-9]{8}$/)`
 - Migration SQL: `CHECK (length(id) = 8 AND id REGEXP '^[A-Z2-9]{8}$')`
 

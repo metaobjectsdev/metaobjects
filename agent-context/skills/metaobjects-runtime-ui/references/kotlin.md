@@ -35,6 +35,12 @@ object AuthorTable : Table("authors") {
 }
 ```
 
+With `KotlinNamesGenerator` in the same `<generators>` run the binding reads
+`Table(AuthorNames.NAME)` and `varchar(AuthorNames.NAME_COLUMN, 200)` instead of the
+literals above — the Maven plugin builds the whole generator list before executing any of
+it, so adding the names generator turns the substitution on (an explicit `<useNames>`
+still wins).
+
 ## Query + persist with Exposed
 
 Obtain a `Database` (the generated `MetadataExposedConfig` `@Configuration` calls
@@ -72,6 +78,16 @@ Filtered reads use Exposed's `selectAll()` plus a `where { ... }` op tree (e.g.
 `AuthorTable.selectAll().where { AuthorTable.name eq someName }`), exactly as the
 `integration-tests-kotlin` query-conformance runner does against Testcontainers
 Postgres.
+
+## Physical names outside the DSL
+
+Inside Exposed, bind to the `Column` object — `AuthorTable.name`, type-checked column by
+column — never `AuthorNames.NAME_COLUMN`. The constant is for what the DSL does not
+reach: `exec("…")` raw SQL, a Flyway script, a log line, an external system's column
+mapping. There it is `AuthorNames.NAME` / `AuthorNames.NAME_COLUMN` (opt-in:
+`KotlinNamesGenerator` in the pom — see the codegen reference), never a literal. Give
+both generators the same `columnNaming`, or the table and the constants disagree about a
+column.
 
 ## Return-type contract
 

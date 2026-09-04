@@ -762,6 +762,16 @@ Multi-source: multiple `source.rdb` children, each with a `@role`, exactly one
 { "source.rdb": { "@kind": "view", "@view": "v_author", "@schema": "blog" } }
 ```
 
+**This declaration is the only place a physical name is ever spelled.** Codegen emits a
+per-object names artifact from it (`<Entity>Names` — `ProgramNames.fields.createdAt.column`,
+`ProgramNames.CreatedAtColumn`, `PROGRAM_CREATED_AT_COLUMN`, per port), the generated table
+binding reads that artifact, and hand-written SQL, repositories and migration scripts
+reference it — so a consumer never restates `v_author` or `created_at`, and a rename here
+propagates. Declare `@column` explicitly whenever the physical name is not the naming
+strategy's answer (`callPurpose` → `purpose_code`): nothing downstream can recover that
+mapping by derivation, and the constant is what carries it. (See `metaobjects-codegen` →
+"Never hand-write a physical name".)
+
 **An entity's PRIMARY source must be writable** (`table`) — read-only kinds are
 legal only in non-primary roles.
 

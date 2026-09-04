@@ -200,7 +200,8 @@ adjacent commands in the build pipeline.
 **C# half** — driven by `MetaObjects.Cli`'s config (`appsettings.codegen.json`
 or CLI flags). Emits:
 
-- `Author.g.cs` — POCO with `[Table("authors")]`, `[Key]`, `[Column]`, etc.
+- `AuthorNames.g.cs` — the physical table/column names as constants, spelled once
+- `Author.g.cs` — POCO with `[Table(AuthorNames.Name)]`, `[Key]`, `[Column(AuthorNames.IdColumn)]`, etc.
 - `AppDbContext.g.cs` — `DbSet<Author> Authors { get; set; }`
 - `AuthorRoutes.g.cs` — `MapAuthorRoutes(this IEndpointRouteBuilder, string prefix)`
 

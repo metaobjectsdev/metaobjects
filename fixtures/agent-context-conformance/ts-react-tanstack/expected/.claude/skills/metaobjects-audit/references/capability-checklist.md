@@ -66,7 +66,12 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 ## Source — `source.rdb`
 
 - **`source.rdb`** (`@table`, `@schema`) — hunt hard-coded physical table/schema names that
-  diverge from the default naming the source models.
+  diverge from the default naming the source models, AND any physical table/column/schema
+  name spelled as a literal outside its declaration — raw SQL, a hand-written repository, a
+  migration script, a body-to-column map (drift signature 11). Every port emits a per-object
+  names artifact from the declaration, so a literal is a second source of truth even when it
+  agrees with the naming strategy today. A typed ORM handle in its place is correct; on the
+  JVM an un-wired names generator is the finding first.
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored
   read-only source belongs. Apply the **view-necessity test** (SKILL.md, drift signature 8): a
   hand-written `CREATE VIEW` (or read-only SQL mirroring a read model) is a CODEGEN CANDIDATE when

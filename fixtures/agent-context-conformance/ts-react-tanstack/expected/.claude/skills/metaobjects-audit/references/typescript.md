@@ -54,6 +54,7 @@ value-sets against the constructs that replace them.
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | camelCase↔snake_case mapping tables | generated views handle this; diff field by field |
 | `@generated` file with hand edits | three-way merge preserves them; review at codegen; never delete |
+| a table/column string in a `sql` fragment, a Kysely identifier, or a migration/seed script outside the generated dir | second spelling of a declared physical name — reference `<Entity>.names.ts` (`ProgramNames.fields.<f>.column`); a Drizzle column object in its place is correct, not a finding |
 
 ---
 

@@ -297,10 +297,13 @@ for the constant instead in raw SQL, a Flyway migration, a log line, or an
 external system's column mapping — the places `AuthorTable` gives you nothing
 to hold onto.
 
-`KotlinExposedTableGenerator` can also be told to **read** these constants
-instead of independently re-deriving the same table/column names, via a
-second generator arg — `useNames`, which **defaults to `false`** (byte-identical
-output unless set):
+`KotlinExposedTableGenerator` **reads** these constants instead of independently
+re-deriving the same table/column names whenever the names generator is in the same
+run. You do not have to ask: the Maven plugin builds the whole `<generators>` list
+before executing any of it, so adding `KotlinNamesGenerator` above is what switches
+the table binding over. The `useNames` arg exists to override that decision — pin it
+`false` to keep byte-identical output, or `true` for a direct programmatic call
+outside the plugin, where nothing aggregates the run and it defaults `false`:
 
 ```xml
 <generator>
@@ -320,10 +323,9 @@ ones that could drift. Both generators must be given the **same**
 `columnNaming` argument, or the table and the constants file disagree with
 each other about a column's name.
 
-Wire `KotlinNamesGenerator` into the same run and you can leave `useNames` unset: the
-Maven plugin derives it from the generator set, so a suite containing the names generator
-turns the substitution on and one without it keeps the literals (which is what makes the
-output compile either way). An explicit `<useNames>` still wins.
+A suite without the names generator keeps the literals, which is what makes the output
+compile either way — referencing `AuthorNames` in a run that generated no such object
+would not.
 
 **It follows `extends`, so a constant you do not find in an object is in its parent's.**
 Kotlin has no static inheritance — an `object` cannot extend another — so an artifact whose

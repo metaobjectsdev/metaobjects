@@ -56,6 +56,7 @@ The active generator list is declared in `pom.xml` under the plugin `<configurat
 | `@Serializable` on a payload class not in generated sources | `KotlinPayloadGenerator` should own this; check `pom.xml` generator list |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `transaction(db) {` bodies that duplicate every CRUD operation | hand-written Exposed transactions are expected (see Calibration), but if they duplicate generated-CRUD logic exactly, audit further |
+| a table/column string in `exec("…")` raw SQL or a Flyway script | reference `<Entity>Names` (`KotlinNamesGenerator`, opt-in); `AuthorTable.name` inside the Exposed DSL is the typed handle — correct, not a finding |
 
 ---
 

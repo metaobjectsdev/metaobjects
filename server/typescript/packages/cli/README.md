@@ -168,6 +168,7 @@ import { defineConfig } from "@metaobjectsdev/cli";
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";
+import { namesFile } from "./codegen/generators/names";
 import { barrel } from "./codegen/generators/barrel";
 
 export default defineConfig({
@@ -176,7 +177,7 @@ export default defineConfig({
   dbImport: "../index",
   dialect: "sqlite",
   apiPrefix: "/api",
-  generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+  generators: [entityFile(), queriesFile(), routesFile(), namesFile(), barrel()],
 });
 ```
 

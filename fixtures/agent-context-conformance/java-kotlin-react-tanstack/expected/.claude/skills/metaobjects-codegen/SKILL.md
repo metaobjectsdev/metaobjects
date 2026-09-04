@@ -430,6 +430,10 @@ everywhere — **each physical name is spelled once, and generated code referenc
 | Kotlin | `<Entity>Names.kt` | `ProgramNames.CREATED_AT_COLUMN` |
 | Python | `<entity_snake>_names.py` | `PROGRAM_CREATED_AT_COLUMN` |
 
+On TypeScript (`meta init`), C# and Python the names generator is in the default suite; on
+the JVM it is opt-in — add `SpringNamesGenerator` / `KotlinNamesGenerator` to the pom's
+`<generators>`, and the Exposed table binding switches to the constants once it is present.
+
 **It follows `extends`.** An object that extends another does not restate what it
 inherits: C# and Java use real class inheritance (`class CopayAuthNames extends
 AuthNames`), TypeScript spreads (`...AuthNames.fields`), and Kotlin and Python re-export

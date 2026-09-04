@@ -43,6 +43,28 @@ This keeps generated code free of global state, makes it testable, and lets one
 process talk to multiple databases (multi-tenant, read-replica). Construct/own the
 context in your app; thread it through every generated call.
 
+## Physical names come from the generated names artifact, never a literal
+
+The runtime tier is where the code codegen leaves to you gets written — a repository
+implementation, a raw query, a migration script, a log line — and that is where a table
+or column name gets respelled. Don't. A physical name is declared **once**, in metadata
+(`@table` / `@view` / `@column` / `@schema`), and every port emits a per-object names
+artifact carrying it: `ProgramNames.fields.createdAt.column` on TypeScript,
+`ProgramNames.CreatedAtColumn` on C#, `ProgramNames.CREATED_AT_COLUMN` on the JVM,
+`PROGRAM_CREATED_AT_COLUMN` on Python. Reference it. `@column` is free-form —
+`callPurpose` may live in `purpose_code` — so deriving a column from the field name is a
+guess that fails silently, and a literal is a second spelling of a fact the metadata
+owns: rename the column in metadata and the constant follows, the literal does not, and
+nothing tells you.
+
+**Prefer a typed handle where one exists.** A Drizzle column object, an Exposed `Column`,
+an EF Core property is type-checked against the schema; swapping it for a string constant
+trades a compile error for a runtime one. The constants are for the places with no
+handle: raw SQL, a string-keyed query builder, and a hand-written repository on a port
+whose generated model carries no persistence binding at all (Java, Python). Your server
+reference names the handle and the artifact for this stack; on the JVM the names
+generator is opt-in, and the `metaobjects-codegen` skill says how to wire it.
+
 ## The REST contract
 
 Generated (or hand-written) routes speak one cross-port HTTP contract so the same

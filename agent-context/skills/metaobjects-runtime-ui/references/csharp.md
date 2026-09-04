@@ -88,3 +88,14 @@ handler calls the `FilterParser` / `EfCoreFilterDispatch` runtime helpers in
 `MetaObjects.Codegen`, so your ASP.NET host references that assembly at runtime. The same
 universal TS/Angular web client consumes those routes unchanged — the wire format matches
 the Java, Kotlin, and Python backends byte-for-byte.
+
+## Physical names below LINQ
+
+Inside LINQ keep the property (`db.Authors.Where(a => a.Name == …)`): it is type-checked
+against the model, and a string constant there trades a compile error for a runtime one.
+Where LINQ does not reach — raw SQL, a migration script, a log line — take the physical
+name from the generated `<Entity>Names.g.cs`. `names` is in the default suite, and the
+generated entity and `AppDbContext` already read it, so it cannot disagree with the
+mapping: `AuthorNames.Name` is the table, `AuthorNames.<Field>Column` the column,
+`AuthorNames.ColumnsByField` the whole map. Never a literal — and never
+`nameof(Author.Name)`, which is the CLR property, not the column.

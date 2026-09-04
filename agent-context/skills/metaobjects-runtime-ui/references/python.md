@@ -92,3 +92,25 @@ Protocol, not `int`. The PATCH body is typed `dict[str, Any]` **deliberately**: 
 `<Entity>Create` / `<Entity>Patch` Pydantic models already validate constraints over HTTP
 (FR-036), and the `dict` seam preserves the FR-035 present-key PATCH tristate (absent ≠
 explicit-null) — retyping the PATCH parameter to the model would collapse that tristate.
+
+## Physical names in your repository implementation
+
+`ObjectManager` calls key by field name (`om.find_many("Author", {"name": …})`) and
+resolve the column themselves, so that path never needs a physical name. The moment the
+repository `Protocol` is backed by your own SQLAlchemy Core / asyncpg / psycopg code, it
+does — and nothing Python generates carries one: the Pydantic models, create/patch
+shapes, router and allowlist all key by field. Take it from the generated
+`<entity_snake>_names.py` (`names` is in the default suite):
+
+```python
+from generated.author_names import AUTHOR_NAME, AUTHOR_CREATED_AT_COLUMN, AUTHOR_ID_COLUMN
+
+row = await conn.fetchrow(
+    f"SELECT {AUTHOR_CREATED_AT_COLUMN} FROM {AUTHOR_NAME} WHERE {AUTHOR_ID_COLUMN} = $1",
+    author_id,
+)
+```
+
+There is no typed handle to prefer on this port, so this is never the wrong choice here.
+Pass the same `--column-naming` to `metaobjects gen` that you pass as `column_naming=` to
+`ObjectManager` (both default to `literal`), or the constant names a column no row lands in.

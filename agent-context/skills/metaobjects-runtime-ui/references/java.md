@@ -110,3 +110,24 @@ writable entity, on the cross-port REST contract (five CRUD endpoints, `?sort`,
 `<Entity>Repository.java` is a stubbed interface you implement against OMDB (or any
 persistence layer) — wire the controller to call it. The same universal TS/Angular
 web client consumes those controllers unchanged.
+
+## Physical names in your repository implementation
+
+OMDB resolves columns itself — `setString("name", …)` and `getObjects` key by field — and
+nothing `codegen-spring` emits carries a physical name (the DTO is a record of logical
+names; the repository is a bare interface). The physical names appear in exactly one
+place: the persistence code **you** write behind `<Entity>Repository` (JDBC, jOOQ, a
+Spring Data query). Take them from the generated `<Entity>Names` — never a literal:
+
+```java
+jdbc.query("SELECT " + AuthorNames.NAME_COLUMN + " FROM " + AuthorNames.NAME
+         + " WHERE " + AuthorNames.ID_COLUMN + " = ?", mapper, id);
+```
+
+`AuthorNames.COLUMNS_BY_FIELD` carries the whole map when you need to build a projection
+list. It is opt-in on the JVM — add `SpringNamesGenerator` to the pom's `<generators>`
+(see the codegen reference). Its `columnNaming` defaults to `literal`, the same
+resolution OMDB uses at runtime; pass the same value to both, or the constant names a
+column no row lands in. There is no typed handle to prefer on this port — `<Entity>Names`
+is the only compile-checked route to a physical name, which is also why nothing else here
+catches a wrong pairing for free.

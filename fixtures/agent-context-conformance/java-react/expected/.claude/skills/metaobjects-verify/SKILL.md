@@ -173,6 +173,24 @@ Make it a **ratchet**: it can't go green until the last offending field is migra
 backstop against reintroducing the smell. The same pattern generalizes to any semantic
 metadata rule your project wants enforced that `verify` structurally can't express.
 
+The other invariant worth a ratchet is **no physical name as a literal**. A table or
+column string in hand-written code is a second spelling of a declared fact, and nothing
+in `verify` compares your code to the schema — `--codegen` diffs generated files against
+a fresh regen, `--db` diffs the database against the metadata. Neither reads the
+repository you wrote. Build the alternation from the metadata's own `@table` / `@view` /
+`@column` values and fail on any hit outside generated output:
+
+```
+# fail the build if a declared physical name is spelled in hand-written source.
+# Illustrative — generate the alternation from your metadata, scope it to the
+# directories you hand-write. A typed ORM handle never matches this; a literal does.
+! grep -rEn '"(orders|created_at|purpose_code)"' src/ --exclude-dir=generated
+```
+
+Generated output is already covered upstream — every port's generators reference the
+names artifact instead of embedding the literal — so this ratchet is only ever about your
+code. The remedy for a hit is the `<Entity>Names` constant (`metaobjects-runtime-ui`).
+
 ## Schema migrations are the shared TypeScript engine — for every port
 
 This is the load-bearing architectural fact (ADR-0015): **schema migrations are

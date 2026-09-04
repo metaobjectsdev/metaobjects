@@ -459,6 +459,62 @@ registry gains a generator the page does not name. That gate is deliberately
 one-directional: it can prove a generator is *named*, and it does not pretend to check that
 what the row *says* is still true.
 
+### Changed — the docs and the agent skills teach the names constants, in every port
+
+The `<Entity>Names` program made generated code reference the constants. It did not touch
+the **documentation, the shipped skills, or the always-on context** — and the design spec
+had already ruled that it must: *"All six `metaobjects-*` skills must teach it, in every
+language — not just `metaobjects-codegen`."* Only `metaobjects-codegen` was ever edited.
+This is that ruling's unexecuted half.
+
+**The docs were describing output the product no longer emits.** `meta init` scaffolds and
+wires `namesFile()` by default, so a new TypeScript project's `meta gen` emits
+`pgTable(AuthorNames.name, { id: bigserial(AuthorNames.fields.id.column …) })` — while
+`docs/features/{entities,field-types,relationships,source-kinds,abstracts-and-inheritance}.md`
+still showed `pgTable("authors", { id: bigserial("id") …})`. Every TypeScript block is now
+the constants form, matched against the committed golden rather than written from memory,
+and `entities.md` shows the names artifact itself so the resolved spellings stay visible.
+The C# `ToView` and the `csharp-angular18` recipe's file list follow the same correction
+(`names` is in C#'s default suite). Two places also enumerated the `meta init` scaffold set
+as four generators where it writes five.
+
+**Kotlin's opt-in was documented as more manual than it is.** `docs/ports/kotlin.md` led
+with "`useNames` **defaults to `false`**" and then contradicted itself four paragraphs
+later; the generator's own javadoc justified the OFF default with *"no runner aggregating
+markers"* — the premise this line's earlier work disproved. `KotlinNamesGenerator` carries
+`EmitsPhysicalNameConstants` and the Maven plugin builds the whole `<generators>` list
+before executing any of it, so wiring the names generator switches the table binding over
+without asking. The default stays `false` because that is the honest answer when nothing
+aggregated the run.
+
+**The skills now teach it where an adopter actually writes the code.** `metaobjects-runtime-ui`
+gains the doctrine plus a per-port section in all five language references — that tier is
+where a repository implementation, a raw query or a migration script gets written, and on
+Java and Python the generated model carries no persistence binding at all, so hand-written
+SQL is the *expected* path rather than an escape hatch. Each says **prefer a typed handle
+where one exists** (a Drizzle column object, an Exposed `Column`, an EF property is
+type-checked against the schema; swapping it for a string trades a compile error for a
+runtime one), and names the artifact for the places with no handle. `metaobjects-authoring`
+gains the converse at the declaration site, where spelling a physical name is *correct*:
+this is the one spelling, and `@column` must be declared explicitly when the physical name
+is not the strategy's answer, because nothing downstream can recover that mapping by
+derivation.
+
+**Two gates gain the invariant, because `verify` structurally cannot.** `--codegen` diffs
+generated files against a fresh regen and `--db` diffs the database against the metadata;
+neither reads the repository you wrote. So `metaobjects-audit` gains it as a drift signature
+with its exclusions stated (a typed ORM handle is correct, not a finding; the hand-written
+SQL body of a `source.rdb` cannot import a constant; the flattened value-object composite
+column, the write-through replica view and the relationship-synthesized FK column are pinned
+decisions), plus a row in each of the five per-language reference tables — and
+`metaobjects-verify` gains a ratchet lint in the section that exists for invariants `verify`
+cannot express.
+
+`metaobjects-prompts` is deliberately **not** touched, against the spec's "all six": a
+payload is an `object.value` or sourceless projection keyed by logical names, and no prompt
+tier — render, parser, extract, trace — ever touches a physical name. A note there would be
+boilerplate in a document whose value is being terse.
+
 ### Fixed — codegen and migrate named an `identity.secondary`'s unique index two different ways
 
 **Adopter-visible: the name in a generated Drizzle table changes.** This is #293's defect

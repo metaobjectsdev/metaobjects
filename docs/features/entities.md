@@ -121,17 +121,34 @@ the base can live in any file in the corpus.
 
 `@metaobjectsdev/codegen-ts` emits one file per entity with a Drizzle table, a Zod
 schema, a TS type, and (with `queriesFile()` + `routesFile()`) typed finders and
-Fastify routes.
+Fastify routes. `namesFile()` — wired by `meta init` — emits `Author.names.ts` beside
+it, holding the physical table and column names as constants; the table binding
+references those rather than respelling them.
+
+```ts
+// generated/acme/blog/Author.names.ts
+export const AuthorNames = {
+  kind: "table",
+  name: "authors",
+  readOnly: false,
+  fields: {
+    bio:  { name: "bio",  column: "bio" },
+    id:   { name: "id",   column: "id" },
+    name: { name: "name", column: "name" },
+  },
+} as const;
+```
 
 ```ts
 // generated/acme/blog/Author.ts
 import { pgTable, bigserial, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { AuthorNames } from "./Author.names";
 
-export const author = pgTable("authors", {
-  id:   bigserial("id", { mode: "number" }).primaryKey(),
-  name: varchar("name", { length: 200 }).notNull(),
-  bio:  varchar("bio",  { length: 2000 }),
+export const author = pgTable(AuthorNames.name, {
+  id:   bigserial(AuthorNames.fields.id.column, { mode: "number" }).primaryKey(),
+  name: varchar(AuthorNames.fields.name.column, { length: 200 }).notNull(),
+  bio:  varchar(AuthorNames.fields.bio.column,  { length: 2000 }),
 });
 
 export const AuthorSchema = z.object({

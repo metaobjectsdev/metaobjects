@@ -173,11 +173,12 @@ inference stays relationship-only.
 ```ts
 // generated/acme/blog/Post.ts
 import { AnyPgColumn } from "drizzle-orm/pg-core";
+import { PostNames } from "./Post.names";
 
-export const post = pgTable("posts", {
-  id:       bigserial("id", { mode: "number" }).primaryKey(),
-  title:    varchar("title", { length: 255 }).notNull(),
-  authorId: bigint("author_id", { mode: "number" })
+export const post = pgTable(PostNames.name, {
+  id:       bigserial(PostNames.fields.id.column, { mode: "number" }).primaryKey(),
+  title:    varchar(PostNames.fields.title.column, { length: 255 }).notNull(),
+  authorId: bigint(PostNames.fields.authorId.column, { mode: "number" })
               .notNull()
               .references((): AnyPgColumn => author.id, { onDelete: "cascade" }),
 });

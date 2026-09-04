@@ -146,7 +146,7 @@ you get is the first thing to establish, because it changes what you can plan.
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
-| **TypeScript** | `meta init` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` copies `entityFile`/`queriesFile`/`routesFile`/`barrel` into `codegen/generators/*.ts`; `metaobjects.config.ts` imports those local copies. Edit them freely, or `meta eject <generator>` any other one. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **TypeScript** | `meta init` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` copies `entityFile`/`queriesFile`/`routesFile`/`namesFile`/`barrel` into `codegen/generators/*.ts`; `metaobjects.config.ts` imports those local copies. Edit them freely, or `meta eject <generator>` any other one. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
 | **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **No.** `GeneratorRegistry` is a closed built-in registry; `--generators` *selects* from what ships. There is no registration seam. | **Yes, and it is your only path** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
 | **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **No.** `GENERATOR_REGISTRY` is a closed built-in registry, same as C#. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator — do not reach for it here.) | **Yes, and it is your only path** — `metaobjects gen --template-spec <json> --templates <dir>`. |
@@ -241,6 +241,6 @@ the same "idiomatic per port" principle as generator ownership (ADR-0035 §3).
 ## Deprecated (removed at 1.0)
 
 Importing the built-in generators from `@metaobjectsdev/codegen-ts/generators`
-(`entityFile`, `queriesFile`, `routesFile`, `barrel`) is **deprecated** (ADR-0034) and
+(`entityFile`, `queriesFile`, `routesFile`, `namesFile`, `barrel`) is **deprecated** (ADR-0034) and
 **removed at the 1.0/8.0 release**. Use the owned copies `meta init` scaffolds into
 `codegen/generators/*` and import those from your `metaobjects.config.ts`.
