@@ -373,6 +373,12 @@ it; §"Do not re-run" governs, and its bar — genuinely new information — is 
 noticing that an old result was over-read. What this amendment forbids is the citation: no
 document may claim round 5 ruled on direction.
 
+_The design of such a measurement is committed, unrun and labelled unrun, as
+[pre-registration C](2026-09-04-prereg-requirement-link-direction.md). Committing it is not
+authorization to run it — that file says so in its own second paragraph, and defers to this
+section. It exists so that the reason four documents over-read one result — that there was no
+measurement to point at, so the nearest number got used — cannot recur._
+
 **Never author both directions.** Whatever a future measurement says, one link is authored
 and the other derived. Two authored statements of one fact is a reconciliation problem
 `verify` would then own, which is a cost neither direction pays today.
