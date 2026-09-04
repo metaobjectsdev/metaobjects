@@ -32,6 +32,9 @@ import {
   OBJECT_SUBTYPE_VALUE,
 } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
+import { crossEntitySpecifier } from "../import-path.js";
+import { resolveObjectNames } from "../names.js";
+import type { RenderContext } from "../render-context.js";
 
 const CALLABLE_KINDS: ReadonlySet<string> = new Set([
   SOURCE_KIND_STORED_PROC,
@@ -58,8 +61,12 @@ function callableSource(entity: MetaObject): MetaSource | undefined {
 }
 
 /** Render the full file content for an entity's callable wrapper. Caller
- *  is responsible for formatting (prettier / biome) and writing to disk. */
-export function renderCallableFile(entity: MetaObject): string {
+ *  is responsible for formatting (prettier / biome) and writing to disk.
+ *
+ *  `ctx` is optional only so the pre-existing callers that render a wrapper in isolation
+ *  keep compiling; with it absent the physical name is spelled literally, which is the
+ *  same documented fallback as running with `namesFile()` out of the suite. */
+export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): string {
   // Run the primary-source DIVERGENCE refusal before resolving a physical name.
   // `callableSource` selects by @kind with NO role filter, so it is a THIRD door into
   // "what relation does this object name" — and it is reached by `callableFile()` alone,
@@ -108,6 +115,29 @@ export function renderCallableFile(entity: MetaObject): string {
     ? ""
     : paramFieldNames.map((n) => `\${args.${n}}`).join(", ");
 
+  // §A6 — reference `<Entity>Names.name` rather than spelling the procedure a SECOND time.
+  // This file is a raw string template rather than ts-poet, so the import is composed here
+  // instead of through `imp`; `crossEntitySpecifier` is the same helper `namesRef` uses, so
+  // the specifier (and its extension style) cannot drift from every other generator's.
+  const namesConst =
+    ctx !== undefined && ctx.includeNames &&
+    resolveObjectNames(entity, ctx.columnNamingStrategy) !== undefined
+      ? `${entity.name}Names`
+      : undefined;
+  const namesImport = namesConst === undefined
+    ? ""
+    : `import { ${namesConst} } from "${crossEntitySpecifier(
+        ctx!.selfTarget.outputLayout, entity.package, entity.package,
+        `${entity.name}.names`, ctx!.extStyle,
+      )}";\n`;
+  // The identifier must stay an IDENTIFIER. A bare interpolation into drizzle's `sql` tag
+  // binds a PARAMETER, so `sql`SELECT * FROM ${Names.name}(…)`` would send the procedure
+  // name as a query argument and produce SQL that cannot execute. `sql.raw` splices text.
+  // `sql.identifier` is deliberately not used: it quotes, which changes the statement.
+  const procNameExpr = namesConst === undefined
+    ? procName
+    : `\${${"sql.raw"}(${namesConst}.name)}`;
+
   const fnName = `call${entity.name}`;
   const projectionType = entity.name;
   const projectionSchemaName = `${entity.name}Schema`;
@@ -132,16 +162,17 @@ export function renderCallableFile(entity: MetaObject): string {
   return `// ${GENERATED_HEADER}
 import { sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
-${argsImport}import { ${projectionSchemaName}, type ${projectionType} } from "./${entity.name}.js";
+${namesImport}${argsImport}import { ${projectionSchemaName}, type ${projectionType} } from "./${entity.name}.js";
 
 /**
- * FR-015: typed wrapper around the \`${procName}\` ${source.effectiveKind === SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function"}.
+ * FR-015: typed wrapper around the ${source.effectiveKind === SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function"} named by
+ * \`${namesConst === undefined ? procName : `${namesConst}.name`}\`.
  * Drizzle passes a parameterised SELECT — args bind in declaration order from
  * the @parameterRef value-object${argsObject ? `, here ${argsObjectName}` : ""}.
  */
 export async function ${fnName}(${signature}): Promise<${projectionType}[]> {
   const r = await db.execute(
-    sql\`SELECT * FROM ${procName}(${sqlArgList})\`,
+    sql\`SELECT * FROM ${procNameExpr}(${sqlArgList})\`,
   );
   return r.rows.map((row) => ${projectionSchemaName}.parse(row as unknown));
 }

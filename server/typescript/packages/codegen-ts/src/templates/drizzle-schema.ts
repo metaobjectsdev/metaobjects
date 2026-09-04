@@ -3,7 +3,7 @@
 // plus the relations() block auto-emitted at the end.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { MetaObject, MetaField, MetaIndex, stripPackage } from "@metaobjectsdev/metadata";
+import { MetaObject, MetaField, MetaIndex, isMetaObject, stripPackage } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
@@ -49,10 +49,45 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // binding the inherited parent's table when the names generator is out of the run.
   const names = namesRef(obj, ctx);
   const tableNameExpr: Code = physicalNameExpr(names, tableName);
-  // A column's constant, on the same terms. A lookup MISS is normal, not a defect: the TPH
-  // fold below emits columns for fields that belong to SUBTYPE entities, and the base's
-  // names artifact carries only the base's own fields.
-  const columnNameExpr = (field: MetaField, dbName: string): Code => columnExpr(names, field.name, dbName);
+  // A column's constant, on the same terms — but resolved against the entity that DECLARES
+  // the field, which is not always `obj`. Under TPH the fold below emits a subtype's own
+  // columns into this base's table, and those columns live in the SUBTYPE's names artifact;
+  // looking them up in the base's finds nothing.
+  //
+  // This used to pass `names` for every column and call the resulting miss "normal". It was
+  // not: the base's artifact genuinely does not carry a subtype's column, so every TPH
+  // subtype column fell through to the literal while `<Sub>Names.fields.<f>.column` sat
+  // right there, already imported by the subtype's own artifact. C# never had the bug
+  // because its emitter passes the subtype entity to `ColumnRef`; this is that shape.
+  //
+  // `fromPackage` stays `obj.package` so the import path is computed relative to the file
+  // being emitted (this base's), not to the subtype's own package.
+  // THIS entity's artifact first. It already carries every INHERITED field — a concrete
+  // entity's artifact spreads its abstract parent's `fields` — so an `extends` chain needs
+  // no redirect, and taking one would be a regression: an abstract base has no source, so
+  // it has no artifact of its own to redirect TO, and the column would fall back to a
+  // literal that `obj`'s artifact was carrying all along.
+  //
+  // A miss here means the field belongs to a different entity ENTIRELY, which under TPH is
+  // exactly the subtype whose columns this base's table absorbs. Only then resolve against
+  // the declaring entity, found through the field's own parent link.
+  //
+  // `isMetaObject`, never `instanceof`: two physical copies of @metaobjectsdev/metadata in
+  // one process give the class object and the instance different identities, so the check
+  // would return false for a real node — silently.
+  const columnNameExpr = (field: MetaField, dbName: string): Code => {
+    if (names === undefined || names.resolved.fields[field.name] !== undefined) {
+      return columnExpr(names, field.name, dbName);
+    }
+    const owner = field.parent;
+    // `fromPackage` is obj's: the import path is relative to the file being emitted (this
+    // base's), not to the subtype's own package.
+    const ownerNames =
+      owner !== undefined && isMetaObject(owner) && owner !== obj
+        ? namesRef(owner, ctx, obj.package)
+        : undefined;
+    return columnExpr(ownerNames, field.name, dbName);
+  };
 
   const primary = obj.primaryIdentity();
   const rawPkFields = primary?.attr(IDENTITY_ATTR_FIELDS);
@@ -83,7 +118,40 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
 
   const columnLines: Code[] = [];
   // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
-  const checkConstraints: Array<{ name: string; expr: string }> = [];
+  const checkConstraints: Array<{ name: Code; expr: Code }> = [];
+  /**
+   * One CHECK entry, composed against `<Entity>Names` when the artifact is in the run.
+   *
+   * #293 — migrate's `<table>_<col>_chk` is the shared convention and it is the AUTHORITY:
+   * its suffix form is systematic across five constraint kinds and those names are already
+   * in live databases, so flipping migrate instead would emit DROP/ADD CONSTRAINT churn
+   * against production for a cosmetic difference. Referencing the constants therefore
+   * composes the IDENTICAL string at runtime rather than changing the convention — the
+   * template literal below evaluates to exactly what the literal arm spells.
+   *
+   * The expression's column goes through `sql.raw`, not `sql.identifier`: the latter QUOTES
+   * the name, which changes the constraint text migrate compares against.
+   */
+  const checkEntry = (field: MetaField, spec: ColumnSpec): { name: Code; expr: Code } => {
+    const colExpr = columnNameExpr(field, spec.dbName);
+    const values = spec.checkConstraintValues;
+    const sqlSym = imp("sql@drizzle-orm");
+    // No artifact in this run (the documented ADR-0034 opt-out) — spell both halves, which
+    // is what this file did unconditionally before.
+    if (names === undefined || values === undefined) {
+      return {
+        name: code`${JSON.stringify(`${tableName}_${spec.dbName}_chk`)}`,
+        expr: code`${spec.checkConstraint ?? ""}`,
+      };
+    }
+    // `\${` emits a literal `${` into the generated source: the name becomes a template
+    // literal and the expression an interpolation, both evaluated at run time in the
+    // consumer's code, where they produce the identical strings the literal arm spells.
+    return {
+      name: code`\`\${${tableNameExpr}}_\${${colExpr}}_chk\``,
+      expr: code`\${${sqlSym}.raw(${colExpr})} IN (${values})`,
+    };
+  };
   // Int-backed field.enum customType helpers, emitted ahead of the table. Keyed by
   // const name so a shared enum used by two fields of the SAME entity emits once.
   const enumIntTypes = new Map<string, EnumIntCustomType>();
@@ -105,16 +173,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
-    if (spec.checkConstraint !== undefined) {
-      checkConstraints.push({
-        // #293 — migrate's `<table>_<col>_chk` is the shared convention, and it is the
-        // authority: its suffix form is systematic across five constraint kinds and those
-        // names are already in live databases, so flipping migrate instead would emit
-        // DROP/ADD CONSTRAINT churn against production for a cosmetic difference.
-        name: `${tableName}_${spec.dbName}_chk`,
-        expr: spec.checkConstraint,
-      });
-    }
+    if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
 
   // FR-017 Tier 2 — TPH single-table inheritance. When this entity is a
@@ -137,16 +196,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
     // (not false), so other-subtype rows with NULL pass the check.
-    if (spec.checkConstraint !== undefined) {
-      checkConstraints.push({
-        // #293 — migrate's `<table>_<col>_chk` is the shared convention, and it is the
-        // authority: its suffix form is systematic across five constraint kinds and those
-        // names are already in live databases, so flipping migrate instead would emit
-        // DROP/ADD CONSTRAINT churn against production for a cosmetic difference.
-        name: `${tableName}_${spec.dbName}_chk`,
-        expr: spec.checkConstraint,
-      });
-    }
+    if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
 
   // Build all table callback entries
@@ -186,11 +236,12 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     callbackEntries.push(code`${indexSym}(${JSON.stringify(lookup.name)}).on(${cols})`);
   }
 
-  // Emit table-level CHECK constraints for enum fields.
+  // Emit table-level CHECK constraints for enum fields. Both halves are composed by
+  // `checkEntry` above, which owns the constant-vs-literal decision for the pair.
   for (const { name, expr } of checkConstraints) {
     const checkSym = imp(`check@${importModule}`);
     const sqlSym = imp("sql@drizzle-orm");
-    callbackEntries.push(code`${checkSym}(${JSON.stringify(name)}, ${sqlSym}\`${expr}\`)`);
+    callbackEntries.push(code`${checkSym}(${name}, ${sqlSym}\`${expr}\`)`);
   }
 
   let tableBlock: Code;

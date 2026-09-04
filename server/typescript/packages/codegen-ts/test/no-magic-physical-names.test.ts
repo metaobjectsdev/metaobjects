@@ -152,30 +152,12 @@ const TOKENS: ReadonlyArray<{
   { literal: TPH_TABLE,   shouldUse: "VehicleNames.name",                   reach: "constant" },
   { literal: TPH_ID,      shouldUse: "VehicleNames.fields.id.column",       reach: "constant" },
   { literal: TPH_DISC,    shouldUse: "VehicleNames.fields.kind.column",     reach: "constant" },
-  {
-    literal: TPH_SUB_COL, shouldUse: "CarNames.fields.doors.column", reach: "escape",
-    why:
-      "The TPH fold in drizzle-schema.ts emits the SUBTYPE's columns into the BASE's " +
-      "table, but resolves its column expressions once against the BASE's names ref — so " +
-      "every subtype column misses the lookup and falls back to the literal. C# is the " +
-      "reference here: EntityGenerator passes the SUBTYPE entity to ColumnRef, so the " +
-      "lookup hits that subtype's own artifact. CarNames.fields.doors.column exists.",
-  },
+  { literal: TPH_SUB_COL, shouldUse: "CarNames.fields.doors.column",     reach: "constant" },
 
   // --- the enum / index / schema entity ---------------------------------------------
   { literal: WIDGET_TABLE,  shouldUse: "WidgetNames.name",                    reach: "constant" },
-  {
-    literal: ENUM_COL, shouldUse: "WidgetNames.fields.status.column", reach: "escape",
-    why:
-      "Two sites, one column. The drizzle COLUMN binding does reference the constant; " +
-      "the enum CHECK constraint's expression body (column-mapper.ts) emits a bare " +
-      "column literal into the SQL. Referencing it needs `sql.raw(...)` — `sql.identifier` " +
-      "would quote the name and change the constraint text migrate compares against.",
-  },
-  {
-    literal: ENUM_INT_COL, shouldUse: "WidgetNames.fields.grade.column", reach: "escape",
-    why: "As ENUM_COL — the int-backed (@intValueMap) CHECK body spells the column too.",
-  },
+  { literal: ENUM_COL,      shouldUse: "WidgetNames.fields.status.column",    reach: "constant" },
+  { literal: ENUM_INT_COL,  shouldUse: "WidgetNames.fields.grade.column",     reach: "constant" },
   { literal: ARRAY_COL,     shouldUse: "WidgetNames.fields.tags.column",      reach: "constant" },
   { literal: ALT_COL,       shouldUse: "WidgetNames.fields.alt.column",       reach: "constant" },
   { literal: ABS_COL,       shouldUse: "WidgetNames.fields.id.column",        reach: "constant" },
@@ -192,15 +174,7 @@ const TOKENS: ReadonlyArray<{
   },
 
   // --- the callable (stored procedure) ----------------------------------------------
-  {
-    literal: PROC, shouldUse: "ProcOutNames.name", reach: "escape",
-    why:
-      "renderCallableFile takes an entity and no RenderContext, so it cannot reach a " +
-      "names ref at all and spells `source.physicalName` directly — in the docstring and " +
-      "in the emitted SQL. Note the emitted form matters: a bare interpolation into a " +
-      "drizzle `sql` tag BINDS a parameter, so the reference has to go through " +
-      "`sql.raw(...)` to stay an identifier.",
-  },
+  { literal: PROC,         shouldUse: "ProcOutNames.name",                   reach: "constant" },
   { literal: PROC_OUT_COL, shouldUse: "ProcOutNames.fields.total.column",    reach: "constant" },
 
   // --- index names: a category with no slot in the artifact -------------------------
@@ -220,27 +194,6 @@ const TOKENS: ReadonlyArray<{
     why: "As SEC_INDEX — an index.lookup's database name is its metamodel `name`.",
   },
 
-  // --- the enum CHECK constraint names ----------------------------------------------
-  // These are COMPOSITES of a table and a column name (#293's `<table>_<column>_chk`),
-  // so each one restates two names that both have constants. They are pinned rather than
-  // exempted: a composite built at runtime FROM those constants produces the identical
-  // string, so this is a gap that can be closed without changing the convention.
-  {
-    literal: ENUM_CHECK, shouldUse: "`${WidgetNames.name}_${WidgetNames.fields.status.column}_chk`",
-    reach: "escape",
-    why:
-      "The CHECK constraint's name is composed at BUILD time from the raw table and " +
-      "column strings (drizzle-schema.ts), so the physical names are spelled a second " +
-      "time inside it. The convention itself is fixed by #293 — migrate's names are " +
-      "already in live databases — so the fix composes the SAME string from the " +
-      "constants at runtime rather than changing the shape.",
-  },
-  {
-    literal: ENUM_INT_CHECK,
-    shouldUse: "`${WidgetNames.name}_${WidgetNames.fields.grade.column}_chk`",
-    reach: "escape",
-    why: "As ENUM_CHECK — the int-backed (@intValueMap) arm composes its name the same way.",
-  },
 ];
 
 const MODEL = {

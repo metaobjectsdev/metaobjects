@@ -33,7 +33,7 @@ export const callableFile = function callableFile(opts?: CallableFileOpts): Gene
           entity.package,
           `${entity.name}.callable.ts`,
         ),
-        content: await formatTs(renderCallableFile(entity)),
+        content: await formatTs(renderCallableFile(entity, ctx.renderContext)),
       };
     }),
   };

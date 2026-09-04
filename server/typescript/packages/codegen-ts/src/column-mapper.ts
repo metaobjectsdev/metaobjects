@@ -265,6 +265,18 @@ export interface ColumnSpec {
   /** Optional CHECK constraint expression for the column (e.g., `status IN ('A', 'B')`). */
   checkConstraint?: string;
   /**
+   * The member list of {@link checkConstraint}, without the leading column name — e.g.
+   * `'A', 'B'` or `0, 5, 9`.
+   *
+   * Carried separately so the RENDERER can compose the constraint against the column's
+   * `<Entity>Names` constant instead of the literal `dbName` baked in above. Splitting it
+   * here rather than re-deriving it there keeps ONE builder for the member list, which is
+   * the half that must match `migrate-ts`'s `buildChecks` exactly or `meta verify` reports
+   * permanent drift. `checkConstraint` stays the composed literal, for the documented arm
+   * where no names artifact is in the run.
+   */
+  checkConstraintValues?: string;
+  /**
    * Optional `.$type<...>()` chain target. Renderer (drizzle-schema.ts) emits
    * it ahead of the modifiers chain, using ts-poet `imp()` for objectRef
    * variants so the cross-module type import auto-hoists. `array` controls the
@@ -799,6 +811,7 @@ export function mapColumnType(
         list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
       }
       result.checkConstraint = `${dbName} IN (${list})`;
+      result.checkConstraintValues = list;
     }
   }
 

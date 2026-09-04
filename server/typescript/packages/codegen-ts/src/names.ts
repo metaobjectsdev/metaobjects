@@ -292,11 +292,16 @@ export function physicalNameExpr(
 }
 
 /**
- * A field's physical-column expression. A lookup MISS — the artifact is present but does
- * not carry this field (e.g. a TPH fold emitting columns for a subtype's own fields,
- * which the base's names artifact never saw) — is a PRESENCE guard, not the forbidden
- * divergence guard: it falls back to the literal, exactly as when the artifact isn't in
- * the run at all.
+ * A field's physical-column expression: the constant when the given artifact carries the
+ * field, the literal otherwise.
+ *
+ * The literal arm is a PRESENCE guard — "no artifact in this run", the documented ADR-0034
+ * opt-out — and NOT a divergence guard. It used to carry a second sanctioned case: a TPH
+ * fold emitting a subtype's own columns, which the BASE's artifact never saw. That was
+ * never a presence question; the constant existed the whole time, in the subtype's own
+ * artifact. Callers now resolve the declaring entity's ref before falling back
+ * (`drizzle-schema.ts`), so a miss no longer has a known-good explanation and the fallback
+ * is the last resort it was meant to be.
  */
 export function columnExpr(
   names: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined,
