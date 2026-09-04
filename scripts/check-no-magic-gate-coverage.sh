@@ -7,7 +7,7 @@
 # that decays one port at a time: delete one, or drop it from a CI lane, and the remaining
 # four go on passing while the sentence "every port is gated" quietly stops being true.
 #
-# So this checks two things a reader would otherwise have to take on trust:
+# So this checks three things a reader would otherwise have to take on trust:
 #   1. every port still HAS its gate file, and
 #   2. the two lanes that select JVM tests BY NAME still name it — those lanes run a
 #      hand-listed `-Dtest=` set, so a gate not on the list runs in no fast lane at all.
@@ -38,11 +38,18 @@
 # trains a reader to ignore it. Every marker therefore tolerates an optional backslash before
 # its closing quote, and the ledger below is empty rather than papering over the difference.
 #
-# The honest limit: a marker could in principle be matched by prose rather than by the
-# model. That is why every marker is a QUOTED metamodel token or a `<key>: true` pair, both
-# of which a sentence does not contain by accident — and why a port that genuinely cannot
-# model a shape must say so in EXPECTED_MISSING below, with a reason, rather than being
-# quietly tolerated.
+# A marker matched by PROSE rather than by the model was a real hole, not a hypothetical
+# one. The claim used to be that a QUOTED metamodel token "a sentence does not contain by
+# accident" — and a javadoc line in the Java gate reading `contains {@code "object.value"}
+# as a substring` contained one by accident, satisfying java:value_object on its own. The
+# ledger would have gone on reporting "no gap" with both real declarations deleted, which is
+# the same class of defect as the escapes this whole check exists for: a green result
+# standing for work nobody did.
+#
+# So markers are matched against the file with COMMENT-ONLY LINES STRIPPED (`model_text`
+# below) — `//`, `*`, `/*` for the four brace languages, `#` for Python. Prose about a shape
+# no longer counts as modelling it. A port that genuinely cannot model a shape must say so
+# in known_gaps below, with a reason, rather than being quietly tolerated.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -75,6 +82,18 @@ for fn in gate_conf_java gate_conf_kotlin; do
     *) note "$CI: $fn does not name NoMagicPhysicalNamesTest. That lane selects tests by name, so the gate would run in no fast lane — only in the slow reactor, which --quick skips." ;;
   esac
 done
+
+# A gate file with its COMMENT-ONLY LINES REMOVED. Shape markers are matched against this
+# rather than the raw file, so a shape merely DISCUSSED in a comment does not count as a
+# shape the fixture models. See the header note. Comment-only is deliberately narrow — a
+# leading `//`, `*` or `/*` in the brace languages, a leading `#` in Python — because the
+# goal is to drop prose, not to parse each host language.
+model_text() {
+  case "$1" in
+    *.py) grep -vE '^[[:space:]]*#' "$1" ;;
+    *)    grep -vE '^[[:space:]]*(//|\*|/\*)' "$1" ;;
+  esac
+}
 
 # --- 3. fixture shape parity across the five ports --------------------------------------
 # Each row: <shape> <grep -E pattern matching the shape in an embedded model>
@@ -132,9 +151,17 @@ observed_gaps=$(
   while read -r port path; do
     [ -z "$port" ] && continue
     [ -f "$path" ] || continue   # already reported by section 1
+    # Stripped ONCE per port, into a variable, and matched with a HERESTRING rather than a
+    # pipeline. `model_text "$path" | grep -Eq "$pattern"` is wrong under `set -o pipefail`:
+    # `grep -q` exits the instant it matches, closing the pipe, so the upstream `grep -v`
+    # dies of SIGPIPE and pipefail hands the pipeline ITS status — a MATCH reported as a
+    # gap, and only for shapes appearing early enough in the file that the stripper was
+    # still writing. Same defect as the pre-release pin detector's `grep | head` under
+    # pipefail; it inverts the verdict, which is worse than failing outright.
+    model=$(model_text "$path")
     while read -r shape pattern; do
       [ -z "$shape" ] && continue
-      grep -Eq "$pattern" "$path" || printf '%s:%s\n' "$port" "$shape"
+      grep -Eq "$pattern" <<<"$model" || printf '%s:%s\n' "$port" "$shape"
     done <<SHAPELIST
 $(shapes)
 SHAPELIST
