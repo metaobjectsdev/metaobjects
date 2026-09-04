@@ -371,7 +371,13 @@ const isNamesArtifact = (path: string): boolean => path.endsWith(".names.ts");
 const DIALECTS = ["sqlite", "postgres"] as const;
 
 async function generate(dialect: (typeof DIALECTS)[number]): Promise<Record<string, string>> {
-  const loader = new MetaDataLoader();
+  // STRICT deliberately. `new MetaDataLoader()` defaults to strict:false, so the
+  // assertion below used to prove only that the fixture parses — not that it is legal
+  // under the sealed registry (ADR-0023), which is the rule an adopter's model actually
+  // faces. A gate is allowed to model shapes; it is not allowed to model shapes that
+  // would not load. The unregistered-attribute bug class this whole stream chased
+  // (`@procName`, `@param`) survived for exactly this reason on another port.
+  const loader = new MetaDataLoader({ strict: true });
   const { root, errors } = await loader.load([
     new InMemoryStringSource(JSON.stringify(MODEL), { id: "no-magic.json" }),
   ]);

@@ -600,9 +600,17 @@ public class NoMagicPhysicalNamesTest {
         // (so a consumer could read it) and no generated file references the constant (so
         // none does). Asserting the second half is the point — it is a pin on a DEFECT, and
         // the day a generator starts honouring the name this row fails and demands promotion
-        // to CONSTANT, rather than the fix landing with nothing to notice it. Empty on this
-        // port today, for the reason on the Reach javadoc; the test is what makes that a
-        // checked statement rather than an assumed one.
+        // to CONSTANT, rather than the fix landing with nothing to notice it.
+        //
+        // On THIS port the loop is a FORWARD PIN and nothing more: every row in TOKENS is
+        // CONSTANT, so the filter below matches none of them and the body never executes.
+        // An earlier version of this comment claimed the test "makes that a checked
+        // statement rather than an assumed one", which was not true of it — a loop over an
+        // empty selection asserts nothing, and relabelling any row DROPPED would leave the
+        // gate just as green. It is worth stating because the sibling ESCAPE claim on this
+        // port IS a real measurement: the exhaustive `zz_phys_` equality test scans actual
+        // generated output that an anti-vacuity assertion pins as non-empty. The two claims
+        // read alike and are not alike, and only one of them was earning its keep.
         Map<String, String> tree = generate();
         String names = namesBody(tree);
         String body = consumerBody(tree);

@@ -363,7 +363,16 @@ public class NoMagicPhysicalNamesTests
     /// <summary>Run the generator suite over the fixture.</summary>
     private static IReadOnlyList<EmittedFile> Generate()
     {
-        var result = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "no-magic.json")]);
+        // strict: true deliberately. `new MetaDataLoader()` is strict:false, so the assertion
+        // below used to prove only that the fixture parses — not that it is legal under the
+        // sealed registry (ADR-0023), which is the rule an adopter's model actually faces. A
+        // gate is allowed to model shapes; it is not allowed to model shapes that would not
+        // load. The unregistered-attribute bug class this stream chased survived on another
+        // port for exactly this reason. The registry mirrors the parameterless constructor's
+        // own `DefaultRegistry()` (which is private) so the ONLY difference is strictness.
+        var registry = Provider.ComposeRegistry(CoreTypes.LibraryProviders);
+        var result = new MetaDataLoader(registry, strict: true)
+            .Load([new InMemoryStringSource(Model, id: "no-magic.json")]);
         // A gate whose fixture the loader would reject proves nothing.
         Assert.True(result.Errors.Count == 0, string.Join("\n", result.Errors.Select(e => e.ToString())));
 

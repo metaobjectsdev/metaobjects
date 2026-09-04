@@ -583,7 +583,13 @@ def _is_names_module(path: str) -> bool:
 def _generate(tmp_path: Path) -> dict[str, str]:
     """Run every NATIVE generator the registry knows — a hand-picked subset is how a
     generator escapes the gate — and return every emitted file."""
-    loader = MetaDataLoader()
+    # strict=True deliberately. MetaDataLoader defaults to strict=False, so the assertion
+    # below used to prove only that the fixture parses — not that it is legal under the
+    # sealed registry (ADR-0023), which is the rule an adopter's model actually faces. A
+    # gate is allowed to model shapes; it is not allowed to model shapes that would not
+    # load. The unregistered-attribute bug class this stream chased survived on another
+    # port for exactly this reason.
+    loader = MetaDataLoader(strict=True)
     result = loader.load([
         InMemoryStringSource(
             json.dumps(MODEL), format=MetaDataFormat.JSON, id="no-magic.json"

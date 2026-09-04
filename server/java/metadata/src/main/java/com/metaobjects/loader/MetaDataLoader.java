@@ -785,7 +785,36 @@ public class MetaDataLoader implements LoaderConfigurable {
      * @return a fully-initialized loader with the inline content loaded
      */
     public static MetaDataLoader fromString(String name, String content, MetaDataSource.MetaDataFormat format) {
-        MetaDataLoader loader = createManual(false, name);
+        return fromString(name, content, format, null);
+    }
+
+    /**
+     * Load a single in-memory string with the supplied options.
+     *
+     * <p>Preserves the caller's {@link LoaderOptions} (notably {@code strict}, which
+     * {@link #createManual(boolean, String)} defaults to {@code false}). Pass {@code null}
+     * to use the {@code createManual} defaults.</p>
+     *
+     * <p>This overload existed for {@link #fromUris(String, java.util.List, LoaderOptions)}
+     * and {@link #fromResources(String, java.util.List, LoaderOptions)} but not here, and the
+     * asymmetry had a cost: a caller loading an inline model — which is what every codegen
+     * test does — had NO way to ask for strict, so a fixture using an attribute the sealed
+     * registry forbids (ADR-0023) loaded clean and the test asserting {@code errors == []}
+     * proved only that the document parses. That is how the unregistered {@code @procName}
+     * survived in a shipped generator long enough to be found by a review rather than by a
+     * gate.</p>
+     *
+     * @param name    the loader name
+     * @param content the raw document content
+     * @param format  the document format
+     * @param opts    loader options, or {@code null} for the {@code createManual} defaults
+     * @return a fully-initialized loader with the inline content loaded
+     */
+    public static MetaDataLoader fromString(
+            String name, String content, MetaDataSource.MetaDataFormat format, LoaderOptions opts) {
+        MetaDataLoader loader = (opts == null)
+            ? createManual(false, name)
+            : new MetaDataLoader(opts, SUBTYPE_MANUAL, name);
         try {
             loader.init();
             loader.load(List.of(new InMemoryStringSource(content, "<inline>", format)));

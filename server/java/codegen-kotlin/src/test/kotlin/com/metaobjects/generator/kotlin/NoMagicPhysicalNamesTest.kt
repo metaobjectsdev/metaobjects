@@ -1,6 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.generator.EmitsPhysicalNameConstants
+import com.metaobjects.loader.LoaderOptions
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import java.nio.file.Path
@@ -321,9 +322,18 @@ class NoMagicPhysicalNamesTest {
         val outDir = Files.createTempDirectory("no-magic-")
         val templateRoot = Files.createTempDirectory("no-magic-tpl-")
         try {
-            val loader = loadString("test", model)
-            // A gate whose fixture the loader would reject proves nothing. loadString throws
-            // on most defects; this catches the ones a phase records instead of throwing.
+            // STRICT deliberately, and this is the port where it mattered. `loadString`
+            // routes through `createManual`, which passes strict=false, so this assertion
+            // used to prove only that the fixture PARSES — never that it is legal under the
+            // sealed registry (ADR-0023), which is the rule an adopter's model faces. That
+            // is exactly how the unregistered `@procName` survived in this module's
+            // stored-proc generator for as long as it did: every test asserting
+            // `errors == []` was asking a question that could not fail on an unknown attr.
+            // `loadString` had no options parameter at all until now — its siblings
+            // `loadUris`/`loadResources` took LoaderOptions and it did not — so the lax load
+            // was the API's doing, not a choice made here.
+            val loader = loadString("test", model, opts = LoaderOptions.create(false, false, true))
+            // A gate whose fixture the loader would reject proves nothing.
             assertEquals(emptyList(), loader.errors, "the no-magic fixture must load clean")
             // `templateRoot` (render-helper) and `packageName` (validator, spring-config)
             // are required by a few generators and ignored by the rest; supplying both keeps

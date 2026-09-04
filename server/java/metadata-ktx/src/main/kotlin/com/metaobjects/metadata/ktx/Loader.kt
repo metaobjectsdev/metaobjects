@@ -34,9 +34,18 @@ fun loadResources(
     opts: LoaderOptions? = null,
 ): MetaDataLoader = MetaDataLoader.fromResources(name, resources, opts)
 
-/** Load metadata from a single inline string (defaults to JSON). */
+/**
+ * Load metadata from a single inline string (defaults to JSON); pass [LoaderOptions] to
+ * tune (e.g. `strict=true`), matching [loadUris] and [loadResources].
+ *
+ * The options parameter is the point: without it this was the ONE loader entry that could
+ * not opt into strict, so an inline fixture — which is what every codegen test uses — was
+ * always loaded lax and an `errors == []` assertion proved only that the document parses,
+ * never that it is legal under the sealed registry (ADR-0023).
+ */
 fun loadString(
     name: String,
     content: String,
     format: MetaDataFormat = MetaDataFormat.JSON,
-): MetaDataLoader = MetaDataLoader.fromString(name, content, format)
+    opts: LoaderOptions? = null,
+): MetaDataLoader = MetaDataLoader.fromString(name, content, format, opts)
