@@ -26,7 +26,10 @@
 # gate claims to cover is exactly as reliable as the claim it is supposed to verify. The
 # markers below are metamodel type and attribute names, which appear in each gate's
 # embedded model regardless of host language (JSON keys, quoted the same way in a TS object
-# literal, a Python dict, a Kotlin raw string and a Java escaped string).
+# literal, a Python dict, a Kotlin raw string and a Java TEXT BLOCK). Not a Java `\"`-escaped
+# string: there every closing quote is preceded by a backslash, so `"object.value"` never
+# occurs as a substring and every quoted marker below reads as absent — which is exactly how
+# the Java gate reported itself as modelling nothing while its fixture had two of the shapes.
 #
 # The honest limit: a marker could in principle be matched by prose rather than by the
 # model. That is why every marker is a QUOTED metamodel token or a `<key>: true` pair, both
@@ -136,31 +139,6 @@ python:schema
 python:array_field
 python:abstract_base
 python:write_through_role
-java:tph_base
-java:tph_subtype
-java:enum
-java:enum_int_backed
-java:secondary_identity
-java:lookup_index
-java:callable_source
-java:schema
-java:array_field
-java:abstract_base
-java:projection
-java:value_object
-java:write_through_role
-kotlin:tph_base
-kotlin:tph_subtype
-kotlin:enum
-kotlin:enum_int_backed
-kotlin:secondary_identity
-kotlin:lookup_index
-kotlin:callable_source
-kotlin:schema
-kotlin:array_field
-kotlin:abstract_base
-kotlin:projection
-kotlin:write_through_role
 GAPS
 }
 
