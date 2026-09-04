@@ -90,12 +90,15 @@ const ABS_COL = "zz_phys_col_bid";        // a column declared on an ABSTRACT ba
 const PROC = "zz_phys_proc_alpha";        // a storedProc source's physical name
 const PROC_ARG_COL = "zz_phys_col_since";
 const PROC_OUT_COL = "zz_phys_col_total";
-// The composite CHECK-constraint names the enum columns produce. Not declared names —
-// #293's `<table>_<column>_chk` convention, spelled by codegen and by migrate. They are
-// listed because the exhaustive test below sees them as `zz_phys_` tokens whether or not
-// anyone names them, and an escape nobody named is exactly what this gate exists to stop.
-const ENUM_CHECK = `${WIDGET_TABLE}_${ENUM_COL}_chk`;
-const ENUM_INT_CHECK = `${WIDGET_TABLE}_${ENUM_INT_COL}_chk`;
+// The enum columns also produce composite CHECK-constraint names (#293's
+// `<table>_<column>_chk`), and they are deliberately NOT bound here. Two `const`s holding
+// those names used to sit at this spot, read by nothing, under a comment claiming "the
+// exhaustive test below sees them as `zz_phys_` tokens whether or not anyone names them".
+// That has it backwards: correct output COMPOSES the CHECK name from the two constants at
+// runtime, so no `zz_phys_` literal appears for the scan to see — and if a generator ever
+// did spell one, the scan's both-directions equality would fail it as an undeclared token
+// with no row to book it against, which is the protection. The names were never the thing
+// under test; the composition is, and `secondary-index-name-parity` owns that.
 
 /**
  * How a physical name reaches generated output today.

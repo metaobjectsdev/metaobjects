@@ -175,7 +175,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, false, obj.package, obj.name);
+    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, obj.package, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
@@ -195,7 +195,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     }
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
-      spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, obj.name, true,
+      spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, obj.package, obj.name, true,
     );
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
@@ -401,7 +401,6 @@ function renderColumn(
   pkGeneration: string | undefined,
   fkInfo: FkInfo | undefined,
   isComposite: boolean,
-  isUnique: boolean = false,
   entityPackage: string | undefined = undefined,
   // Name of the entity this column belongs to — used to detect a self-referential
   // FK (target entity === this entity), which Drizzle emits without a self-import.
@@ -455,14 +454,17 @@ function renderColumn(
   }
 
   let modifiersStr = pkSuffix;
-  // Append .unique() for secondary-identity fields (isPk guard already excluded PKs upstream).
-  if (isUnique) modifiersStr += ".unique()";
+  // No `isUnique` parameter here any more, and its absence is the fix rather than a tidy-up.
+  // A single-column `identity.secondary` used to append `.unique()` on top of the constraint
+  // migrate already emits under the identity's own name, so codegen declared one constraint
+  // the database does not have. When that producer was removed both call sites started
+  // passing a literal `false`, leaving a parameter whose every branch was unreachable — a
+  // dead switch that reads like a live one. `spec.modifiers` carries whatever uniqueness the
+  // column genuinely has, and the loop below is the only thing that applies it.
   for (const m of spec.modifiers) {
     // Single-column PKs imply notNull/unique; avoid emitting them twice.
     // Composite-PK columns are NOT declared with .primaryKey(), so they DO need .notNull().
     if (isPk && !isComposite && (m === ".notNull()" || m === ".unique()")) continue;
-    // Avoid double-emitting .unique() if it was already appended above.
-    if (isUnique && m === ".unique()") continue;
     // TPH subtype-only column: never .notNull() / .unique() — rows of other
     // subtypes store NULL, so neither constraint can hold across the table.
     if (forceNullable && (m === ".notNull()" || m === ".unique()")) continue;
