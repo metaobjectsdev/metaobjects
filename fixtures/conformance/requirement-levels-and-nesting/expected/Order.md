@@ -19,4 +19,5 @@
 ## Required by
 
 - `requirement.functional Storefront.OrderService.OrderRecord` · **L4** · status: `live` — An order records what was bought and for how much
+- `requirement.functional Storefront.OrderService.OrderRecord.TranscribableReference` · **L5** · status: `live` · on `reference` — An order carries a reference a customer can read down a phone line
 - `requirement.architectural UuidPrimaryKeys` · status: `live` — Every entity has a uuid primary key

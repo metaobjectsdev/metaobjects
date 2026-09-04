@@ -4,6 +4,7 @@
 // markdown structure now lives in templates/docs/entity-page.md.mustache.
 
 import {
+  type MetaData,
   type MetaObject,
   type MetaField,
   type MetaIdentity,
@@ -699,17 +700,49 @@ export function buildEntityDocData(
   //
   // ENTITY-GRAIN. Object coverage is entity-grain, so a claimed value/projection gets
   // nothing — surfacing one would imply a coverage rule the ledger does not have.
+  //
+  // "Entity-grain" is about which PAGE the row lands on, NOT about how deep the claim may
+  // point. A claim is authored at whatever grain the requirement is really about, and an L5
+  // one names a MEMBER — `acme::Subscriber.status` in the shipped showcase. `walkRequirements`
+  // resolves that to the FIELD node, so an identity test against `entity` missed it and the
+  // showcase's only claim produced no "Required by" at all. The claim belongs on the owning
+  // entity's page either way: that is where a reader looks, and the member is named in the row
+  // rather than being the reason the row disappears.
+  //
+  // Hence: match the claimed node OR any ANCESTOR of it up to and including this entity. The
+  // walk stops AT the entity, so a claim on some other object's member cannot reach this page
+  // by climbing past its own root.
+  const memberPathTo = (target: MetaData): string | undefined => {
+    const segments: string[] = [];
+    for (let n: MetaData | undefined = target; n !== undefined; n = n.parent) {
+      if (n === entity) return segments.length > 0 ? segments.reverse().join(".") : "";
+      segments.push(n.name);
+    }
+    return undefined;   // not under this entity at all
+  };
   const claimedByMatches: UsedByDoc[] = [];
   if (entity.subType === OBJECT_SUBTYPE_ENTITY) {
     for (const walked of walkRequirements(root)) {
-      if (!walked.targets.some((t) => t.node === entity)) continue;
+      // The SHALLOWEST member path among this requirement's targets that lands on this
+      // entity: "" for an entity-grain claim, "status" for an L5 member claim. undefined
+      // when no target is under this entity.
+      let member: string | undefined;
+      for (const t of walked.targets) {
+        const path = memberPathTo(t.node);
+        if (path === undefined) continue;
+        if (member === undefined || path.length < member.length) member = path;
+      }
+      if (member === undefined) continue;
       const v = walked.view;
       const level = v.level === undefined ? "" : ` · **L${v.level}**`;
       const status = v.status === undefined ? "" : ` · status: \`${v.status}\``;
       const statement = walked.node.attr(REQUIREMENT_ATTR_STATEMENT);
       const said = typeof statement === "string" && statement.length > 0 ? ` — ${statement}` : "";
+      // A member-grain claim says WHICH member, so the row is actionable rather than
+      // merely present. An entity-grain claim renders exactly as before (byte-identical).
+      const on = member === "" ? "" : ` · on \`${member}\``;
       claimedByMatches.push({
-        bullet: `\`requirement.${v.subType} ${v.path}\`${level}${status}${said}`,
+        bullet: `\`requirement.${v.subType} ${v.path}\`${level}${status}${on}${said}`,
       });
     }
   }
