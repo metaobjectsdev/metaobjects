@@ -18,6 +18,7 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
+import org.slf4j.LoggerFactory
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
@@ -113,7 +114,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             // references (when useNames) resolve from one source node.
             val sourceRdb = KotlinGenUtil.primaryRdbSource(entity) ?: continue
             if (sourceRdb.effectiveKind != MetaSource.KIND_STORED_PROC) continue
-            emit(entity, sourceRdb, outRoot)
+            emit(entity, sourceRdb, outRoot, loader)
         }
     }
 
@@ -121,6 +122,10 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         entity: MetaObject,
         sourceRdb: RdbSource,
         outRoot: java.nio.file.Path,
+        // FR-015 — needed to resolve @parameterRef to its value object. Threaded in rather
+        // than held as state, matching KotlinExposedTableGenerator's per-entity emit, which
+        // takes the loader for the same reason.
+        loader: MetaDataLoader,
     ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val objectName = KotlinNaming.procObjectName(shortName)
@@ -153,12 +158,39 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             "the stored procedure named by `$namesObject.NAME`"
         else "stored procedure `$procName`"
 
-        val allFields = entity.metaFields.toList()
-        val params = allFields.filter { isParamField(it) }
-        val resultFields = allFields.filter { !isParamField(it) }
+        // FR-015: the call-site arguments are the @parameterRef value object's fields, in
+        // declaration order, and the entity's own fields are ALL result columns. This is the
+        // REGISTERED cross-port contract — the same one TypeScript's callable-file and C#'s
+        // CallableGenerator implement.
+        //
+        // It replaces a partition of the entity's own fields by an `@param` attribute that
+        // this port invented and no provider registers. Under the sealed registry (ADR-0023)
+        // no metadata carrying `@param` can load at all, so that predicate answered false for
+        // every field of every loadable model and every wrapper this generator emitted was
+        // silently zero-argument — while an adopter following the documented contract and
+        // declaring @parameterRef got their arguments ignored. It survived because the tests
+        // that would have caught it loaded LAX, which is fixed separately.
+        val parameterRef = sourceRdb.takeIf { it.hasMetaAttr(RdbSource.ATTR_PARAMETER_REF) }
+            ?.let { runCatching { it.getMetaAttr(RdbSource.ATTR_PARAMETER_REF).valueAsString }.getOrNull() }
+            ?.takeIf { it.isNotEmpty() }
+        // ADR-0042: a bare ref resolves package-locally against the referrer's METADATA
+        // package — `entity.getPackage()` ("acme::demo"), never the mapped Kotlin package
+        // `pkg` ("acme.demo") that PackageMapping.splitFqn hands back. Passing the Kotlin
+        // one silently resolves NOTHING, which reads exactly like "this callable declares no
+        // arguments" and emits a zero-argument wrapper — the same silent-shortfall shape as
+        // the @param bug this replaces.
+        val argsObject = KotlinGenUtil.resolveObjectRef(loader, parameterRef, entity.getPackage())
+        if (parameterRef != null && argsObject == null) {
+            LOG.warn(
+                "KotlinStoredProcGenerator: callable \"{}\" @parameterRef \"{}\" did not " +
+                    "resolve — emitting a zero-argument wrapper", entity.name, parameterRef,
+            )
+        }
+        val params = argsObject?.metaFields?.toList() ?: emptyList()
+        val resultFields = entity.metaFields.toList()
 
         // Backward-compat path: no fields at all → emit the documented stub.
-        val source = if (allFields.isEmpty()) {
+        val source = if (resultFields.isEmpty() && params.isEmpty()) {
             renderStub(pkg, shortName, objectName, procNameExpr, procNameDoc)
         } else {
             renderCallObject(pkg, shortName, objectName, procNameExpr, procNameDoc, params, resultFields)
@@ -291,27 +323,6 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         else "\"${KotlinGenUtil.resolveColumnName(field, columnNaming())}\""
 
     /**
-     * Is this field declared as a stored-proc call parameter? Truthy values:
-     *   - boolean `true`
-     *   - string `"true"`, `"in"`, `"out"`, `"inout"` (case-insensitive)
-     * Any other value (false, `"false"`, missing attr) means "result-row column".
-     */
-    private fun isParamField(field: MetaField<*>): Boolean {
-        // ADR-0039: @param is an inheritable effective field property — a concrete
-        // field extending an abstract param-field inherits it. RESOLVE (default true).
-        if (!field.hasMetaAttr(ATTR_PARAM)) return false
-        val raw = runCatching { field.getMetaAttr(ATTR_PARAM).value }.getOrNull()
-        return when (raw) {
-            is Boolean -> raw
-            is String -> {
-                val v = raw.trim().lowercase()
-                v == "true" || v == "in" || v == "out" || v == "inout"
-            }
-            else -> false
-        }
-    }
-
-    /**
      * Fully qualified Kotlin parameter type for a call-parameter field. Uses the
      * same semantic mapping as [KotlinTypeMapper.kotlinTypeName] but emitted as a
      * source-level type reference (no KotlinPoet imports). Date / Instant / UUID
@@ -383,8 +394,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     }
 
     private companion object {
-        /** Attr on a `field.*` declaring it as a stored-proc call parameter. */
-        const val ATTR_PARAM = "param"
+        val LOG = LoggerFactory.getLogger(KotlinStoredProcGenerator::class.java)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

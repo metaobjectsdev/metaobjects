@@ -104,11 +104,14 @@ class KotlinApiDocsAccuracyKtTest {
             { "field.long":   { "name": "totalCents" } },
             { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } }
         ] } },
+        { "object.value": { "name": "OrderReportArgs", "children": [
+            { "field.long": { "name": "orderId" } }
+        ] } },
         { "object.projection": { "name": "OrderReport", "children": [
-            { "field.long":   { "name": "orderId", "@param": true } },
             { "field.string": { "name": "status", "@maxLength": 50 } },
             { "field.long":   { "name": "totalCents" } },
-            { "source.rdb":   { "@kind": "storedProc", "@table": "get_order_report" } }
+            { "source.rdb":   { "@kind": "storedProc", "@table": "get_order_report",
+                                "@parameterRef": "OrderReportArgs" } }
         ] } },
         { "object.value": { "name": "SummaryPayload", "children": [
             { "field.string": { "name": "summary", "@required": true } }

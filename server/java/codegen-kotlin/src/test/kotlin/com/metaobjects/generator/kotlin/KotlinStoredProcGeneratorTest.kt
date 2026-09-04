@@ -305,21 +305,31 @@ class KotlinStoredProcGeneratorTest {
         }
     }
 
-    // === @param-binding tests =================================================
-    // NOTE: `@param` is registered by no provider either, so these fixtures load only
-    // under the lax loader `loadString` builds; a strict (Maven-default) load refuses
-    // them. That is a vocabulary question — FR-015's registered `@parameterRef` is what
-    // the other ports bind arguments from — and is deliberately not addressed here.
+    // === @parameterRef-binding tests ==========================================
+    // These used to declare arguments with a per-field `@param` attribute this port
+    // invented and no provider registers, so they loaded only under the lax loader
+    // `loadString` used to build — and under the sealed registry (ADR-0023) the predicate
+    // reading it answered false for every field of every model that can actually load,
+    // making every emitted wrapper zero-argument. The fixtures now use the REGISTERED
+    // cross-port contract, `@parameterRef` naming an `object.value` whose fields are the
+    // call arguments in declaration order, which is what TS and C# have always bound from.
+    //
+    // One behavioural consequence is visible in the assertions: the arguments now live on a
+    // SEPARATE object, so the callable's own fields are ALL result columns. There is no
+    // longer a field that is a parameter and therefore excluded from the result row.
 
-    @Test fun `storedProc with one @param emits typed call fn`() {
-        // OrderReport: orderId (@param, Long) + status (result, String) + total (result, Long)
+    @Test fun `storedProc with one parameterRef arg emits typed call fn`() {
+        // OrderReport: orderId (argument, Long) + status (result, String) + total (result, Long)
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "OrderReportArgs", "children": [
+                { "field.long": { "name": "orderId" } }
+            ] } },
             { "object.projection": { "name": "OrderReport", "children": [
-                { "field.long":   { "name": "orderId", "@param": true } },
                 { "field.string": { "name": "status" } },
                 { "field.long":   { "name": "total" } },
-                { "source.rdb":   { "@kind": "storedProc", "@proc": "get_order_report" } }
+                { "source.rdb":   { "@kind": "storedProc", "@proc": "get_order_report",
+                                    "@parameterRef": "OrderReportArgs" } }
             ] } }
           ] }
         }""".trimIndent()
@@ -343,14 +353,16 @@ class KotlinStoredProcGeneratorTest {
             // Result-row mapping uses status + total only (orderId is NOT mapped).
             assertTrue("rs.getString(\"status\")" in src, src)
             assertTrue("rs.getLong(\"total\")" in src, src)
+            // orderId lives on the ARGS object, not on the callable, so it cannot appear in
+            // the result-row mapping — the exclusion is now structural rather than a filter.
             assertFalse("rs.getLong(\"orderId\")" in src,
-                "orderId is a @param, must not appear in result-row mapping; src=$src")
+                "orderId is a call argument, must not appear in result-row mapping; src=$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
     }
 
-    @Test fun `storedProc with no @param emits no-arg call fn`() {
+    @Test fun `storedProc with no parameterRef emits no-arg call fn`() {
         // GetAllProducts: no params, result fields name + price.
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
@@ -387,16 +399,20 @@ class KotlinStoredProcGeneratorTest {
         }
     }
 
-    @Test fun `storedProc with multiple @param preserves order`() {
-        // GetReport: year (Int, @param) + region (String, @param) — declared in that order.
+    @Test fun `storedProc with multiple parameterRef args preserves order`() {
+        // GetReport args: year (Int) + region (String) — declared in that order on the args
+        // value object, which is what fixes the positional binding order.
         // Result fields: total (Long).
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "GetReportArgs", "children": [
+                { "field.int":    { "name": "year" } },
+                { "field.string": { "name": "region" } }
+            ] } },
             { "object.projection": { "name": "GetReport", "children": [
-                { "field.int":    { "name": "year",   "@param": true } },
-                { "field.string": { "name": "region", "@param": "in" } },
                 { "field.long":   { "name": "total" } },
-                { "source.rdb":   { "@kind": "storedProc", "@proc": "get_report" } }
+                { "source.rdb":   { "@kind": "storedProc", "@proc": "get_report",
+                                    "@parameterRef": "GetReportArgs" } }
             ] } }
           ] }
         }""".trimIndent()
