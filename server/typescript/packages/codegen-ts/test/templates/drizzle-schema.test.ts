@@ -302,7 +302,7 @@ describe("renderDrizzleSchema — Postgres", () => {
 });
 
 describe("renderDrizzleSchema — secondary identity", () => {
-  test("identity.secondary emits .unique() on each field + uniqueIndex callback", () => {
+  test("identity.secondary emits the uniqueIndex callback ONLY — never also .unique()", () => {
     const sub = metaObject(OBJECT_SUBTYPE_ENTITY, "Subscriber");
     sub.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
     const email = metaField(FIELD_SUBTYPE_STRING, "email");
@@ -328,12 +328,20 @@ describe("renderDrizzleSchema — secondary identity", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderDrizzleSchema(root.findObject("Subscriber")!, ctx).toString();
-    expect(out).toContain(".unique()");                  // .unique() on email column
     expect(out).toContain("uniqueIndex");                // table callback
     // The identity's OWN name — what migrate writes to the database. This assertion
     // used to pin `idx_subscribers_email`, the composed name that disagreed with
     // migrate; see secondary-index-name-parity.test.ts.
     expect(out).toContain('"uniqueEmail"');
+    // ...and NOT a column-level `.unique()` as well. This assertion is inverted from what
+    // it used to be, because what it used to pin was a divergence: `email` here carries no
+    // `@unique` of its own, so the only thing asking for a column-level unique was the
+    // secondary identity — which migrate expresses as the index above and nothing else
+    // (buildExpectedSchema mirrors `<table>_<col>_unique` for `@unique` FIELDS only). Two
+    // constraints in the generated schema where the database has one means `drizzle-kit
+    // push` proposes creating the extra one. The `.unique()` arm still exists; it is
+    // driven by the field's own `@unique`, which is the arm migrate mirrors.
+    expect(out).not.toContain(".unique()");
   });
 
   test("composite secondary identity emits multi-column uniqueIndex", () => {

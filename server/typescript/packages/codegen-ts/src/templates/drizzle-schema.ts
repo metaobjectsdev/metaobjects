@@ -105,16 +105,21 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
 
   // Collect secondary identities and the field names that need .unique() on
   // their column. identity.secondary is ALWAYS unique (no @unique attr) — only
-  // single-column identities propagate .unique() to the column; multi-column ones
-  // emit a callback uniqueIndex() entry instead.
-  // index.lookup is non-unique and must NOT stamp .unique() on its columns.
+  // An `identity.secondary` reaches the table ONLY as the `uniqueIndex(...)` callback
+  // emitted further down — never additionally as `.unique()` on its column.
+  //
+  // It used to do both for a single-column identity, under a comment describing an
+  // either/or ("single-column identities propagate .unique() to the column; multi-column
+  // ones emit a callback uniqueIndex() entry instead") that the code did not implement:
+  // the callback loop has no column-count condition, so a one-column secondary got a
+  // column-level unique AND a table-level unique index. `migrate-ts` emits only the index
+  // for that shape — it mirrors a `<table>_<col>_unique` constraint for `@unique` fields
+  // and nothing extra for a secondary — so the generated schema declared a constraint the
+  // database does not have, and `drizzle-kit push` run against it proposes creating one.
+  //
+  // `.unique()` still comes from the FIELD's own `@unique`, via the column mapper, which
+  // is exactly the arm migrate mirrors.
   const secondaryIdentities = obj.secondaryIdentities();
-  const uniqueFieldNames = new Set<string>();
-  for (const sec of secondaryIdentities) {
-    const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
-    if (!Array.isArray(fields) || fields.length !== 1) continue; // multi-col uniques use a callback uniqueIndex, not a column flag
-    uniqueFieldNames.add(fields[0]!);
-  }
 
   const columnLines: Code[] = [];
   // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
@@ -162,7 +167,6 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // no longer creates.
     if (child.isDerived()) continue;
     const isPk = pkFieldNames.has(child.name);
-    const isUnique = uniqueFieldNames.has(child.name) && !isPk;
     const fkInfo = fkMap.get(child.name);
     // Compute the column spec once per field and reuse it for both the column
     // line and the CHECK collection.
@@ -171,7 +175,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package, obj.name);
+    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, false, obj.package, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }

@@ -165,7 +165,18 @@ public class GeneratorRegistryConformanceTest {
      * {@code AbstractMetaDataMojo}'s {@code (Generator) newInstance()}. Nothing here looked.
      *
      * <p>"Wirable" is exactly what the mojo requires: the class loads, implements
-     * {@code Generator}, and has a no-arg constructor to reflect on.</p>
+     * {@code Generator}, and can actually be INSTANTIATED through a no-arg constructor.</p>
+     *
+     * <p>That last word is load-bearing, and this check used to stop one step short of it.
+     * It called {@code getDeclaredConstructor()} and never invoked the result — but
+     * {@code getDeclaredConstructor()} succeeds for a PRIVATE constructor and for an
+     * ABSTRACT class, while the mojo goes on to call {@code newInstance()} with no
+     * {@code setAccessible}, which throws {@code IllegalAccessException} for the first and
+     * {@code InstantiationException} for the second. So the gate would have passed a row
+     * the mojo fails, which is the one thing it exists to prevent. No registered row is in
+     * that state today; the check now instantiates, so none can arrive in it unnoticed.
+     * The no-magic gates in this module and in codegen-kotlin already instantiate every
+     * NATIVE generator, so doing it here costs nothing new.</p>
      */
     @Test
     public void everyRegisteredClassnameLoadsAndIsAWirableGenerator() {
@@ -185,9 +196,16 @@ public class GeneratorRegistryConformanceTest {
                 continue;
             }
             try {
-                impl.getDeclaredConstructor();
+                // INSTANTIATE, exactly as AbstractMetaDataMojo.buildGenerators does — see
+                // the javadoc above for why merely resolving the constructor is too weak.
+                impl.getDeclaredConstructor().newInstance();
             } catch (NoSuchMethodException ex) {
                 notWirable.add(e.getKey() + " (no no-arg constructor)");
+            } catch (ReflectiveOperationException | RuntimeException ex) {
+                // IllegalAccessException (private ctor), InstantiationException (abstract),
+                // or anything the constructor itself throws — the mojo would die on all of
+                // them, so all of them are "not wirable" and the reason is reported.
+                notWirable.add(e.getKey() + " (" + ex.getClass().getSimpleName() + ")");
             }
         }
 
