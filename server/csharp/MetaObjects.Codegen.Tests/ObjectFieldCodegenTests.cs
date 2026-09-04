@@ -21,6 +21,16 @@ public class ObjectFieldCodegenTests
         { "field.enum":   { "name": "kind",  "@values": ["HOME", "WORK"] } },
         { "field.enum":   { "name": "grade", "@values": ["LO", "HI"], "@intValueMap": { "LO": 1, "HI": 2 } } }
       ]}},
+      { "object.value": { "name": "Badge", "children": [
+        { "field.string": { "name": "code" } },
+        { "field.enum":   { "name": "tier", "@values": ["GOLD", "SILVER"] } }
+      ]}},
+      { "object.value": { "name": "Profile", "children": [
+        { "field.string": { "name": "handle" } },
+        { "field.enum":   { "name": "roles", "@values": ["ADMIN", "USER"], "isArray": true } },
+        { "field.object": { "name": "badge", "@objectRef": "Badge" } },
+        { "field.map":    { "name": "prefs", "@objectRef": "Badge" } }
+      ]}},
       { "object.entity": { "name": "Customer", "children": [
         { "source.rdb": { "@table": "customers" } },
         { "field.long":   { "name": "id" } },
@@ -28,6 +38,7 @@ public class ObjectFieldCodegenTests
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
         { "field.object": { "name": "config", "@objectRef": "Address" } },
         { "field.object": { "name": "tags", "@objectRef": "Address", "@storage": "jsonb", "isArray": true } },
+        { "field.object": { "name": "profile", "@objectRef": "Profile", "@storage": "flattened" } },
         { "identity.primary": { "@fields": "id" } }
       ]}}
     ]}}
@@ -167,6 +178,68 @@ public class ObjectFieldCodegenTests
         Assert.DoesNotContain("CustomerNames", routes);
     }
 
+    // The flattened member set must equal the set migrate flattens. migrate's
+    // flattenObjectField iterates the value object's fields UNCONDITIONALLY and emits one
+    // `<prefix>_<member col>` per member, so any member this generator skips silently gets
+    // EF's `<Nav>_<Prop>` default — a column no migration creates, failing at the engine
+    // with 42703. Scalars and non-array enums were covered; an ARRAY enum and a NESTED
+    // value object were not, and are covered here. `field.map` is deliberately still not
+    // named and must WARN instead of emitting a wrong column (see the sibling test).
+    [Fact]
+    public void DbContext_names_every_flattened_member_the_migration_creates()
+    {
+        var ctx = Ctx(Load());
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        // A plain scalar member: the pre-existing rule, pinned here so the ordering of the
+        // richer members below is anchored to something already known-correct.
+        Assert.Contains("b.Property(p => p.Handle).HasColumnName(\"profile_handle\");", dbContext);
+
+        // An ARRAY enum member. Native array column on the migrate side (text[] derived from
+        // isArray), EF Core 8 primitive collection here, with the per-element conversion —
+        // else the members persist as int ordinals inside the array.
+        Assert.Contains(
+            "b.PrimitiveCollection(p => p.Roles).HasColumnName(\"profile_roles\").ElementType().HasConversion<string>();",
+            dbContext);
+
+        // A NESTED value object member: ONE json column at `<prefix>_<col>` (migrate's
+        // subtypeToSqlType returns json for field.object — a nested VO does not flatten
+        // recursively), so it needs its own ToJson pinned to that column. The nested builder
+        // is `nb`: emitting `b.` here would not compile in the GENERATED file.
+        Assert.Contains(
+            """
+                        b.OwnsOne(p => p.Badge, nb =>
+                        {
+                            nb.ToJson("profile_badge");
+                            nb.Property(p => p.Tier).HasConversion<string>();
+                        });
+            """,
+            dbContext);
+    }
+
+    // The one member kind deliberately NOT named. This port configures a top-level field.map
+    // nowhere either, so there is no proven mapping to mirror, and forcing b.Property onto a
+    // Dictionary<string,T> can make EF's model builder throw where it currently ignores the
+    // member — trading a wrong column for a broken build. The requirement is that it be LOUD:
+    // a silent skip here is exactly the defect class this whole test exists for.
+    [Fact]
+    public void A_flattened_map_member_warns_instead_of_binding_a_wrong_column()
+    {
+        var warnings = new List<string>();
+        var root = Load();
+        var ctx = new GenContext
+        {
+            Entities = root.Objects(), Root = root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
+            Warn = warnings.Add,
+        };
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        Assert.Contains(warnings, w => w.Contains("\"prefs\"") && w.Contains("profile_prefs"));
+        // ...and it must not have quietly emitted a mapping for it either.
+        Assert.DoesNotContain("p.Prefs", dbContext);
+    }
+
     [Fact]
     public void DbContext_configures_array_of_value_object_jsonb_as_OwnsMany()
     {
@@ -198,8 +271,17 @@ public class ObjectFieldCodegenTests
     {
         var ctx = Ctx(Load());
         // §A6 (task 4) — Customer now references CustomerNames.
+        //
+        // The DbContext is in the compilation DELIBERATELY. Its owned-type configuration is
+        // where the flattened/JSON column mapping actually lives, and it was the ONE tier the
+        // string assertions above could not vouch for: a nested owned block names its builder
+        // `nb`, and emitting the outer `b` there is invalid C# that every text assertion in
+        // this file would still have matched. EF's own model builder needs a live provider and
+        // is out of reach here, so this proves the config COMPILES, not that EF accepts the
+        // model — but a config that does not compile can no longer reach an adopter.
         var files = new EntityGenerator().Generate(ctx)
-            .Concat(new NamesGenerator().Generate(ctx)).ToList();
+            .Concat(new NamesGenerator().Generate(ctx))
+            .Concat(new DbContextGenerator().Generate(ctx)).ToList();
         var trees = files.Select(f =>
             CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)

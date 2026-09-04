@@ -69,6 +69,39 @@ Update when a gap closes or a new one surfaces.
 
 - **`<Entity>View` / `<Entity>Views` is a RESERVED name.** `CSharpNaming.ViewModelClassName` / `ViewDbSetName` mint the read model as `<Entity>View` (class + file) and `<Entity>Views` (DbSet) unconditionally from the write-through entity's name. A user object literally named `<Entity>View` (e.g. a write-through `Order` alongside a separate object named `OrderView`) collides — codegen would emit two `OrderView.g.cs` files / two `OrderView` types / two `OrderViews` DbSets. No code guard is added: the codegen runner already hard-errors on the duplicate output path, a clear, immediate failure (not silent corruption). Treat `<Entity>View` / `<Entity>Views` as reserved for a write-through entity's generated read model.
 
+### G9 — a `field.map` member of a FLATTENED value object gets no EF column mapping
+
+**Contract.** `@storage: flattened` spreads a value object's members onto the owning table as
+`<parent field's column>_<member column>`. That prefix rule is migrate-ts's
+(`expected-schema.ts` `flattenObjectField`) and TS owns the schema (ADR-0015), so the EF
+configuration must name exactly the columns the migration creates. `flattenObjectField`
+iterates the value object's fields **unconditionally** — every member gets a column.
+
+**Today.** Four member kinds reach a flattened value object, and three are named:
+scalars, enums (scalar and array), and nested `field.object` members (a nested owned type
+pinned to its own `<prefix>_<col>` json column). **`field.map` is not.** It surfaces as
+`Dictionary<string, T>`, and this port configures a top-level `field.map` nowhere either —
+`DbContextGenerator` has no map branch at all — so there is no proven mapping to mirror.
+Emitting `b.Property(...)` onto a dictionary risks making EF's model builder throw where it
+currently ignores the member, which trades a wrong column for a broken build.
+
+**Consequence.** The migration creates `<prefix>_<map member column>`; EF binds its own
+`<Nav>_<Prop>` default. Reads and writes touching that member fail at the engine (Postgres
+`42703: column ... does not exist`).
+
+**Workaround.** Do not use `field.map` inside a flattened value object. Either store the
+owning value object as jsonb (the default; the whole document is one column, so the member
+needs no column of its own) or hoist the map to a top-level `field.map` on the entity.
+
+**Loud, not silent.** `DbContextGenerator` emits a `meta gen` warning naming the member and
+the exact column the migration will create, so the divergence is visible at generate time
+rather than at the first query. Pinned by
+`ObjectFieldCodegenTests.A_flattened_map_member_warns_instead_of_binding_a_wrong_column`.
+
+**Closure.** Needs a decided EF mapping for `field.map` at BOTH tiers (top-level field and
+flattened member) — it is one question, not two, and answering it only for the nested case
+would leave the two tiers disagreeing.
+
 ## How to add a new gap
 
 1. Append a numbered `### G<N>` section above.

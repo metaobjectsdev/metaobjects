@@ -862,22 +862,81 @@ public class DbContextGenerator : IGenerator
         // one, nestedCol is a COMPOSITE string (prefix + column), not the bare physical
         // name a names constant holds — there is no single constant this could reference.
         //
-        // Every member the migration flattens is named here, in the value object's
-        // declaration order: the scalar members, and the (non-array) enum members. An enum
-        // was missing — it is deliberately not a ScalarFor(...) type — so it fell through to
-        // the POCO's own mapping: a bare [Column("<member column>")] (an unprefixed column)
-        // before the POCO stopped carrying that attribute, EF's `<Nav>_<Prop>` default after.
-        // Neither is the column the migration created. An enum member also needs the SAME
-        // conversion the entity-level path gives it (HasConversion<string>() / the @intValueMap
-        // pair): migrate flattens it to the text/integer column it would be as a top-level
-        // field, while EF's default for an unconfigured enum is an integer column — so a
+        // Every member the migration flattens must be named here, in the value object's
+        // declaration order. migrate's `flattenObjectField` (expected-schema.ts) iterates
+        // `targetObject.fields()` UNCONDITIONALLY and emits one `<prefix>_<member col>` per
+        // member, so any member this loop skips gets EF's `<Nav>_<Prop>` default instead —
+        // a column the migration never creates, failing at the engine with 42703.
+        //
+        // Scalars and non-array enums were the original set. An enum was missing at first —
+        // it is deliberately not a ScalarFor(...) type — so it fell through to the POCO's own
+        // mapping: a bare [Column("<member column>")] (an unprefixed column) before the POCO
+        // stopped carrying that attribute, EF's `<Nav>_<Prop>` default after. Neither is the
+        // column the migration created. An enum member also needs the SAME conversion the
+        // entity-level path gives it (HasConversion<string>() / the @intValueMap pair):
+        // migrate flattens it to the text/integer column it would be as a top-level field,
+        // while EF's default for an unconfigured enum is an integer column — so a
         // string-backed enum named correctly but left unconverted still fails at the engine.
+        //
+        // ARRAY ENUM and NESTED OBJECT members were skipped by the same `continue` and are
+        // handled below: each is one of the three member kinds `EmitValueObjectPoco` emits a
+        // property for, so each is a real property EF will map by its own default naming.
+        // `field.map` is the fourth and is deliberately NOT named — see the warning below.
         foreach (var nf in vo.Fields())
         {
+            var nestedColAny = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
+
+            // An ARRAY enum: migrate gives it a native array column (subtypeToSqlType derives
+            // text[] from isArray), and EF Core 8 maps it as a primitive collection. Same
+            // element conversion as the entity-level path, for the same reason — otherwise the
+            // members persist as int ordinals inside the array.
+            if (nf.SubType == FIELD_SUBTYPE_ENUM && nf.ResolvedIsArray())
+            {
+                sb.AppendLine($"            b.PrimitiveCollection(p => p.{CSharpNaming.Pascal(nf.Name)})"
+                    + $".HasColumnName(\"{nestedColAny}\").ElementType()"
+                    + $".{EnumConversionCall(CSharpNaming.Pascal(vo.Name), vo, nf, ctx.Config)};");
+                continue;
+            }
+
+            // A NESTED value object: migrate gives it ONE json column at `<prefix>_<col>`
+            // (subtypeToSqlType returns { kind: "json" } for field.object — a nested VO does
+            // not flatten recursively). EF models it as a nested owned type, so it needs its
+            // own ToJson pinned to that column, plus the enum conversions its own members
+            // need — the same rule one level down.
+            if (nf.SubType == FIELD_SUBTYPE_OBJECT
+                && nf.ObjectRef is { } nestedRef
+                && ctx.Root.FindObject(CSharpNaming.StripPkg(nestedRef)) is { } nestedVo)
+            {
+                var ownsCall = nf.ResolvedIsArray() ? "OwnsMany" : "OwnsOne";
+                sb.AppendLine($"            b.{ownsCall}(p => p.{CSharpNaming.Pascal(nf.Name)}, nb =>");
+                sb.AppendLine("            {");
+                sb.AppendLine($"                nb.ToJson(\"{nestedColAny}\");");
+                // `nb`, not `b` — the nested builder shadows the outer one, and emitting `b.`
+                // here would compile-fail the GENERATED file (the outer builder is out of the
+                // nested lambda's intended scope and names the wrong entity type anyway).
+                foreach (var line in JsonEnumConversions(nestedVo, ctx, builder: "nb"))
+                    sb.AppendLine("    " + line);
+                sb.AppendLine("            });");
+                continue;
+            }
+
             var isScalar = CSharpNaming.ScalarFor(nf.SubType) is not null;
             var isEnum = nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray();
-            if (!isScalar && !isEnum) continue;
-            var nestedCol = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
+            if (!isScalar && !isEnum)
+            {
+                // The remaining kind is `field.map`, which surfaces as Dictionary<string, T>.
+                // It is NOT named here on purpose: this port configures a top-level field.map
+                // nowhere either (DbContextGenerator has no map branch at all), so there is no
+                // proven mapping to mirror, and forcing `b.Property(...)` onto a dictionary can
+                // make EF's model builder throw where it currently ignores the member — trading
+                // a wrong column for a broken build. Warn instead, naming the column the
+                // migration WILL create, so the divergence is loud rather than silent.
+                ctx.Warn($"{Name}: value object \"{vo.Name}\" member \"{nf.Name}\" (field.{nf.SubType}) is "
+                    + $"flattened by the migration into column \"{nestedColAny}\" but gets no EF column "
+                    + "mapping here, so EF will bind its own default name instead. See KNOWN_GAPS.md.");
+                continue;
+            }
+            var nestedCol = nestedColAny;
             // The enum type nests in the value object's class (EntityGenerator's
             // EmitValueObjectPoco), so the VO is the `owner` the conversion qualifies it by.
             var conversion = isEnum ? $".{EnumConversionCall(CSharpNaming.Pascal(vo.Name), vo, nf, ctx.Config)}" : "";
@@ -907,7 +966,7 @@ public class DbContextGenerator : IGenerator
     /// with a per-element conversion); the two must not drift, because a VO member and a top-level
     /// field of the same declared subtype describe the same stored value.</para>
     /// </remarks>
-    private static List<string> JsonEnumConversions(MetaObject vo, GenContext ctx)
+    private static List<string> JsonEnumConversions(MetaObject vo, GenContext ctx, string builder = "b")
     {
         _ = ctx;
         var lines = new List<string>();
@@ -917,8 +976,8 @@ public class DbContextGenerator : IGenerator
             var prop = CSharpNaming.Pascal(nf.Name);
             // ADR-0039: resolving — array-ness is inheritable via extends.
             lines.Add(nf.ResolvedIsArray()
-                ? $"            b.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion<string>();"
-                : $"            b.Property(p => p.{prop}).HasConversion<string>();");
+                ? $"            {builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion<string>();"
+                : $"            {builder}.Property(p => p.{prop}).HasConversion<string>();");
         }
         return lines;
     }
