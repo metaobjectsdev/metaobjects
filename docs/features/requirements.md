@@ -24,9 +24,16 @@ true — that every claim resolves, that a `live` policy is applied to something
 entity nobody claimed gets flagged.
 
 **A requirement is PRESCRIPTIVE.** It states what *should* be true; it is never a journal of
-what happened. A capability that no longer applies is **deleted**, not annotated as retired —
-the record of it having existed belongs to version control, and anything worth carrying
-forward belongs in `notes` on the entries that survive.
+what happened. An entry that has simply stopped being relevant is **deleted** — the record of
+it having existed belongs to version control, and anything worth carrying forward belongs in
+`notes` on the entries that survive.
+
+The one thing you do not delete is a capability that was **built and then deliberately
+removed**. That gets [`@status: retired`](#retired--the-status-the-whole-feature-was-measured-on),
+and it is prescriptive for the same reason everything else here is: the entry states a
+prohibition in force — *this shall not be rebuilt* — rather than narrating what happened. It
+is also the one member of the enum with controlled evidence behind it, so deleting the entry
+throws away the only thing the mechanism is measured to do.
 
 ## Declaring one
 

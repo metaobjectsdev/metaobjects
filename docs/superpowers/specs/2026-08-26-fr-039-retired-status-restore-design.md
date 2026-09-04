@@ -25,11 +25,16 @@ agents, pre-registered kill conditions, ruled in
 | Claim | Result |
 |---|---|
 | Requirements stop the LLM rebuilding what exists | Refuted (round 5, n=12) |
-| Node-side `satisfies:` links earn their place | Refuted (11/24 with, 12/24 without) |
+| Structured ledger links earn their place over prose | Refuted (11/24 with, 12/24 without) [^r5] |
 | The artifact must be ambient | Refuted (read unprompted) |
 | Requirements help find dead code | Refuted (grep found 15, best analysis 6) |
 | Requirements prevent drift | Refuted (control matched on everything mechanical) |
 | **A status field prevents reviving retired features** | **HELD — 0 of 24 without, 19 of 40 with** |
+
+[^r5]: This row read *"Node-side `satisfies:` links earn their place"* as shipped. Both arms
+of that comparison carried a ledger and neither carried a node-side link — the variable was
+structured list against the same entities in prose. Corrected by Amendment 5 of the ruling;
+the claim tested, and refuted, is the one above.
 
 The ruling, §"What survived", line 67: *"The failure prevented is not duplication. It is
 **resurrection**."* Line 74: *"A ledger entry with `status: abandoned` does exactly that, in

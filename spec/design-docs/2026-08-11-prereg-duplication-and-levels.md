@@ -155,9 +155,11 @@ side by side. **L5 is optional** — a ledger may stop at L4 and link only at ob
 Splitting L4 from L5 is a recommendation, not a requirement: it exists so that "this
 capability is about *this field*" does not have to masquerade as an object-level claim.
 
-None of this reinstates node-side `satisfies:`. The round-5 kill stands: links live on
-ledger entries, never on the model nodes. What changed is only *which* ledger entries
-carry them.
+None of this reinstates node-side `satisfies:`: links live on ledger entries, never on the
+model nodes. What changed is only *which* ledger entries carry them. (This sentence used to
+credit that to "the round-5 kill". Round 5 never varied direction — see Amendment 5 of
+`2026-08-10-requirements-as-metadata-ruling.md`. The rule stands on the dependency-direction
+principle, not on the measurement.)
 
 Architectural entries have **no level and no parent** — a separate flat list. Levels come
 from object-in-focus decomposition, and an architectural requirement is object-*independent*

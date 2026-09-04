@@ -338,14 +338,21 @@ and byte-gated by `fixtures/registry-conformance/expected-registry.json`. That i
 `@status` a loader-enforced enum rather than a string one CLI happens to compare, and it is
 why a typo fails the *load* in every language rather than passing silently in four of them.
 
-What stays dead is **node-side `satisfies:`** — a link attribute on a field or entity. Two
-arms differing only in whether the ledger carried structured node-side links scored 11/24
-(with) and 12/24 (without); the arm lacking them scored *higher* and the pre-registered kill
-fired. Links live on requirement entries, pointing at the model. The model never points back.
+What stays dead is **node-side `satisfies:`** — a link attribute on a field or entity. Links
+live on requirement entries, pointing at the model. The model never points back.
 
-The asymmetry is deliberate: a requirement is *about* the model, so it depends on the model;
-making the model depend on requirements would invert that and put a governance concern inside
-every entity declaration.
+The reason is the asymmetry, and it is a structural argument rather than a measured one: a
+requirement is *about* the model, so it depends on the model; making the model depend on
+requirements would invert that and put a governance concern inside every entity declaration.
+
+**This paragraph used to cite round 5's 11/24-vs-12/24 result as the reason, and that was a
+misreading — corrected by Amendment 5** of
+[the ruling](design-docs/2026-08-10-requirements-as-metadata-ruling.md). Both of those arms
+carried a ledger; the variable was whether its links were a structured `implementedBy` list
+or the same entities named in prose, and **neither arm put a link on a model node**. The
+result is evidence that structured links buy no retrieval value over prose. It says nothing
+about which node carries the link, because direction was never a variable in any round. The
+direction decision is the owner's, on the asymmetry above.
 
 ### The verify gate is TypeScript-only, on purpose
 

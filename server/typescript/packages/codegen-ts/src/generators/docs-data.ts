@@ -264,9 +264,13 @@ export interface EntityDocData {
    *  BYTE-IDENTICAL to its pre-feature output. That is the no-churn contract:
    *  a project with no ledger, or an entity nothing claims, must see no diff.
    *
-   *  ENTITY-GRAIN ONLY. Object coverage is entity-grain (`spec/capability-ledger.md`),
+   *  ENTITY PAGES ONLY. Object coverage is entity-grain (`spec/capability-ledger.md`),
    *  so a claimed `object.value` / `object.projection` gets nothing here — surfacing
-   *  one would imply a coverage rule the ledger does not actually have. */
+   *  one would imply a coverage rule the ledger does not actually have.
+   *
+   *  That governs which PAGE a row lands on, not how deep the CLAIM may point: an L5
+   *  claim names a member, resolves to the FIELD, and still renders on the owning
+   *  entity's page with the member named in the row (`· on \`status\``). */
   claimedBy?: UsedByDoc[];
   /** Present-and-non-empty flag for the claimedBy section. */
   hasClaimedBy?: boolean;

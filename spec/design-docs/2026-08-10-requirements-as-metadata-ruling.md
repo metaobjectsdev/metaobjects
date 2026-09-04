@@ -102,7 +102,8 @@ resurrected. A ledger entry with `status: abandoned` does exactly that, in one l
    reintroduces every failure this project exists to prevent.** The round-5 kill fired on
    *node-level back-links* (`satisfies:` on fields and entities) and on the retrieval value
    of structured links. It was never evidence against the ledger having a validated schema.
-   The original wording conflated the two.
+   The original wording conflated the two. _(The first half of that sentence is itself a
+   misreading: round 5 varied link FORMAT, not link direction — see Amendment 5.)_
 3. **Cleanup is a procedure, not a product.** Usage evidence — grep every declared table and
    field name across the source — found 15 dead objects where the best LLM analysis found 6.
    Ask the code, not the model, and never the requirements.
@@ -187,8 +188,9 @@ resolve: *"nothing in the metadata encodes 'the offer goes to the first row'; th
 selection logic."* Metadata proves shape, `verify` proves architecture, a test proves
 behaviour.
 
-None of this reinstates node-side `satisfies:`. The round-5 kill stands: links live on the
-ledger, not on fields.
+None of this reinstates node-side `satisfies:`: links live on the ledger, not on fields.
+_(As shipped this read "The round-5 kill stands". Round 5 ruled on link format, not
+direction — see Amendment 5. The rule is unchanged; its stated basis was wrong.)_
 
 ## Do not re-run
 
@@ -255,7 +257,9 @@ block vocabulary the owner has asked for three times.
   universality — and the violability rule stays in the authoring skill.
 
 **What is still true from the original rounds.** Round 5 killed **node-side `satisfies:`**
-back-links: 11/24 with structured links against 12/24 without. That result is about which
+back-links: 11/24 with structured links against 12/24 without. _(Amendment 5: it did not.
+Both arms were ledger-side; the result is about link FORMAT. The owner's decision below is
+what settles direction, and it does not need the experiment.)_ That result is about which
 *direction* the reference points, and the owner accepted the direction — *"node side vs req
 side is a nit, we still enforce it, you just showed the reference the other way is
 better"* — while insisting enforcement remains. So links live on the requirement node, and
@@ -326,3 +330,49 @@ approved". Here a committed ruling was reversed by a design document that never 
 leaving two contradictory shipped statements — the exact failure FR-038 was written to
 resolve. **A committed ruling is reversed by amending it, in this file. A re-open bar is a
 precondition, not a formality.**
+
+## Amendment 5 (2026-09-04) — round 5 never varied link DIRECTION; the record says it did
+
+**This amendment corrects a misreading of this document's own round-5 result that has since
+been repeated as settled fact in four places.** The result is real and its number is right.
+What it is evidence *for* is not what the record says.
+
+**What round 5 actually varied.** §"What fired" states it exactly: *"Arms differing only in
+whether the ledger carried a structured `implementedBy` list scored **11/24** (with links)
+and **12/24** (links stripped, entities named in prose)."* Both arms carried **a ledger**.
+The variable was the ledger's link FORMAT — a structured reference list against the same
+entities named in prose. **Neither arm put a link on a model node.** The `satisfies:` shape
+the round is cited as killing was not present in either condition, so nothing in the round
+could distinguish it from anything.
+
+**So the result is evidence that structured links buy no retrieval value over naming the
+same entities in prose — and it is evidence about nothing else.** In particular it is not
+evidence about which node carries the authored link. That question was never a variable in
+any of the five rounds.
+
+**Where the record says otherwise.** Point 2's 2026-08-11 amendment (*"The round-5 kill fired
+on node-level back-links (`satisfies:` on fields and entities) and on the retrieval value of
+structured links"*), §"What survived"'s closing line (*"None of this reinstates node-side
+`satisfies:`. The round-5 kill stands"*), Amendment 3's *"That result is about which
+direction the reference points"*, and the derived copies in `spec/capability-ledger.md`,
+`spec/design-docs/2026-08-11-prereg-duplication-and-levels.md` and issue #290. Read all of
+them with this amendment: the *conclusion* they reach may well be right, but round 5 is not
+the reason, and citing it as the reason is what made the direction look already-decided.
+
+**What the direction decision actually rests on, and it is enough to keep shipping on.** Two
+things, both recorded, neither an experiment. (1) The owner's call in Amendment 3 — *"node
+side vs req side is a nit, we still enforce it, you just showed the reference the other way
+is better"* — which is a decision, and decisions do not need experiments. (2) The
+**dependency-direction principle** (2026-08-11, `spec/capability-ledger.md`): a requirement
+is *about* the model, so it depends on the model; inverting that puts a governance concern
+inside every entity declaration. That is a structural argument and it stands on its own.
+
+**What is therefore open.** Whether an authored link on the model node retrieves better than
+an authored link on the requirement node is **unmeasured**. Nothing here proposes measuring
+it; §"Do not re-run" governs, and its bar — genuinely new information — is not cleared by
+noticing that an old result was over-read. What this amendment forbids is the citation: no
+document may claim round 5 ruled on direction.
+
+**Never author both directions.** Whatever a future measurement says, one link is authored
+and the other derived. Two authored statements of one fact is a reconciliation problem
+`verify` would then own, which is a cost neither direction pays today.
