@@ -16,7 +16,7 @@ object OrderReportProc {
             while (rs.next()) {
                 results.add(OrderReport(
                     status = rs.getString("status"),
-                    totalCents = rs.getLong("totalCents")
+                    totalCents = rs.getLong("total_cents")
                 ))
             }
         }
