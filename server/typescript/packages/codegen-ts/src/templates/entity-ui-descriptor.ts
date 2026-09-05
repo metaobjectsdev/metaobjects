@@ -14,10 +14,10 @@
 // is a name that can disagree with itself" rule `names.ts` states for physical names, one
 // tier up.
 //
-// #356 — THE SURFACE IS THE FORM. `view` resolves through `viewForContext(field, "form")`,
-// so a field declaring several views is described by the one the generated
-// `<Entity>.form.tsx` actually renders. The grid tiers compute their own view kind at
-// codegen time and never read this.
+// #356 — THE SURFACE IS THE FORM. `view` resolves through `inferViewKind(field, "form")`,
+// which selects the view named for the form context, so a field declaring several views is
+// described by the one the generated `<Entity>.form.tsx` actually renders. The grid tiers
+// compute their own view kind at codegen time and never read this.
 //
 // RULES ARE AN ORDERED LIST, NOT A KEYED OBJECT, and that is load-bearing rather than
 // stylistic: the emitted `rules: { ... }` object preserves the order the field's validator
@@ -28,7 +28,7 @@
 // The pattern is carried RAW. Escaping it into a `/.../` literal is a TypeScript-emission
 // concern and belongs to the emitter, not to the description of the field.
 
-import type { MetaData, MetaField, MetaObject, MetaRoot, MetaView } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaField, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   VIEW_SUBTYPE_TEXT,
   VIEW_SUBTYPE_TEXTAREA,
@@ -51,7 +51,7 @@ import {
   toSnakeCase,
 } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor } from "./field-meta.js";
-import { viewForContext, VIEW_CONTEXT_FORM } from "../view-context.js";
+import { VIEW_CONTEXT_FORM } from "../view-context.js";
 import { isProjection } from "../projection/projection-detector.js";
 
 /** One validation rule, in the order its source was declared. */
@@ -67,10 +67,9 @@ export interface UiFieldDescriptor {
   readonly label: string;
   /** The MetaView subtype resolved for the FORM context. */
   readonly view: string;
-  /** Present only when the view maps to a real HTML `<input type=…>`. */
+  /** Present only when the view maps to a real HTML `<input type=…>`. Derived from the
+   *  view subtype — there is no authored override (see `htmlTypeFromView`). */
   readonly htmlType?: string | undefined;
-  readonly placeholder?: string | undefined;
-  readonly helpText?: string | undefined;
   /** Empty when the field declares nothing to validate. */
   readonly rules: readonly UiRule[];
   /** Present only for a `field.currency`. */
@@ -113,18 +112,6 @@ export interface EntityUiDescriptor {
  * {@link restPath} for the endpoint an object is actually served at.
  */
 export function resourcePath(entity: MetaData): string {
-  // ADR-0039: resolving — a concrete entity may inherit @routePath via extends.
-  //
-  // ADR-0023 PROVENANCE: `routePath` is registered by NO provider in this repository,
-  // so this branch is unreachable for any project loading the shipped registry (an
-  // authored `@routePath` fails the load with ERR_UNKNOWN_ATTR). It is kept because a
-  // project may register it in a provider of its own, and because removing it would
-  // silently move an endpoint for one that has. It is NOT core vocabulary; see the
-  // `agent/ui.md` note that says so on the page.
-  const overrideAttr = entity.attr("routePath");
-  if (typeof overrideAttr === "string" && overrideAttr.length > 0) {
-    return overrideAttr.startsWith("/") ? overrideAttr : `/${overrideAttr}`;
-  }
   // The two compositions differ in ORDER as well as separator, and both are load-bearing:
   // pluralize-then-snake is what the projection const has always emitted, snake-then-
   // pluralize is what the entity const has. Neither may be "tidied" into the other.
@@ -134,24 +121,16 @@ export function resourcePath(entity: MetaData): string {
 }
 
 /**
- * Resolve the view subtype: the explicit `view` child declared for the FORM (own
- * or inherited) wins, else inferred from field subType.
- */
-function resolveView(field: MetaField): { view: string; viewNode?: MetaView } {
-  const viewNode = viewForContext(field, VIEW_CONTEXT_FORM);
-  if (viewNode !== undefined) {
-    return { view: viewNode.subType, viewNode };
-  }
-  return { view: inferViewKind(field, VIEW_CONTEXT_FORM) };
-}
-
-/**
  * Map a MetaView subtype to a real HTML `<input type=…>` value. Returns undefined for
  * views that don't map to `<input>` at all (textarea, dropdown) — consumers render the
  * right element type themselves.
+ *
+ * THE MAPPING IS THE ONLY SOURCE. An `@htmlType` override used to be read off the view
+ * node ahead of this switch; nothing registers that attribute, so the override was
+ * unreachable and this mapping was always the answer. A consumer needing a different
+ * `type=` edits the emitted `<Entity>.meta.ts`, whose hand edits the merge preserves.
  */
-function htmlTypeFromView(view: string, override?: string): string | undefined {
-  if (typeof override === "string" && override.length > 0) return override;
+function htmlTypeFromView(view: string): string | undefined {
   switch (view) {
     case VIEW_SUBTYPE_TEXT:
       return "text";
@@ -191,40 +170,32 @@ function buildFieldRules(field: MetaField): UiRule[] {
   let hasRequired = false;
   let hasMaxLength = false;
 
-  // ADR-0039: resolving — a validator may inherit its config attrs (@min/@max/
-  // @pattern/@message/…) via extends.
+  // ADR-0039: resolving — a validator may inherit its config attrs (@min/@max/@pattern)
+  // via extends.
   //
-  // ADR-0023 PROVENANCE: `message`, `minMessage` and `maxMessage` are registered by no
-  // provider in this repository, so every `??` below always takes its default branch for a
-  // project loading the shipped registry. Kept rather than deleted for the same reason as
-  // `placeholder`/`helpText` above — the emitted `rules` object is a published consumer
-  // surface — and `agent/ui.md` prints the rule's VALUE, never its message, so no page
-  // claims a custom one exists.
+  // THE MESSAGES ARE DERIVED, NOT AUTHORED. `@message` / `@minMessage` / `@maxMessage`
+  // used to be read here as overrides; no provider registers any of them, so the reads
+  // were unreachable and the defaults below were always what shipped. A consumer wanting
+  // different wording edits the emitted `rules` object in `<Entity>.meta.ts`, which is a
+  // generated file whose hand edits the three-way merge preserves. See ADR-0023.
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
-      const message =
-        (child.attr("message") as string | undefined) ?? `${humanize(field.name)} is required`;
-      rules.push({ kind: "required", message });
+      rules.push({ kind: "required", message: `${humanize(field.name)} is required` });
       hasRequired = true;
     } else if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
       const min = child.attr(VALIDATOR_ATTR_MIN);
       const max = child.attr(VALIDATOR_ATTR_MAX);
       if (typeof min === "number") {
-        const message =
-          (child.attr("minMessage") as string | undefined) ?? `Must be at least ${min} characters`;
-        rules.push({ kind: "minLength", value: min, message });
+        rules.push({ kind: "minLength", value: min, message: `Must be at least ${min} characters` });
       }
       if (typeof max === "number") {
-        const message =
-          (child.attr("maxMessage") as string | undefined) ?? `Must be ${max} characters or fewer`;
-        rules.push({ kind: "maxLength", value: max, message });
+        rules.push({ kind: "maxLength", value: max, message: `Must be ${max} characters or fewer` });
         hasMaxLength = true;
       }
     } else if (child.subType === VALIDATOR_SUBTYPE_REGEX) {
       const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern === "string") {
-        const message = (child.attr("message") as string | undefined) ?? "Invalid format";
-        rules.push({ kind: "pattern", pattern, message });
+        rules.push({ kind: "pattern", pattern, message: "Invalid format" });
       }
     }
   }
@@ -257,28 +228,20 @@ function buildFieldRules(field: MetaField): UiRule[] {
  * emitter ignores; it never changes any member the const emits.
  */
 export function buildUiFieldDescriptor(field: MetaField, root?: MetaRoot): UiFieldDescriptor {
-  const { view, viewNode } = resolveView(field);
-  // ADR-0039: resolving — a view node may inherit @placeholder/@helpText/@htmlType via extends.
-  //
-  // ADR-0023 PROVENANCE: none of `placeholder`, `helpText` or `htmlType` is registered by
-  // any provider in this repository, so all three branches are unreachable for a project
-  // loading the shipped registry — the same shape #353 found and fixed for `@label` by
-  // re-pointing it at the registered `@title`. There is no registered equivalent for
-  // these three, and `EntityFieldMeta` (the public `@metaobjectsdev/react` type) declares
-  // all three, so they are kept for a project that registers them in its own provider
-  // rather than deleted. They are NOT core vocabulary, and `agent/ui.md` says so.
-  const placeholder = viewNode?.attr("placeholder") as string | undefined;
-  const helpText = viewNode?.attr("helpText") as string | undefined;
-  const htmlType = htmlTypeFromView(view, viewNode?.attr("htmlType") as string | undefined);
+  // `inferViewKind` IS the resolution: the view child declared for the FORM (own or
+  // inherited) wins, else the field subtype's default. This module used to keep a
+  // `resolveView` that returned the same string plus the view NODE, and the node existed
+  // only to read `@placeholder` / `@helpText` / `@htmlType` off it — none of which any
+  // provider registers, so all three reads were unreachable. With them gone the node has
+  // no reader and the two functions were the same function.
+  const view = inferViewKind(field, VIEW_CONTEXT_FORM);
   const currencyMeta = currencyMetaFor(field, VIEW_CONTEXT_FORM);
   const vo = root === undefined ? undefined : valueObjectFor(field, root);
   return {
     name: field.name,
     label: labelFor(field, VIEW_CONTEXT_FORM),
     view,
-    htmlType,
-    placeholder,
-    helpText,
+    htmlType: htmlTypeFromView(view),
     rules: buildFieldRules(field),
     currency: currencyMeta === null
       ? undefined

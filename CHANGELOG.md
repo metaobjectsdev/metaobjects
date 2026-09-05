@@ -120,6 +120,59 @@ reader which of two plausible columns to use, and it is the same text `meta migr
 `COMMENT ON`. Rendering a page of bare names in silence teaches an adopter the lever does not
 exist.
 
+### Removed — seven attributes codegen read that no provider registers
+
+`@routePath` on an object, `@placeholder` / `@helpText` / `@htmlType` on a view, and
+`@message` / `@minMessage` / `@maxMessage` on a validator were read by
+`entity-ui-descriptor.ts` as overrides. **None of the seven is registered by any provider**
+— zero hits in `spec/metamodel/*.json` and zero in the byte-gated `expected-registry.json`.
+No other port reads any of them; nothing in the repository authors one.
+
+**They were worse than dead: they were a trap.** `meta verify` loads STRICT (ADR-0023,
+#96), so a model authoring `@placeholder` fails it with `ERR_UNKNOWN_ATTR` — but `meta gen`
+and `meta docs` do not load strict, so the same model generates fine and the override
+fires. An adopter could therefore discover that `@placeholder` "works", ship it, and find
+the drift gate red with no remedy but to delete it or register it themselves. Codegen was
+honouring vocabulary the project's own gate rejects: two halves of one product disagreeing
+about one model, which is the defect class this whole surface exists to prevent.
+
+**Deleting them changes no output.** Proven, not assumed: `meta docs` over the showcase
+emits 14 pages byte-identical but for the one bullet that described this vocabulary, no
+committed generated artifact or golden contains `placeholder:`, `helpText:`, `routePath`,
+`minMessage` or `maxMessage`, and the suites stay green.
+
+**The capability each implied already exists, through the generated file.**
+`<Entity>.meta.ts` is generated, hand edits inside a generated file are preserved by the
+three-way merge, and the consumers read the CONST rather than the metadata: the routes
+mount `${Entity}.$path`, `useEntityForm` spreads `htmlType` onto `type` and `placeholder`
+onto `placeholder`, and a rule's message is emitted there. So an adopter wanting a
+different endpoint, `type=`, placeholder or wording edits the const — the FR-040 ownership
+path — and always could. What did not exist was the metadata path these reads implied.
+
+This is the third time the project has ruled the same way. #353 deleted the `@label` read
+and re-pointed it at the registered `@title`; the `@metaobjectsdev/sdk/agent-docs` blob was
+deleted partly BECAUSE its prose taught `@placeholder`, `@helpText` and `@message` as
+authorable, listed there among "six things the loader rejects". Reading vocabulary the
+library does not register is the defect; registering it because the code happens to read it
+is backwards, and `spec/roadmap.md` FR-026 already carries the deliberate version of that
+question as a 1.1 item.
+
+Three things fall out. `resolveView` was a byte-for-byte duplicate of `inferViewKind` plus
+the view NODE, and the node existed only to carry these reads — it collapses.
+`htmlTypeFromView` loses its override parameter, so the subtype mapping is the only source.
+And `agent/ui.md` drops the placeholder/help-text section and the bullet that had to warn a
+reader not to author any of it.
+
+**Exposure, stated rather than hidden:** two kinds of project lose behaviour. One that
+registered an attribute in a provider of its OWN (which ADR-0023 permits), and one that
+authored it and never runs `meta verify` (or runs it `--lax`) — that project's `meta gen`
+was honouring the override and now stops. `@routePath` is the one with a visible
+consequence: its endpoint moves back to the derived path. The migration in both cases is
+one hand-edit of `$path` (or of the affected key) in the generated const, which the
+three-way merge preserves — or owning the generator.
+`EntityFieldMeta` keeps `htmlType` / `placeholder` / `helpText`: a hand-edited const
+legitimately carries them, and `useEntityForm` consumes two of the three.
+
 ### Fixed — a multi-word projection's REST path was documented at an address nothing serves
 
 `api/AGENT-API.md` and the generated SDK reference computed a projection's endpoint with

@@ -586,3 +586,64 @@ describe("agent/ui.md — the address, in full", () => {
     expect(ui).toContain("Its routes are the ordinary full CRUD set.");
   });
 });
+
+describe("the seven attributes codegen no longer reads", () => {
+  // Each was read as an override by `entity-ui-descriptor.ts` and is registered by NO
+  // provider, so `meta verify` — which loads STRICT (ADR-0023, #96) — refuses any model
+  // authoring one. `meta gen` and `meta docs` do NOT load strict, which is exactly why
+  // reading them was worse than useless: codegen honoured vocabulary the project's own
+  // drift gate rejects, so the two halves of the product disagreed about the same model.
+  //
+  // This pins the REASON the reads went, which is the thing that could silently stop being
+  // true: if one of these were ever registered, this test fails and the decision gets
+  // re-made deliberately rather than by drift.
+  const cases: { attr: string; model: unknown }[] = [
+    {
+      attr: "@routePath",
+      model: {
+        "metadata.root": {
+          package: "acme",
+          children: [{ "object.entity": { name: "A", "@routePath": "/custom", children: [
+            { "source.rdb": { "@table": "a" } },
+            { "field.long": { name: "id" } },
+          ] } }],
+        },
+      },
+    },
+    ...["placeholder", "helpText", "htmlType"].map((attr) => ({
+      attr: `@${attr} (view)`,
+      model: {
+        "metadata.root": {
+          package: "acme",
+          children: [{ "object.entity": { name: "A", children: [
+            { "source.rdb": { "@table": "a" } },
+            { "field.string": { name: "s", children: [{ "view.text": { name: "form", [`@${attr}`]: "x" } }] } },
+          ] } }],
+        },
+      },
+    })),
+    ...["message", "minMessage", "maxMessage"].map((attr) => ({
+      attr: `@${attr} (validator)`,
+      model: {
+        "metadata.root": {
+          package: "acme",
+          children: [{ "object.entity": { name: "A", children: [
+            { "source.rdb": { "@table": "a" } },
+            { "field.string": { name: "s", children: [
+              { "validator.length": { name: "len", "@min": 1, "@max": 5, [`@${attr}`]: "x" } },
+            ] } },
+          ] } }],
+        },
+      },
+    })),
+  ];
+
+  for (const { attr, model } of cases) {
+    test(`${attr} does not load — no provider registers it`, async () => {
+      const res = await new MetaDataLoader({ strict: true }).load([
+        new InMemoryStringSource(JSON.stringify(model), { id: "meta.json", format: "json" }),
+      ]);
+      expect(res.errors.map(String).join("\n")).toMatch(/Unknown attribute/);
+    });
+  }
+});

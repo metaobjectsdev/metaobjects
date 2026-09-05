@@ -12,9 +12,7 @@
 //       name:        "email",
 //       label:       "Email Address",      // from @label on the view, falls back to humanized field name
 //       view:        "text",                // MetaView subtype
-//       htmlType:    "email",               // optional; only when it maps to a real HTML input type
-//       placeholder: "you@example.com",     // optional; only when @placeholder is set on the view
-//       helpText:    "We never share this.", // optional; only when @helpText is set
+//       htmlType:    "email",               // optional; only when the view maps to a real HTML input type
 //       rules: {                             // optional; derived from validator children
 //         required:  "Email is required",
 //         maxLength: { value: 255, message: "Must be 255 characters or fewer" },
@@ -76,8 +74,6 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
     `view: ${JSON.stringify(f.view)}`,
   ];
   if (f.htmlType !== undefined) entries.push(`htmlType: ${JSON.stringify(f.htmlType)}`);
-  if (f.placeholder !== undefined) entries.push(`placeholder: ${JSON.stringify(f.placeholder)}`);
-  if (f.helpText !== undefined) entries.push(`helpText: ${JSON.stringify(f.helpText)}`);
   if (f.rules.length > 0) entries.push(`rules: { ${f.rules.map(renderRule).join(", ")} }`);
 
   // Currency-specific keys: only emitted for currency-subtype fields.

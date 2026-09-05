@@ -227,13 +227,6 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
     "- `Filter` / `Sort` are what the generated LIST endpoint accepts. `@sortable` " +
       "defaults to `@filterable`, and the resolved answer is what is shown.",
   );
-  out.push(
-    "- **Not every column here is authorable.** The control, the label (`@title`) and the " +
-      "rules come from registered vocabulary. A placeholder, help text, an `htmlType` " +
-      "override and a custom validation message do NOT — no provider in MetaObjects " +
-      "registers them, so authoring one fails the load (`ERR_UNKNOWN_ATTR`) unless your " +
-      "project registers it in a provider of its own (ADR-0023).",
-  );
   out.push("");
 
   for (const obj of withUi) {
@@ -273,19 +266,6 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
               `${f.nested?.isArray === true ? ", one group per element" : ""}. Change the ` +
               "fields inside it on that value object, not here.",
           );
-        }
-      }
-      // Placeholder / help text ride below: both are prose, and most fields have neither.
-      const prose = descriptor.fields.filter(
-        (f) => f.placeholder !== undefined || f.helpText !== undefined,
-      );
-      if (prose.length > 0) {
-        out.push("");
-        for (const f of prose) {
-          const bits: string[] = [];
-          if (f.placeholder !== undefined) bits.push(`placeholder: "${f.placeholder}"`);
-          if (f.helpText !== undefined) bits.push(`help: "${f.helpText}"`);
-          out.push(`- \`${f.name}\` — ${bits.join(" · ")}`);
         }
       }
       const money = descriptor.fields.filter((f) => f.currency !== undefined);
