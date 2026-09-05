@@ -13,7 +13,6 @@ import {
   FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
-import { toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
@@ -21,8 +20,7 @@ import { valueObjectModuleSpecifier } from "../import-path.js";
 import { physicalNameExpr, type ObjectNames } from "../names.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
-import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
-import { VIEW_CONTEXT_FORM } from "../view-context.js";
+import { buildUiFieldDescriptor, resourcePath } from "./entity-ui-descriptor.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { primaryIdentityFieldNames } from "./zod-validators.js";
 
@@ -71,18 +69,6 @@ export interface ProjectionDeclOpts {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Convert a PascalCase projection name to a kebab-pluralized URL path.
- *   "ProgramSummary"  → "/program-summaries"
- *   "CustomerSummary" → "/customer-summaries"
- *   "Box"             → "/boxes"
- *   "Wish"            → "/wishes"
- */
-function pathFromProjectionName(name: string): string {
-  const kebab = toSnakeCase(pluralize(name)).replace(/_/g, "-");
-  return `/${kebab}`;
-}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -164,21 +150,29 @@ export function renderProjectionDecl(
       names !== undefined && namesEntry !== undefined
         ? code`${names.symbol}.fields.${f.name}.column`
         : code`${JSON.stringify(dbCol)}`;
-    // #356 — a projection's descriptor is the same shape the entity descriptor
-    // emits (entity-constants.ts resolveView), so it reads the same surface.
-    const view = inferViewKind(f, VIEW_CONTEXT_FORM);
-    const label = labelFor(f, VIEW_CONTEXT_FORM);
-    const baseEntry = code`name: ${JSON.stringify(f.name)}, label: ${JSON.stringify(label)}, view: ${JSON.stringify(view)}, dbCol: ${dbColExpr}`;
-    const currencyMeta = currencyMetaFor(f, VIEW_CONTEXT_FORM);
-    if (currencyMeta !== null) {
-      return code`  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(currencyMeta.currency)}, locale: ${JSON.stringify(currencyMeta.locale)} },`;
+    // #356 — a projection's descriptor is the same shape the entity descriptor emits,
+    // and now literally the SAME derivation: `buildUiFieldDescriptor` is what
+    // `renderEntityConstants` reads, so the view kind, the label and the currency meta
+    // cannot come out differently here. A projection is read-only, so the members that
+    // describe a FORM (htmlType / placeholder / helpText / rules) are not emitted — a
+    // subset of one descriptor rather than a second answer — and `dbCol`, which only a
+    // view-backed const carries, is added.
+    const ui = buildUiFieldDescriptor(f);
+    const baseEntry = code`name: ${JSON.stringify(ui.name)}, label: ${JSON.stringify(ui.label)}, view: ${JSON.stringify(ui.view)}, dbCol: ${dbColExpr}`;
+    if (ui.currency !== undefined) {
+      return code`  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(ui.currency.currency)}, locale: ${JSON.stringify(ui.currency.locale)} },`;
     }
     return code`  ${f.name}: { ${baseEntry} },`;
   });
 
   const projName = projection.name;
   const camelName = projName.charAt(0).toLowerCase() + projName.slice(1);
-  const path = pathFromProjectionName(projName);
+  // ONE derivation of `$path`, shared with the entity const and with every page that
+  // documents an endpoint — `resourcePath` owns the projection/entity split. The
+  // kebab-pluralized spelling this module used to compute for itself is what it still
+  // returns for a projection; the second copy is what let `agent/ui.md` and
+  // `api/AGENT-API.md` both print the snake-cased entity spelling for a view.
+  const path = resourcePath(projection);
 
   // A6 Task 1 fix round — the descriptor's $view is a SECOND, independent embedding
   // of the view's physical name (the Drizzle .existing() decl in view-decl.ts is the

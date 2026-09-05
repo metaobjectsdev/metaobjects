@@ -37,6 +37,8 @@
 // preservation to think about: regenerate and the page is current.
 
 import {
+  CARDINALITY_MANY,
+  CARDINALITY_ONE,
   FIELD_SUBTYPE_ENUM,
   ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
@@ -119,6 +121,27 @@ function lineageOf(field: MetaField): string | undefined {
   }
 }
 
+/**
+ * The cardinality phrase, from the DECLARING object's side.
+ *
+ * `@cardinality: one` does NOT mean one-to-one. It means this object holds the foreign
+ * key — many rows of it point at one target row — which is what `relation-resolver.ts`
+ * builds a belongs-to `one()` relation from. Rendering it as "one-to-one" told a reader
+ * the target row is claimed by at most one row here, which is the direction that makes
+ * someone write a lookup expecting a single result.
+ *
+ * `@cardinality` is OPTIONAL vocabulary (min 0), and ABSENT is its own answer: no
+ * navigation is generated at all. Folding that into "one-to-one" invented a shape the
+ * model never declared.
+ */
+function cardinalityPhrase(cardinality: unknown, through: unknown): string {
+  if (cardinality === CARDINALITY_MANY) {
+    return typeof through === "string" && through !== "" ? "many-to-many" : "one-to-many";
+  }
+  if (cardinality === CARDINALITY_ONE) return "many-to-one";
+  return "cardinality not declared";
+}
+
 /** `- \`Order.lines\` — one-to-many → \`OrderLine\`` */
 function relationshipLines(objects: readonly MetaObject[]): string[] {
   const out: string[] = [];
@@ -131,9 +154,9 @@ function relationshipLines(objects: readonly MetaObject[]): string[] {
       // The FQN, not the short name: this line is an ADDRESS a reader searches for.
       const parts = [`\`${obj.resolutionKey()}.${rel.name}\``, `\`${rel.subType}\``];
       parts.push(
-        `${cardinality === "many" ? "one-to-many" : "one-to-one"} → \`${String(target ?? "?")}\``,
+        `${cardinalityPhrase(cardinality, through)} → \`${String(target ?? "?")}\``,
       );
-      if (typeof through === "string" && through !== "") parts.push(`through \`${through}\` (M:N)`);
+      if (typeof through === "string" && through !== "") parts.push(`through \`${through}\``);
       if (typeof onDelete === "string" && onDelete !== "") parts.push(`on delete \`${onDelete}\``);
       out.push(`- ${parts.join(" · ")}`);
     }
@@ -141,10 +164,25 @@ function relationshipLines(objects: readonly MetaObject[]): string[] {
   return out;
 }
 
-/** `| \`Order.status\` | OPEN, CLOSED | string-backed |` */
-function enumLines(objects: readonly MetaObject[]): string[] {
+/**
+ * `| \`Order.status\` | OPEN, CLOSED | string-backed |`
+ *
+ * SCOPED TO THE OBJECTS THE SNAPSHOT ACTUALLY HOLDS. This section sits on the SCHEMA
+ * page, so every row it prints is read as a statement about a column. Walking every
+ * loaded object printed rows for abstract bases, for `object.value`s that have no column
+ * anywhere, and for projections whose "column" is a view expression — three kinds of
+ * thing the physical schema does not contain.
+ *
+ * It also says nothing about a `CHECK`. Whether the database constrains the members is
+ * `table.checks`, which is already on this page from the snapshot, and an `@isArray`
+ * enum deliberately gets none (`migrate-ts` skips it) — so asserting one here was a
+ * SECOND derivation of a fact the page already carries correctly, in the direction that
+ * promises the database will refuse a value it will accept.
+ */
+function enumLines(objects: readonly MetaObject[], inSchema: (obj: MetaObject) => boolean): string[] {
   const rows: string[] = [];
   for (const obj of objects) {
+    if (!inSchema(obj)) continue;
     for (const field of obj.fields()) {
       if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
       const members = enumValues(field);
@@ -174,6 +212,17 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
 
       // ---- schema.md
       if (opts?.schema !== undefined) {
+        // The qualified names the snapshot actually holds. An object whose physical name
+        // is not one of these contributes nothing to the physical schema (an abstract
+        // base, a sourceless value, an `@unmanaged` object) and must not appear on a page
+        // describing it — `buildExpectedSchema`'s Pass 1 owns those skip rules and this
+        // reads its answer rather than re-deriving them.
+        const inSnapshot = new Set<string>([
+          ...opts.schema.tables.map((t) => opts.schema!.qualify(t)),
+          ...opts.schema.views.map((v) => opts.schema!.qualify(v)),
+        ]);
+        const backedByTable = new Set<string>(opts.schema.tables.map((t) => opts.schema!.qualify(t)));
+        const contributes = new Set<MetaObject>();
         // column → declaring field, per qualified table name. `resolveObjectNames` is the
         // ONE field→column resolver — the same one the names artifact and the DDL use —
         // so this mapping cannot disagree with the column it labels.
@@ -183,6 +232,8 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
           const names = resolveObjectNames(obj, opts.columnNamingStrategy);
           if (names?.name === undefined) continue;
           const key = opts.schema.qualify({ name: names.name, schema: names.schema });
+          if (!inSnapshot.has(key)) continue;
+          if (backedByTable.has(key)) contributes.add(obj);
           let map = declaredBy.get(key);
           if (map === undefined) {
             map = new Map();
@@ -206,13 +257,13 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
           declaredBy,
           viewLineage,
           relationships: relationshipLines(objects),
-          enums: enumLines(objects),
+          enums: enumLines(objects, (o) => contributes.has(o)),
         });
         if (content !== "") files.push({ path: `${dir}/schema.md`, content });
       }
 
       // ---- ui.md
-      const ui = renderAgentUiPage(objects);
+      const ui = renderAgentUiPage(ctx.loadedRoot);
       if (ui !== "") files.push({ path: `${dir}/ui.md`, content: ui });
 
       // ---- requirements.md

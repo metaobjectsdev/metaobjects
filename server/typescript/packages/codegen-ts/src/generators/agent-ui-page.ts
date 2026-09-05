@@ -11,27 +11,47 @@
 // describe a control the form does not render, because both answers come from the same
 // call. That is the point of the descriptor extraction, not a nicety.
 //
-// The two columns the descriptor does NOT carry — `@formExclude` and
-// `@filterable`/`@sortable` — are read here from the field. They are deliberately absent
-// from the descriptor: the descriptor describes how a field is PRESENTED, while those
-// three say whether it appears at all and what the LIST endpoint will accept, which is a
-// different question the form control has no opinion on.
+// The three columns the descriptor does NOT carry — `@formExclude`, `@filterable` and
+// `@sortable` — are read here from the field, and `@sortable`'s inherit-from-`@filterable`
+// default resolves through `isSortableField`, the SAME predicate the generated
+// `<Entity>SortAllowlist` is built from, so the page cannot say a field is sortable that
+// the endpoint will reject. They are deliberately absent from the descriptor: the
+// descriptor describes how a field is PRESENTED, while those three say whether it appears
+// at all and what the LIST endpoint will accept, which is a different question the form
+// control has no opinion on.
+//
+// THREE THINGS THE DESCRIPTOR ALONE CANNOT ANSWER, each read from the predicate the
+// generator that decides it uses, never re-derived here:
+//
+//   • WHERE the object is served — `restPath`, because a TPH subtype is mounted under its
+//     discriminator base and its own `$path` names nothing;
+//   • WHETHER a form exists at all — `hasGeneratedForm`, the form generator's own filter,
+//     because a discriminator base has a write endpoint and still gets no form;
+//   • WHAT the control is for a `field.object` — `valueObjectFor`, shared with the form
+//     generator, because a resolvable `@objectRef` is rendered as a nested sub-form and
+//     the field's view kind is not consulted.
 
 import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_FORM_EXCLUDE,
-  FIELD_ATTR_SORTABLE,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
   LAYOUT_SUBTYPE_DATA_GRID,
+  OBJECT_ATTR_DISCRIMINATOR,
   TYPE_LAYOUT,
 } from "@metaobjectsdev/metadata";
-import type { MetaData, MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { servesReadApi, servesWriteApi } from "../api-surface.js";
-import { buildEntityUiDescriptor, type UiRule } from "../templates/entity-ui-descriptor.js";
+import { hasGeneratedForm, restPath, servesReadApi } from "../api-surface.js";
+import {
+  buildEntityUiDescriptor,
+  type UiFieldDescriptor,
+  type UiRule,
+} from "../templates/entity-ui-descriptor.js";
+import { isSortableField } from "../templates/filter-shared.js";
+import { tphDiscriminatorBase } from "../templates/zod-validators.js";
 
 const GENERATED_MARKER = `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`;
 
@@ -53,20 +73,26 @@ function ruleText(r: UiRule): string {
   }
 }
 
+/**
+ * The CONTROL cell — what the generated form renders, which is not always a `view.*`
+ * subtype.
+ *
+ * A `field.object` whose `@objectRef` resolves is emitted as a nested `<fieldset>`
+ * sub-form (a `useFieldArray` repeatable group when the field is an array), and the form
+ * generator never consults the field's view kind for it. This column used to print that
+ * view kind — `text`, the `defaultViewForSubType` fallback — which said the control was a
+ * free-text input for a field that has no input at all. Same shape as the `field.enum`
+ * descriptor bug, one subtype family over; the predicate is shared with the form
+ * generator (`valueObjectFor`) so the two cannot answer differently again.
+ */
+function controlCell(f: UiFieldDescriptor): string {
+  if (f.nested === undefined) return `\`${f.view}\``;
+  return f.nested.isArray ? "nested sub-form (repeatable)" : "nested sub-form";
+}
+
 /** `yes` / `` — an empty cell reads better than a column of "no". */
 function flag(value: unknown): string {
   return value === true ? "yes" : "";
-}
-
-/**
- * `@sortable` inherits from `@filterable` when unset — the documented default. Rendering
- * the resolved answer rather than the authored one is the point: an agent asking "can I
- * sort on this?" needs what the endpoint will ACCEPT.
- */
-function sortableOf(field: MetaField): boolean {
-  const own = field.attr(FIELD_ATTR_SORTABLE);
-  if (typeof own === "boolean") return own;
-  return field.attr(FIELD_ATTR_FILTERABLE) === true;
 }
 
 /** The `layout.dataGrid` children an object declares. ADR-0039: resolving. */
@@ -117,7 +143,8 @@ function gridSection(grid: MetaData): string[] {
  * Render the page. Returns "" when no object in the model has a UI surface — the surface
  * then emits no FILE, so a headless project sees nothing rather than an empty page.
  */
-export function renderAgentUiPage(objects: readonly MetaObject[]): string {
+export function renderAgentUiPage(root: MetaRoot): string {
+  const objects = root.objects();
   const withUi = objects.filter(hasUiSurface);
   if (withUi.length === 0) return "";
 
@@ -133,50 +160,84 @@ export function renderAgentUiPage(objects: readonly MetaObject[]): string {
   );
   out.push("");
   out.push(
-    "- Every row here is the SAME derivation the runtime reads: it is emitted as the " +
-      "`<Entity>` const in `<Entity>.meta.ts`, which `useEntityForm` consumes. Changing " +
-      "the metadata changes both.",
+    "- Every row here is the SAME derivation the runtime reads — `buildEntityUiDescriptor`, " +
+      "which is emitted as the `<Entity>` const in `<Entity>.meta.ts` and consumed by " +
+      "`useEntityForm`. Changing the metadata changes both. A READ-ONLY projection's const " +
+      "carries the subset that applies to it (no form, so no rules and no HTML type) plus " +
+      "the `dbCol` only a view-backed const has.",
   );
   out.push(
-    "- `View` is the control the FORM renders. A field declaring several views is " +
-      "described by the one named `form`.",
+    "- `Control` is what the FORM renders. A field declaring several views is described by " +
+      "the one named `form`; a `field.object` whose `@objectRef` resolves is not an input " +
+      "at all but a nested sub-form over that value object, and says so.",
   );
   out.push(
     "- `Filter` / `Sort` are what the generated LIST endpoint accepts. `@sortable` " +
       "defaults to `@filterable`, and the resolved answer is what is shown.",
+  );
+  out.push(
+    "- **Not every column here is authorable.** The control, the label (`@title`) and the " +
+      "rules come from registered vocabulary. A placeholder, help text, an `htmlType` " +
+      "override and a custom validation message do NOT — no provider in MetaObjects " +
+      "registers them, so authoring one fails the load (`ERR_UNKNOWN_ATTR`) unless your " +
+      "project registers it in a provider of its own (ADR-0023).",
   );
   out.push("");
 
   for (const obj of withUi) {
     out.push(`## \`${obj.resolutionKey()}\``);
     out.push("");
-    const descriptor = buildEntityUiDescriptor(obj);
-    // A read-only object (a projection, a view-backed entity) has no Insert/Update schema,
-    // so no form is generated for it and there is nothing for one to submit to. Saying so
-    // is the difference between "the form is missing" and "there is deliberately no form".
+    const descriptor = buildEntityUiDescriptor(obj, root);
+    // `restPath`, NOT `descriptor.path`: a TPH subtype's own `$path` names an address
+    // nothing mounts — the hierarchy is mounted from the discriminator base, each subtype
+    // at `<base>/<segment>` — and this page printed that non-existent address as fact.
+    // Whether a form exists is `hasGeneratedForm` — the form generator's OWN filter —
+    // never `servesWriteApi`. A read-only object (a projection, a view-backed entity) has
+    // no Insert/Update schema; a TPH discriminator BASE has both and still gets no form,
+    // because you cannot create a base and its polymorphic mount is read-only by
+    // construction. Saying so is the difference between "the form is missing" and "there
+    // is deliberately no form"; asking the endpoint question announced one for every base.
+    const endpoint = restPath(obj);
     out.push(
-      servesWriteApi(obj)
-        ? `Endpoint \`${descriptor.path}\`.`
-        : `Endpoint \`${descriptor.path}\` — **read-only**, so no form is generated. ` +
-            "The fields below describe the grid and the filters.",
+      hasGeneratedForm(obj)
+        ? `Endpoint \`${endpoint}\`.`
+        : `Endpoint \`${endpoint}\` — **no form is generated**${
+            tphDiscriminatorBase(obj) === undefined &&
+            typeof obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string"
+              ? " for a discriminator base; each concrete subtype below has its own"
+              : " (read-only)"
+          }. The fields below describe the grid and the filters.`,
     );
     out.push("");
     if (descriptor.fields.length > 0) {
       // The field nodes, keyed by name, so the three non-descriptor columns can be read
       // off the field the descriptor row came from.
       const byName = new Map(obj.fields().map((f) => [f.name, f]));
-      out.push("| Field | Label | View | HTML type | Rules | Excluded | Filter | Sort |");
+      out.push("| Field | Label | Control | HTML type | Rules | Excluded | Filter | Sort |");
       out.push("|---|---|---|---|---|---|---|---|");
       for (const f of descriptor.fields) {
         const node = byName.get(f.name);
         const rules = f.rules.map(ruleText).join(" · ");
         out.push(
-          `| \`${f.name}\` | ${mdCell(f.label)} | \`${f.view}\` | ` +
-            `${f.htmlType === undefined ? "" : `\`${f.htmlType}\``} | ${rules} | ` +
+          `| \`${f.name}\` | ${mdCell(f.label)} | ${controlCell(f)} | ` +
+            `${f.nested !== undefined || f.htmlType === undefined ? "" : `\`${f.htmlType}\``} | ${rules} | ` +
             `${node === undefined ? "" : flag(node.attr(FIELD_ATTR_FORM_EXCLUDE))} | ` +
             `${node === undefined ? "" : flag(node.attr(FIELD_ATTR_FILTERABLE))} | ` +
-            `${node === undefined ? "" : flag(sortableOf(node))} |`,
+            `${node === undefined ? "" : flag(isSortableField(node))} |`,
         );
+      }
+      // Which value object a nested field expands into rides below the table: it is the
+      // one thing a reader needs to go and edit, and it does not fit a cell.
+      const nested = descriptor.fields.filter((f) => f.nested !== undefined);
+      if (nested.length > 0) {
+        out.push("");
+        for (const f of nested) {
+          out.push(
+            `- \`${f.name}\` — expands \`${f.nested?.objectRef}\`` +
+              `${f.nested?.isArray === true ? ", one group per element" : ""}. Change the ` +
+              "fields inside it on that value object, not here.",
+          );
+        }
       }
       // Placeholder / help text ride below: both are prose, and most fields have neither.
       const prose = descriptor.fields.filter(

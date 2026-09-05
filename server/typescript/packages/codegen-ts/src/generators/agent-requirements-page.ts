@@ -35,7 +35,7 @@
 import { REQUIREMENT_ATTR_STATEMENT } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { walkRequirements } from "../requirement-walk.js";
+import { concernOf, walkRequirements } from "../requirement-walk.js";
 import { requirementRows } from "./requirements-view.js";
 import { renderRequirementsMarkdown } from "./requirements-markdown.js";
 
@@ -64,11 +64,6 @@ function nodeAddress(node: MetaData): string {
     cur = parent;
   }
   return segments.reverse().join(".");
-}
-
-/** `type.subType` of the claimed node — an agent needs to know what KIND of thing it is. */
-function concernOf(node: MetaData): string {
-  return `${node.type}.${node.subType}`;
 }
 
 interface NodeIndexEntry {
@@ -183,9 +178,12 @@ export function renderAgentRequirementsPage(root: MetaData): string {
     out.push("## Node index");
     out.push("");
     out.push(
-      "No requirement resolves to a model node. Every entry sits above the " +
-        "`@implementedBy` link floor (L4), or its claims do not resolve — `meta verify` " +
-        "is what says which.",
+      "No requirement resolves to a model node. The common reason is the ordinary one: an " +
+        "entry at L4 or L5 that simply declares no `@implementedBy` yet, which is legal " +
+        "and is what a `planned` entry looks like. The others are an entry sitting ABOVE " +
+        "the L4 link floor (where a claim is not permitted), a `retired` entry (where it " +
+        "is forbidden outright), and a claim that names a node nothing resolves — " +
+        "`meta verify` is what says which.",
     );
     out.push("");
   }

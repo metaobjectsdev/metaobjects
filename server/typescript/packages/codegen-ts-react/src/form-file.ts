@@ -1,6 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, servesWriteApi, isProjection, isTphSubtype, withClientDirective } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, hasGeneratedForm, withClientDirective } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -28,17 +27,13 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
     // NO form (you can't create an abstract base), but each concrete subtype
     // does — even though it has no own writable source (it inherits the base's).
     filter: (e: MetaObject) => {
-      if (!userFilter(e)) return false;
-      if (isTphSubtype(e)) return true; // per-subtype form
-      // A discriminator base is never form-rendered directly.
-      // ADR-0039: own — @discriminator identifies a TPH base level (read own so a
-      // subtype isn't mistaken for a base); e is already known not to be a subtype.
-      if (typeof e.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string") return false;
-      // A form is a client of a WRITE endpoint. Ask whether one exists, not where the
-      // data is stored — see api-surface.ts. `!isProjection` stays explicit here: a
-      // read-only view is a UI-tier exclusion (nothing to submit), distinct from
-      // whether write endpoints exist at all.
-      return servesWriteApi(e) && !isProjection(e);
+      // `hasGeneratedForm` (api-surface.ts) holds the whole rule: per-subtype form for a
+      // TPH subtype, NO form for a discriminator base (you cannot create a base, and its
+      // polymorphic mount is read-only by construction), and a write endpoint that is not
+      // a read-only projection otherwise. It is shared with `agent/ui.md`, which has to
+      // say "there is deliberately no form here" for exactly the set skipped here — asking
+      // `servesWriteApi` there instead announced a form for every discriminator base.
+      return userFilter(e) && hasGeneratedForm(e);
     },
     generate: perEntity((entity, ctx) => {
       if (!ctx.renderContext) {

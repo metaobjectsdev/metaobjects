@@ -19,8 +19,13 @@
 // UI generator follows for free.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
+import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource } from "./source-detect.js";
+import { resourcePath } from "./templates/entity-ui-descriptor.js";
+import { tphDiscriminatorBase, tphDiscriminatorPin } from "./templates/zod-validators.js";
+import { tphRouteSegment } from "./templates/tph-discriminator.js";
 
 /**
  * True when the object is served by a generated READ endpoint — so a hook has
@@ -42,4 +47,49 @@ export function servesReadApi(entity: MetaObject): boolean {
  */
 export function servesWriteApi(entity: MetaObject): boolean {
   return !isAbstract(entity) && hasWritableRdbSource(entity);
+}
+
+/**
+ * THE address the generated routes serve this object at.
+ *
+ * `resourcePath` answers "what is this object's own `$path`", which is what the
+ * `<Entity>` const emits. That is NOT the same question for a TPH SUBTYPE: it emits no
+ * routes file of its own — `routes-file.ts` mounts the whole hierarchy from the
+ * discriminator BASE, giving the union read-only routes at the base path and each
+ * subtype a full CRUD set at `<base path>/<route segment>` — so a subtype's own `$path`
+ * names an endpoint that does not exist. `agent/ui.md` printed exactly that, as fact.
+ *
+ * The composition here is the same one `routes-file.ts` and the TanStack
+ * `hooks-file.ts` emit as CODE (`Base.$path + "/car"`); they must reference the const
+ * rather than a computed string, so this is the one place the composition can be
+ * evaluated. The SEGMENT rule is not restated — `tphRouteSegment` owns it, and all three
+ * read it from there.
+ */
+export function restPath(entity: MetaObject): string {
+  const pin = tphDiscriminatorPin(entity);
+  const base = pin === undefined ? undefined : tphDiscriminatorBase(entity);
+  if (pin === undefined || base === undefined) return resourcePath(entity);
+  return `${resourcePath(base)}/${tphRouteSegment(pin.value)}`;
+}
+
+/**
+ * True when a FORM is generated for this object.
+ *
+ * `servesWriteApi` is NOT the same question, and the difference is a TPH hierarchy. The
+ * discriminator BASE has a writable source and a write endpoint, yet gets no form — you
+ * cannot create a base, and its polymorphic mount is read-only by construction (the
+ * discriminated union has no single writable shape). Each concrete SUBTYPE gets one, even
+ * though it owns no writable source of its own. A read-only projection gets none: it is
+ * instantiable for read, never for write.
+ *
+ * This is the form generator's own filter, hoisted so `agent/ui.md` can say "there is
+ * deliberately no form here" for the same set of objects the generator skips. Asking
+ * `servesWriteApi` on the page instead announced a form for every discriminator base.
+ */
+export function hasGeneratedForm(entity: MetaObject): boolean {
+  if (tphDiscriminatorPin(entity) !== undefined) return true; // per-subtype form
+  // ADR-0039: own — @discriminator identifies a TPH BASE level (read own so a subtype is
+  // not mistaken for a base); `entity` is already known not to be a subtype.
+  if (typeof entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string") return false;
+  return servesWriteApi(entity) && !isProjection(entity);
 }

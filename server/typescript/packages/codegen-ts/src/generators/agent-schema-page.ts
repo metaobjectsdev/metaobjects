@@ -20,6 +20,7 @@
 // here would mean re-implementing those skip rules and drifting from them. The declaring
 // object is named per table from the provenance map instead.
 
+import { GENERATION_INCREMENT, GENERATION_UUID } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
 import type {
   AgentSchemaInput,
@@ -74,8 +75,8 @@ function keyCell(table: SchemaTableLike, column: SchemaColumnLike): string {
 
 /** The DEFAULT cell. An `expr` default is shown as SQL; a literal as a literal. */
 function defaultCell(column: SchemaColumnLike): string {
-  if (column.identity === "increment") return "auto-increment";
-  if (column.identity === "uuid") return "generated uuid";
+  if (column.identity === GENERATION_INCREMENT) return "auto-increment";
+  if (column.identity === GENERATION_UUID) return "generated uuid";
   if (column.default === undefined) return "";
   return `\`${mdCell(column.default.value)}\``;
 }
@@ -283,8 +284,9 @@ export function renderAgentSchemaPage(
     out.push("## Enums");
     out.push("");
     out.push(
-      "Members are the values the wire and the generated types use. The column carries a " +
-        "`CHECK`, so a value outside the set is refused by the database.",
+      "Members are the values the wire and the generated types use. Whether the DATABASE " +
+        "also refuses a value outside the set is that table's **Checks** above — an " +
+        "`@isArray` enum carries none, and neither does a view column.",
     );
     out.push("");
     out.push(...opts.enums);

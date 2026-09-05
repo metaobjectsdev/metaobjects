@@ -56,15 +56,30 @@ export function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value
   // walking superResolved reading each level's OWN @discriminator.
   const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
   if (typeof value !== "string" || value === "") return undefined;
+  const base = tphDiscriminatorBase(obj);
+  if (base === undefined) return undefined;
+  // ADR-0039: own — the base level is the one that DECLARES @discriminator.
+  const fieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+  if (typeof fieldName !== "string" || fieldName === "") return undefined;
+  return { fieldName, value };
+}
 
-  // Walk the extends chain to find the root carrying @discriminator.
+/**
+ * The discriminator BASE an object extends — the nearest ancestor declaring
+ * `@discriminator` — or undefined when there is none.
+ *
+ * The base is NOT the topmost ancestor: a multi-level hierarchy can extend further up
+ * past the level that owns the discriminator, and a route path composed against the
+ * wrong level names an endpoint nothing mounts. One walk, read by `tphDiscriminatorPin`
+ * and by `restPath` (api-surface.ts), so the pin and the address agree on which object
+ * is the base.
+ */
+export function tphDiscriminatorBase(obj: MetaObject): MetaObject | undefined {
   let cursor = obj.superResolved;
   while (cursor !== undefined) {
     // ADR-0039: own — super-resolution walk; read each level's OWN @discriminator.
     const fieldName = cursor.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
-    if (typeof fieldName === "string" && fieldName !== "") {
-      return { fieldName, value };
-    }
+    if (typeof fieldName === "string" && fieldName !== "") return cursor as MetaObject;
     cursor = cursor.superResolved;
   }
   return undefined;

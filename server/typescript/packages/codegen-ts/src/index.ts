@@ -91,18 +91,23 @@ export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
-export { servesReadApi, servesWriteApi } from "./api-surface.js";
+export { hasGeneratedForm, restPath, servesReadApi, servesWriteApi } from "./api-surface.js";
 // #356 — every emitter selects a field's view by the SURFACE it renders, never by
 // declaration position. An owned generator (FR-040) composing the render layer must
 // use this too, or it reinstates the order-dependence in its own copy.
 export { viewForContext, VIEW_CONTEXT_FORM, VIEW_CONTEXT_GRID } from "./view-context.js";
+// The shared per-field UI derivation. `valueObjectFor` is the predicate the React form
+// generator and the `agent/ui.md` docs page must both ask — it decides whether a field is
+// rendered as an input at all — and `humanize` is the one body behind every generated
+// label. Both are exported so the react tier reads them rather than keeping a copy.
+export { humanize, inferViewKind, labelFor, currencyMetaFor, valueObjectFor } from "./templates/field-meta.js";
 // The DB-free descriptor module the UI tier imports from (see entity-meta-file.ts).
 export { renderEntityMetaFile, entityMetaFileName, entityMetaSpecifier } from "./templates/entity-meta-file.js";
 // FR-017 TPH helpers — used by the per-framework codegen packages (tanstack,
 // react) to dispatch polymorphic/per-subtype emission and skip subtype files.
 export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
 export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
-export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js";
+export { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "./templates/zod-validators.js";
 
 // The ONE sortability rule. It builds the server-side `<Entity>SortAllowlist` and the
 // client-side sort union, and it is public so a UI-tier generator (a data-grid column

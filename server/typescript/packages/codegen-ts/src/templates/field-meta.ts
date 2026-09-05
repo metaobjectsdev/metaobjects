@@ -4,6 +4,8 @@
 // All helpers take a MetaField node.
 
 import { MetaField } from "@metaobjectsdev/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
+import { stripPackage } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -20,6 +22,8 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_OBJECT,
+  FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STRING_FORMAT,
   FIELD_ATTR_LENIENT,
   STRING_FORMAT_EMAIL,
@@ -201,6 +205,36 @@ export function currencyMetaFor(
 }
 
 // ---------------------------------------------------------------------------
+// valueObjectFor
+// ---------------------------------------------------------------------------
+
+/**
+ * The `object.value` a `field.object`'s `@objectRef` names, or `undefined` when the
+ * field is not an object field, declares no ref, or names one that is not in the run.
+ *
+ * THIS IS THE "DOES THE FORM NEST THIS FIELD?" PREDICATE, and it lives here because two
+ * tiers have to give one answer: `codegen-ts-react`'s form generator recurses into the
+ * referenced value object as a `<fieldset>` sub-form (or a `useFieldArray` repeatable
+ * group when the field is an array) instead of emitting an input at all, and
+ * `agent/ui.md` documents what that form renders. When they answered separately the page
+ * printed `text` — the field's resolved `view.*` subtype, which the form never consults
+ * for a nested field — as if it were the control.
+ *
+ * The resolution is BARE-NAME on purpose: it is the same lookup the Zod and
+ * inferred-type templates perform, and changing it here would change what the generated
+ * form nests. A package-aware resolution is a separate decision with its own blast
+ * radius (ADR-0042).
+ */
+export function valueObjectFor(field: MetaField, root: MetaRoot): MetaObject | undefined {
+  if (field.subType !== FIELD_SUBTYPE_OBJECT) return undefined;
+  // ADR-0039: resolving — @objectRef may be inherited via extends.
+  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+  if (typeof ref !== "string" || ref.length === 0) return undefined;
+  const base = stripPackage(ref);
+  return root.objects().find((o) => o.name === base);
+}
+
+// ---------------------------------------------------------------------------
 // labelFor
 // ---------------------------------------------------------------------------
 
@@ -229,8 +263,14 @@ export function labelFor(field: MetaField, context: string): string {
 // Internal
 // ---------------------------------------------------------------------------
 
-/** Convert a camelCase or PascalCase field name to a human-friendly label. */
-function humanize(s: string): string {
+/**
+ * Convert a camelCase or PascalCase field name to a human-friendly label.
+ *
+ * THE one copy in this package: `entity-ui-descriptor.ts` re-exports this rather than
+ * keeping a second body, because two spellings of "humanize" is two answers to what a
+ * field is CALLED — the label a form renders and the label the docs page prints.
+ */
+export function humanize(s: string): string {
   return s
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/_/g, " ")

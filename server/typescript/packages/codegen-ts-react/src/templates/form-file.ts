@@ -25,13 +25,12 @@
 // while the filter beside it read it as an opt-OUT. Neither is true now.
 
 import { code, imp } from "ts-poet";
-import { MetaField, MetaObject, MetaView, stripPackage } from "@metaobjectsdev/metadata";
+import { MetaField, MetaObject, MetaView } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_ATTR_OBJECT_REF,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
@@ -62,7 +61,9 @@ import {
   type RenderContext,
   entityModuleSpecifier,
   GENERATED_HEADER,
+  humanize,
   tphDiscriminatorPin,
+  valueObjectFor,
   viewForContext,
   VIEW_CONTEXT_FORM,
 } from "@metaobjectsdev/codegen-ts";
@@ -116,24 +117,13 @@ function visibleFields(entity: MetaObject, discField?: string): MetaField[] {
  *  per-branch visited-set cycle guard. */
 const MAX_VO_DEPTH = 5;
 
-/** Resolve a `field.object`'s `@objectRef` to the referenced value object from
- *  the loaded root. Mirrors the resolution the Zod / inferred-type templates use
- *  (read `@objectRef`, strip the package, look the bare name up on the root). */
+/** Resolve a `field.object`'s `@objectRef` to the referenced value object from the loaded
+ *  root — `valueObjectFor`, in `@metaobjectsdev/codegen-ts`, because `agent/ui.md` has to
+ *  ask the SAME question to document what this generator renders. When the two answered
+ *  separately the page printed the field's view kind (`text`) as the control for a field
+ *  this generator emits as a nested sub-form and no input at all. */
 function resolveValueObject(field: MetaField, ctx: RenderContext): MetaObject | undefined {
-  if (field.subType !== FIELD_SUBTYPE_OBJECT) return undefined;
-  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-  if (typeof ref !== "string" || ref.length === 0) return undefined;
-  const base = stripPackage(ref);
-  return ctx.loadedRoot.objects().find((o) => o.name === base) as MetaObject | undefined;
-}
-
-/** camelCase / PascalCase → human label ("llmConfig" → "Llm Config"). */
-function humanize(s: string): string {
-  return s
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
+  return valueObjectFor(field, ctx.loadedRoot);
 }
 
 /** A real HTML <input type=...> for a scalar field subtype, or undefined (text). */
