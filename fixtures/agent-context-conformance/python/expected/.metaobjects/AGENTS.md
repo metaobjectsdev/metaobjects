@@ -9,23 +9,21 @@ MetaObjects is a metadata standard: typed metadata in `metaobjects/` is the dura
 spine; generated code is the disposable artifact. Regenerate with `metaobjects gen`.
 
 ## Read the generated reference before you touch a tier
-`meta docs` writes four reference files under this project's docs output directory
-(`./docs` unless `docs.outDir` in `metaobjects.config.ts` says otherwise). They are
-generated from THIS project's metadata, so they describe what it actually is rather than
-what the framework does in general — and reading the relevant one first is how you avoid
+`metaobjects docs` writes ONE reference file under this project's docs output directory. It
+is generated from THIS project's metadata, so it describes what the project actually is
+rather than what the framework does in general — and reading it first is how you avoid
 inferring the answer from generated code, which is the disposable half.
 
-- **`agent/schema.md`** — before touching persistence. Tables, columns, the field each
-  column came from, keys, foreign keys, constraints.
 - **`api/AGENT-API.md`** — before calling generated code. The types, endpoints and filter
   operators the generators actually emitted.
-- **`agent/ui.md`** — before touching a form or a grid. The control, label, rules and
-  filterability per field, and each declared grid.
-- **`agent/requirements.md`** — before adding a capability. What is already claimed, and
-  what was deliberately **retired** — an entry saying a capability must not be rebuilt is
-  the one thing you cannot learn from the code, because the code is gone.
 
-Not there? Run `meta docs`. It reads the metadata and the config and needs nothing else.
+Not there? Run `metaobjects docs`.
+
+The other three pages of that reference — `agent/schema.md` (persistence), `agent/ui.md`
+(forms and grids) and `agent/requirements.md` (what is already claimed, and what was
+deliberately **retired**) — are written by the Node `meta docs` command and need a
+`metaobjects.config.ts`, which this stack does not have. Until it does, read the metadata
+itself for those three: it is the source those pages are generated from.
 
 ## Principles
 - **Adopting onto existing code? Metadata FOLLOWS the code.** On a migration (existing working code / live DB), author metadata + tune codegen to *reproduce* what the code already is — native types (`field.uuid` when the code uses `UUID`, not `field.string`), names, nullability — so regen changes as little existing code as possible. The only existing code that should change is the hand-written layer codegen replaces; ask when a modeling choice is ambiguous. (Greenfield: model-first, below.)

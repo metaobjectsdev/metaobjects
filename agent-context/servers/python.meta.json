@@ -1,5 +1,6 @@
 {
   "displayName": "Python",
   "install": "pip install metaobjects",
-  "codegenCommand": "metaobjects gen"
+  "codegenCommand": "metaobjects gen",
+  "docsCommand": "metaobjects docs"
 }

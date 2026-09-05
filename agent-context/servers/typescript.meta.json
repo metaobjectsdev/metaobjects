@@ -1,5 +1,6 @@
 {
   "displayName": "TypeScript",
   "install": "npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts",
-  "codegenCommand": "npx meta gen"
+  "codegenCommand": "npx meta gen",
+  "docsCommand": "npx meta docs"
 }
