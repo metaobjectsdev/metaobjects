@@ -41,6 +41,7 @@ import {
   DEFAULT_COLUMN_NAMING_STRATEGY,
   renderCoreMetamodelDocs,
 } from "@metaobjectsdev/metadata";
+import { DEFAULT_DIALECT } from "@metaobjectsdev/codegen-ts";
 import type { MetaDataTypeProvider, MetaRoot } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 // The `agent` schema surface takes the physical schema as an ARGUMENT with its resolvers
@@ -244,21 +245,23 @@ export interface DocsCommandOptions {
  */
 function buildAgentSchemaInput(
   root: MetaRoot,
-  dialect: Dialect | undefined,
+  configured: Dialect | undefined,
   strategy: ColumnNamingStrategy,
 ): AgentSchemaInput | undefined {
-  // NO DIALECT FALLBACK. The agent-surface comment at the call site says documenting a
-  // schema under the wrong dialect would be worse than documenting none — and then a
-  // `?? "sqlite"` did exactly that, silently, for any project that declares none. A
-  // dialect is what decides every SQL type on the page, so an absent one skips the page
-  // with the same warning a failed build gets; the other two agent pages still emit.
-  if (dialect === undefined) {
-    log.warn(
-      "docs: agent/schema.md skipped — metaobjects.config.ts declares no 'dialect', " +
-        "and the page's SQL types are dialect-specific. Set one to document the schema.",
-    );
-    return undefined;
-  }
+  // AN UNDECLARED DIALECT IS NOT AN UNKNOWN ONE. `normalizeConfig` — the resolver
+  // `meta gen` runs — defaults it to `DEFAULT_DIALECT`, and `meta migrate` applies the
+  // same default, so a project that declares none IS a sqlite project: its Drizzle tables
+  // are `sqliteTable`, its migrations are sqlite DDL. Documenting it as sqlite is
+  // therefore documenting what the toolchain actually produces.
+  //
+  // This was briefly changed to SKIP the page when no dialect was declared, on the theory
+  // that the page would otherwise document "a dialect the project does not use". That
+  // premise was wrong, and the change made `meta docs` the one command in the toolchain
+  // that resolves a dialect differently from `meta gen` and `meta migrate` — a second
+  // derivation, which is the defect class this whole surface exists to avoid. What was
+  // genuinely wrong was the SPELLING: a hardcoded `"sqlite"` literal beside two other
+  // copies of the same default. It reads the constant now.
+  const dialect = configured ?? DEFAULT_DIALECT;
   try {
     const built = buildExpectedSchemaWithProvenance(root, {
       dialect,
@@ -645,9 +648,10 @@ export async function docsCommand(
   // `api/AGENT-API.md`, belongs to the api surface above.
   //
   // Gated on a loadable gen config exactly as `api` is, and for a stronger reason: the
-  // physical schema depends on the project's DIALECT and column-naming strategy, and
-  // `meta docs` otherwise runs on the neutral "sqlite" placeholder above. Documenting a
-  // schema under a dialect the project does not use would be worse than documenting none.
+  // physical schema depends on the project's DIALECT and column-naming strategy, and the
+  // neutral model surface above runs on a placeholder because it documents no SQL at all.
+  // The dialect here is the project's own, resolved by the same default `meta gen` and
+  // `meta migrate` apply — see `buildAgentSchemaInput`.
   if (docsCfg.surfaces.includes("agent")) {
     if (loadedConfig !== undefined) {
       const strategy = loadedConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY;

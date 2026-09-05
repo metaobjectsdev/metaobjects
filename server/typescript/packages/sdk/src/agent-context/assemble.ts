@@ -19,6 +19,12 @@ interface ServerMeta {
    *  pointer tells a reader to run it, and a pointer naming a command the stack does not
    *  have is worse than no pointer. */
   docsCommand: string;
+  /** The docs-root-relative directory THIS port's docs command writes its api pages into.
+   *  It is NOT `api` outside TypeScript — Python defaults to `api/python`, C# to
+   *  `api/csharp`, the Maven plugin to `api/<lang>` — so a pointer naming `api/AGENT-API.md`
+   *  to a Python project sends a reader to a path that does not exist. Naming the command
+   *  correctly and the FILE wrongly is the same defect one field over. */
+  apiSubDir: string;
 }
 
 function readServerMeta(contentRoot: string, server: string): ServerMeta | undefined {
@@ -30,7 +36,7 @@ function readServerMeta(contentRoot: string, server: string): ServerMeta | undef
 function stackLine(
   contentRoot: string,
   stack: Stack,
-): { line: string; codegenCommand: string; docsCommand: string } {
+): { line: string; codegenCommand: string; docsCommand: string; apiSubDir: string } {
   const primary = stack.servers[0];
   const meta = primary ? readServerMeta(contentRoot, primary) : undefined;
   const serverPart = stack.servers.length ? stack.servers.join(", ") + " server" : "no server";
@@ -44,6 +50,7 @@ function stackLine(
     line: `Stack: ${serverPart}, ${clientPart}.`,
     codegenCommand: meta ? meta.codegenCommand : "meta gen",
     docsCommand: meta ? meta.docsCommand : "meta docs",
+    apiSubDir: meta ? meta.apiSubDir : "api",
   };
 }
 
@@ -70,9 +77,10 @@ function hasNodeDocsSurface(stack: Stack): boolean {
  * flag is true) and `{{^name}}…{{/name}}` (render when it is false).
  *
  * Sections do NOT nest — one pass, non-greedy to the matching close tag — which is all the
- * always-on template needs and keeps the failure mode of a mis-typed tag loud. An unknown
- * variable or section name THROWS, deliberately: a silently empty substitution in a file
- * an agent is told to trust is the failure this whole surface exists to prevent.
+ * always-on template needs. An unknown variable or section name THROWS, and so does any
+ * section tag left standing after the pass (mistyped close tag, unclosed section, nesting):
+ * a silently empty substitution, or a literal `{{#…}}` shipped into a file an agent is told
+ * to trust, is the failure this whole surface exists to prevent.
  */
 function applyTemplate(
   tpl: string,
@@ -90,6 +98,19 @@ function applyTemplate(
       return sections[name] === shownWhen ? body : "";
     },
   );
+  // A section tag that SURVIVED the pass above is malformed — a mistyped close tag, an
+  // unclosed section, or a nested one (the single non-greedy pass matches the first close
+  // tag, leaving the inner pair behind). Every one of those would otherwise ship a literal
+  // `{{#…}}` into a file an agent is told to trust, which is the failure this mechanism
+  // exists to prevent, so the leftover is an ERROR rather than passed through. The
+  // variable pass below cannot catch it: `{{#a}}` is not a `\w+` match.
+  const leftover = resolved.match(/\{\{[#^/]\w*\}\}/);
+  if (leftover !== null) {
+    throw new Error(
+      `agent-context: unresolved template section tag ${leftover[0]} — a section must be a ` +
+        "well-formed {{#name}}…{{/name}} or {{^name}}…{{/name}} pair, and sections do not nest",
+    );
+  }
   return resolved.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => {
     if (!(k in vars)) throw new Error(`agent-context: unknown template variable {{${k}}}`);
     return vars[k]!;
@@ -103,10 +124,10 @@ export function assemble(opts: { contentRoot: string; stack: Stack }): Assembled
 
   // 1. Always-on (AGENTS.md + CLAUDE.md, identical contents).
   const tpl = readFileSync(join(contentRoot, "templates", "always-on.md.mustache"), "utf8");
-  const { line, codegenCommand, docsCommand } = stackLine(contentRoot, stack);
+  const { line, codegenCommand, docsCommand, apiSubDir } = stackLine(contentRoot, stack);
   const alwaysOn = applyTemplate(
     tpl,
-    { stackLine: line, codegenCommand, docsCommand },
+    { stackLine: line, codegenCommand, docsCommand, apiSubDir },
     { nodeDocsSurface: hasNodeDocsSurface(stack) },
   );
   out.push({ path: ".metaobjects/AGENTS.md", contents: alwaysOn });

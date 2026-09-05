@@ -14,8 +14,8 @@ is generated from THIS project's metadata, so it describes what the project actu
 rather than what the framework does in general — and reading it first is how you avoid
 inferring the answer from generated code, which is the disposable half.
 
-- **`api/AGENT-API.md`** — before calling generated code. The types, endpoints and filter
-  operators the generators actually emitted.
+- **`api/python/AGENT-API.md`** — before calling generated code. The types, endpoints and
+  filter operators the generators actually emitted.
 
 Not there? Run `metaobjects docs`.
 

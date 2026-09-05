@@ -135,9 +135,10 @@ Two flags are NOT members of that set and do not compose with it:
   that reproduces `CREATE TABLE` is a second spelling that goes stale.
 - **`agent/ui.md`** — before touching a form or a grid. Per field: the control the form
   renders, label, HTML type, rules, form-excluded, and what the LIST endpoint accepts for
-  filtering and sorting; plus each declared `layout.dataGrid`. The heading over each object
-  is the address the ROUTES mount it at, which is not always the object's own `$path` — a
-  TPH subtype is served under its discriminator base (`/vehicles/car`, never `/cars`).
+  filtering and sorting; plus each declared `layout.dataGrid`. The endpoint under each
+  object is the FULL address the routes mount it at — `apiPrefix` included, and not always
+  the object's own `$path`, since a TPH subtype is served under its discriminator base
+  (`/api/vehicles/car`, never `/cars`).
 - **`agent/requirements.md`** — before adding a capability. The ledger plus a **node
   index**: every claimed node → the requirements claiming it, at every grain, with the
   literal FQN on every line.
@@ -157,11 +158,11 @@ content for, and one with none sees no `agent/` directory at all.
 
 It is **config-gated like the api surface**: physical names, the dialect and view dispatch
 all come from `metaobjects.config.ts`, so without one there is nothing true to say. The
-neutral model surface is unaffected and stays neutral. `agent/schema.md` needs one thing
-more — a declared `dialect`, since every SQL type on it is dialect-specific — and is
-skipped with a warning when the config declares none, or when the expected schema cannot be
-built at all (a primary-key move, a duplicate physical name: conditions `meta migrate`
-reports properly, and docs must not be the command that fails on them).
+neutral model surface is unaffected and stays neutral. `agent/schema.md` resolves the
+dialect the way `meta gen` and `meta migrate` do — a config declaring none IS a sqlite
+project — and is skipped, with a warning, only when the expected schema cannot be built at
+all (a primary-key move, a duplicate physical name: conditions `meta migrate` reports
+properly, and docs must not be the command that fails on them).
 
 `meta verify --docs` (above) is what keeps the committed pages honest — including the
 skips. `agent/` is the one directory that command owns outright, so a generated page

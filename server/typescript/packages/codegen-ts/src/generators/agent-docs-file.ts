@@ -60,6 +60,7 @@ import {
 import type { ColumnNamingStrategy, MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import type { EmittedFile, Generator, GeneratorFactory } from "../generator.js";
 import { resolveObjectNames } from "../names.js";
+import { isAbstract } from "../instance-artifacts.js";
 import { enumValues, intValueMapOf } from "../enum-meta.js";
 import { renderAgentSchemaPage } from "./agent-schema-page.js";
 import { renderAgentUiPage } from "./agent-ui-page.js";
@@ -234,7 +235,12 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
           const key = schema.qualify({ name: names.name, schema: names.schema });
           const isTable = tableNames.has(key);
           if (!isTable && !viewNames.has(key)) continue;
-          if (isTable) tableBacked.push(obj);
+          // ABSTRACT BASES ARE EXCLUDED, and being in the snapshot does not exempt them:
+          // an abstract base that declares the `source.rdb` its concrete child inherits
+          // resolves to that child's table, so the qualified-name test admits it and the
+          // page printed the base's enum a second time under a different owner.
+          // `buildExpectedSchema`'s Pass 1 skips abstracts; this reads the same rule.
+          if (isTable && !isAbstract(obj)) tableBacked.push(obj);
           let map = declaredBy.get(key);
           if (map === undefined) {
             map = new Map();
@@ -264,7 +270,10 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       }
 
       // ---- ui.md
-      const ui = renderAgentUiPage(ctx.loadedRoot);
+      // The apiPrefix is the project's, from the render context the runner built — the
+      // same value `routes-file.ts` emits as the mount prefix and `entity-constants.ts`
+      // emits as `$apiPrefix`. Without it the page names an address nothing serves.
+      const ui = renderAgentUiPage(ctx.loadedRoot, ctx.renderContext?.apiPrefix ?? "");
       if (ui !== "") files.push({ path: `${dir}/ui.md`, content: ui });
 
       // ---- requirements.md

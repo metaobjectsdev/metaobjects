@@ -45,7 +45,7 @@
 //      The residual cost is stated rather than hidden: outside `agent/`, a page for an
 //      entity that was DELETED stays committed and this gate stays green.
 
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, isAbsolute, sep } from "node:path";
 import { docsCommand } from "../commands/docs.js";
@@ -53,24 +53,38 @@ import { docsCommand } from "../commands/docs.js";
 export interface DocsDriftResult {
   /** True when every page a fresh `meta docs` would write is committed and identical. */
   clean: boolean;
-  /** Docs-dir-relative paths that differ (changed or missing), sorted. */
+  /** Docs-dir-relative paths that differ — changed, missing, or (under `agent/`) committed
+   *  when a fresh run no longer emits them. Sorted. */
   driftedFiles: string[];
   /** Human-readable, one line per file. */
   lines: string[];
-  /** How many pages the fresh run produced — the denominator of a passing report. */
+  /** The denominator both the passing and the failing report divide by: the pages a fresh
+   *  run produced, plus any committed page under `agent/` it no longer emits. */
   checked: number;
   /** Set when the gate could not run at all. */
   error?: string;
 }
 
-/** Recursively list files under `dir`, relative to it. */
+/**
+ * Recursively list files under `dir`, relative to it.
+ *
+ * `lstatSync`, NOT `statSync`, and symlinks are SKIPPED. This walks the committed docs
+ * tree as well as the fresh one now, and a real repository's `docs/` may hold a symlink to
+ * a build output that is absent on CI — `statSync` follows it and throws `ENOENT`, which
+ * the caller reports as "regeneration failed", blaming the fresh run for a dangling link
+ * in the committed tree. A directory symlink would also let the walk recurse without
+ * bound. Nothing MetaObjects writes is a symlink, so skipping them cannot hide a page of
+ * ours; a symlinked page is somebody else's file, which this gate does not judge anyway.
+ */
 function listFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
   const walk = (d: string): void => {
     for (const entry of readdirSync(d)) {
       const full = join(d, entry);
-      if (statSync(full).isDirectory()) walk(full);
+      const st = lstatSync(full);
+      if (st.isSymbolicLink()) continue;
+      if (st.isDirectory()) walk(full);
       else out.push(relative(dir, full));
     }
   };

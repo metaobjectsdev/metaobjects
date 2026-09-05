@@ -50,7 +50,8 @@ import {
   type UiRule,
 } from "../templates/entity-ui-descriptor.js";
 import { isSortableField } from "../templates/filter-shared.js";
-import { declaresTphDiscriminator, tphDiscriminatorBase } from "../templates/zod-validators.js";
+import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
+import { declaresTphDiscriminator } from "../templates/zod-validators.js";
 
 const GENERATED_MARKER = `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`;
 
@@ -103,6 +104,12 @@ function flag(value: unknown): string {
 /**
  * The endpoint line under an object's heading.
  *
+ * THE `apiPrefix` IS PART OF THE ADDRESS. `routes-file.ts` registers every mount inside
+ * `fastify.register(…, { prefix: apiPrefix })`, so a project configuring `/api` serves
+ * `/api/owners` and nothing at `/owners`. This page states that its heading is the address
+ * the routes mount at, so omitting the prefix made that promise false for every project
+ * that sets one — and a reader following it gets a 404.
+ *
  * `restPath`, NOT `descriptor.path`: a TPH subtype's own `$path` names an address
  * nothing mounts — the hierarchy is mounted from the discriminator base, each subtype
  * at `<base>/<segment>` — and this page printed that non-existent address as fact.
@@ -113,15 +120,27 @@ function flag(value: unknown): string {
  * construction. Saying so is the difference between "the form is missing" and "there
  * is deliberately no form"; asking the endpoint question announced one for every base.
  */
-function endpointLine(obj: MetaObject): string {
-  const endpoint = restPath(obj);
+function endpointLine(obj: MetaObject, root: MetaRoot, apiPrefix: string): string {
+  const endpoint = `${apiPrefix}${restPath(obj)}`;
   if (hasGeneratedForm(obj)) return `Endpoint \`${endpoint}\`.`;
-  // The base of a hierarchy — one that declares the discriminator and does not itself sit
-  // under another — is the one "no form" case that is not read-only.
-  const isDiscriminatorBase = tphDiscriminatorBase(obj) === undefined && declaresTphDiscriminator(obj);
-  const reason = isDiscriminatorBase
-    ? "for a discriminator base; each concrete subtype below has its own"
-    : "(read-only)";
+  // `isTphDiscriminatorBase`, which requires at least one CONCRETE subtype — the same
+  // predicate `routes-file.ts` switches on. `@discriminator` with no subtype yet is a
+  // refactor-in-progress shape: the routes generator emits the VANILLA full-CRUD file for
+  // it, so "each concrete subtype below has its own" would name subtypes that do not
+  // exist, on an object that does have a write endpoint.
+  // THREE reasons, not two. `isTphDiscriminatorBase` requires at least one CONCRETE
+  // subtype — the same predicate `routes-file.ts` switches on — and the case it excludes
+  // is real: an object declaring `@discriminator` with no subtype yet gets the VANILLA
+  // full-CRUD routes file, so it is NOT read-only, while the form generator declines it
+  // for declaring `@discriminator` at all. Calling that "read-only" is false in the one
+  // direction that matters, since a reader would conclude it cannot be written to.
+  const reason = isTphDiscriminatorBase(obj, root)
+    ? "for a discriminator base — its own mount is list/get only, and each concrete " +
+      "subtype below has its own form"
+    : declaresTphDiscriminator(obj)
+      ? "— the form generator declines any object declaring `@discriminator`, and this " +
+        "one has no concrete subtype yet. Its routes are the ordinary full CRUD set"
+      : "(read-only)";
   return (
     `Endpoint \`${endpoint}\` — **no form is generated** ${reason}. ` +
     "The fields below describe the grid and the filters."
@@ -176,7 +195,7 @@ function gridSection(grid: MetaData): string[] {
  * Render the page. Returns "" when no object in the model has a UI surface — the surface
  * then emits no FILE, so a headless project sees nothing rather than an empty page.
  */
-export function renderAgentUiPage(root: MetaRoot): string {
+export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
   const objects = root.objects();
   const withUi = objects.filter(hasUiSurface);
   if (withUi.length === 0) return "";
@@ -221,7 +240,7 @@ export function renderAgentUiPage(root: MetaRoot): string {
     out.push(`## \`${obj.resolutionKey()}\``);
     out.push("");
     const descriptor = buildEntityUiDescriptor(obj, root);
-    out.push(endpointLine(obj));
+    out.push(endpointLine(obj, root, apiPrefix));
     out.push("");
     if (descriptor.fields.length > 0) {
       // The field nodes, keyed by name, so the three non-descriptor columns can be read

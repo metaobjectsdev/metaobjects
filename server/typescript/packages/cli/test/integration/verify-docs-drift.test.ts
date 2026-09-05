@@ -10,7 +10,7 @@
 // gate committed green-only proves that it ran, not that it can convict.
 
 import { describe, test, expect } from "bun:test";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { run } from "../../src/index.js";
@@ -123,6 +123,21 @@ describe("meta verify --docs", () => {
       const stale = readFileSync(join(dir, "docs", "agent", "schema.md"), "utf8");
       writeFileSync(join(dir, "docs", "agent", "schema.postgres.md"), stale);
       expect(await run(["verify", "--cwd", dir, "--docs"])).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a dangling symlink in the docs tree does not take the gate down", async () => {
+    const dir = project();
+    try {
+      await generateDocs(dir);
+      // The committed tree is WALKED now (it was not before the orphan branch), and a real
+      // repository's `docs/` may hold a symlink to a build output absent on CI. `statSync`
+      // follows it and throws ENOENT, which the caller reports as "regeneration failed" —
+      // the gate going red, blaming the fresh run, for a dangling link it did not create.
+      symlinkSync(join(dir, "docs", "nowhere-at-all"), join(dir, "docs", "dangling.md"));
+      expect(await run(["verify", "--cwd", dir, "--docs"])).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

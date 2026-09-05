@@ -58,9 +58,11 @@ such config, so on it the four-file list named three files that cannot exist and
 that cannot make them, on the one page an agent is told to trust. The assembler gained a
 minimal section mechanism (`{{#name}}` / `{{^name}}`, non-nesting, throwing on an unknown
 name) because it had none — it substituted two variables and nothing else — and each server
-now declares its own `docsCommand`, so a Python project is pointed at `metaobjects docs` and
-at the one file that command writes, with the other three named as what they are and where
-they come from.
+now declares its own `docsCommand` AND the api subdirectory that command writes into — it is
+`api/python`, `api/csharp`, `api/<lang>` outside TypeScript, so naming the command correctly
+and the FILE as `api/AGENT-API.md` would have been the same defect one field over. A Python
+project is pointed at `metaobjects docs` and at `api/python/AGENT-API.md`, with the other
+three pages named as what they are and where they come from.
 
 **Two properties of the pages that are easy to get wrong, and are pinned:**
 

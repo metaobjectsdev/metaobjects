@@ -196,15 +196,17 @@ describe("meta docs — the agent schema page and the project's dialect", () => 
     expect(page).toContain("The physical shape of the `sqlite` database");
   });
 
-  test("SKIPS agent/schema.md when the config declares no dialect", async () => {
+  test("a config with NO dialect documents sqlite — the default `meta gen` itself applies", async () => {
     const root = await projectPersisted(CONFIG_NO_DIALECT);
     const out = join(root, "out-nodialect");
-    // Documenting a schema under a dialect the project does not use would be worse than
-    // documenting none — and a `?? "sqlite"` fallback did exactly that, silently, three
-    // lines under the comment saying so. The command still succeeds and the other agent
-    // pages still emit; `verify --docs` is what convicts a committed page left behind.
+    // An undeclared dialect is not an unknown one: `normalizeConfig` (the resolver
+    // `meta gen` runs) and `meta migrate` both default it to sqlite, so this project's
+    // generated tables ARE `sqliteTable` and its migrations ARE sqlite DDL. `meta docs`
+    // must apply the same default or it becomes the one command in the toolchain that
+    // answers "which dialect?" differently — a second derivation, which is the whole
+    // defect class this surface exists to avoid.
     expect(await docsCommand([root, "--out", out], root)).toBe(0);
-    expect(existsSync(join(out, "agent", "schema.md"))).toBe(false);
-    expect(existsSync(join(out, "agent", "ui.md"))).toBe(true);
+    const page = readFileSync(join(out, "agent", "schema.md"), "utf8");
+    expect(page).toContain("The physical shape of the `sqlite` database");
   });
 });

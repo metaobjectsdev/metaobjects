@@ -1,6 +1,8 @@
 // test/agent-context/assemble.test.ts
 import { test, expect, describe } from "bun:test";
 import { join } from "node:path";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { assemble } from "../../src/agent-context/assemble.js";
 import { makeStack } from "../../src/agent-context/resolve.js";
 
@@ -57,6 +59,31 @@ describe("assemble", () => {
       expect(c).not.toContain("{{^");
       expect(c).not.toContain("{{/");
       expect(c).not.toContain("{{docsCommand}}");
+    }
+  });
+
+  test("a malformed section tag THROWS rather than shipping into a file an agent reads", () => {
+    // The mechanism resolves sections in one non-greedy pass, so a mistyped close tag, an
+    // unclosed section and a nested pair all leave a literal `{{#…}}` behind. Passing that
+    // through would put a broken tag into AGENTS.md — the exact failure this surface
+    // exists to prevent — so a leftover tag is an error. Exercised through a temp content
+    // root rather than the shipped template, which is (and must stay) well-formed.
+    const root = mkdtempSync(join(tmpdir(), "assemble-tpl-"));
+    try {
+      cpSync(CONTENT_ROOT, root, { recursive: true });
+      const tpl = join(root, "templates", "always-on.md.mustache");
+      const good = readFileSync(tpl, "utf8");
+      for (const broken of [
+        good.replace("{{/nodeDocsSurface}}", "{{/nodeDocsSurfaces}}"), // mistyped close
+        `${good}\n{{#nodeDocsSurface}}\nunclosed\n`, // never closed
+      ]) {
+        writeFileSync(tpl, broken);
+        expect(() =>
+          assemble({ contentRoot: root, stack: makeStack(["typescript"], []) }),
+        ).toThrow(/unresolved template section tag/);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

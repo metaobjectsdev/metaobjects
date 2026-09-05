@@ -80,11 +80,12 @@ export function restPath(entity: MetaObject): string {
  * True when a FORM is generated for this object.
  *
  * `servesWriteApi` is NOT the same question, and the difference is a TPH hierarchy. The
- * discriminator BASE has a writable source and a write endpoint, yet gets no form — you
- * cannot create a base, and its polymorphic mount is read-only by construction (the
- * discriminated union has no single writable shape). Each concrete SUBTYPE gets one, even
- * though it owns no writable source of its own. A read-only projection gets none: it is
- * instantiable for read, never for write.
+ * discriminator BASE has a writable SOURCE — which is all `servesWriteApi` asks — but no
+ * write ENDPOINT: `routes-file.ts` mounts it with `expose: ["list", "get"]`, because the
+ * discriminated union has no single writable shape. So it gets no form, and there would be
+ * nowhere to submit one. Each concrete SUBTYPE gets a form, even though it owns no writable
+ * source of its own. A read-only projection gets none: it is instantiable for read, never
+ * for write.
  *
  * This is the form generator's own filter, hoisted so `agent/ui.md` can say "there is
  * deliberately no form here" for the same set of objects the generator skips. Asking

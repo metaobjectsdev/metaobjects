@@ -23,7 +23,7 @@ async function load(model: unknown): Promise<MetaRoot> {
   return res.root;
 }
 
-function makeCtx(root: MetaRoot): GenContext {
+function makeCtx(root: MetaRoot, apiPrefix = ""): GenContext {
   return {
     entities: root.objects(),
     loadedRoot: root,
@@ -34,6 +34,7 @@ function makeCtx(root: MetaRoot): GenContext {
       loadedRoot: root,
       outDir: "/tmp",
       dbImport: "~/db",
+      apiPrefix,
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
     }),
@@ -41,8 +42,12 @@ function makeCtx(root: MetaRoot): GenContext {
   };
 }
 
-async function emit(root: MetaRoot, opts?: Parameters<typeof agentDocsFile>[0]): Promise<Map<string, string>> {
-  const files = await agentDocsFile(opts).generate(makeCtx(root));
+async function emit(
+  root: MetaRoot,
+  opts?: Parameters<typeof agentDocsFile>[0],
+  apiPrefix = "",
+): Promise<Map<string, string>> {
+  const files = await agentDocsFile(opts).generate(makeCtx(root, apiPrefix));
   return new Map(files.map((f) => [f.path, f.content]));
 }
 
@@ -410,13 +415,14 @@ describe("agent/ui.md — the endpoint it prints", () => {
 
   test("a TPH discriminator BASE is documented as having no form, not as writable", async () => {
     const ui = (await emit(await load(SHAPES))).get("agent/ui.md") ?? "";
-    // `Vehicle` has a writable source and a write endpoint, and still gets NO form: the
+    // `Vehicle` has a writable SOURCE but no write ENDPOINT (its mount is list/get only),
+    // and gets NO form: the
     // form generator skips a discriminator base outright (you cannot create a base) and
     // the polymorphic mount is read-only by construction. Asking `servesWriteApi` here
     // announced a form for it. Its subtype `Car` DOES get one.
     expect(ui).toContain(
-      "Endpoint `/vehicles` — **no form is generated** for a discriminator base; " +
-        "each concrete subtype below has its own.",
+      "Endpoint `/vehicles` — **no form is generated** for a discriminator base — its own " +
+        "mount is list/get only, and each concrete subtype below has its own form.",
     );
     expect(ui).toContain("Endpoint `/vehicles/car`.");
     // A read-only projection keeps its own reason.
@@ -531,5 +537,52 @@ describe("agent/schema.md — the claims it makes about the model", () => {
     expect(page).toContain("### `v_owner_summary`");
     expect(page).toContain("Declared by `acme::fleet::OwnerSummary`.");
     expect(page).toContain("| `name` | passthrough from `Owner.name` |");
+  });
+});
+
+describe("agent/ui.md — the address, in full", () => {
+  test("the endpoint carries the project's apiPrefix, because the routes mount under it", async () => {
+    const ui = (await emit(await load(SHAPES), undefined, "/api")).get("agent/ui.md") ?? "";
+    // `routes-file.ts` registers every mount inside `{ prefix: apiPrefix }`, so a project
+    // configuring `/api` serves `/api/vehicles/car` and NOTHING at `/vehicles/car`. This
+    // page states its heading is the address the routes mount at; omitting the prefix made
+    // that promise false for every project that sets one.
+    expect(ui).toContain("Endpoint `/api/vehicles/car`.");
+    expect(ui).toContain("Endpoint `/api/owner-summaries`");
+    expect(ui).not.toContain("Endpoint `/vehicles/car`.");
+  });
+
+  test("a @discriminator with NO concrete subtype is not called a discriminator base", async () => {
+    // A refactor-in-progress shape: `routes-file.ts` emits the VANILLA full-CRUD file for
+    // it (its TPH branch needs at least one concrete subtype), so it HAS a write endpoint
+    // and "each concrete subtype below has its own form" would name subtypes that do not
+    // exist. `isTphDiscriminatorBase` — the predicate routes itself switches on — is the
+    // one that knows the difference; `@discriminator` being present is not.
+    const lone = {
+      "metadata.root": {
+        package: "acme::fleet",
+        children: [
+          {
+            "object.entity": {
+              name: "Vehicle",
+              "@discriminator": "kind",
+              children: [
+                { "source.rdb": { "@table": "vehicles" } },
+                { "field.long": { name: "id", "@required": true } },
+                { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+                { "field.string": { name: "kind", "@required": true } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const ui = (await emit(await load(lone))).get("agent/ui.md") ?? "";
+    expect(ui).not.toContain("discriminator base");
+    // Nor "(read-only)" — the routes ARE the ordinary full CRUD set here; only the FORM
+    // generator declines it. Both halves of that are said.
+    expect(ui).not.toContain("(read-only)");
+    expect(ui).toContain("the form generator declines any object declaring `@discriminator`");
+    expect(ui).toContain("Its routes are the ordinary full CRUD set.");
   });
 });

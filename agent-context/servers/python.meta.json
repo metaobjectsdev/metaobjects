@@ -2,5 +2,6 @@
   "displayName": "Python",
   "install": "pip install metaobjects",
   "codegenCommand": "metaobjects gen",
-  "docsCommand": "metaobjects docs"
+  "docsCommand": "metaobjects docs",
+  "apiSubDir": "api/python"
 }
