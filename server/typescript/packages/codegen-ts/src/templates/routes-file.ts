@@ -29,7 +29,7 @@ import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
-import { type CrudVerb, exposeLine, intersectExpose } from "../routes-expose.js";
+import { type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 
 export function renderRoutesFile(
   entity: MetaObject,
@@ -389,7 +389,7 @@ function renderTphRoutesFile(
   // The polymorphic mount is read-only BY CONSTRUCTION — the discriminated union has no
   // single writable shape — so an author-supplied `expose` intersects with that fixed set
   // rather than replacing it: it may narrow to just `list`, never widen to `create`.
-  const polymorphicExposeLine = exposeLine(intersectExpose(["list", "get"], expose), "      ");
+  const polymorphicExposeLine = exposeLine(intersectExpose([...TPH_POLYMORPHIC_VERBS], expose), "      ");
   const polymorphic = code`
     ${mountCrudRoutesSym}({
       fastify: ${fastifyRef},

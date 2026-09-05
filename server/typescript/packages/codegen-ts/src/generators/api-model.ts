@@ -394,7 +394,7 @@ function buildEntityUnit(
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)
-    symbols.push(...restSymbols(obj, layout));
+    symbols.push(...restSymbols(obj, layout, root));
     // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
     // documented only when the adopter wired it.
     if (includeHono) symbols.push(...restHonoSymbols(obj, layout));
@@ -568,11 +568,20 @@ function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
  * function entity-constants.ts uses to compute $path — so the documented paths
  * match the generated routes exactly. The verb→path mapping mirrors the runtime
  * mountCrudRoutes contract referenced in routes-file.ts's comments.
+ *
+ * A TPH DISCRIMINATOR BASE serves only `TPH_POLYMORPHIC_VERBS` at its own path, and that
+ * set is imported rather than restated. `isProjection` alone was the read-only test, so a
+ * base — which is not a projection — was documented with POST/PATCH/DELETE against a mount
+ * `routes-file.ts` builds as `intersectExpose(TPH_POLYMORPHIC_VERBS, expose)`: three verbs
+ * that 404, published in the file an adopter is told to call generated code from, under the
+ * comment three lines above claiming these paths match the routes exactly. The per-subtype
+ * mounts at `<base path>/<segment>`, which is where writes actually live, remain a
+ * documented deferral (see the module header).
  */
-function restSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
+function restSymbols(obj: MetaObject, layout: OutputLayout, root: MetaRoot): ApiSymbol[] {
   const name = obj.name;
   const path = resourcePath(obj);
-  const readOnly = isProjection(obj);
+  const readOnly = isProjection(obj) || isTphDiscriminatorBase(obj, root);
 
   // REST endpoints are not importable functions — to WIRE them an adopter
   // imports the entity's route registrar (`<entity>Routes`) from the routes

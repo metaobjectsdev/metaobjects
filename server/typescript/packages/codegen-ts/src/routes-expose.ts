@@ -10,6 +10,21 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
  * the two cannot drift the way the cell-renderer keys drifted from the view registry.
  */
 export const CRUD_VERBS = ["list", "get", "create", "update", "delete"] as const;
+
+/**
+ * The verbs a TPH discriminator BASE serves at its own path.
+ *
+ * Read-only BY CONSTRUCTION: the discriminated union has no single writable shape, so the
+ * base mount can never carry `create`/`update`/`delete` — an author-supplied `expose`
+ * INTERSECTS with this set rather than replacing it, and may narrow to just `list`.
+ * Writes live on the per-subtype mounts at `<base path>/<segment>`.
+ *
+ * Named here because two places need it and a second literal would be a second answer:
+ * `routes-file.ts` emits the mount, and `api-model.ts` documents it. They disagreed —
+ * the api surface documented POST/PATCH/DELETE on a base path that serves none, under a
+ * comment claiming the documented paths "match the generated routes exactly".
+ */
+export const TPH_POLYMORPHIC_VERBS = ["list", "get"] as const;
 export type CrudVerb = (typeof CRUD_VERBS)[number];
 
 /**

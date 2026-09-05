@@ -11,6 +11,7 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildApiModel, type ApiModel, type ApiUnitDoc } from "../src/generators/api-model.js";
+import { TPH_POLYMORPHIC_VERBS } from "../src/routes-expose.js";
 
 async function loadRoot(children: unknown[]) {
   const res = await new MetaDataLoader().load([
@@ -371,5 +372,31 @@ describe("buildApiModel — no invented names", () => {
     for (const s of unit(model, "Product").symbols.filter((x) => x.kind === "data-access")) {
       expect(allowed.has(s.name)).toBe(true);
     }
+  });
+});
+
+describe("buildApiModel — a TPH base documents only the verbs its own mount serves", () => {
+  test("no POST/PATCH/DELETE at the base path — those 404", async () => {
+    const root = await loadRoot(AUTH_TPH);
+    const model = buildApiModel(root, { loadedRoot: root });
+    const auth = model.units.find((u) => u.node === "Auth");
+    expect(auth).toBeDefined();
+
+    const rest = (auth as ApiUnitDoc).symbols.filter((sym) => sym.kind === "rest");
+    const verbs = new Set(rest.map((sym) => sym.signature.split(" ")[0]));
+    // `routes-file.ts` builds the polymorphic mount as
+    // `intersectExpose(TPH_POLYMORPHIC_VERBS, expose)` — the discriminated union has no
+    // single writable shape, so the base path can never carry a write. Writes live on the
+    // per-subtype mounts at `<base>/<segment>`, which this surface documents nowhere (a
+    // deferral stated in the module header).
+    expect([...verbs].sort()).toEqual(["GET"]);
+    expect([...TPH_POLYMORPHIC_VERBS].sort()).toEqual(["get", "list"]);
+
+    // The read-only test used to be `isProjection(obj)` alone. A base is not a projection,
+    // so all five verbs were published — three of which 404 — under a comment asserting the
+    // documented paths "match the generated routes exactly". A vanilla entity is unaffected
+    // and still carries the writes, which is what makes this narrowing and not a blanket.
+    const vanilla = model.units.find((u) => u.node === "BridgeAuth");
+    expect(vanilla?.symbols.some((sym) => sym.kind === "rest")).toBe(false);
   });
 });
