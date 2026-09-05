@@ -382,3 +382,34 @@ measurement to point at, so the nearest number got used — cannot recur._
 **Never author both directions.** Whatever a future measurement says, one link is authored
 and the other derived. Two authored statements of one fact is a reconciliation problem
 `verify` would then own, which is a cost neither direction pays today.
+
+## Amendment 6 (2026-09-05) — Amendment 5 asserted one sentence the record does not support
+
+**Amendment 5's conclusion stands. One of its sentences claims more than this document
+records, and it is corrected here rather than edited, because an amendment that quietly
+rewrites itself is the same failure it was written to stop.**
+
+**The sentence.** Amendment 5 says, of round 5: *"Neither arm put a link on a model node."*
+
+**What the record actually supports.** §"What fired" says the two round-5 arms differed
+*"only in whether the ledger carried a structured `implementedBy` list"* — so node-side
+tagging was not the VARIABLE, which is all that is needed for Amendment 5's argument. It
+does not say node-side tagging was ABSENT. The document nowhere describes round 5's model
+condition at that level of detail, and it records elsewhere that tagged models existed in
+the campaign at all: round 3's control is *"vs a control with all tags stripped"*, which
+only makes sense against an arm that had them.
+
+**What the sentence should have said.** *The record is silent on whether either round-5 arm
+carried node-side links; it establishes only that direction was never the variable.*
+
+**Why the conclusion is unaffected.** Amendment 5's claim is that round 5 cannot be cited as
+having ruled on link DIRECTION. That follows from direction not being varied, and it is
+varied in no round — it does not need the stronger "neither arm had them". The two things
+the direction decision does rest on (the owner's call in Amendment 3, and the
+dependency-direction principle) are unchanged, and so is the prohibition Amendment 5
+imposes: no document may claim round 5 ruled on direction.
+
+**Why this is an amendment and not an edit.** Amendment 5 is committed history. Correcting
+an over-read by silently tightening the sentence would leave a record that had never been
+wrong — which is precisely the shape of the four-document over-reading Amendment 5 exists to
+document. The overstatement is small; the habit of not editing it is not.

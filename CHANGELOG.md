@@ -50,6 +50,38 @@ and says to run `meta docs` if they are absent. `api-docs-file.ts`'s header had 
 pointer as a deferred follow-up; it was deferred, nothing tracked it, and for as long as that
 held `AGENT-API.md` existed while nothing routed anyone to it.
 
+**That pointer is STACK-AWARE, and it had to become so before shipping.** The `agent/` pages
+exist only where the Node `meta` toolchain runs over a `metaobjects.config.ts` — a TypeScript
+server, or any stack declaring a web client, since the React and TanStack tiers are generated
+by `meta gen` whatever the backend is. A port-only stack (Python alone, Java alone) has no
+such config, so on it the four-file list named three files that cannot exist and a command
+that cannot make them, on the one page an agent is told to trust. The assembler gained a
+minimal section mechanism (`{{#name}}` / `{{^name}}`, non-nesting, throwing on an unknown
+name) because it had none — it substituted two variables and nothing else — and each server
+now declares its own `docsCommand`, so a Python project is pointed at `metaobjects docs` and
+at the one file that command writes, with the other three named as what they are and where
+they come from.
+
+**Two properties of the pages that are easy to get wrong, and are pinned:**
+
+- **The heading over each object on `agent/ui.md` is the address the ROUTES mount it at**,
+  which is not always the object's own `$path`. A TPH subtype emits no routes file — the
+  hierarchy is mounted from its discriminator base, each subtype at `<base>/<segment>` — so
+  `/cars` is an address nothing serves and `/vehicles/car` is the one that exists. That
+  composition is evaluated in one place (`restPath`), reading the route segment from the same
+  `tphRouteSegment` the routes and the TanStack hooks emit as code.
+- **`Control` is what the FORM renders, which is not always a `view.*` subtype.** A
+  `field.object` whose `@objectRef` resolves is emitted as a nested `<fieldset>` sub-form (a
+  `useFieldArray` repeatable group when the field is an array) and gets no input at all, so
+  its view kind is not its control. The predicate that decides it (`valueObjectFor`) is shared
+  with the form generator, so the page and the form cannot answer differently — the same fix
+  the `field.enum` descriptor got below, one subtype family over.
+- **Whether a form exists at all is the form generator's own filter**, now hoisted as
+  `hasGeneratedForm` and read by the generator, the ejectable reference template and the page.
+  "Has a write endpoint" is a different question: a TPH discriminator base has one and still
+  gets NO form — you cannot create a base, and its polymorphic mount is read-only by
+  construction — so asking the endpoint question announced a form for every base.
+
 **`meta verify --docs`** runs the docs command into a temp dir and diffs the committed tree,
 catching the drift nothing checked at all: `--codegen` regenerates only `outDir`/`targets`, so
 a model could move and every committed page keep describing the previous one indefinitely with
@@ -57,11 +89,23 @@ every gate green. It CALLS the docs command rather than reimplementing it, so th
 door cannot become two answers to what the docs are. Two deliberate differences from
 `--codegen`, both away from convicting the innocent: **a byte difference IS drift** here (a
 docs page is read, never imported — no three-way merge to honour, nothing recording what was
-written), and it **never reports a file as extra**, because `docs.outDir` defaults to `./docs`,
-which in a real repository is full of hand-written documentation. `--codegen` may convict an
-orphan because `.gen-state` proves it wrote the file; with no manifest to appeal to, making
-that call here would repeat the jurisdiction mistake `--codegen`'s orphan branch was corrected
-for in 0.24.3. The cost is stated rather than hidden: a page for a DELETED entity stays
+written), and it **reports a file as extra only where it owns the directory**, because
+`docs.outDir` defaults to `./docs`, which in a real repository is full of hand-written
+documentation — and whose `api/` subtree, on a multi-port project, is written by the OTHER
+port's docs command (`mvn metaobjects:docs`, `metaobjects docs`, `dotnet meta docs`), which
+this gate never runs. `--codegen` may convict an orphan because `.gen-state` proves it wrote
+the file; over the docs root there is no such manifest, and convicting anyway would repeat
+the jurisdiction mistake `--codegen`'s orphan branch was corrected for in 0.24.3.
+
+`agent/` is the exception, and it is the one that matters: the Node `meta docs` command is
+the only thing that writes it, its name is not configurable, and every page it writes opens
+with the `@generated` marker — the on-disk ownership proof `--codegen` has to consult
+`.gen-state` for. Both conditions are required, so a hand-written note dropped in `agent/`
+carries no marker and is left alone. **Without this the gate was green on exactly the change
+it most needs to flag:** `agent/schema.md` is SKIPPED rather than failed when the expected
+schema cannot be built or no dialect is declared, so a committed page describing the previous
+schema had no counterpart in the fresh run to be compared against, and survived. The residual
+cost is stated rather than hidden: outside `agent/`, a page for a DELETED entity stays
 committed and the gate stays green.
 
 The gate is shown to CONVICT, not merely to run — a changed page, an uncommitted page, and the
@@ -73,6 +117,40 @@ semantics beside the schema is the highest-value content the page can carry, it 
 reader which of two plausible columns to use, and it is the same text `meta migrate` emits as a
 `COMMENT ON`. Rendering a page of bare names in silence teaches an adopter the lever does not
 exist.
+
+### Fixed — a multi-word projection's REST path was documented at an address nothing serves
+
+`api/AGENT-API.md` and the generated SDK reference computed a projection's endpoint with
+`resourcePath`, which snake-cases (`/order_summaries`). The routes mount `<Projection>.$path`,
+and `renderProjectionDecl` emits that KEBAB-cased (`/order-summaries`) — a second copy of the
+path rule, in a second function, differing in both separator and composition order. Every
+multi-word projection was therefore documented at an address the server does not answer on;
+single-word ones (`/boxes`) coincide, which is why it was invisible.
+
+There is now ONE derivation. `resourcePath` owns the projection/entity split, and
+`projection-decl.ts` calls it instead of computing its own — generated `$path` values are
+byte-identical, because the rule that moved is the one the projection const was already using.
+
+### Fixed — the enum members on `agent/schema.md` promised a `CHECK` the database may not carry
+
+The Enums section stated flatly that "the column carries a `CHECK`, so a value outside the set
+is refused by the database". That is a SECOND derivation of a fact the page already carries
+correctly from the snapshot (`table.checks`), and it is false in two directions at once: an
+`@isArray` enum gets no CHECK (`migrate-ts` deliberately skips it), and neither does a view
+column. The section also walked every loaded object, so it printed rows for abstract bases and
+for sourceless `object.value`s that have no column anywhere — a claim about the database on the
+page that describes the database. Rows are now scoped to the objects the snapshot actually
+holds, and the section routes the reader to that table's own **Checks** for what is enforced.
+
+### Fixed — a relationship's cardinality was labelled from the wrong side
+
+`agent/schema.md` rendered `@cardinality: one` as "one-to-one". In codegen it means THIS entity
+holds the foreign key — many rows of it point at one target row, which is the belongs-to
+`one()` relation `relation-resolver.ts` builds — so the label asserted the opposite direction,
+the one that makes a reader write a lookup expecting a single result. An ABSENT `@cardinality`
+(legal: the attribute is optional, and absent means no navigation is generated) rendered
+"one-to-one" too, inventing a shape the model never declared. Now `many-to-one`, `one-to-many`,
+`many-to-many` and an explicit "cardinality not declared".
 
 ### Fixed — a `field.enum` shipped a descriptor saying its control was free text
 

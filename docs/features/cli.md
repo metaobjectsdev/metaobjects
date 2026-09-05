@@ -52,7 +52,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
 | `verify --codegen` | **Codegen drift** — regenerate from metadata into a temp dir and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). | no |
-| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, or if a page a fresh run emits was never committed. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
+| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, if a page a fresh run emits was never committed, or if a generated page under `agent/` is committed that a fresh run no longer emits. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
 
 Rules of the contract:
 
@@ -104,8 +104,8 @@ Node-only by the ADR-0015 design — see below.)
 ## `meta docs` surfaces — and the `agent/` one
 
 `meta docs` writes MARKDOWN, from metadata, into `docs.outDir` (default `./docs`). It
-emits four surfaces, each selectable with its own flag; passing none emits every surface
-the project has something to say with.
+emits four surfaces of THIS PROJECT'S model, each selectable with its own flag; passing
+none emits every surface the project has something to say with.
 
 | Surface | Flag | What it is | Needs a gen config? |
 |---|---|---|---|
@@ -113,6 +113,17 @@ the project has something to say with.
 | api | `--api` | The generated SDK reference — types, endpoints, filter operators — plus `AGENT-API.md`, its condensed agent form. | yes |
 | requirements | `--requirements` | The declared ledger, as `requirements.md` + `requirements.toon`. | no |
 | agent | `--agent` | Three pages an agent reads BEFORE touching a tier (below). | yes |
+
+Two flags are NOT members of that set and do not compose with it:
+
+- **`--metamodel`** is a different MODE over a different subject: it documents the BUILT-IN
+  metamodel (every registered type, subtype and attribute), not your model, through its own
+  renderer, into `<out>/metamodel/` (default `./docs/metamodel`). It takes over the run —
+  the four surfaces above are not emitted alongside it.
+- **`--site`** is additive rather than a surface: it renders the HTML site beside the
+  markdown. It and its pair `--scaffold-site` are both REFUSED with `--metamodel` rather
+  than ignored — the metamodel reference is markdown, there is no renderer to bridge them,
+  and its rendered form is published at <https://metaobjects.dev/reference>.
 
 ### The `agent/` surface
 
@@ -124,7 +135,9 @@ the project has something to say with.
   that reproduces `CREATE TABLE` is a second spelling that goes stale.
 - **`agent/ui.md`** — before touching a form or a grid. Per field: the control the form
   renders, label, HTML type, rules, form-excluded, and what the LIST endpoint accepts for
-  filtering and sorting; plus each declared `layout.dataGrid`.
+  filtering and sorting; plus each declared `layout.dataGrid`. The heading over each object
+  is the address the ROUTES mount it at, which is not always the object's own `$path` — a
+  TPH subtype is served under its discriminator base (`/vehicles/car`, never `/cars`).
 - **`agent/requirements.md`** — before adding a capability. The ledger plus a **node
   index**: every claimed node → the requirements claiming it, at every grain, with the
   literal FQN on every line.
@@ -144,9 +157,19 @@ content for, and one with none sees no `agent/` directory at all.
 
 It is **config-gated like the api surface**: physical names, the dialect and view dispatch
 all come from `metaobjects.config.ts`, so without one there is nothing true to say. The
-neutral model surface is unaffected and stays neutral.
+neutral model surface is unaffected and stays neutral. `agent/schema.md` needs one thing
+more — a declared `dialect`, since every SQL type on it is dialect-specific — and is
+skipped with a warning when the config declares none, or when the expected schema cannot be
+built at all (a primary-key move, a duplicate physical name: conditions `meta migrate`
+reports properly, and docs must not be the command that fails on them).
 
-`meta verify --docs` (above) is what keeps the committed pages honest.
+`meta verify --docs` (above) is what keeps the committed pages honest — including the
+skips. `agent/` is the one directory that command owns outright, so a generated page
+committed there that a fresh run no longer emits is reported as drift, which is what stops
+a skipped `agent/schema.md` from leaving the previous schema's page in place, green. A
+hand-written file in `agent/` carries no `@generated` marker and is left alone, as is
+everything outside `agent/` — including `api/`, which on a multi-port project is written
+by the other port's docs command.
 
 ## Declarative config (`metaobjects.config.yaml`) — Python codegen
 
