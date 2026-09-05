@@ -8,6 +8,7 @@ import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { isMetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
 import { isAbstract } from "./instance-artifacts.js";
+import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 import { hasAnyRdbSource } from "./source-detect.js";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
@@ -261,16 +262,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // projects — the error even told them their model "generates database code"
   // that in fact imported nothing. It is demanded below at the point of USE, by
   // the generator that reads it, which the runner names in the thrown message.
-  const dbEmittingObjects = safeEntities.filter(
-    (e) => !e.isAbstract && hasAnyRdbSource(e),
-  );
-  if (dbEmittingObjects.length > 0 && opts.config.dialect === undefined) {
-    const names = dbEmittingObjects.map((e) => e.name).join(", ");
-    throw new Error(
-      `codegen config is missing dialect — required because this model ` +
-        `generates database code for: ${names}. Set dialect in ` +
-        `metaobjects.config.ts. (A model of only value objects and/or sourceless projections may omit it.)`,
-    );
+  const dbEmitting = dbEmittingObjects(safeEntities);
+  if (dbEmitting.length > 0 && opts.config.dialect === undefined) {
+    throw new Error(missingDialectMessage(dbEmitting));
   }
 
   /** Did the AUTHOR declare a dbImport reachable by this target? Tracked, never

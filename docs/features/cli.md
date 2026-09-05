@@ -158,9 +158,10 @@ content for, and one with none sees no `agent/` directory at all.
 
 It is **config-gated like the api surface**: physical names, the dialect and view dispatch
 all come from `metaobjects.config.ts`, so without one there is nothing true to say. The
-neutral model surface is unaffected and stays neutral. `agent/schema.md` resolves the
-dialect the way `meta gen` and `meta migrate` do — a config declaring none IS a sqlite
-project — and is skipped, with a warning, only when the expected schema cannot be built at
+neutral model surface is unaffected and stays neutral. `agent/schema.md` asks the same
+guard `meta gen` does — a model that emits database code must declare a `dialect`, and
+`DEFAULT_DIALECT` is inert — so the page is skipped, with the runner's own message, exactly
+when `meta gen` would refuse the model, and also when the expected schema cannot be built at
 all (a primary-key move, a duplicate physical name: conditions `meta migrate` reports
 properly, and docs must not be the command that fails on them).
 

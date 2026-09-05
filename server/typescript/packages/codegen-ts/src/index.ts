@@ -43,6 +43,10 @@ export { defineConfig, normalizeConfig, resolveGenerators, resolveDocsConfig } f
 // `meta docs` must apply the SAME default `normalizeConfig` does — a command that resolved
 // the dialect differently would document a schema the toolchain does not produce.
 export { DEFAULT_DIALECT } from "./metaobjects-config.js";
+// The runner's own "does this model need a dialect?" guard. `meta docs` must ask it rather
+// than defaulting, because DEFAULT_DIALECT is inert and a DB project with no dialect is one
+// `meta gen` REFUSES — documenting it as sqlite states an answer the toolchain never gave.
+export { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 export { apiLabel } from "./generators/api-label.js";
 
 export type { ColumnSpec, DefaultExpr } from "./column-mapper.js";

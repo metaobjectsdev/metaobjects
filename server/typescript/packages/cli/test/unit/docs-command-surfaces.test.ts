@@ -196,17 +196,27 @@ describe("meta docs — the agent schema page and the project's dialect", () => 
     expect(page).toContain("The physical shape of the `sqlite` database");
   });
 
-  test("a config with NO dialect documents sqlite — the default `meta gen` itself applies", async () => {
+  test("a PERSISTED model with no dialect gets no schema page — `meta gen` refuses it too", async () => {
     const root = await projectPersisted(CONFIG_NO_DIALECT);
     const out = join(root, "out-nodialect");
-    // An undeclared dialect is not an unknown one: `normalizeConfig` (the resolver
-    // `meta gen` runs) and `meta migrate` both default it to sqlite, so this project's
-    // generated tables ARE `sqliteTable` and its migrations ARE sqlite DDL. `meta docs`
-    // must apply the same default or it becomes the one command in the toolchain that
-    // answers "which dialect?" differently — a second derivation, which is the whole
-    // defect class this surface exists to avoid.
+    // `DEFAULT_DIALECT` is INERT: `runGen` throws when a model emits database code and no
+    // dialect is declared, and it throws BEFORE `normalizeConfig` applies that default, so
+    // that a DB project which forgot one is never handed silently-defaulted output. This
+    // `Widget` declares a `source.rdb`, so it is exactly such a project — documenting a
+    // sqlite schema for it would describe a database `meta gen` will not build.
     expect(await docsCommand([root, "--out", out], root)).toBe(0);
-    const page = readFileSync(join(out, "agent", "schema.md"), "utf8");
-    expect(page).toContain("The physical shape of the `sqlite` database");
+    expect(existsSync(join(out, "agent", "schema.md"))).toBe(false);
+    expect(existsSync(join(out, "agent", "ui.md"))).toBe(true);
+  });
+
+  test("a model with NO persisted object needs no dialect, and has no schema to describe", async () => {
+    // The projects the runner's guard lets through: `DEFAULT_DIALECT` applies, and the page
+    // renders empty anyway because there are no tables — so the inert default is inert
+    // here too. This is the arm that makes the skip above a narrow rule rather than
+    // "no dialect, no page".
+    const root = await projectWithConfig(); // META = one sourceless object.value
+    const out = join(root, "out-valueonly");
+    expect(await docsCommand([root, "--out", out], root)).toBe(0);
+    expect(existsSync(join(out, "agent", "schema.md"))).toBe(false);
   });
 });

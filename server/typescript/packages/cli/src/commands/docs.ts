@@ -41,7 +41,7 @@ import {
   DEFAULT_COLUMN_NAMING_STRATEGY,
   renderCoreMetamodelDocs,
 } from "@metaobjectsdev/metadata";
-import { DEFAULT_DIALECT } from "@metaobjectsdev/codegen-ts";
+import { dbEmittingObjects, DEFAULT_DIALECT, missingDialectMessage } from "@metaobjectsdev/codegen-ts";
 import type { MetaDataTypeProvider, MetaRoot } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 // The `agent` schema surface takes the physical schema as an ARGUMENT with its resolvers
@@ -248,19 +248,29 @@ function buildAgentSchemaInput(
   configured: Dialect | undefined,
   strategy: ColumnNamingStrategy,
 ): AgentSchemaInput | undefined {
-  // AN UNDECLARED DIALECT IS NOT AN UNKNOWN ONE. `normalizeConfig` — the resolver
-  // `meta gen` runs — defaults it to `DEFAULT_DIALECT`, and `meta migrate` applies the
-  // same default, so a project that declares none IS a sqlite project: its Drizzle tables
-  // are `sqliteTable`, its migrations are sqlite DDL. Documenting it as sqlite is
-  // therefore documenting what the toolchain actually produces.
+  // THE RUNNER'S OWN GUARD DECIDES THIS, not a default applied here.
   //
-  // This was briefly changed to SKIP the page when no dialect was declared, on the theory
-  // that the page would otherwise document "a dialect the project does not use". That
-  // premise was wrong, and the change made `meta docs` the one command in the toolchain
-  // that resolves a dialect differently from `meta gen` and `meta migrate` — a second
-  // derivation, which is the defect class this whole surface exists to avoid. What was
-  // genuinely wrong was the SPELLING: a hardcoded `"sqlite"` literal beside two other
-  // copies of the same default. It reads the constant now.
+  // `DEFAULT_DIALECT` is INERT: `runGen` throws when a model emits database code and the
+  // config declares no dialect, and it throws BEFORE `normalizeConfig` fills that default
+  // in, precisely so a DB project that forgot one gets a named error instead of
+  // "a Postgres project quietly emitting sqlite". So a persisted model with no dialect is
+  // not a sqlite project — it is a project `meta gen` REFUSES. Documenting it as sqlite
+  // would state an answer the toolchain never gave, about a schema it will not build.
+  //
+  // Two wrong answers were tried here before this one, and both were ASSERTIONS. First a
+  // hardcoded `?? "sqlite"`; then a skip whenever `dialect` was absent, on the theory that
+  // an undeclared dialect is an unknown one. The compute answer is to ask the predicate
+  // `runGen` asks — `dbEmittingObjects` — and skip only when that guard would fire. A model
+  // with no persisted object needs no dialect and renders an empty schema page anyway, so
+  // the inert default is correct for exactly the projects the guard lets through.
+  const dbEmitting = dbEmittingObjects(root.objects());
+  if (dbEmitting.length > 0 && configured === undefined) {
+    log.warn(
+      `docs: agent/schema.md skipped — ${missingDialectMessage(dbEmitting)} ` +
+        `('meta gen' refuses this model for the same reason.)`,
+    );
+    return undefined;
+  }
   const dialect = configured ?? DEFAULT_DIALECT;
   try {
     const built = buildExpectedSchemaWithProvenance(root, {
