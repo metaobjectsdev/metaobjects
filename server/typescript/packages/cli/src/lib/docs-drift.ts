@@ -96,7 +96,7 @@ const GENERATED_MARKER = "@generated";
  * prefix keeps another port's `api/` pages out of jurisdiction, the marker keeps a
  * hand-written note inside `agent/` out of it.
  */
-function isOursAndStale(docsDir: string, rel: string): boolean {
+function isOurs(docsDir: string, rel: string): boolean {
   const normalized = rel.split(sep).join("/");
   if (!OWNED_PREFIXES.some((p) => normalized.startsWith(p))) return false;
   try {
@@ -190,7 +190,7 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
     // and a green run reported different denominators for the same project.
     const freshSet = new Set(fresh);
     const orphans = listFiles(docsDir)
-      .filter((rel) => !freshSet.has(rel) && isOursAndStale(docsDir, rel))
+      .filter((rel) => !freshSet.has(rel) && isOurs(docsDir, rel))
       .sort();
     for (const rel of orphans) {
       driftedFiles.push(rel);

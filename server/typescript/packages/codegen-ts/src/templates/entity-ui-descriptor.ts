@@ -54,10 +54,6 @@ import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor } fr
 import { viewForContext, VIEW_CONTEXT_FORM } from "../view-context.js";
 import { isProjection } from "../projection/projection-detector.js";
 
-// `humanize` has ONE body, in field-meta.ts beside `labelFor`, which is the other reader
-// of it. Re-exported here because this module's consumers import it from this path.
-export { humanize };
-
 /** One validation rule, in the order its source was declared. */
 export type UiRule =
   | { readonly kind: "required"; readonly message: string }

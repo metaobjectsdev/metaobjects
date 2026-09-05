@@ -39,7 +39,6 @@ import {
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
   LAYOUT_SUBTYPE_DATA_GRID,
-  OBJECT_ATTR_DISCRIMINATOR,
   TYPE_LAYOUT,
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
@@ -51,7 +50,7 @@ import {
   type UiRule,
 } from "../templates/entity-ui-descriptor.js";
 import { isSortableField } from "../templates/filter-shared.js";
-import { tphDiscriminatorBase } from "../templates/zod-validators.js";
+import { declaresTphDiscriminator, tphDiscriminatorBase } from "../templates/zod-validators.js";
 
 const GENERATED_MARKER = `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`;
 
@@ -90,9 +89,43 @@ function controlCell(f: UiFieldDescriptor): string {
   return f.nested.isArray ? "nested sub-form (repeatable)" : "nested sub-form";
 }
 
+/** The HTML type cell — empty for a nested sub-form, which is not an input at all. */
+function htmlTypeCell(f: UiFieldDescriptor): string {
+  if (f.nested !== undefined || f.htmlType === undefined) return "";
+  return `\`${f.htmlType}\``;
+}
+
 /** `yes` / `` — an empty cell reads better than a column of "no". */
 function flag(value: unknown): string {
   return value === true ? "yes" : "";
+}
+
+/**
+ * The endpoint line under an object's heading.
+ *
+ * `restPath`, NOT `descriptor.path`: a TPH subtype's own `$path` names an address
+ * nothing mounts — the hierarchy is mounted from the discriminator base, each subtype
+ * at `<base>/<segment>` — and this page printed that non-existent address as fact.
+ * Whether a form exists is `hasGeneratedForm` — the form generator's OWN filter —
+ * never `servesWriteApi`. A read-only object (a projection, a view-backed entity) has
+ * no Insert/Update schema; a TPH discriminator BASE has both and still gets no form,
+ * because you cannot create a base and its polymorphic mount is read-only by
+ * construction. Saying so is the difference between "the form is missing" and "there
+ * is deliberately no form"; asking the endpoint question announced one for every base.
+ */
+function endpointLine(obj: MetaObject): string {
+  const endpoint = restPath(obj);
+  if (hasGeneratedForm(obj)) return `Endpoint \`${endpoint}\`.`;
+  // The base of a hierarchy — one that declares the discriminator and does not itself sit
+  // under another — is the one "no form" case that is not read-only.
+  const isDiscriminatorBase = tphDiscriminatorBase(obj) === undefined && declaresTphDiscriminator(obj);
+  const reason = isDiscriminatorBase
+    ? "for a discriminator base; each concrete subtype below has its own"
+    : "(read-only)";
+  return (
+    `Endpoint \`${endpoint}\` — **no form is generated** ${reason}. ` +
+    "The fields below describe the grid and the filters."
+  );
 }
 
 /** The `layout.dataGrid` children an object declares. ADR-0039: resolving. */
@@ -188,26 +221,7 @@ export function renderAgentUiPage(root: MetaRoot): string {
     out.push(`## \`${obj.resolutionKey()}\``);
     out.push("");
     const descriptor = buildEntityUiDescriptor(obj, root);
-    // `restPath`, NOT `descriptor.path`: a TPH subtype's own `$path` names an address
-    // nothing mounts — the hierarchy is mounted from the discriminator base, each subtype
-    // at `<base>/<segment>` — and this page printed that non-existent address as fact.
-    // Whether a form exists is `hasGeneratedForm` — the form generator's OWN filter —
-    // never `servesWriteApi`. A read-only object (a projection, a view-backed entity) has
-    // no Insert/Update schema; a TPH discriminator BASE has both and still gets no form,
-    // because you cannot create a base and its polymorphic mount is read-only by
-    // construction. Saying so is the difference between "the form is missing" and "there
-    // is deliberately no form"; asking the endpoint question announced one for every base.
-    const endpoint = restPath(obj);
-    out.push(
-      hasGeneratedForm(obj)
-        ? `Endpoint \`${endpoint}\`.`
-        : `Endpoint \`${endpoint}\` — **no form is generated**${
-            tphDiscriminatorBase(obj) === undefined &&
-            typeof obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string"
-              ? " for a discriminator base; each concrete subtype below has its own"
-              : " (read-only)"
-          }. The fields below describe the grid and the filters.`,
-    );
+    out.push(endpointLine(obj));
     out.push("");
     if (descriptor.fields.length > 0) {
       // The field nodes, keyed by name, so the three non-descriptor columns can be read
@@ -217,14 +231,17 @@ export function renderAgentUiPage(root: MetaRoot): string {
       out.push("|---|---|---|---|---|---|---|---|");
       for (const f of descriptor.fields) {
         const node = byName.get(f.name);
-        const rules = f.rules.map(ruleText).join(" · ");
-        out.push(
-          `| \`${f.name}\` | ${mdCell(f.label)} | ${controlCell(f)} | ` +
-            `${f.nested !== undefined || f.htmlType === undefined ? "" : `\`${f.htmlType}\``} | ${rules} | ` +
-            `${node === undefined ? "" : flag(node.attr(FIELD_ATTR_FORM_EXCLUDE))} | ` +
-            `${node === undefined ? "" : flag(node.attr(FIELD_ATTR_FILTERABLE))} | ` +
-            `${node === undefined ? "" : flag(isSortableField(node))} |`,
-        );
+        const cells = [
+          `\`${f.name}\``,
+          mdCell(f.label),
+          controlCell(f),
+          htmlTypeCell(f),
+          f.rules.map(ruleText).join(" · "),
+          node === undefined ? "" : flag(node.attr(FIELD_ATTR_FORM_EXCLUDE)),
+          node === undefined ? "" : flag(node.attr(FIELD_ATTR_FILTERABLE)),
+          node === undefined ? "" : flag(isSortableField(node)),
+        ];
+        out.push(`| ${cells.join(" | ")} |`);
       }
       // Which value object a nested field expands into rides below the table: it is the
       // one thing a reader needs to go and edit, and it does not fit a cell.

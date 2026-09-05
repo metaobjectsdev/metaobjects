@@ -51,17 +51,13 @@ import { isRequired } from "../column-mapper.js";
  * when the object is not a TPH subtype.
  */
 export function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value: string } | undefined {
-  // ADR-0039: own — super-resolution walk. A subtype declares its OWN
-  // @discriminatorValue (must not inherit one), and the base level is found by
-  // walking superResolved reading each level's OWN @discriminator.
+  // ADR-0039: own — a subtype declares its OWN @discriminatorValue (must not inherit
+  // one); the base level is found by the super-resolution walk in `tphDiscriminatorLevel`.
   const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
   if (typeof value !== "string" || value === "") return undefined;
-  const base = tphDiscriminatorBase(obj);
-  if (base === undefined) return undefined;
-  // ADR-0039: own — the base level is the one that DECLARES @discriminator.
-  const fieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
-  if (typeof fieldName !== "string" || fieldName === "") return undefined;
-  return { fieldName, value };
+  const level = tphDiscriminatorLevel(obj);
+  if (level === undefined) return undefined;
+  return { fieldName: level.fieldName, value };
 }
 
 /**
@@ -75,11 +71,36 @@ export function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value
  * is the base.
  */
 export function tphDiscriminatorBase(obj: MetaObject): MetaObject | undefined {
+  return tphDiscriminatorLevel(obj)?.base;
+}
+
+/**
+ * True when this object itself DECLARES `@discriminator` — the level of a TPH hierarchy
+ * that owns the discriminator, whether or not any concrete subtype extends it yet.
+ *
+ * ADR-0039: own — `@discriminator` identifies a hierarchy LEVEL, so it is read own: a
+ * subtype inheriting the attr through `extends` must not be mistaken for a base. This is
+ * the one predicate the form generator's filter (`hasGeneratedForm`) and the `agent/ui.md`
+ * page both ask, so "is this a discriminator base?" has one spelling.
+ */
+export function declaresTphDiscriminator(obj: MetaObject): boolean {
+  return typeof obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string";
+}
+
+/**
+ * The ONE super-resolution walk behind `tphDiscriminatorBase` and `tphDiscriminatorPin`:
+ * the nearest ancestor declaring a non-empty `@discriminator`, with the field name it
+ * declares. Returning both from one walk is what keeps the pin's field name and the
+ * base's identity from ever being read at two different levels.
+ */
+function tphDiscriminatorLevel(obj: MetaObject): { base: MetaObject; fieldName: string } | undefined {
   let cursor = obj.superResolved;
   while (cursor !== undefined) {
     // ADR-0039: own — super-resolution walk; read each level's OWN @discriminator.
     const fieldName = cursor.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
-    if (typeof fieldName === "string" && fieldName !== "") return cursor as MetaObject;
+    if (typeof fieldName === "string" && fieldName !== "") {
+      return { base: cursor as MetaObject, fieldName };
+    }
     cursor = cursor.superResolved;
   }
   return undefined;

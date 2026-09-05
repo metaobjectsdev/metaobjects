@@ -19,12 +19,16 @@
 // UI generator follows for free.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource } from "./source-detect.js";
 import { resourcePath } from "./templates/entity-ui-descriptor.js";
-import { tphDiscriminatorBase, tphDiscriminatorPin } from "./templates/zod-validators.js";
+import {
+  declaresTphDiscriminator,
+  isTphSubtype,
+  tphDiscriminatorBase,
+  tphDiscriminatorPin,
+} from "./templates/zod-validators.js";
 import { tphRouteSegment } from "./templates/tph-discriminator.js";
 
 /**
@@ -67,7 +71,7 @@ export function servesWriteApi(entity: MetaObject): boolean {
  */
 export function restPath(entity: MetaObject): string {
   const pin = tphDiscriminatorPin(entity);
-  const base = pin === undefined ? undefined : tphDiscriminatorBase(entity);
+  const base = tphDiscriminatorBase(entity);
   if (pin === undefined || base === undefined) return resourcePath(entity);
   return `${resourcePath(base)}/${tphRouteSegment(pin.value)}`;
 }
@@ -87,9 +91,9 @@ export function restPath(entity: MetaObject): string {
  * `servesWriteApi` on the page instead announced a form for every discriminator base.
  */
 export function hasGeneratedForm(entity: MetaObject): boolean {
-  if (tphDiscriminatorPin(entity) !== undefined) return true; // per-subtype form
-  // ADR-0039: own — @discriminator identifies a TPH BASE level (read own so a subtype is
-  // not mistaken for a base); `entity` is already known not to be a subtype.
-  if (typeof entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string") return false;
+  if (isTphSubtype(entity)) return true; // per-subtype form
+  // A discriminator base is never form-rendered directly; `entity` is already known not
+  // to be a subtype.
+  if (declaresTphDiscriminator(entity)) return false;
   return servesWriteApi(entity) && !isProjection(entity);
 }

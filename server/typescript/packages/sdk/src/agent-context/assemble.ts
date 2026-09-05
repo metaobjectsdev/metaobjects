@@ -85,7 +85,9 @@ function applyTemplate(
       if (!(name in sections)) {
         throw new Error(`agent-context: unknown template section {{${sigil}${name}}}`);
       }
-      return (sigil === "#") === sections[name] ? body : "";
+      // `#` shows its body when the flag is true, `^` when it is false.
+      const shownWhen = sigil === "#";
+      return sections[name] === shownWhen ? body : "";
     },
   );
   return resolved.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => {

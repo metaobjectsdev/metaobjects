@@ -167,11 +167,12 @@ function relationshipLines(objects: readonly MetaObject[]): string[] {
 /**
  * `| \`Order.status\` | OPEN, CLOSED | string-backed |`
  *
- * SCOPED TO THE OBJECTS THE SNAPSHOT ACTUALLY HOLDS. This section sits on the SCHEMA
- * page, so every row it prints is read as a statement about a column. Walking every
- * loaded object printed rows for abstract bases, for `object.value`s that have no column
- * anywhere, and for projections whose "column" is a view expression — three kinds of
- * thing the physical schema does not contain.
+ * `objects` IS ONLY THE TABLE-BACKED SUBSET OF THE MODEL — the caller scopes it to the
+ * objects the snapshot actually holds as tables. This section sits on the SCHEMA page, so
+ * every row it prints is read as a statement about a column. Walking every loaded object
+ * printed rows for abstract bases, for `object.value`s that have no column anywhere, and
+ * for projections whose "column" is a view expression — three kinds of thing the physical
+ * schema does not contain.
  *
  * It also says nothing about a `CHECK`. Whether the database constrains the members is
  * `table.checks`, which is already on this page from the snapshot, and an `@isArray`
@@ -179,10 +180,9 @@ function relationshipLines(objects: readonly MetaObject[]): string[] {
  * SECOND derivation of a fact the page already carries correctly, in the direction that
  * promises the database will refuse a value it will accept.
  */
-function enumLines(objects: readonly MetaObject[], inSchema: (obj: MetaObject) => boolean): string[] {
+function enumLines(objects: readonly MetaObject[]): string[] {
   const rows: string[] = [];
   for (const obj of objects) {
-    if (!inSchema(obj)) continue;
     for (const field of obj.fields()) {
       if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
       const members = enumValues(field);
@@ -212,17 +212,17 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
 
       // ---- schema.md
       if (opts?.schema !== undefined) {
+        const schema = opts.schema;
         // The qualified names the snapshot actually holds. An object whose physical name
         // is not one of these contributes nothing to the physical schema (an abstract
         // base, a sourceless value, an `@unmanaged` object) and must not appear on a page
         // describing it — `buildExpectedSchema`'s Pass 1 owns those skip rules and this
         // reads its answer rather than re-deriving them.
-        const inSnapshot = new Set<string>([
-          ...opts.schema.tables.map((t) => opts.schema!.qualify(t)),
-          ...opts.schema.views.map((v) => opts.schema!.qualify(v)),
-        ]);
-        const backedByTable = new Set<string>(opts.schema.tables.map((t) => opts.schema!.qualify(t)));
-        const contributes = new Set<MetaObject>();
+        const tableNames = new Set(schema.tables.map((t) => schema.qualify(t)));
+        const viewNames = new Set(schema.views.map((v) => schema.qualify(v)));
+        // The objects backed by a TABLE in the snapshot — the enum section's scope, since
+        // a row there is read as a statement about a column.
+        const tableBacked: MetaObject[] = [];
         // column → declaring field, per qualified table name. `resolveObjectNames` is the
         // ONE field→column resolver — the same one the names artifact and the DDL use —
         // so this mapping cannot disagree with the column it labels.
@@ -231,9 +231,10 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
         for (const obj of objects) {
           const names = resolveObjectNames(obj, opts.columnNamingStrategy);
           if (names?.name === undefined) continue;
-          const key = opts.schema.qualify({ name: names.name, schema: names.schema });
-          if (!inSnapshot.has(key)) continue;
-          if (backedByTable.has(key)) contributes.add(obj);
+          const key = schema.qualify({ name: names.name, schema: names.schema });
+          const isTable = tableNames.has(key);
+          if (!isTable && !viewNames.has(key)) continue;
+          if (isTable) tableBacked.push(obj);
           let map = declaredBy.get(key);
           if (map === undefined) {
             map = new Map();
@@ -253,11 +254,11 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
           }
           if (lineage.length > 0) viewLineage.set(key, lineage);
         }
-        const content = renderAgentSchemaPage(opts.schema, {
+        const content = renderAgentSchemaPage(schema, {
           declaredBy,
           viewLineage,
           relationships: relationshipLines(objects),
-          enums: enumLines(objects, (o) => contributes.has(o)),
+          enums: enumLines(tableBacked),
         });
         if (content !== "") files.push({ path: `${dir}/schema.md`, content });
       }
