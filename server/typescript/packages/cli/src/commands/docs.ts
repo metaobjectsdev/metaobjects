@@ -33,7 +33,12 @@ import type {
   DocsSurface,
 } from "@metaobjectsdev/codegen-ts";
 import { docsFile, apiDocsFile, requirementsFile, agentDocsFile } from "@metaobjectsdev/codegen-ts/generators";
-import { composeRegistry, coreProviders, renderCoreMetamodelDocs } from "@metaobjectsdev/metadata";
+import {
+  composeRegistry,
+  coreProviders,
+  DEFAULT_COLUMN_NAMING_STRATEGY,
+  renderCoreMetamodelDocs,
+} from "@metaobjectsdev/metadata";
 import type { MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 // The `agent` schema surface takes the physical schema as an ARGUMENT with its resolvers
@@ -587,37 +592,54 @@ export async function docsCommand(
       // The physical schema, built by the package that OWNS it, with its own resolvers
       // handed across — see codegen-ts's agent-schema-input.ts for why the docs generator
       // refuses to compute any of this itself.
-      const dialect = loadedConfig.dialect ?? "sqlite";
-      const strategy = loadedConfig.columnNamingStrategy ?? "snake_case";
+      // NO DIALECT FALLBACK. The comment three lines up says documenting a schema under
+      // the wrong dialect would be worse than documenting none — and then a `?? "sqlite"`
+      // did exactly that, silently, for any project that declares none. A dialect is what
+      // decides every SQL type on the page, so an absent one skips the page with the same
+      // warning a failed build gets; the other two agent pages still emit.
+      const dialect = loadedConfig.dialect;
+      const strategy = loadedConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY;
       let schema: AgentSchemaInput | undefined;
-      try {
-        const built = buildExpectedSchemaWithProvenance(root, {
-          dialect,
-          columnNamingStrategy: strategy,
-          // Views come from codegen-ts (migrate-ts never generates view DDL), exactly as
-          // `verify --db` threads them.
-          views: buildProjectionViews(root, { dialect, columnNamingStrategy: strategy }),
-        });
-        schema = {
-          dialect,
-          tables: built.snapshot.tables,
-          views: built.snapshot.views,
-          provenance: built.provenance,
-          // The structural `SchemaColumnLike` is migrate-ts's own ColumnDescriptor,
-          // narrowed to what the page reads; the cast hands the full descriptor back to
-          // the renderer that produced it.
-          columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
-          qualify: qualifiedDbName,
-        };
-      } catch (err) {
-        // A model the schema builder refuses is a real condition (a primary-key move, a
-        // duplicate physical name) that `meta migrate` will report properly. Docs must not
-        // be the command that fails on it, so the schema page is skipped and the other two
-        // agent pages still emit.
+      if (dialect === undefined) {
         log.warn(
-          `docs: agent/schema.md skipped — the expected schema could not be built ` +
-            `(${(err as Error).message}). Run 'meta migrate' for the full diagnosis.`,
+          "docs: agent/schema.md skipped — metaobjects.config.ts declares no 'dialect', " +
+            "and the page's SQL types are dialect-specific. Set one to document the schema.",
         );
+      } else {
+        try {
+          const built = buildExpectedSchemaWithProvenance(root, {
+            dialect,
+            columnNamingStrategy: strategy,
+            // Views come from codegen-ts (migrate-ts never generates view DDL), exactly as
+            // `verify --db` threads them.
+            views: buildProjectionViews(root, { dialect, columnNamingStrategy: strategy }),
+          });
+          schema = {
+            dialect,
+            tables: built.snapshot.tables,
+            views: built.snapshot.views,
+            provenance: built.provenance,
+            // The structural `SchemaColumnLike` is migrate-ts's own ColumnDescriptor,
+            // narrowed to what the page reads; the cast hands the full descriptor back to
+            // the renderer that produced it.
+            columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
+            qualify: qualifiedDbName,
+          };
+        } catch (err) {
+          // A model the schema builder refuses is a real condition (a primary-key move, a
+          // duplicate physical name) that `meta migrate` will report properly. Docs must not
+          // be the command that fails on it, so the schema page is skipped and the other two
+          // agent pages still emit.
+          //
+          // A SKIPPED PAGE IS NOT A SILENT PASS. `verify --docs` convicts a committed
+          // `agent/<page>.md` that a fresh run no longer emits (see lib/docs-drift.ts), so a
+          // page describing the previous schema fails the gate rather than surviving it on
+          // exactly the change it most needs to flag.
+          log.warn(
+            `docs: agent/schema.md skipped — the expected schema could not be built ` +
+              `(${(err as Error).message}). Run 'meta migrate' for the full diagnosis.`,
+          );
+        }
       }
       emit.push(
         ...(await agentDocsFile({

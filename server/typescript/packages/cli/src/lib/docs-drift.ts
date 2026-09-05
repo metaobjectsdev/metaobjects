@@ -19,23 +19,35 @@
 //      `.gen-state/.hashes.json` to tell a preserved hand edit from stale output; here
 //      there is no such offer to honour.
 //
-//   2. IT NEVER REPORTS A FILE AS EXTRA. `docs.outDir` defaults to `./docs`, which in a
-//      real repository is full of hand-written documentation — this repository's own
-//      `docs/` holds a hundred such files. `--codegen` can convict a committed-but-not-
-//      regenerated file because `.gen-state` proves the generator wrote it; the docs
-//      surfaces record nothing, so the same branch here would fail every project that
-//      keeps a README beside its generated pages. That is precisely the jurisdiction
-//      mistake `--codegen`'s orphan branch was corrected for in 0.24.3, and repeating it
-//      with no manifest to appeal to would be worse.
+//   2. IT REPORTS A FILE AS EXTRA ONLY WHERE IT OWNS THE DIRECTORY. `docs.outDir`
+//      defaults to `./docs`, which in a real repository is full of hand-written
+//      documentation — this repository's own `docs/` holds a hundred such files. Its
+//      `api/` subtree is not ours either: on a multi-port project those pages are written
+//      by the OTHER port's docs command (`mvn metaobjects:docs`, `metaobjects docs`,
+//      `dotnet meta docs`), which this gate never runs, so a fresh run here legitimately
+//      emits none of them. `--codegen` can convict a committed-but-not-regenerated file
+//      because `.gen-state` proves the generator wrote it; over the docs root there is no
+//      such manifest, and convicting anyway is precisely the jurisdiction mistake
+//      `--codegen`'s orphan branch was corrected for in 0.24.3.
 //
-//      The cost is stated rather than hidden: a page for an entity that was DELETED stays
-//      committed and this gate stays green. What it does catch is the far more common
-//      case — a page whose content no longer matches the model, or a page a regen would
-//      now emit and nobody committed.
+//      `agent/` IS ours, and there the ownership question has an answer on disk: the Node
+//      `meta docs` command is the only thing that writes that directory (its name is not
+//      configurable), and every page it writes opens with the `@generated` marker. That
+//      marker is the proof `--codegen` has to consult `.gen-state` for, so BOTH conditions
+//      are required — under `agent/` AND carrying the marker. A hand-written note dropped
+//      in `agent/` carries no marker and is left alone, exactly as one in the docs root is.
+//
+//      It matters because the schema page is SKIPPED rather than failed when the expected
+//      schema cannot be built or no dialect is declared — so without this, a committed
+//      `agent/schema.md` describing the previous schema passed the gate on exactly the
+//      change it most needs to flag.
+//
+//      The residual cost is stated rather than hidden: outside `agent/`, a page for an
+//      entity that was DELETED stays committed and this gate stays green.
 
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, isAbsolute } from "node:path";
+import { join, relative, resolve, isAbsolute, sep } from "node:path";
 import { docsCommand } from "../commands/docs.js";
 
 export interface DocsDriftResult {
@@ -64,6 +76,37 @@ function listFiles(dir: string): string[] {
   };
   walk(dir);
   return out;
+}
+
+/**
+ * Docs-root-relative prefixes the Node `meta docs` command owns outright — the only
+ * places a committed page that a fresh run does not emit is drift rather than somebody
+ * else's file. `agent` is fixed (it is not a configurable subdirectory), which is what
+ * makes the claim checkable; `api` deliberately is NOT here, because its subdirectory IS
+ * configurable and on a multi-port project another port's docs command writes it.
+ */
+const OWNED_PREFIXES = ["agent/"] as const;
+
+/** The marker every generated docs page opens with — the on-disk ownership proof. */
+const GENERATED_MARKER = "@generated";
+
+/**
+ * True when this committed file is one WE wrote: under a directory this command owns, and
+ * carrying the generated marker in its opening lines. Both halves are load-bearing — the
+ * prefix keeps another port's `api/` pages out of jurisdiction, the marker keeps a
+ * hand-written note inside `agent/` out of it.
+ */
+function isOursAndStale(docsDir: string, rel: string): boolean {
+  const normalized = rel.split(sep).join("/");
+  if (!OWNED_PREFIXES.some((p) => normalized.startsWith(p))) return false;
+  try {
+    return readFileSync(join(docsDir, rel), "utf8")
+      .split("\n", 3)
+      .some((line) => line.includes(GENERATED_MARKER));
+  } catch {
+    // Unreadable is not proof of ownership, and this gate never convicts without it.
+    return false;
+  }
 }
 
 export interface ComputeDocsDriftArgs {
@@ -141,7 +184,24 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
         lines.push(`~ ${rel} (committed content differs from a fresh 'meta docs')`);
       }
     }
-    return { clean: driftedFiles.length === 0, driftedFiles, lines, checked: fresh.length };
+    // Committed-but-not-regenerated, inside the directories this command owns. Counted
+    // into `checked` as well as `driftedFiles` so the failing line and the passing line
+    // keep dividing by the same set — the `verify --templates` mistake, where a red run
+    // and a green run reported different denominators for the same project.
+    const freshSet = new Set(fresh);
+    const orphans = listFiles(docsDir)
+      .filter((rel) => !freshSet.has(rel) && isOursAndStale(docsDir, rel))
+      .sort();
+    for (const rel of orphans) {
+      driftedFiles.push(rel);
+      lines.push(`- ${rel} (committed; a fresh 'meta docs' no longer emits it)`);
+    }
+    return {
+      clean: driftedFiles.length === 0,
+      driftedFiles: driftedFiles.sort(),
+      lines,
+      checked: fresh.length + orphans.length,
+    };
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

@@ -98,8 +98,31 @@ describe("meta verify --docs", () => {
       // `verify --codegen`'s orphan branch was corrected for; with no manifest to appeal
       // to, this gate must never make it.
       writeFileSync(join(dir, "docs", "ARCHITECTURE.md"), "# Ours, not MetaObjects'.\n");
+      // Inside `agent/` too: the gate convicts a STALE GENERATED page there, and it tells
+      // the two apart by the `@generated` marker rather than by the directory alone.
       writeFileSync(join(dir, "docs", "agent", "NOTES.md"), "# Also ours.\n");
       expect(await run(["verify", "--cwd", dir, "--docs"])).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("FAILS when a generated `agent/` page is committed that a fresh run no longer emits", async () => {
+    const dir = project();
+    try {
+      await generateDocs(dir);
+      // The case this gate was silent on: `meta docs` SKIPS `agent/schema.md` (rather than
+      // failing) when the expected schema cannot be built or no dialect is declared, so a
+      // committed page describing the previous schema survived the diff — the fresh run
+      // produced no counterpart to compare it against. That is the change the gate most
+      // needs to flag, and it passed on it.
+      //
+      // Simulated by copying a generated page to a name no run emits: same shape, one
+      // condition — a committed file carrying our marker that a fresh run does not
+      // produce — without needing to break the project to reach it.
+      const stale = readFileSync(join(dir, "docs", "agent", "schema.md"), "utf8");
+      writeFileSync(join(dir, "docs", "agent", "schema.postgres.md"), stale);
+      expect(await run(["verify", "--cwd", dir, "--docs"])).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
