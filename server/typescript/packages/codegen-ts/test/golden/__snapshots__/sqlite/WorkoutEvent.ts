@@ -63,8 +63,15 @@ export type WorkoutEventPatch = z.input<typeof WorkoutEventUpdateSchema>;
  *
  * Use these instead of magic strings so TS catches typos and refactors stay
  * coherent. Each non-dollar-prefixed key is a per-field object carrying
- * name, label, view, optional htmlType/placeholder/helpText, and the
- * RHF-shaped validation rules derived from the field's validator children.
+ * name, label, view, and the RHF-shaped validation rules derived from the
+ * field's validator children.
+ *
+ * htmlType, placeholder and helpText are NOT emitted — no provider registers
+ * an attribute for them, so nothing here could derive one. useEntityForm
+ * still honours all three if you add them: this file is generated, hand edits
+ * inside it survive regeneration through the three-way merge, and the
+ * consumers read this const rather than the metadata. That is the intended
+ * way to set them.
  *
  * Typical usage with the metaobjects React form helper:
  *

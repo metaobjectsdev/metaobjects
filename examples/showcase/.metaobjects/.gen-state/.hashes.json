@@ -10,7 +10,7 @@
   "__init__.py": "daa04cec586768866d0996c779f62073e6773fe63750ff668327991fac2fd0f5",
   "generated/ts/Subscriber.queries.ts": "843e21d8ed84ecead64870b980dfa3156dd2f360ade1f1d2693a5f04bde0fb3c",
   "generated/ts/Subscriber.routes.ts": "05d57884708ed78bdad9d69744b1685bc7a310a988aec2edd2830b53b68b3315",
-  "generated/ts/Subscriber.ts": "5ce3037898480330c53d738e5478d0e9e8adc0a3e3dc5b78f2b7bb6ab52b0d84",
+  "generated/ts/Subscriber.ts": "abfb328f5eacc3d1c1ea890267dc7af8dfe2656592e33d032df14c76b3ca3e19",
   "generated/ts/SubscriberBlurbPayload.ts": "613a80a6c0ce7e967f84f7af3c587a3c6f04434a67cea838344217ab6d132fb9",
   "generated/ts/index.ts": "b9f04c67786b5eec1aa493958d9843b86a58406228fcfc85634559fc4b2cbfa6",
   "generated/ts/prompts.ts": "9cd69070c5b9c1f4b1200422858ef34488c2e8aa8ea5339714629a8de72c81cb",
