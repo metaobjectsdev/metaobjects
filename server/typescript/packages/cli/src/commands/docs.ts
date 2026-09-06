@@ -517,6 +517,13 @@ export async function docsCommand(
     loadedRoot: root,
     outDir,
     dbImport: "",
+    // The project's own prefix, not the "" default. `agent/ui.md` documents an ENDPOINT,
+    // and the routes generator mounts every one of them inside
+    // `fastify.register(…, { prefix: apiPrefix })` — so a project configuring "/api" is
+    // served at /api/authors and was being told, by the page whose whole job is to be
+    // right about addresses, that it was /authors. `meta gen` threads this (runner.ts);
+    // `meta docs` is the OTHER door onto the same page and did not.
+    apiPrefix: loadedConfig?.apiPrefix ?? "",
     pkMap: buildPkMap(root),
     relationMap: buildRelationMap(root),
   });

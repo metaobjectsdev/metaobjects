@@ -581,3 +581,61 @@ describe("meta docs pointed at the metadata directory (#344)", () => {
     expect(existsSync(join(out, "Welcome.md"))).toBe(true);
   });
 });
+
+
+// A project with a REAL entity (the module-level META is an object.value, which serves no
+// endpoint) plus a gen config declaring a non-empty apiPrefix.
+const PREFIXED_META = {
+  "metadata.root": {
+    package: "acme::shop",
+    children: [
+      {
+        "object.entity": {
+          name: "Author",
+          children: [
+            { "source.rdb": { "@table": "authors" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "email" } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } },
+          ],
+        },
+      },
+    ],
+  },
+};
+
+const PREFIXED_CONFIG = [
+  `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
+  `export default defineConfig({`,
+  `  outDir: "gen",`,
+  `  dialect: "sqlite",`,
+  `  apiPrefix: "/api",`,
+  `  generators: [entityFile()],`,
+  `});`,
+].join("\n");
+
+describe("meta docs --agent — the endpoint is the address the routes actually serve", () => {
+  test("agent/ui.md carries the project's apiPrefix, not the \"\" default", async () => {
+    // `meta gen` threads apiPrefix into the render context (runner.ts); `meta docs` is the
+    // OTHER door onto the same page and did not, so every endpoint on it was documented one
+    // path segment short. The page whose entire job is to be right about addresses was the
+    // page that was wrong, and no test could see it: they all build a RenderContext directly
+    // and inject apiPrefix, which is precisely the step this command was skipping.
+    const root = await mkdtemp(join(tmpdir(), "meta-docs-prefix-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(PREFIXED_META), "utf8");
+    await writeFile(join(root, "metaobjects.config.ts"), PREFIXED_CONFIG, "utf8");
+
+    const out = join(root, "out-docs");
+    const code = await docsCommand([root, "--out", out, "--agent"], root);
+    expect(code).toBe(0);
+
+    const ui = await readFile(join(out, "agent", "ui.md"), "utf8");
+    expect(ui).toContain("/api/authors");
+    // Stated in the negative too: an assertion that only looked for the prefixed form
+    // would pass just as well for a page carrying BOTH addresses.
+    expect(ui).not.toMatch(/`\/authors`/);
+  });
+});
