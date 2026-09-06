@@ -119,7 +119,14 @@ bounded by the model rather than by the metamodel.
 
 Children are grouped into a named collection per child TYPE — `fields`, `sources`,
 `identities`, `indexes`, `views`, `validators`, `requirements` — keyed by the child's
-metadata `name`.
+metadata `name`, **except where the type declares a different key**.
+
+That exception is not a hedge; one core type needs it. `source.rdb` declares no
+`defaultName` and is conventionally authored unnamed — the registry's own `rules` string
+says an object's several sources are *"distinguished by `@role`"*. Keying sources by
+`name` would collapse a write-through entity's table and replica view into one entry, and
+losing the replica's physical name is the exact defect the v2 restructure existed to fix.
+So the key is declared alongside the collection, and the default is the node's `name`.
 
 **The collection key is declared on the type registration, not computed.** The
 alternative is five ports each pluralizing `view` → `views` and agreeing forever;
@@ -130,12 +137,13 @@ aspirational.
 
 ### Registry changes
 
-Two new fields on each `(type, subType)` entry in the metamodel providers and
+Three new fields on each `(type, subType)` entry in the metamodel providers and
 therefore in `expected-registry.json`:
 
 | Field | Meaning |
 |---|---|
 | `collection` | The collection key children of this type are grouped under (`view` → `views`). A property of the type; every subType of a type declares the same value. |
+| `collectionKey` | The attr whose value keys an entry within that collection. **Optional; absent means the node's `name`**, which is right for every core type but `source`, where it is `role`. |
 | `nameAttrs` | The attrs of this subType that hold NAMES, as a list. |
 
 `nameAttrs` is a **list**, which is what lets `source.rdb` work without any

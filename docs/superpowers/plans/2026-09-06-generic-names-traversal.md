@@ -218,6 +218,7 @@ git commit  # subject: fix!: two sources in one role that disagree now fail the 
 
 **Interfaces:**
 - Produces: `TypeDef.collection?: string` — the collection key children of this type group under. A property of the TYPE: every subType of a type declares the same value. `view` → `"views"`, `field` → `"fields"`, `source` → `"sources"`, `identity` → `"identities"`, `index` → `"indexes"`, `requirement` → `"requirements"`, `validator` → `"validators"`, `layout` → `"layouts"`, `origin` → `"origins"`, `relationship` → `"relationships"`, `template` → `"templates"`, `object` → `"objects"`.
+- Produces: `TypeDef.collectionKey?: string` — the ATTR whose value keys an entry inside that collection. Omitted for every core type except `source`, which declares `"role"`. Omitted means the node's `name`. This exists because `source.rdb` declares no `defaultName` and is conventionally authored unnamed — the registry's own `rules` string says an object's sources are "distinguished by @role" — so keying by name would collapse a write-through entity's table and replica view into one entry and lose the replica's physical name, which is the defect the v2 restructure existed to fix.
 - Produces: `TypeDef.nameAttrs?: readonly string[]` — the attrs of this subType that hold NAMES. `source.rdb` → `["table","view","materializedView","proc","function"]` (all five aliases; exactly one ever resolves, so the emitter needs no `@kind` branch). `field.*` → `["column"]`. `identity.*` / `index.*` → the resolved-index-name attr. Most types → omitted.
 
 - [ ] **Step 1: Write the failing test**
@@ -241,6 +242,12 @@ test("source.rdb declares all five kind aliases as name attrs", () => {
   const reg = composeRegistry(coreProviders);
   expect([...reg.nameAttrsOf("source", "rdb")].sort())
     .toEqual(["function", "materializedView", "proc", "table", "view"]);
+});
+
+test("source keys its collection by @role; everything else by name", () => {
+  const reg = composeRegistry(coreProviders);
+  expect(reg.collectionKeyOf("source")).toBe("role");
+  expect(reg.collectionKeyOf("field")).toBeUndefined();   // undefined => the node's name
 });
 ```
 
@@ -609,8 +616,8 @@ Each task: port the recursion, render nested types, drop the `SOURCE_`/`IDENTITY
 
 ## Self-Review
 
-**Spec coverage.** Artifact definition → Tasks 10, 11, 14. Node entry shape → Task 10. Registry-declared collections → Tasks 5-9. Abstracts resolved-inline → Task 10 (deletes `namesArtifactSuperOf` / `resolveSuperFragmentNames`). Per-port nested rendering → Tasks 11, 16-19. Requirements → Task 14. Prefix removal → Tasks 16-19. Gates → Tasks 13, 15. Versioning → Task 6. Packaged fixes → Tasks 1-4. Open decision (same-role refusal) → Task 4, ruled. **One spec item has no task by design:** the deferred `$apiPrefix`-on-the-entity-const observation, which the spec records as explicitly not acted on.
+**Spec coverage.** Artifact definition → Tasks 10, 11, 14. Node entry shape → Task 10. Registry-declared collections and their keys → Tasks 5-9. Abstracts resolved-inline → Task 10 (deletes `namesArtifactSuperOf` / `resolveSuperFragmentNames`). Per-port nested rendering → Tasks 11, 16-19. Requirements → Task 14. Prefix removal → Tasks 16-19. Gates → Tasks 13, 15. Versioning → Task 6. Packaged fixes → Tasks 1-4. Open decision (same-role refusal) → Task 4, ruled. **One spec item has no task by design:** the deferred `$apiPrefix`-on-the-entity-const observation, which the spec records as explicitly not acted on.
 
 **Placeholder scan.** No TBD/TODO. Tasks 16-19 carry target output and exact commands rather than literal source, because the artifact's emitted SHAPE is the specification and each port's emitter internals differ; the corpus in Task 15 is the executable acceptance criterion for all four.
 
-**Type consistency.** `resolveNodeNames` / `NodeNames` / `collections` / `attrs` are used with those exact names in Tasks 10, 11, 12, 14. `collectionOf(type)` and `nameAttrsOf(type, subType)` are introduced in Task 5 and used in Task 10. `restPath` keeps its Task 1 signature throughout.
+**Type consistency.** `resolveNodeNames` / `NodeNames` / `collections` / `attrs` are used with those exact names in Tasks 10, 11, 12, 14. `collectionOf(type)`, `collectionKeyOf(type)` and `nameAttrsOf(type, subType)` are introduced in Task 5 and used in Task 10. `restPath` keeps its Task 1 signature throughout.
