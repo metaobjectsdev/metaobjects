@@ -101,7 +101,11 @@ open class KotlinNamesGenerator :
             while (sup != null) {
                 // Already emitted, and so is everything above it.
                 if (!emitted.add(sup.name)) break
-                emit(sup, outRoot, strategy, fragment = true)
+                // "Fragment" means "declares no source", DERIVED rather than asserted:
+                // this walk reaches a TPH base, which owns the shared table, and a
+                // fragment renders no source constants at all.
+                emit(sup, outRoot, strategy,
+                    fragment = KotlinGenUtil.primaryRdbSource(sup) == null)
                 sup = KotlinGenUtil.namesArtifactSuperOf(sup)
             }
         }

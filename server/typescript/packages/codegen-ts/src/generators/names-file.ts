@@ -2,7 +2,7 @@ import type { Generator, GenContext, EmittedFile } from "../generator.js";
 import { entityOutputPath, crossEntitySpecifier } from "../import-path.js";
 import { renderNamesDecl } from "../templates/names-decl.js";
 import { namesArtifactSuperOf, resolveObjectNames } from "../names.js";
-import type { MetaObject } from "@metaobjectsdev/metadata";
+import { primaryRdbSource, type MetaObject } from "@metaobjectsdev/metadata";
 
 /**
  * §A1/§A2/§A6 — `<Entity>Names`: the physical database names for one object, as constants a
@@ -81,8 +81,17 @@ export function namesFile(): Generator {
           const key = sup.resolutionKey();
           if (emitted.has(key)) break;   // already emitted, and so is everything above it
           emitted.add(key);
+          // "Fragment" means "declares no source", so it is DERIVED rather than asserted.
+          // Hardcoding `true` here was right for the shape this pass was written for — an
+          // abstract base with columns and no table — and wrong for the one it also
+          // reaches: a scoped run (`meta gen --entities <Subtype>`) walks up to a TPH BASE,
+          // which owns the shared table. Rendered as a fragment it came out with
+          // `sources: {}` while the subtype emitted `...<Base>Names.sources`, so the
+          // entity module referenced a member that resolved to nothing.
           const content = renderNamesDecl(sup, {
-            strategy, superSpecifier: superSpecifierFor(sup), fragment: true,
+            strategy,
+            superSpecifier: superSpecifierFor(sup),
+            fragment: primaryRdbSource(sup) === undefined,
           });
           if (content === "") continue;
           out.push({ path: pathOf(sup), content });

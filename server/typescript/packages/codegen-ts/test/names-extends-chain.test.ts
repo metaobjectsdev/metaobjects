@@ -299,3 +299,70 @@ describe("a key-only abstract is a link in the chain, not a node to walk past", 
     }
   });
 });
+
+describe("a scoped run still names the shared table", () => {
+  test("generating only the TPH subtype emits a base its sources actually reach", async () => {
+    // `meta gen --entities CopayAuth`. Pass 1 emits the subtype; pass 2 walks up to `Auth`
+    // and used to render it as a FRAGMENT unconditionally — and a fragment declares no
+    // source, by design, because it has no physical name. But `Auth` DOES have one: it is
+    // the TPH base, and the shared table is named on it. So the base came out with
+    // `sources: {}` while the subtype emitted `...AuthNames.sources`, and the entity module
+    // referenced `CopayAuthNames.sources.primary.table` — a member that resolved to
+    // nothing. "Fragment" means "declares no source", so it is DERIVED from the source now
+    // rather than asserted by the caller.
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(MODEL), { id: "extends-chain.json" }),
+    ]);
+    expect(errors.map((e) => e.message)).toEqual([]);
+
+    const dir = mkdtempSync(join(import.meta.dir, "tmp-names-scoped-"));
+    try {
+      await runGen({
+        config: defineConfig({
+          outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite",
+          generators: [namesFile(), entityFile()],
+        }),
+        metadata: root,
+        entityFilter: ["CopayAuth"],
+      });
+      const tree: Record<string, string> = {};
+      const walk = (d: string): void => {
+        for (const n of readdirSync(d)) {
+          const full = join(d, n);
+          if (statSync(full).isDirectory()) walk(full);
+          else tree[relative(dir, full)] = readFileSync(full, "utf8");
+        }
+      };
+      walk(dir);
+
+      // The base is reached by the walk, and carries the table it declares.
+      expect(tree["Auth.names.ts"]).toBeDefined();
+      expect(tree["Auth.names.ts"]).toContain('table: "zz_auths"');
+      expect(tree["Auth.names.ts"]).not.toContain("sources: {},");
+
+      // The compiler is the teeth: the subtype's spread has to RESOLVE.
+      const probe = join(dir, "zz-probe.ts");
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(probe, [
+        `import { CopayAuthNames } from "./CopayAuth.names";`,
+        `const t: "zz_auths" = CopayAuthNames.sources.primary.table;`,
+        `export const probe = [t];`,
+      ].join("\n"), "utf8");
+
+      const program = ts.createProgram(
+        [probe, ...Object.keys(tree).filter((p) => p.endsWith(".names.ts")).map((p) => join(dir, p))],
+        {
+          strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+          module: ts.ModuleKind.ESNext,
+          moduleResolution: ts.ModuleResolutionKind.Bundler,
+          skipLibCheck: true,
+        },
+      );
+      const errs = ts.getPreEmitDiagnostics(program)
+        .map((d) => `${d.file?.fileName ?? ""}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`);
+      expect(errs).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

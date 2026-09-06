@@ -523,7 +523,14 @@ class NamesGenerator:
             while sup is not None:
                 if sup.resolution_key() in emitted:
                     break  # already emitted, and so is everything above it
-                files += one(sup, fragment=True)
+                # "Fragment" means "declares no source", so it is DERIVED rather than
+                # asserted. Hardcoding True was right for the shape this pass was written
+                # for -- an abstract base with columns and no table -- and wrong for the one
+                # it also reaches: a scoped run (`--entities <Subtype>`) walks up to a TPH
+                # BASE, which owns the shared table. Rendered as a fragment it emitted no
+                # SOURCE_* constants at all, while the subtype's module still referenced
+                # them by name -- an ImportError on a module the tool had just written.
+                files += one(sup, fragment=primary_rdb_source(sup) is None)
                 sup = names_artifact_super_of(sup)
         return files
 

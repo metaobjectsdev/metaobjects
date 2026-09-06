@@ -18,6 +18,7 @@ outcome this change exists to prevent.
 from __future__ import annotations
 
 import importlib.util
+import ast
 import json
 import sys
 
@@ -409,3 +410,72 @@ def test_two_sources_in_one_role_that_DISAGREE_are_refused_naming_both() -> None
     message = str(exc.value)
     assert '@role: "primary"' in message
     assert "zz_shared" in message
+
+
+TPH_MODEL = {
+    "metadata.root": {
+        "package": "acme",
+        "children": [
+            {
+                "object.entity": {
+                    "name": "Auth",
+                    "@discriminator": "kind",
+                    "children": [
+                        {"source.rdb": {"@table": "zz_auths"}},
+                        {"field.long": {"name": "id"}},
+                        {"field.enum": {"name": "kind", "@values": ["Copay"]}},
+                        {"identity.primary": {"@fields": ["id"], "@generation": "increment"}},
+                    ],
+                }
+            },
+            {
+                "object.entity": {
+                    "name": "CopayAuth",
+                    "extends": "Auth",
+                    "@discriminatorValue": "Copay",
+                    "children": [
+                        {"field.long": {"name": "copayAmount", "@column": "zz_copay_cents"}},
+                    ],
+                }
+            },
+        ],
+    }
+}
+
+
+def test_a_scoped_run_still_names_the_shared_table(tmp_path: Path) -> None:
+    # `metaobjects gen --entities CopayAuth`. Pass 1 emits the subtype; pass 2 walks up to
+    # `Auth` and used to render it as a FRAGMENT unconditionally. A fragment declares no
+    # source, by design, because it has no physical name -- but `Auth` DOES have one: it is
+    # the TPH base, and the shared table is named on it. So the base module came out with no
+    # SOURCE_* constants at all while the subtype's module still imported them by name: an
+    # ImportError on a module the tool had just written.
+    loader = MetaDataLoader()
+    result = loader.load([
+        InMemoryStringSource(json.dumps(TPH_MODEL), format=MetaDataFormat.JSON, id="tph.json"),
+    ])
+    assert [str(e) for e in result.errors] == []
+    out = tmp_path / "gen"
+    run_gen(
+        GenConfig(out_dir=str(out), column_naming="snake_case"),
+        result.root,
+        generators=[names_generator()],
+        entity_filter=["CopayAuth"],
+    )
+    files = {str(p.relative_to(out)): p.read_text() for p in out.rglob("*.py")}
+
+    base = files["auth_names.py"]
+    assert 'AUTH_SOURCE_PRIMARY_TABLE: Final[str] = "zz_auths"' in base, base
+
+    # Every name the subtype imports from the base must EXIST in it -- the assertion the
+    # ImportError would have made at runtime, made here instead.
+    child = files["copay_auth_names.py"]
+    imported = [
+        alias.name
+        for node in ast.walk(ast.parse(child))
+        if isinstance(node, ast.ImportFrom) and node.module == "auth_names"
+        for alias in node.names
+    ]
+    assert imported, child
+    for name in imported:
+        assert f"{name}: Final" in base, f"{name} imported from auth_names but not defined there"

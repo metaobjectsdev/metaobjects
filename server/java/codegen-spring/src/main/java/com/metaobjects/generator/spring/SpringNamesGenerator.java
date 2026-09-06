@@ -136,7 +136,11 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
                  sup = namesArtifactSuperOf(sup)) {
                 // Already emitted, and so is everything above it.
                 if (!emitted.add(sup.getName())) break;
-                emit(sup, outRoot, strategy, true);
+                // "Fragment" means "declares no source", DERIVED rather than asserted:
+                // this walk reaches a TPH base, which owns the shared table, and a
+                // fragment emits no source members at all.
+                emit(sup, outRoot, strategy,
+                    SourceResolution.primaryRdbSource(sup) == null);
             }
         }
     }

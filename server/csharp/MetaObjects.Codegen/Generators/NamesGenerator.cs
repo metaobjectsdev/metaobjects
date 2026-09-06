@@ -61,7 +61,14 @@ public sealed class NamesGenerator : PerEntityGenerator
             {
                 // Already emitted, and so is everything above it.
                 if (!emitted.Add(sup.Name)) break;
-                var fragment = Render(sup, ctx, fragment: true);
+                // "Fragment" means "declares no source", so it is DERIVED rather than
+                // asserted. Hardcoding true was right for the shape this pass was written
+                // for — an abstract base with columns and no table — and wrong for the one
+                // it also reaches: a scoped run walks up to a TPH BASE, which owns the
+                // shared table, and a fragment renders no source members at all while the
+                // subtype's class still inherits them.
+                var fragment = Render(sup, ctx,
+                    fragment: SourceResolution.PrimaryRdbSource(sup) is null);
                 if (fragment is not null) files.Add(fragment);
             }
         }
