@@ -51,7 +51,7 @@ import {
   resolveObjectRef,
   type AggregateFunction,
 } from "@metaobjectsdev/metadata";
-import { type MetaData, type MetaField, type MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
+import { type MetaData, type MetaField, type MetaRoot, type MetaSource, MetaObject } from "@metaobjectsdev/metadata";
 import { intValueMapOf } from "../enum-meta.js";
 import {
   columnNameFromField,
@@ -418,11 +418,28 @@ export function projectionViewName(
  * with someone else's schema is worse than no schema at all — it is confidently wrong.
  */
 export function projectionViewSchema(projection: MetaObject): string | undefined {
-  const readOnlySources = projection.ownChildren().filter(isReadOnlySource);
-  const viewSource =
-    readOnlySources.find((c) => c.role === SOURCE_ROLE_PRIMARY) ?? readOnlySources[0];
-  const schema = viewSource?.attr(SOURCE_ATTR_SCHEMA);
+  const schema = projectionViewSource(projection)?.attr(SOURCE_ATTR_SCHEMA);
   return typeof schema === "string" && schema !== "" ? schema : undefined;
+}
+
+/**
+ * The source node {@link projectionViewName} names — the ONE selection, so the name, the
+ * schema and the role cannot be picked by three functions that agree until they do not.
+ *
+ * Hoisted out of `projectionViewSchema`, which used to be the only place the rule was
+ * written twice-removed from `viewName`. The third caller is what forced it: the names
+ * artifact keys its sources by ROLE, so a consumer reaching for a write-through entity's
+ * replica view has to know which role that view plays, and guessing `"replica"` would be
+ * exactly the second derivation this file exists to avoid.
+ */
+export function projectionViewSource(projection: MetaObject): MetaSource | undefined {
+  const readOnlySources = projection.ownChildren().filter(isReadOnlySource);
+  return readOnlySources.find((c) => c.role === SOURCE_ROLE_PRIMARY) ?? readOnlySources[0];
+}
+
+/** The ROLE of that source — the key its entry has in `<Entity>Names.sources`. */
+export function projectionViewRole(projection: MetaObject): string | undefined {
+  return projectionViewSource(projection)?.role;
 }
 
 /**

@@ -37,9 +37,13 @@ describe("resolveObjectNames", () => {
       },
     }]);
     const n = resolveObjectNames(obj(root, "Subscriber"), "snake_case");
-    expect(n?.kind).toBe("table");
-    expect(n?.name).toBe("subscribers");
-    expect(n?.readOnly).toBe(false);
+    expect(n?.sources.primary?.kind).toBe("table");
+    // `name` is the OBJECT's name; the table is under the source that declares it. Both
+    // are asserted, because the change that moved the physical name out of `name` is the
+    // one an adopter can adopt without a compile error.
+    expect(n?.name).toBe("Subscriber");
+    expect(n?.sources.primary?.table).toBe("subscribers");
+    expect(n?.sources.primary?.kind).toBe("table");
     // The collision the shape exists for: logical name != physical column.
     expect(n?.fields.createdAt).toEqual({ name: "createdAt", column: "created_at" });
   });
@@ -61,9 +65,13 @@ describe("resolveObjectNames", () => {
       },
     }]);
     const n = resolveObjectNames(obj(root, "Report"), "snake_case");
-    expect(n?.kind).toBe("view");
-    expect(n?.name).toBe("v_report");
-    expect(n?.readOnly).toBe(true);
+    expect(n?.sources.primary?.kind).toBe("view");
+    expect(n?.name).toBe("Report");
+    expect(n?.sources.primary?.view).toBe("v_report");
+    // `readOnly` is no longer carried — it was a derivation over @kind with zero
+    // consumers in any port. The KIND is what the author declared, so that is what the
+    // artifact mirrors, and a reader who wants read-only-ness asks it.
+    expect(n?.sources.primary?.kind).toBe("view");
   });
 
   test("an object with no source resolves to undefined, not a phantom table", async () => {
@@ -125,8 +133,11 @@ describe("resolveObjectNames", () => {
     const weird = obj(root, "Weird");
     expect(weird.dbTable).toBeUndefined();
     const n = resolveObjectNames(weird, "snake_case");
-    expect(n?.name).toBe("v_weird");
-    expect(n?.readOnly).toBe(true);
+    expect(n?.sources.primary?.view).toBe("v_weird");
+    // `readOnly` is no longer carried — it was a derivation over @kind with zero
+    // consumers in any port. The KIND is what the author declared, so that is what the
+    // artifact mirrors, and a reader who wants read-only-ness asks it.
+    expect(n?.sources.primary?.kind).toBe("view");
   });
 
   // The REACHABLE divergence, BOTH directions. validateSourceRoles
@@ -263,7 +274,9 @@ describe("resolveObjectNames", () => {
         },
       },
     ]);
-    expect(resolveObjectNames(obj(root, "ChildSame"), "snake_case")?.name).toBe("same_table");
+    expect(
+      resolveObjectNames(obj(root, "ChildSame"), "snake_case")?.sources.primary?.table,
+    ).toBe("same_table");
   });
 });
 
@@ -310,7 +323,10 @@ describe("resolveObjectNames — extends chain", () => {
     const n = resolveSuperFragmentNames(obj(root, "BaseEntity"), "snake_case");
     expect(n).toBeDefined();
     // It has no source, so it has no physical name — and must never acquire one.
-    expect(n?.name).toBeUndefined();
+    // The fragment carries its OWN name now (it always had one; the key just held the
+    // physical name before). What it must never acquire is a SOURCE — it declares none.
+    expect(n?.name).toBe("BaseEntity");
+    expect(n?.sources).toEqual({});
     expect(Object.keys(n?.ownFields ?? {}).sort()).toEqual(["createdAt", "id"]);
   });
 
@@ -325,7 +341,7 @@ describe("resolveObjectNames — extends chain", () => {
     expect(n?.superNames?.name).toBe("BaseEntity");
     // The child declares its own source, so its physical name is its own.
     expect(n?.inheritsSource).toBe(false);
-    expect(n?.name).toBe("authors");
+    expect(n?.sources.primary?.table).toBe("authors");
   });
 
   test("a TPH subtype inherits the base's SOURCE, so its physical name is the base's too", async () => {

@@ -63,9 +63,14 @@ describe("renderNamesDecl", () => {
   test("emits a const object carrying the physical name and both field names", async () => {
     const out = renderNamesDecl(await subscriber(), "snake_case");
     expect(out).toContain("export const SubscriberNames = {");
-    expect(out).toContain(`name: "subscribers"`);
+    // The object's own name at the top level, the table under the source that declares it.
+    expect(out).toContain(`name: "Subscriber"`);
+    expect(out).toContain(`table: "subscribers"`);
     expect(out).toContain(`kind: "table"`);
-    expect(out).toContain("readOnly: false");
+    // `readOnly` is gone — a derivation over @kind with zero consumers in any port.
+    expect(out).not.toContain("readOnly");
+    expect(out).toContain(`type: "object"`);
+    expect(out).toContain(`subType: "entity"`);
     expect(out).toContain(`createdAt: { name: "createdAt", column: "created_at" }`);
     expect(out).toContain("} as const;");
   });

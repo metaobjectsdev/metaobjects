@@ -55,7 +55,7 @@ describe("§A6 — the entity file consumes the names artifact", () => {
     const out = await renderEntityWithGenerators(true);
 
     expect(out).toContain(`import { SubscriberNames } from "./Subscriber.names.js";`);
-    expect(out).toContain("sqliteTable(SubscriberNames.name");
+    expect(out).toContain("sqliteTable(SubscriberNames.sources.primary.table");
     expect(out).toContain("text(SubscriberNames.fields.createdAt.column)");
 
     // The literals are GONE, not merely joined by a constant. A generator that emitted the
@@ -88,7 +88,7 @@ describe("§A6 — the entity file consumes the names artifact", () => {
   test("with the names generator ACTIVE, the descriptor's $table references the constant", async () => {
     const out = await renderEntityWithGenerators(true);
 
-    expect(out).toContain("$table: SubscriberNames.name");
+    expect(out).toContain("$table: SubscriberNames.sources.primary.table");
     // The literal must be GONE, not merely accompanied — see the Task 0 comment above.
     expect(out).not.toContain('$table: "subscribers"');
   });

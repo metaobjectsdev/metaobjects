@@ -16,7 +16,7 @@ import { customers } from "../users/Customer";
 import { OrderNames } from "./Order.names";
 import { products } from "./Product";
 
-export const orders = sqliteTable(OrderNames.name, {
+export const orders = sqliteTable(OrderNames.sources.primary.table, {
   id: integer(OrderNames.fields.id.column).primaryKey({ autoIncrement: true }),
   customerId: integer(OrderNames.fields.customerId.column)
     .notNull()
@@ -70,7 +70,7 @@ export type OrderPatch = z.input<typeof OrderUpdateSchema>;
  */
 export const Order = {
   $entity: "Order",
-  $table: OrderNames.name,
+  $table: OrderNames.sources.primary.table,
   $path: "/orders",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

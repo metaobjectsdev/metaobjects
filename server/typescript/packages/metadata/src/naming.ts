@@ -183,7 +183,13 @@ export function resolveColumnName(
  *   fix would need. Measured, not assumed — `resolve-index-name.test.ts` asserts both
  *   arms, because "the loader already handles it" is the belief that would delete this.
  */
-export function resolveIndexName(node: MetaData): string {
+export function resolveIndexName(
+  // The narrow structural shape rather than `MetaData`: this reads three properties, and
+  // every caller that has a real node satisfies it, while the Drizzle emitter's local
+  // duck-typed index node does not need a cast to pass one. A cast here would be the
+  // usual way a `never` slips past the compiler into a runtime property read.
+  node: { readonly name: string; readonly type: string; readonly subType: string },
+): string {
   const short = stripPackage(node.name);
   if (short === "") {
     throw new MetaModelError(

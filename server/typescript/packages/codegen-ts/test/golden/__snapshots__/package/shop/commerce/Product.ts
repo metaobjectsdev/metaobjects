@@ -16,7 +16,7 @@ import { z } from "zod";
 import { tags } from "../../Tag";
 import { ProductNames } from "./Product.names";
 
-export const products = sqliteTable(ProductNames.name, {
+export const products = sqliteTable(ProductNames.sources.primary.table, {
   id: integer(ProductNames.fields.id.column).primaryKey({
     autoIncrement: true,
   }),
@@ -60,7 +60,7 @@ export type ProductPatch = z.input<typeof ProductUpdateSchema>;
  */
 export const Product = {
   $entity: "Product",
-  $table: ProductNames.name,
+  $table: ProductNames.sources.primary.table,
   $path: "/products",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

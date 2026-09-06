@@ -18,6 +18,7 @@ import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { resolveIndexName } from "../src/naming.js";
 import { MetaModelError } from "../src/errors.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
+import type { MetaRoot } from "../src/shared/meta-root.js";
 
 async function load(doc: unknown) {
   const loader = new MetaDataLoader({ strict: true });
@@ -48,8 +49,8 @@ const model = (indexChildren: unknown[]) => ({
   },
 });
 
-const customerOf = (root: { ownChildren(): { name: string }[] }): MetaObject =>
-  root.ownChildren().find((c) => c.name === "Customer") as unknown as MetaObject;
+const customerOf = (root: MetaRoot): MetaObject =>
+  root.ownChildren().find((c) => c.name === "Customer") as MetaObject;
 
 describe("resolveIndexName", () => {
   it("returns an identity.secondary's own name", async () => {

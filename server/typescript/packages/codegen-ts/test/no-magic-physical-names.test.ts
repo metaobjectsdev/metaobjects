@@ -145,33 +145,36 @@ interface Token {
 const reachOf = (t: Token, d: Dialect): Reach => t.reachByDialect?.[d] ?? t.reach;
 
 const TOKENS: ReadonlyArray<Token> = [
-  { literal: TABLE,       shouldUse: "CustomerNames.name",                  reach: "constant" },
+  { literal: TABLE,       shouldUse: "CustomerNames.sources.primary.table", reach: "constant" },
   { literal: COL_ID,      shouldUse: "CustomerNames.fields.id.column",      reach: "constant" },
   { literal: COL_EMAIL,   shouldUse: "CustomerNames.fields.email.column",   reach: "constant" },
-  { literal: ORDER_TABLE, shouldUse: "OrderNames.name",                     reach: "constant" },
+  { literal: ORDER_TABLE, shouldUse: "OrderNames.sources.primary.table",    reach: "constant" },
   { literal: ORDER_ID,    shouldUse: "OrderNames.fields.id.column",         reach: "constant" },
   { literal: COL_FK,      shouldUse: "OrderNames.fields.customerId.column", reach: "constant" },
-  { literal: VIEW,        shouldUse: "CustomerSummaryNames.name",           reach: "constant" },
+  { literal: VIEW,        shouldUse: "CustomerSummaryNames.sources.primary.view", reach: "constant" },
   { literal: VO_COL,      shouldUse: "CustomerNames.fields.street.column",  reach: "constant" },
   { literal: JSONB_COL,   shouldUse: "CustomerNames.fields.profile.column", reach: "constant" },
-  { literal: WT_TABLE,    shouldUse: "AccountNames.name",                   reach: "constant" },
+  { literal: WT_TABLE,    shouldUse: "AccountNames.sources.primary.table",  reach: "constant" },
   { literal: WT_ID,       shouldUse: "AccountNames.fields.id.column",       reach: "constant" },
   {
-    literal: WT_VIEW, shouldUse: "(no constant exists)", reach: "knownLiteral",
+    literal: WT_VIEW, shouldUse: "AccountNames.sources.replica.view", reach: "constant",
     why:
-      "A write-through entity has TWO physical names; <Entity>Names carries the PRIMARY " +
-      "source's only (resolveObjectNames). The replica view name has no slot in the " +
-      "artifact's schema, so there is nothing for the read path to reference.",
+      "Promoted from knownLiteral by the 0.25.0 restructure, and the row is kept with its " +
+      "history because the OLD reason was true and specific: a write-through entity has " +
+      "TWO physical names and <Entity>Names carried the PRIMARY source's only, so the " +
+      "replica view name had no slot to reference. Keying sources by @role is what gave " +
+      "it one. The pin earned its keep — the same escape existed in C#'s AppDbContext, " +
+      "which is how it was established as the artifact's SHAPE rather than a Drizzle quirk.",
   },
 
   // --- TPH: a discriminator base folds its subtypes' own columns into one table ------
-  { literal: TPH_TABLE,   shouldUse: "VehicleNames.name",                   reach: "constant" },
+  { literal: TPH_TABLE,   shouldUse: "VehicleNames.sources.primary.table",  reach: "constant" },
   { literal: TPH_ID,      shouldUse: "VehicleNames.fields.id.column",       reach: "constant" },
   { literal: TPH_DISC,    shouldUse: "VehicleNames.fields.kind.column",     reach: "constant" },
   { literal: TPH_SUB_COL, shouldUse: "CarNames.fields.doors.column",     reach: "constant" },
 
   // --- the enum / index / schema entity ---------------------------------------------
-  { literal: WIDGET_TABLE,  shouldUse: "WidgetNames.name",                    reach: "constant" },
+  { literal: WIDGET_TABLE,  shouldUse: "WidgetNames.sources.primary.table",   reach: "constant" },
   { literal: ENUM_COL,      shouldUse: "WidgetNames.fields.status.column",    reach: "constant" },
   { literal: ENUM_INT_COL,  shouldUse: "WidgetNames.fields.grade.column",     reach: "constant" },
   { literal: ARRAY_COL,     shouldUse: "WidgetNames.fields.tags.column",      reach: "constant" },
@@ -182,7 +185,7 @@ const TOKENS: ReadonlyArray<Token> = [
   // `pgSchema(WidgetNames.schema).table(WidgetNames.name, …)`, so the table lands in the
   // schema the migration actually creates it in rather than in `public`.
   {
-    literal: SCHEMA, shouldUse: "WidgetNames.schema", reach: "constant",
+    literal: SCHEMA, shouldUse: "WidgetNames.sources.primary.schema", reach: "constant",
     reachByDialect: { sqlite: "dropped" },
     why:
       "On sqlite `@schema` is DROPPED and that is correct, not a gap: SQLite has no schema " +
@@ -192,24 +195,30 @@ const TOKENS: ReadonlyArray<Token> = [
   },
 
   // --- the callable (stored procedure) ----------------------------------------------
-  { literal: PROC,         shouldUse: "ProcOutNames.name",                   reach: "constant" },
+  { literal: PROC,         shouldUse: "ProcOutNames.sources.primary.proc",   reach: "constant" },
   { literal: PROC_OUT_COL, shouldUse: "ProcOutNames.fields.total.column",    reach: "constant" },
 
   // --- index names: a category with no slot in the artifact -------------------------
   {
-    literal: SEC_INDEX, shouldUse: "(no constant exists)", reach: "knownLiteral",
+    literal: SEC_INDEX, shouldUse: "WidgetNames.identities.zz_phys_idx_sec.index",
+    reach: "constant",
     why:
-      "An index's database name IS its metamodel `name` — an identity.secondary and an " +
-      "index.lookup have no `@column`-style physical spelling to diverge from, so there " +
-      "is nothing here for a generator to RESTATE. ObjectNames carries kind/name/schema/" +
-      "fields and no index slot. The real risk for these names is codegen and migrate " +
-      "computing them differently, which is a parity question rather than a magic-string " +
-      "one, and is owned by `secondary-index-name-parity.test.ts`. Pinned so that the day " +
-      "the artifact grows an index slot, this row fails and says 'promote it'.",
+      "Promoted from knownLiteral in 0.25.0. The old reason read well and was wrong: " +
+      "\"an index's database name IS its metamodel name, so there is nothing to RESTATE\". " +
+      "Nothing to restate is not the same as nothing to reference — the name was still " +
+      "spelled a second time, in generated code, by a generator that had computed it " +
+      "independently. `fdb4118f1` is that lapsing: codegen emitted `idx_<table>_<col>` " +
+      "while the index in the database was `identity.name`. The artifact now carries an " +
+      "`identities` slot and `resolveIndexName` is the one door both codegen and migrate " +
+      "go through.",
   },
   {
-    literal: LKP_INDEX, shouldUse: "(no constant exists)", reach: "knownLiteral",
-    why: "As SEC_INDEX — an index.lookup's database name is its metamodel `name`.",
+    literal: LKP_INDEX, shouldUse: "WidgetNames.indexes.zz_phys_idx_lkp.index",
+    reach: "constant",
+    why:
+      "As SEC_INDEX. Kept as its own row rather than folded in: ADR-0040 put uniqueness " +
+      "in the TYPE, so a secondary identity and a lookup index live in different " +
+      "collections and are reached by different paths. One row cannot fail for both.",
   },
 
 ];
@@ -380,6 +389,26 @@ function readTree(root: string): Record<string, string> {
 const isNamesArtifact = (path: string): boolean => path.endsWith(".names.ts");
 
 /**
+ * Blank out every REFERENCE into a names artifact, so the scans below see only what a
+ * generator actually embedded.
+ *
+ * The 0.25.0 shape made this necessary and the reason is worth stating rather than
+ * hiding in a regex. Two of the artifact's four collections are keyed by an
+ * AUTHOR-CHOSEN name, and for an index that name IS the database name — so
+ * `WidgetNames.indexes.zz_phys_idx_lkp.index` contains a `zz_phys_` token while being
+ * the exact opposite of the defect this gate hunts: a property path into the artifact,
+ * checked by the compiler under `as const`, where a typo does not compile. Scanning raw
+ * text cannot tell that from `index("zz_phys_idx_lkp")`, and reporting it would train a
+ * reader to ignore the gate.
+ *
+ * Deliberately anchored on `<Something>Names` followed by an unbroken accessor chain, so
+ * it masks a reference and nothing else. A bare string literal is untouched wherever it
+ * appears, which is the only thing the equality assertions below are allowed to see.
+ */
+const maskNamesRefs = (content: string): string =>
+  content.replace(/\b[A-Za-z_$][\w$]*Names(?:\.[A-Za-z_$][\w$]*|\[(?:"[^"]*"|'[^']*')\])+/g, "");
+
+/**
  * The dialects this gate runs. Not a formality: a column's type mapping, an index's
  * emitted form and the whole enum-CHECK path differ per dialect, so a gate that runs one
  * of them speaks for one of them. The postgres arm is also the only place `@schema` can
@@ -462,7 +491,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
       declaredLiterals.reduce((acc, lit) => acc.split(lit).join(""), content);
     for (const [path, content] of Object.entries(tree)) {
       if (isNamesArtifact(path)) continue;
-      const body = masked(content);
+      const body = masked(maskNamesRefs(content));
       for (const t of TOKENS) {
         const { literal, shouldUse } = t;
         if (reachOf(t, dialect) !== "constant") continue;
@@ -507,7 +536,7 @@ describe(`no magic physical names in generated output (${dialect})`, () => {
     const escaped = new Set(
       Object.entries(tree)
         .filter(([p]) => !isNamesArtifact(p))
-        .flatMap(([, c]) => c.match(/zz_phys_\w+/g) ?? []),
+        .flatMap(([, c]) => maskNamesRefs(c).match(/zz_phys_\w+/g) ?? []),
     );
     const declared = TOKENS
       .filter((t) => reachOf(t, dialect) === "knownLiteral" || reachOf(t, dialect) === "escape")

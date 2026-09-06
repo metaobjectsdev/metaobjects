@@ -105,11 +105,19 @@ describe("names artifacts extend rather than restate", () => {
       expect(base).toBeDefined();
       expect(base).toContain('createdAt: { name: "createdAt", column: "zz_made_at" }');
       expect(base).toContain('id: { name: "id", column: "id" }');
-      // It has no source. A `name:` here would be a physical name invented for an object
-      // that declares none — the phantom-table failure #248 exists to prevent.
-      expect(base).not.toContain("name:\n");
-      expect(base?.includes("  name: ")).toBe(false);
+      // It has no source, and that is the thing it must never acquire: a physical name
+      // invented for an object that declares none is the phantom-table failure #248
+      // exists to prevent. Before 0.25.0 the check was "no `name:` key at all", because
+      // `name` WAS the physical name. It now carries the object's own metamodel name —
+      // which it always had — so the assertion moves to where the physical name actually
+      // lives, and gets sharper for it: an empty `sources` says the same thing about a
+      // table, a view AND a stored procedure, where the old form only ever spoke about
+      // whatever `name` happened to hold.
+      expect(base).toContain('name: "BaseEntity"');
+      expect(base).toContain("sources: {},");
       expect(base?.includes("kind: ")).toBe(false);
+      expect(base?.includes("table: ")).toBe(false);
+      expect(base?.includes("view: ")).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -123,7 +131,8 @@ describe("names artifacts extend rather than restate", () => {
       expect(author).toContain("...BaseEntityNames.fields,");
       expect(author).toContain('email: { name: "email", column: "zz_email_addr" }');
       // Its own source, so its own physical name.
-      expect(author).toContain('name: "zz_authors"');
+      expect(author).toContain('name: "Author"');
+      expect(author).toContain('table: "zz_authors"');
       // ...and NOT the inherited column, restated.
       expect(author).not.toContain("zz_made_at");
       // Only `fields` is spread, never the whole base: the base carries no kind/schema/
@@ -139,7 +148,11 @@ describe("names artifacts extend rather than restate", () => {
     try {
       const sub = tree["CopayAuth.names.ts"];
       expect(sub).toContain('import { AuthNames } from "./Auth.names"');
-      expect(sub).toContain("...AuthNames,");
+      // A TPH subtype spreads the base's SOURCES — the shared table is named once, on the
+      // base — rather than the whole artifact. Spreading the whole thing would carry the
+      // base's `name`/`subType` onto the child, which are the child's own now.
+      expect(sub).toContain("...AuthNames.sources,");
+      expect(sub).toContain('name: "CopayAuth"');
       expect(sub).toContain("...AuthNames.fields,");
       expect(sub).toContain('copayAmount: { name: "copayAmount", column: "zz_copay_cents" }');
       // The whole point: the subtype used to restate the base's table name and every one
@@ -165,7 +178,7 @@ describe("names artifacts extend rather than restate", () => {
         // An INHERITED column, reached through the spread.
         `const a: "zz_made_at" = AuthorNames.fields.createdAt.column;`,
         // An inherited TOP-LEVEL member, reached through the whole-base spread.
-        `const b: "zz_auths" = CopayAuthNames.name;`,
+        `const b: "zz_auths" = CopayAuthNames.sources.primary.table;`,
         `const c: "zz_copay_cents" = CopayAuthNames.fields.copayAmount.column;`,
         `export const probe = [a, b, c];`,
       ].join("\n"), "utf8");

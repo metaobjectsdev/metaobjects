@@ -8,7 +8,7 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_OBJECT_REF } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_OBJECT_REF, SOURCE_ROLE_REPLICA } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
@@ -20,11 +20,13 @@ import { renderTphDiscriminatorUnion, isTphDiscriminatorBase } from "./tph-discr
 import { GENERATED_HEADER } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
-import { projectionViewName, projectionViewSchema } from "../projection/extract-view-spec.js";
+import {
+  projectionViewName, projectionViewSchema, projectionViewRole,
+} from "../projection/extract-view-spec.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
-import { namesRef, namesConstArg } from "../names.js";
+import { namesRef, namesConstArg, physicalNameExpr, sourceSchemaExpr } from "../names.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { renderValueObjectFile } from "./value-object-file.js";
 import { isAbstract } from "../instance-artifacts.js";
@@ -147,6 +149,11 @@ export function renderEntityFile(
       const module = valueObjectModuleSpecifier(name, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle);
       return { name, module };
     };
+    // ONE selection of the replica source: `projectionViewName` names it, and this is the
+    // role its entry has in <Entity>Names.sources. Hardcoding "replica" here would be a
+    // second derivation of the very thing extract-view-spec.ts exists to decide once.
+    const viewRole = projectionViewRole(entity) ?? SOURCE_ROLE_REPLICA;
+    const entityNames = namesRef(entity, ctx);
     const viewOpts = {
       dialect: ctx.dialect, columnNamingStrategy: ctx.columnNamingStrategy, timestampMode: ctx.timestampMode, voRef,
       // PK fields type non-null in the replica-view decl + read schema even
@@ -158,19 +165,30 @@ export function renderEntityFile(
       // does not carry falls back to the literal via `columnExpr`. The view's own NAME
       // is passed separately below and stays a literal — the artifact holds the primary
       // (table) source's name, not this one.
-      names: namesRef(entity, ctx),
-      // The replica view's OWN @schema, from the same source node projectionViewName picks —
-      // never the entity's, which is the WRITE TABLE's and would qualify this view with a
-      // schema that belongs to something else. Passed as a literal for the same reason the
-      // view's NAME is one: <Entity>Names resolves the primary (table) source, so it carries
-      // no constant for this node.
-      schema: projectionViewSchema(entity),
+      names: entityNames,
+      // The replica view's OWN @schema, from the same source node projectionViewName picks
+      // — never the entity's, which is the WRITE TABLE's and would qualify this view with a
+      // schema that belongs to something else. A view and the table it replicates need not
+      // live in the same schema, and a name paired with someone else's schema is worse than
+      // no schema at all.
+      //
+      // Both this and the view's NAME are now CONSTANTS. They were literals for a real
+      // reason that has stopped being true: <Entity>Names carried the primary source only,
+      // so a write-through entity's two physical names had one slot between them and the
+      // second was emitted in full — the same escape C#'s AppDbContext had, in a different
+      // language, which is what showed it was the artifact's shape and not the binding.
+      schema: sourceSchemaExpr(entityNames, viewRole) ?? projectionViewSchema(entity),
     };
     const z = imp("z@zod");
     const docs = renderDocsFor(entity);
     const docsPrefix = docs ? `${docs}\n` : "";
     viewSections.push(
-      renderExistingViewDecl(fields, projectionViewName(entity, ctx.columnNamingStrategy), `${camel}View`, viewOpts),
+      renderExistingViewDecl(
+        fields,
+        physicalNameExpr(entityNames, projectionViewName(entity, ctx.columnNamingStrategy), entity, viewRole),
+        `${camel}View`,
+        viewOpts,
+      ),
       code`
 export const ${entity.name}Schema = ${renderViewReadZodObject(fields, viewOpts)};
 `,

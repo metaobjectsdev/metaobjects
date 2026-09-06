@@ -109,7 +109,7 @@ export function renderEntityConstants(
   // literal below resolve through it, so a reference here is the single spelling. `physicalNameExpr` accepts
   // any `{ symbol }`-shaped value, so it works with this function's `{ name, symbol }`
   // parameter as well as `namesRef`'s own `{ resolved, symbol }`.
-  const tableLine: Code = code`  $table: ${physicalNameExpr(names, tableName)}`;
+  const tableLine: Code = code`  $table: ${physicalNameExpr(names, tableName, obj)}`;
 
   const body = joinCode(
     [

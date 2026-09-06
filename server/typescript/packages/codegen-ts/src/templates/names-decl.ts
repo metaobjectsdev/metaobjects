@@ -19,7 +19,14 @@
  */
 import type { ColumnNamingStrategy, MetaObject } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { resolveObjectNames, resolveSuperFragmentNames, type ObjectNames } from "../names.js";
+import { PHYSICAL_NAME_ATTR_BY_KIND } from "@metaobjectsdev/metadata";
+
+/** The physical-name alias keys, in the metamodel's own order. */
+const PHYSICAL_NAME_ALIASES = [...PHYSICAL_NAME_ATTR_BY_KIND.values()] as const;
+import {
+  resolveObjectNames, resolveSuperFragmentNames,
+  type FieldNames, type KeyNames, type ObjectNames, type SourceNames,
+} from "../names.js";
 
 export interface NamesDeclOpts {
   readonly strategy?: ColumnNamingStrategy | undefined;
@@ -57,48 +64,91 @@ export function renderNamesDecl(
     ? undefined
     : `${n.superNames.name}Names`;
 
-  // Without a super to spread, the artifact must declare EVERY field it describes — a
-  // consumer looks a column up by field name and an inherited one has to be there.
-  const rows = superSym === undefined ? n.fields : n.ownFields;
-  // Sorted, so output depends on the model rather than on child order.
-  const fieldRows = Object.keys(rows).sort().map((k) => {
-    const f = rows[k];
-    if (f === undefined) return "";
-    return `    ${k}: { name: ${JSON.stringify(f.name)}, column: ${JSON.stringify(f.column)} },`;
-  }).filter((r) => r !== "").join("\n");
+  const q = (v: string): string => JSON.stringify(v);
+  // A key is emitted bare only when it is a valid identifier. Field names always are;
+  // an index name is author-chosen and routinely is not (`uq_cust_email` is, `2fa-idx`
+  // is not), so quoting is decided per key rather than per collection — an unquoted
+  // non-identifier key is a file that does not parse.
+  const key = (k: string): string => (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : q(k));
+
+  /**
+   * One `name`-keyed collection — `fields`, `identities`, `indexes`.
+   *
+   * With a super to spread, only what THIS object declares is emitted and the rest is
+   * reached through the parent's artifact, so a physical name is stated once. Without one,
+   * every member must be here: a consumer looks a column up by field name and an inherited
+   * miss falls back to a literal, which is the defect the artifact exists to remove.
+   *
+   * The collection key is always emitted, even when empty, because a child spreads
+   * `...Super.identities` unconditionally.
+   */
+  const collection = (
+    label: string,
+    all: Readonly<Record<string, unknown>>,
+    own: Readonly<Record<string, unknown>>,
+    render: (v: never) => string,
+  ): string => {
+    const rows = superSym === undefined ? all : own;
+    const body = Object.keys(rows).sort()
+      .map((k) => `    ${key(k)}: ${render(rows[k] as never)},`)
+      .join("\n");
+    const spread = superSym === undefined ? "" : `    ...${superSym}.${label},\n`;
+    if (spread === "" && body === "") return `  ${label}: {},`;
+    return `  ${label}: {\n${spread}${body}${body === "" ? "" : "\n"}  },`;
+  };
+
+  const fieldsBlock = collection("fields", n.fields, n.ownFields,
+    (f: FieldNames) => `{ name: ${q(f.name)}, column: ${q(f.column)} }`);
+
+  // `type` and `subType` on every entry, because the artifact mirrors the metadata tree
+  // and because on these two collections the subType is the only thing that says whether
+  // an index is unique — ADR-0040 put that in the type rather than in an attribute.
+  const renderKey = (k: KeyNames): string =>
+    `{ type: ${q(k.type)}, subType: ${q(k.subType)}, name: ${q(k.name)}` +
+    (k.index === undefined ? " }" : `, index: ${q(k.index)} }`);
+  const identitiesBlock = collection("identities", n.identities, n.ownIdentities, renderKey);
+  const indexesBlock = collection("indexes", n.indexes, n.ownIndexes, renderKey);
 
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${obj.name}\n` +
-    (superSym === undefined ? "" : `import { ${superSym} } from ${JSON.stringify(o.superSpecifier)};\n\n`);
+    (superSym === undefined ? "" : `import { ${superSym} } from ${q(o.superSpecifier as string)};\n\n`);
 
-  const fieldsBlock =
-    `  fields: {\n${superSym === undefined ? "" : `    ...${superSym}.fields,\n`}${fieldRows}\n  },`;
+  // The object's own identity. `name` is the METAMODEL name — it held the physical name
+  // until 0.25.0, and that key changing meaning without changing shape is the one thing
+  // here a hand-written consumer adopts without a compile error.
+  const identity =
+    `  type: ${q(n.type)},\n` +
+    `  subType: ${q(n.subType)},\n` +
+    `  name: ${q(n.name)},\n`;
 
-  // A fragment has no source, so no kind/name/schema/readOnly — and must never acquire one.
-  if (o.fragment === true) {
-    return `${header}export const ${obj.name}Names = {
-${superSym === undefined ? "" : `  ...${superSym},\n`}${fieldsBlock}
-} as const;
-`;
-  }
+  /** One source, under its role. The physical name sits under the alias for its `@kind`. */
+  const renderSource = (role: string, src: SourceNames): string => {
+    const parts = [`type: ${q(src.type)}`, `subType: ${q(src.subType)}`, `kind: ${q(src.kind)}`];
+    if (src.schema !== undefined) parts.push(`schema: ${q(src.schema)}`);
+    for (const alias of PHYSICAL_NAME_ALIASES) {
+      const v = src[alias as keyof SourceNames];
+      if (typeof v === "string") parts.push(`${alias}: ${q(v)}`);
+    }
+    return `    ${key(role)}: { ${parts.join(", ")} },`;
+  };
 
-  // Structural, not an equality test on the resolved strings: does this object declare a
-  // source, or is it using its parent's? See ObjectNames.inheritsSource.
-  if (superSym !== undefined && n.inheritsSource) {
-    return `${header}export const ${obj.name}Names = {
-  ...${superSym},
-${fieldsBlock}
-} as const;
-`;
-  }
+  // A fragment declares no source and must never acquire one; a TPH subtype INHERITS its
+  // base's, so it spreads rather than restating — structural (the two resolve to the SAME
+  // node), never an equality test on the resolved strings.
+  const sourceRows = Object.keys(n.ownSources).sort()
+    .map((role) => renderSource(role, n.ownSources[role] as SourceNames)).join("\n");
+  const spreadSources = superSym !== undefined && n.inheritsSource ? `    ...${superSym}.sources,\n` : "";
+  const sourcesBlock =
+    spreadSources === "" && sourceRows === ""
+      ? "  sources: {},"
+      : `  sources: {\n${spreadSources}${sourceRows}${sourceRows === "" ? "" : "\n"}  },`;
 
-  const schemaLine = n.schema === undefined ? "" : `\n  schema: ${JSON.stringify(n.schema)},`;
   return `${header}export const ${obj.name}Names = {
-  kind: ${JSON.stringify(n.kind)},
-  name: ${JSON.stringify(n.name)},${schemaLine}
-  readOnly: ${n.readOnly},
+${identity}${sourcesBlock}
 ${fieldsBlock}
+${identitiesBlock}
+${indexesBlock}
 } as const;
 `;
 }

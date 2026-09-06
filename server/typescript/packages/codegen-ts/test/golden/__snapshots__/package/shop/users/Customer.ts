@@ -6,7 +6,7 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { CustomerNames } from "./Customer.names";
 
-export const customers = sqliteTable(CustomerNames.name, {
+export const customers = sqliteTable(CustomerNames.sources.primary.table, {
   id: integer(CustomerNames.fields.id.column).primaryKey({
     autoIncrement: true,
   }),
@@ -42,7 +42,7 @@ export type CustomerPatch = z.input<typeof CustomerUpdateSchema>;
  */
 export const Customer = {
   $entity: "Customer",
-  $table: CustomerNames.name,
+  $table: CustomerNames.sources.primary.table,
   $path: "/customers",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

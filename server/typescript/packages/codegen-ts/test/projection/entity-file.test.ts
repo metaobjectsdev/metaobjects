@@ -371,7 +371,7 @@ describe("renderEntityFile — a projection's dbCol + view name/columns referenc
     const { projection, ctx } = await loadProjectionNamesFixture(true);
     const out = renderEntityFile(projection, ctx);
 
-    expect(out).toContain("sqliteView(ProgramSummaryNames.name");
+    expect(out).toContain("sqliteView(ProgramSummaryNames.sources.primary.view");
     expect(out).toContain("ProgramSummaryNames.fields.callPurpose.column");
     expect(out).not.toContain('sqliteView("v_program_summary"');
     expect(out).not.toContain('"purpose_code"');
@@ -385,7 +385,7 @@ describe("renderEntityFile — a projection's dbCol + view name/columns referenc
     const { projection, ctx } = await loadProjectionNamesFixture(true);
     const out = renderEntityFile(projection, ctx);
 
-    expect(out).toContain("$view: ProgramSummaryNames.name");
+    expect(out).toContain("$view: ProgramSummaryNames.sources.primary.view");
     expect(out).not.toContain('$view: "v_program_summary"');
   });
 
@@ -487,10 +487,10 @@ describe("renderEntityFile — a projection's role:primary source wins regardles
 
     expect(outOff).toContain('$view: "v_primary_name"');
     // The ON arm references the constant, but the constant's VALUE (asserted via
-    // resolveObjectNames in the probe behind this fixture, and by construction — PNames.name
+    // resolveObjectNames in the probe behind this fixture, and by construction — PNames.sources.primary.view
     // IS resolveTableName()'s answer) is the identical "v_primary_name" string.
-    expect(outOn).toContain("$view: PNames.name");
-    expect(outOn).toContain("sqliteView(PNames.name");
+    expect(outOn).toContain("$view: PNames.sources.primary.view");
+    expect(outOn).toContain("sqliteView(PNames.sources.primary.view");
     expect(outOn).not.toContain("v_replica_name");
     // Neither arm ever emits the replica's name — this is the regression the fix closes.
   });
@@ -502,7 +502,7 @@ describe("renderEntityFile — a projection's role:primary source wins regardles
 
     const { projection, ctx } = await loadMultiSourceProjectionFixture(true, false);
     const outOn = renderEntityFile(projection, ctx);
-    expect(outOn).toContain("$view: PNames.name");
+    expect(outOn).toContain("$view: PNames.sources.primary.view");
   });
 });
 

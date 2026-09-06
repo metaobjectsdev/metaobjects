@@ -54,6 +54,8 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_ON_DELETE,
   RELATIONSHIP_ATTR_THROUGH,
+  PHYSICAL_NAME_ATTR_BY_KIND,
+  SOURCE_ROLE_PRIMARY,
   TYPE_ORIGIN,
   resolveColumnName,
 } from "@metaobjectsdev/metadata";
@@ -231,8 +233,14 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
         const viewLineage = new Map<string, string[]>();
         for (const obj of objects) {
           const names = resolveObjectNames(obj, opts.columnNamingStrategy);
-          if (names?.name === undefined) continue;
-          const key = schema.qualify({ name: names.name, schema: names.schema });
+          // The PRIMARY source's physical name and schema — `names.name` is the object's
+          // metamodel name since 0.25.0, which would match nothing in the snapshot.
+          const primary = names?.sources[SOURCE_ROLE_PRIMARY];
+          const physical = primary === undefined
+            ? undefined
+            : primary[(PHYSICAL_NAME_ATTR_BY_KIND.get(primary.kind) ?? "") as keyof typeof primary];
+          if (typeof physical !== "string") continue;
+          const key = schema.qualify({ name: physical, schema: primary?.schema });
           const isTable = tableNames.has(key);
           if (!isTable && !viewNames.has(key)) continue;
           // ABSTRACT BASES ARE EXCLUDED, and being in the snapshot does not exempt them:

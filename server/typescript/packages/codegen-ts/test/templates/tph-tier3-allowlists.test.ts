@@ -136,12 +136,12 @@ describe("FR-017 Tier 3 — a TPH subtype's own $table constant (§A6 fix round 
     const out = renderEntityFile(bridge, ctxForNames(root, true));
 
     expect(out).toContain(`import { BridgeAuthNames } from "./BridgeAuth.names.js";`);
-    expect(out).toContain("$table: BridgeAuthNames.name");
+    expect(out).toContain("$table: BridgeAuthNames.sources.primary.table");
     // The literal must be GONE, not merely accompanied.
     expect(out).not.toContain('$table: "auths"');
   });
 
-  test("BridgeAuthNames.name and AuthNames.name resolve to the SAME shared table — TPH is single-table by definition", async () => {
+  test("BridgeAuthNames and AuthNames resolve to the SAME shared table — TPH is single-table by definition", async () => {
     const { root, base, bridge } = await loadTph();
     const baseOut = renderEntityFile(base, ctxForNames(root, true));
     const subOut = renderEntityFile(bridge, ctxForNames(root, true));
@@ -150,14 +150,18 @@ describe("FR-017 Tier 3 — a TPH subtype's own $table constant (§A6 fix round 
     // §A2/§A3's point is that each object gets its own artifact, resolved through
     // the SAME function, so two independently-resolved constants cannot disagree —
     // not that a subtype borrows its base's symbol.
-    expect(baseOut).toContain("$table: AuthNames.name");
-    expect(subOut).toContain("$table: BridgeAuthNames.name");
-    // And the two artifacts' own `name` fields, read directly off the resolver both
-    // ultimately defer to, are identical strings (the shared physical table).
+    expect(baseOut).toContain("$table: AuthNames.sources.primary.table");
+    expect(subOut).toContain("$table: BridgeAuthNames.sources.primary.table");
+    // And the two artifacts resolve the SAME physical table, read directly off the
+    // resolver both ultimately defer to. Their own `name` fields differ — those are the
+    // objects' metamodel names, which is exactly what a single-table hierarchy has two
+    // of; the TABLE is the thing that must be one, and it is reached through the source.
     const baseNames = resolveObjectNames(base, "snake_case");
     const subNames = resolveObjectNames(bridge, "snake_case");
-    expect(baseNames?.name).toBe("auths");
-    expect(subNames?.name).toBe("auths");
+    expect(baseNames?.name).toBe("Auth");
+    expect(subNames?.name).toBe("BridgeAuth");
+    expect(baseNames?.sources.primary?.table).toBe("auths");
+    expect(subNames?.sources.primary?.table).toBe("auths");
   });
 
   test("with the names generator ABSENT, the subtype's $table keeps its literal", async () => {

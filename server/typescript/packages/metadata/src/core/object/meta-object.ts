@@ -149,6 +149,17 @@ export class MetaObject extends MetaData {
     );
   }
 
+  /** Own lookup indexes only — excludes inherited. */
+  ownLookupIndexes(): MetaIndex[] {
+    return this.cached("ownLookupIndexes", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of
+      // lookupIndexes(), and the same sanctioned use its identity/relationship siblings
+      // have: codegen emitting a generated subclass, iterating own members so the ones
+      // the parent's artifact already declares are not restated here.
+      this.ownChildren().filter((c): c is MetaIndex => c.type === TYPE_INDEX),
+    );
+  }
+
   /** All effective validators (own + inherited via extends). */
   validators(): MetaValidator[] {
     return this.cached("validators", () =>

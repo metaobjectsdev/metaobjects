@@ -16,7 +16,7 @@ import { z } from "zod";
 import { TagNames } from "./Tag.names";
 import { customers } from "./shop/users/Customer";
 
-export const tags = sqliteTable(TagNames.name, {
+export const tags = sqliteTable(TagNames.sources.primary.table, {
   id: integer(TagNames.fields.id.column).primaryKey({ autoIncrement: true }),
   label: text(TagNames.fields.label.column).notNull(),
   customerId: integer(TagNames.fields.customerId.column)
@@ -61,7 +61,7 @@ export type TagPatch = z.input<typeof TagUpdateSchema>;
  */
 export const Tag = {
   $entity: "Tag",
-  $table: TagNames.name,
+  $table: TagNames.sources.primary.table,
   $path: "/tags",
   $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },

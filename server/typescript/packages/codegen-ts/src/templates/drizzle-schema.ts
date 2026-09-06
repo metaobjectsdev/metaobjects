@@ -16,8 +16,10 @@ import { fieldDeclaringPackage, type RenderContext } from "../render-context.js"
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
 import { mapColumnType, type ColumnSpec, type EnumIntCustomType } from "../column-mapper.js";
 import { tableNameFromEntity } from "../naming.js";
-import { namesRef, physicalNameExpr, columnExpr } from "../names.js";
-import { resolveTableSchema, resolveIndexName } from "@metaobjectsdev/metadata";
+import {
+  namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
+} from "../names.js";
+import { resolveTableSchema } from "@metaobjectsdev/metadata";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
@@ -50,7 +52,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // file never has to re-check, and the literal arm is refused too rather than silently
   // binding the inherited parent's table when the names generator is out of the run.
   const names = namesRef(obj, ctx);
-  const tableNameExpr: Code = physicalNameExpr(names, tableName);
+  const tableNameExpr: Code = physicalNameExpr(names, tableName, obj);
 
   // @schema — the table binding must land in the SAME schema the migration creates the table
   // in. migrate-ts qualifies every table, view, index and FK it emits (`CREATE TABLE
@@ -70,8 +72,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const tableSchema = dialect === "sqlite" ? undefined : resolveTableSchema(obj);
   const schemaExpr: Code | undefined =
     tableSchema === undefined ? undefined
-    : names !== undefined ? code`${names.symbol}.schema`
-    : code`${JSON.stringify(tableSchema)}`;
+    : sourceSchemaExpr(names) ?? code`${JSON.stringify(tableSchema)}`;
   const tableCall: Code = schemaExpr === undefined
     ? code`${tableFnSym}`
     : code`${imp(`pgSchema@${importModule}`)}(${schemaExpr}).table`;
@@ -254,7 +255,10 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
    * emitter dropping these in 0.15.21.
    */
   const indexEntry = (
-    node: { name: string; attr: (n: string) => unknown },
+    // `type`/`subType` as well as `name`: the index-name resolver and the artifact's
+    // `identities` / `indexes` collections both key off which KIND of node this is, and
+    // ADR-0040 put that distinction in the type rather than in an attribute.
+    node: { name: string; type: string; subType: string; attr: (n: string) => unknown },
     fieldNames: string[],
     unique: boolean,
   ): Code | undefined => {
@@ -295,12 +299,14 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const target: Code =
       expr !== undefined ? code`${sqlSym}\`${expr}\``
       : code`${colRefs.join(", ")}`;
-    // resolveIndexName, not `node.name`: migrate's expected-schema resolves the same
-    // answer, and the two spelled it independently until now — which is how codegen came
-    // to declare `idx_<table>_<col>` against an index the database actually held under
-    // `identity.name` (fdb4118f1). One door also means the empty-`index.lookup` refusal
-    // fires here rather than emitting `index("")`.
-    const indexName = JSON.stringify(resolveIndexName(node));
+    // The CONSTANT when the artifact is in the run, the literal otherwise — and the
+    // literal arm goes through `resolveIndexName` too, so the two paths answer with one
+    // function. Both halves matter: migrate's expected-schema resolves the same name and
+    // the two spelled it independently until now, which is how codegen came to declare
+    // `idx_<table>_<col>` against an index the database actually held under
+    // `identity.name` (fdb4118f1); and an empty `index.lookup` name — which the loader
+    // accepts, unlike an identity — is refused here rather than emitting `index("")`.
+    const indexName = indexNameExpr(names, node);
     const head: Code =
       using !== undefined && using !== "btree"
         ? code`${indexSym}(${indexName}).using(${JSON.stringify(using)}, ${target})`

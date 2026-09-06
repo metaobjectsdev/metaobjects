@@ -17,7 +17,7 @@ import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
-import { physicalNameExpr, type ObjectNames } from "../names.js";
+import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "../names.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { buildUiFieldDescriptor, resourcePath } from "./entity-ui-descriptor.js";
@@ -182,7 +182,7 @@ export function renderProjectionDecl(
   // for a projection declaring a role:replica read-only source BEFORE its role:primary
   // one used to return a different, declaration-order-dependent string. That is why
   // both spellings here must come from the constant rather than from two resolvers.
-  const viewLine: Code = code`$view:      ${physicalNameExpr(names, viewName)}`;
+  const viewLine: Code = code`$view:      ${physicalNameExpr(names, viewName, projection)}`;
   // @schema for the view binding below. postgres-only downstream (view-decl gates on dialect).
   const projectionSchema = resolveTableSchema(projection);
 
@@ -191,13 +191,12 @@ export function renderProjectionDecl(
   const pkFieldNames: ReadonlySet<string> = new Set(primaryIdentityFieldNames(projection));
   const sections: Code[] = [
     ...(includeViewDecl
-      ? [renderExistingViewDecl(allFields, physicalNameExpr(names, viewName), `${camelName}View`, {
+      ? [renderExistingViewDecl(allFields, physicalNameExpr(names, viewName, projection), `${camelName}View`, {
           dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames, names,
           // A projection's own artifact names its own view, so the constant IS this view's
           // schema — unlike the write-through replica case in entity-file.ts.
           schema: projectionSchema === undefined ? undefined
-            : names !== undefined ? code`${names.symbol}.schema`
-            : projectionSchema,
+            : sourceSchemaExpr(names) ?? projectionSchema,
         })]
       : []),
     code`
