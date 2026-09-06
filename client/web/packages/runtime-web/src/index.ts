@@ -2,6 +2,7 @@
 export { formatCurrency, parseCurrency, minorUnitsFor } from "./currency.js";
 export { buildFilterQs } from "./filter-qs.js";
 export type { EntityFetcher, GridConfig } from "./fetcher.js";
+export { joinBaseUrl } from "./join-base-url.js";
 export { buildGrid } from "./grid-from-metadata.js";
 export type { MetaColumn, MetaGrid } from "./grid-from-metadata.js";
 export { canvasToJpegBlob } from "./canvas-to-jpeg-blob.js";
