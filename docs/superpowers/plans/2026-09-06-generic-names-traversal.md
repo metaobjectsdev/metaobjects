@@ -4,7 +4,7 @@
 
 **Goal:** Replace the four hard-coded collections in `<Entity>Names` with a recursive traversal of the metadata tree that works for any registered type, in all five ports, and extend it to value objects, sourceless projections and requirements.
 
-**Architecture:** Two new per-type registry fields (`collection`, `nameAttrs`) move all type knowledge out of the generators and into `spec/metamodel/*.json`. Each port's names emitter becomes one recursive case: emit identity, inline authored attrs plus resolved name-attrs, then recurse into a named collection per child type. Abstract parents are resolved-inline, so no artifact references another.
+**Architecture:** Three new per-type registry fields (`collection`, `collectionKey`, `nameAttrs`) move all type knowledge out of the generators and into `spec/metamodel/*.json`. Each port's names emitter becomes one recursive case: emit identity, inline authored attrs plus resolved name-attrs, then recurse into a named collection per child type. Abstract parents are resolved-inline, so no artifact references another.
 
 **Tech Stack:** TypeScript (reference port, ts-poet), C# (.NET 8), Java 21 + Kotlin (KotlinPoet), Python 3.10.
 
@@ -16,7 +16,7 @@
 - **All four registries publish** this release, forced by the `expected-registry.json` change. npm/PyPI/NuGet `0.25.0`, Maven `7.25.0`.
 - **This repo is PUBLIC.** No other-project names, no absolute home paths in any committed file, commit messages included.
 - **ADR-0039:** resolving accessors are the default. `own*` is legal only where codegen emits a generated subclass and must not re-emit inherited members; every such call carries a comment naming the sanctioned case.
-- **ADR-0023:** never invent a metamodel attribute. `collection` and `nameAttrs` are registry *type-definition* fields, not metadata attrs — they go in `spec/metamodel/*.json` type entries, and are covered by `registry-conformance`.
+- **ADR-0023:** never invent a metamodel attribute. `collection`, `collectionKey` and `nameAttrs` are registry *type-definition* fields, not metadata attrs — they go in `spec/metamodel/*.json` type entries, and are covered by `registry-conformance`.
 - **No `any`.** Use `unknown` and narrow. Named constants for all metamodel strings, imported from `@metaobjectsdev/metadata/constants`.
 - **Never `instanceof` a metadata node across packages.** Use the exported guards (`isMetaObject`, `isMetaField`, …).
 - **Commit to `main`, forward-only.** No side branches unless asked. Stage explicitly — never `git add -A`.
@@ -209,7 +209,7 @@ git commit  # subject: fix!: two sources in one role that disagree now fail the 
 
 ## Phase 1 — Registry vocabulary
 
-### Task 5: `collection` and `nameAttrs` on every type definition
+### Task 5: `collection`, `collectionKey` and `nameAttrs` on every type definition
 
 **Files:**
 - Modify: every `spec/metamodel/*.json` (18 files)
