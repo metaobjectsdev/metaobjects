@@ -61,7 +61,7 @@ export interface ProjectionDeclOpts {
    * only decides, per field, whether to reference the constant or fall back to the
    * literal (a lookup MISS, never a divergence — `primaryRdbSource` already refused any
    * object whose `@role: primary` sources disagree on a physical name). Threaded into `renderExistingViewDecl`
-   * too, since a projection's primary source IS the view its `ObjectNames.name` names.
+   * too, since a projection's primary source IS the view its `sources.primary.view` names.
    */
   readonly names?: { readonly resolved: ObjectNames; readonly symbol: Code } | undefined;
 }

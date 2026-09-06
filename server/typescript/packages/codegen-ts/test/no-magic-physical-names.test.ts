@@ -182,7 +182,8 @@ const TOKENS: ReadonlyArray<Token> = [
   { literal: ABS_COL,       shouldUse: "WidgetNames.fields.id.column",        reach: "constant" },
   // Promoted from `dropped`, by the row doing exactly what it was pinned to do: wiring
   // @schema up failed it and said "promote it". The postgres binding is now
-  // `pgSchema(WidgetNames.schema).table(WidgetNames.name, …)`, so the table lands in the
+  // `pgSchema(WidgetNames.sources.primary.schema).table(WidgetNames.sources.primary.table,
+  // …)`, so the table lands in the
   // schema the migration actually creates it in rather than in `public`.
   {
     literal: SCHEMA, shouldUse: "WidgetNames.sources.primary.schema", reach: "constant",

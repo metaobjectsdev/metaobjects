@@ -115,7 +115,8 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
     ? ""
     : paramFieldNames.map((n) => `\${args.${n}}`).join(", ");
 
-  // §A6 — reference `<Entity>Names.name` rather than spelling the procedure a SECOND time.
+  // §A6 — reference `<Entity>Names.sources.primary.proc` rather than spelling the
+  // procedure a SECOND time.
   // This file is a raw string template rather than ts-poet, so the import is composed here
   // instead of through `imp`; `crossEntitySpecifier` is the same helper `namesRef` uses, so
   // the specifier (and its extension style) cannot drift from every other generator's.
@@ -131,7 +132,7 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
         `${entity.name}.names`, ctx!.extStyle,
       )}";\n`;
   // The identifier must stay an IDENTIFIER. A bare interpolation into drizzle's `sql` tag
-  // binds a PARAMETER, so `sql`SELECT * FROM ${Names.name}(…)`` would send the procedure
+  // binds a PARAMETER, so `sql`SELECT * FROM ${Names.sources.primary.proc}(…)`` would send the procedure
   // name as a query argument and produce SQL that cannot execute. `sql.raw` splices text.
   // `sql.identifier` is deliberately not used: it quotes, which changes the statement.
   const procNameExpr = namesConst === undefined

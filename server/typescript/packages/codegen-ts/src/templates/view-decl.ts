@@ -48,7 +48,7 @@ export interface ViewDeclOpts {
    * apart on a write-through entity, whose artifact holds the TABLE's name (its primary
    * source) while this declaration binds the REPLICA view. Conflating them cost the
    * write-through read model its column constants — it had to omit `names` entirely to
-   * stop `<Entity>Names.name` being emitted as the view name, and lost every
+   * stop the artifact's view name being emitted, and lost every
    * `.fields.<f>.column` reference with it. The view's name is now the caller's to pass
    * (see the `viewName` parameter), which is the only place that knows.
    */

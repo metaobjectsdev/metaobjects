@@ -82,7 +82,7 @@ describe.each(HALVES)("<Entity>.meta.ts references the names constant — %s", (
       const meta = files["Program.meta.ts"]!;
 
       expect(meta).toContain(`import { ProgramNames } from "./Program.names.js";`);
-      expect(meta).toContain("$table: ProgramNames.name");
+      expect(meta).toContain("$table: ProgramNames.sources.primary.table");
       // The literal must be GONE, not merely accompanied — the exact defect §A6 removes.
       expect(meta).not.toContain('$table: "programs"');
 
