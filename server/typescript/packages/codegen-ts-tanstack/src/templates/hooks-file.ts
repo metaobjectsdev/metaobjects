@@ -144,7 +144,7 @@ export function ${hookName}(
   const fetcher = ${useEntityFetcherSym}();
   return ${useQuerySym}<${targetSym}[]>({
     queryKey: ${keysVar}.relation(${relLit}, sourceId),
-    queryFn: () => fetcher<${targetSym}[]>(\`\${${source}.$apiPrefix}\${${source}.$path}/\${sourceId}/${e.name}\`),
+    queryFn: () => fetcher<${targetSym}[]>(\`\${${source}.$path}/\${sourceId}/${e.name}\`),
     enabled: sourceId != null && (opts?.enabled ?? true),
     ...opts,
   });
@@ -206,7 +206,7 @@ export function use${entityName}(
   const fetcher = ${useEntityFetcherSym}();
   return ${useQuerySym}<${entityName}Row>({
     queryKey: ${keysVar}.detail(id),
-    queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`),
+    queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`),
     ...opts,
   });
 }
@@ -219,7 +219,7 @@ export function use${entityNamePlural}(
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${entityName}Row[]>({
     queryKey: ${keysVar}.list(filter),
-    queryFn: () => fetcher<${entityName}Row[]>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}\${qs}\`),
+    queryFn: () => fetcher<${entityName}Row[]>(\`\${${entityName}.$path}\${qs}\`),
     ...opts,
   });
 }
@@ -287,7 +287,7 @@ export function use${entityName}(
   const fetcher = ${useEntityFetcherSym}();
   return ${useQuerySym}<${entityName}Row>({
     queryKey: ${keysVar}.detail(id),
-    queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`),
+    queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`),
     ...opts,
   });
 }
@@ -300,7 +300,7 @@ export function use${entityNamePlural}(
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${entityName}Row[]>({
     queryKey: ${keysVar}.list(filter),
-    queryFn: () => fetcher<${entityName}Row[]>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}\${qs}\`),
+    queryFn: () => fetcher<${entityName}Row[]>(\`\${${entityName}.$path}\${qs}\`),
     ...opts,
   });
 }
@@ -315,7 +315,7 @@ export function useCreate${entityName}(
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}<${entityName}Row, Error, ${entityName}Insert>({
-    mutationFn: (input) => fetcher<${entityName}Row>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}\`, {
+    mutationFn: (input) => fetcher<${entityName}Row>(\`\${${entityName}.$path}\`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -334,7 +334,7 @@ export function useUpdate${entityName}(
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
-    mutationFn: ({ id, input }) => fetcher<${entityName}Row>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`, {
+    mutationFn: ({ id, input }) => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -353,7 +353,7 @@ export function useDelete${entityName}(
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
-    mutationFn: (id) => fetcher<void>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`, { method: "DELETE" }),
+    mutationFn: (id) => fetcher<void>(\`\${${entityName}.$path}/\${id}\`, { method: "DELETE" }),
     ...opts,
     onSuccess: (...args) => {
       qc.invalidateQueries({ queryKey: ${keysVar}.all() });
@@ -401,7 +401,7 @@ function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: st
 
   const subtypes = plan.subtypes;
 
-  // `${baseName}` imports BOTH the constants value (for $path/$apiPrefix) and the
+  // `${baseName}` imports BOTH the constants value (for $path) and the
   // discriminated-union type (declaration merge). Each subtype contributes its
   // interface type AND its own filter type (discriminator-excluded — the route
   // pins it), so per-subtype hooks filter on the fields the per-subtype
@@ -442,7 +442,7 @@ export function use${baseName}(
   const fetcher = ${useEntityFetcherSym}();
   return ${useQuerySym}<${baseName}>({
     queryKey: ${keysVar}.detail(id),
-    queryFn: () => fetcher<${baseName}>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/\${id}\`),
+    queryFn: () => fetcher<${baseName}>(\`\${${baseName}.$path}/\${id}\`),
     ...opts,
   });
 }
@@ -455,7 +455,7 @@ export function use${pluralize(baseName)}(
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${baseName}[]>({
     queryKey: ${keysVar}.list(filter),
-    queryFn: () => fetcher<${baseName}[]>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}\${qs}\`),
+    queryFn: () => fetcher<${baseName}[]>(\`\${${baseName}.$path}\${qs}\`),
     ...opts,
   });
 }
@@ -467,7 +467,7 @@ export function use${pluralize(baseName)}(
     const valueLit = JSON.stringify(value);
     const createInput = `Omit<${subName}, ${JSON.stringify(discField)}>`;
     const updateInput = `Partial<${createInput}>`;
-    const subPath = `\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}\``;
+    const subPath = `\`\${${baseName}.$path}/${seg}\``;
     return code`
 export function use${pluralize(subName)}(
   filter?: ${subName}Filter,
@@ -477,7 +477,7 @@ export function use${pluralize(subName)}(
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${subName}[]>({
     queryKey: ${keysVar}.subtypeList(${valueLit}, filter),
-    queryFn: () => fetcher<${subName}[]>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}\${qs}\`),
+    queryFn: () => fetcher<${subName}[]>(\`\${${baseName}.$path}/${seg}\${qs}\`),
     ...opts,
   });
 }
@@ -489,7 +489,7 @@ export function use${subName}(
   const fetcher = ${useEntityFetcherSym}();
   return ${useQuerySym}<${subName}>({
     queryKey: ${keysVar}.subtypeDetail(${valueLit}, id),
-    queryFn: () => fetcher<${subName}>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}/\${id}\`),
+    queryFn: () => fetcher<${subName}>(\`\${${baseName}.$path}/${seg}/\${id}\`),
     ...opts,
   });
 }
@@ -519,7 +519,7 @@ export function useUpdate${subName}(
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
-    mutationFn: ({ id, input }) => fetcher<${subName}>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}/\${id}\`, {
+    mutationFn: ({ id, input }) => fetcher<${subName}>(\`\${${baseName}.$path}/${seg}/\${id}\`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -538,7 +538,7 @@ export function useDelete${subName}(
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
-    mutationFn: (id) => fetcher<void>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}/\${id}\`, { method: "DELETE" }),
+    mutationFn: (id) => fetcher<void>(\`\${${baseName}.$path}/${seg}/\${id}\`, { method: "DELETE" }),
     ...opts,
     onSuccess: (...args) => {
       qc.invalidateQueries({ queryKey: ${keysVar}.all() });

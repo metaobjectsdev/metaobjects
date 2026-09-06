@@ -45,9 +45,7 @@ export function useProgramDefaultGrid() {
   const query = useQuery<{ rows: ProgramRow[]; total: number }>({
     queryKey: ["program", "grid", "default", qs],
     queryFn: () =>
-      fetcher<{ rows: ProgramRow[]; total: number }>(
-        `${Program.$apiPrefix}${Program.$path}?${qs}`,
-      ),
+      fetcher<{ rows: ProgramRow[]; total: number }>(`${Program.$path}?${qs}`),
   });
 
   return {
@@ -96,9 +94,7 @@ export function useProgramCompactGrid() {
   const query = useQuery<{ rows: ProgramRow[]; total: number }>({
     queryKey: ["program", "grid", "compact", qs],
     queryFn: () =>
-      fetcher<{ rows: ProgramRow[]; total: number }>(
-        `${Program.$apiPrefix}${Program.$path}?${qs}`,
-      ),
+      fetcher<{ rows: ProgramRow[]; total: number }>(`${Program.$path}?${qs}`),
   });
 
   return {

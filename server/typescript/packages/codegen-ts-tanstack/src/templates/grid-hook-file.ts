@@ -138,7 +138,7 @@ export function ${hookName}() {
   const query = ${useQuerySym}<{ rows: ${entityName}Row[]; total: number }>({
     queryKey: [${JSON.stringify(lcEntity)}, "grid", ${JSON.stringify(grid.name)}, qs],
     queryFn: () => fetcher<{ rows: ${entityName}Row[]; total: number }>(
-      \`\${${entityName}.$apiPrefix}\${${entityName}.$path}?\${qs}\`,
+      \`\${${entityName}.$path}?\${qs}\`,
     ),
   });
 

@@ -56,8 +56,9 @@ describe("tanstackQuery() — FR-018 M:N collection hook", () => {
     // The target row type is imported (aliased) as <Target>RelRow.
     expect(post).toMatch(/export function usePostTags\(\s*sourceId: number \| undefined/);
     expect(post).toContain("UseQueryResult<TagRelRow[]>");
-    // Fetches GET /<source-plural>/{id}/<relationName>: $apiPrefix + $path + /${sourceId}/tags.
-    expect(post).toContain("${Post.$apiPrefix}${Post.$path}/${sourceId}/tags");
+    // Fetches GET /<source-plural>/{id}/<relationName>: $path + /${sourceId}/tags. The
+    // base URL is prepended at runtime by the provider, so it is absent here by design.
+    expect(post).toContain("${Post.$path}/${sourceId}/tags");
     // Typed via the target row type.
     expect(post).toContain("fetcher<TagRelRow[]>");
   });
@@ -94,7 +95,7 @@ describe("tanstackQuery() — FR-018 M:N collection hook", () => {
     // Person + friends → usePersonFriends, returns the target collection.
     expect(person).toContain("export function usePersonFriends");
     expect(person).toContain("UseQueryResult<PersonRelRow[]>");
-    expect(person).toContain("${Person.$apiPrefix}${Person.$path}/${sourceId}/friends");
+    expect(person).toContain("${Person.$path}/${sourceId}/friends");
     // Exactly one collection hook for the symmetric self-join.
     const matches = person.match(/export function usePersonFriends/g);
     expect(matches?.length).toBe(1);

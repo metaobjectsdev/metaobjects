@@ -183,11 +183,12 @@ describe("renderHooksFile — source-aware dispatch", () => {
       expect(out).toContain("@metaobjectsdev/tanstack");
     });
 
-    test("fetch URLs use $apiPrefix before $path", async () => {
+    test("fetch URLs start at $path — the base is the provider's, not the hook's", async () => {
       const { projection, ctx } = await loadProjectionFixture();
       const out = renderHooksFile(projection, ctx);
-      expect(out).toContain("ProgramSummary.$apiPrefix");
-      expect(out).toContain("${ProgramSummary.$apiPrefix}${ProgramSummary.$path}");
+      // Inverted: a projection's read hooks are as entity-relative as an entity's.
+      expect(out).not.toContain("$apiPrefix");
+      expect(out).toContain("${ProgramSummary.$path}");
     });
   });
 

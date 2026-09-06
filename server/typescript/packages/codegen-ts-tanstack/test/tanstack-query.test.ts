@@ -110,13 +110,17 @@ describe("tanstackQuery() factory", () => {
     expect(file.content).toContain("Subscriber.$path");
   });
 
-  test("prefixes fetch URLs with Subscriber.$apiPrefix", async () => {
+  test("emits entity-relative fetch URLs, never a baked base", async () => {
     const ctx = await buildCtx();
     const file = pick(await tanstackQuery().generate(ctx), ".hooks.ts");
-    // Every fetch URL should have $apiPrefix before $path so users can set apiPrefix once.
-    expect(file.content).toContain("Subscriber.$apiPrefix");
-    // Specifically the get-one pattern:
-    expect(file.content).toContain("${Subscriber.$apiPrefix}${Subscriber.$path}");
+    // Inverted from "prefixes fetch URLs with Subscriber.$apiPrefix". The base URL is
+    // supplied once at runtime by `<EntityFetcherProvider baseUrl>`, so a hook that
+    // baked one would double it — and freezing it at `meta gen` is what stopped one
+    // bundle from serving two origins.
+    expect(file.content).not.toContain("$apiPrefix");
+    // The get-one pattern, now starting at $path. Asserted positively as well as
+    // negatively: emitting no URL at all would satisfy the line above on its own.
+    expect(file.content).toContain("${Subscriber.$path}/${id}");
   });
 
   // `@emitTanstack` was read by this filter but was NEVER registered metamodel

@@ -48,7 +48,7 @@ export function useSubscriberDefaultGrid() {
     queryKey: ["subscriber", "grid", "default", qs],
     queryFn: () =>
       fetcher<{ rows: SubscriberRow[]; total: number }>(
-        `${Subscriber.$apiPrefix}${Subscriber.$path}?${qs}`,
+        `${Subscriber.$path}?${qs}`,
       ),
   });
 

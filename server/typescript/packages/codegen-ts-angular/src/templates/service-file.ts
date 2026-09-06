@@ -68,15 +68,15 @@ export class ${entityName}Service {
     if (opts?.offset !== undefined) params["offset"]    = opts.offset;
     if (opts?.withCount !== undefined) params["withCount"] = opts.withCount;
     const qs = Object.keys(params).length > 0 ? "?" + ${buildFilterQsSym}(params) : "";
-    return this.fetcher<${entityName}Row[]>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}\${qs}\`);
+    return this.fetcher<${entityName}Row[]>(\`\${${entityName}.$path}\${qs}\`);
   }
 
   get(id: number | string): Promise<${entityName}Row> {
-    return this.fetcher<${entityName}Row>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`);
+    return this.fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`);
   }
 
   create(dto: Partial<${entityName}Row>): Promise<${entityName}Row> {
-    return this.fetcher<${entityName}Row>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}\`, {
+    return this.fetcher<${entityName}Row>(\`\${${entityName}.$path}\`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(dto),
@@ -84,7 +84,7 @@ export class ${entityName}Service {
   }
 
   update(id: number | string, patch: Partial<${entityName}Row>): Promise<${entityName}Row> {
-    return this.fetcher<${entityName}Row>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`, {
+    return this.fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -92,7 +92,7 @@ export class ${entityName}Service {
   }
 
   delete(id: number | string): Promise<void> {
-    return this.fetcher<void>(\`\${${entityName}.$apiPrefix}\${${entityName}.$path}/\${id}\`, {
+    return this.fetcher<void>(\`\${${entityName}.$path}/\${id}\`, {
       method: "DELETE",
     });
   }

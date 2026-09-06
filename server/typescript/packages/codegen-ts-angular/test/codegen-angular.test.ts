@@ -62,6 +62,19 @@ describe("angularServiceFile() factory", () => {
     expect(file.content).toContain("EntityFetcherToken");
     expect(file.content).toContain("@metaobjectsdev/angular");
   });
+
+  // Nothing here asserted the URL SHAPE, so all five fetch sites in the template could
+  // change and this suite stayed green — the gap that let the base URL sit baked in a
+  // generated service unexamined. Asserted both ways: the base belongs to the provider
+  // (`provideEntityFetcher({ fetcher, baseUrl })`), and the service emits the address
+  // relative to it.
+  test("service methods emit entity-relative URLs, never a baked base", async () => {
+    const gen = angularServiceFile();
+    const ctx = await ctxFor((e) => gen.filter?.(e) ?? true);
+    const file = (await gen.generate(ctx))[0]!;
+    expect(file.content).not.toContain("$apiPrefix");
+    expect(file.content).toContain("${Author.$path}");
+  });
 });
 
 describe("angularFormFile() factory", () => {
