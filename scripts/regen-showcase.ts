@@ -6,6 +6,15 @@
  *   bun scripts/regen-showcase.ts               # write
  *   bun scripts/regen-showcase.ts --check       # fail if the committed tree is stale
  *   bun scripts/regen-showcase.ts --all-ports   # refuse to skip a port (release preflight)
+ *
+ * BUILD FIRST. The ts port shells out to the workspace `meta`, and the CLI deliberately
+ * prefers a package's compiled `dist/` over its `.ts` source when Bun's export condition
+ * offers both (see `resolveCliPkg` in cli/src/lib/load-metaobjects-config.ts). So on a
+ * tree whose `dist/` predates a codegen change this script regenerates through the OLD
+ * emitter, reports every file `unchanged`, and `--check` passes against committed output
+ * the current source would no longer produce — a vacuous green. Run
+ * `bun run --filter '*' build` first. `ci-local.sh` has `gate_ts_build_typecheck`, but it
+ * is in a different lane, so `--only gates` does not imply it.
  *   bun scripts/regen-showcase.ts --bun-only    # only the ports bun alone can drive
  *
  * The website claims these files are real `meta gen` output. A stale tree is a

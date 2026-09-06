@@ -241,6 +241,12 @@ gate_no_api_prefix() { bun scripts/check-no-api-prefix.ts; }
 # resolves to the PUBLISHED release in ~/.bun/install/cache and the gate passes GREEN
 # against the wrong code.
 #
+# The sibling hazard, same family: the CLI prefers a package's compiled `dist/` over its
+# `.ts` source, so on a tree whose dist predates a codegen change the regen runs the OLD
+# emitter, reports `unchanged`, and this gate passes against output the current source
+# would not produce. `gate_ts_build_typecheck` builds the workspace but lives in another
+# lane, so `--only gates` does NOT imply it — build before trusting a green here.
+#
 # SCOPED to `scripts/site` — a bare `bun test` at the repo root walks java/python/
 # csharp/fixtures and takes many minutes.
 #
@@ -453,13 +459,23 @@ gate_ts_unit() {
   for p in runtime-web react tanstack; do
     ( cd "client/web/packages/$p" && bun test --timeout 30000 ) || return 1
   done
-  # @metaobjectsdev/angular is a published browser package with the same runtime-web
-  # dependency, so it needs the same #287 bundle gate — but its OTHER test cannot run
-  # under Bun at all (`Standard Angular field decorators are not supported in JIT mode`),
-  # which is why the package is absent from the loop above. Running the gate BY NAME
-  # covers the browser package without pretending the rest of its suite is green; the
-  # decorator/JIT problem is a separate, pre-existing gap in Angular test tooling.
-  ( cd client/web/packages/angular && bun test --timeout 30000 test/browser-bundleable.test.ts ) || return 1
+  # @metaobjectsdev/angular is absent from the loop above because ONE of its test files
+  # cannot run under Bun at all: `angular-runtime.test.ts` imports the barrel, which
+  # reaches a `@Component` whose template pulls `@angular/common`, and those fesm2022
+  # bundles are partially compiled (`ɵɵngDeclare*`) needing the Angular linker — a Babel
+  # plugin `bun test` does not run. (`experimentalDecorators` does not rescue it: with the
+  # flag on, the failure just moves from this package's own decorators into
+  # `@angular/common`'s `ɵɵngDeclareFactory`. Measured 2026-09-06.)
+  #
+  # So the package is run BY NAMED FILE — every file here DOES execute. That is three
+  # files rather than the one this lane used to run: the #287 bundle gate, plus the DI and
+  # base-URL suites, which import their modules DIRECTLY instead of through the barrel.
+  # `angular-runtime.test.ts` is deliberately NOT named: it carries a header saying its
+  # assertions never run, so nothing is silently counted as green.
+  ( cd client/web/packages/angular && bun test --timeout 30000 \
+      test/browser-bundleable.test.ts \
+      test/di-smoke.test.ts \
+      test/entity-fetcher-base-url.test.ts ) || return 1
 }
 gate_conf_csharp() {
   ( cd server/csharp \
