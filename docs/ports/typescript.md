@@ -298,34 +298,80 @@ If you prefer un-extensioned imports (some legacy bundler setups), set
 ### `<Entity>Names` — the physical names, as constants
 
 `meta init` scaffolds a `names` generator, so a new project gets `<Entity>.names.ts`
-without configuring anything. It carries the physical database names for one object:
+without configuring anything. The artifact mirrors the metadata that declared it: every
+node carries its own `type`, `subType` and `name`, and a physical name sits under the key
+that says **what kind of database object it is**.
 
 ```ts
 export const ProgramNames = {
-  kind: "table",
-  name: "programs",
-  readOnly: false,
+  type: "object",
+  subType: "entity",
+  name: "Program",                      // the OBJECT's name, not the table's
+  sources: {
+    primary: { type: "source", subType: "rdb", kind: "table", table: "programs" },
+  },
   fields: {
     createdAt: { name: "createdAt", column: "created_at" },
     id:        { name: "id",        column: "id" },
+  },
+  identities: {
+    pk:            { type: "identity", subType: "primary",   name: "pk" },
+    uq_prog_slug:  { type: "identity", subType: "secondary", name: "uq_prog_slug",
+                     index: "uq_prog_slug" },
+  },
+  indexes: {
+    ix_prog_owner: { type: "index", subType: "lookup", name: "ix_prog_owner",
+                     index: "ix_prog_owner" },
   },
 } as const;
 ```
 
 | key | means |
 |---|---|
-| `kind` | the source's `@kind` — `table`, `view`, `materializedView`, … |
-| `name` | the physical table/view name |
-| `schema` | the DB schema, emitted only when one is declared |
-| `readOnly` | derived from the source's own kind, never a hand-rolled list |
+| `type` / `subType` | the metamodel type of this node — `object.entity`, `object.projection`, … |
+| `name` | the **object's** metamodel name |
+| `sources.<role>` | one `source.rdb` child, keyed by its `@role` (`primary` \| `replica`) |
+| `sources.<role>.kind` | the source's `@kind` — `table`, `view`, `materializedView`, `storedProc`, `tableFunction` |
+| `sources.<role>.table` / `.view` / `.proc` / … | the physical name, under the alias for that `kind` |
+| `sources.<role>.schema` | the DB schema, emitted only when one is declared |
 | `fields.<field>.name` | the **logical** name — the field as your code and the wire call it |
 | `fields.<field>.column` | the **physical** column — `@column` if declared, else `name` through `columnNamingStrategy` |
+| `identities.<name>` / `indexes.<name>` | one `identity.*` / `index.*` child, keyed by its metamodel name |
+| `…​.index` | the database index name — on `identity.secondary` and `index.lookup` only |
 
-**Both `name` and `column` are always present, and `createdAt` / `created_at` is why.**
-They are two different names for one field, they differ the moment a case boundary or a
-`@column` appears, and a consumer that has only one of them cannot recover the other:
+**Why the physical name is not just `name`.** One key cannot hold a table, a view and a
+stored procedure and still mean something. In a single run it used to:
+
+```
+LedgerNames.name          = "TBL_LDG_ENTRY"    kind: "table"
+CustomerSummaryNames.name = "V_CUST_ROLLUP"    kind: "view"
+RollupOutNames.name       = "SP_CUST_ROLLUP"   kind: "storedProc"
+```
+
+A consumer reading `.name` could not know what it had without reading a second key, and in
+none of the three did `name` hold the object's own name. Now the key says what the thing is,
+and `as const` enforces it: `LedgerNames.sources.replica.table` is a **compile error**,
+because that source is a view.
+
+**A write-through entity has two physical names, and both have a home.** It writes to a
+table and reads through a replica view; keying sources by role is what gives the view a slot:
+
+```ts
+sources: {
+  primary: { type: "source", subType: "rdb", kind: "table", table: "TBL_LDG_ENTRY" },
+  replica: { type: "source", subType: "rdb", kind: "view",  view:  "V_LDG_ENTRY_RO" },
+},
+```
+
+**Both `name` and `column` are always present on a field, and `createdAt` / `created_at` is
+why.** They are two different names for one field, they differ the moment a case boundary or
+a `@column` appears, and a consumer that has only one of them cannot recover the other:
 `@column` is free-form, so `callPurpose` may map to `purpose_code`, which is neither the
 logical name nor any transformation of it.
+
+**`readOnly` is not carried.** It was a derivation over `@kind`, not something anyone
+declared, and nothing in any port read it. Ask `sources.primary.kind` — that is what the
+author actually wrote.
 
 Existing projects (scaffolded before this generator existed) add one line:
 
@@ -335,7 +381,9 @@ export default defineConfig({ generators: [/* … */, namesFile()] });
 ```
 
 The generated entity module reads these constants rather than embedding the same physical
-names a second time, so the constant and the table binding cannot drift apart.
+names a second time, so the constant and the table binding cannot drift apart. With the
+generator in the run, **no generated TypeScript spells a physical name at all** — table,
+view, procedure, column, schema and index name all travel as references.
 
 **Prefer a typed handle where one exists.** If you are writing a Drizzle query, use the
 column object (`programs.createdAt`) — it is type-checked against the schema, and swapping
@@ -343,27 +391,34 @@ it for `ProgramNames.fields.createdAt.column` trades a compile error for a runti
 These constants are for the places that have no typed handle: raw SQL, a migration script,
 a log line, an external system's column mapping.
 
-**It follows `extends`, so a name you do not find here is on the parent.** An artifact
-whose object extends another spreads the parent's rather than restating it:
+**It follows `extends`, so a name you do not find here is on the parent.** An artifact whose
+object extends another spreads the parent's collections rather than restating them:
 
 ```ts
 export const CopayAuthNames = {
-  ...AuthNames,                       // kind, name, readOnly — the SHARED table
+  type: "object",
+  subType: "entity",
+  name: "CopayAuth",
+  sources: { ...AuthNames.sources },     // the SHARED table, named once on the base
   fields: {
     ...AuthNames.fields,
     copayAmount: { name: "copayAmount", column: "copay_cents" },
   },
+  identities: { ...AuthNames.identities },
+  indexes:    { ...AuthNames.indexes },
 } as const;
 ```
 
-Two forms, and which one you get is structural. An object with its OWN source declares its
-own `kind`/`name`/`schema`/`readOnly` and spreads only `fields`. One that INHERITS its
-source — a TPH subtype, which shares its base's single table — spreads the whole parent, so
-the table name is stated once, on the base.
+Two forms, and which one you get is structural. An object with its OWN source declares that
+source and spreads only the inherited collections. One that INHERITS its source — a TPH
+subtype, which shares its base's single table — spreads `sources` too, so the table name is
+stated once, on the base. Either way each object keeps its own `name`/`type`/`subType`,
+which is what a single-table hierarchy legitimately has two of.
 
 An abstract base a persisted entity extends gets an artifact of its own, carrying the
-columns it declares and **no `name`** — it has no table, and must never acquire one. Reading
-`CopayAuthNames.name` still works: the spread resolves it, with the literal types intact.
+columns it declares and an **empty `sources`** — it has no table, and must never acquire
+one. Reading `CopayAuthNames.sources.primary.table` still works: the spread resolves it,
+with the literal types intact.
 
 ## Use
 

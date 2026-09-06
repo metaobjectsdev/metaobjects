@@ -414,10 +414,20 @@ Every port emits a per-object names artifact. Reference it:
 ```ts
 import { ProgramNames } from "./generated/Program.names.js";
 
-ProgramNames.name                          // "programs"       — physical table
+ProgramNames.name                          // "Program"        — the OBJECT's name
+ProgramNames.sources.primary.table         // "programs"       — physical table
+ProgramNames.sources.primary.kind          // "table"          — table | view | proc | …
 ProgramNames.fields.createdAt.name         // "createdAt"      — logical / wire name
 ProgramNames.fields.createdAt.column       // "created_at"     — physical column
+ProgramNames.indexes.ix_prog_owner.index   // "ix_prog_owner"  — database index name
 ```
+
+The artifact mirrors the metadata tree: every node carries its own `type`, `subType` and
+`name`, and a physical name sits under the key that says **what kind of database object it
+is**. A view is `sources.primary.view`, a stored proc `sources.primary.proc`, and a
+write-through entity's read view `sources.replica.view` — so `sources.replica.table` is a
+compile error rather than a wrong answer. There is no `readOnly`: it was derived from
+`kind`, never declared, so ask `kind`.
 
 The artifact is per-object and the shape is per-language; the guarantee is the same
 everywhere — **each physical name is spelled once, and generated code references it**:

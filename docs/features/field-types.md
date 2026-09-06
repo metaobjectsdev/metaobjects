@@ -226,7 +226,7 @@ below names no column directly — to read the resolved spelling, open the names
 // generated/acme/blog/Author.ts
 import { AuthorNames } from "./Author.names";
 
-export const author = pgTable(AuthorNames.name, {
+export const author = pgTable(AuthorNames.sources.primary.table, {
   id:         bigserial(AuthorNames.fields.id.column, { mode: "number" }).primaryKey(),
   name:       varchar(AuthorNames.fields.name.column, { length: 200 }).notNull(),
   bio:        varchar(AuthorNames.fields.bio.column, { length: 2000 }),

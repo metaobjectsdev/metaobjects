@@ -81,7 +81,7 @@ import { sql } from "drizzle-orm";
 import { ProgramNames } from "./generated/Program.names.js";
 
 sql`SELECT ${sql.identifier(ProgramNames.fields.createdAt.column)}
-    FROM ${sql.identifier(ProgramNames.name)}`
+    FROM ${sql.identifier(ProgramNames.sources.primary.table)}`
 ```
 
 A literal is a second spelling of a fact the metadata owns: `@column` is free-form, and a

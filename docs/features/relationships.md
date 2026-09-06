@@ -175,7 +175,7 @@ inference stays relationship-only.
 import { AnyPgColumn } from "drizzle-orm/pg-core";
 import { PostNames } from "./Post.names";
 
-export const post = pgTable(PostNames.name, {
+export const post = pgTable(PostNames.sources.primary.table, {
   id:       bigserial(PostNames.fields.id.column, { mode: "number" }).primaryKey(),
   title:    varchar(PostNames.fields.title.column, { length: 255 }).notNull(),
   authorId: bigint(PostNames.fields.authorId.column, { mode: "number" })

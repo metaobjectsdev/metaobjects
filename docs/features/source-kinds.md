@@ -266,7 +266,7 @@ import { AuthorViewNames } from "./AuthorView.names";
 
 // View declaration — Drizzle uses this for typed SELECT queries. The SQL view is
 // created/managed by migrate-ts; .existing() tells Drizzle not to emit DDL for it.
-export const authorViewView = pgView(AuthorViewNames.name, {
+export const authorViewView = pgView(AuthorViewNames.sources.primary.view, {
   id:        bigint(AuthorViewNames.fields.id.column, { mode: "number" }).notNull(),
   // `text`, not `varchar(200)`: origin.passthrough does not inherit the source field's
   // attrs, so the projection's `name` carries no @maxLength of its own.

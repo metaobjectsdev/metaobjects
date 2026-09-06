@@ -128,14 +128,21 @@ references those rather than respelling them.
 ```ts
 // generated/acme/blog/Author.names.ts
 export const AuthorNames = {
-  kind: "table",
-  name: "authors",
-  readOnly: false,
+  type: "object",
+  subType: "entity",
+  name: "Author",
+  sources: {
+    primary: { type: "source", subType: "rdb", kind: "table", table: "authors" },
+  },
   fields: {
     bio:  { name: "bio",  column: "bio" },
     id:   { name: "id",   column: "id" },
     name: { name: "name", column: "name" },
   },
+  identities: {
+    pk: { type: "identity", subType: "primary", name: "pk" },
+  },
+  indexes: {},
 } as const;
 ```
 
@@ -145,7 +152,7 @@ import { pgTable, bigserial, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { AuthorNames } from "./Author.names";
 
-export const author = pgTable(AuthorNames.name, {
+export const author = pgTable(AuthorNames.sources.primary.table, {
   id:   bigserial(AuthorNames.fields.id.column, { mode: "number" }).primaryKey(),
   name: varchar(AuthorNames.fields.name.column, { length: 200 }).notNull(),
   bio:  varchar(AuthorNames.fields.bio.column,  { length: 2000 }),
