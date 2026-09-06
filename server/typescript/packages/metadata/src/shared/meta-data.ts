@@ -497,14 +497,26 @@ export abstract class MetaData {
     // Track which of our own children matched (overrode) a super child position.
     const appendQueue: MetaData[] = [];
 
+    // Indices already taken by an own child in THIS pass. Without it, an own child
+    // written into `result[idx]` stays visible to the next own sibling's scan, so a
+    // second own child sharing the same (type, name) matches its own sibling and
+    // overwrites it. `extends` decides what a child overrides; a sibling is not a super.
+    // The append queue already closed the other branch — a non-shadowing own child is
+    // deferred so it cannot be matched later — and this closes the branch it left open.
+    //
+    // The shape is a write-through entity (two unnamed `source.rdb` children, primary +
+    // replica) whose base ALSO declares a source: the entity's own primary was silently
+    // dropped, and `primaryRdbSource` reads `children()`.
+    const claimed = new Set<number>();
     for (const ownChild of this._children) {
       // Find the index in result that has the same (type, name).
       const idx = result.findIndex(
-        (sc) => sc.type === ownChild.type && sc.name === ownChild.name,
+        (sc, i) => !claimed.has(i) && sc.type === ownChild.type && sc.name === ownChild.name,
       );
       if (idx !== -1) {
         // Replace the super child with our own (in-place override).
         result[idx] = ownChild;
+        claimed.add(idx);
       } else {
         // No matching super child — will be appended at the end.
         appendQueue.push(ownChild);

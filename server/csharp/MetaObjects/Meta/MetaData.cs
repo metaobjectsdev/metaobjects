@@ -503,14 +503,35 @@ public abstract class MetaData
         // Track which of our own children matched (overrode) a super child position.
         var appendQueue = new List<MetaData>();
 
+        // Indices already taken by an own child in THIS pass. Without it, an own child
+        // written into result[idx] stays visible to the next own sibling's scan, so a
+        // second own child sharing the same (type, name) matches its own sibling and
+        // overwrites it. `extends` decides what a child overrides; a sibling is not a
+        // super. The append queue already closed the other branch — a non-shadowing own
+        // child is deferred so it cannot be matched later — and this closes the branch it
+        // left open. The shape is a write-through entity (two unnamed source.rdb children)
+        // whose base ALSO declares a source: its own primary was silently dropped.
+        var claimed = new HashSet<int>();
         foreach (var ownChild in _children)
         {
-            // Find the index in result that has the same (type, name).
-            int idx = result.FindIndex(sc => sc.Type == ownChild.Type && sc.Name == ownChild.Name);
+            // Find the index in result that has the same (type, name). An explicit loop
+            // rather than FindIndex: the predicate needs the INDEX to consult `claimed`,
+            // and FindIndex does not supply one.
+            int idx = -1;
+            for (int i = 0; i < result.Count; i++)
+            {
+                if (!claimed.Contains(i) && result[i].Type == ownChild.Type
+                    && result[i].Name == ownChild.Name)
+                {
+                    idx = i;
+                    break;
+                }
+            }
             if (idx != -1)
             {
                 // Replace the super child with our own (in-place override).
                 result[idx] = ownChild;
+                claimed.Add(idx);
             }
             else
             {

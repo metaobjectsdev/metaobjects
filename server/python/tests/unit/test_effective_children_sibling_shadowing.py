@@ -17,9 +17,18 @@ outright. Measured on the fixture below before the fix:
 
 `primary_rdb_source` reads `children()`, so the cost was not cosmetic: no table for the
 router or the filter allowlist, no names module, and `ObjectManager` falling through to
-the replica view. TypeScript (`meta-data.ts::_effectiveChildren`) and C#
-(`MetaData.cs::EffectiveChildren`) both use an append queue and have always been
-correct; this port was the only one of the three that was not.
+the replica view.
+
+THE APPEND QUEUE WAS ONLY HALF THE FIX, AND THIS FILE SAID OTHERWISE. It claimed
+TypeScript (`meta-data.ts::_effectiveChildren`) and C# (`MetaData.cs::EffectiveChildren`)
+"have always been correct" and that this port was the only one wrong. Both statements
+were false. The queue closes one branch — a non-shadowing own child is deferred, so a
+later sibling cannot match it — and leaves the other open: an own child that DID shadow a
+super child is written into `result[idx]` and stays there, visible to the next sibling's
+scan. Give the base below a `@role: primary` source of its own and the first own source
+takes that branch, so the second own source matches its own SIBLING and overwrites it.
+All three ports failed it identically; all three now track the indices an own child has
+claimed in the current pass.
 
 WHY THIS FILE EXISTS AT ALL. The fix landed with the names restructure and the full
 504-test codegen suite passed identically with it REVERTED — the defect was real,
@@ -105,3 +114,63 @@ def test_an_own_child_still_shadows_its_SUPERS_child() -> None:
     ids = [c for c in acct.children() if c.type == "field" and c.name == "id"]
     assert len(ids) == 1
     assert ids[0].attrs().get("column") == "acct_pk"
+
+
+# The same entity, but the BASE declares a source too — the ordinary way a base states the
+# default table for a family. That single addition moves the first own source from the
+# append-queue branch to the replace branch, which is the branch the queue never covered.
+MODEL_BASE_WITH_SOURCE = {
+    "metadata.root": {
+        "package": "acme",
+        "children": [
+            {
+                "object.entity": {
+                    "name": "Base",
+                    "abstract": True,
+                    "children": [
+                        {"field.long": {"name": "id"}},
+                        {"source.rdb": {"@table": "acct_tbl", "@role": "primary"}},
+                    ],
+                }
+            },
+            {
+                "object.entity": {
+                    "name": "Acct",
+                    "extends": "Base",
+                    "children": [
+                        {"source.rdb": {"@table": "acct_tbl", "@role": "primary"}},
+                        {"source.rdb": {"@kind": "view", "@view": "acct_vw", "@role": "replica"}},
+                        {"field.string": {"name": "memo"}},
+                        {"identity.primary": {"name": "pk", "@fields": "id",
+                                              "@generation": "increment"}},
+                    ],
+                }
+            },
+        ],
+    }
+}
+
+
+def _acct_over_sourced_base():
+    result = MetaDataLoader(strict=True).load([
+        InMemoryStringSource(
+            json.dumps(MODEL_BASE_WITH_SOURCE), format=MetaDataFormat.JSON, id="wt2.json"
+        )
+    ])
+    assert [str(e) for e in result.errors] == []
+    return next(c for c in result.root.children() if c.name == "Acct")
+
+
+def test_a_shadowing_own_child_is_not_itself_shadowed_by_the_next_sibling() -> None:
+    acct = _acct_over_sourced_base()
+    roles = sorted(c.role() for c in acct.children() if c.type == "source")
+    # Before the fix this was ["replica"] — the entity's own primary replaced the base's
+    # source, and then its own sibling replaced IT, so an object declaring two sources
+    # resolved to one.
+    assert roles == ["primary", "replica"]
+
+
+def test_the_primary_of_such_an_entity_still_resolves() -> None:
+    src = primary_rdb_source(_acct_over_sourced_base())
+    assert src is not None
+    assert src.physical_name() == "acct_tbl"

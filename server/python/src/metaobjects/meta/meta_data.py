@@ -234,17 +234,26 @@ class MetaData:
             # through to the replica view. This is the TypeScript reference's
             # `appendQueue` (`meta-data.ts::_effectiveChildren`), which has always been
             # written this way; the divergence was this port's alone.
+            # `claimed` holds the indices already taken by an own child in THIS pass.
+            # Without it, an own child written into result[idx] stays visible to the next
+            # own sibling's scan, so a second own child sharing the same (type, name)
+            # matches its own SIBLING and overwrites it. The append queue closed the
+            # other branch — a non-shadowing own child is deferred — and this closes the
+            # branch it left open: the same write-through shape, but with the BASE also
+            # declaring a source, so the first own source takes the replace branch.
             append_queue: list[MetaData] = []
+            claimed: set[int] = set()
             for own in self._children:
                 idx = next(
                     (i for i, c in enumerate(result)
-                     if c.type == own.type and c.name == own.name),
+                     if i not in claimed and c.type == own.type and c.name == own.name),
                     None,
                 )
                 if idx is None:
                     append_queue.append(own)
                 else:
                     result[idx] = own
+                    claimed.add(idx)
             result.extend(append_queue)
         return result
 
