@@ -75,6 +75,10 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { runGen } from "../src/runner.js";
 import { agentDocsFile, entityFile, routesFile } from "../src/generators/index.js";
+// Both derivations, read through the package barrel so this test exercises the surface a
+// consumer has. The de-blinding check below needs BOTH: agreement is only a measurement
+// while the two still spell different addresses for the fixture's TPH subtype.
+import { resourcePath, restPath } from "../src/index.js";
 import { defineConfig, type Dialect } from "../src/metaobjects-config.js";
 
 // The dialect decides column builders, never an address or a form, so one arm suffices.
@@ -398,14 +402,34 @@ describe.each([
     // a client hits — and in the "/api" arm a page that dropped it cannot pass.
     for (const r of e.routes) expect(r.prefix).toBe(apiPrefix);
 
-    // The composition arm exists: at least one mount's path is not a bare `<Name>.$path`,
-    // and every such mount lands somewhere OTHER than that object's own emitted `$path`.
-    // If the two ever coincided, a page printing the subtype's own path would pass.
+    // The composition arm exists: at least one mount's path is not a bare `<Name>.$path`.
+    // Every such mount lands at exactly that object's own emitted `$path`, because `$path`
+    // is the address an object is SERVED at — a TPH subtype's included.
+    //
+    // This assertion used to read `.not.toBe(...)`, pinning the opposite: a subtype's own
+    // `$path` was its pluralized NAME (`/cars`) while the routes mounted it under its base
+    // (`/vehicles/car`), and the comment here called that "the own `$path` names nothing"
+    // defect. It was not only a documentation wart — `grid-hook-file.ts` builds its fetch
+    // URL from `<Sub>.$path` with no TPH awareness, so an opted-in per-subtype grid asked
+    // for an endpoint that 404s. `$path` now carries `restPath`, so the two agree.
     const composed = mounts.filter((m) => m.pathExpr !== `${m.object}.$path`);
     expect(composed.length).toBeGreaterThan(0);
     for (const m of composed) {
       expect(e.ownPaths.get(m.object)).toBeDefined();
-      expect(m.address).not.toBe(`${apiPrefix}${e.ownPaths.get(m.object)}`);
+      expect(m.address).toBe(`${apiPrefix}${e.ownPaths.get(m.object)}`);
+    }
+
+    // …and the agreement above is a real measurement rather than a tautology. The two
+    // derivations still DISAGREE for this fixture — `resourcePath(Car)` is `/cars` and
+    // `restPath(Car)` is `/vehicles/car` — so if the descriptor ever reverts to the own-
+    // path spelling, the loop above fails. Without this the loop would silently go vacuous
+    // the day the two collapsed into one, which is how a corpus stops covering the thing
+    // it was written for.
+    for (const m of composed) {
+      const obj = e.root.objects().find((o) => o.name === m.object);
+      expect(obj).toBeDefined();
+      expect(restPath(obj!)).not.toBe(resourcePath(obj!));
+      expect(e.ownPaths.get(m.object)).toBe(restPath(obj!));
     }
 
     // The segment arm is de-blinded: some subtype's discriminator value is neither its

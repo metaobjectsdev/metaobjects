@@ -53,28 +53,11 @@ export function servesWriteApi(entity: MetaObject): boolean {
   return !isAbstract(entity) && hasWritableRdbSource(entity);
 }
 
-/**
- * THE address the generated routes serve this object at.
- *
- * `resourcePath` answers "what is this object's own `$path`", which is what the
- * `<Entity>` const emits. That is NOT the same question for a TPH SUBTYPE: it emits no
- * routes file of its own — `routes-file.ts` mounts the whole hierarchy from the
- * discriminator BASE, giving the union read-only routes at the base path and each
- * subtype a full CRUD set at `<base path>/<route segment>` — so a subtype's own `$path`
- * names an endpoint that does not exist. `agent/ui.md` printed exactly that, as fact.
- *
- * The composition here is the same one `routes-file.ts` and the TanStack
- * `hooks-file.ts` emit as CODE (`Base.$path + "/car"`); they must reference the const
- * rather than a computed string, so this is the one place the composition can be
- * evaluated. The SEGMENT rule is not restated — `tphRouteSegment` owns it, and all three
- * read it from there.
- */
-export function restPath(entity: MetaObject): string {
-  const pin = tphDiscriminatorPin(entity);
-  const base = tphDiscriminatorBase(entity);
-  if (pin === undefined || base === undefined) return resourcePath(entity);
-  return `${resourcePath(base)}/${tphRouteSegment(pin.value)}`;
-}
+// `restPath` MOVED to templates/entity-ui-descriptor.ts, beside `resourcePath` and the
+// descriptor that emits `$path` from it. Re-exported here because this module is where
+// the package barrel and `generators/agent-ui-page.ts` import it from, and neither should
+// have to care that the composition moved.
+export { restPath } from "./templates/entity-ui-descriptor.js";
 
 /**
  * True when a FORM is generated for this object.

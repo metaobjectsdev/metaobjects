@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — BREAKING: a TPH subtype's `$path` named an endpoint that 404s
+
+`<Entity>.$path` now holds the address the generated routes **serve** the object at. For
+everything except a TPH subtype that is the value it always had; for a TPH subtype it
+changes from its own pluralized name to its mounted address — `Car.$path` is
+`/vehicles/car`, not `/cars`.
+
+This was not a documentation wart. A TPH subtype emits no routes file of its own: the
+hierarchy is mounted from the discriminator base, each subtype at `<base>/<segment>`. The
+generated **TanStack grid hook** builds its fetch URL as
+`` `${Entity.$apiPrefix}${Entity.$path}?${qs}` `` and `grid-hook-file.ts` contains no TPH
+branch at all, so a per-subtype grid opted in through `tanstackGridHook({ tphSubtypeGrids })`
+requested `/api/cars` while the routes mounted `/api/vehicles/car`. Every consumer reads the
+const, so correcting the const corrects all of them; the composition stays evaluated in one
+place (`restPath`, moved beside `resourcePath` in `templates/entity-ui-descriptor.ts` and
+re-exported from `api-surface.ts`, so no import path changes).
+
+The gate that should have caught it was **asserting the defect**. `agent-ui-page-parity.test.ts`
+required a composed mount's address to differ from the object's own `$path`, under a comment
+naming it *"the own `$path` names nothing defect"*. It now requires them to AGREE — and,
+because an equality that could become true by collapse is not a measurement, it also asserts
+that `resourcePath` and `restPath` still spell different addresses for the fixture's subtype.
+Without that second half the check would go quietly vacuous the day the two derivations
+merged, which is how a corpus stops covering what it was written for.
+
 ### Changed — BREAKING: `<Entity>Names` mirrors the metadata tree, in all five ports
 
 **Read this first if you have hand-written code importing `<Entity>Names`.** `name` still
@@ -190,11 +215,11 @@ three pages named as what they are and where they come from.
 **Two properties of the pages that are easy to get wrong, and are pinned:**
 
 - **The heading over each object on `agent/ui.md` is the address the ROUTES mount it at**,
-  which is not always the object's own `$path`. A TPH subtype emits no routes file — the
-  hierarchy is mounted from its discriminator base, each subtype at `<base>/<segment>` — so
-  `/cars` is an address nothing serves and `/vehicles/car` is the one that exists. That
-  composition is evaluated in one place (`restPath`), reading the route segment from the same
-  `tphRouteSegment` the routes and the TanStack hooks emit as code.
+  and so is the object's own `$path` — the two agree because `$path` carries that address.
+  A TPH subtype emits no routes file: the hierarchy is mounted from its discriminator base,
+  each subtype at `<base>/<segment>`, so `/vehicles/car` is the address that exists and
+  `/cars` is not. That composition is evaluated in one place (`restPath`), reading the route
+  segment from the same `tphRouteSegment` the routes and the TanStack hooks emit as code.
 - **`Control` is what the FORM renders, which is not always a `view.*` subtype.** A
   `field.object` whose `@objectRef` resolves is emitted as a nested `<fieldset>` sub-form (a
   `useFieldArray` repeatable group when the field is an array) and gets no input at all, so

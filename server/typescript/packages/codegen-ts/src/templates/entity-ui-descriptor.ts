@@ -53,6 +53,13 @@ import {
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor } from "./field-meta.js";
 import { VIEW_CONTEXT_FORM } from "../view-context.js";
 import { isProjection } from "../projection/projection-detector.js";
+// `restPath` lives HERE rather than in api-surface.ts, which is where it used to sit and
+// which now re-exports it. The descriptor is what emits `$path`, so the composition has to
+// be reachable from this module; importing it back from `api-surface.js` would be a cycle,
+// since that module imports `resourcePath` from this one. Neither of these two imports
+// reaches back here, so moving the function down is the acyclic direction.
+import { tphDiscriminatorBase, tphDiscriminatorPin } from "./zod-validators.js";
+import { tphRouteSegment } from "./tph-discriminator.js";
 
 /** One validation rule, in the order its source was declared. */
 export type UiRule =
@@ -86,14 +93,16 @@ export interface UiFieldDescriptor {
 
 export interface EntityUiDescriptor {
   readonly entity: string;
-  /** REST resource path — `/subscribers`. */
+  /** The address the generated routes SERVE this object at — `/subscribers`, and
+   *  `/vehicles/car` for a TPH subtype. Emitted as `$path`. See {@link restPath}. */
   readonly path: string;
   /** Every field, INHERITED INCLUDED (ADR-0039 resolving `fields()`). */
   readonly fields: readonly UiFieldDescriptor[];
 }
 
 /**
- * THE REST resource path for an object — the one derivation of `$path`.
+ * An object's OWN pluralized resource path — the one derivation of that spelling, and the
+ * input {@link restPath} composes an address from. It is NOT `$path` on its own.
  *
  * A projection is KEBAB-cased and an entity is SNAKE-cased, and that split is not a
  * style choice: both spellings are already mounted. `renderProjectionDecl` emits
@@ -108,8 +117,9 @@ export interface EntityUiDescriptor {
  *   "WorkoutEvent"   → "/workout_events"
  *   "ProgramSummary" → "/program-summaries"   (projection)
  *
- * A TPH SUBTYPE is not addressed by this path — it is mounted under its base — so use
- * {@link restPath} for the endpoint an object is actually served at.
+ * A TPH SUBTYPE is not addressed by this path — it is mounted under its base — so this is
+ * an INPUT to {@link restPath}, not the answer. `$path` carries `restPath`; call this only
+ * when you specifically want an object's own pluralized name, never to build an address.
  */
 export function resourcePath(entity: MetaData): string {
   // The two compositions differ in ORDER as well as separator, and both are load-bearing:
@@ -118,6 +128,34 @@ export function resourcePath(entity: MetaData): string {
   return isProjection(entity)
     ? `/${toSnakeCase(pluralize(entity.name)).replace(/_/g, "-")}`
     : `/${pluralize(toSnakeCase(entity.name))}`;
+}
+
+/**
+ * THE address the generated routes serve this object at — and therefore what the
+ * `<Entity>` const emits as `$path`.
+ *
+ * `resourcePath` answers a different question: an object's own pluralized name. The two
+ * agree for everything EXCEPT a TPH subtype, which emits no routes file of its own —
+ * `routes-file.ts` mounts the whole hierarchy from the discriminator BASE, giving the
+ * union read-only routes at the base path and each subtype a full CRUD set at
+ * `<base path>/<route segment>`.
+ *
+ * `$path` used to carry `resourcePath`, so a subtype's own `$path` named an endpoint that
+ * did not exist. That was not confined to prose: `agent/ui.md` printed it as fact, and the
+ * TanStack `grid-hook-file.ts` builds its fetch URL from `<Entity>.$path` with no TPH
+ * branch at all, so an opted-in per-subtype grid requested an address nothing served.
+ * Fixing it here fixes every consumer, because every consumer reads the const.
+ *
+ * The composition is the same one `routes-file.ts` and `hooks-file.ts` emit as CODE
+ * (`Base.$path + "/car"`); they reference the const rather than a computed string, so this
+ * is the one place it can be evaluated. The SEGMENT rule is not restated —
+ * `tphRouteSegment` owns it, and all three read it from there.
+ */
+export function restPath(entity: MetaObject): string {
+  const pin = tphDiscriminatorPin(entity);
+  const base = tphDiscriminatorBase(entity);
+  if (pin === undefined || base === undefined) return resourcePath(entity);
+  return `${resourcePath(base)}/${tphRouteSegment(pin.value)}`;
 }
 
 /**
@@ -256,7 +294,10 @@ export function buildUiFieldDescriptor(field: MetaField, root?: MetaRoot): UiFie
 export function buildEntityUiDescriptor(obj: MetaObject, root?: MetaRoot): EntityUiDescriptor {
   return {
     entity: obj.name,
-    path: resourcePath(obj),
+    // `restPath`, not `resourcePath`: `$path` is the address this object is SERVED at.
+    // They differ only for a TPH subtype, and for that one case `resourcePath` names an
+    // endpoint nothing mounts (see restPath's note).
+    path: restPath(obj),
     // ADR-0039: resolving `fields()` so inherited fields appear, exactly as the emitted
     // descriptor has always done.
     fields: obj.fields().map((f) => buildUiFieldDescriptor(f, root)),

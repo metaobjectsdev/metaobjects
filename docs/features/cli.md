@@ -136,9 +136,9 @@ Two flags are NOT members of that set and do not compose with it:
 - **`agent/ui.md`** — before touching a form or a grid. Per field: the control the form
   renders, label, HTML type, rules, form-excluded, and what the LIST endpoint accepts for
   filtering and sorting; plus each declared `layout.dataGrid`. The endpoint under each
-  object is the FULL address the routes mount it at — `apiPrefix` included, and not always
-  the object's own `$path`, since a TPH subtype is served under its discriminator base
-  (`/api/vehicles/car`, never `/cars`).
+  object is the FULL address the routes mount it at — `apiPrefix` included — and it agrees
+  with the object's own `$path`, because `$path` IS that address: a TPH subtype is served
+  under its discriminator base, so `Car.$path` is `/vehicles/car`, never `/cars`.
 - **`agent/requirements.md`** — before adding a capability. The ledger plus a **node
   index**: every claimed node → the requirements claiming it, at every grain, with the
   literal FQN on every line.
