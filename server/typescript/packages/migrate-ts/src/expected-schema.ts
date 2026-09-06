@@ -54,7 +54,7 @@ import {
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
-  resolveTableName, resolveColumnName, resolveTableSchema,
+  resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
@@ -626,7 +626,11 @@ function buildSecondaryIndexes(
       return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
     const index: IndexDescriptor = {
-      name: identity.name,
+      // resolveIndexName, not `identity.name`: codegen's Drizzle emitter and this
+      // function used to spell the same answer independently, which is how
+      // `fdb4118f1` happened. One door, so the strip and the empty-name refusal
+      // cannot apply to one caller and not the other.
+      name: resolveIndexName(identity),
       columns: expr ? [] : cols,
       unique: true,
     };
@@ -666,7 +670,8 @@ function buildSecondaryIndexes(
       return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
     const index: IndexDescriptor = {
-      name: lookup.name,
+      // See the identity.secondary site above — one resolver for both.
+      name: resolveIndexName(lookup),
       columns: expr ? [] : cols,
       unique: false,
     };

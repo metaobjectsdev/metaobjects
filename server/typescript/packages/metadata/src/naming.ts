@@ -156,6 +156,45 @@ export function resolveColumnName(
 }
 
 /**
+ * An index's DATABASE name — for an `identity.secondary` (a unique alternate key) or an
+ * `index.lookup` (a non-unique retrieval index).
+ *
+ * These nodes carry no `@column`-style physical spelling: the database name IS the
+ * metamodel `name`. That is precisely why the answer must live in a function rather than
+ * at each call site. It was spelled independently in three places — the Drizzle emitter,
+ * migrate's expected-schema (twice) and the Kotlin Exposed emitter — and agreed only by
+ * coincidence; `fdb4118f1` is what that coincidence lapsing looks like, with codegen
+ * declaring `idx_<table>_<col>` while the index in the database was `identity.name`.
+ *
+ * Two rules the single door now owns, neither of which any call site had:
+ *
+ * - **Package qualifier stripped.** The JVM loader spells a nested index name
+ *   package-qualified (`acme::demo::by_name`) where TypeScript does not, and
+ *   `KotlinExposedTableGenerator` compensated locally with `shortName ?: name`. Doing it
+ *   here makes the two ports' answer one rule instead of two habits. A no-op on TS input.
+ * - **An empty name is REFUSED**, and the gap it closes is exactly one node type wide.
+ *   An `identity.secondary` with an empty name is already refused by the LOADER in strict
+ *   and lax mode alike (identity nodes carry an FR-024 name check so a dotted `extends`
+ *   ref can address them). An `index.lookup` is not addressable that way and carries no
+ *   such check, so `{"index.lookup": {"name": ""}}` loads with zero errors in both modes
+ *   and reaches the emitters, which produce `index("")`: SQL no engine accepts, from a
+ *   model that passed every gate. Refusing at the shared door closes it for codegen and
+ *   migrate at once, without touching the byte-gated registry `rules` prose a loader-side
+ *   fix would need. Measured, not assumed — `resolve-index-name.test.ts` asserts both
+ *   arms, because "the loader already handles it" is the belief that would delete this.
+ */
+export function resolveIndexName(node: MetaData): string {
+  const short = stripPackage(node.name);
+  if (short === "") {
+    throw new MetaModelError(
+      `${node.type}.${node.subType} declares an empty name; an index's database name IS ` +
+      `its metamodel name, so there is nothing to emit. Give it a name.`,
+    );
+  }
+  return short;
+}
+
+/**
  * Returns the DB schema declared on an entity's primary source child, or undefined
  * when no @schema attr is set or no source child exists. @schema is paradigm-agnostic
  * (works for writable tables and read-only views/projections alike). Callers decide what

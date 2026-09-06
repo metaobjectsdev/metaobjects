@@ -17,7 +17,7 @@ import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path
 import { mapColumnType, type ColumnSpec, type EnumIntCustomType } from "../column-mapper.js";
 import { tableNameFromEntity } from "../naming.js";
 import { namesRef, physicalNameExpr, columnExpr } from "../names.js";
-import { resolveTableSchema } from "@metaobjectsdev/metadata";
+import { resolveTableSchema, resolveIndexName } from "@metaobjectsdev/metadata";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
@@ -295,10 +295,16 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const target: Code =
       expr !== undefined ? code`${sqlSym}\`${expr}\``
       : code`${colRefs.join(", ")}`;
+    // resolveIndexName, not `node.name`: migrate's expected-schema resolves the same
+    // answer, and the two spelled it independently until now — which is how codegen came
+    // to declare `idx_<table>_<col>` against an index the database actually held under
+    // `identity.name` (fdb4118f1). One door also means the empty-`index.lookup` refusal
+    // fires here rather than emitting `index("")`.
+    const indexName = JSON.stringify(resolveIndexName(node));
     const head: Code =
       using !== undefined && using !== "btree"
-        ? code`${indexSym}(${JSON.stringify(node.name)}).using(${JSON.stringify(using)}, ${target})`
-        : code`${indexSym}(${JSON.stringify(node.name)}).on(${target})`;
+        ? code`${indexSym}(${indexName}).using(${JSON.stringify(using)}, ${target})`
+        : code`${indexSym}(${indexName}).on(${target})`;
 
     // @where — the partial-index predicate, available on both dialects.
     const where = str(IDENTITY_ATTR_WHERE);

@@ -287,7 +287,7 @@ export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 export {
   toSnakeCase, toKebabCase, pluralize,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
-  resolveTableName, resolveColumnName, resolveTableSchema,
+  resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
   primaryRdbSource,
   buildNameMap,
   stripPackage,
