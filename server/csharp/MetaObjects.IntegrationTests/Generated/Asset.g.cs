@@ -9,7 +9,7 @@ using System.Text.Json;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(AssetNames.Name)]
+[Table(AssetNames.SourcePrimaryTable)]
 public class Asset
 {
     [Key]

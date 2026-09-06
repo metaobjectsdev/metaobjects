@@ -10,6 +10,10 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class CopayAuthNames : AuthNames
 {
+    public new const string Type = "object";
+    public new const string SubType = "entity";
+    public new const string Name = "CopayAuth";
+
     public const string CopayAmountField = "copayAmount";
     public const string CopayAmountColumn = "copayAmount";
 

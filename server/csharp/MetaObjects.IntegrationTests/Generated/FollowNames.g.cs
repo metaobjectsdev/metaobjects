@@ -10,14 +10,29 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class FollowNames
 {
-    public const string Kind = "table";
-    public const string Name = "follows";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Follow";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "follows";
 
     public const string FolloweeIdField = "followeeId";
     public const string FolloweeIdColumn = "followeeId";
     public const string FollowerIdField = "followerId";
     public const string FollowerIdColumn = "followerId";
+
+    public const string IdentityFkFolloweeType = "identity";
+    public const string IdentityFkFolloweeSubType = "reference";
+    public const string IdentityFkFolloweeName = "fkFollowee";
+    public const string IdentityFkFollowerType = "identity";
+    public const string IdentityFkFollowerSubType = "reference";
+    public const string IdentityFkFollowerName = "fkFollower";
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

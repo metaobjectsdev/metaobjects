@@ -152,26 +152,30 @@ public class NoMagicPhysicalNamesTests
 
     /// <summary>
     /// Every de-blinded token, with the constant a generator should have referenced.
-    /// <para>Not every declared name has a row. <see cref="SecIndex"/>, <see cref="LkpIndex"/>
-    /// and <see cref="ProcArgCol"/> are declared in the model and listed nowhere here ON
-    /// PURPOSE: this port emits nothing that carries them (C# emits no index DDL at all —
-    /// schema is TS-owned, ADR-0015 — and the callable binds its arguments positionally),
-    /// and the artifact has no slot for them, so none of the four reaches fits. They are
-    /// still in the model so the exhaustive test convicts a generator that starts spelling
-    /// one.</para>
+    /// <para>Not every declared name has a row. <see cref="ProcArgCol"/> is declared in the
+    /// model and listed nowhere here ON PURPOSE: a value object has no source and so no
+    /// &lt;Vo&gt;Names, and the callable binds its arguments POSITIONALLY, so there is no
+    /// constant to reference and nothing that spells the name — none of the four reaches
+    /// fits. It stays in the model so the exhaustive test convicts a generator that starts
+    /// spelling it.</para>
+    /// <para><see cref="SecIndex"/> and <see cref="LkpIndex"/> USED to sit in that same
+    /// unlisted category, on the reason "the artifact has no slot for them". The 0.25.0
+    /// restructure gave it one, so they are now <see cref="Dropped"/> rows — the constant
+    /// exists and no generator reads it — which is a claim the ledger can check. Unlisted was
+    /// not.</para>
     /// </summary>
     private static readonly (string Literal, string ShouldUse, Reach Reach, string Why)[] Tokens =
     [
-        (Table,      "CustomerNames.Name",             Reach.Constant, ""),
+        (Table,      "CustomerNames.SourcePrimaryTable",       Reach.Constant, ""),
         (ColId,      "CustomerNames.IdColumn",         Reach.Constant, ""),
         (ColEmail,   "CustomerNames.EmailColumn",      Reach.Constant, ""),
-        (OrderTable, "OrderNames.Name",                Reach.Constant, ""),
+        (OrderTable, "OrderNames.SourcePrimaryTable",          Reach.Constant, ""),
         (OrderId,    "OrderNames.IdColumn",            Reach.Constant, ""),
         (ColFk,      "OrderNames.CustomerIdColumn",    Reach.Constant, ""),
-        (View,       "CustomerSummaryNames.Name",      Reach.Constant, ""),
+        (View,       "CustomerSummaryNames.SourcePrimaryView", Reach.Constant, ""),
         (VoCol,      "CustomerNames.StreetColumn",     Reach.Constant, ""),
         (JsonbCol,   "CustomerNames.ProfileColumn",    Reach.Constant, ""),
-        (WtTable,    "AccountNames.Name",              Reach.Constant, ""),
+        (WtTable,    "AccountNames.SourcePrimaryTable",        Reach.Constant, ""),
         (WtId,       "AccountNames.IdColumn",          Reach.Constant, ""),
 
         (FlatCol,    "(no constant exists)", Reach.KnownLiteral,
@@ -179,19 +183,24 @@ public class NoMagicPhysicalNamesTests
             "member column). The value object has no source and so no <Vo>Names, and the owner's " +
             "artifact carries one constant per FIELD, not per flattened member — there is no single " +
             "constant to reference. DbContextGenerator.OwnedTypeConfig."),
-        (WtView,     "(no constant exists)", Reach.KnownLiteral,
-            "A write-through entity has TWO physical names; <Entity>Names carries the PRIMARY source's " +
-            "only. The replica view name has no slot in the artifact's schema. DbContextGenerator, " +
-            "the .ToView(...) for the <Entity>View read model."),
+        (WtView,     "AccountNames.SourceReplicaView", Reach.Constant,
+            "Promoted from KnownLiteral by the 0.25.0 restructure, and the row is kept with its history " +
+            "because the OLD reason was true and specific: a write-through entity has TWO physical " +
+            "names and <Entity>Names carried the PRIMARY source's only, so the replica view name had " +
+            "no slot to reference. Keying the artifact's sources by @role is what gave it one, and the " +
+            "member is named for the source's @kind (View), so asking AccountNames for a replica TABLE " +
+            "does not compile. The pin earned its keep: the identical escape sat in the TypeScript " +
+            "drizzle emitter, which is how this was established as the artifact's SHAPE rather than a " +
+            "one-port quirk. DbContextGenerator, the .ToView(...) for the <Entity>View read model."),
 
         // --- TPH: a discriminator base folds its subtypes' own columns into one table ------
-        (TphTable,   "VehicleNames.Name",              Reach.Constant, ""),
+        (TphTable,   "VehicleNames.SourcePrimaryTable", Reach.Constant, ""),
         (TphId,      "VehicleNames.IdColumn",          Reach.Constant, ""),
         (TphDisc,    "VehicleNames.KindColumn",        Reach.Constant, ""),
         (TphSubCol,  "CarNames.DoorsColumn",           Reach.Constant, ""),
 
         // --- the enum / index / schema entity ---------------------------------------------
-        (WidgetTable, "WidgetNames.Name",              Reach.Constant, ""),
+        (WidgetTable, "WidgetNames.SourcePrimaryTable", Reach.Constant, ""),
         (EnumCol,     "WidgetNames.StatusColumn",      Reach.Constant, ""),
         (EnumIntCol,  "WidgetNames.GradeColumn",       Reach.Constant, ""),
         (ArrayCol,    "WidgetNames.TagsColumn",        Reach.Constant, ""),
@@ -204,17 +213,34 @@ public class NoMagicPhysicalNamesTests
         // literal. And the Dropped label survived only because this fixture put @schema on a
         // plain entity and NOT on the callable, the one generator that qualified: move it there
         // and the literal lands in the output. It is on BOTH now, so neither half can go quiet
-        // again — [Table(Name, Schema = WidgetNames.Schema)] on the entity, and the callable's
-        // FromSqlRaw concatenating ProcOutNames.Schema.
-        (Schema,      "WidgetNames.Schema",            Reach.Constant, ""),
+        // again — [Table(SourcePrimaryTable, Schema = WidgetNames.SourcePrimarySchema)] on the
+        // entity, and the callable's FromSqlRaw concatenating ProcOutNames.SourcePrimarySchema.
+        (Schema,      "WidgetNames.SourcePrimarySchema", Reach.Constant, ""),
 
         // --- the callable (stored procedure) ----------------------------------------------
         // The emitted form is the part that matters here: the name sits inside the callable's
         // SQL, and a FromSqlInterpolated hole binds a PARAMETER — an identifier cannot be one —
         // so the constant is spliced into a FromSqlRaw string (the C# analogue of drizzle's
         // `sql.raw`) rather than interpolated.
-        (Proc,        "ProcOutNames.Name",             Reach.Constant, ""),
+        (Proc,        "ProcOutNames.SourcePrimaryProc", Reach.Constant, ""),
         (ProcOutCol,  "ProcOutNames.TotalColumn",      Reach.Constant, ""),
+
+        // --- index names: carried by the artifact, read by no C# generator ----------------
+        (SecIndex, "WidgetNames.IdentityZzPhysIdxSecIndex", Reach.Dropped,
+            "Dropped, not KnownLiteral, and the distinction is the whole point of the row. The 0.25.0 " +
+            "restructure gave the artifact `identities` and `indexes` members, so the constant EXISTS " +
+            "here — IdentityZzPhysIdxSecIndex, resolved through the same IndexNaming.ResolveIndexName " +
+            "door the TS port's codegen and migrate share. Nothing in MetaObjects.Codegen reads it, " +
+            "because this port emits no index DDL at all (schema is TS-owned, ADR-0015): there is no " +
+            "HasIndex / IsUnique call anywhere in the assembly. That is CORRECT today and is exactly " +
+            "why it is pinned rather than left unlisted — the row asserts BOTH halves, so the day C# " +
+            "emits an index through the constant it fails and demands promotion to Constant, instead " +
+            "of the wiring landing with nothing to notice it. Its old absence from this ledger asserted " +
+            "neither half."),
+        (LkpIndex, "WidgetNames.IndexZzPhysIdxLkpIndex", Reach.Dropped,
+            "As SecIndex. Kept as its own row rather than folded in: ADR-0040 put uniqueness in the " +
+            "TYPE, so a secondary identity and a lookup index live in different artifact members and " +
+            "are reached by different paths. One row cannot fail for both."),
 
         // --- a field.enum ON the value object ---------------------------------------------
         // VoEnumCol has NO row: a VO POCO member carries no [Column(...)] at all — the enum arm
@@ -232,7 +258,7 @@ public class NoMagicPhysicalNamesTests
         // --- an @isArray value-object column: the routes tier's raw-SQL null clear ---------
         // Composed against TaggerNames inside a compile-time-constant string (the identifiers
         // cannot be parameters; only the PK VALUE is), so all three travel as references.
-        (TaggerTable, "TaggerNames.Name",              Reach.Constant, ""),
+        (TaggerTable, "TaggerNames.SourcePrimaryTable", Reach.Constant, ""),
         (TaggerId,    "TaggerNames.IdColumn",          Reach.Constant, ""),
         (LabelsCol,   "TaggerNames.LabelsColumn",      Reach.Constant, ""),
     ];
@@ -353,6 +379,21 @@ public class NoMagicPhysicalNamesTests
 
     /// <summary>A names artifact is the ONE file allowed to spell a physical name literally.</summary>
     private static bool IsNamesArtifact(string path) => path.EndsWith("Names.g.cs", StringComparison.Ordinal);
+
+    // WHY THIS PORT NEEDS NO `maskNamesRefs`. The TypeScript gate masks `<X>Names.<collection>…`
+    // accessor chains before scanning, because two of its collections are keyed by an
+    // AUTHOR-CHOSEN name and for an index that name IS the database name — so
+    // `WidgetNames.indexes.zz_phys_idx_lkp.index` contains a de-blinded token while being the
+    // exact opposite of the defect (a compiler-checked property path). Raw text cannot tell it
+    // from `index("zz_phys_idx_lkp")`.
+    //
+    // C# is flat-constant, and the member form is `<Type><PascalToken(name)><Member>` —
+    // `IdentityZzPhysIdxSecIndex`. PascalToken drops the separators and upper-cases each
+    // segment, so a reference into this artifact CANNOT contain the `zz_phys_\w+` shape the
+    // scan matches. Checked against the emitted output, not assumed: the only place a
+    // de-blinded token survives verbatim is the constant's VALUE, and every assertion below
+    // already excludes the names artifact. Adding a mask here would suppress nothing and would
+    // hide a real escape the day one is spelled inside an accessor-shaped string.
 
     /// <summary>
     /// The DEFAULT generator suite — the one `dotnet meta gen` runs — plus <c>callable</c>.

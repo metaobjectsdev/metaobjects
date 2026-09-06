@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(AllTypesNames.Name)]
+[Table(AllTypesNames.SourcePrimaryTable)]
 public class AllTypes
 {
     public enum AllTypesEnumVal { LOW, MEDIUM, HIGH }

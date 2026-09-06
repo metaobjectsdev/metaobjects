@@ -49,7 +49,7 @@ public class EntityGeneratorTests
         Assert.Contains("namespace Acme.Generated;", src);
         // §A6 (task 4) — [Table]/[Column] reference the <Entity>Names constants, not
         // the physical-name literal.
-        Assert.Contains("[Table(SubscriberNames.Name)]", src);
+        Assert.Contains("[Table(SubscriberNames.SourcePrimaryTable)]", src);
         Assert.Contains("public class Subscriber", src);
         // PK long, required -> non-nullable, [Key] + [Column]
         Assert.Contains("[Key]", src);

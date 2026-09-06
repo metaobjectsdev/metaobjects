@@ -52,7 +52,7 @@ public class TphCodegenTests
     {
         Entities = root.Objects(),
         Root = root,
-        // IncludeNames: true -- the [Table(AuthNames.Name)] assertion below needs the
+        // IncludeNames: true -- the [Table(AuthNames.SourcePrimaryTable)] assertion below needs the
         // entity to reference the names artifact; GenConfig.IncludeNames defaults to false.
         Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal, IncludeNames = true },
     };
@@ -96,7 +96,7 @@ public class TphCodegenTests
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var auth = FileContent(files, "Auth.g.cs");
-        Assert.Contains("[Table(AuthNames.Name)]", auth); // §A6 (task 4)
+        Assert.Contains("[Table(AuthNames.SourcePrimaryTable)]", auth); // §A6 (task 4)
         // FR-017 TPH: the discriminator base is abstract (no plain-base rows; a
         // concrete base with a discriminator + no base value fails EF model build).
         Assert.Contains("public abstract class Auth", auth);

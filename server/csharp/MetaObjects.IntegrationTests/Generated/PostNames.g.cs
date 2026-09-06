@@ -10,14 +10,23 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class PostNames
 {
-    public const string Kind = "table";
-    public const string Name = "posts";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Post";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "posts";
 
     public const string IdField = "id";
     public const string IdColumn = "id";
     public const string TitleField = "title";
     public const string TitleColumn = "title";
+
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

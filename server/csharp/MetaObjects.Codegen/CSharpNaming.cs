@@ -8,12 +8,87 @@
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
+using static MetaObjects.Core.Identity.IdentityConstants;
+using static MetaObjects.Core.Index.IndexConstants;
 using static MetaObjects.Persistence.Source.SourceConstants;
+using static MetaObjects.Shared.BaseTypes;
 
 namespace MetaObjects.Codegen;
 
 /// <summary>Physical name + logical field name for one field (§A2/§A3 names artifact).</summary>
 public sealed record FieldNames(string Name, string Column);
+
+/// <summary>
+/// One <c>source.rdb</c> child, under the ROLE it plays.
+///
+/// <para>The physical name is carried under an alias NAMED FOR THE KIND — <c>table</c>,
+/// <c>view</c>, <c>materializedView</c>, <c>proc</c>, <c>function</c> — and that alias is
+/// not invented here: it is <see cref="SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND"/>, the
+/// metamodel's own FR-016/ADR-0018 map, the same one the canonical serializer rewrites
+/// through. So the artifact spells a physical name the way the metadata that declared it
+/// does, and the emitted constant is <c>SourcePrimaryTable</c> / <c>SourceReplicaView</c> /
+/// <c>SourcePrimaryProc</c> rather than one <c>Name</c> that meant three different things
+/// depending on which object you were looking at.</para>
+///
+/// <para><c>ReadOnly</c> is deliberately NOT carried, and its removal is the shape's own
+/// rule applied to itself: it is not metadata at all but a derivation over <c>@kind</c>
+/// (<see cref="MetaSource.IsReadOnly"/>), and a sweep of all five ports found ZERO
+/// consumers, generated or hand-written. An artifact that mirrors the metadata tree carries
+/// what was declared; a reader who wants read-only-ness asks <c>Kind</c>, which is the thing
+/// the author actually wrote.</para>
+/// </summary>
+public sealed record SourceNames
+{
+    /// <summary>The metamodel type — always <c>source</c>.</summary>
+    public required string Type { get; init; }
+    /// <summary>The metamodel subType — <c>rdb</c> today (ADR-0007's one paradigm).</summary>
+    public required string SubType { get; init; }
+    /// <summary>The <c>@kind</c> value, defaulted per ADR-0007 Rule 3 — the discriminator
+    /// for <see cref="PhysicalNameAlias"/>.</summary>
+    public required string Kind { get; init; }
+    /// <summary>The <c>@schema</c> attr, or null when the source declares none. Null rather
+    /// than <c>""</c>: absent means "the dialect's default", which a consumer expresses by
+    /// omitting the qualifier entirely — emitting <c>"public"</c> would be this artifact
+    /// inventing a name the author never wrote.</summary>
+    public string? Schema { get; init; }
+    /// <summary>The kind's alias key from <see cref="SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND"/>
+    /// — <c>table</c> | <c>view</c> | <c>materializedView</c> | <c>proc</c> | <c>function</c>.
+    /// Null only if a future <c>@kind</c> carries no physical-name slot.</summary>
+    public string? PhysicalNameAlias { get; init; }
+    /// <summary>The physical name itself, carried under <see cref="PhysicalNameAlias"/>.</summary>
+    public string? PhysicalName { get; init; }
+}
+
+/// <summary>
+/// One <c>identity.*</c> or <c>index.*</c> child.
+///
+/// <para><see cref="SubType"/> is load-bearing rather than decorative: it is the ONLY thing
+/// distinguishing a unique alternate key from a non-unique lookup index, which is the whole
+/// reason ADR-0040 put uniqueness in the type rather than in an attribute.</para>
+///
+/// <para><see cref="Index"/> — the database name — is present only where a shared resolver
+/// produces it: <c>identity.secondary</c> and <c>index.lookup</c>, via
+/// <see cref="IndexNaming.ResolveIndexName"/>. It is deliberately ABSENT on
+/// <c>identity.primary</c>, because no such name exists to carry: migrate hardcodes
+/// <c>&lt;table&gt;_pkey</c> on Postgres, emits an unnamed PK on SQLite, and no port's
+/// codegen names a primary key at all. Carrying it would restate a migrate-only,
+/// dialect-conditional formula in an artifact whose entire promise is that a name is spelled
+/// once — the #293 defect, re-created by the mechanism built to prevent it. Absent on
+/// <c>identity.reference</c> for the same reason unless a constraint name is explicitly
+/// declared.</para>
+/// </summary>
+public sealed record KeyNames
+{
+    /// <summary>The metamodel type — <c>identity</c> or <c>index</c>.</summary>
+    public required string Type { get; init; }
+    /// <summary>The metamodel subType — <c>primary</c> | <c>secondary</c> | <c>reference</c> | <c>lookup</c>.</summary>
+    public required string SubType { get; init; }
+    /// <summary>The node's metamodel name.</summary>
+    public required string Name { get; init; }
+    /// <summary>The database index name. Present for <c>identity.secondary</c> and
+    /// <c>index.lookup</c> only.</summary>
+    public string? Index { get; init; }
+}
 
 /// <summary>
 /// §A2/§A3 — the resolved physical-name shape for an object: what
@@ -24,17 +99,32 @@ public sealed record FieldNames(string Name, string Column);
 /// </summary>
 public sealed record ObjectNames
 {
-    /// <summary>The <c>source.rdb @kind</c> value — table | view | materializedView | storedProc | tableFunction.
-    /// <c>null</c> on a FRAGMENT: an abstract base with no source of its own, which contributes
-    /// columns to its children and has no physical name of its own to carry.</summary>
-    public string? Kind { get; init; }
-    /// <summary>The PHYSICAL name. Not necessarily a table: it comes from the primary
-    /// source's <see cref="MetaSource.PhysicalName"/> for whatever its <see cref="Kind"/> is,
-    /// so this can be a view or a proc name. <c>null</c> on a fragment — see <see cref="Kind"/>.</summary>
-    public string? Name { get; init; }
-    public string? Schema { get; init; }
-    /// <summary><c>null</c> on a fragment — see <see cref="Kind"/>.</summary>
-    public bool? ReadOnly { get; init; }
+    /// <summary>The metamodel type — always <c>object</c>.</summary>
+    public required string Type { get; init; }
+    /// <summary>The metamodel subType — <c>entity</c> | <c>projection</c> | <c>value</c>.</summary>
+    public required string SubType { get; init; }
+    /// <summary>
+    /// The object's OWN name — <c>"Customer"</c>, not <c>"TBL_CUST_MASTER"</c>.
+    /// <para>It held the PHYSICAL name until 0.25.0, and that is the one change here a
+    /// hand-written consumer can adopt WITHOUT a compile error: <c>[Table(CustomerNames.Name)]</c>
+    /// still compiles and now binds a table called <c>Customer</c>. No gate can see it,
+    /// because the code that breaks is not generated.</para>
+    /// </summary>
+    public required string Name { get; init; }
+    /// <summary>
+    /// Every <c>source.rdb</c> child, keyed by effective <c>@role</c> (<c>primary</c> |
+    /// <c>replica</c>).
+    /// <para>Role is the honest axis: the loader requires exactly one primary, and every
+    /// consumer that binds a second source picks it by role. Keying by role is also what
+    /// finally gives a WRITE-THROUGH entity's replica view a home — it declares two physical
+    /// names, the artifact carried one, and <c>AppDbContext.g.cs</c> emitted the second as a
+    /// literal.</para>
+    /// <para>Empty on a FRAGMENT: an abstract base with no source of its own contributes
+    /// columns and must never acquire a physical name it never declared.</para>
+    /// </summary>
+    public required IReadOnlyDictionary<string, SourceNames> Sources { get; init; }
+    /// <summary>The sources DECLARED HERE — what this artifact emits. See <see cref="OwnFields"/>.</summary>
+    public required IReadOnlyDictionary<string, SourceNames> OwnSources { get; init; }
     /// <summary>
     /// Every field, INHERITED INCLUDED. This is what a consumer looks a column up in, so a
     /// lookup for an inherited field must hit — miss and the caller falls back to a literal
@@ -51,14 +141,25 @@ public sealed record ObjectNames
     /// not re-emitted.</para>
     /// </summary>
     public required IReadOnlyDictionary<string, FieldNames> OwnFields { get; init; }
+    /// <summary>Every <c>identity.*</c> child, inherited included; keyed by metamodel name.</summary>
+    public required IReadOnlyDictionary<string, KeyNames> Identities { get; init; }
+    /// <summary>The identities DECLARED HERE. See <see cref="OwnFields"/>.</summary>
+    public required IReadOnlyDictionary<string, KeyNames> OwnIdentities { get; init; }
+    /// <summary>Every <c>index.*</c> child, inherited included; keyed by metamodel name.</summary>
+    public required IReadOnlyDictionary<string, KeyNames> Indexes { get; init; }
+    /// <summary>The indexes DECLARED HERE. See <see cref="OwnFields"/>.</summary>
+    public required IReadOnlyDictionary<string, KeyNames> OwnIndexes { get; init; }
     /// <summary>The nearest ancestor carrying an artifact of its own, when there is one.</summary>
     public SuperNames? SuperNames { get; init; }
     /// <summary>
     /// True when the primary source is the SUPER's rather than declared here — a TPH
     /// subtype, which shares its base's single table. Structural (the two resolve to the
-    /// SAME source node), never an equality test on the resolved strings: the physical
-    /// name, kind, schema and read-only-ness then all come from the base class rather than
-    /// being restated.
+    /// SAME source node), never an equality test on the resolved strings.
+    /// <para>It does NOT decide what gets emitted — <see cref="OwnSources"/> does, and for a
+    /// TPH subtype that is empty, so C# base-class inheritance carries the base's
+    /// <c>SourcePrimaryTable</c> down without anything here having to ask. It is kept
+    /// because it is the structural FACT a consumer may want to read, and because deriving
+    /// it once beside the source lookup is cheaper than every caller re-deriving it.</para>
     /// </summary>
     public bool InheritsSource { get; init; }
 }
@@ -412,8 +513,6 @@ public static class CSharpNaming
         var inheritsSource = superObj is not null &&
             ReferenceEquals(SourceResolution.PrimaryRdbSource(superObj), source);
 
-        var name = source.PhysicalName;
-
         // The divergence refusal — an object whose @role: primary sources resolve to more
         // than one physical name — used to live HERE, and that was the defect. Every
         // consumer downstream references this name UNCONDITIONALLY, with no per-site
@@ -427,17 +526,113 @@ public static class CSharpNaming
 
         return new ObjectNames
         {
-            // EffectiveKind, not a hand-rolled kind list — derived from the source's own
-            // logic so a second read-only-kind list here can't drift from the loader's.
-            Kind = source.EffectiveKind,
-            Name = name,
-            Schema = source.Schema,
-            ReadOnly = source.IsReadOnly(),
+            Type = TYPE_OBJECT,
+            SubType = obj.SubType,
+            // The object's OWN name. The primary source's physical name is now reached
+            // through Sources[role].PhysicalName, which is the point of the restructure: one
+            // key stopped meaning a table, a view and a procedure depending on the object.
+            Name = obj.Name,
+            Sources = SourcesOf(obj.Sources(), obj.Name),
+            OwnSources = SourcesOf(obj.OwnSources(), obj.Name),
             Fields = fields,
             OwnFields = ownFields,
+            Identities = KeysOf(obj.Identities()),
+            OwnIdentities = KeysOf(obj.OwnIdentities()),
+            Indexes = KeysOf(obj.LookupIndexes()),
+            OwnIndexes = KeysOf(obj.OwnLookupIndexes()),
             SuperNames = SuperRefOf(superObj),
             InheritsSource = inheritsSource,
         };
+    }
+
+    /// <summary>
+    /// One source node's names, with the physical name carried under the metamodel's own
+    /// kind→alias key. Never a local switch on <c>@kind</c>: a sixth kind must not need an
+    /// edit here to be spelled correctly, and a local copy is a second answer to a question
+    /// the metamodel already answers — the defect class this file exists for.
+    /// </summary>
+    private static SourceNames SourceNamesOf(MetaSource source)
+    {
+        // EffectiveKind, not a hand-rolled kind list — derived from the source's own logic
+        // so a second kind list here can't drift from the loader's.
+        var kind = source.EffectiveKind;
+        PHYSICAL_NAME_ATTR_BY_KIND.TryGetValue(kind, out var alias);
+        return new SourceNames
+        {
+            Type = TYPE_SOURCE,
+            SubType = source.SubType,
+            Kind = kind,
+            Schema = source.Schema,
+            PhysicalNameAlias = alias,
+            PhysicalName = alias is null ? null : source.PhysicalName,
+        };
+    }
+
+    /// <summary>
+    /// Every <c>source.rdb</c> child of an object, keyed by effective <c>@role</c>.
+    /// <para>The refusal below is about DISAGREEMENT, not about the count — deliberately the
+    /// SAME rule <see cref="SourceResolution.PrimaryRdbSource"/> already enforces for the
+    /// physical name, rather than a stricter one invented here. An abstract base and the
+    /// child that extends it may each declare a <c>@role: primary</c> source naming the same
+    /// relation; that is legal today, and refusing it would make this artifact stricter than
+    /// the invariant it exists to serve.</para>
+    /// <para>Two sources in one role that resolve DIFFERENTLY is the real problem, and
+    /// silently keeping one is the `dropped` failure mode this artifact makes impossible:
+    /// the second name would be carried nowhere, read by nobody, while the binding quietly
+    /// took the first's.</para>
+    /// </summary>
+    private static IReadOnlyDictionary<string, SourceNames> SourcesOf(
+        IReadOnlyList<MetaSource> sources, string where)
+    {
+        var outMap = new Dictionary<string, SourceNames>(StringComparer.Ordinal);
+        foreach (var src in sources)
+        {
+            var resolved = SourceNamesOf(src);
+            if (!outMap.TryGetValue(src.Role, out var existing)) { outMap[src.Role] = resolved; continue; }
+            // Record value equality — every member compared, not just the physical name.
+            if (existing != resolved)
+                throw new InvalidOperationException(
+                    $"{where} declares more than one source.rdb with @role: \"{src.Role}\", and they " +
+                    $"do not agree: {existing} vs {resolved}. The names artifact keys sources by " +
+                    "role, so the second has nowhere to go.");
+        }
+        return outMap;
+    }
+
+    /// <summary>
+    /// The nodes whose database index name the artifact carries.
+    /// <para>A closed set rather than "anything with a name", because the rule is narrow and
+    /// worth stating: the artifact carries a physical name only where ONE resolver, shared by
+    /// every consumer, produces it. <c>identity.primary</c> and <c>identity.reference</c>
+    /// have names that are addressing handles, not database names — see
+    /// <see cref="KeyNames.Index"/>.</para>
+    /// </summary>
+    private static readonly HashSet<string> IndexNamedSubTypes = new(StringComparer.Ordinal)
+    {
+        $"{TYPE_IDENTITY}.{IDENTITY_SUBTYPE_SECONDARY}",
+        $"{TYPE_INDEX}.{INDEX_SUBTYPE_LOOKUP}",
+    };
+
+    /// <summary>Every <c>identity.*</c> / <c>index.*</c> child, keyed by metamodel name.</summary>
+    private static IReadOnlyDictionary<string, KeyNames> KeysOf(IEnumerable<MetaData> nodes)
+    {
+        var outMap = new Dictionary<string, KeyNames>(StringComparer.Ordinal);
+        foreach (var node in nodes)
+        {
+            // IndexNaming.ResolveIndexName owns BOTH the package strip and the empty-name
+            // refusal, so the artifact and any DDL that ever reads it cannot disagree about
+            // what an index is called — and an `index.lookup` with an empty name (which the
+            // loader accepts, unlike an identity) fails here instead of reaching an emitter.
+            var carriesIndexName = IndexNamedSubTypes.Contains($"{node.Type}.{node.SubType}");
+            outMap[node.Name] = new KeyNames
+            {
+                Type = node.Type,
+                SubType = node.SubType,
+                Name = node.Name,
+                Index = carriesIndexName ? IndexNaming.ResolveIndexName(node) : null,
+            };
+        }
+        return outMap;
     }
 
     /// <summary>
@@ -491,12 +686,95 @@ public static class CSharpNaming
 
         return new ObjectNames
         {
+            Type = TYPE_OBJECT,
+            SubType = obj.SubType,
+            Name = obj.Name,
+            // Empty. A fragment declares no source and must never acquire a physical name it
+            // never wrote — the phantom-table failure #248 exists to prevent.
+            Sources = new Dictionary<string, SourceNames>(StringComparer.Ordinal),
+            OwnSources = new Dictionary<string, SourceNames>(StringComparer.Ordinal),
             Fields = fields,
             OwnFields = ownFields,
+            Identities = KeysOf(obj.Identities()),
+            OwnIdentities = KeysOf(obj.OwnIdentities()),
+            Indexes = KeysOf(obj.LookupIndexes()),
+            OwnIndexes = KeysOf(obj.OwnLookupIndexes()),
             SuperNames = SuperRefOf(NamesArtifactSuperOf(obj)),
             InheritsSource = false,
         };
     }
+
+    // ----------------------------------------------------------------------------
+    // The artifact's MEMBER names — `<Type><Key><Member>`, one definition shared by the
+    // generator that emits them and every consumption site that references them. A member
+    // name spelled twice is a member name that can disagree with itself, which is the same
+    // defect one level down from the one this file exists to prevent.
+    // ----------------------------------------------------------------------------
+
+    /// <summary>
+    /// A metamodel name → one PascalCase C# identifier segment, splitting on every
+    /// non-alphanumeric run: <c>uq_cust_email</c> → <c>UqCustEmail</c>.
+    /// <para>Distinct from <see cref="Pascal"/>, which only upper-cases the FIRST character
+    /// and is what field members have always used (<c>customerId</c> → <c>CustomerId</c>).
+    /// Field names are camelCase by convention and Pascal is right for them; identity and
+    /// index names are snake_case by convention (<c>uq_cust_email</c>, <c>ix_cust_status</c>)
+    /// and <c>Pascal</c> would leave <c>Uq_cust_email</c> — a legal identifier, and an ugly
+    /// one nobody would reference by hand.</para>
+    /// <para>A leading digit gets an <c>_</c> prefix (<c>2fa-idx</c> → <c>_2faIdx</c>): an
+    /// index name is author-chosen and need not start with a letter.</para>
+    /// </summary>
+    public static string PascalToken(string name)
+    {
+        var sb = new System.Text.StringBuilder(name.Length);
+        var startOfSegment = true;
+        foreach (var c in name)
+        {
+            if (!char.IsLetterOrDigit(c)) { startOfSegment = true; continue; }
+            sb.Append(startOfSegment ? char.ToUpperInvariant(c) : c);
+            startOfSegment = false;
+        }
+        if (sb.Length == 0) return "_";
+        return char.IsDigit(sb[0]) ? "_" + sb : sb.ToString();
+    }
+
+    /// <summary>The member prefix for one source: <c>Source</c> + the role — <c>SourcePrimary</c>.</summary>
+    public static string SourceMemberPrefix(string role) => Pascal(TYPE_SOURCE) + PascalToken(role);
+
+    /// <summary>
+    /// One source member: <c>SourcePrimaryTable</c>, <c>SourceReplicaView</c>,
+    /// <c>SourcePrimarySchema</c>. <paramref name="member"/> is the physical-name alias from
+    /// <see cref="SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND"/>, or one of the fixed
+    /// <c>type</c>/<c>subType</c>/<c>kind</c>/<c>schema</c> keys.
+    /// </summary>
+    public static string SourceMemberName(string role, string member) =>
+        SourceMemberPrefix(role) + PascalToken(member);
+
+    /// <summary>
+    /// One identity/index member: <c>IdentityPkName</c>, <c>IdentityUqCustEmailIndex</c>,
+    /// <c>IndexIxCustStatusIndex</c>.
+    /// <para>The TYPE prefix is load-bearing, not decoration. <c>identity.primary</c>'s
+    /// loader <c>defaultName</c> is <c>"primary"</c> (spec/metamodel/identity.json), so
+    /// without it an unnamed primary key's members would be <c>PrimaryType</c>/
+    /// <c>PrimaryName</c> — colliding, silently, with the source in role <c>primary</c>.</para>
+    /// </summary>
+    public static string KeyMemberName(string type, string keyName, string member) =>
+        Pascal(type) + PascalToken(keyName) + PascalToken(member);
+
+    /// <summary>One field member: <c>EmailField</c> / <c>EmailColumn</c>. See <see cref="PascalToken"/>
+    /// for why this stays on <see cref="Pascal"/>.</summary>
+    public static string FieldMemberName(string fieldName, string member) =>
+        Pascal(fieldName) + Pascal(member);
+
+    /// <summary>The <c>type</c>/<c>subType</c>/<c>name</c> member keys every node carries.</summary>
+    public const string MEMBER_TYPE = "type";
+    public const string MEMBER_SUB_TYPE = "subType";
+    public const string MEMBER_NAME = "name";
+    /// <summary>The <c>kind</c> member key on a source, and the <c>index</c> member key on a key node.</summary>
+    public const string MEMBER_KIND = "kind";
+    public const string MEMBER_INDEX = "index";
+    /// <summary>The <c>field</c>/<c>column</c> member keys on a field.</summary>
+    public const string MEMBER_FIELD = "field";
+    public const string MEMBER_COLUMN = "column";
 
     /// <summary>
     /// §A6 — the <c>&lt;Owner&gt;Names.&lt;Field&gt;Column</c> constant reference for
@@ -528,12 +806,12 @@ public static class CSharpNaming
     {
         var names = includeNames ? ResolveObjectNames(owner, strategy) : null;
         return names is not null && names.Fields.ContainsKey(field.Name)
-            ? $"{NamesClassName(owner)}.{Pascal(field.Name)}Column"
+            ? $"{NamesClassName(owner)}.{FieldMemberName(field.Name, MEMBER_COLUMN)}"
             : $"\"{Column(field, strategy)}\"";
     }
 
     /// <summary>
-    /// I1/§A6 — the <c>&lt;Owner&gt;Names.Name</c> constant reference for <paramref
+    /// I1/§A6 — the <c>&lt;Owner&gt;Names.Source&lt;Role&gt;&lt;Alias&gt;</c> constant reference for <paramref
     /// name="obj"/>'s physical table/view/proc name, when BOTH C1 (<paramref
     /// name="includeNames"/> — is the <c>names</c> generator part of THIS run, same as
     /// <see cref="ColumnRef"/>) and this method's OWN existence gate
@@ -558,10 +836,60 @@ public static class CSharpNaming
     /// <see cref="SourceResolution.RefuseDivergentPrimaries"/>.
     /// </para>
     /// </summary>
-    public static string NameRef(MetaObject obj, ColumnNamingStrategy strategy, bool includeNames, string literal) =>
-        NamesClassIfReferenced(obj, strategy, includeNames) is { } cls
-            ? $"{cls}.Name"
-            : $"\"{literal}\"";
+    /// <para>
+    /// <paramref name="role"/> selects WHICH source — the parameter that did not exist while
+    /// the artifact held one name. A write-through entity declares TWO physical names;
+    /// passing the replica's role is how its read view stops being a literal in
+    /// <c>AppDbContext.g.cs</c>. Never guess the role: take it from the source node the
+    /// caller already selected (<see cref="MetaObject.ReplicaSource"/>), or a second
+    /// derivation creeps back in under a different name.
+    /// </para>
+    /// </summary>
+    public static string NameRef(
+        MetaObject obj, ColumnNamingStrategy strategy, bool includeNames, string literal,
+        string role = SOURCE_ROLE_PRIMARY) =>
+        SourceNameMember(obj, strategy, includeNames, role) ?? $"\"{literal}\"";
+
+    /// <summary>
+    /// The <c>&lt;Owner&gt;Names.Source&lt;Role&gt;&lt;Alias&gt;</c> physical-name
+    /// expression for <paramref name="obj"/>'s source in <paramref name="role"/>, or
+    /// <c>null</c> when there is nothing to reference — <see cref="NameRef"/>'s two gates,
+    /// plus "that role has a source and its <c>@kind</c> carries a physical-name slot".
+    /// <para>The alias is read off the resolved source rather than taken as a parameter, so
+    /// a call site cannot ask for <c>SourcePrimaryTable</c> on an object whose primary source
+    /// is a view — the artifact would not declare that member and the file would not
+    /// compile, which is the guarantee, but failing here names the model instead.</para>
+    /// </summary>
+    public static string? SourceNameMember(
+        MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
+        string role = SOURCE_ROLE_PRIMARY)
+    {
+        if (!includeNames) return null;
+        var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
+        // No alias means a @kind carrying no physical-name slot. Falling back to the literal
+        // keeps a future kind from emitting a member that was never declared.
+        return src?.PhysicalNameAlias is null
+            ? null
+            : $"{NamesClassName(obj)}.{SourceMemberName(role, src.PhysicalNameAlias)}";
+    }
+
+    /// <summary>
+    /// The <c>&lt;Owner&gt;Names.Source&lt;Role&gt;Schema</c> expression, or <c>null</c> when
+    /// the source in <paramref name="role"/> declares no <c>@schema</c> (or the artifact is
+    /// not in this run). Null rather than a literal fallback for the ABSENT case: an absent
+    /// <c>@schema</c> means "the dialect's default", which a caller expresses by omitting the
+    /// qualifier entirely.
+    /// </summary>
+    public static string? SourceSchemaMember(
+        MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
+        string role = SOURCE_ROLE_PRIMARY)
+    {
+        if (!includeNames) return null;
+        var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
+        return string.IsNullOrEmpty(src?.Schema)
+            ? null
+            : $"{NamesClassName(obj)}.{SourceMemberName(role, SOURCE_ATTR_SCHEMA)}";
+    }
 
     /// <summary>
     /// The <c>Schema = ...</c> argument for an EF <c>[Table]</c> attribute, or the empty
@@ -574,12 +902,15 @@ public static class CSharpNaming
     /// rather than the model's intent. Dropping it did not fail loudly — it silently read a
     /// different table, or the right one, depending on the deployment.
     /// </remarks>
-    public static string TableSchemaArg(MetaObject obj, ColumnNamingStrategy strategy, bool includeNames)
+    public static string TableSchemaArg(
+        MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
+        string role = SOURCE_ROLE_PRIMARY)
     {
-        if (ResolveObjectNames(obj, strategy) is not { Schema: { Length: > 0 } schema }) return "";
-        return NamesClassIfReferenced(obj, strategy, includeNames) is { } cls
-            ? $", Schema = {cls}.Schema"
-            : $", Schema = \"{schema}\"";
+        var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
+        if (string.IsNullOrEmpty(src?.Schema)) return "";
+        return SourceSchemaMember(obj, strategy, includeNames, role) is { } member
+            ? $", Schema = {member}"
+            : $", Schema = \"{src.Schema}\"";
     }
 
     /// <summary>

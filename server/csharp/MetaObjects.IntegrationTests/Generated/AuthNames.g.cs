@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class AuthNames
 {
-    public const string Kind = "table";
-    public const string Name = "auths";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Auth";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "auths";
 
     public const string IdField = "id";
     public const string IdColumn = "id";
@@ -20,6 +25,10 @@ public abstract class AuthNames
     public const string ReferenceColumn = "reference";
     public const string TypeField = "type";
     public const string TypeColumn = "type";
+
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

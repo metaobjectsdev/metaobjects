@@ -75,11 +75,16 @@ public class NamesExtendsChainTests
         Assert.Contains("public abstract class BaseEntityNames", src);
         Assert.Contains("public const string CreatedAtColumn = \"zz_made_at\";", src);
         Assert.Contains("public const string IdColumn = \"id\";", src);
-        // It declares no source. A `Name` here would be a physical name invented for an
-        // object that declares none — the phantom-table failure #248 exists to prevent.
-        Assert.DoesNotContain("public const string Name =", src);
-        Assert.DoesNotContain("public const string Kind =", src);
-        Assert.DoesNotContain("public const bool ReadOnly =", src);
+        // It declares no source, so it carries NO source member group. A physical name here
+        // would be one invented for an object that declares none — the phantom-table failure
+        // #248 exists to prevent.
+        Assert.DoesNotContain("SourcePrimary", src);
+        Assert.DoesNotContain("SourceReplica", src);
+        Assert.DoesNotContain("ReadOnly", src);
+        // A fragment still carries its OWN identity — type, subType and its object name —
+        // because those are facts about the node, not about a source it does not have.
+        Assert.Contains("public const string Type = \"object\";", src);
+        Assert.Contains("public const string Name = \"BaseEntity\";", src);
     }
 
     [Fact]
@@ -88,8 +93,13 @@ public class NamesExtendsChainTests
         var src = Generate()["AuthorNames.g.cs"];
         Assert.Contains("public abstract class AuthorNames : BaseEntityNames", src);
         Assert.Contains("public const string EmailColumn = \"zz_email_addr\";", src);
-        // Its own source, so its own physical name.
-        Assert.Contains("public const string Name = \"zz_authors\";", src);
+        // Its own source, so its own physical name — under the alias for its @kind.
+        Assert.Contains("public const string SourcePrimaryTable = \"zz_authors\";", src);
+        // Every artifact declares Type/SubType/Name of its own now, so a derived one HIDES
+        // three of its base's members. Without `new` that is CS0108 on every generated file
+        // with a base, and a generator that emits warnings trains a reader to ignore them.
+        Assert.Contains("public new const string Name = \"Author\";", src);
+        Assert.Contains("public new const string Type = \"object\";", src);
         // ...and NOT the inherited column, restated.
         Assert.DoesNotContain("zz_made_at", src);
     }
@@ -131,8 +141,10 @@ public class NamesExtendsChainTests
         {
             // An INHERITED const, reached through the base class.
             public const string A = AuthorNames.CreatedAtColumn;
-            // An inherited const from a TPH base, including the shared table name.
-            public const string B = CopayAuthNames.Name;
+            // An inherited const from a TPH base, including the shared table name. A TPH
+            // subtype declares no own source, so `SourcePrimaryTable` is the base's, reached
+            // through the base class — not restated here.
+            public const string B = CopayAuthNames.SourcePrimaryTable;
             public const string C = CopayAuthNames.CopayAmountColumn;
             // ColumnsByField stays COMPLETE on the subtype — it is the lookup surface, and a
             // miss on an inherited field is the fallback-to-literal this artifact removes.

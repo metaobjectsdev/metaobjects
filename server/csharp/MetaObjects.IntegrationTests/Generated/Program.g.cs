@@ -8,7 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(ProgramNames.Name)]
+[Table(ProgramNames.SourcePrimaryTable)]
 public class Program
 {
     public enum ProgramStatus { DRAFT, PUBLISHED, ARCHIVED }

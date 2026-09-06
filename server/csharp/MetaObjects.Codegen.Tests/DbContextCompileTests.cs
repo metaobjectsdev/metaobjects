@@ -197,7 +197,7 @@ public class DbContextCompileTests
         // IncludeNames: true comment claims: entity + DbContext + names compile
         // together WITH a real cross-reference between them, not merely alongside.
         var orderSrc = entityFiles.Single(f => f.Path == "Order.g.cs").Content;
-        Assert.Contains("[Table(OrderNames.Name)]", orderSrc);
+        Assert.Contains("[Table(OrderNames.SourcePrimaryTable)]", orderSrc);
         Assert.Contains("[Column(OrderNames.StatusColumn)]", orderSrc);
     }
 
@@ -289,7 +289,7 @@ public class DbContextCompileTests
 
         var ledger = entityFiles.Single(f => f.Path == "Ledger.g.cs").Content;
         Assert.DoesNotContain("LedgerNames", ledger);
-        Assert.DoesNotContain("[Table(LedgerNames.Name)]", ledger);
+        Assert.DoesNotContain("[Table(LedgerNames.SourcePrimaryTable)]", ledger);
         // #248 — a sourceless entity is not in the database, so it carries no [Table] at
         // all. It used to emit [Table("Ledger")]: a fabricated physical name for a table
         // no migration will ever create. Its SHAPE survives as an unmapped POCO.

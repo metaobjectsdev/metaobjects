@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class MeasurementNames
 {
-    public const string Kind = "table";
-    public const string Name = "measurements";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Measurement";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "measurements";
 
     public const string IdField = "id";
     public const string IdColumn = "id";
@@ -22,6 +27,10 @@ public abstract class MeasurementNames
     public const string PreciseKgColumn = "preciseKg";
     public const string TempCField = "tempC";
     public const string TempCColumn = "tempC";
+
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

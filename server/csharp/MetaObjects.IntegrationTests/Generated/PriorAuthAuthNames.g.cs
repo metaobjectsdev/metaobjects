@@ -10,6 +10,10 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class PriorAuthAuthNames : AuthNames
 {
+    public new const string Type = "object";
+    public new const string SubType = "entity";
+    public new const string Name = "PriorAuthAuth";
+
     public const string ApproverField = "approver";
     public const string ApproverColumn = "approver";
 

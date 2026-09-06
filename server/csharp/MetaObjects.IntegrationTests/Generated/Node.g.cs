@@ -8,7 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(NodeNames.Name)]
+[Table(NodeNames.SourcePrimaryTable)]
 public class Node
 {
     [Key]

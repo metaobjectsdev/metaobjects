@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class AssetNames
 {
-    public const string Kind = "table";
-    public const string Name = "assets";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Asset";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "assets";
 
     public const string AsOfDateField = "asOfDate";
     public const string AsOfDateColumn = "asOfDate";
@@ -30,6 +35,10 @@ public abstract class AssetNames
     public const string PayloadColumn = "payload";
     public const string RecordedAtField = "recordedAt";
     public const string RecordedAtColumn = "recordedAt";
+
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

@@ -47,7 +47,7 @@ public class ProjectionTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        // IncludeNames: true -- the ToView(...Names.Name) assertions below need the
+        // IncludeNames: true -- the ToView(...Names.SourcePrimaryView) assertions below need the
         // db-context generator to reference the names artifact; GenConfig.IncludeNames
         // defaults to false.
         Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
@@ -81,10 +81,11 @@ public class ProjectionTests
         var src = file.Content;
         Assert.Contains("protected override void OnModelCreating(ModelBuilder modelBuilder)", src);
         // keyed projection: ToView, no HasNoKey. §A6 (task 4) — references the
-        // projection's own <Name>Names.Name constant.
-        Assert.Contains("modelBuilder.Entity<ProgramSummary>().ToView(ProgramSummaryNames.Name);", src);
+        // projection's own <Name>Names.SourcePrimaryView constant -- the member is named for
+        // the source's @kind, so a view name cannot be read out of a table slot.
+        Assert.Contains("modelBuilder.Entity<ProgramSummary>().ToView(ProgramSummaryNames.SourcePrimaryView);", src);
         // keyless projection: HasNoKey + ToView
-        Assert.Contains("modelBuilder.Entity<TagCount>().HasNoKey().ToView(TagCountNames.Name);", src);
+        Assert.Contains("modelBuilder.Entity<TagCount>().HasNoKey().ToView(TagCountNames.SourcePrimaryView);", src);
     }
 
     [Fact]

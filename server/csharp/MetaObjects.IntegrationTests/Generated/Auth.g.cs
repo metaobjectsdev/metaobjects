@@ -8,7 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(AuthNames.Name)]
+[Table(AuthNames.SourcePrimaryTable)]
 public abstract class Auth
 {
     public enum AuthType { Bridge, Copay, PriorAuth }

@@ -1,9 +1,14 @@
 // NamesGeneratorTests — exercises the per-object physical database name constants
 // (spec A1/A2/A3/A6):
 //
-//  - const string members for kind/name/schema/readOnly + per-field Field/Column pairs,
-//    always both, so a Field/Column collision (createdAt/created_at) can never collapse
-//    to one constant.
+//  - The artifact MIRRORS THE METADATA TREE: the object's own type/subType/name, then one
+//    member group per source keyed by @role with the physical name under the alias for its
+//    @kind (SourcePrimaryTable / SourceReplicaView / SourcePrimaryProc), then per-field
+//    Field/Column pairs — always both, so a Field/Column collision (createdAt/created_at)
+//    can never collapse to one constant — then identities and indexes.
+//  - `ReadOnly` is GONE. It was never metadata: it is a derivation over @kind
+//    (MetaSource.IsReadOnly), and a sweep of all five ports found zero consumers. A reader
+//    who wants read-only-ness asks SourcePrimaryKind, which is what the author wrote.
 //  - An explicit @column always wins over the naming strategy — never a hand-rolled
 //    re-derivation. The model carries a field whose @column deliberately is NOT the
 //    snake_case of its name (callPurpose/purpose_code): without that field, neither arm
@@ -12,7 +17,9 @@
 //  - Schema line omitted (never emitted null) when undeclared, present when declared.
 //  - #248: an object with no primary source emits nothing — participation is never
 //    gated on the object subtype.
-//  - Two fields colliding on their Pascal member name is refused, naming the model.
+//  - Two nodes colliding on their constant member name is refused, naming BOTH nodes. The
+//    guard is over the artifact's whole emitted member set, not per-collection: four node
+//    kinds now share one flat namespace.
 //  - R-B/R-C: an object whose @role: primary sources disagree on a physical name
 //    (reachable via an abstract parent's own differently-named primary source plus a
 //    child's own, differently-named one — see MetaObjects.Meta.SourceResolution, which
@@ -84,9 +91,35 @@ public class NamesGeneratorTests
         // Abstract keeps the "never instantiate" guarantee; a const is still inherited, so
         // every consumption site is unchanged.
         Assert.Contains("public abstract class SubscriberNames", src);
-        Assert.Contains("public const string Kind = \"table\";", src);
-        Assert.Contains("public const string Name = \"subscribers\";", src);
-        Assert.Contains("public const bool ReadOnly = false;", src);
+
+        // The object's OWN identity. `Name` held the PHYSICAL name until 0.25.0 — the one
+        // change here a hand-written consumer adopts without a compile error, which is why
+        // it is asserted rather than assumed.
+        Assert.Contains("public const string Type = \"object\";", src);
+        Assert.Contains("public const string SubType = \"entity\";", src);
+        Assert.Contains("public const string Name = \"Subscriber\";", src);
+
+        // The source, under the role it plays, with the physical name under the alias for
+        // its @kind. `SubscriberNames.SourcePrimaryView` does not exist, and that is the
+        // point: the read site answers "table or view?" instead of the reader having to.
+        Assert.Contains("public const string SourcePrimaryType = \"source\";", src);
+        Assert.Contains("public const string SourcePrimarySubType = \"rdb\";", src);
+        Assert.Contains("public const string SourcePrimaryKind = \"table\";", src);
+        Assert.Contains("public const string SourcePrimaryTable = \"subscribers\";", src);
+        Assert.DoesNotContain("SourcePrimaryView", src);
+
+        // ReadOnly is not relocated — it is REMOVED. A derivation over @kind is not metadata,
+        // and an artifact that mirrors the tree carries what was declared.
+        Assert.DoesNotContain("ReadOnly", src);
+
+        // The identity, carrying its own type/subType/name. No `Index` member: no database
+        // name exists for a primary key to carry (migrate hardcodes <table>_pkey on Postgres
+        // and emits an unnamed PK on SQLite), and carrying one would restate a migrate-only
+        // dialect-conditional formula in the artifact built to stop exactly that.
+        Assert.Contains("public const string IdentityPrimaryType = \"identity\";", src);
+        Assert.Contains("public const string IdentityPrimarySubType = \"primary\";", src);
+        Assert.Contains("public const string IdentityPrimaryName = \"primary\";", src);
+        Assert.DoesNotContain("IdentityPrimaryIndex", src);
 
         // Both names, always, always distinguished. createdAt/created_at is the
         // collision that makes the pair non-optional.
@@ -118,7 +151,7 @@ public class NamesGeneratorTests
     [Fact]
     public void Schema_line_is_omitted_when_undeclared()
     {
-        Assert.DoesNotContain("public const string Schema", SubscriberSource());
+        Assert.DoesNotContain("Schema", SubscriberSource());
     }
 
     [Fact]
@@ -134,16 +167,16 @@ public class NamesGeneratorTests
         ]}}
         """;
         var src = Assert.Single(new NamesGenerator().Generate(Ctx(Load(model)))).Content;
-        Assert.Contains("public const string Schema = \"inventory\";", src);
+        Assert.Contains("public const string SourcePrimarySchema = \"inventory\";", src);
     }
 
     [Fact]
-    public void A_view_kind_source_is_read_only_and_keeps_its_own_kind()
+    public void A_view_kind_source_carries_its_name_under_the_view_alias()
     {
-        // resolveObjectNames dispatches on the primary source's kind, never the object
-        // subtype (#248) — a projection with a read-only primary source exercises the
-        // ReadOnly branch legally (FR-024/ADR-0028 requires an object.entity's primary
-        // source to be writable; a derived read model is an object.projection).
+        // ResolveObjectNames dispatches on the primary source's kind, never the object
+        // subtype (#248) — a projection with a read-only primary source is the legal way to
+        // reach a non-table kind (FR-024/ADR-0028 requires an object.entity's primary source
+        // to be writable; a derived read model is an object.projection).
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.projection": { "name": "Report", "children": [
@@ -153,9 +186,17 @@ public class NamesGeneratorTests
         ]}}
         """;
         var src = Assert.Single(new NamesGenerator().Generate(Ctx(Load(model)))).Content;
-        Assert.Contains("public const string Kind = \"view\";", src);
-        Assert.Contains("public const string Name = \"v_report\";", src);
-        Assert.Contains("public const bool ReadOnly = true;", src);
+        Assert.Contains("public const string SourcePrimaryKind = \"view\";", src);
+        // Under the VIEW alias, not a generic `Name` — the member says what the physical
+        // name IS. One key called `Name` used to hold a table, a view and a stored procedure
+        // in the same run, told apart only by a sibling `Kind`.
+        Assert.Contains("public const string SourcePrimaryView = \"v_report\";", src);
+        Assert.DoesNotContain("SourcePrimaryTable", src);
+        // `Name` is now the OBJECT's name, which is the change a hand-written consumer
+        // adopts silently: it still compiles and binds something else.
+        Assert.Contains("public const string Name = \"Report\";", src);
+        // Read-only-ness is derived from Kind, and no longer carried.
+        Assert.DoesNotContain("ReadOnly", src);
     }
 
     [Fact]
@@ -167,6 +208,84 @@ public class NamesGeneratorTests
         var files = new NamesGenerator().Generate(Ctx(Load(SubscriberModel))).ToList();
         var file = Assert.Single(files);
         Assert.Equal("SubscriberNames.g.cs", file.Path);
+    }
+
+    [Fact]
+    public void Two_identities_colliding_on_their_member_form_is_refused_naming_BOTH_nodes()
+    {
+        // An identity/index name is AUTHOR-CHOSEN and snake_case by convention, so it takes a
+        // real segment-splitting Pascal conversion (`uq_cust_email` -> `UqCustEmail`) rather
+        // than CSharpNaming.Pascal, which only upper-cases the first character. That
+        // conversion is many-to-one: `uq_cust_email` and `uqCustEmail` are two distinct, legal
+        // metamodel names that yield ONE constant. Refused here, naming both NODE PATHS, so
+        // the message points at the model rather than at a generated file.
+        //
+        // Fields have had this guard since the artifact existed; identities and indexes
+        // acquired the exposure in 0.25.0 when they acquired members, and the guard was
+        // widened to the artifact's whole emitted set in the same change — never
+        // per-collection, because C# consts share ONE flat namespace per class and because
+        // the set has to span the inheritance boundary (a derived `const` HIDES the base's
+        // rather than clashing, so the compiler would not catch it either).
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Cust", "children": [
+            { "source.rdb": { "@table": "custs" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "email" } },
+            { "field.string": { "name": "alt" } },
+            { "identity.primary":   { "name": "pk", "@fields": ["id"] } },
+            { "identity.secondary": { "name": "uq_cust_email", "@fields": ["email"] } },
+            { "identity.secondary": { "name": "uqCustEmail",   "@fields": ["alt"] } }
+          ]}}
+        ]}}
+        """;
+        // The loader is fine with it — the two names are distinct. If it were not, this test
+        // would be asserting the loader's rule rather than the artifact's.
+        var root = Load(model);
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => new NamesGenerator().Generate(Ctx(root)).ToList());
+        Assert.Contains("Cust", ex.Message);
+        Assert.Contains("identity.secondary \"uq_cust_email\"", ex.Message);
+        Assert.Contains("identity.secondary \"uqCustEmail\"", ex.Message);
+        Assert.Contains("UqCustEmail", ex.Message);
+    }
+
+    [Fact]
+    public void An_identity_and_an_index_sharing_a_name_do_NOT_collide_because_of_the_TYPE_prefix()
+    {
+        // The counterpart, and the reason the type prefix is in the member form at all. An
+        // `identity.secondary` and an `index.lookup` may legally carry names that Pascalize
+        // identically; `Identity`/`Index` keeps them apart, so a model with nothing wrong in
+        // it is not refused by a guard meant for a different problem.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Cust", "children": [
+            { "source.rdb": { "@table": "custs" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "email" } },
+            { "identity.primary":   { "name": "pk", "@fields": ["id"] } },
+            { "identity.secondary": { "name": "uq_cust_email", "@fields": ["email"] } },
+            { "index.lookup":       { "name": "uqCustEmail",   "@fields": ["email"] } }
+          ]}}
+        ]}}
+        """;
+        var src = Assert.Single(new NamesGenerator().Generate(Ctx(Load(model)))).Content;
+        Assert.Contains("public const string IdentityUqCustEmailIndex = \"uq_cust_email\";", src);
+        Assert.Contains("public const string IndexUqCustEmailIndex = \"uqCustEmail\";", src);
+    }
+
+    [Fact]
+    public void The_type_prefix_keeps_an_unnamed_primary_key_off_the_primary_ROLE_members()
+    {
+        // Load-bearing, not decoration. `identity.primary`'s loader defaultName is "primary"
+        // (spec/metamodel/identity.json), and a source's default @role is "primary" too — so
+        // an unnamed primary key and the primary source share a key. The TYPE prefix is what
+        // separates them; without it BOTH would want `PrimaryType`/`PrimarySubType`, and the
+        // collision guard above would (correctly) refuse a model with nothing wrong in it.
+        var src = SubscriberSource();
+        Assert.Contains("public const string SourcePrimaryType = \"source\";", src);
+        Assert.Contains("public const string IdentityPrimaryType = \"identity\";", src);
+        Assert.Contains("public const string IdentityPrimaryName = \"primary\";", src);
     }
 
     [Fact]
@@ -291,7 +410,20 @@ public class NamesGeneratorTests
         """;
         var root = Load(model);
         var child = root.Objects().Single(o => o.Name == "ChildSame");
-        Assert.Equal("same_table", CSharpNaming.ResolveObjectNames(child)!.Name);
+        var names = CSharpNaming.ResolveObjectNames(child)!;
+        // `Name` is the OBJECT's name since 0.25.0; the physical one lives under the role.
+        Assert.Equal("ChildSame", names.Name);
+        Assert.Equal("same_table", names.Sources["primary"].PhysicalName);
+        Assert.Equal("table", names.Sources["primary"].PhysicalNameAlias);
+
+        // The role-keyed shape gives this its OWN way to be too strict, and this is the arm
+        // that catches it: keying by @role means two primaries land on ONE key, so a naive
+        // "already present ⇒ refuse" would convict a shape the toolchain sanctions. The
+        // artifact compares the resolved SourceNames instead — the same DISAGREEMENT rule
+        // SourceResolution already enforces, not a stricter one invented here.
+        var src = new NamesGenerator().Generate(Ctx(root))
+            .Single(f => f.Path == "ChildSameNames.g.cs").Content;
+        Assert.Contains("public new const string SourcePrimaryTable = \"same_table\";", src);
     }
 
     // -------------------------------------------------------------------------
@@ -305,7 +437,7 @@ public class NamesGeneratorTests
         var ctx = Ctx(Load(SubscriberModel));
         var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "Subscriber.g.cs").Content;
 
-        Assert.Contains("[Table(SubscriberNames.Name)]", src);
+        Assert.Contains("[Table(SubscriberNames.SourcePrimaryTable)]", src);
         Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", src);
         Assert.Contains("[Column(SubscriberNames.CallPurposeColumn)]", src);
         Assert.Contains("[Column(SubscriberNames.IdColumn)]", src);
@@ -372,7 +504,7 @@ public class NamesGeneratorTests
 
         // Projection .ToView — the unconditional [Table]-shaped substitution (keyless:
         // CustomerSummary declares no identity, so .HasNoKey() precedes it).
-        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(CustomerSummaryNames.Name);", dbContext);
+        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(CustomerSummaryNames.SourcePrimaryView);", dbContext);
         Assert.DoesNotContain("ToView(\"v_customer_summary\")", dbContext);
 
         // Object-typed field .ToJson — the owner's own field, always present.
@@ -563,7 +695,7 @@ public class NamesGeneratorTests
         // The constant-reference spelling this replaces -- GONE, not merely joined by
         // the literal. A generator emitting both would satisfy every Contains above.
         Assert.DoesNotContain("SubscriberNames", src);
-        Assert.DoesNotContain("[Table(SubscriberNames.Name)]", src);
+        Assert.DoesNotContain("[Table(SubscriberNames.SourcePrimaryTable)]", src);
         Assert.DoesNotContain("[Column(SubscriberNames.CreatedAtColumn)]", src);
         Assert.DoesNotContain("[Column(SubscriberNames.CallPurposeColumn)]", src);
         Assert.DoesNotContain("[Column(SubscriberNames.IdColumn)]", src);
@@ -622,7 +754,7 @@ public class NamesGeneratorTests
 
         Assert.DoesNotContain("CustomerSummaryNames", dbContext);
         Assert.DoesNotContain("CustomerNames", dbContext);
-        Assert.DoesNotContain("ToView(CustomerSummaryNames.Name)", dbContext);
+        Assert.DoesNotContain("ToView(CustomerSummaryNames.SourcePrimaryView)", dbContext);
         Assert.DoesNotContain("b.ToJson(CustomerNames.ConfigColumn)", dbContext);
     }
 

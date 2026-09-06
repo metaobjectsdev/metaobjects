@@ -10,14 +10,29 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class PostTagNames
 {
-    public const string Kind = "table";
-    public const string Name = "post_tags";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "PostTag";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "post_tags";
 
     public const string PostIdField = "postId";
     public const string PostIdColumn = "postId";
     public const string TagIdField = "tagId";
     public const string TagIdColumn = "tagId";
+
+    public const string IdentityFkPostType = "identity";
+    public const string IdentityFkPostSubType = "reference";
+    public const string IdentityFkPostName = "fkPost";
+    public const string IdentityFkTagType = "identity";
+    public const string IdentityFkTagSubType = "reference";
+    public const string IdentityFkTagName = "fkTag";
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

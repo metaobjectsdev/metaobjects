@@ -151,7 +151,7 @@ public class ObjectFieldCodegenTests
             .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
         // `tags` is the THIRD value-object field (after homeAddress and config), hence __clearVo2.
         Assert.Contains(
-            "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"\" + CustomerNames.Name + " +
+            "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"\" + CustomerNames.SourcePrimaryTable + " +
             "\"\\\" SET \\\"\" + CustomerNames.TagsColumn + \"\\\" = NULL WHERE \\\"\" + CustomerNames.IdColumn + \"\\\" = {0}\", id);",
             routes);
         // The needle is the ESCAPED form as it appears in the emitted C# source — `\"customers\"`

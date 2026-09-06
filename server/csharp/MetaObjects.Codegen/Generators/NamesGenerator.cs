@@ -3,6 +3,19 @@
 // constants (spec A1/A2/A6) a hand-written consumer references instead of a string
 // literal.
 //
+// The artifact MIRRORS THE METADATA TREE. Every node it describes — the object, each
+// source, each identity, each index — carries its own `type`, `subType` and `name`, and a
+// physical name sits under the member that says what it IS: `SourcePrimaryTable`,
+// `SourceReplicaView`, `SourcePrimaryProc`, using PHYSICAL_NAME_ATTR_BY_KIND, the
+// metamodel's own FR-016/ADR-0018 alias map. Before 0.25.0 one member called `Name` held a
+// table, a view and a stored procedure in the same run, told apart only by a sibling
+// `Kind`, and in none of them did it hold the object's own name.
+//
+// Fields are the ONE node kind that keeps a bare `<Pascal>Field`/`<Pascal>Column` pair,
+// and the asymmetry is deliberate: a field's subType does not change what `Column`
+// denotes, while an object's subType decides table-vs-view and an identity's decides
+// unique-vs-not (ADR-0040 put uniqueness in the type).
+//
 // const, not static readonly: a [Table("...")]/[Column("...")] attribute argument
 // requires a compile-time constant, and those two sites are the whole reason this
 // artifact can replace a literal rather than sit beside one. ColumnsByField is
@@ -11,6 +24,7 @@
 
 using System.Text;
 using MetaObjects.Meta;
+using static MetaObjects.Persistence.Source.SourceConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -68,48 +82,157 @@ public sealed class NamesGenerator : PerEntityGenerator
             $"{entity.Name}: Filter() matched (a primary source exists) but ResolveObjectNames " +
             "returned null.");
 
+    /// <summary>One emitted constant: its member name, its declaration body, and the metadata
+    /// node it came from (named in the collision refusal, so a failure points at the model).</summary>
+    private readonly record struct Member(string Name, string Decl, string NodePath);
+
+    private static Member Str(string name, string value, string nodePath) =>
+        new(name, $"const string {name} = \"{value}\";", nodePath);
+
+    /// <summary>
+    /// Every constant an artifact declares, in emission order, grouped so the emitter can
+    /// separate the groups with blank lines.
+    /// <para><paramref name="ownOnly"/> selects what a class with a BASE declares — its own
+    /// members, the rest reached through C# inheritance. Without a base every member must be
+    /// here: a consumer looks a column up by field name, and an inherited miss falls back to
+    /// a literal, which is the defect the artifact exists to remove.</para>
+    /// <para>The SOURCE group needs no <c>InheritsSource</c> test: a TPH subtype declares no
+    /// own source, so its <c>OwnSources</c> is empty and base-class inheritance carries the
+    /// base's <c>SourcePrimaryTable</c> down. The structural fact and the emission rule are
+    /// the same fact, read once.</para>
+    /// </summary>
+    private static List<List<Member>> MemberGroups(ObjectNames n, bool ownOnly)
+    {
+        var groups = new List<List<Member>>();
+
+        // The object's own identity. `Name` is the METAMODEL name — it held the physical name
+        // until 0.25.0, and that member changing meaning without changing shape is the one
+        // thing here a hand-written consumer adopts without a compile error.
+        groups.Add(
+        [
+            Str(CSharpNaming.Pascal(CSharpNaming.MEMBER_TYPE), n.Type, "object"),
+            Str(CSharpNaming.Pascal(CSharpNaming.MEMBER_SUB_TYPE), n.SubType, "object"),
+            Str(CSharpNaming.Pascal(CSharpNaming.MEMBER_NAME), n.Name, "object"),
+        ]);
+
+        var sources = ownOnly ? n.OwnSources : n.Sources;
+        var sourceMembers = new List<Member>();
+        foreach (var role in sources.Keys.OrderBy(k => k, StringComparer.Ordinal))
+        {
+            var src = sources[role];
+            var path = $"source @role \"{role}\"";
+            string M(string member) => CSharpNaming.SourceMemberName(role, member);
+            sourceMembers.Add(Str(M(CSharpNaming.MEMBER_TYPE), src.Type, path));
+            sourceMembers.Add(Str(M(CSharpNaming.MEMBER_SUB_TYPE), src.SubType, path));
+            sourceMembers.Add(Str(M(CSharpNaming.MEMBER_KIND), src.Kind, path));
+            // Omitted, never emitted as null: absent means undeclared, and a `null` constant
+            // would read as "declared empty".
+            if (!string.IsNullOrEmpty(src.Schema))
+                sourceMembers.Add(Str(M(SOURCE_ATTR_SCHEMA), src.Schema, path));
+            if (src.PhysicalNameAlias is { } alias && src.PhysicalName is { } physical)
+                sourceMembers.Add(Str(M(alias), physical, path));
+        }
+        groups.Add(sourceMembers);
+
+        var fields = ownOnly ? n.OwnFields : n.Fields;
+        var fieldMembers = new List<Member>();
+        foreach (var f in fields.Values.OrderBy(v => v.Name, StringComparer.Ordinal))
+        {
+            var path = $"field \"{f.Name}\"";
+            fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_FIELD), f.Name, path));
+            fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN), f.Column, path));
+        }
+        groups.Add(fieldMembers);
+
+        foreach (var keys in new[]
+                 {
+                     ownOnly ? n.OwnIdentities : n.Identities,
+                     ownOnly ? n.OwnIndexes : n.Indexes,
+                 })
+        {
+            var keyMembers = new List<Member>();
+            foreach (var k in keys.Values.OrderBy(v => v.Name, StringComparer.Ordinal))
+            {
+                var path = $"{k.Type}.{k.SubType} \"{k.Name}\"";
+                string M(string member) => CSharpNaming.KeyMemberName(k.Type, k.Name, member);
+                keyMembers.Add(Str(M(CSharpNaming.MEMBER_TYPE), k.Type, path));
+                keyMembers.Add(Str(M(CSharpNaming.MEMBER_SUB_TYPE), k.SubType, path));
+                keyMembers.Add(Str(M(CSharpNaming.MEMBER_NAME), k.Name, path));
+                if (k.Index is { } index)
+                    keyMembers.Add(Str(M(CSharpNaming.MEMBER_INDEX), index, path));
+            }
+            groups.Add(keyMembers);
+        }
+
+        return groups;
+    }
+
+    /// <summary>
+    /// The member names this artifact's BASE CLASS CHAIN already declares — what a member
+    /// emitted here would HIDE, so it is emitted with <c>new</c>.
+    /// <para>Not cosmetic: every artifact now declares <c>Type</c>/<c>SubType</c>/<c>Name</c>
+    /// of its own, so every derived one hides three of its base's members (CS0108). A
+    /// generator that emits warnings trains a reader to ignore them.</para>
+    /// </summary>
+    private static HashSet<string> InheritedMembers(MetaObject obj, ColumnNamingStrategy strategy)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        for (var sup = CSharpNaming.NamesArtifactSuperOf(obj); sup is not null;
+             sup = CSharpNaming.NamesArtifactSuperOf(sup))
+        {
+            // The SAME fragment rule Generate() uses: pass 1 emits a participant with its
+            // sources, pass 2 emits everything above it as a fragment. A super that resolves
+            // object names IS a participant.
+            var names = CSharpNaming.ResolveObjectNames(sup, strategy)
+                        ?? CSharpNaming.ResolveSuperFragmentNames(sup, strategy);
+            if (names is null) continue;
+            var supOwnOnly = CSharpNaming.NamesArtifactSuperOf(sup) is not null;
+            foreach (var m in MemberGroups(names, supOwnOnly).SelectMany(g => g)) set.Add(m.Name);
+        }
+        return set;
+    }
+
     private static EmittedFile? Render(MetaObject entity, GenContext ctx, bool fragment)
     {
         var cls = CSharpNaming.NamesClassName(entity);
+        var strategy = ctx.Config.ColumnNamingStrategy;
 
         // A3: the SAME resolver the EF Core bindings are meant to call, with the same
         // arguments, in the same run — CSharpNaming.ResolveObjectNames (beside
         // NamesClassName) is the ONE place a data name is resolved.
         var names = fragment
-            ? CSharpNaming.ResolveSuperFragmentNames(entity, ctx.Config.ColumnNamingStrategy)
-            : CSharpNaming.ResolveObjectNames(entity, ctx.Config.ColumnNamingStrategy);
+            ? CSharpNaming.ResolveSuperFragmentNames(entity, strategy)
+            : CSharpNaming.ResolveObjectNames(entity, strategy);
         if (names is null) return null;
 
-        // The class DECLARES only its own columns when it has a base to inherit the rest
-        // from; without one it must declare every field it describes, because a consumer
-        // looks a column up by field name and an inherited one has to be there.
         var superCls = names.SuperNames is null
             ? null
             : CSharpNaming.NamesClassName(names.SuperNames.Name);
-        var rows = superCls is null ? names.Fields : names.OwnFields;
 
-        var fields = rows.Values
-            .Select(f => (Member: CSharpNaming.Pascal(f.Name), f.Name, f.Column))
-            .OrderBy(t => t.Name, StringComparer.Ordinal)
-            .ToList();
-
-        // Two fields whose Pascal forms collide would emit duplicate const members.
-        // C# would refuse to compile it, but the error would name a generated file and
-        // read as a codegen bug rather than a model one. Fail here, naming the model.
+        // The collision guard runs over the WHOLE effective member set, never just what this
+        // class declares, and never per-collection. Two reasons, and both were paid for:
         //
-        // Checked over the WHOLE field set, never just what this class declares: once a
-        // child stopped restating its inherited constants, an own-only check could no
-        // longer see a collision that spans the inheritance boundary — and the compiler
-        // would not catch it either, because a derived `const` HIDES the base's rather than
-        // clashing with it. The file would compile while ColumnsByField mapped the
-        // inherited field name to the child's column.
-        var dupe = names.Fields.Values
-            .Select(f => (Member: CSharpNaming.Pascal(f.Name), f.Name))
-            .GroupBy(t => t.Member).FirstOrDefault(g => g.Count() > 1);
-        if (dupe is not null)
-            throw new InvalidOperationException(
-                $"{entity.Name}: fields {string.Join(", ", dupe.Select(d => d.Name).OrderBy(n => n, StringComparer.Ordinal))} all yield the " +
-                $"constant member \"{dupe.Key}\". Rename one, or give it an explicit @column.");
+        //  - Once a child stopped restating its inherited constants, an own-only check could
+        //    no longer see a collision that spans the inheritance boundary — and the compiler
+        //    would not catch it either, because a derived `const` HIDES the base's rather than
+        //    clashing with it. The file would compile while ColumnsByField mapped the
+        //    inherited field name to the child's column.
+        //  - Per-collection is not enough now that four node kinds share one flat member
+        //    namespace: `uq_cust_email` (an identity) and `uqCustEmail` (an index) yield the
+        //    same member from different collections, and one would silently overwrite the
+        //    other.
+        var byMember = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var m in MemberGroups(names, ownOnly: false).SelectMany(g => g))
+        {
+            if (byMember.TryGetValue(m.Name, out var first))
+                throw new InvalidOperationException(
+                    $"{entity.Name}: {first} and {m.NodePath} both yield the constant member " +
+                    $"\"{m.Name}\". Rename one, or give it an explicit @column.");
+            byMember[m.Name] = m.NodePath;
+        }
+
+        var inherited = InheritedMembers(entity, strategy);
+        var groups = MemberGroups(names, ownOnly: superCls is not null);
 
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated/>");
@@ -136,26 +259,12 @@ public sealed class NamesGenerator : PerEntityGenerator
         var extends = superCls is null ? "" : $" : {superCls}";
         sb.AppendLine($"public abstract class {cls}{extends}");
         sb.AppendLine("{");
-        // A fragment has no source, so no Kind/Name/Schema/ReadOnly — it must never acquire
-        // a physical name it never declared. A TPH subtype INHERITS its base's source, so
-        // those four come from the base class rather than being restated here.
-        if (!fragment && !names.InheritsSource)
+        foreach (var group in groups.Where(g => g.Count > 0))
         {
-        sb.AppendLine($"    public const string Kind = \"{names.Kind}\";");
-        sb.AppendLine($"    public const string Name = \"{names.Name}\";");
-        // Omitted, never emitted as null: absent means undeclared, and a `null` constant
-        // would read as "declared empty".
-        if (!string.IsNullOrEmpty(names.Schema))
-            sb.AppendLine($"    public const string Schema = \"{names.Schema}\";");
-        sb.AppendLine($"    public const bool ReadOnly = {(names.ReadOnly == true ? "true" : "false")};");
-        sb.AppendLine();
+            foreach (var m in group)
+                sb.AppendLine($"    public {(inherited.Contains(m.Name) ? "new " : "")}{m.Decl}");
+            sb.AppendLine();
         }
-        foreach (var (member, field, column) in fields)
-        {
-            sb.AppendLine($"    public const string {member}Field = \"{field}\";");
-            sb.AppendLine($"    public const string {member}Column = \"{column}\";");
-        }
-        sb.AppendLine();
         // ColumnsByField stays COMPLETE — every field, inherited included — because it is
         // the lookup surface, and a miss on an inherited field is exactly the fallback-to-
         // literal this artifact removes. It repeats no LITERAL: an inherited entry's value
@@ -166,7 +275,7 @@ public sealed class NamesGenerator : PerEntityGenerator
         sb.AppendLine($"    public static {hides}readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)");
         sb.AppendLine("    {");
         foreach (var f in names.Fields.Values.OrderBy(v => v.Name, StringComparer.Ordinal))
-            sb.AppendLine($"        [\"{f.Name}\"] = {CSharpNaming.Pascal(f.Name)}Column,");
+            sb.AppendLine($"        [\"{f.Name}\"] = {CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN)},");
         sb.AppendLine("    };");
         sb.AppendLine("}");
 

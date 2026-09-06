@@ -52,7 +52,7 @@ public class WriteThroughTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        // IncludeNames: true -- the [Table(OrderNames.Name)]/[Table(CustomerNames.Name)]
+        // IncludeNames: true -- the [Table(OrderNames.SourcePrimaryTable)] assertions
         // assertions below need the entity to reference the names artifact;
         // GenConfig.IncludeNames defaults to false.
         Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
@@ -87,7 +87,7 @@ public class WriteThroughTests
     public void Write_entity_maps_table_and_excludes_derived_field()
     {
         var src = Src(new EntityGenerator().Generate(Ctx(Load())), "Order.g.cs");
-        Assert.Contains("[Table(OrderNames.Name)]", src); // §A6 (task 4)
+        Assert.Contains("[Table(OrderNames.SourcePrimaryTable)]", src); // §A6 (task 4)
         Assert.Contains("public class Order", src);
         Assert.Contains("public long Id { get; set; }", src);
         Assert.Contains("public long CustomerId { get; set; }", src);
@@ -118,10 +118,14 @@ public class WriteThroughTests
         // The write entity is a normal table DbSet; the read model a view DbSet.
         Assert.Contains("public DbSet<Order> Orders { get; set; }", src);
         Assert.Contains("public DbSet<OrderView> OrderViews { get; set; }", src);
-        // The read model maps to the replica view (keyed → no HasNoKey). §A6 (task 4)
-        // deliberately does NOT convert this one: <Entity>Names.Name is the PRIMARY
-        // source's name (the table); the replica view has no constant of its own.
-        Assert.Contains("modelBuilder.Entity<OrderView>().ToView(\"v_order_with_customer\");", src);
+        // The read model maps to the replica view (keyed → no HasNoKey), through a CONSTANT
+        // since 0.25.0. This line was the last literal in AppDbContext, and it was booked as
+        // structural: <Entity>Names carried the PRIMARY source's name only, so a write-through
+        // entity's two physical names had one slot between them. Keying the artifact's sources
+        // by @role gave the replica a home, and the member is named for its @kind, so the read
+        // site says "this is a view" without a second lookup.
+        Assert.Contains("modelBuilder.Entity<OrderView>().ToView(OrderNames.SourceReplicaView);", src);
+        Assert.DoesNotContain("\"v_order_with_customer\"", src);
         Assert.DoesNotContain("modelBuilder.Entity<OrderView>().HasNoKey()", src);
     }
 
@@ -173,7 +177,7 @@ public class WriteThroughTests
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var customer = Src(files, "Customer.g.cs");
-        Assert.Contains("[Table(CustomerNames.Name)]", customer); // §A6 (task 4)
+        Assert.Contains("[Table(CustomerNames.SourcePrimaryTable)]", customer); // §A6 (task 4)
         // No view read model is emitted for a plain entity.
         Assert.DoesNotContain(files, f => f.Path == "CustomerView.g.cs");
         var dbctx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;

@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class AllTypesNames
 {
-    public const string Kind = "table";
-    public const string Name = "all_types";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "AllTypes";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "all_types";
 
     public const string BValField = "bVal";
     public const string BValColumn = "bVal";
@@ -56,6 +61,10 @@ public abstract class AllTypesNames
     public const string UriValColumn = "uriVal";
     public const string UuidValField = "uuidVal";
     public const string UuidValColumn = "uuidVal";
+
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

@@ -51,7 +51,7 @@ rejected (exit 2).
 | `FromSqlInterpolated(` outside `.g.cs` | stored-proc call — candidate for the `callable` generator |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `HasPrecision(` hand-coded | `field.decimal` with `@precision`/`@scale` drives this from the `entity` generator |
-| a table/column string in raw-SQL EF calls, or `nameof(Entity.Prop)` standing in for a column | second spelling of a declared physical name — reference `<Entity>Names.g.cs` (`AuthorNames.Name` / `<Field>Column`, default suite); an EF property inside LINQ is the typed handle — correct |
+| a table/column string in raw-SQL EF calls, or `nameof(Entity.Prop)` standing in for a column | second spelling of a declared physical name — reference `<Entity>Names.g.cs` (`AuthorNames.SourcePrimaryTable` / `<Field>Column`, default suite — `Names.Name` is the OBJECT's name, not the table); an EF property inside LINQ is the typed handle — correct |
 
 ---
 

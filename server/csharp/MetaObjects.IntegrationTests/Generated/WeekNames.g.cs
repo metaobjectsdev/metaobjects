@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class WeekNames
 {
-    public const string Kind = "table";
-    public const string Name = "weeks";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Week";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "weeks";
 
     public const string DurationMinutesField = "durationMinutes";
     public const string DurationMinutesColumn = "durationMinutes";
@@ -22,6 +27,13 @@ public abstract class WeekNames
     public const string LabelColumn = "label";
     public const string ProgramIdField = "programId";
     public const string ProgramIdColumn = "programId";
+
+    public const string IdentityFkProgramType = "identity";
+    public const string IdentityFkProgramSubType = "reference";
+    public const string IdentityFkProgramName = "fkProgram";
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

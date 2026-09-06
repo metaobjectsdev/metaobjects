@@ -114,16 +114,25 @@ database names for one object as `const string`s:
 
 ```csharp
 // SubscriberNames.g.cs (using/namespace elided)
-public static class SubscriberNames
+public abstract class SubscriberNames
 {
-    public const string Kind = "table";
-    public const string Name = "subscribers";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Subscriber";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "subscribers";
 
     public const string CreatedAtField = "createdAt";
     public const string CreatedAtColumn = "created_at";
     public const string IdField = "id";
     public const string IdColumn = "id";
+
+    public const string IdentityPrimaryType = "identity";
+    public const string IdentityPrimarySubType = "primary";
+    public const string IdentityPrimaryName = "primary";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {
@@ -133,11 +142,34 @@ public static class SubscriberNames
 }
 ```
 
+**The artifact mirrors the metadata tree.** Every node it describes — the object, each
+`source.rdb`, each identity, each index — carries its own `Type`, `SubType` and `Name`,
+and a physical name sits under the member that says what it IS:
+`SourcePrimaryTable`, `SourceReplicaView`, `SourcePrimaryProc`, using the metamodel's own
+FR-016/ADR-0018 kind→alias map. `SubscriberNames.SourcePrimaryView` does not exist, so
+the read site answers "table or view?" instead of the reader having to. Sources are keyed
+by `@role`, which is what gives a **write-through** entity's replica view a member of its
+own (`SourceReplicaView`) — it declares two physical names and the artifact used to carry
+one.
+
+> **`Name` changed meaning in 0.25.0 and still compiles.** It held the PHYSICAL name; it
+> now holds the object's own name. `[Table(SubscriberNames.Name)]` in hand-written code
+> binds a table called `Subscriber` instead of `subscribers` — silently. `Kind`, `ReadOnly`
+> and a top-level `Schema` are gone and fail to compile, which is the loud half. Grep for
+> `Names.Name` before regenerating. `ReadOnly` is not relocated but REMOVED: it was never
+> metadata, only a derivation over `@kind` — ask `SourcePrimaryKind` instead.
+
+An identity or index carries an `Index` member — its DATABASE name — only where one
+exists: `identity.secondary` and `index.lookup`. An `identity.primary` gets none, because
+no port's codegen names a primary key (Postgres migrations hardcode `<table>_pkey`, SQLite
+emits an unnamed PK), and carrying that would restate a migrate-only formula in the
+artifact built to stop exactly that.
+
 `const`, not `static readonly`: a `[Table("...")]`/`[Column("...")]` attribute
 argument must be a compile-time constant, and those two attributes are the
 whole reason this artifact can replace a literal there rather than sit beside
 one. The generated entity class and `AppDbContext` already reference these
-constants — `[Table(SubscriberNames.Name)]`, `[Column(SubscriberNames.CreatedAtColumn)]`
+constants — `[Table(SubscriberNames.SourcePrimaryTable)]`, `[Column(SubscriberNames.CreatedAtColumn)]`
 — instead of embedding the same physical names a second time, so the constant
 and the EF mapping cannot drift apart.
 
@@ -164,16 +196,23 @@ public abstract class CopayAuthNames : AuthNames
 {
     public const string CopayAmountField = "copayAmount";
     public const string CopayAmountColumn = "copay_cents";
-    // Kind / Name / ReadOnly / IdColumn / … are the base's. A C# const is inherited, so
-    // CopayAuthNames.Name and CopayAuthNames.IdColumn both resolve.
+    public new const string Type = "object";
+    public new const string SubType = "entity";
+    public new const string Name = "CopayAuth";
+    // SourcePrimaryTable / IdColumn / … are the base's. A C# const is inherited, so
+    // CopayAuthNames.SourcePrimaryTable and CopayAuthNames.IdColumn both resolve.
 }
 ```
 
+`new` on `Type`/`SubType`/`Name` because every artifact declares its own three and a derived
+`const` hides the base's rather than clashing with it.
+
 Two forms, and which one you get is structural. An object with its OWN source declares its
-own `Kind`/`Name`/`Schema`/`ReadOnly`; one that INHERITS its source — a TPH subtype sharing
-its base's single table — takes all of them from the base. An abstract base a persisted
-entity extends gets a class of its own carrying the columns it declares and **no `Name`** —
-it has no table. `ColumnsByField` stays complete on every class, inherited entries included.
+own `Source<Role>*` members; one that INHERITS its source — a TPH subtype sharing its base's
+single table — declares none and takes them from the base. An abstract base a persisted
+entity extends gets a class of its own carrying the columns it declares and **no source
+members at all** — it has no table and must never acquire one. `ColumnsByField` stays
+complete on every class, inherited entries included.
 
 The default column-naming strategy is `literal` here (unlike TypeScript's
 `snake_case`) — see the "Column naming" section of

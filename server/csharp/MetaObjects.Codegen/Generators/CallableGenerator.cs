@@ -5,7 +5,8 @@
 //
 // Two emitted forms, decided by whether the `names` generator is part of this run
 // (ctx.Config.IncludeNames — ADR-0034's opt-in arm):
-//   • names ON  — the procedure's name is REFERENCED (`<Entity>Names.Name`), spliced into a
+//   • names ON  — the procedure's name is REFERENCED (`<Entity>Names.SourcePrimaryProc`, or
+//     `…Function` for a tableFunction — the member is named for the source's @kind), spliced into a
 //     FromSqlRaw string with `{n}` placeholders for the arguments. It has to be raw: a
 //     FromSqlInterpolated hole binds a PARAMETER, and an identifier cannot be one — the C#
 //     analogue of the drizzle `sql.raw` the TS reference uses for the same reason.
@@ -53,20 +54,29 @@ public class CallableGenerator : PerEntityGenerator
         var schemaPrefix = string.IsNullOrEmpty(source.Schema) ? "" : $"{source.Schema}.";
         var procName = $"{schemaPrefix}{physical}";
 
-        // §A6 — the names class to reference for the procedure's name, or null for the
-        // literal arm (see the file header). The @schema half used to stay a spelled literal
-        // on BOTH arms while <Entity>Names.Schema sat right there unread, on the grounds that
-        // schema qualification was "being ruled on separately". It has been: every port now
-        // qualifies, so this reads the constant like everything else. The prefix expression
-        // below is therefore an EXPRESSION, not a string — on the names arm it concatenates
-        // the constant, on the literal arm it is the spelled schema, and both produce the
-        // same SQL.
-        var namesCls = CSharpNaming.NamesClassIfReferenced(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+        // §A6 — the constant members to reference for the procedure's name and schema, or
+        // null for the literal arm (see the file header). The @schema half used to stay a
+        // spelled literal on BOTH arms while the artifact's schema constant sat right there
+        // unread, on the grounds that schema qualification was "being ruled on separately".
+        // It has been: every port now qualifies, so this reads the constant like everything
+        // else. The prefix expression below is therefore an EXPRESSION, not a string — on the
+        // names arm it concatenates the constant, on the literal arm it is the spelled
+        // schema, and both produce the same SQL.
+        //
+        // The ROLE is the callable source's own, never a hardcoded "primary": the source was
+        // already selected by CallableSource above, and asking it which role it plays is one
+        // selection rather than two that agree until they do not. Since 0.25.0 the physical
+        // name lives under the alias for its @kind — SourcePrimaryProc for a storedProc,
+        // SourcePrimaryFunction for a tableFunction — so the emitted member says WHAT it is.
+        var strategy = ctx.Config.ColumnNamingStrategy;
+        var includeNames = ctx.Config.IncludeNames;
+        var procMember = CSharpNaming.SourceNameMember(entity, strategy, includeNames, source.Role);
+        var schemaMember = CSharpNaming.SourceSchemaMember(entity, strategy, includeNames, source.Role);
         // The schema prefix as it appears INSIDE the FromSqlRaw concatenation on the names
-        // arm: `" + XNames.Schema + "."`. Empty when the callable declares no @schema.
-        var schemaPrefixExpr = string.IsNullOrEmpty(source.Schema) || namesCls is null
+        // arm: `" + XNames.SourcePrimarySchema + "."`. Empty when the callable declares no @schema.
+        var schemaPrefixExpr = schemaMember is null
             ? schemaPrefix
-            : $"\" + {namesCls}.Schema + \".";
+            : $"\" + {schemaMember} + \".";
 
         // Resolve the @parameterRef value-object (same root as the entity). Its field
         // children — in declaration order — are the call-site arguments.
@@ -92,14 +102,14 @@ public class CallableGenerator : PerEntityGenerator
 
         var sqlArgs = string.Join(", ", argProps.Select(p => $"{{args.{p}}}"));
         var hasArgs = argsObject is not null;
-        // The names-ON call: `FromSqlRaw("SELECT * FROM <schema.>" + <Entity>Names.Name + "({0}, {1})", args.A, args.B)`.
+        // The names-ON call: `FromSqlRaw("SELECT * FROM <schema.>" + <Entity>Names.SourcePrimaryProc + "({0}, {1})", args.A, args.B)`.
         // The concatenation is of compile-time constants, so the SQL EF receives is one string with
         // the identifier already in place; only the `{n}` holes become DbParameters.
         var rawPlaceholders = string.Join(", ", argProps.Select((_, i) => $"{{{i}}}"));
         var rawArgs = string.Concat(argProps.Select(p => $", args.{p}"));
-        var fromSql = namesCls is null
+        var fromSql = procMember is null
             ? $"FromSqlInterpolated($\"SELECT * FROM {procName}({sqlArgs})\")"
-            : $"FromSqlRaw(\"SELECT * FROM {schemaPrefixExpr}\" + {namesCls}.Name + \"({rawPlaceholders})\"{rawArgs})";
+            : $"FromSqlRaw(\"SELECT * FROM {schemaPrefixExpr}\" + {procMember} + \"({rawPlaceholders})\"{rawArgs})";
         var ctxType = ctx.Config.ContextTypeName;
         // Use the resolved args VO's C# type name — @parameterRef (and source.ParameterRef)
         // can be a package-qualified FQN ("acme::reporting::FooArgs"), and the "::" separator
@@ -139,9 +149,9 @@ public class CallableGenerator : PerEntityGenerator
         var kindNoun = source.EffectiveKind == SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function";
         // The doc summary names the procedure the same way the SQL does — by the constant on
         // the names-ON arm (with the schema, when any, still spelled), literally otherwise.
-        var procDoc = namesCls is null
+        var procDoc = procMember is null
             ? $"the <c>{procName}</c> {kindNoun}"
-            : $"the {kindNoun} named by <c>{namesCls}.Name</c>{(schemaPrefix.Length == 0 ? "" : $" in schema <c>{namesCls}.Schema</c>")}";
+            : $"the {kindNoun} named by <c>{procMember}</c>{(schemaMember is null ? "" : $" in schema <c>{schemaMember}</c>")}";
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// FR-015: typed wrapper around {procDoc}. Arguments bind in");
         sb.AppendLine($"/// declaration order from the @parameterRef value-object{(hasArgs ? $" (<c>{argsObjectName}</c>)" : string.Empty)}.");

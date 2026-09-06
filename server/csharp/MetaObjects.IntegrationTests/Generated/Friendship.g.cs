@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace MetaObjects.IntegrationTests.Generated;
 
 [PrimaryKey(nameof(PersonAId), nameof(PersonBId))]
-[Table(FriendshipNames.Name)]
+[Table(FriendshipNames.SourcePrimaryTable)]
 public class Friendship
 {
     [Column(FriendshipNames.PersonAIdColumn)]

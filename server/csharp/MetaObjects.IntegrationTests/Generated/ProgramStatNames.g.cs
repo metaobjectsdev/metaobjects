@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class ProgramStatNames
 {
-    public const string Kind = "view";
-    public const string Name = "v_program_stat";
-    public const bool ReadOnly = true;
+    public const string Type = "object";
+    public const string SubType = "projection";
+    public const string Name = "ProgramStat";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "view";
+    public const string SourcePrimaryView = "v_program_stat";
 
     public const string AvgMinutesField = "avgMinutes";
     public const string AvgMinutesColumn = "avgMinutes";
@@ -26,6 +31,10 @@ public abstract class ProgramStatNames
     public const string TotalMinutesColumn = "totalMinutes";
     public const string WeekCountField = "weekCount";
     public const string WeekCountColumn = "weekCount";
+
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

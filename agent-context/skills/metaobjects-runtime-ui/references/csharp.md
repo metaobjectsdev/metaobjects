@@ -96,6 +96,10 @@ against the model, and a string constant there trades a compile error for a runt
 Where LINQ does not reach — raw SQL, a migration script, a log line — take the physical
 name from the generated `<Entity>Names.g.cs`. `names` is in the default suite, and the
 generated entity and `AppDbContext` already read it, so it cannot disagree with the
-mapping: `AuthorNames.Name` is the table, `AuthorNames.<Field>Column` the column,
-`AuthorNames.ColumnsByField` the whole map. Never a literal — and never
+mapping: `AuthorNames.SourcePrimaryTable` is the table (the member is named for the
+source's `@kind`, so a view reads `SourceReplicaView` / `SourcePrimaryView` and a stored
+procedure `SourcePrimaryProc`), `AuthorNames.<Field>Column` the column,
+`AuthorNames.ColumnsByField` the whole map. `AuthorNames.Name` is the OBJECT's name —
+`Author`, not `authors` — so it is the one member that compiles while meaning something
+else than it did before 0.25.0. Never a literal — and never
 `nameof(Author.Name)`, which is the CLR property, not the column.

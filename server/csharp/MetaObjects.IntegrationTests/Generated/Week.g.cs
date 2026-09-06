@@ -8,7 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(WeekNames.Name)]
+[Table(WeekNames.SourcePrimaryTable)]
 public class Week
 {
     [Key]

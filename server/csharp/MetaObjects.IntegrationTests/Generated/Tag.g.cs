@@ -8,7 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(TagNames.Name)]
+[Table(TagNames.SourcePrimaryTable)]
 public class Tag
 {
     [Key]

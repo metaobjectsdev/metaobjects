@@ -201,7 +201,7 @@ adjacent commands in the build pipeline.
 or CLI flags). Emits:
 
 - `AuthorNames.g.cs` — the physical table/column names as constants, spelled once
-- `Author.g.cs` — POCO with `[Table(AuthorNames.Name)]`, `[Key]`, `[Column(AuthorNames.IdColumn)]`, etc.
+- `Author.g.cs` — POCO with `[Table(AuthorNames.SourcePrimaryTable)]`, `[Key]`, `[Column(AuthorNames.IdColumn)]`, etc.
 - `AppDbContext.g.cs` — `DbSet<Author> Authors { get; set; }`
 - `AuthorRoutes.g.cs` — `MapAuthorRoutes(this IEndpointRouteBuilder, string prefix)`
 

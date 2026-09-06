@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class ProgramNames
 {
-    public const string Kind = "table";
-    public const string Name = "programs";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Program";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "programs";
 
     public const string CreatedAtField = "createdAt";
     public const string CreatedAtColumn = "created_ts";
@@ -24,6 +29,19 @@ public abstract class ProgramNames
     public const string StatusColumn = "status";
     public const string TitleField = "title";
     public const string TitleColumn = "title";
+
+    public const string IdentityByTitleType = "identity";
+    public const string IdentityByTitleSubType = "secondary";
+    public const string IdentityByTitleName = "byTitle";
+    public const string IdentityByTitleIndex = "byTitle";
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
+
+    public const string IndexIdxProgramsTitleStatusType = "index";
+    public const string IndexIdxProgramsTitleStatusSubType = "lookup";
+    public const string IndexIdxProgramsTitleStatusName = "idx_programs_title_status";
+    public const string IndexIdxProgramsTitleStatusIndex = "idx_programs_title_status";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

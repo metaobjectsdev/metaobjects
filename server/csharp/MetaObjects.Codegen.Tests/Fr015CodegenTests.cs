@@ -13,7 +13,7 @@
 // procedure's name through FromSqlRaw, because an interpolation hole is a PARAMETER and an
 // identifier cannot be one:
 //
-//             .FromSqlRaw("SELECT * FROM analytics." + PhaseSummaryNames.Name + "({0}, {1})", args.CaseId, args.AsOfDate)
+//             .FromSqlRaw("SELECT * FROM " + PhaseSummaryNames.SourcePrimarySchema + "." + PhaseSummaryNames.SourcePrimaryProc + "({0}, {1})", args.CaseId, args.AsOfDate)
 //
 // Args bind in the @parameterRef value-object's field DECLARATION order on both arms. A
 // callable with no @parameterRef emits a zero-arg overload calling fn_x().
@@ -173,15 +173,15 @@ public class Fr015CodegenTests
         var c = Content(NamesOnFiles(), "PhaseSummary.callable.g.cs");
         // The identifier is text; each argument is a `{n}` placeholder → a DbParameter.
         // BOTH halves of the qualified name are constants now. The schema used to stay a
-        // spelled literal here while PhaseSummaryNames.Schema sat unread, justified by "schema
+        // spelled literal here while the artifact's schema constant sat unread, justified by "schema
         // qualification is ruled on separately across the ports" — it has been ruled on, every
         // port qualifies, and this was the one C# site that qualified at all.
         Assert.Contains(
-            ".FromSqlRaw(\"SELECT * FROM \" + PhaseSummaryNames.Schema + \".\" + PhaseSummaryNames.Name + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
+            ".FromSqlRaw(\"SELECT * FROM \" + PhaseSummaryNames.SourcePrimarySchema + \".\" + PhaseSummaryNames.SourcePrimaryProc + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
             c);
         Assert.DoesNotContain("FromSqlInterpolated", c);
         // The doc summary names it the same way the SQL does.
-        Assert.Contains("typed wrapper around the stored procedure named by <c>PhaseSummaryNames.Name</c> in schema <c>PhaseSummaryNames.Schema</c>.", c);
+        Assert.Contains("typed wrapper around the stored procedure named by <c>PhaseSummaryNames.SourcePrimaryProc</c> in schema <c>PhaseSummaryNames.SourcePrimarySchema</c>.", c);
         // Neither physical name appears in the file — the proc name OR the schema.
         Assert.DoesNotContain("fn_phase_summary", c);
         Assert.DoesNotContain("\"analytics", c);
@@ -192,9 +192,9 @@ public class Fr015CodegenTests
     {
         var c = Content(NamesOnFiles(), "ActivePhases.callable.g.cs");
         Assert.Contains(
-            ".FromSqlRaw(\"SELECT * FROM \" + ActivePhasesNames.Name + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
+            ".FromSqlRaw(\"SELECT * FROM \" + ActivePhasesNames.SourcePrimaryFunction + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
             c);
-        Assert.Contains("typed wrapper around the table function named by <c>ActivePhasesNames.Name</c>.", c);
+        Assert.Contains("typed wrapper around the table function named by <c>ActivePhasesNames.SourcePrimaryFunction</c>.", c);
         Assert.DoesNotContain("fn_active_phases", c);
     }
 
@@ -202,7 +202,7 @@ public class Fr015CodegenTests
     public void NamesOn_zero_arg_callable_passes_no_parameters()
     {
         var c = Content(NamesOnFiles(), "AllPhases.callable.g.cs");
-        Assert.Contains(".FromSqlRaw(\"SELECT * FROM \" + AllPhasesNames.Name + \"()\")", c);
+        Assert.Contains(".FromSqlRaw(\"SELECT * FROM \" + AllPhasesNames.SourcePrimaryProc + \"()\")", c);
         Assert.DoesNotContain("fn_all_phases", c);
     }
 

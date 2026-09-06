@@ -10,14 +10,29 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class FriendshipNames
 {
-    public const string Kind = "table";
-    public const string Name = "friendships";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Friendship";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "friendships";
 
     public const string PersonAIdField = "personAId";
     public const string PersonAIdColumn = "personAId";
     public const string PersonBIdField = "personBId";
     public const string PersonBIdColumn = "personBId";
+
+    public const string IdentityFkPersonAType = "identity";
+    public const string IdentityFkPersonASubType = "reference";
+    public const string IdentityFkPersonAName = "fkPersonA";
+    public const string IdentityFkPersonBType = "identity";
+    public const string IdentityFkPersonBSubType = "reference";
+    public const string IdentityFkPersonBName = "fkPersonB";
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

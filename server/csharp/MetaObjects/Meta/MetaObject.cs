@@ -133,10 +133,21 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     /// </summary>
     public string? ReplicaViewName => Cached("replicaViewName", () =>
     {
-        var src = OwnSources().FirstOrDefault(s => s.IsReadOnly());
-        var name = src?.PhysicalName;
+        var name = ReplicaSource?.PhysicalName;
         return string.IsNullOrEmpty(name) ? null : name;
     });
+
+    /// <summary>
+    /// The source node <see cref="ReplicaViewName"/> names — ONE selection, so the view's
+    /// name and its <c>@role</c> cannot be picked by two functions that agree until they do
+    /// not. Hoisted out of <see cref="ReplicaViewName"/> because a second caller forced it:
+    /// the <c>&lt;Entity&gt;Names</c> artifact keys its sources by ROLE, so a consumer
+    /// reaching for a write-through entity's replica view has to know which role that view
+    /// plays, and hardcoding <c>"replica"</c> would be a second derivation of what this
+    /// accessor already decides. Mirrors the TS reference's <c>projectionViewSource</c>.
+    /// </summary>
+    public MetaSource? ReplicaSource => Cached("replicaSource", () =>
+        OwnSources().FirstOrDefault(s => s.IsReadOnly()));
 
     /// <summary>True when the object's subtype is <c>entity</c>.</summary>
     public bool IsEntity() => SubType == OBJECT_SUBTYPE_ENTITY;
@@ -290,6 +301,32 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
             (IReadOnlyList<MetaRelationship>)OwnChildren()
                 .Where(c => c is MetaRelationship)
                 .Cast<MetaRelationship>()
+                .ToArray());
+    }
+
+    // -------------------------------------------------------------------------
+    // Indexes
+    // -------------------------------------------------------------------------
+
+    /// <summary>All effective lookup indexes (own + inherited via extends). ADR-0039: resolving.</summary>
+    public IReadOnlyList<MetaIndex> LookupIndexes()
+    {
+        return Cached("lookupIndexes", () =>
+            (IReadOnlyList<MetaIndex>)Children()
+                .OfType<MetaIndex>()
+                .ToArray());
+    }
+
+    /// <summary>Own lookup indexes only — excludes inherited.</summary>
+    public IReadOnlyList<MetaIndex> OwnLookupIndexes()
+    {
+        return Cached("ownLookupIndexes", () =>
+            // ADR-0039: own-accessor definition — the deliberate own-only API twin of
+            // LookupIndexes(), and the same sanctioned use its identity/relationship siblings
+            // have: codegen emitting a generated subclass, iterating own members so the ones
+            // the parent's artifact already declares are not restated here.
+            (IReadOnlyList<MetaIndex>)OwnChildren()
+                .OfType<MetaIndex>()
                 .ToArray());
     }
 

@@ -10,9 +10,14 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class NodeNames
 {
-    public const string Kind = "table";
-    public const string Name = "nodes";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Node";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "nodes";
 
     public const string IdField = "id";
     public const string IdColumn = "id";
@@ -20,6 +25,13 @@ public abstract class NodeNames
     public const string LabelColumn = "label";
     public const string ParentIdField = "parentId";
     public const string ParentIdColumn = "parentId";
+
+    public const string IdentityFkParentType = "identity";
+    public const string IdentityFkParentSubType = "reference";
+    public const string IdentityFkParentName = "fkParent";
+    public const string IdentityIdType = "identity";
+    public const string IdentityIdSubType = "primary";
+    public const string IdentityIdName = "id";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

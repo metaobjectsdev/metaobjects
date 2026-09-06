@@ -27,8 +27,8 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<ProgramStat>().ToView(ProgramStatNames.Name);
-        modelBuilder.Entity<ProgramView>().ToView(ProgramViewNames.Name);
+        modelBuilder.Entity<ProgramStat>().ToView(ProgramStatNames.SourcePrimaryView);
+        modelBuilder.Entity<ProgramView>().ToView(ProgramViewNames.SourcePrimaryView);
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(AllTypesNames.SettingsColumn));
         modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(AllTypesNames.LabelsColumn));

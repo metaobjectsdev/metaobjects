@@ -10,6 +10,10 @@ namespace MetaObjects.IntegrationTests.Generated;
 /// </summary>
 public abstract class BridgeAuthNames : AuthNames
 {
+    public new const string Type = "object";
+    public new const string SubType = "entity";
+    public new const string Name = "BridgeAuth";
+
     public const string QuantityField = "quantity";
     public const string QuantityColumn = "quantity";
 

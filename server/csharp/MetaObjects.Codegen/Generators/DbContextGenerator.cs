@@ -185,15 +185,20 @@ public class DbContextGenerator : IGenerator
         foreach (var wt in objects.Where(o => o.IsEntity() && o.IsWriteThrough()))
         {
             var view = CSharpNaming.ViewModelClassName(wt);
-            // A6 -- NOT converted. wt.ReplicaViewName reads the REPLICA source
-            // (OwnSources().FirstOrDefault(IsReadOnly), any @role); <Entity>Names.Name
-            // is the PRIMARY source only (CSharpNaming.ResolveObjectNames). For a
-            // write-through entity these are two different physical names by design —
-            // the artifact carries no constant for the replica, so there is nothing to
-            // reference here (a lookup miss the field-level ColumnRef pattern can't even
-            // attempt: this isn't a field, and NamesGenerator's schema has no second slot
-            // for it).
-            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView(\"{wt.ReplicaViewName}\");");
+            // A6 -- converted in 0.25.0, and the row it closes had been booked as STRUCTURAL
+            // for its whole life. <Entity>Names carried the PRIMARY source's physical name
+            // only, so a write-through entity — which declares TWO physical names — had one
+            // slot between them and the second was emitted in full, right here. Keying the
+            // artifact's sources by @role gives it a home.
+            //
+            // The ROLE comes from the source node MetaObject.ReplicaSource already selected,
+            // never from a hardcoded "replica": ReplicaViewName is role-AGNOSTIC (the first
+            // own read-only source, whatever role it plays), so guessing would be a second
+            // derivation of what that accessor decides once.
+            var replicaRole = wt.ReplicaSource!.Role;
+            var viewRef = CSharpNaming.NameRef(
+                wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, wt.ReplicaViewName!, replicaRole);
+            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView({viewRef});");
             // #214 [0] — the read model exposes ALL fields (incl. the derived origin.* fields),
             // so it needs the SAME per-field TYPE converters the write entity gets, or EF Core
             // fails model finalization (a field.uri / @dbColumnType:uuid / decimal-precision /

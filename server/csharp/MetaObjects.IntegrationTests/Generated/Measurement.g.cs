@@ -8,7 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-[Table(MeasurementNames.Name)]
+[Table(MeasurementNames.SourcePrimaryTable)]
 public class Measurement
 {
     [Key]

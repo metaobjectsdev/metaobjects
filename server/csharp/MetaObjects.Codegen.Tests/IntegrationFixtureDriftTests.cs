@@ -93,7 +93,7 @@ public class IntegrationFixtureDriftTests
         };
 
         // §A6 (task 4) — EntityGenerator/DbContextGenerator output now REFERENCES the
-        // names artifact (e.g. [Table(ProgramNames.Name)]), so NamesGenerator's own
+        // names artifact (e.g. [Table(ProgramNames.SourcePrimaryTable)]), so NamesGenerator's own
         // companion files must be part of this same compiled fixture set or the
         // committed project fails to compile — not merely drift. NamesGenerator is
         // already in GenCommand.DefaultGeneratorNames; this brings the fixture in line

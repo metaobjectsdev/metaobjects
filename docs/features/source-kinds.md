@@ -329,7 +329,7 @@ object AuthorViewTable : Table("v_author") {
 ### C#
 
 `MetaObjects.Codegen` emits `OwnsOne` / `DbSet` wiring as appropriate; for `@kind:
-"view"` the generated `AppDbContext` calls `entity.ToView(AuthorViewNames.Name)` —
+"view"` the generated `AppDbContext` calls `entity.ToView(AuthorViewNames.SourcePrimaryView)` —
 `names` is in C#'s default generator suite, so the view name is referenced from the
 generated constants artifact, not respelled. The `CREATE VIEW` body is emitted by the
 **Node** `meta migrate` (schema is Node-owned — ADR-0015; the C# migrate surface was
@@ -337,7 +337,7 @@ removed), not by `dotnet meta`.
 
 ```csharp
 // generated/AppDbContext.cs (excerpt) — view registration
-modelBuilder.Entity<AuthorView>().ToView(AuthorViewNames.Name).HasKey(v => v.Id);
+modelBuilder.Entity<AuthorView>().ToView(AuthorViewNames.SourcePrimaryView).HasKey(v => v.Id);
 ```
 
 Other `@kind` values (`storedProc`, `tableFunction`, `materializedView`) — partial
