@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- **`metamodelVersion` moves `0.14` → `0.15`.** Set it with `node scripts/check-metamodel-version.mjs --set 0.15`, never by hand — it writes the manifest and all four port constants together.
-- **All four registries publish** this release, forced by the `expected-registry.json` change. npm/PyPI/NuGet `0.25.0`, Maven `7.25.0`.
+- **`metamodelVersion` does NOT move — it stays `0.14`.** `classify()` compares only the set of `type.subType` pairs, each type's `attrs` and licensed `children`, `commonAttrs`, `defaultSubTypes`, and three prose keys. The three new fields are none of those; running the classifier against a manifest carrying them reports 0 breaking / 0 additive / 0 prose. The metadata contract is unchanged: nothing new is authorable and every existing document loads identically.
+- **All four registries publish** because every port's spec reader, manifest emitter and names generator changes — a changed product file each, under publish-what-changed. npm/PyPI/NuGet `0.25.0`, Maven `7.25.0`; the MINOR is for the breaking `<Entity>Names` artifact shape, which is a generated-output/API change and has nothing to do with the metamodel number.
 - **This repo is PUBLIC.** No other-project names, no absolute home paths in any committed file, commit messages included.
 - **ADR-0039:** resolving accessors are the default. `own*` is legal only where codegen emits a generated subclass and must not re-emit inherited members; every such call carries a comment naming the sanctioned case.
 - **ADR-0023:** never invent a metamodel attribute. `collection`, `collectionKey` and `nameAttrs` are registry *type-definition* fields, not metadata attrs — they go in `spec/metamodel/*.json` type entries, and are covered by `registry-conformance`.
@@ -312,11 +312,11 @@ Run: `cd server/typescript/packages/metadata && bun test test/registry-manifest.
 
 Order them deterministically with the existing keys — the other four ports byte-match this serialization, so key order is contract.
 
-- [ ] **Step 4: Regenerate the canonical and set the version**
+- [ ] **Step 4: Regenerate the canonical and CONFIRM no bump is demanded**
 
 ```bash
 bun run scripts/regen-expected-registry.ts
-node scripts/check-metamodel-version.mjs --set 0.15
+node scripts/check-metamodel-version.mjs          # must PASS with no bump — verify, do not --set
 ```
 
 - [ ] **Step 5: Confirm TS registry-conformance is green and the other four are RED**
@@ -327,7 +327,7 @@ Expected: green. The other four ports are expected to go red until Tasks 7-9 lan
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit  # subject: feat(metamodel)!: the manifest carries collection + nameAttrs; metamodelVersion 0.15
+git commit  # subject: feat(metamodel): the manifest carries collection, collectionKey and nameAttrs
 ```
 
 ---
@@ -616,7 +616,7 @@ Each task: port the recursion, render nested types, drop the `SOURCE_`/`IDENTITY
 
 ## Self-Review
 
-**Spec coverage.** Artifact definition → Tasks 10, 11, 14. Node entry shape → Task 10. Registry-declared collections and their keys → Tasks 5-9. Abstracts resolved-inline → Task 10 (deletes `namesArtifactSuperOf` / `resolveSuperFragmentNames`). Per-port nested rendering → Tasks 11, 16-19. Requirements → Task 14. Prefix removal → Tasks 16-19. Gates → Tasks 13, 15. Versioning → Task 6. Packaged fixes → Tasks 1-4. Open decision (same-role refusal) → Task 4, ruled. **One spec item has no task by design:** the deferred `$apiPrefix`-on-the-entity-const observation, which the spec records as explicitly not acted on.
+**Spec coverage.** Artifact definition → Tasks 10, 11, 14. Node entry shape → Task 10. Registry-declared collections and their keys → Tasks 5-9. Abstracts resolved-inline → Task 10 (deletes `namesArtifactSuperOf` / `resolveSuperFragmentNames`). Per-port nested rendering → Tasks 11, 16-19. Requirements → Task 14. Prefix removal → Tasks 16-19. Gates → Tasks 13, 15. Versioning (and the ruling that metamodelVersion does NOT move) → Task 6. Packaged fixes → Tasks 1-4. Open decision (same-role refusal) → Task 4, ruled. **One spec item has no task by design:** the deferred `$apiPrefix`-on-the-entity-const observation, which the spec records as explicitly not acted on.
 
 **Placeholder scan.** No TBD/TODO. Tasks 16-19 carry target output and exact commands rather than literal source, because the artifact's emitted SHAPE is the specification and each port's emitter internals differ; the corpus in Task 15 is the executable acceptance criterion for all four.
 

@@ -154,9 +154,31 @@ keys on `@kind` — an attr *value*, not a subType — so a per-subType scalar c
 express it. The map stays where it is as the loader's canonical-storage rule; the
 generator stops consulting it.
 
-`metamodelVersion` moves **`0.14` → `0.15`**. Per the standing rule a change to
-`expected-registry.json` / `metamodelVersion` forces all four registries to publish,
-changed product file or not.
+**`metamodelVersion` does NOT move. It stays `0.14`.**
+
+This was asserted the other way in the first draft and the assertion was wrong. The gate
+(`scripts/check-metamodel-version.mjs`) classifies a manifest diff by comparing exactly
+five things: the SET of `type.subType` pairs, each type's `attrs`, its licensed
+`children`, `commonAttrs`, and `defaultSubTypes` — plus three prose keys reported as a
+warning. The three fields here are none of those, and running `classify()` against a
+manifest carrying them reports **0 breaking, 0 additive, 0 prose**.
+
+That is the gate being right, not blind. `metamodelVersion` promises the METADATA
+contract: what an author may declare and what a declaration means. After this change
+nothing new is authorable, no subtype appears or disappears, no attr changes type or
+arity, no default shifts, and every document that loaded before loads byte-identically.
+`collection` / `collectionKey` / `nameAttrs` describe how a names ARTIFACT groups
+children — metadata about the metamodel, not the metamodel.
+
+ADR-0035 Amendment 1 already governs the general case: vocabulary sorts by CONSUMER
+impact, and `expected-registry.json` is an internal gate — five ports byte-matching one
+manifest is how the ports are kept from drifting, and it "says nothing about whether an
+adopter's project changes." Bumping on internal churn is the mistake that burned `0.22.0`
+and `0.23.0`.
+
+**All four registries still publish**, but for a real reason rather than a ceremonial
+one: every port's spec reader, manifest emitter and names generator changes, so each
+genuinely carries a changed product file under publish-what-changed.
 
 ### Abstracts: resolved-inline
 
@@ -238,10 +260,10 @@ client-tier API change deserving its own design pass, and nothing is broken toda
 
 - Breaking artifact-shape change. Pre-1.0 a breaking change moves the MINOR:
   npm/PyPI/NuGet `0.25.0`, Maven `7.25.0`.
-- `metamodelVersion` `0.14` → `0.15`, set with
-  `node scripts/check-metamodel-version.mjs --set 0.15`, which writes the manifest and
-  all four port constants together.
-- All four registries publish, forced by the manifest change.
+- **`metamodelVersion` stays `0.14`** — see the registry section. The gate reports zero
+  classified differences, and the metadata contract is genuinely unchanged.
+- All four registries publish because each has a changed product file, not because a
+  manifest byte moved.
 - The v2 shape is **unreleased**, so adopters take ONE breaking change to
   `<Entity>Names`, not two. This is the reason to do it now rather than after a cut.
 
