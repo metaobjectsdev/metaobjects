@@ -33,7 +33,7 @@ rejects and poisons every later install in the project with `ERESOLVE`.
 
 | Export | Purpose |
 |---|---|
-| `<EntityFetcherProvider value={fetcher}>` | supplies the single `EntityFetcher` every generated hook reads |
+| `<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">` | supplies the single `EntityFetcher` every generated hook reads, plus the base URL it prepends. `baseUrl` is optional (default `""` = same origin at the root); generated hooks emit entity-relative paths. |
 | `useEntityFetcher()` | reads the fetcher from context (generated hooks call this) |
 | `<EntityGrid>` | opinionated TanStack Table component |
 | `<CellRendererProvider>` + `defaultCellRenderers` | renderer overrides keyed by the column's `meta.view` |
@@ -63,7 +63,7 @@ const fetcher = async <T,>(path: string, init?: RequestInit): Promise<T> => {
 
 export function App() {
   return (
-    <EntityFetcherProvider value={fetcher}>
+    <EntityFetcherProvider fetcher={fetcher} baseUrl="/api">
       <AuthorList />
     </EntityFetcherProvider>
   );
