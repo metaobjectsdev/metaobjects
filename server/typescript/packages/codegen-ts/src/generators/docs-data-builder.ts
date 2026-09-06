@@ -720,6 +720,8 @@ export function buildEntityDocData(
     }
     return undefined;   // not under this entity at all
   };
+  /** Dotted-path depth. "" is the entity itself — depth 0, not the 1 a naive split gives. */
+  const memberDepth = (path: string): number => (path === "" ? 0 : path.split(".").length);
   const claimedByMatches: UsedByDoc[] = [];
   if (entity.subType === OBJECT_SUBTYPE_ENTITY) {
     for (const walked of walkRequirements(root)) {
@@ -730,7 +732,15 @@ export function buildEntityDocData(
       for (const t of walked.targets) {
         const path = memberPathTo(t.node);
         if (path === undefined) continue;
-        if (member === undefined || path.length < member.length) member = path;
+        // Shallowest by SEGMENT COUNT, not string length. `path.length` made "a.b" — two
+        // segments, three characters — beat "status", one segment and six, so the row
+        // named the deeper member. Ties break lexicographically so the page does not
+        // depend on the order the requirement walk happens to return targets in.
+        if (member === undefined
+            || memberDepth(path) < memberDepth(member)
+            || (memberDepth(path) === memberDepth(member) && path < member)) {
+          member = path;
+        }
       }
       if (member === undefined) continue;
       const v = walked.view;

@@ -142,3 +142,49 @@ describe("shape C — requirement backlinks on the entity page", () => {
     expect(text).not.toContain(".test.ts");
   });
 });
+
+
+// One requirement claiming TWO members of one entity, chosen so the two ways of
+// measuring "shallowest" disagree: `a.b` is DEEPER (two segments) but SHORTER (three
+// characters) than `status`. Comparing string length picked `a.b`, so the row named the
+// deeper member — quietly, and only on entities carrying both a short deep claim and a
+// long shallow one.
+const DEPTH_MODEL = {
+  "metadata.root": {
+    package: "acme::shop",
+    children: [
+      {
+        "object.entity": {
+          name: "Order",
+          children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "status" } },
+            { "field.string": { name: "a", children: [{ "view.text": { name: "b" } }] } },
+            { "source.rdb": { "@table": "orders" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+      {
+        "requirement.functional": {
+          name: "twoMembers",
+          "@level": 5,
+          "@status": "live",
+          "@statement": "An order's status is visible.",
+          "@counterexample": "An order whose status cannot be read.",
+          "@implementedBy": ["acme::shop::Order.a.b", "acme::shop::Order.status"],
+        },
+      },
+    ],
+  },
+};
+
+describe("shallowest member claim — measured in segments, not characters", () => {
+  test("a one-segment member beats a shorter two-segment one", async () => {
+    const data = await dataFor(DEPTH_MODEL, "Order");
+    const bullets = (data.claimedBy ?? []).map((c: { bullet: string }) => c.bullet);
+    expect(bullets.length).toBe(1);
+    expect(bullets[0]).toContain("on `status`");
+    expect(bullets[0]).not.toContain("on `a.b`");
+  });
+});
