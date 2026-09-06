@@ -185,15 +185,29 @@ function sourcesOf(sources: readonly MetaSource[], where: string): Record<string
       out[role] = resolved;
       continue;
     }
-    // The refusal is about DISAGREEMENT, not about the count — deliberately the SAME rule
-    // `primaryRdbSource` already enforces for the physical name, rather than a stricter
-    // one invented here. An abstract base and the child that extends it may each declare a
-    // `@role: primary` source naming the same relation; that is legal today and refusing
-    // it would make this artifact stricter than the invariant it exists to serve.
+    // The refusal is about DISAGREEMENT, not about the count. An abstract base and the
+    // child that extends it may each declare a `@role: primary` source naming the same
+    // relation; that is legal and stays legal, because the records then compare equal.
     //
     // Two sources in one role that resolve DIFFERENTLY is the real problem, and silently
     // keeping one is the `dropped` failure mode this artifact makes impossible: the second
     // name is carried nowhere, read by nobody, and the binding quietly takes the first's.
+    //
+    // WHAT IS COMPARED, AND HOW IT DIFFERS FROM `primaryRdbSource`. This compares the whole
+    // resolved record — kind, schema and the physical name under its alias — for EVERY
+    // role. `primaryRdbSource` compares the bare physical name, and only for `primary`.
+    // This comment used to claim the two were "deliberately the SAME rule"; they are not,
+    // and the gap is reachable: two `@role: primary` sources agreeing on `@table` but
+    // disagreeing on `@schema` load with zero errors, are accepted by `primaryRdbSource`,
+    // and are refused here — so `meta gen` fails on a model every other door admits.
+    //
+    // The strict half is the defensible one: a schema is part of the address, so those two
+    // sources name DIFFERENT tables and "every consumer binds ONE name" is not satisfied
+    // merely because the unqualified names match. Loosening this to match would enshrine
+    // that. Tightening `primaryRdbSource` instead is the real fix and is deliberately NOT
+    // made here: it is the shared authority, implemented in all five ports, and a model
+    // that loads today would begin to throw. `names.test.ts` pins BOTH sides of the
+    // divergence so it stays visible until it is decided.
     if (JSON.stringify(existing) !== JSON.stringify(resolved)) {
       throw new Error(
         `${where} declares more than one source.rdb with @role: "${role}", and they do ` +

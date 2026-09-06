@@ -4,6 +4,7 @@ import {
   InMemoryStringSource,
   isMetaSource,
   SOURCE_ROLE_PRIMARY,
+  primaryRdbSource,
   type MetaObject,
   type MetaSource,
   // MetaModelError, not codegen-ts's CodegenError: the refusal moved into
@@ -391,5 +392,65 @@ describe("resolveObjectNames — extends chain", () => {
     ]);
     expect(resolveSuperFragmentNames(obj(root, "Marker"), "snake_case")).toBeUndefined();
     expect(resolveObjectNames(obj(root, "Thing"), "snake_case")?.superNames).toBeUndefined();
+  });
+});
+
+
+describe("two same-role sources: what refuses, and what does not", () => {
+  // A model that LOADS with zero errors, that `primaryRdbSource` accepts, and that
+  // `resolveObjectNames` refuses. Both halves are pinned deliberately: the divergence is
+  // real and undecided, and a test that asserted only the half it liked would let the
+  // other half move without anyone noticing.
+  //
+  // The two doors compare different things. `primaryRdbSource` compares the bare physical
+  // name, for `primary` only. `sourcesOf` compares the whole resolved record — kind,
+  // schema, physical name — for every role. So two primaries agreeing on `@table` and
+  // disagreeing on `@schema` pass one and fail the other, and `meta gen` fails on a model
+  // every other door admits.
+  //
+  // Named sources are what makes it reachable: unnamed ones shadow on (type, name), so
+  // only one survives `children()` and there is nothing left to compare.
+  const MODEL = {
+    "metadata.root": {
+      package: "acme",
+      children: [
+        {
+          "object.entity": {
+            name: "Base", abstract: true,
+            children: [
+              { "field.long": { name: "id" } },
+              { "source.rdb": { name: "a", "@table": "t", "@schema": "s1", "@role": "primary" } },
+            ],
+          },
+        },
+        {
+          "object.entity": {
+            name: "Acct", extends: "Base",
+            children: [
+              { "source.rdb": { name: "b", "@table": "t", "@schema": "s2", "@role": "primary" } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  async function acct(): Promise<MetaObject> {
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(MODEL), { id: "two-primaries.json" }),
+    ]);
+    // The loader has nothing to say about it at all.
+    expect(errors.map((e) => e.message)).toEqual([]);
+    return root.objects().find((o) => o.name === "Acct") as MetaObject;
+  }
+
+  test("the shared authority ACCEPTS it — it compares the bare physical name", async () => {
+    expect(primaryRdbSource(await acct())?.physicalName).toBe("t");
+  });
+
+  test("the names artifact REFUSES it — it compares the whole address, schema included", async () => {
+    await expect(async () => resolveObjectNames(await acct()))
+      .toThrow(/do not agree/);
   });
 });
