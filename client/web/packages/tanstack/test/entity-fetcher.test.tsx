@@ -1,38 +1,89 @@
 import { describe, test, expect } from "bun:test";
 import "./setup.js";
 import { renderHook } from "@testing-library/react";
-import { EntityFetcherProvider, useEntityFetcher, type EntityFetcher } from "../src/index.js";
+import { EntityFetcherProvider, useEntityFetcher } from "../src/index.js";
 import type { ReactNode } from "react";
 
-function Wrapper({ value, children }: { value: any; children: ReactNode }) {
-  return <EntityFetcherProvider value={value}>{children}</EntityFetcherProvider>;
+function wrapper(fetcher: unknown, baseUrl?: string) {
+  return ({ children }: { children: ReactNode }) => (
+    <EntityFetcherProvider fetcher={fetcher as never} baseUrl={baseUrl}>
+      {children}
+    </EntityFetcherProvider>
+  );
 }
 
 describe("useEntityFetcher", () => {
-  test("returns the value provided by EntityFetcherProvider", () => {
-    const fetcher = async (path: string) => ({ ok: true, path }) as any;
+  test("with no baseUrl the path reaches the fetcher unchanged", async () => {
+    const seen: string[] = [];
+    const fetcher = async (p: string) => {
+      seen.push(p);
+      return null as never;
+    };
+    const { result } = renderHook(() => useEntityFetcher(), { wrapper: wrapper(fetcher) });
+    await result.current("/customers");
+    expect(seen).toEqual(["/customers"]);
+  });
+
+  test("baseUrl is prepended before the fetcher sees it", async () => {
+    const seen: string[] = [];
+    const fetcher = async (p: string) => {
+      seen.push(p);
+      return null as never;
+    };
     const { result } = renderHook(() => useEntityFetcher(), {
-      wrapper: ({ children }) => <Wrapper value={fetcher}>{children}</Wrapper>,
+      wrapper: wrapper(fetcher, "/api"),
     });
-    expect(result.current).toBe(fetcher);
+    await result.current("/customers?limit=25");
+    expect(seen).toEqual(["/api/customers?limit=25"]);
+  });
+
+  test("init is forwarded untouched", async () => {
+    const seen: RequestInit[] = [];
+    const fetcher = async (_p: string, init?: RequestInit) => {
+      if (init) seen.push(init);
+      return null as never;
+    };
+    const { result } = renderHook(() => useEntityFetcher(), {
+      wrapper: wrapper(fetcher, "/api"),
+    });
+    await result.current("/customers", { method: "DELETE" });
+    expect(seen).toEqual([{ method: "DELETE" }]);
+  });
+
+  test("the wrapped fetcher is referentially stable across renders", () => {
+    const fetcher = async () => null as never;
+    const { result, rerender } = renderHook(() => useEntityFetcher(), {
+      wrapper: wrapper(fetcher, "/api"),
+    });
+    const first = result.current;
+    rerender();
+    expect(result.current).toBe(first);
+  });
+
+  test("nested providers override, base and all", async () => {
+    const seen: string[] = [];
+    const outer = async (p: string) => {
+      seen.push(`outer:${p}`);
+      return null as never;
+    };
+    const inner = async (p: string) => {
+      seen.push(`inner:${p}`);
+      return null as never;
+    };
+    const { result } = renderHook(() => useEntityFetcher(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <EntityFetcherProvider fetcher={outer as never} baseUrl="/outer">
+          <EntityFetcherProvider fetcher={inner as never} baseUrl="/inner">
+            {children}
+          </EntityFetcherProvider>
+        </EntityFetcherProvider>
+      ),
+    });
+    await result.current("/customers");
+    expect(seen).toEqual(["inner:/inner/customers"]);
   });
 
   test("throws with a clear message when used outside a provider", () => {
     expect(() => renderHook(() => useEntityFetcher())).toThrow(/EntityFetcherProvider/);
-  });
-
-  test("nested providers override", () => {
-    const outer = async () => "outer";
-    const inner = async () => "inner";
-    const { result } = renderHook(() => useEntityFetcher(), {
-      wrapper: ({ children }) => (
-        <EntityFetcherProvider value={outer as any}>
-          <EntityFetcherProvider value={inner as any}>{children}</EntityFetcherProvider>
-        </EntityFetcherProvider>
-      ),
-    });
-    // Cast for reference-identity check: inner is passed as any to the provider;
-    // result.current is EntityFetcher (generic), so a structural cast is needed here.
-    expect(result.current).toBe(inner as unknown as EntityFetcher);
   });
 });
