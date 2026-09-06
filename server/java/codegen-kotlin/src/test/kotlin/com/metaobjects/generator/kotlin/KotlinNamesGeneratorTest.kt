@@ -231,6 +231,43 @@ class KotlinNamesGeneratorTest {
         assertTrue("const val NAME: String = \"BaseThing\"" in base, base)
     }
 
+    @Test fun `a key-only abstract is a link in the chain, not a node to walk past`() {
+        // `Audited` declares NO field and NO source -- only a key. That is the whole reason
+        // such a node exists: hoist one `identity.secondary` onto a chain. The "has anything
+        // to contribute" test used to ask about fields and sources alone, so this node
+        // answered "no": the walk stepped over it, no AuditedNames was emitted, and its key
+        // landed in neither WidgetNames nor the grandparent's -- while the Exposed table
+        // generator still referenced it.
+        val model = """{
+          "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "Base", "abstract": true, "children": [
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "email", "@column": "zz_email_addr" } }
+            ] } },
+            { "object.entity": { "name": "Audited", "abstract": true, "extends": "Base", "children": [
+                { "identity.secondary": { "name": "by_email", "@fields": ["email"] } }
+            ] } },
+            { "object.entity": { "name": "Widget", "extends": "Audited", "children": [
+                { "source.rdb": { "@table": "zz_widgets" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val files = emit(model)
+
+        // The intermediate has something to contribute, so it gets an object of its own...
+        val audited = files.getValue("acme/AuditedNames.kt")
+        assertTrue("IDENTITY_BY_EMAIL_NAME" in audited, audited)
+
+        // ...and the concrete entity reaches it BY REFERENCE rather than restating it,
+        // which is what "extend the parent, do not redo the names" looks like on a port
+        // with no static inheritance. Both halves asserted: a positive-only check would
+        // pass for a generator emitting the reference AND the literal.
+        val widget = files.getValue("acme/WidgetNames.kt")
+        assertTrue("AuditedNames.IDENTITY_BY_EMAIL_NAME" in widget, widget)
+        assertFalse("IDENTITY_BY_EMAIL_NAME: String = \"by_email\"" in widget, widget)
+    }
+
     @Test fun `an object with no primary source emits nothing`() {
         // #248 -- participation derives from a declared/inherited primary source, never
         // from the object subtype. AddressValue (object.value) has no source at all

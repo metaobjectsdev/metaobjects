@@ -117,6 +117,59 @@ public class NamesExtendsChainTests
         Assert.DoesNotContain("IdColumn =", src);
     }
 
+    // An intermediate abstract that declares NO field and NO source, only a key.
+    //
+    // `Audited` exists to carry one identity.secondary down a chain. The "has anything to
+    // contribute" test used to ask about fields and sources alone, so this node answered
+    // "no": the walk stepped over it, no AuditedNames was emitted, and its key landed in
+    // neither AuditedNames nor the grandparent's class — while the generated code still
+    // referenced it.
+    private const string KeyOnlyModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Base", "abstract": true, "children": [
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "email", "@column": "zz_email_addr" } }
+      ] } },
+      { "object.entity": { "name": "Audited", "abstract": true, "extends": "Base", "children": [
+        { "identity.secondary": { "name": "by_email", "@fields": ["email"] } }
+      ] } },
+      { "object.entity": { "name": "Widget", "extends": "Audited", "children": [
+        { "source.rdb":       { "@table": "zz_widgets" } },
+        { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+      ] } }
+    ] } }
+    """;
+
+    [Fact]
+    public void A_key_only_abstract_is_a_link_in_the_chain_not_a_node_to_walk_past()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(KeyOnlyModel, id: "keyonly.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(),
+            Root = r.Root,
+            Config = new GenConfig
+            {
+                OutDir = "/unused", Namespace = "Acme.Generated",
+                ColumnNamingStrategy = ColumnNamingStrategy.SnakeCase, IncludeNames = true,
+            },
+        };
+        var files = new NamesGenerator().Generate(ctx).ToDictionary(f => f.Path, f => f.Content);
+
+        // The intermediate has something to contribute, so it gets a class of its own...
+        Assert.True(files.ContainsKey("AuditedNames.g.cs"), string.Join(", ", files.Keys));
+        Assert.Contains("by_email", files["AuditedNames.g.cs"]);
+
+        // ...and the concrete entity reaches it by EXTENDING that class rather than
+        // restating the key. Stated in the negative too: emitting both the base reference
+        // AND the literal would satisfy a positive-only assertion while re-introducing the
+        // duplication the class exists to remove.
+        var widget = files["WidgetNames.g.cs"];
+        Assert.Contains("class WidgetNames : AuditedNames", widget);
+        Assert.DoesNotContain("\"by_email\"", widget);
+    }
+
     [Fact]
     public void A_sourceless_object_nothing_persistable_extends_still_gets_nothing()
     {

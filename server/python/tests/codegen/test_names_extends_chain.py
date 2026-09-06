@@ -147,6 +147,81 @@ def test_a_tph_subtype_references_the_shared_table_name_rather_than_restating_it
     assert "zz_auths" not in src
 
 
+KEY_ONLY_MODEL = {
+    "metadata.root": {
+        "package": "acme",
+        "children": [
+            {
+                "object.entity": {
+                    "name": "Base",
+                    "abstract": True,
+                    "children": [
+                        {"field.long": {"name": "id"}},
+                        {"field.string": {"name": "email", "@column": "zz_email_addr"}},
+                    ],
+                }
+            },
+            {
+                "object.entity": {
+                    "name": "Audited",
+                    "abstract": True,
+                    "extends": "Base",
+                    "children": [
+                        {"identity.secondary": {"name": "by_email", "@fields": ["email"]}},
+                    ],
+                }
+            },
+            {
+                "object.entity": {
+                    "name": "Widget",
+                    "extends": "Audited",
+                    "children": [
+                        {"source.rdb": {"@table": "zz_widgets"}},
+                        {"identity.primary": {"@fields": ["id"], "@generation": "increment"}},
+                    ],
+                }
+            },
+        ],
+    }
+}
+
+
+def _generate_model(tmp_path: Path, model: dict) -> dict[str, str]:
+    loader = MetaDataLoader()
+    result = loader.load([
+        InMemoryStringSource(json.dumps(model), format=MetaDataFormat.JSON, id="m.json"),
+    ])
+    assert [str(e) for e in result.errors] == []
+    out = tmp_path / "gen"
+    run_gen(
+        GenConfig(out_dir=str(out), column_naming="snake_case"),
+        result.root,
+        generators=[names_generator()],
+    )
+    return {str(p.relative_to(out)): p.read_text() for p in out.rglob("*.py")}
+
+
+def test_a_key_only_abstract_is_a_link_in_the_chain_not_a_node_to_walk_past(
+    tmp_path: Path,
+) -> None:
+    # `Audited` declares NO field and NO source -- only a key. That is the whole reason
+    # such a node exists: hoist one `identity.secondary` onto a chain. The "has anything
+    # to contribute" test used to ask about fields and sources alone, so this node
+    # answered "no", the walk stepped over it, and no module was rendered for it. Python
+    # does not break on that the way the other ports do -- it re-states the key's literal
+    # on the child instead -- which is why nothing caught it and why the assertion below
+    # is stated in the NEGATIVE as well: the physical name is supposed to be spelled ONCE.
+    files = _generate_model(tmp_path, KEY_ONLY_MODEL)
+
+    assert "audited_names.py" in files, sorted(files)
+    assert 'AUDITED_IDENTITY_BY_EMAIL_NAME: Final[str] = "by_email"' in files["audited_names.py"]
+
+    widget = files["widget_names.py"]
+    assert "from .audited_names import" in widget
+    assert "WIDGET_IDENTITY_BY_EMAIL_NAME: Final[str] = AUDITED_IDENTITY_BY_EMAIL_NAME" in widget
+    assert 'WIDGET_IDENTITY_BY_EMAIL_NAME: Final[str] = "by_email"' not in widget
+
+
 def test_a_sourceless_object_nothing_persistable_extends_still_gets_nothing(tmp_path: Path) -> None:
     # #248 intact. The fragment is reached by walking `extends` UPWARD from a database
     # participant — the only context in which an object's fields are columns at all. An

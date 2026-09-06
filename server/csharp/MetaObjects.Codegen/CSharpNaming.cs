@@ -636,18 +636,37 @@ public static class CSharpNaming
     }
 
     /// <summary>
+    /// Whether <paramref name="obj"/> DECLARES anything a names artifact carries.
+    /// <para>One predicate, because the artifact has four collections and the two places
+    /// that ask this question must agree about all four. They used to ask about fields
+    /// alone, and the cost was precise: an intermediate abstract declaring only an
+    /// <c>identity.secondary</c> — a key hoisted onto a chain, which is the whole reason
+    /// such a node exists — answered "no". <see cref="NamesArtifactSuperOf"/> then walked
+    /// past it and <see cref="ResolveSuperFragmentNames"/> emitted nothing for it, so its
+    /// key appeared in NEITHER the child's own set nor the grandparent's.</para>
+    /// <para>ADR-0039: the own-only accessors are correct HERE — the question is what this
+    /// node declares, not what it can see. An inherited key belongs to the ancestor that
+    /// declared it and is reached through that ancestor's artifact.</para>
+    /// </summary>
+    private static bool DeclaresNamesContent(MetaObject obj) =>
+        obj.OwnFields().Count > 0
+        || obj.OwnIdentities().Count > 0
+        || obj.OwnLookupIndexes().Count > 0;
+
+    /// <summary>
     /// The nearest ancestor of <paramref name="obj"/> that carries a names artifact of its
     /// own, or <c>null</c>.
     /// <para>Walks PAST an ancestor with nothing to contribute — an abstract marker with no
-    /// fields and no source emits no artifact, so there is nothing to extend and the search
-    /// continues upward rather than stopping at a class that does not exist.</para>
+    /// fields, no keys and no source emits no artifact, so there is nothing to extend and
+    /// the search continues upward rather than stopping at a class that does not
+    /// exist.</para>
     /// </summary>
     public static MetaObject? NamesArtifactSuperOf(MetaObject obj)
     {
         for (var cur = obj.SuperData; cur is not null; cur = cur.SuperData)
         {
             if (cur is MetaObject candidate &&
-                (candidate.OwnFields().Count > 0 || SourceResolution.PrimaryRdbSource(candidate) is not null))
+                (DeclaresNamesContent(candidate) || SourceResolution.PrimaryRdbSource(candidate) is not null))
                 return candidate;
         }
         return null;
@@ -667,15 +686,17 @@ public static class CSharpNaming
     /// only context in which its fields are columns at all. It carries no
     /// <c>Kind</c>/<c>Name</c>/<c>ReadOnly</c>, because it has no physical name and must
     /// never acquire one.</para>
-    /// <para>Returns <c>null</c> when the object declares no fields of its own: an abstract
+    /// <para>Returns <c>null</c> when the object declares nothing of its own: an abstract
     /// marker has nothing to extend, and emitting an empty class for it would put a name in
-    /// the namespace that says nothing.</para>
+    /// the namespace that says nothing. "Nothing" is <see cref="DeclaresNamesContent"/> —
+    /// fields OR keys, the same question <see cref="NamesArtifactSuperOf"/> asks, so the
+    /// walk and the emit cannot disagree about which ancestors exist.</para>
     /// </summary>
     public static ObjectNames? ResolveSuperFragmentNames(
         MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
+        if (!DeclaresNamesContent(obj)) return null;
         var own = obj.OwnFields();
-        if (own.Count == 0) return null;
 
         var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
         foreach (var f in obj.Fields())

@@ -335,6 +335,59 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void aKeyOnlyAbstractIsALinkInTheChainNotANodeToWalkPast() throws IOException {
+        // `Audited` declares NO field and NO source -- only a key. That is the whole reason
+        // such a node exists: hoist one `identity.secondary` onto a chain. The "has anything
+        // to contribute" test used to ask about fields and sources alone, so this node
+        // answered "no": the walk stepped over it, no AuditedNames was emitted, and its key
+        // landed in neither WidgetNames nor the grandparent's. The generated code still
+        // referenced it.
+        String model = """
+            {
+              "metadata.root": { "package": "acme", "children": [
+                { "object.entity": { "name": "Base", "abstract": true, "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.string": { "name": "email", "@column": "zz_email_addr" } }
+                ] } },
+                { "object.entity": { "name": "Audited", "abstract": true, "extends": "Base", "children": [
+                    { "identity.secondary": { "name": "by_email", "@fields": ["email"] } }
+                ] } },
+                { "object.entity": { "name": "Widget", "extends": "Audited", "children": [
+                    { "source.rdb": { "@table": "zz_widgets" } },
+                    { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder().toPath();
+        Path workspace = tempFolder.newFolder().toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "names-keyonly", model);
+
+        SpringNamesGenerator gen = new SpringNamesGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        // The intermediate has something to contribute, so it gets a class of its own...
+        Path audited = outDir.resolve("acme/AuditedNames.java");
+        assertTrue("expected AuditedNames.java for a key-only abstract", Files.exists(audited));
+        String auditedSrc = Files.readString(audited, StandardCharsets.UTF_8);
+        assertTrue("expected the key on the node that declares it",
+            auditedSrc.contains("IDENTITY_BY_EMAIL_NAME"));
+
+        // ...and the concrete entity reaches it by EXTENDING that class rather than
+        // restating the key, which is this generator's contract. Stated in the negative
+        // too: emitting both the extends and the literal would satisfy a positive-only
+        // assertion while re-introducing the duplication the class exists to remove.
+        String widgetSrc = Files.readString(outDir.resolve("acme/WidgetNames.java"), StandardCharsets.UTF_8);
+        assertTrue("expected WidgetNames to extend the intermediate, not skip it",
+            widgetSrc.contains("extends AuditedNames"));
+        assertFalse("expected the inherited key NOT restated on the child",
+            widgetSrc.contains("IDENTITY_BY_EMAIL_NAME ="));
+    }
+
+    @Test
     public void collidingScreamingSnakeMembersAreRefusedNamingTheModel() throws IOException {
         // userId and UserId both toSnakeCase()+uppercase() to USER_ID -- two duplicate
         // constant members. javac would refuse to compile the emitted .java, but the

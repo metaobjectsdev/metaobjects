@@ -329,16 +329,38 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
     }
 
     /**
+     * Whether {@code obj} DECLARES anything a names class carries.
+     *
+     * <p>One predicate, because the class has four collections and the two places that ask
+     * this question must agree about all four. They used to ask about fields alone, and the
+     * cost was precise: an intermediate abstract declaring only an {@code identity.secondary}
+     * — a key hoisted onto a chain, which is the whole reason such a node exists — answered
+     * "no". {@link #namesArtifactSuperOf} then walked past it and
+     * {@link #resolveSuperFragmentNames} emitted nothing for it, so its key appeared in
+     * NEITHER the child's own map nor the grandparent's, while the generated code still
+     * referenced it.</p>
+     *
+     * <p>ADR-0039: the own-only accessors are correct HERE — the question is what this node
+     * declares, not what it can see. An inherited key belongs to the ancestor that declared
+     * it and is reached through that ancestor's class.</p>
+     */
+    private static boolean declaresNamesContent(MetaObject obj) {
+        return !obj.getMetaFields(false).isEmpty()
+            || !obj.getIdentities(false).isEmpty()
+            || !obj.getChildren(LookupIndex.class, false).isEmpty();
+    }
+
+    /**
      * The nearest ancestor of {@code obj} carrying a names class of its own, or null.
      *
      * <p>Walks PAST an ancestor with nothing to contribute — an abstract marker with no
-     * fields and no source emits no class, so there is nothing to extend and the search
-     * continues upward rather than stopping at a type that does not exist.</p>
+     * fields, no keys and no source emits no class, so there is nothing to extend and the
+     * search continues upward rather than stopping at a type that does not exist.</p>
      */
     static MetaObject namesArtifactSuperOf(MetaObject obj) {
         for (MetaData cur = obj.getSuperData(); cur != null; cur = cur.getSuperData()) {
             if (cur instanceof MetaObject candidate
-                && (!candidate.getMetaFields(false).isEmpty()
+                && (declaresNamesContent(candidate)
                     || SourceResolution.primaryRdbSource(candidate) != null)) {
                 return candidate;
             }
@@ -358,13 +380,15 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
      * which its fields are columns at all. It carries NO source, because it has no physical
      * name and must never acquire one.</p>
      *
-     * <p>Returns null when the object declares no fields of its own: an abstract marker has
+     * <p>Returns null when the object declares nothing of its own: an abstract marker has
      * nothing to extend, and emitting an empty class for it would put a name in the package
-     * that says nothing.</p>
+     * that says nothing. "Nothing" is {@link #declaresNamesContent} — fields OR keys, the
+     * same question {@link #namesArtifactSuperOf} asks, so the walk and the emit cannot
+     * disagree about which ancestors exist.</p>
      */
     static ObjectNames resolveSuperFragmentNames(MetaObject obj, String strategy) {
+        if (!declaresNamesContent(obj)) return null;
         Collection<MetaField> own = obj.getMetaFields(false);
-        if (own.isEmpty()) return null;
         return new ObjectNames(
             obj.getType(), obj.getSubType(), obj.getShortName(),
             Map.of(), Map.of(),

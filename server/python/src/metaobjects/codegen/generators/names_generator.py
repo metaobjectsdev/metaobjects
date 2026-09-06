@@ -238,17 +238,39 @@ def _field_consts(field: MetaData, column: str) -> list[_Const]:
     ]
 
 
+def declares_names_content(entity: MetaObject) -> bool:
+    """Whether ``entity`` DECLARES anything a names module carries.
+
+    One predicate, because the module has four collections and the two places that ask
+    this question must agree about all four. They used to ask about fields alone, and
+    the cost was precise: an intermediate abstract declaring only an
+    ``identity.secondary`` — a key hoisted onto a chain, which is the whole reason such
+    a node exists — answered "no". :func:`names_artifact_super_of` then walked past it
+    and no module was rendered for it, so the child re-stated the key's literal instead
+    of referencing it. No import broke, which is why nothing caught it; the guarantee
+    did — the physical name is supposed to be spelled ONCE.
+
+    ADR-0039: the own-only accessors are correct HERE — the question is what this node
+    declares, not what it can see. An inherited key belongs to the ancestor that
+    declared it and is reached through that ancestor's module.
+    """
+    return bool(
+        entity.own_fields()
+        or [c for c in entity.own_children() if c.type in (TYPE_IDENTITY, TYPE_INDEX)]
+    )
+
+
 def names_artifact_super_of(entity: MetaObject) -> MetaObject | None:
     """The nearest ancestor of ``entity`` carrying a names module of its own, or None.
 
     Walks PAST an ancestor with nothing to contribute — an abstract marker with no
-    fields and no source emits no module, so there is nothing to import and the search
-    continues upward rather than stopping at a name that does not exist.
+    fields, no keys and no source emits no module, so there is nothing to import and the
+    search continues upward rather than stopping at a name that does not exist.
     """
     cur = entity.super_data
     while cur is not None:
         if isinstance(cur, MetaObject) and (
-            cur.own_fields() or primary_rdb_source(cur) is not None
+            declares_names_content(cur) or primary_rdb_source(cur) is not None
         ):
             return cur
         cur = cur.super_data
@@ -330,9 +352,11 @@ def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -
     """
     src = primary_rdb_source(entity)
     if fragment:
-        if not entity.own_fields():
+        if not declares_names_content(entity):
             # An abstract marker has nothing to import; an empty module would put a name
-            # in the package that says nothing.
+            # in the package that says nothing. "Nothing" is the same question
+            # `names_artifact_super_of` asks, so the walk and the render cannot disagree
+            # about which ancestors exist.
             return None
     elif src is None:
         return None

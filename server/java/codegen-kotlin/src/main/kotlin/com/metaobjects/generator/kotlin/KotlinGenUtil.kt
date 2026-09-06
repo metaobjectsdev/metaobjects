@@ -299,10 +299,31 @@ public object KotlinGenUtil {
     )
 
     /**
+     * Whether [obj] DECLARES anything a names object carries.
+     *
+     * One predicate, because the object has four collections and the two places that ask
+     * this question must agree about all four. They used to ask about fields alone, and the
+     * cost was precise: an intermediate abstract declaring only an `identity.secondary` — a
+     * key hoisted onto a chain, which is the whole reason such a node exists — answered
+     * "no". [namesArtifactSuperOf] then walked past it and [resolveSuperFragmentNames]
+     * emitted nothing for it, so its key appeared in NEITHER the child's own map nor the
+     * grandparent's. The Exposed table generator still referenced it, and the generated
+     * Kotlin did not compile.
+     *
+     * ADR-0039: the own-only accessors are correct HERE — the question is what this node
+     * declares, not what it can see. An inherited key belongs to the ancestor that declared
+     * it and is reached through that ancestor's object.
+     */
+    private fun declaresNamesContent(obj: MetaObject): Boolean =
+        obj.getMetaFields(false).isNotEmpty() ||
+            obj.getIdentities(false).isNotEmpty() ||
+            obj.getChildren(LookupIndex::class.java, false).isNotEmpty()
+
+    /**
      * The nearest ancestor of [obj] carrying a names object of its own, or null.
      *
-     * Walks PAST an ancestor with nothing to contribute — an abstract marker with no fields
-     * and no source emits no object, so there is nothing to reference and the search
+     * Walks PAST an ancestor with nothing to contribute — an abstract marker with no fields,
+     * no keys and no source emits no object, so there is nothing to reference and the search
      * continues upward rather than stopping at a name that does not exist.
      */
     fun namesArtifactSuperOf(obj: MetaObject): MetaObject? {
@@ -311,7 +332,7 @@ public object KotlinGenUtil {
         var cur: MetaData? = obj.getSuperData<MetaData>()
         while (cur != null) {
             if (cur is MetaObject &&
-                (cur.getMetaFields(false).isNotEmpty() || primaryRdbSource(cur) != null)
+                (declaresNamesContent(cur) || primaryRdbSource(cur) != null)
             ) return cur
             cur = cur.getSuperData<MetaData>()
         }
@@ -429,16 +450,18 @@ public object KotlinGenUtil {
      * by walking `extends` upward — the only context in which its fields are columns at all.
      * It carries NO source, because it has no physical name and must never acquire one.
      *
-     * Returns null when the object declares no fields of its own: an abstract marker has
+     * Returns null when the object declares nothing of its own: an abstract marker has
      * nothing to reference, and emitting an empty object for it would put a name in the
-     * package that says nothing.
+     * package that says nothing. "Nothing" is [declaresNamesContent] — fields OR keys, the
+     * same question [namesArtifactSuperOf] asks, so the walk and the emit cannot disagree
+     * about which ancestors exist.
      */
     fun resolveSuperFragmentNames(
         obj: MetaObject,
         strategy: String = DEFAULT_COLUMN_NAMING,
     ): KotlinObjectNames? {
+        if (!declaresNamesContent(obj)) return null
         val own = obj.getMetaFields(false)
-        if (own.isEmpty()) return null
         return KotlinObjectNames(
             type = obj.type,
             subType = obj.subType,

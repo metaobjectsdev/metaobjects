@@ -248,18 +248,40 @@ const INDEX_NAMED_SUBTYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Whether `obj` DECLARES anything a names artifact carries.
+ *
+ * One predicate, because the artifact has four collections and the two places that ask
+ * this question must agree about all four. They used to ask about fields alone, and the
+ * cost was precise: an intermediate abstract declaring only an `identity.secondary` — a
+ * key hoisted onto a chain, which is the whole reason such a node exists — answered "no".
+ * {@link namesArtifactSuperOf} then walked past it and {@link resolveSuperFragmentNames}
+ * emitted nothing for it, so its key appeared in NEITHER the child's own set nor the
+ * grandparent's spread. `drizzle-schema.ts` still emitted `uniqueIndex(<E>Names.
+ * identities.<key>.index)` against it, and the generated code did not compile.
+ *
+ * ADR-0039's sanctioned own-accessor use: the question is what this node declares, not
+ * what it can see. An inherited key belongs to the ancestor that declared it, and is
+ * reached through that ancestor's artifact.
+ */
+function declaresNamesContent(obj: MetaObject): boolean {
+  if (typeof obj.ownFields !== "function") return false;
+  return obj.ownFields().length > 0 ||
+    obj.ownIdentities().length > 0 ||
+    obj.ownLookupIndexes().length > 0;
+}
+
+/**
  * The nearest ancestor of `obj` that carries a names artifact of its own, or undefined.
  *
- * Walks past an ancestor with nothing to contribute — an abstract marker with no fields
- * and no source emits no artifact, so there is nothing to extend and the search continues
- * upward rather than stopping at a name that does not exist.
+ * Walks past an ancestor with nothing to contribute — an abstract marker with no fields,
+ * no keys and no source emits no artifact, so there is nothing to extend and the search
+ * continues upward rather than stopping at a name that does not exist.
  */
 export function namesArtifactSuperOf(obj: MetaObject): MetaObject | undefined {
   let cur = obj.superData;
   while (cur !== undefined) {
     const candidate = cur as MetaObject;
-    if (typeof candidate.ownFields === "function" &&
-        (candidate.ownFields().length > 0 || primaryRdbSource(candidate) !== undefined)) {
+    if (declaresNamesContent(candidate) || primaryRdbSource(candidate) !== undefined) {
       return candidate;
     }
     cur = cur.superData;
@@ -361,16 +383,18 @@ export function resolveObjectNames(
  * all. It carries no `kind`/`name`/`readOnly`, because it has no physical name and must
  * never acquire one.
  *
- * Returns undefined when the object declares no fields of its own: an abstract marker has
+ * Returns undefined when the object declares nothing of its own: an abstract marker has
  * nothing to extend, and emitting an empty artifact for it would put a name in the import
- * graph that says nothing.
+ * graph that says nothing. "Nothing" is {@link declaresNamesContent} — fields OR keys, the
+ * same question {@link namesArtifactSuperOf} asks, so the walk and the emit cannot disagree
+ * about which ancestors exist.
  */
 export function resolveSuperFragmentNames(
   obj: MetaObject,
   strategy?: ColumnNamingStrategy,
 ): ObjectNames | undefined {
+  if (!declaresNamesContent(obj)) return undefined;
   const ownFieldList = obj.ownFields();
-  if (ownFieldList.length === 0) return undefined;
 
   const fields: Record<string, FieldNames> = {};
   for (const f of obj.fields()) {

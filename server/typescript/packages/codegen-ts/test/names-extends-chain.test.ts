@@ -71,9 +71,9 @@ const MODEL = {
   },
 };
 
-async function generate(): Promise<{ tree: Record<string, string>; dir: string }> {
+async function generate(model: unknown = MODEL): Promise<{ tree: Record<string, string>; dir: string }> {
   const { root, errors } = await new MetaDataLoader().load([
-    new InMemoryStringSource(JSON.stringify(MODEL), { id: "extends-chain.json" }),
+    new InMemoryStringSource(JSON.stringify(model), { id: "extends-chain.json" }),
   ]);
   expect(errors.map((e) => e.message)).toEqual([]);
 
@@ -181,6 +181,105 @@ describe("names artifacts extend rather than restate", () => {
         `const b: "zz_auths" = CopayAuthNames.sources.primary.table;`,
         `const c: "zz_copay_cents" = CopayAuthNames.fields.copayAmount.column;`,
         `export const probe = [a, b, c];`,
+      ].join("\n"), "utf8");
+
+      const program = ts.createProgram(
+        [probe, ...Object.keys(tree).filter((p) => p.endsWith(".names.ts")).map((p) => join(dir, p))],
+        {
+          strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+          module: ts.ModuleKind.ESNext,
+          moduleResolution: ts.ModuleResolutionKind.Bundler,
+          skipLibCheck: true,
+        },
+      );
+      const errors = ts.getPreEmitDiagnostics(program)
+        .map((d) => `${d.file?.fileName ?? ""}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`);
+      expect(errors).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// An intermediate abstract that declares NO field and NO source, only a key.
+//
+// `Audited` exists to carry one `identity.secondary` down a chain. It has nothing else —
+// which is exactly the shape `namesArtifactSuperOf` used to walk past, because its "has
+// anything to contribute" test asked about fields and sources only. The artifact carries
+// four collections, and a walk that knows about two of them loses the other two.
+const KEY_ONLY_MODEL = {
+  "metadata.root": {
+    package: "acme",
+    children: [
+      {
+        "object.entity": {
+          name: "Base",
+          abstract: true,
+          children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "email", "@column": "zz_email_addr" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Audited",
+          abstract: true,
+          extends: "Base",
+          children: [
+            { "identity.secondary": { name: "by_email", "@fields": "email" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Widget",
+          extends: "Audited",
+          children: [
+            { "source.rdb": { "@table": "zz_widgets" } },
+            { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+          ],
+        },
+      },
+    ],
+  },
+};
+
+describe("a key-only abstract is a link in the chain, not a node to walk past", () => {
+  test("its key reaches the concrete artifact instead of falling out of both ends", async () => {
+    const { tree, dir } = await generate(KEY_ONLY_MODEL);
+    try {
+      // The intermediate has something to contribute, so it gets an artifact of its own.
+      expect(tree["Audited.names.ts"]).toBeDefined();
+      expect(tree["Audited.names.ts"]).toContain('by_email');
+
+      // ...and the concrete entity reaches it through the spread rather than restating
+      // it, which is this suite's whole contract. Stated in the negative too: a generator
+      // that emitted BOTH the spread and the literal would satisfy a positive-only
+      // assertion while re-introducing the duplication the artifact exists to remove.
+      const widget = tree["Widget.names.ts"];
+      expect(widget).toBeDefined();
+      expect(widget).toContain('import { AuditedNames } from "./Audited.names"');
+      expect(widget).toContain("...AuditedNames.identities,");
+      expect(widget).not.toContain('by_email: {');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the emitted set type-checks — the compiler is what proves the key resolves", async () => {
+    // The teeth, and the reason the text assertions above are not enough: the defect this
+    // pins emitted a `Widget.ts` referencing `WidgetNames.identities.by_email.index`
+    // against a `WidgetNames.identities` that had no such member. Text said nothing; the
+    // compiler said TS2339.
+    const { tree, dir } = await generate(KEY_ONLY_MODEL);
+    try {
+      const probe = join(dir, "zz-probe.ts");
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(probe, [
+        `import { WidgetNames } from "./Widget.names";`,
+        `const k = WidgetNames.identities.by_email;`,
+        `export const probe = [k];`,
       ].join("\n"), "utf8");
 
       const program = ts.createProgram(
