@@ -1,22 +1,16 @@
-// ⚠ THIS FILE DOES NOT EXECUTE. Its assertions are NOT coverage.
+// This file executes. It did not until 2026-09-06, and two things keep it running:
 //
-// It imports `../src/index.js`, whose barrel reaches `currency-input.component.ts`. A
-// `@Component` whose template pulls `@angular/common` cannot be loaded in this process:
-// the shipped fesm2022 bundles are PARTIALLY compiled (`ɵɵngDeclare*`) and need the
-// Angular linker, a Babel plugin `bun test` does not run. `./setup.js` loads
-// `@angular/compiler` to get further, and the failure simply moves — with
-// `experimentalDecorators` on, this file's own decorators resolve and it then dies inside
-// `@angular/common`'s `ɵɵngDeclareFactory` instead (measured 2026-09-06).
+//  - `./setup.js` imports `@angular/compiler`, which registers the JIT compiler so
+//    Angular core can resolve the `ɵɵngDeclare*` declarations in the shipped fesm2022
+//    bundles. That is what the Angular linker would otherwise have to do ahead of time,
+//    and it is why no Babel/linker step is needed here.
+//  - `../tsconfig.json` sets `experimentalDecorators: true` AND carries no `extends`.
+//    Bun takes that option from the base of a resolving `extends` and drops this
+//    package's own value, so re-adding `extends` makes every test below stop running
+//    while still reporting. The tsconfig says so at length.
 //
-// So the file dies at import, every test below reports without running, and
-// `scripts/ci-local.sh` (gate_ts_unit) deliberately runs this package BY NAMED FILE
-// rather than as a suite. Anything you add here is silently dead — put it in
-// `di-smoke.test.ts` or `entity-fetcher-base-url.test.ts`, which import their modules
-// directly and DO run.
-//
-// Fixing it properly means running this package's component tests under a real Angular
-// test setup (the linker, or TestBed under Karma/Vitest+jsdom), which is a tooling
-// decision beyond the scope of the change that documented this.
+// Component tests belong here. `di-smoke.test.ts` and `entity-fetcher-base-url.test.ts`
+// import their modules directly and are independent of both.
 
 import "./setup.js";
 import { describe, test, expect } from "bun:test";

@@ -72,6 +72,41 @@ cannot see, so a prefix-only trigger would nag for ever with no way to satisfy i
 cry-wolf failure that already got the `timestampMode` warning deleted from `runner.ts`.
 
 
+### Fixed — the Angular tier's built package could not be imported by Angular
+
+`client/web/packages/angular` compiled with `experimentalDecorators: false`, so `tsc`
+emitted TC39 standard decorators and the built `dist/index.js` threw
+`Standard Angular field decorators are not supported in JIT mode.` on the first import
+of the barrel. The tier is source-only and unpublished (ADR-0048), so nothing shipped
+broken to a registry — but the artifact an adopter would load did not work, and the
+package's own behavioral suite had never executed for the same reason.
+
+The cause of both was one option and one surprise:
+
+- **Bun takes `experimentalDecorators` from the base of a tsconfig `extends` that
+  resolves, and discards the child's own value** (measured on Bun 1.3.14; an `extends`
+  naming a file that does not exist keeps it). `tsc` is unaffected. So the package's
+  `extends` to the shared server base — which says nothing about decorators — could not
+  be overridden locally, and `bun test` saw standard decorators no matter what the
+  tsconfig said. `client/web/packages/angular/tsconfig.json` now inlines that base
+  instead of extending it, and says why at length: re-adding `extends` silently
+  un-runs the component suite.
+- **The Angular linker was never the blocker.** `test/setup.ts` already imports
+  `@angular/compiler`, whose JIT compiler resolves the `ɵɵngDeclare*` declarations in
+  Angular's fesm2022 bundles. No Babel step, no second test runner.
+
+`test/angular-runtime.test.ts` — 13 assertions that reported without running for the
+whole life of the file — now executes, and `scripts/ci-local.sh` runs the package as a
+whole suite again rather than by named file, which makes that loop the guard: re-adding
+the `extends` turns it red instead of quietly skipping it. 21 tests across the package,
+0 failing. ADR-0048 Amendment 1 records the corrected diagnosis and marks the first half
+of promotion-bar item 4 met; the tier stays source-only.
+
+Also removes an unused `imports: [CommonModule]` from `CurrencyInputComponent` — its
+template uses only property, attribute and event binding. (`EntityGridComponent` keeps
+its own, which is `*ngFor`/`*ngIf`.)
+
+
 ### Fixed — BREAKING: a TPH subtype's `$path` named an endpoint that 404s
 
 `<Entity>.$path` now holds the address the generated routes **serve** the object at. For

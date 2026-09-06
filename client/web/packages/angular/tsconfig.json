@@ -1,12 +1,53 @@
 {
-  "extends": "../../../../server/typescript/tsconfig.base.json",
+  // NO `extends` HERE, DELIBERATELY — and `experimentalDecorators` must stay `true`.
+  //
+  // Two facts, both measured against Bun 1.3.14 on 2026-09-06:
+  //
+  //  1. `experimentalDecorators: false` produces a `dist/` NO Angular consumer can
+  //     import. `tsc` then emits TC39 standard decorators, and Angular 18's `@Input()`
+  //     throws `Standard Angular field decorators are not supported in JIT mode.` on the
+  //     first import of the barrel. Angular's own toolchain sets this flag `true`; a
+  //     package of decorator-bearing components built by plain `tsc` has to as well.
+  //
+  //  2. When a tsconfig has an `extends` THAT RESOLVES, Bun takes `experimentalDecorators`
+  //     from the BASE and discards this file's own value. (An `extends` naming a file that
+  //     does NOT exist keeps it — the override is lost only on a successful resolve.) `tsc`
+  //     is unaffected either way, so with `extends` the build is correct while every
+  //     `bun test` in this package sees standard decorators and dies at import. That is
+  //     what kept `test/angular-runtime.test.ts` from executing for its whole life.
+  //
+  // So the shared base at ../../../../server/typescript/tsconfig.base.json is INLINED
+  // below rather than referenced. Re-adding `extends` silently un-runs this package's
+  // component tests; if the base changes, mirror the change here by hand.
   "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "types": ["bun-types"],
+
     "outDir": "./dist",
     "rootDir": "./src",
-    "lib": ["ES2023", "DOM"],
-    "experimentalDecorators": false,
-    "useDefineForClassFields": false,
-    "verbatimModuleSyntax": false
+
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "test", "node_modules"]

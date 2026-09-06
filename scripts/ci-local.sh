@@ -456,26 +456,18 @@ gate_ts_unit() {
            sdk ai-runtime conformance docs-site; do
     ( cd "server/typescript/packages/$p" && bun test --timeout 30000 ) || return 1
   done
-  for p in runtime-web react tanstack; do
+  # `angular` was run BY NAMED FILE here until 2026-09-06, because `angular-runtime.test.ts`
+  # died at import and its 13 assertions reported without ever running. The cause was not
+  # the Angular linker: `test/setup.ts` already loads `@angular/compiler`, whose JIT
+  # compiler resolves the `ɵɵngDeclare*` bundles fine. It was that the package tsconfig
+  # carried an `extends`, and Bun takes `experimentalDecorators` from the base of a
+  # resolving `extends` and discards the child's own value — so `tsc` built with legacy
+  # decorators while every `bun test` saw standard ones. The tsconfig is inlined now and
+  # the whole suite runs, which also makes this loop the guard: re-adding that `extends`
+  # turns the file red rather than quietly un-running it.
+  for p in runtime-web react tanstack angular; do
     ( cd "client/web/packages/$p" && bun test --timeout 30000 ) || return 1
   done
-  # @metaobjectsdev/angular is absent from the loop above because ONE of its test files
-  # cannot run under Bun at all: `angular-runtime.test.ts` imports the barrel, which
-  # reaches a `@Component` whose template pulls `@angular/common`, and those fesm2022
-  # bundles are partially compiled (`ɵɵngDeclare*`) needing the Angular linker — a Babel
-  # plugin `bun test` does not run. (`experimentalDecorators` does not rescue it: with the
-  # flag on, the failure just moves from this package's own decorators into
-  # `@angular/common`'s `ɵɵngDeclareFactory`. Measured 2026-09-06.)
-  #
-  # So the package is run BY NAMED FILE — every file here DOES execute. That is three
-  # files rather than the one this lane used to run: the #287 bundle gate, plus the DI and
-  # base-URL suites, which import their modules DIRECTLY instead of through the barrel.
-  # `angular-runtime.test.ts` is deliberately NOT named: it carries a header saying its
-  # assertions never run, so nothing is silently counted as green.
-  ( cd client/web/packages/angular && bun test --timeout 30000 \
-      test/browser-bundleable.test.ts \
-      test/di-smoke.test.ts \
-      test/entity-fetcher-base-url.test.ts ) || return 1
 }
 gate_conf_csharp() {
   ( cd server/csharp \

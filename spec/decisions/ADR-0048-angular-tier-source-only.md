@@ -45,7 +45,9 @@ standalone-component output against the cross-port REST grammar. But it is
    0.21.5 fixed for the TanStack tier via the DB-free `<Entity>.meta`
    descriptor. (The guard half is fixed alongside this ADR; the descriptor
    import and TPH handling are not.)
-4. **The behavioral test suite cannot run in the repo's toolchain.** Angular's
+4. **The behavioral test suite cannot run in the repo's toolchain.** *(This
+   diagnosis is wrong — see Amendment 1. The suite runs; the cause was a
+   tsconfig option Bun discards, not the linker.)* Angular's
    standard field decorators require the Angular linker (AOT); Bun's test
    runner has no plugin phase to run it, so the suite fails structurally
    (`Standard Angular field decorators are not supported in JIT mode`). Only
@@ -101,9 +103,10 @@ step. All of the following before the packages join lockstep:
    surface for projections (no write methods against routes that do not
    exist), and generated services importing the DB-free `<Entity>.meta`
    descriptor — gated by a browser-bundle test over generated output.
-4. A test runner that actually executes the runtime behavioral suite (Angular
-   linker toolchain), wired into CI, plus a compile gate over generated output
-   against `@angular/core`.
+4. A test runner that actually executes the runtime behavioral suite
+   (~~Angular linker toolchain~~ — **met 2026-09-06**, with no new toolchain;
+   see Amendment 1), wired into CI, plus a compile gate over generated output
+   against `@angular/core` — **this second half is still open**.
 5. Peer ranges covering only tested Angular majors.
 6. A real consumer asking for the npm package.
 
@@ -124,3 +127,44 @@ CLAUDE.md, `docs/ports/typescript-client.md`, the three backend port docs and
   peer ranges) reach it; feature lines (view kinds, meta descriptors, TPH) are
   not required to, until someone picks up the promotion bar.
 - Anyone proposing to publish it has a checklist instead of an argument.
+
+## Amendment 1 — the untestable suite was a tsconfig option, not a toolchain (2026-09-06)
+
+Context item 4 and the first half of bar item 4 priced the behavioral suite at a
+second, permanent test toolchain for one package: Angular's linker, or TestBed
+under Karma/Vitest. That price was wrong. The suite now executes under plain
+`bun test` — 21 tests across the package, 0 failing — and the whole package is
+back in `gate_ts_unit`'s client loop rather than being run by named file.
+
+Two independent things were being conflated, and only one of them was ever real:
+
+- **The linker was not needed in-process.** `test/setup.ts` already imported
+  `@angular/compiler`, whose JIT compiler resolves the `ɵɵngDeclare*` declarations
+  in Angular's shipped fesm2022 bundles — the work the linker would otherwise do
+  ahead of time. Nothing else was required for `@angular/common` to load.
+- **The actual wall was `extends`.** Bun (measured on 1.3.14) takes
+  `experimentalDecorators` from the base of a tsconfig `extends` that RESOLVES and
+  discards the child's own value; an `extends` naming a missing file keeps it.
+  `tsc` is unaffected. So the package's `extends` to the shared server base — which
+  says nothing about decorators — silently forced standard decorators on every
+  `bun test`, and Angular 18's `@Input()` threw
+  `Standard Angular field decorators are not supported in JIT mode.` at the first
+  import of the barrel. Inlining the base into
+  `client/web/packages/angular/tsconfig.json` and setting
+  `experimentalDecorators: true` removes it; the file says so at length, because
+  re-adding `extends` un-runs the suite.
+
+**It was also a product defect, not only a test gap.** The tier built with
+`experimentalDecorators: false`, so `tsc` emitted standard decorators into
+`dist/index.js` and *no* Angular consumer could import the built package — the same
+throw, from the artifact an adopter would actually load. Nothing caught it because
+nothing in the repo imported the built barrel: the browser-bundle gate proves a
+bundler can resolve the graph, which it can, and the by-named-file test lane
+deliberately skipped the one file that would have imported it. That is the shape
+worth remembering — a lane narrowed to route around a failure stops being able to
+see what the failure was about.
+
+**The decision does not change.** Bar items 1, 2, 3, 5 and 6 stand, and so does the
+compile gate over generated output in item 4. The tier stays source-only; what
+changed is that one of the six is now cheap and done, and the reason the other five
+are open is feature parity rather than tooling.

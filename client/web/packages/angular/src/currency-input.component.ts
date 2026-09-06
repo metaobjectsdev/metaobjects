@@ -9,7 +9,6 @@ import {
   type OnChanges,
   type SimpleChanges,
 } from "@angular/core";
-import { CommonModule } from "@angular/common";
 import {
   NG_VALUE_ACCESSOR,
   type ControlValueAccessor,
@@ -45,7 +44,6 @@ import {
 @Component({
   selector: "mo-currency-input",
   standalone: true,
-  imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     {
