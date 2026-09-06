@@ -180,6 +180,29 @@ found zero consumers. Ask `sources.<role>.kind`.
 Per port: `SourcePrimaryTable` / `SourceReplicaView` (C#), `SOURCE_PRIMARY_TABLE` (Java,
 Kotlin), `<ENTITY>_SOURCE_PRIMARY_TABLE` (Python). Field members are unchanged everywhere.
 
+#### One public export changed signature and cannot be made compatible
+
+`physicalNameExpr` — exported from `@metaobjectsdev/codegen-ts` and composable by an
+FR-040 owned generator — gains a THIRD, required parameter:
+
+```diff
+-physicalNameExpr(names, literal)
++physicalNameExpr(names, literal, obj)
+```
+
+`obj` is what resolves the physical-name alias for the source in the requested role
+(`table` / `view` / `proc`), which is the whole point of the restructure: one key stopped
+meaning three different things. There is no compatible default. Omitting it leaves no
+alias, and the only behaviour available then is to fall back to the literal — which is
+silently WRONG output rather than a compile error, so the parameter stays required and
+this note exists instead.
+
+This is deliberately unlike `renderEntityConstants` / `renderEntityMetaFile` /
+`ProjectionDeclOpts`, which keep an `apiPrefix` parameter they now ignore precisely so an
+ejected copy still compiles. Dropping a parameter can be absorbed; adding a load-bearing
+one cannot.
+
+
 ### Fixed — the last three physical-name escapes, all of which had been ruled structural
 
 - **A write-through entity's replica view.** The artifact carried the primary source only,
