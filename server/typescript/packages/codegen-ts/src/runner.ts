@@ -130,6 +130,50 @@ function engineVersion(): string | undefined {
   }
 }
 
+/** The release in which `$apiPrefix` left the generated entity descriptor. */
+const BASE_URL_MOVE_VERSION = "0.25.0";
+
+/** `N.N.N` only. Anything else — a prerelease tag, a sentinel — is deliberately unordered. */
+function orderable(v: string | undefined): [number, number, number] | undefined {
+  if (v === undefined) return undefined;
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v);
+  return m === null ? undefined : [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/**
+ * True exactly on the FIRST gen after upgrading past the release that moved the API base
+ * URL out of the entity descriptor, and only for a project that actually had a prefix to
+ * move. Exported for test.
+ *
+ * Keyed on the #232 engine stamp rather than on `apiPrefix` alone so the note is
+ * self-extinguishing: whether the app passed `baseUrl` to its provider is runtime code
+ * `meta gen` cannot see, so a prefix-only trigger would nag for ever with no way to
+ * satisfy it — the cry-wolf failure that got the `timestampMode` warning deleted from
+ * this file (see `codegen-ts-tanstack/src/data-grid-gate.ts`).
+ *
+ * Silence is the default for an absent or unorderable recorded version. That is the
+ * OPPOSITE call to the 0.24.5 agent-context staleness nudge, and deliberately: there an
+ * unknown version meant "cannot prove it is fresh, so nudge"; here it means "no gen
+ * history, so nothing to migrate", and a false nag costs more than a missed one when the
+ * compile break already routes the adopter to the same line.
+ */
+export function shouldNoteBaseUrlMove(
+  apiPrefix: string,
+  recordedEngine: string | undefined,
+  moveVersion: string = BASE_URL_MOVE_VERSION,
+): boolean {
+  if (apiPrefix === "") return false;
+  const was = orderable(recordedEngine);
+  const move = orderable(moveVersion);
+  if (was === undefined || move === undefined) return false;
+  for (let i = 0; i < 3; i++) {
+    const a = was[i] as number;
+    const b = move[i] as number;
+    if (a !== b) return a < b;
+  }
+  return false;
+}
+
 export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const warnings: string[] = [];
   const strategy = opts.mergeStrategy ?? "overwrite";
@@ -276,6 +320,19 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   // 2. Resolve targets + entity-module target.
   const config = normalizeConfig(opts.config);
+
+  // The compile break (`value` → `fetcher` on the provider) sends an adopter to the right
+  // line; this names the value to put there, once, for the projects that had one.
+  if (shouldNoteBaseUrlMove(config.apiPrefix, recordedEngine)) {
+    warnings.push(
+      `apiPrefix ${JSON.stringify(config.apiPrefix)} no longer reaches the client — ` +
+        `generated hooks and services emit entity-relative paths. Supply it once at the ` +
+        `provider: <EntityFetcherProvider fetcher={...} baseUrl=${JSON.stringify(config.apiPrefix)}> ` +
+        `(Angular: provideEntityFetcher({ fetcher, baseUrl: ${JSON.stringify(config.apiPrefix)} })). ` +
+        `Server routes still mount under apiPrefix and are unaffected. ` +
+        `See docs/features/migrations/api-base-url-leaves-the-entity-descriptor.md`,
+    );
+  }
 
   // (Historical: a warning stood here for a @filterable timestamp under
   // timestampMode:"date", which used to throw at REQUEST time in runtime-ts's
