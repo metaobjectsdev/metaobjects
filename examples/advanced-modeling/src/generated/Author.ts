@@ -52,7 +52,6 @@ export const Author = {
   $entity: "Author",
   $table: "authors",
   $path: "/authors",
-  $apiPrefix: "/api",
   id: { name: "id", label: "Id", view: "text", htmlType: "text" },
   name: {
     name: "name",

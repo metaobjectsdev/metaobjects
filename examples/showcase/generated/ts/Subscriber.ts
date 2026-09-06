@@ -74,7 +74,6 @@ export const Subscriber = {
   $entity: "Subscriber",
   $table: "subscribers",
   $path: "/subscribers",
-  $apiPrefix: "/api",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   email: {
     name: "email",

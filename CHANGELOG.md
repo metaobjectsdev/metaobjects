@@ -7,6 +7,71 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — BREAKING: the API base URL leaves the entity descriptor
+
+`$apiPrefix` is gone from the generated `<Entity>` const and from `<Entity>.meta.ts`.
+Generated TanStack hooks and Angular services emit **entity-relative** paths, and the
+base URL is supplied once at runtime by the fetcher provider.
+
+```diff
+-<EntityFetcherProvider value={fetcher}>
++<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">
+```
+```diff
+-provideEntityFetcher(fetcher)
++provideEntityFetcher({ fetcher, baseUrl: "/api" })
+```
+
+Pass whatever `apiPrefix` says. `baseUrl` is **optional**, default `""` — correct for an
+app served same-origin with routes at the root, which is what `meta init` scaffolds
+(`apiPrefix: ""`). The `value` prop is removed rather than deprecated, so an unmigrated
+app fails `tsc` instead of 404ing in a browser; code reading `<Entity>.$apiPrefix` by
+hand stops compiling for the same reason. Migration:
+[`docs/features/migrations/api-base-url-leaves-the-entity-descriptor.md`](docs/features/migrations/api-base-url-leaves-the-entity-descriptor.md).
+
+**The server half is unchanged.** `apiPrefix` stays in `metaobjects.config.ts` and the
+generated routes still mount under it as a literal (`{ prefix: "/api" }`) — that is the
+correct form, because the code registering `/api/customers` *is* the server.
+`test/templates/api-prefix.test.ts` now states both halves in one file: no prefix in the
+client descriptor, the mount still baked into the routes.
+
+**Why the client half is different.** The prefix was never metadata — zero occurrences in
+`expected-registry.json`, none in any `spec/metamodel/*.json`. For a browser it is a
+*deployment* fact, and codegen was freezing it at `meta gen` time, so a client bundle
+could not be built once and served against a separate API host, a dev proxy, a preview
+environment, or an SSR pass needing an absolute URL. It now can. Removing one application
+setting from N entity descriptors is the smaller half of the win. This is also the line
+every comparable tool draws — openapi-fetch's `createClient({ baseUrl })`, NSwag's
+`API_BASE_URL` token, Apollo's `uri`, tRPC's `httpBatchLink({ url })`, axios's `baseURL`
+— with the base a named option **beside** the transport, never hidden inside it, so the
+app's fetcher stays a pure transport that never learns about routing.
+
+`metamodelVersion` does **not** move: nothing registered changes.
+
+Three things found while doing it, each shipping with the check that was missing:
+
+- **A second emitter nobody knew about.** `templates/projection-decl.ts` builds a
+  projection's const by hand rather than through `renderEntityConstants`, so it emitted
+  `$apiPrefix` from its own code path — invisible to a search for the read sites. The new
+  repo-wide gate found it, before the change landed.
+- **The Angular codegen had no test asserting the URL shape at all.** All five fetch sites
+  in its service template could change with the suite staying green. There is now one, and
+  it was proven green → red → green by re-introducing the prefix.
+- **`gate_doc_examples` proves shipped *metadata* loads and says nothing about generated
+  TypeScript or prose** — the gap [#337](https://github.com/metaobjectsdev/metaobjects/issues/337)
+  records an adopter finding three separate times and a lane never finding. A new
+  `scripts/check-no-api-prefix.ts` (registered in `ci-local.sh`'s `gates` lane) fails if
+  `$apiPrefix` reappears anywhere under `docs/`, `agent-context/` or `examples/`. Specs
+  and plans under `docs/superpowers/`, the `docs/llms/` mirrors, and the migration guide
+  are exempt: a dated record and a migration note must be able to name what was retired.
+
+On the first `meta gen` after upgrading, a project whose `apiPrefix` is non-empty gets a
+one-time note naming the `baseUrl` to set. It is keyed on the #232 gen-state engine stamp,
+not on `apiPrefix` alone: whether the app passed `baseUrl` is runtime code `meta gen`
+cannot see, so a prefix-only trigger would nag for ever with no way to satisfy it — the
+cry-wolf failure that already got the `timestampMode` warning deleted from `runner.ts`.
+
+
 ### Fixed — BREAKING: a TPH subtype's `$path` named an endpoint that 404s
 
 `<Entity>.$path` now holds the address the generated routes **serve** the object at. For

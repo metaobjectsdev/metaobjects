@@ -279,8 +279,9 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
 
       // ---- ui.md
       // The apiPrefix is the project's, from the render context the runner built — the
-      // same value `routes-file.ts` emits as the mount prefix and `entity-constants.ts`
-      // emits as `$apiPrefix`. Without it the page names an address nothing serves.
+      // same value `routes-file.ts` emits as the SERVER mount prefix. Without it the page
+      // names an address nothing serves. (The client descriptor no longer carries it: a
+      // browser's base URL is supplied at runtime by the provider's `baseUrl`.)
       const ui = renderAgentUiPage(ctx.loadedRoot, ctx.renderContext?.apiPrefix ?? "");
       if (ui !== "") files.push({ path: `${dir}/ui.md`, content: ui });
 

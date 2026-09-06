@@ -34,7 +34,6 @@ export const ProgramSummary = {
   $entity: "ProgramSummary",
   $view: "v_program_summary",
   $path: "/program-summaries",
-  $apiPrefix: "/api",
   id: { name: "id", label: "Id", view: "text", dbCol: "id" },
   title: { name: "title", label: "Title", view: "text", dbCol: "title" },
   authorName: {

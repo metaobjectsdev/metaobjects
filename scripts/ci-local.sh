@@ -218,6 +218,14 @@ gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
 # partial fragment stays quiet. The self-test replays all three incidents.
 gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-examples.ts; }
 
+# ── nothing shipped may still teach a retired descriptor member ───────────────
+# gate_doc_examples above proves shipped METADATA loads; it says nothing about
+# generated TypeScript or prose. That is the #337 gap — three times a doc or a
+# skill taught vocabulary the loader had retired, and an adopter found it every
+# time, never a lane. Scoped to docs/, agent-context/ and examples/; the emitters
+# themselves are guarded by their own package tests.
+gate_no_api_prefix() { bun scripts/check-no-api-prefix.ts; }
+
 # ── the site's published snippets must still be true ──────────────────────────
 # metaobjects.dev publishes generated code under the claim that it is real `meta gen`
 # output, and until this gate NOTHING checked that: the showcase corpus, the committed
@@ -561,6 +569,7 @@ if want gates; then step    "test-file references resolve"     gate_test_referen
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
+if want gates; then step_if bun "no retired \$apiPrefix"        gate_no_api_prefix;          fi
 if want gates; then step_if bun "site payload is true"         gate_site_payload;           fi
 if want gates; then step_if bun "site reference is fresh"     gate_site_reference;         fi
 if want gates; then step_if bun "release tag gate"             gate_release_tag;            fi

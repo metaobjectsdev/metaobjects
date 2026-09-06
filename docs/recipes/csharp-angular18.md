@@ -105,37 +105,42 @@ the `EntityFetcher` (over that HttpClient + the API base URL), and the router.
 import { ApplicationConfig, inject, provideZoneChangeDetection } from "@angular/core";
 import { provideHttpClient, HttpClient } from "@angular/common/http";
 import { provideRouter } from "@angular/router";
-import { provideEntityFetcher } from "@metaobjectsdev/angular";
+import { provideEntityFetcher, type EntityFetcher } from "@metaobjectsdev/angular";
 import { firstValueFrom } from "rxjs";
 import { environment } from "../environments/environment";
 import { routes } from "./app.routes";
 
 // 3.1 — Build the fetcher inside an Angular DI factory so it can inject HttpClient.
-//      provideEntityFetcher accepts either a function OR a factory; this is the factory form.
+//      provideEntityFetcher takes { fetcher, baseUrl }: the transport and the base it prepends.
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideHttpClient(),
     provideRouter(routes),
-    provideEntityFetcher(() => {
-      const http = inject(HttpClient);
-      return async <T,>(path: string, init?: RequestInit): Promise<T> => {
-        // path always starts with apiPrefix (e.g. "/api/authors?limit=25").
-        // Prepend the environment-resolved base URL.
-        const url = environment.apiBase + path;
-        const method = (init?.method ?? "GET").toUpperCase();
-        const body = init?.body
-          ? typeof init.body === "string" ? JSON.parse(init.body) : init.body
-          : undefined;
-        const obs = http.request<T>(method, url, {
-          body,
-          withCredentials: true,                  // matches the backend AllowCredentials()
-          headers: { "Content-Type": "application/json", ...(init?.headers as Record<string,string> ?? {}) },
-          observe: "body",
-          responseType: "json",
-        });
-        return firstValueFrom(obs);
-      };
+    provideEntityFetcher({
+      // The base is declared here, not concatenated inside the transport: generated
+      // services emit entity-relative paths (e.g. "/authors?limit=25") and the token
+      // prepends this. `apiPrefix` in metaobjects.config.ts is the SERVER mount and is
+      // configured separately, so include it here if your routes mount under one.
+      baseUrl: environment.apiBase + "/api",
+      // Transport only — it receives the already-prefixed URL.
+      fetcher: ((): EntityFetcher => {
+        const http = inject(HttpClient);
+        return async <T,>(url: string, init?: RequestInit): Promise<T> => {
+          const method = (init?.method ?? "GET").toUpperCase();
+          const body = init?.body
+            ? typeof init.body === "string" ? JSON.parse(init.body) : init.body
+            : undefined;
+          const obs = http.request<T>(method, url, {
+            body,
+            withCredentials: true,                // matches the backend AllowCredentials()
+            headers: { "Content-Type": "application/json", ...(init?.headers as Record<string,string> ?? {}) },
+            observe: "body",
+            responseType: "json",
+          });
+          return firstValueFrom(obs);
+        };
+      })(),
     }),
   ],
 };

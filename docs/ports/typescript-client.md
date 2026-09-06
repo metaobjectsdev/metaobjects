@@ -137,7 +137,7 @@ const fetcher = async <T,>(path: string, init?: RequestInit): Promise<T> => {
 
 export function App() {
   return (
-    <EntityFetcherProvider value={fetcher}>
+    <EntityFetcherProvider fetcher={fetcher} baseUrl="/api">
       {/* generated hooks now have a fetcher */}
       <AuthorList />
     </EntityFetcherProvider>
@@ -685,7 +685,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    provideEntityFetcher(fetcher),
+    provideEntityFetcher({ fetcher, baseUrl: "/api" }),
   ],
 };
 ```

@@ -56,7 +56,6 @@ export const Lesson = {
   $entity: "Lesson",
   $table: "lessons",
   $path: "/lessons",
-  $apiPrefix: "/api",
   id: { name: "id", label: "Id", view: "text", htmlType: "text" },
   programId: {
     name: "programId",

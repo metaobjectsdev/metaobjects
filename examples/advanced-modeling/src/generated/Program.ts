@@ -94,7 +94,6 @@ export const Program = {
   $entity: "Program",
   $table: "programs",
   $path: "/programs",
-  $apiPrefix: "/api",
   id: { name: "id", label: "Id", view: "text", htmlType: "text" },
   title: {
     name: "title",

@@ -31,6 +31,11 @@ import { primaryIdentityFieldNames } from "./zod-validators.js";
 export interface ProjectionDeclOpts {
   readonly columnNamingStrategy: ColumnNamingStrategy;
   readonly dialect: "postgres" | "sqlite";
+  /**
+   * @deprecated Accepted and IGNORED — a projection's descriptor no longer carries the
+   * API base URL, same as an entity's. Kept on the options object because removing a
+   * field makes every caller still passing it fail TypeScript's excess-property check.
+   */
   readonly apiPrefix?: string;
   /** Drives the timestamp column TS type (Date vs string) in the view declaration. */
   readonly timestampMode?: "date" | "string";
@@ -91,7 +96,7 @@ export function renderProjectionDecl(
   root: MetaRoot,
   opts: ProjectionDeclOpts,
 ): string {
-  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true, ctx, includeViewDecl = true, names } = opts;
+  const { dialect, columnNamingStrategy, timestampMode = "string", allowlists = true, ctx, includeViewDecl = true, names } = opts;
 
   // ADR-0044/#228 — resolve a projection field's `@objectRef` to the value object's
   // EMITTED name + module TOGETHER (lock-step): bare when unique in the run,
@@ -212,7 +217,6 @@ export const ${projName} = {
   $entity:    ${JSON.stringify(projName)},
   ${viewLine},
   $path:      ${JSON.stringify(path)},
-  $apiPrefix: ${JSON.stringify(apiPrefix)},
 ${joinCode(constFieldLines, { on: "\n" })}
 } as const;
 `,

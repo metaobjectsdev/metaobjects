@@ -76,7 +76,6 @@ export const Purchase = {
   $entity: "Purchase",
   $table: "purchases",
   $path: "/purchases",
-  $apiPrefix: "/api",
   id: { name: "id", label: "Id", view: "text", htmlType: "text" },
   programId: {
     name: "programId",

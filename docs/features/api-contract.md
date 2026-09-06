@@ -45,16 +45,17 @@ generated):
 - Surface non-2xx as a thrown `Error` (hooks rely on this for React Query's
   `error` state).
 
-The fetcher is supplied once via `<EntityFetcherProvider value={fetcher}>`
+The fetcher is supplied once via `<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">`
 at the React tree root; every generated hook reads it via
 `useEntityFetcher()` from `@metaobjectsdev/tanstack`.
 
 ## URL grammar
 
-These are the routes a generated TanStack hook calls. The `apiPrefix`
-prefix (default `/api`) is set in `metaobjects.config.ts` and is
-**baked into the generated entity-constants file** as `$apiPrefix`, so the
-client and server agree on it without runtime configuration.
+These are the routes a generated TanStack hook calls, **relative to the
+client's base URL**. `apiPrefix` in `metaobjects.config.ts` mounts the
+generated *server* routes; the *client* base is supplied once at runtime as
+`baseUrl` on the fetcher provider. The two must agree, and saying so is the
+app's job — see the policy section below.
 
 ### Routes per entity
 
@@ -149,18 +150,43 @@ feature demand (it is a consistency/safety divergence, not a capability).
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid
   pagination). The grid hook always sends `withCount=1`.
 
-### `apiPrefix` policy
+### Base-URL policy
 
-`apiPrefix` in `metaobjects.config.ts` flows through codegen to **both**
-sides: the generated server routes mount under it, and the generated
-client hooks bake it into their fetch URLs via `$apiPrefix` on the
-entity-constants file.
+The two sides are configured **separately, and deliberately so**.
+
+`apiPrefix` in `metaobjects.config.ts` is a *server* setting: the generated
+routes mount under it, baked in as a literal, because the code that registers
+`/api/authors` is the server.
 
 ```ts
 export default defineConfig({
-  apiPrefix: "/api",     // server mounts /api/author; hooks call /api/author
+  apiPrefix: "/api",     // server mounts /api/authors
 });
 ```
+
+The client's base is a *deployment* fact, so it is supplied at runtime rather
+than frozen at `meta gen` time. Generated hooks and Angular services emit
+entity-relative paths (`${Author.$path}/${id}`), and the provider prepends the
+base:
+
+```tsx
+<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">
+```
+
+```ts
+// Angular
+provideEntityFetcher({ fetcher, baseUrl: "/api" })
+```
+
+`baseUrl` is optional and defaults to `""` — correct for an app served from the
+same origin with routes at the root, which is what `meta init` scaffolds
+(`apiPrefix: ""`). Because it is runtime configuration, one client bundle can be
+served against a dev proxy, a preview environment, or a separate API host
+(`baseUrl: "https://api.example.com/v1"`) without regenerating.
+
+Before 0.25.0 the prefix was baked into every generated entity descriptor. See
+[the migration guide](migrations/api-base-url-leaves-the-entity-descriptor.md)
+for the one-line change.
 
 ## Wire format
 

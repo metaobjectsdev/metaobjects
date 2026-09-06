@@ -34,7 +34,7 @@ const fetcher = async <T,>(path: string, init?: RequestInit): Promise<T> => {
 };
 
 export const appConfig: ApplicationConfig = {
-  providers: [provideEntityFetcher(fetcher)],
+  providers: [provideEntityFetcher({ fetcher, baseUrl: "/api" })],
 };
 ```
 
