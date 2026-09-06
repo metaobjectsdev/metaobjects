@@ -120,6 +120,7 @@ import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
 import { hasAnyRdbSource } from "../source-detect.js";
 import { resourcePath } from "../templates/entity-constants.js";
+import { restPath } from "../templates/entity-ui-descriptor.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
 import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
@@ -269,6 +270,12 @@ export interface ApiModelContext {
    *  run didn't configure). The Fastify REST surface is always documented (it is
    *  the default-suite routes generator). Defaults to false. */
   includeHonoRoutes?: boolean;
+  /** The project's `apiPrefix`. Every generated route is mounted inside
+   *  `fastify.register(…, { prefix: apiPrefix })`, so it is part of the address a
+   *  documented endpoint is served at — a page that omits it is one path segment
+   *  short. Threaded explicitly rather than read off the RenderContext below,
+   *  which is a `{ pkMap }` shim and carries nothing else. Defaults to "". */
+  apiPrefix?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,13 +288,14 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   // shim is sufficient (and avoids forcing callers to build a full context).
   const pkCtx = { pkMap } as RenderContext;
   const layout = ctx.outputLayout ?? "flat";
+  const apiPrefix = ctx.apiPrefix ?? "";
   const relationMap = ctx.relationMap ?? buildRelationMap(root);
   const includeHono = ctx.includeHonoRoutes ?? false;
 
   const units: ApiUnitDoc[] = [];
 
   for (const obj of root.objects()) {
-    units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono));
+    units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono, apiPrefix));
   }
 
   for (const tmpl of templateOutputs(root)) {
@@ -366,6 +374,7 @@ function buildEntityUnit(
   layout: OutputLayout,
   relationMap: RelationMap,
   includeHono: boolean,
+  apiPrefix: string,
 ): ApiUnitDoc {
   const name = obj.name;
   const symbols: ApiSymbol[] = [];
@@ -394,10 +403,10 @@ function buildEntityUnit(
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)
-    symbols.push(...restSymbols(obj, layout, root));
+    symbols.push(...restSymbols(obj, layout, root, apiPrefix));
     // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
     // documented only when the adopter wired it.
-    if (includeHono) symbols.push(...restHonoSymbols(obj, layout));
+    if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix));
   }
 
   // --- relation: the drizzle relations() export, when the resolver derives a
@@ -564,10 +573,19 @@ function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
  * generator does NOT emit one function per verb — it emits a single
  * `<name>Routes(fastify)` handler that mounts the standard CRUD verb set at the
  * entity's $path via mountCrudRoutes (or the read-only subset via
- * mountReadOnlyCrudRoutes for a projection). We reuse resourcePath() — the same
- * function entity-constants.ts uses to compute $path — so the documented paths
- * match the generated routes exactly. The verb→path mapping mirrors the runtime
- * mountCrudRoutes contract referenced in routes-file.ts's comments.
+ * mountReadOnlyCrudRoutes for a projection). The verb→path mapping mirrors the
+ * runtime mountCrudRoutes contract referenced in routes-file.ts's comments.
+ *
+ * THE DOCUMENTED PATH IS THE ADDRESS THE ROUTES ACTUALLY SERVE, which takes two
+ * things this comment used to claim it got from one. It said it reused
+ * `resourcePath()` — "the same function entity-constants.ts uses to compute
+ * $path" — and both halves of that had stopped being true:
+ *
+ *   • `$path` is `restPath()` now, not `resourcePath()`. A TPH subtype is mounted
+ *     at `<base>/<segment>`, so `resourcePath` named an address nothing serves —
+ *     the defect fixed for `$path` itself, still live here.
+ *   • Every mount sits inside `fastify.register(…, { prefix: apiPrefix })`, so a
+ *     project configuring "/api" was documented one path segment short.
  *
  * A TPH DISCRIMINATOR BASE serves only `TPH_POLYMORPHIC_VERBS` at its own path, and that
  * set is imported rather than restated. `isProjection` alone was the read-only test, so a
@@ -578,9 +596,11 @@ function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
  * mounts at `<base path>/<segment>`, which is where writes actually live, remain a
  * documented deferral (see the module header).
  */
-function restSymbols(obj: MetaObject, layout: OutputLayout, root: MetaRoot): ApiSymbol[] {
+function restSymbols(
+  obj: MetaObject, layout: OutputLayout, root: MetaRoot, apiPrefix: string,
+): ApiSymbol[] {
   const name = obj.name;
-  const path = resourcePath(obj);
+  const path = `${apiPrefix}${restPath(obj)}`;
   const readOnly = isProjection(obj) || isTphDiscriminatorBase(obj, root);
 
   // REST endpoints are not importable functions — to WIRE them an adopter
@@ -784,13 +804,15 @@ function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
 /**
  * The OPT-IN Hono CRUD registrar `register<Entity>Routes(app, deps)` the
  * routesFileHono generator emits into `<Entity>.routes.hono.ts`. Parallels the
- * Fastify restSymbols (same verb set, same resourcePath, read-only for
+ * Fastify restSymbols (same verb set, same served address, read-only for
  * projections) but carries the Hono registrar name + import module. Documented
  * only when the adopter opts into the Hono variant (includeHonoRoutes).
  */
-function restHonoSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
+function restHonoSymbols(
+  obj: MetaObject, layout: OutputLayout, apiPrefix: string,
+): ApiSymbol[] {
   const name = obj.name;
-  const path = resourcePath(obj);
+  const path = `${apiPrefix}${restPath(obj)}`;
   const readOnly = isProjection(obj);
 
   const honoMod = entityModulePath(layout, obj, `${name}.routes.hono`);

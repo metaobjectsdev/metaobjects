@@ -99,6 +99,9 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
         loadedRoot: ctx.loadedRoot,
         outputLayout: layout,
         includeHonoRoutes: ctx.config.includeHonoRoutes ?? false,
+        // The project's prefix, because every route is mounted inside it. Without
+        // this the page documents `/authors` for routes served at `/api/authors`.
+        apiPrefix: ctx.renderContext?.apiPrefix ?? "",
         ...(ctx.renderContext?.pkMap !== undefined && { pkMap: ctx.renderContext.pkMap }),
       });
 

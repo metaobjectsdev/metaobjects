@@ -167,6 +167,30 @@ describe("buildApiModel — entity with a PK", () => {
     expect(validation).toEqual(["ProductInsertSchema", "ProductUpdateSchema"]);
   });
 
+  test("the documented endpoint carries the project's apiPrefix", async () => {
+    // Every generated route is mounted inside `fastify.register(…, { prefix: apiPrefix })`,
+    // so the prefix is part of the address. The builder documented the un-prefixed path,
+    // which made the API page — whose stated contract is that its paths "match the
+    // generated routes exactly" — wrong for every project that configures one.
+    const root = await loadRoot([PRODUCT]);
+    const model = buildApiModel(root, { loadedRoot: root, apiPrefix: "/api" });
+    const rest = unit(model, "Product").symbols.filter((s) => s.kind === "rest");
+    expect(rest.map((s) => s.signature).sort()).toEqual(
+      [
+        "DELETE /api/products/:id",
+        "GET /api/products",
+        "GET /api/products/:id",
+        "PATCH /api/products/:id",
+        "POST /api/products",
+      ].sort(),
+    );
+    // ...and absent, the paths are unchanged — the default is "" and stays byte-identical.
+    const bare = buildApiModel(root, { loadedRoot: root });
+    expect(unit(bare, "Product").symbols.filter((s) => s.kind === "rest")
+      .map((s) => s.signature).sort())
+      .toEqual(rest.map((s) => s.signature.replace("/api", "")).sort());
+  });
+
   test("emits a REST symbol per CRUD verb (method + path), keyed off the entity $path", async () => {
     const root = await loadRoot([PRODUCT]);
     const model = buildApiModel(root, { loadedRoot: root });
