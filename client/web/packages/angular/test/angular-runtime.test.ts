@@ -16,7 +16,7 @@ describe("EntityFetcherToken — DI smoke", () => {
       return [] as unknown as T;
     };
     const injector = Injector.create({
-      providers: [provideEntityFetcher(fakeFetcher)],
+      providers: [provideEntityFetcher({ fetcher: fakeFetcher })],
     });
     const resolved = injector.get(EntityFetcherToken);
     expect(typeof resolved).toBe("function");

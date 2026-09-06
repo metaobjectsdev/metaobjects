@@ -1,5 +1,6 @@
 // Public API surface for @metaobjectsdev/angular.
 export { EntityFetcherToken, provideEntityFetcher } from "./entity-fetcher.token.js";
+export type { EntityFetcherOptions } from "./entity-fetcher.token.js";
 export { CurrencyInputComponent } from "./currency-input.component.js";
 export {
   CellRendererRegistry,
