@@ -164,33 +164,46 @@ public class NoMagicPhysicalNamesTest {
     /**
      * Every de-blinded token that has a slot in a names artifact, with the constant that
      * carries it. Java member names are SCREAMING_SNAKE: {@code SpringNamesGenerator.namesMember}
-     * is {@code toSnakeCase(field).toUpperCase()} + {@code _COLUMN}, so {@code customerId}
-     * becomes {@code CUSTOMER_ID_COLUMN} — derived from what the artifact ACTUALLY emits, not
-     * from another port's spelling (C# Pascal-cases the first character only, so a member
+     * is {@code toSnakeCase(name).toUpperCase()}, so {@code customerId} becomes
+     * {@code CUSTOMER_ID_COLUMN} — derived from what the artifact ACTUALLY emits, not from
+     * another port's spelling (C# Pascal-cases the first character only, so a member
      * collision that fires on the JVM does not fire there and vice versa).
+     *
+     * <p>A physical name is reached through the member that says WHAT IT IS —
+     * {@code SOURCE_<ROLE>_TABLE} / {@code _VIEW} / {@code _PROC}, from the metamodel's own
+     * kind-to-alias map — rather than through a single {@code NAME} that held all three
+     * depending on which object you had.</p>
      */
     private static final List<Token> TOKENS = List.of(
-        Token.constant(TABLE, "CustomerNames.NAME"),
+        Token.constant(TABLE, "CustomerNames.SOURCE_PRIMARY_TABLE"),
         Token.constant(COL_ID, "CustomerNames.ID_COLUMN"),
         Token.constant(COL_EMAIL, "CustomerNames.EMAIL_COLUMN"),
         Token.constant(VO_COL, "CustomerNames.STREET_COLUMN"),
         Token.constant(JSONB_COL, "CustomerNames.PROFILE_COLUMN"),
-        Token.constant(ORDER_TABLE, "OrderNames.NAME"),
+        Token.constant(ORDER_TABLE, "OrderNames.SOURCE_PRIMARY_TABLE"),
         Token.constant(ORDER_ID, "OrderNames.ID_COLUMN"),
         Token.constant(COL_FK, "OrderNames.CUSTOMER_ID_COLUMN"),
-        Token.constant(VIEW, "CustomerSummaryNames.NAME"),
-        Token.constant(WT_TABLE, "AccountNames.NAME"),
+        Token.constant(VIEW, "CustomerSummaryNames.SOURCE_PRIMARY_VIEW"),
+        Token.constant(WT_TABLE, "AccountNames.SOURCE_PRIMARY_TABLE"),
         Token.constant(WT_ID, "AccountNames.ID_COLUMN"),
+        // Promoted out of NO_SLOT by the 0.25.0 restructure. The old row was accurate about
+        // the artifact and wrong about the artifact's shape: a write-through entity has TWO
+        // physical names and <Entity>Names carried the PRIMARY source's only, so the replica
+        // view had nowhere to go. Keying sources by @role gave it a member. The pin earned
+        // its keep in the ports that DO bind an ORM — the same escape sat in Kotlin's
+        // AccountView and C#'s AppDbContext, which is how this was established as the
+        // artifact's SHAPE rather than one emitter's quirk.
+        Token.constant(WT_VIEW, "AccountNames.SOURCE_REPLICA_VIEW"),
 
         // --- TPH: the subtype's names class `extends` the base's and declares only its own
         // column; KIND/NAME come from the base by static inheritance, never restated.
-        Token.constant(TPH_TABLE, "VehicleNames.NAME"),
+        Token.constant(TPH_TABLE, "VehicleNames.SOURCE_PRIMARY_TABLE"),
         Token.constant(TPH_ID, "VehicleNames.ID_COLUMN"),
         Token.constant(TPH_DISC, "VehicleNames.KIND_COLUMN"),
         Token.constant(TPH_SUB_COL, "CarNames.DOORS_COLUMN"),
 
         // --- the enum / index / schema / abstract-base entity.
-        Token.constant(WIDGET_TABLE, "WidgetNames.NAME"),
+        Token.constant(WIDGET_TABLE, "WidgetNames.SOURCE_PRIMARY_TABLE"),
         Token.constant(ENUM_COL, "WidgetNames.STATUS_COLUMN"),
         Token.constant(ENUM_INT_COL, "WidgetNames.GRADE_COLUMN"),
         Token.constant(ARRAY_COL, "WidgetNames.TAGS_COLUMN"),
@@ -210,12 +223,26 @@ public class NoMagicPhysicalNamesTest {
         // EVERY row on this port, since nothing generated references any constant. Relabel
         // it DROPPED and the gate stays green. The label records which port is being
         // described, not something the test can tell apart here.
-        Token.constant(SCHEMA, "WidgetNames.SCHEMA"),
+        Token.constant(SCHEMA, "WidgetNames.SOURCE_PRIMARY_SCHEMA"),
 
         // --- the callable (stored procedure): the storedProc kind's physical-name alias is
         // `@proc`, a different resolver step from `@table`/`@view`.
-        Token.constant(PROC, "ProcOutNames.NAME"),
-        Token.constant(PROC_OUT_COL, "ProcOutNames.TOTAL_COLUMN")
+        Token.constant(PROC, "ProcOutNames.SOURCE_PRIMARY_PROC"),
+        Token.constant(PROC_OUT_COL, "ProcOutNames.TOTAL_COLUMN"),
+
+        // --- index names: promoted out of NO_SLOT in 0.25.0 -------------------------------
+        // The old reason read well and was wrong: "an index's database name IS its metamodel
+        // name, so there is nothing to RESTATE". Nothing to restate is not the same as
+        // nothing to reference — the name was still spelled a second time, in the Kotlin
+        // Exposed emitter, by a loop that had computed it independently with its own
+        // `shortName ?: name`. `fdb4118f1` is that lapsing. The artifact now carries an
+        // `identities` / `indexes` block and IndexNaming is the one door.
+        //
+        // Two rows rather than one, because ADR-0040 put uniqueness in the TYPE: a secondary
+        // identity and a lookup index sit in different collections under different member
+        // prefixes, so one row could not fail for both.
+        Token.constant(SEC_INDEX, "WidgetNames.IDENTITY_ZZ_PHYS_IDX_SEC_INDEX"),
+        Token.constant(LKP_INDEX, "WidgetNames.INDEX_ZZ_PHYS_IDX_LKP_INDEX")
     );
 
     /**
@@ -223,17 +250,18 @@ public class NoMagicPhysicalNamesTest {
      * reason — the port-adapted form of the TypeScript gate's {@code knownLiteral} rows.
      * There they are PINNED as still-spelled-literally by the ORM binding; here nothing
      * generated binds, so they are spelled by nothing and cannot be pinned that way. What
-     * CAN be pinned is the structural half of the claim: none of them is carried by a names
-     * artifact today. The day the artifact grows an index or replica-view slot, that pin
-     * fails and says "give it a row" — the same self-extinguishing shape as every other
-     * ledger in this repo.
+     * CAN be pinned is the structural half of the claim: neither is carried by a names
+     * artifact today. The day the artifact grows a slot for one, that pin fails and says
+     * "give it a row" — the same self-extinguishing shape as every other ledger in this
+     * repo, and it is what it did: the replica view and the two index names sat here until
+     * 0.25.0 gave them members, and this test is what said so.
+     *
+     * <p>What is left is the class of name that has no OBJECT to hang a slot on. Both
+     * entries below belong to an {@code object.value}, which carries no source and so gets
+     * no artifact at all (#248) — not a slot the artifact has yet to grow, a slot that would
+     * require the value taxonomy to change.</p>
      */
     private static final Map<String, String> NO_SLOT = Map.of(
-        WT_VIEW, "A write-through entity has TWO physical names; <Entity>Names carries the "
-            + "PRIMARY source's only (resolveObjectNames). The replica view has no slot.",
-        SEC_INDEX, "An index's database name IS its metamodel `name` — an identity.secondary "
-            + "has no `@column`-style physical spelling to diverge from. No index slot exists.",
-        LKP_INDEX, "As SEC_INDEX — an index.lookup's database name is its metamodel `name`.",
         VO_MEMBER_COL, "A member of an object.value: no source, so no <Vo>Names (#248). It "
             + "reaches output only through the owning entity's single jsonb column.",
         PROC_ARG_COL, "A member of the callable's @parameterRef value object: no source, so "

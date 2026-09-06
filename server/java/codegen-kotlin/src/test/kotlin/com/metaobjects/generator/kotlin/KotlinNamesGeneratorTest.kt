@@ -19,15 +19,17 @@ import kotlin.test.assertTrue
  * shipped C# `NamesGeneratorTests` and the TS reference (`names.test.ts` /
  * `names-decl.test.ts`):
  *
- *  - `const val` members for KIND/NAME/READ_ONLY + per-field `_FIELD`/`_COLUMN` pairs,
- *    always both, so a field/column collision (createdAt/created_at) can never
- *    collapse to one constant.
+ *  - `const val` members mirroring the metadata tree — the object's own
+ *    `TYPE`/`SUB_TYPE`/`NAME`, a `SOURCE_<ROLE>_*` block per `source.rdb` child (its
+ *    physical name under the alias for its `@kind`), an `IDENTITY_<N>_*` / `INDEX_<N>_*`
+ *    block per key, and per-field `_FIELD`/`_COLUMN` pairs, always both, so a field/column
+ *    collision (createdAt/created_at) can never collapse to one constant.
  *  - An explicit `@column` always wins over the naming strategy — never a hand-rolled
  *    re-derivation. The fixture carries a field whose `@column` deliberately is NOT the
  *    snake_case of its name (`callPurpose`/`purpose_code`) — without it, neither arm of
  *    the resolver (explicit vs. strategy-derived) is distinguished from the other.
- *  - SCHEMA line omitted (never emitted as a null const) when undeclared, present when
- *    declared.
+ *  - `SOURCE_<ROLE>_SCHEMA` omitted (never emitted as a null const) when undeclared,
+ *    present when declared.
  *  - #248: an object with no primary source emits nothing — participation is never
  *    gated on the object subtype.
  *  - Two fields colliding on their SCREAMING_SNAKE member name is refused, naming the
@@ -89,9 +91,25 @@ class KotlinNamesGeneratorTest {
     @Test fun `emits const val members for the table and every column`() {
         val src = authorSource()
         assertTrue("object AuthorNames {" in src, src)
-        assertTrue("const val KIND: String = \"table\"" in src, src)
-        assertTrue("const val NAME: String = \"authors\"" in src, src)
-        assertTrue("const val READ_ONLY: Boolean = false" in src, src)
+        // The object's OWN identity — `NAME` is the metamodel name now, not the table. The
+        // physical name sits under the alias for the source's @kind, which is what stopped
+        // one member meaning a table, a view and a procedure depending on the object.
+        assertTrue("const val TYPE: String = \"object\"" in src, src)
+        assertTrue("const val SUB_TYPE: String = \"entity\"" in src, src)
+        assertTrue("const val NAME: String = \"Author\"" in src, src)
+        assertTrue("const val SOURCE_PRIMARY_TYPE: String = \"source\"" in src, src)
+        assertTrue("const val SOURCE_PRIMARY_SUB_TYPE: String = \"rdb\"" in src, src)
+        assertTrue("const val SOURCE_PRIMARY_KIND: String = \"table\"" in src, src)
+        assertTrue("const val SOURCE_PRIMARY_TABLE: String = \"authors\"" in src, src)
+        // READ_ONLY is GONE — a derivation over @kind, never metadata, and read by nothing
+        // in any port. A reader who wants it asks SOURCE_PRIMARY_KIND.
+        assertFalse("READ_ONLY" in src, src)
+        // The identity block: the fixture declares no name, so `pk` is auto-named `primary`,
+        // and it carries NO index member — a primary key's database name is migrate's
+        // dialect-conditional formula, not something this artifact may restate.
+        assertTrue("const val IDENTITY_PRIMARY_TYPE: String = \"identity\"" in src, src)
+        assertTrue("const val IDENTITY_PRIMARY_SUB_TYPE: String = \"primary\"" in src, src)
+        assertFalse("IDENTITY_PRIMARY_INDEX" in src, src)
         assertTrue("const val CREATED_AT_FIELD: String = \"createdAt\"" in src, src)
         // Kotlin's generator default is snake_case, unlike the shared JVM default (literal).
         assertTrue("const val CREATED_AT_COLUMN: String = \"created_at\"" in src, src)
@@ -114,7 +132,8 @@ class KotlinNamesGeneratorTest {
     }
 
     @Test fun `an absent schema omits the line rather than emitting a null const`() {
-        // `const val SCHEMA: String? = null` does not compile -- absent means absent.
+        // `const val SOURCE_PRIMARY_SCHEMA: String? = null` does not compile -- absent
+        // means absent.
         val src = authorSource()
         assertFalse("SCHEMA" in src, src)
     }
@@ -130,7 +149,7 @@ class KotlinNamesGeneratorTest {
           ] }
         }""".trimIndent()
         val src = emit(model).getValue("acme/WidgetNames.kt")
-        assertTrue("const val SCHEMA: String = \"inventory\"" in src, src)
+        assertTrue("const val SOURCE_PRIMARY_SCHEMA: String = \"inventory\"" in src, src)
     }
 
     @Test fun `the columnNaming arg is honoured, both arms`() {
@@ -156,9 +175,14 @@ class KotlinNamesGeneratorTest {
           ] }
         }""".trimIndent()
         val src = emit(model).getValue("acme/ReportNames.kt")
-        assertTrue("const val KIND: String = \"view\"" in src, src)
-        assertTrue("const val NAME: String = \"v_report\"" in src, src)
-        assertTrue("const val READ_ONLY: Boolean = true" in src, src)
+        assertTrue("const val SOURCE_PRIMARY_KIND: String = \"view\"" in src, src)
+        // Under the alias for its @kind — `_VIEW`, not `_TABLE`. Under the old flat shape
+        // this same member was `NAME` for all three kinds, so a consumer could not tell what
+        // kind of database object it held without reading a second member. Referencing
+        // `ReportNames.SOURCE_PRIMARY_TABLE` is now a compile error, which is the point.
+        assertTrue("const val SOURCE_PRIMARY_VIEW: String = \"v_report\"" in src, src)
+        assertFalse("SOURCE_PRIMARY_TABLE" in src, src)
+        assertFalse("READ_ONLY" in src, src)
     }
 
     @Test fun `an inherited field and its inherited @column both resolve`() {
@@ -198,10 +222,13 @@ class KotlinNamesGeneratorTest {
         // ConcreteThing, which is what keeps #248 intact (see the test below).
         val base = files.getValue("acme/BaseThingNames.kt")
         assertTrue("const val EXTERNAL_REF_COLUMN: String = \"ext_ref\"" in base, base)
-        // It declares no source: a NAME here would be a physical name invented for an object
-        // that declares none — the phantom-table failure #248 exists to prevent.
-        assertFalse("const val NAME" in base, base)
-        assertFalse("const val KIND" in base, base)
+        // It declares no source, so it carries NO source block at all — a physical name here
+        // would be one invented for an object that declares none, the phantom-table failure
+        // #248 exists to prevent. It does carry its own TYPE/SUB_TYPE/NAME, and that is not
+        // the same claim: `NAME` is the object's metamodel name ("BaseThing"), which a
+        // fragment has like any other node.
+        assertFalse("SOURCE_" in base, base)
+        assertTrue("const val NAME: String = \"BaseThing\"" in base, base)
     }
 
     @Test fun `an object with no primary source emits nothing`() {
@@ -236,6 +263,34 @@ class KotlinNamesGeneratorTest {
         assertTrue("UserId" in msg, msg)
     }
 
+    @Test fun `two identities colliding on their SCREAMING_SNAKE form is refused, naming both node paths`() {
+        // The collision guard runs over the WHOLE emitted member set, not per collection —
+        // the emitted object has one flat namespace. Two IDENTITIES are the case fields alone
+        // could not reach: `by_name` and `byName` both fold to IDENTITY_BY_NAME_*, and Kotlin
+        // would refuse the file while blaming generated code for a model problem.
+        //
+        // The failure names both NODE PATHS, not just two bare names, because a bare name
+        // does not say which collection it came from — and with four collections sharing one
+        // namespace that is the first thing a reader needs.
+        val model = """{
+          "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "Widget", "children": [
+                { "source.rdb":   { "@table": "widgets" } },
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "alt" } },
+                { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+                { "identity.secondary": { "name": "by_name", "@fields": ["alt"] } },
+                { "identity.secondary": { "name": "byName",  "@fields": ["alt"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val e = assertFailsWith<GeneratorException> { emit(model) }
+        val msg = e.message.orEmpty()
+        assertTrue("identities.by_name" in msg, msg)
+        assertTrue("identities.byName" in msg, msg)
+        assertTrue("IDENTITY_BY_NAME" in msg, msg)
+    }
+
     @Test fun `a per-package layout puts the names artifact beside the entity it describes`() {
         // R19 -- codegen-kotlin has no per-package namespace-override arg (every
         // per-entity generator derives its package mechanically from
@@ -268,11 +323,11 @@ class KotlinNamesGeneratorTest {
 
             val alphaSrc = alphaFiles.getValue("acme/alpha/ThingNames.kt")
             assertTrue("package acme.alpha" in alphaSrc, alphaSrc)
-            assertTrue("const val NAME: String = \"alpha_things\"" in alphaSrc, alphaSrc)
+            assertTrue("const val SOURCE_PRIMARY_TABLE: String = \"alpha_things\"" in alphaSrc, alphaSrc)
 
             val betaSrc = betaFiles.getValue("acme/beta/ThingNames.kt")
             assertTrue("package acme.beta" in betaSrc, betaSrc)
-            assertTrue("const val NAME: String = \"beta_things\"" in betaSrc, betaSrc)
+            assertTrue("const val SOURCE_PRIMARY_TABLE: String = \"beta_things\"" in betaSrc, betaSrc)
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -297,20 +352,26 @@ class KotlinNamesGeneratorTest {
           ] }
         }""".trimIndent()
         val src = emit(model).getValue("acme/CopayAuthNames.kt")
-        // The subtype INHERITS its base's source, so the shared table name comes from the
-        // base object rather than being restated here.
-        assertTrue("const val NAME: String = AuthNames.NAME" in src, src)
+        // The subtype declares no source of its own, so every SOURCE_* member lands in the
+        // inherited half and is re-exported by reference from the base. No `inheritsSource`
+        // flag decides that — the own-source map is simply empty, which is the same
+        // structural question answered by the accessor that had to be consulted anyway.
+        assertTrue("const val SOURCE_PRIMARY_TABLE: String = AuthNames.SOURCE_PRIMARY_TABLE" in src, src)
         assertTrue("const val ID_COLUMN: String = AuthNames.ID_COLUMN" in src, src)
         assertTrue("const val COPAY_AMOUNT_COLUMN: String = \"zz_copay_cents\"" in src, src)
+        // ...while its OWN identity is restated, because it differs: `NAME` is the object's
+        // metamodel name, so the subtype's must say "CopayAuth", not the base's.
+        assertTrue("const val NAME: String = \"CopayAuth\"" in src, src)
         // The whole point: the subtype used to restate the base's table name and columns.
         assertFalse("zz_auths" in src, src)
     }
 
     @Test fun `the emitted objects compile, so a cross-object const reference really resolves`() {
         // The teeth. Every assertion above is about TEXT; only a compiler proves that
-        // `CopayAuthNames.NAME`, declared as a reference to `AuthNames.NAME`, is a legal
-        // `const val` — Kotlin requires a compile-time constant initialiser, and a
-        // cross-object reference qualifies only because the target is itself `const`.
+        // `ConcreteThingNames.EXTERNAL_REF_COLUMN`, declared as a reference to
+        // `BaseThingNames.EXTERNAL_REF_COLUMN`, is a legal `const val` — Kotlin requires a
+        // compile-time constant initialiser, and a cross-object reference qualifies only
+        // because the target is itself `const`.
         val model = """{
           "metadata.root": { "package": "acme", "children": [
             { "object.entity": { "name": "BaseThing", "abstract": true, "children": [

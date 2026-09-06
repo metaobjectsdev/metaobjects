@@ -132,8 +132,8 @@ class GeneratedAuthorControllerHarness(
         )) {
             // Task 6 — useNames is ignored by every generator except
             // KotlinExposedTableGenerator; harmless on the others. This is the only
-            // executable proof that a `<Entity>Names.NAME`/`_COLUMN` const val
-            // reference actually RESOLVES (compiles) rather than merely rendering.
+            // executable proof that a `<Entity>Names.SOURCE_<ROLE>_<ALIAS>`/`_COLUMN`
+            // const val reference actually RESOLVES (compiles) rather than merely rendering.
             g.setArgs(mapOf("outputDir" to srcDir.toString(), "useNames" to "true"))
             g.execute(loader)
         }

@@ -182,7 +182,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         }
 
         // NO MAGIC STRINGS — derive `useNames` from the SUITE, then hand every generator its
-        // args. A generator that references `<Entity>Names.NAME` in a run with no names
+        // args. A generator that references `<Entity>Names` in a run with no names
         // generator emits code referencing a type nothing generated, so the substitution
         // shipped as an opt-in defaulting OFF and stayed off in practice. This is the
         // aggregation point that makes it safe to default from the run instead: the same

@@ -131,6 +131,14 @@ class KotlinNamesDivergentSourceTest {
         }""".trimIndent()
         val loader = loadString("divergent-same", fixture)
         val child = loader.metaObjects.single { it.name.endsWith("::ChildSame") }
-        assertEquals("same_table", KotlinGenUtil.resolveObjectNames(child)!!.name)
+        val names = KotlinGenUtil.resolveObjectNames(child)!!
+        // The artifact keys sources by @role, so BOTH agreeing primaries land on one key —
+        // and the equality that decides "agreeing" is over the whole resolved source shape
+        // (type/subType/kind/schema/physical name), not the physical name alone.
+        assertEquals("same_table", names.sources.getValue(MetaSource.ROLE_PRIMARY).physicalName)
+        // `name` is the object's OWN metamodel name now. It held the physical name until
+        // 0.25.0, and that is the one change here a hand-written consumer adopts without a
+        // compile error, so it is asserted rather than left implied.
+        assertEquals("ChildSame", names.name)
     }
 }

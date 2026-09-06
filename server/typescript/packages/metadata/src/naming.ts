@@ -168,10 +168,20 @@ export function resolveColumnName(
  *
  * Two rules the single door now owns, neither of which any call site had:
  *
- * - **Package qualifier stripped.** The JVM loader spells a nested index name
- *   package-qualified (`acme::demo::by_name`) where TypeScript does not, and
- *   `KotlinExposedTableGenerator` compensated locally with `shortName ?: name`. Doing it
- *   here makes the two ports' answer one rule instead of two habits. A no-op on TS input.
+ * - **Package qualifier stripped — and the reason first given for this was WRONG.** It was
+ *   justified here as compensating for the JVM loader package-qualifying a nested index
+ *   name (`acme::demo::by_name`), which `KotlinExposedTableGenerator` mirrored with
+ *   `shortName ?: name`. Measured against the real JVM loader, that does not happen: a
+ *   nested `identity.secondary` or `index.lookup` is named flat, including when inherited
+ *   across packages via `extends`. Only a ROOT-level node takes the file's package, and an
+ *   unnamed `view` child gets a synthesised FQN — the likeliest source of the belief. The
+ *   JVM's local strip had been a no-op for its whole life while reading as the site that
+ *   owned the rule. Pinned now on that side by `IndexNamingTest`.
+ *
+ *   The strip stays, on the honest reason rather than the invented one: it is a no-op on
+ *   every name either loader produces, which is what a rule that holds without a per-port
+ *   branch looks like, and it costs one `lastIndexOf`. A normalisation nobody has to
+ *   remember is worth more than a claim nobody checked.
  * - **An empty name is REFUSED**, and the gap it closes is exactly one node type wide.
  *   An `identity.secondary` with an empty name is already refused by the LOADER in strict
  *   and lax mode alike (identity nodes carry an FR-024 name check so a dotted `extends`

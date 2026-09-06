@@ -9,9 +9,14 @@ import kotlin.test.assertTrue
 
 /**
  * Task 6 — [KotlinExposedTableGenerator]'s Exposed table binding references
- * `<Entity>Names.NAME` / `<Entity>Names.<FIELD>_COLUMN` instead of respelling the
- * physical table/column names as string literals, gated on the `useNames` generator arg
+ * `<Entity>Names.SOURCE_<ROLE>_<ALIAS>` / `<Entity>Names.<FIELD>_COLUMN` /
+ * `<Entity>Names.<IDENTITY|INDEX>_<N>_INDEX` instead of respelling the physical
+ * table/column/index names as string literals, gated on the `useNames` generator arg
  * (see [KotlinGenUtil.ARG_USE_NAMES]).
+ *
+ * The table member is selected by the ROLE of the source the emit call binds, which is
+ * what closed the write-through gap: the artifact keys its sources by `@role`, so the
+ * replica view has `SOURCE_REPLICA_VIEW` and no longer has to keep a literal.
  *
  * These two tests pin the ARG's two arms directly, constructing the generator by hand: a
  * caller that never goes through a runner still gets literals by default, because a
@@ -60,7 +65,7 @@ class KotlinExposedTableNamesTest {
 
     @Test fun `the table binding references the name constants when names is enabled`() {
         val src = authorTableSrc(mapOf("useNames" to "true"))
-        assertTrue("object AuthorTable : Table(AuthorNames.NAME)" in src, src)
+        assertTrue("object AuthorTable : Table(AuthorNames.SOURCE_PRIMARY_TABLE)" in src, src)
         assertTrue("varchar(AuthorNames.CALL_PURPOSE_COLUMN, 40)" in src, src)
         // The literal the strategy WOULD have produced, and the table literal itself,
         // must be GONE -- a positive assertion alone would still pass a generator that
@@ -129,6 +134,66 @@ class KotlinExposedTableNamesTest {
         assertTrue("enumerationByName(\"status\", 64, TicketStatus::class)" in src, src)
         assertTrue("varchar(\"reference\", 40)" in src, src)
         assertFalse("TicketNames" in src, src)
+    }
+
+    // -----------------------------------------------------------------------------------
+    // Index names. An `identity.secondary` and an `index.lookup` carry no `@column`-style
+    // physical spelling — the database name IS the metamodel name — which reads like there
+    // is nothing to resolve, and is exactly why this loop used to answer the question itself
+    // with `sec.shortName ?: sec.name` while the names artifact computed the same string
+    // independently. `fdb4118f1` is what that costs when the two answers drift.
+    //
+    // Both names are de-blinded (`phys_uq_*` / `phys_ix_*`, neither derivable from the
+    // entity or the column) so a generator that re-derived rather than referenced cannot
+    // pass by coincidence.
+    // -----------------------------------------------------------------------------------
+    private val indexedModel = """{
+      "metadata.root": { "package": "acme::demo", "children": [
+        { "object.entity": { "name": "Widget", "children": [
+            { "source.rdb":   { "@table": "phys_widgets" } },
+            { "field.long":   { "name": "id",  "@column": "phys_wid" } },
+            { "field.string": { "name": "alt", "@column": "phys_alt" } },
+            { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.secondary": { "name": "phys_uq_alt", "@fields": ["alt"] } },
+            { "index.lookup":       { "name": "phys_ix_alt", "@fields": ["alt"] } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    private fun widgetTableSrc(tableArgs: Map<String, String> = emptyMap()): String {
+        val outDir = Files.createTempDirectory("ktbl-names-idx-")
+        try {
+            val loader = loadString("test", indexedModel)
+            KotlinNamesGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
+            KotlinExposedTableGenerator()
+                .apply { setArgs(tableArgs + mapOf("outputDir" to outDir.toString())) }
+                .execute(loader)
+            return outDir.resolve("acme/demo/WidgetTable.kt").readText()
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `the index init block references the name constants when names is enabled`() {
+        val src = widgetTableSrc(mapOf("useNames" to "true"))
+        // Two different member prefixes, because ADR-0040 put uniqueness in the TYPE: a
+        // secondary identity and a lookup index live in different collections and are
+        // reached by different paths, so one assertion could not cover both.
+        assertTrue("uniqueIndex(WidgetNames.IDENTITY_PHYS_UQ_ALT_INDEX, alt)" in src, src)
+        assertTrue("index(WidgetNames.INDEX_PHYS_IX_ALT_INDEX, false, alt)" in src, src)
+        // The literals must be GONE — a positive assertion alone would still pass a
+        // generator emitting the reference and the old literal side by side.
+        assertFalse("\"phys_uq_alt\"" in src, src)
+        assertFalse("\"phys_ix_alt\"" in src, src)
+    }
+
+    @Test fun `the index init block keeps its literals by default`() {
+        // Names OFF: the same names, spelled — and still through IndexNaming, so the
+        // names-off and names-on paths answer with one function rather than two.
+        val src = widgetTableSrc()
+        assertTrue("uniqueIndex(\"phys_uq_alt\", alt)" in src, src)
+        assertTrue("index(\"phys_ix_alt\", false, alt)" in src, src)
+        assertFalse("WidgetNames" in src, src)
     }
 
     // -----------------------------------------------------------------------------------
@@ -212,7 +277,7 @@ class KotlinExposedTableNamesTest {
     @Test fun `the TPH fold references each folded column on its DECLARING entity's names object`() {
         val src = vehicleTableSrc(mapOf("useNames" to "true"))
         // The base's own columns: this entity's artifact (a hit — never redirected).
-        assertTrue("object VehicleTable : Table(VehicleNames.NAME)" in src, src)
+        assertTrue("object VehicleTable : Table(VehicleNames.SOURCE_PRIMARY_TABLE)" in src, src)
         assertTrue("long(VehicleNames.ID_COLUMN)" in src, src)
         assertTrue("enumerationByName(VehicleNames.KIND_COLUMN, 64, VehicleKind::class)" in src, src)
         // A same-package concrete subtype's column, through the enum-free fold arm...
@@ -243,12 +308,16 @@ class KotlinExposedTableNamesTest {
     }
 
     // -----------------------------------------------------------------------------------
-    // Write-through (#214). One entity, TWO Exposed objects from two DIFFERENT own sources.
-    // <Entity>Names.NAME names the role=primary source — the writable table — so the WRITE
-    // object references it, while the replica view has no slot in the artifact and keeps
-    // its literal on purpose. The gate used to be `objectNameOverride == null`, which both
-    // calls fail, so the write table spelled its name literally beside columns that already
-    // referenced the constant.
+    // Write-through (#214). One entity, TWO Exposed objects from two DIFFERENT own sources,
+    // and the shape that proves the artifact is keyed by ROLE: the write object references
+    // SOURCE_PRIMARY_TABLE, the read object SOURCE_REPLICA_VIEW. Neither is a literal now.
+    //
+    // Both halves were literals at different times, for different wrong reasons. The write
+    // table's gate used to be `objectNameOverride == null`, which BOTH calls fail, so it
+    // spelled its name literally beside columns that already referenced the constant. The
+    // view kept its literal for longer and on purpose — <Entity>Names carried the primary
+    // source's physical name and nothing else, so there was no member to reference. Keying
+    // sources by @role is what made "deliberately no slot" stop being true.
     // -----------------------------------------------------------------------------------
     private val accountModel = """{
       "metadata.root": { "package": "acme::demo", "children": [
@@ -276,15 +345,17 @@ class KotlinExposedTableNamesTest {
         }
     }
 
-    @Test fun `a write-through entity's WRITE table references the name constant, its replica view keeps the literal`() {
+    @Test fun `a write-through entity's two objects each reference their own role's constant`() {
         val (table, view) = accountSrcs(mapOf("useNames" to "true"))
-        assertTrue("object AccountTable : Table(AccountNames.NAME)" in table, table)
+        assertTrue("object AccountTable : Table(AccountNames.SOURCE_PRIMARY_TABLE)" in table, table)
         assertFalse("\"phys_accounts\"" in table, table)
-        // The replica view: a different physical name, no slot in the artifact — literal,
-        // deliberately. Its COLUMNS still reference the constant (a column name does not
-        // depend on which source is being emitted).
-        assertTrue("object AccountView : Table(\"phys_v_accounts\")" in view, view)
-        assertFalse("AccountNames.NAME" in view, view)
+        // The replica view reaches its OWN role's member. Asserting the write table's member
+        // is absent from it is the load-bearing half: a role key that always resolved to
+        // `primary` would satisfy the positive assertion above and silently bind the read
+        // object to the write table.
+        assertTrue("object AccountView : Table(AccountNames.SOURCE_REPLICA_VIEW)" in view, view)
+        assertFalse("SOURCE_PRIMARY_TABLE" in view, view)
+        assertFalse("\"phys_v_accounts\"" in view, view)
         assertTrue("long(AccountNames.ID_COLUMN)" in table, table)
         assertTrue("long(AccountNames.ID_COLUMN)" in view, view)
     }

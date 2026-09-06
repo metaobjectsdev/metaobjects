@@ -36,8 +36,8 @@ object AuthorTable : Table("authors") {
 ```
 
 With `KotlinNamesGenerator` in the same `<generators>` run the binding reads
-`Table(AuthorNames.NAME)` and `varchar(AuthorNames.NAME_COLUMN, 200)` instead of the
-literals above — the Maven plugin builds the whole generator list before executing any of
+`Table(AuthorNames.SOURCE_PRIMARY_TABLE)` and `varchar(AuthorNames.NAME_COLUMN, 200)`
+instead of the literals above — the Maven plugin builds the whole generator list before executing any of
 it, so adding the names generator turns the substitution on (an explicit `<useNames>`
 still wins).
 
@@ -84,10 +84,17 @@ Postgres.
 Inside Exposed, bind to the `Column` object — `AuthorTable.name`, type-checked column by
 column — never `AuthorNames.NAME_COLUMN`. The constant is for what the DSL does not
 reach: `exec("…")` raw SQL, a Flyway script, a log line, an external system's column
-mapping. There it is `AuthorNames.NAME` / `AuthorNames.NAME_COLUMN` (opt-in:
-`KotlinNamesGenerator` in the pom — see the codegen reference), never a literal. Give
-both generators the same `columnNaming`, or the table and the constants disagree about a
-column.
+mapping. There it is `AuthorNames.SOURCE_PRIMARY_TABLE` / `AuthorNames.NAME_COLUMN`
+(opt-in: `KotlinNamesGenerator` in the pom — see the codegen reference), never a literal.
+Give both generators the same `columnNaming`, or the table and the constants disagree about
+a column.
+
+The object mirrors the metadata tree: `AuthorNames.NAME` is the OBJECT's name
+(`"Author"`), and a physical name sits under the member that says what it IS —
+`SOURCE_<ROLE>_TABLE` / `_VIEW` / `_PROC` and so on, `<ROLE>` being `PRIMARY` or `REPLICA`,
+so a write-through entity's replica view has a member of its own. Index names are
+`IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, which is what the generated
+`init { uniqueIndex(…) }` block references.
 
 ## Return-type contract
 

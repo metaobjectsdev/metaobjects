@@ -75,7 +75,7 @@ The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 |---|---|---|
 | `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity`, `object.value`, and `object.projection` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | entities with `source.rdb` |
-| `KotlinNamesGenerator` | `<Entity>Names.kt` — physical database name constants (table/view name, schema, columns) | every object with a declared/inherited primary `source.rdb` |
+| `KotlinNamesGenerator` | `<Entity>Names.kt` — physical database name constants mirroring the metadata tree (per-role source name + kind + schema, columns, identity/index names) | every object with a declared/inherited primary `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — persistence repository base (row-mapper + CRUD + patch) | writable entities (`source.rdb @kind="table"`) |
 | `KotlinFilterAllowlistGenerator` | `<Entity>FilterAllowlist.kt` — FR-009 filter allowlist (filterable field names + allowed ops per field) | writable entities (`source.rdb @kind="table"`) |
@@ -271,18 +271,44 @@ primary `source.rdb`:
 ```kotlin
 // generated/acme/blog/AuthorNames.kt (package line elided)
 object AuthorNames {
-    const val KIND: String = "table"
-    const val NAME: String = "authors"
-    const val READ_ONLY: Boolean = false
+    const val TYPE: String = "object"
+    const val SUB_TYPE: String = "entity"
+    const val NAME: String = "Author"
+
+    const val SOURCE_PRIMARY_TYPE: String = "source"
+    const val SOURCE_PRIMARY_SUB_TYPE: String = "rdb"
+    const val SOURCE_PRIMARY_KIND: String = "table"
+    const val SOURCE_PRIMARY_TABLE: String = "authors"
 
     const val NAME_FIELD: String = "name"
     const val NAME_COLUMN: String = "name"
+
+    const val IDENTITY_PK_TYPE: String = "identity"
+    const val IDENTITY_PK_SUB_TYPE: String = "primary"
+    const val IDENTITY_PK_NAME: String = "pk"
 
     val COLUMNS_BY_FIELD: Map<String, String> = mapOf(
         "name" to NAME_COLUMN,
     )
 }
 ```
+
+**The object MIRRORS THE METADATA TREE.** Every node carries its own `TYPE`,
+`SUB_TYPE` and `NAME`, so `AuthorNames.NAME` is the OBJECT's name (`"Author"`)
+and a physical name sits under the member that says what it IS —
+`SOURCE_<ROLE>_TABLE` / `_VIEW` / `_MATERIALIZED_VIEW` / `_PROC` / `_FUNCTION`,
+from the metamodel's own `@kind`-to-alias map. `<ROLE>` is `PRIMARY` or
+`REPLICA`, so a write-through entity — one table, one replica view, two physical
+names — has a member for each instead of one member between them.
+
+An `identity.secondary` or `index.lookup` also carries `IDENTITY_<NAME>_INDEX` /
+`INDEX_<NAME>_INDEX`, the database index name that the generated
+`init { uniqueIndex(…) }` / `init { index(…) }` block references;
+`identity.primary` deliberately carries none, because migrate names a primary
+key by a dialect-conditional formula this artifact must not restate.
+
+There is no `READ_ONLY`. It was never metadata — it is a derivation over
+`@kind` — so ask `SOURCE_<ROLE>_KIND`.
 
 **Prefer a typed handle where one exists.** If the ORM gives you a
 type-checked object for the same thing, use that. Replacing it with a string
@@ -315,8 +341,10 @@ outside the plugin, where nothing aggregates the run and it defaults `false`:
 </generator>
 ```
 
-With `useNames` on, `AuthorTable` reads `Table(AuthorNames.NAME)` and
-`varchar(AuthorNames.NAME_COLUMN, 200)` rather than the literals shown above —
+With `useNames` on, `AuthorTable` reads `Table(AuthorNames.SOURCE_PRIMARY_TABLE)`,
+`varchar(AuthorNames.NAME_COLUMN, 200)` and
+`uniqueIndex(AuthorNames.IDENTITY_BY_NAME_INDEX, name)` rather than the literals shown
+above —
 useful once you have hand-written code depending on `AuthorNames` too, so the
 table binding and that code share one resolution instead of two independent
 ones that could drift. Both generators must be given the **same**
@@ -333,15 +361,20 @@ object extends another re-exports the inherited constants by REFERENCE:
 
 ```kotlin
 object CopayAuthNames {
-    const val NAME: String = AuthNames.NAME            // the SHARED table, spelled once
-    const val ID_COLUMN: String = AuthNames.ID_COLUMN
+    const val NAME: String = "CopayAuth"               // its OWN name, always restated
     const val COPAY_AMOUNT_COLUMN: String = "copay_cents"
+
+    // A TPH subtype declares no source of its own, so the SHARED table — and every
+    // inherited column — is re-exported by reference and spelled once, on the base.
+    const val SOURCE_PRIMARY_TABLE: String = AuthNames.SOURCE_PRIMARY_TABLE
+    const val ID_COLUMN: String = AuthNames.ID_COLUMN
     // COLUMNS_BY_FIELD stays complete — inherited entries included.
 }
 ```
 
 An abstract base a persisted entity extends gets an object of its own carrying the columns
-it declares and **no `NAME`** — it has no table, and must never acquire one.
+and keys it declares and **no `SOURCE_*` block at all** — it has no table, and must never
+acquire one.
 
 ## FR-004 — render
 

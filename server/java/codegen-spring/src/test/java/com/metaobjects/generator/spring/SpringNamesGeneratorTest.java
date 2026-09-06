@@ -39,13 +39,16 @@ import static org.junit.Assert.fail;
  * the shipped Kotlin {@code KotlinNamesGeneratorTest} and C# {@code NamesGeneratorTests}:
  *
  * <ul>
- *   <li>{@code public static final} members for KIND/NAME/READ_ONLY + per-field
+ *   <li>{@code public static final} members mirroring the metadata tree — the object's
+ *       own {@code TYPE}/{@code SUB_TYPE}/{@code NAME}, a {@code SOURCE_<ROLE>_*} block per
+ *       {@code source.rdb} child (its physical name under the alias for its {@code @kind}),
+ *       an {@code IDENTITY_<N>_*} / {@code INDEX_<N>_*} block per key, and per-field
  *       {@code _FIELD}/{@code _COLUMN} pairs, always both, so a field/column collision
  *       can never collapse to one constant.</li>
  *   <li>An explicit {@code @column} always wins over the naming strategy — never a
  *       hand-rolled re-derivation.</li>
- *   <li>{@code SCHEMA} omitted (never emitted as a null/literal placeholder) when
- *       undeclared, present when declared.</li>
+ *   <li>{@code SOURCE_<ROLE>_SCHEMA} omitted (never emitted as a null/literal placeholder)
+ *       when undeclared, present when declared.</li>
  *   <li>#248: an object with no primary source emits nothing — participation is never
  *       gated on the object subtype.</li>
  *   <li>Two fields colliding on their SCREAMING_SNAKE member name is refused, naming
@@ -134,9 +137,25 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         // constructor gave; the constructor is protected so a subclass's implicit super()
         // call compiles.
         assertTrue(src, src.contains("public abstract class AuthorNames {"));
-        assertTrue(src, src.contains("public static final String KIND = \"table\";"));
-        assertTrue(src, src.contains("public static final String NAME = \"authors\";"));
-        assertTrue(src, src.contains("public static final boolean READ_ONLY = false;"));
+        // The object's OWN identity — `NAME` is the metamodel name now, not the table. The
+        // physical name sits under the alias for the source's @kind, which is what stopped
+        // one member meaning a table, a view and a procedure depending on the object.
+        assertTrue(src, src.contains("public static final String TYPE = \"object\";"));
+        assertTrue(src, src.contains("public static final String SUB_TYPE = \"entity\";"));
+        assertTrue(src, src.contains("public static final String NAME = \"Author\";"));
+        assertTrue(src, src.contains("public static final String SOURCE_PRIMARY_TYPE = \"source\";"));
+        assertTrue(src, src.contains("public static final String SOURCE_PRIMARY_SUB_TYPE = \"rdb\";"));
+        assertTrue(src, src.contains("public static final String SOURCE_PRIMARY_KIND = \"table\";"));
+        assertTrue(src, src.contains("public static final String SOURCE_PRIMARY_TABLE = \"authors\";"));
+        // READ_ONLY is GONE — a derivation over @kind, never metadata, and read by nothing
+        // in any port. A reader who wants it asks SOURCE_PRIMARY_KIND.
+        assertFalse(src, src.contains("READ_ONLY"));
+        // The identity block: `pk` is auto-named here (the fixture declares no name), and it
+        // carries NO index member — a primary key's database name is migrate's dialect-
+        // conditional formula, not something this artifact may restate.
+        assertTrue(src, src.contains("public static final String IDENTITY_PRIMARY_TYPE = \"identity\";"));
+        assertTrue(src, src.contains("public static final String IDENTITY_PRIMARY_SUB_TYPE = \"primary\";"));
+        assertFalse(src, src.contains("IDENTITY_PRIMARY_INDEX"));
         assertTrue(src, src.contains("public static final String CREATED_AT_FIELD = \"createdAt\";"));
         // Java's default strategy is `literal`, matching ObjectManagerDB -- NOT snake_case.
         assertTrue(src, src.contains("public static final String CREATED_AT_COLUMN = \"createdAt\";"));
@@ -149,7 +168,7 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         // unset (as it is here), and the design spec's Java citation told us to call
         // it. getPhysicalName() derives pluralize(snake_case) of the owning entity
         // instead. A null here would have emitted NAME = "null".
-        assertTrue(emitFor("Author").contains("public static final String NAME = \"authors\";"));
+        assertTrue(emitFor("Author").contains("public static final String SOURCE_PRIMARY_TABLE = \"authors\";"));
     }
 
     @Test
@@ -184,8 +203,8 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
 
     @Test
     public void anAbsentSchemaOmitsTheLineEntirely() throws IOException {
-        // A `SCHEMA = null;` literal does not read as "undeclared" -- it must be
-        // omitted from the file entirely, not emitted as a null/blank placeholder.
+        // A `SOURCE_PRIMARY_SCHEMA = null;` literal does not read as "undeclared" -- it must
+        // be omitted from the file entirely, not emitted as a null/blank placeholder.
         assertFalse(emitFor("Author").contains("SCHEMA"));
     }
 
@@ -203,7 +222,7 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
             }
             """;
         String src = emit(model, "acme/WidgetNames.java", Map.of());
-        assertTrue(src, src.contains("public static final String SCHEMA = \"inventory\";"));
+        assertTrue(src, src.contains("public static final String SOURCE_PRIMARY_SCHEMA = \"inventory\";"));
     }
 
     @Test
@@ -242,10 +261,13 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         String base = emit(model, "acme/BaseThingNames.java", Map.of());
         assertTrue(base, base.contains("public static final String EXTERNAL_REF_FIELD = \"externalRef\";"));
         assertTrue(base, base.contains("public static final String EXTERNAL_REF_COLUMN = \"ext_ref\";"));
-        // The base declares no source: a NAME here would be a physical name invented for an
-        // object that declares none — the phantom-table failure #248 exists to prevent.
-        assertFalse(base, base.contains("public static final String NAME ="));
-        assertFalse(base, base.contains("public static final String KIND ="));
+        // The base declares no source, so it carries NO source block at all — a physical
+        // name here would be one invented for an object that declares none, the
+        // phantom-table failure #248 exists to prevent. It does carry its own
+        // TYPE/SUB_TYPE/NAME, and that is not the same claim: `NAME` is the object's
+        // metamodel name ("BaseThing"), which a fragment has like any other node.
+        assertFalse(base, base.contains("SOURCE_"));
+        assertTrue(base, base.contains("public static final String NAME = \"BaseThing\";"));
     }
 
     @Test
@@ -351,6 +373,40 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void collidingIdentityMembersAreRefusedNamingBothNodePaths() throws IOException {
+        // The collision guard runs over the WHOLE emitted member set, not per collection —
+        // the emitted class has one flat namespace. Two IDENTITIES are the case fields alone
+        // could not reach: `by_name` and `byName` both fold to IDENTITY_BY_NAME_*, and javac
+        // would refuse the file while blaming generated code for a model problem.
+        //
+        // The failure names both NODE PATHS, not just two bare names, because a bare name
+        // does not say which collection it came from — and with four collections sharing one
+        // namespace that is the first thing a reader needs.
+        String model = """
+            {
+              "metadata.root": { "package": "acme", "children": [
+                { "object.entity": { "name": "Widget", "children": [
+                    { "source.rdb":   { "@table": "widgets" } },
+                    { "field.long":   { "name": "id" } },
+                    { "field.string": { "name": "alt" } },
+                    { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+                    { "identity.secondary": { "name": "by_name", "@fields": ["alt"] } },
+                    { "identity.secondary": { "name": "byName",  "@fields": ["alt"] } }
+                ] } }
+              ] }
+            }
+            """;
+        try {
+            emit(model, "acme/WidgetNames.java", Map.of());
+            fail("expected a GeneratorException: by_name and byName both yield IDENTITY_BY_NAME_*");
+        } catch (GeneratorException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("identities.by_name"));
+            assertTrue(e.getMessage(), e.getMessage().contains("identities.byName"));
+            assertTrue(e.getMessage(), e.getMessage().contains("IDENTITY_BY_NAME"));
+        }
+    }
+
+    @Test
     public void perPackageLayoutPutsTheArtifactBesideTheEntityItDescribes() throws IOException {
         // codegen-spring has NO per-package namespace-override arg -- every
         // per-entity generator in this package (including this one) derives its
@@ -398,11 +454,11 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
 
         String alphaSrc = Files.readString(outDir.resolve("acme/alpha/ThingNames.java"));
         assertTrue(alphaSrc, alphaSrc.contains("package acme.alpha;"));
-        assertTrue(alphaSrc, alphaSrc.contains("public static final String NAME = \"alpha_things\";"));
+        assertTrue(alphaSrc, alphaSrc.contains("public static final String SOURCE_PRIMARY_TABLE = \"alpha_things\";"));
 
         String betaSrc = Files.readString(outDir.resolve("acme/beta/ThingNames.java"));
         assertTrue(betaSrc, betaSrc.contains("package acme.beta;"));
-        assertTrue(betaSrc, betaSrc.contains("public static final String NAME = \"beta_things\";"));
+        assertTrue(betaSrc, betaSrc.contains("public static final String SOURCE_PRIMARY_TABLE = \"beta_things\";"));
     }
 
     // -------------------------------------------------------------------------

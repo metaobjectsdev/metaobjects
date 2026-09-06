@@ -75,16 +75,18 @@ class KotlinExposedTableSourceSelectionTest {
     }""".trimIndent()
 
     @Test fun `the table binding names the role=primary source, not the first-declared one -- two read-only sources`() {
-        assertNamesPrimarySource(twoReadOnlyModel, "TwoRoView", "two_ro_primary", "two_ro_replica")
+        // VIEW, not TABLE: the artifact carries a physical name under the alias for its
+        // source's @kind, so a view-kind primary has no SOURCE_PRIMARY_TABLE at all.
+        assertNamesPrimarySource(twoReadOnlyModel, "TwoRoView", "VIEW", "two_ro_primary", "two_ro_replica")
     }
 
     @Test fun `the table binding names the role=primary source, not the first-declared one -- two writable sources`() {
-        assertNamesPrimarySource(twoWritableModel, "TwoRwEntity", "two_rw_primary", "two_rw_replica")
+        assertNamesPrimarySource(twoWritableModel, "TwoRwEntity", "TABLE", "two_rw_primary", "two_rw_replica")
     }
 
     /**
      * The table generator's literal `Table("...")` and [KotlinNamesGenerator]'s
-     * (independently-resolved) `<Entity>Names.NAME` constant must name the SAME
+     * (independently-resolved) `<Entity>Names.SOURCE_PRIMARY_<[alias]>` constant must name the SAME
      * physical string -- [expectedPrimary], the role=primary source -- and NEVER
      * [wrongIfFirstDeclared], the string a role-BLIND, first-declared selector would
      * have produced. Comparing the table generator's output against a SEPARATE
@@ -92,7 +94,8 @@ class KotlinExposedTableSourceSelectionTest {
      * computing the same fact must land on one answer.
      */
     private fun assertNamesPrimarySource(
-        model: String, shortName: String, expectedPrimary: String, wrongIfFirstDeclared: String,
+        model: String, shortName: String, alias: String,
+        expectedPrimary: String, wrongIfFirstDeclared: String,
     ) {
         val files = emit(model)
         val tableSrc = files.getValue("acme/demo/${shortName}Table.kt")
@@ -100,8 +103,8 @@ class KotlinExposedTableSourceSelectionTest {
 
         // Sanity: KotlinNamesGenerator (unrelated to this fix, unchanged by it) really
         // does resolve the primary source, confirming the fixture is well-formed.
-        assertTrue("const val NAME: String = \"$expectedPrimary\"" in namesSrc, namesSrc)
-        assertFalse("const val NAME: String = \"$wrongIfFirstDeclared\"" in namesSrc, namesSrc)
+        assertTrue("const val SOURCE_PRIMARY_$alias: String = \"$expectedPrimary\"" in namesSrc, namesSrc)
+        assertFalse("const val SOURCE_PRIMARY_$alias: String = \"$wrongIfFirstDeclared\"" in namesSrc, namesSrc)
 
         // The fix under test: the table generator's own literal must agree.
         assertTrue("Table(\"$expectedPrimary\")" in tableSrc, tableSrc)

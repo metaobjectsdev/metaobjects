@@ -137,25 +137,44 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
                 "${entity.name}: its storedProc source.rdb resolves no physical name; " +
                     "declare @proc on the source")
 
-        // Task 6 — the procedure name is spelled ONCE per run: when the names generator
-        // is in the run, PROC_NAME is initialised FROM <Entity>Names.NAME (a const val
-        // may be initialised from another const val — the compiler folds it), and the
-        // KDoc names the constant rather than restating the literal. The literal arm is
-        // the documented fallback for a run without the names generator.
+        // Task 6 — the procedure name is spelled ONCE per run: when the names generator is
+        // in the run, PROC_NAME is initialised FROM the artifact's constant (a const val may
+        // be initialised from another const val — the compiler folds it), and the KDoc names
+        // the constant rather than restating the literal. The literal arm is the documented
+        // fallback for a run without the names generator.
+        //
+        // The member is SOURCE_PRIMARY_PROC, not NAME. `<Entity>Names.NAME` now holds the
+        // object's own metamodel name, and the physical name sits under the alias for the
+        // source's @kind — which is the restructure's whole point here: one member used to
+        // hold a table, a view AND a procedure depending on which object you had.
         val namesObject = if (useNames()) KotlinNaming.namesObjectName(shortName) else null
+        // Built from the source node's own metamodel type + role and the metamodel's own
+        // kind→alias map, never a literal "SOURCE_PRIMARY_PROC": the same two transforms
+        // KotlinNamesGenerator declares the member with, so the reference and the
+        // declaration cannot name two different members.
+        val sourcePrefix =
+            "${KotlinNaming.namesMember(sourceRdb.type)}_${KotlinNaming.namesMember(sourceRdb.role)}_"
+        val procAlias = MetaSource.PHYSICAL_NAME_ATTR_BY_KIND[sourceRdb.effectiveKind]
+            ?: throw GeneratorException(
+                "${entity.name}: source.rdb @kind='${sourceRdb.effectiveKind}' carries no " +
+                    "physical-name alias, so no constant names its procedure")
         // @schema qualifies the procedure exactly as it qualifies a table. A callable's
         // schema was dropped here for the same reason it was dropped from the table binding:
         // nothing read it. The name reaches the SQL, so an unqualified proc resolves through
         // the connection's search_path rather than through the model.
         val procSchema = sourceRdb.schema?.takeIf { it.isNotEmpty() }
+        val procNameMember = namesObject?.let {
+            "$it.$sourcePrefix${KotlinNaming.namesMember(procAlias)}"
+        }
         val procNameExpr = when {
-            namesObject != null && procSchema != null -> "$namesObject.SCHEMA + \".\" + $namesObject.NAME"
-            namesObject != null -> "$namesObject.NAME"
+            procNameMember != null && procSchema != null ->
+                "$namesObject.${sourcePrefix}SCHEMA + \".\" + $procNameMember"
+            procNameMember != null -> procNameMember
             procSchema != null -> "\"$procSchema.$procName\""
             else -> "\"$procName\""
         }
-        val procNameDoc = if (namesObject != null)
-            "the stored procedure named by `$namesObject.NAME`"
+        val procNameDoc = if (procNameMember != null)
+            "the stored procedure named by `$procNameMember`"
         else "stored procedure `$procName`"
 
         // FR-015: the call-site arguments are the @parameterRef value object's fields, in

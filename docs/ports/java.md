@@ -318,13 +318,22 @@ primary `source.rdb`:
 
 ```java
 // generated/acme/blog/AuthorNames.java (package line + import elided)
-public final class AuthorNames {
-    public static final String KIND = "table";
-    public static final String NAME = "authors";
-    public static final boolean READ_ONLY = false;
+public abstract class AuthorNames {
+    public static final String TYPE = "object";
+    public static final String SUB_TYPE = "entity";
+    public static final String NAME = "Author";
+
+    public static final String SOURCE_PRIMARY_TYPE = "source";
+    public static final String SOURCE_PRIMARY_SUB_TYPE = "rdb";
+    public static final String SOURCE_PRIMARY_KIND = "table";
+    public static final String SOURCE_PRIMARY_TABLE = "authors";
 
     public static final String NAME_FIELD = "name";
     public static final String NAME_COLUMN = "name";
+
+    public static final String IDENTITY_PK_TYPE = "identity";
+    public static final String IDENTITY_PK_SUB_TYPE = "primary";
+    public static final String IDENTITY_PK_NAME = "pk";
 
     public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(
         Map.entry("name", NAME_COLUMN)
@@ -334,6 +343,25 @@ public final class AuthorNames {
 }
 ```
 
+**The class MIRRORS THE METADATA TREE.** Every node carries its own `TYPE`,
+`SUB_TYPE` and `NAME`, so `AuthorNames.NAME` is the OBJECT's name (`"Author"`)
+and a physical name sits under the member that says what it IS —
+`SOURCE_<ROLE>_TABLE` / `_VIEW` / `_MATERIALIZED_VIEW` / `_PROC` / `_FUNCTION`,
+from the metamodel's own `@kind`-to-alias map. `<ROLE>` is `PRIMARY` or
+`REPLICA`, so a write-through entity — one table, one replica view, two physical
+names — has a member for each instead of one member between them.
+
+`TYPE`/`SUB_TYPE` are on every node but a field, and that exception is
+deliberate: a field's subType does not change what its column denotes, while an
+object's decides table-vs-view and an identity's decides unique-vs-not
+(ADR-0040 put uniqueness in the type). An `identity.secondary` or `index.lookup`
+also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, the database index
+name; `identity.primary` deliberately carries none, because migrate names a
+primary key by a dialect-conditional formula this artifact must not restate.
+
+There is no `READ_ONLY`. It was never metadata — it is a derivation over
+`@kind` — so ask `SOURCE_<ROLE>_KIND`.
+
 **It follows `extends`, so a constant you do not find on a class is on its
 base.** The class is `abstract` rather than `final` precisely so it can be
 inherited (the constructor is `protected` for the same reason — a subclass's
@@ -342,20 +370,26 @@ produces a class that extends the other's:
 
 ```java
 public abstract class CopayAuthNames extends AuthNames {
+    public static final String TYPE = "object";
+    public static final String SUB_TYPE = "entity";
+    public static final String NAME = "CopayAuth";      // its OWN name, not the base's
+
     public static final String COPAY_AMOUNT_FIELD = "copayAmount";
     public static final String COPAY_AMOUNT_COLUMN = "copay_cents";
-    // KIND / NAME / READ_ONLY / ID_COLUMN / … are the base's. Java inherits static
-    // members, so CopayAuthNames.NAME and CopayAuthNames.ID_COLUMN both resolve.
+    // SOURCE_PRIMARY_* / ID_COLUMN / … are the base's. Java inherits static members,
+    // so CopayAuthNames.SOURCE_PRIMARY_TABLE and CopayAuthNames.ID_COLUMN both resolve.
 }
 ```
 
-Two forms, and which one you get is structural. An object with its OWN source
-declares its own `KIND`/`NAME`/`SCHEMA`/`READ_ONLY`; one that INHERITS its
-source — a TPH subtype sharing its base's single table — takes all of them from
-the base. An abstract base a persisted entity extends gets a class of its own
-carrying the columns it declares and **no `NAME`** — it has no table, and must
-never acquire one. `COLUMNS_BY_FIELD` stays complete on every class, inherited
-entries included.
+Which members a class declares is structural, and follows one rule: it declares
+what the object DECLARES, and inherits the rest. A TPH subtype sharing its
+base's single table declares no source of its own, so its whole
+`SOURCE_PRIMARY_*` block comes from the base. Its `TYPE`/`SUB_TYPE`/`NAME` are
+always restated, because they differ — `CopayAuthNames.NAME` has to say
+`"CopayAuth"`. An abstract base a persisted entity extends gets a class of its
+own carrying the columns and keys it declares and **no `SOURCE_*` block at all**
+— it has no table, and must never acquire one. `COLUMNS_BY_FIELD` stays complete
+on every class, inherited entries included.
 
 **Prefer a typed handle where one exists.** If the ORM gives you a
 type-checked object for the same thing, use that. Replacing it with a string

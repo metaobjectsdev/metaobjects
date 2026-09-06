@@ -179,9 +179,15 @@ class KotlinStoredProcGeneratorTest {
 
     @Test fun `with the names artifact in the run, PROC_NAME and every result column reference the constants`() {
         // Task 6 — the procedure name and each result column are spelled ONCE per run, on
-        // <Entity>Names; the wrapper references them. `const val PROC_NAME = MyProcNames.NAME`
-        // is a const initialised from a const, which the compiler folds — so PROC_NAME
-        // keeps its value AND its callers (`${PROC_NAME}` in the SQL) are unchanged.
+        // <Entity>Names; the wrapper references them.
+        // `const val PROC_NAME = MyProcNames.SOURCE_PRIMARY_PROC` is a const initialised
+        // from a const, which the compiler folds — so PROC_NAME keeps its value AND its
+        // callers (`${PROC_NAME}` in the SQL) are unchanged.
+        //
+        // The member is SOURCE_PRIMARY_PROC, not NAME. Under the old flat shape the same
+        // `NAME` member held a table, a view or a procedure depending on the object; it now
+        // holds the object's own metamodel name and the physical name sits under the alias
+        // for the source's @kind, so `MyProcNames.SOURCE_PRIMARY_TABLE` is a compile error.
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.projection": { "name": "MyProc", "children": [
@@ -200,12 +206,12 @@ class KotlinStoredProcGeneratorTest {
                 .apply { setArgs(mapOf("outputDir" to outDir.toString(), "useNames" to "true")) }
                 .execute(loader)
             val src = outDir.resolve("acme/demo/MyProcProc.kt").readText()
-            assertTrue("const val PROC_NAME = MyProcNames.NAME" in src, src)
+            assertTrue("const val PROC_NAME = MyProcNames.SOURCE_PRIMARY_PROC" in src, src)
             assertTrue("SELECT * FROM \${PROC_NAME}()" in src, src)
             assertTrue("totalCents = rs.getLong(MyProcNames.TOTAL_CENTS_COLUMN)" in src, src)
             assertTrue("label = rs.getString(MyProcNames.LABEL_COLUMN)" in src, src)
             // The KDoc names the constant rather than restating the literal.
-            assertTrue("wrapper for the stored procedure named by `MyProcNames.NAME`" in src, src)
+            assertTrue("wrapper for the stored procedure named by `MyProcNames.SOURCE_PRIMARY_PROC`" in src, src)
             // The literals must be GONE from the wrapper — a positive assertion alone would
             // still pass a generator emitting the reference and the old literal side by side.
             for (literal in listOf("get_data", "phys_label", "total_cents", "totalCents\"")) {
@@ -214,7 +220,8 @@ class KotlinStoredProcGeneratorTest {
             // And the artifact the references point at carries them — the reference is
             // only worth anything if it resolves to the same strings.
             val names = outDir.resolve("acme/demo/MyProcNames.kt").readText()
-            assertTrue("const val NAME: String = \"get_data\"" in names, names)
+            assertTrue("const val SOURCE_PRIMARY_PROC: String = \"get_data\"" in names, names)
+            assertFalse("SOURCE_PRIMARY_TABLE" in names, names)
             assertTrue("const val TOTAL_CENTS_COLUMN: String = \"total_cents\"" in names, names)
             assertTrue("const val LABEL_COLUMN: String = \"phys_label\"" in names, names)
         } finally {
@@ -239,8 +246,8 @@ class KotlinStoredProcGeneratorTest {
                 .apply { setArgs(mapOf("outputDir" to outDir.toString(), "useNames" to "true")) }
                 .execute(loader)
             val src = outDir.resolve("acme/demo/BareProc.kt").readText()
-            assertTrue("const val PROC_NAME = BareNames.NAME" in src, src)
-            assertTrue("stub for the stored procedure named by `BareNames.NAME`" in src, src)
+            assertTrue("const val PROC_NAME = BareNames.SOURCE_PRIMARY_PROC" in src, src)
+            assertTrue("stub for the stored procedure named by `BareNames.SOURCE_PRIMARY_PROC`" in src, src)
             assertFalse("sp_bare" in src, src)
         } finally {
             outDir.toFile().deleteRecursively()

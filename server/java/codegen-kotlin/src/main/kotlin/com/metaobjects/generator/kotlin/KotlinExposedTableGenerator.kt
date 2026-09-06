@@ -1,6 +1,8 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.MetaData
 import com.metaobjects.database.CoreDBMetaDataProvider
+import com.metaobjects.database.IndexNaming
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MapField
 import com.metaobjects.field.MetaField
@@ -420,28 +422,39 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val tableName = sourceRdb.physicalName?.takeIf { it.isNotEmpty() }
             ?: (shortName.lowercase() + "s")
 
-        // Task 6 / R27 — reference the constant whenever the names generator is in the
-        // run (gated on the arg, never on string equality — see KotlinGenUtil.primaryRdbSource's
-        // doc). <Entity>Names.NAME names ONE source: the entity's role=primary one, the node
-        // KotlinGenUtil.resolveObjectNames resolves. So the reference is right exactly when
-        // the source THIS call binds IS that node — reference identity of the resolved
-        // source, the same structural test KotlinObjectNames.inheritsSource makes, never a
-        // comparison of the two names. emitWriteThrough calls this function twice for ONE
-        // entity against two DIFFERENT own sources: the writable table (which for an
-        // object.entity must be the primary — ERR_ENTITY_PRIMARY_SOURCE_READONLY — so it
-        // hits) and the read-only replica view (a different node with its own physical
-        // name and no slot in the artifact, so it keeps its literal — deliberately).
+        // Task 6 / R27 — reference the constant whenever the names generator is in the run
+        // (gated on the arg, never on string equality — see KotlinGenUtil.primaryRdbSource's
+        // doc). <Entity>Names keys its sources by @role, so the reference is selected by the
+        // ROLE of the source THIS call binds: `SOURCE_PRIMARY_TABLE` for the write table,
+        // `SOURCE_REPLICA_VIEW` for the replica.
         //
-        // This used to be scoped to `objectNameOverride == null`, which excluded BOTH
-        // write-through calls: the override is passed on each, so the WRITE table — whose
-        // name is precisely the primary source's — spelled `Table("…")` literally beside
-        // columns already referencing <Entity>Names. The comment justified the exclusion
-        // for the view alone and the code applied it to the pair. (Column-name substitution
-        // has no such split — a field's column name does not depend on which of the two
-        // sources this call is emitting — and is gated on useNames() alone.)
-        val tableExpr = if (useNames() && sourceRdb === KotlinGenUtil.primaryRdbSource(entity))
-            "${KotlinNaming.namesObjectName(shortName)}.NAME"
-        else "\"$tableName\""
+        // That role key is what changed the answer for emitWriteThrough, which calls this
+        // function twice for ONE entity against two DIFFERENT own sources. The artifact used
+        // to carry the primary source's physical name and nothing else, so the read view had
+        // no slot to reference and kept its literal "deliberately" — a comment describing a
+        // missing member as a design. Both calls reference a constant now.
+        //
+        // The selection is no longer reference identity with the primary source either. The
+        // question is not "is this the primary?" but "which slot describes this source?",
+        // and the artifact answers it by role; two sources in one role that DISAGREE are
+        // refused when the artifact is built (KotlinGenUtil.sourcesOf), so a role key cannot
+        // silently stand for the wrong name.
+        val names = if (useNames()) KotlinGenUtil.resolveObjectNames(entity, columnNaming()) else null
+        // The slot describing THIS source, and the only thing that decides whether the names
+        // arm is taken at all. Null when the names generator is out of the run, or when the
+        // source's @kind carries no physical-name alias — a future @kind with no alias
+        // declares no member, and falling back to the literal keeps this from emitting a
+        // reference to nothing.
+        val srcNames = names?.sources?.get(sourceRdb.role)?.takeIf { it.alias != null }
+        // The member prefix is built from the source node's own metamodel type and role, and
+        // the physical-name segment from the metamodel's kind→alias map — the SAME two
+        // transforms KotlinNamesGenerator declares the member with, so the reference and the
+        // declaration cannot name two different members.
+        val sourcePrefix = KotlinNaming.namesObjectName(shortName) +
+            ".${KotlinNaming.namesMember(sourceRdb.type)}_${KotlinNaming.namesMember(sourceRdb.role)}_"
+        val tableExpr =
+            if (srcNames != null) "$sourcePrefix${KotlinNaming.namesMember(srcNames.alias!!)}"
+            else "\"$tableName\""
 
         // @schema — Exposed takes the qualified name in the SAME string argument
         // (`Table("sales.widgets")`), so qualification is a prefix on `tableExpr` rather than
@@ -457,12 +470,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // spells the schema, and both produce the same string at runtime.
         val tableSchema = sourceRdb.schema?.takeIf { it.isNotEmpty() }
         val qualifiedTableExpr = when {
-            tableSchema == null -> tableExpr
-            useNames() && sourceRdb === KotlinGenUtil.primaryRdbSource(entity) ->
-                "${KotlinNaming.namesObjectName(shortName)}.SCHEMA + \".\" + $tableExpr"
-            // Every remaining case has `tableExpr` in its literal form (names off, or a
-            // write-through replica view, which has no slot in the artifact), so fold the two
-            // literals into one rather than emitting `"sales." + "widgets"`.
+            // The names arm reads the SCHEMA member off the same role slot the table name
+            // came from, so a replica view with its own @schema qualifies with its own.
+            srcNames?.schema != null -> "${sourcePrefix}SCHEMA + \".\" + $tableExpr"
+            srcNames != null || tableSchema == null -> tableExpr
+            // Names off: fold the two literals into one rather than emitting
+            // `"sales." + "widgets"`.
             else -> "\"$tableSchema.$tableName\""
         }
 
@@ -793,16 +806,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("\n    init {\n")
                 for (sec in emittableSecondaries) {
                     val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
-                    // shortName strips the package prefix the loader adds
-                    // (`acme::demo::by_name` → `by_name`) — same pattern used
-                    // for relationship.composition's FK property name above.
-                    val indexName = sec.shortName ?: sec.name
-                    append("        uniqueIndex(\"$indexName\", $cols)\n")
+                    append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
                 }
                 for (idx in lookupIndexes) {
                     val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
-                    val indexName = idx.shortName ?: idx.name
-                    append("        index(\"$indexName\", false, $cols)\n")
+                    append("        index(${indexNameExpr(idx, shortName)}, false, $cols)\n")
                 }
                 append("    }\n")
             }
@@ -868,6 +876,31 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val declaring: MetaObject = f.declaringObject
             ?: return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
         return "${namesObjectRef(entity, declaring)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
+    }
+
+    /**
+     * The rendered index-name EXPRESSION for an `identity.secondary` / `index.lookup` this
+     * table binds: the `<Entity>Names.<IDENTITY|INDEX>_<N>_INDEX` constant when the names
+     * artifact is in this run ([useNames]), the quoted name otherwise.
+     *
+     * BOTH arms go through [IndexNaming], which is the whole point. This loop used to answer
+     * the question itself with `sec.shortName ?: sec.name`, under a comment saying it was
+     * stripping the package prefix "the loader adds" — the loader adds none to a nested
+     * node, so that expression had been a no-op for its whole life while reading as the site
+     * that owned the rule. The names artifact computed the same string independently.
+     * `fdb4118f1` is what that arrangement costs when the two answers drift.
+     *
+     * [shortName] is the entity whose table this is, and its artifact is where the constant
+     * lives: `secondaries` and `lookupIndexes` are both read through RESOLVING accessors, so
+     * an index declared on an abstract base is part of THIS entity's resolved set and its
+     * artifact re-exports it. No declaring-entity redirect is needed, unlike [columnExpr] —
+     * the TPH fold folds a subtype's COLUMNS into the base's table, never its indexes.
+     */
+    protected fun indexNameExpr(node: MetaData, shortName: String): String {
+        val name = IndexNaming.resolve(node)
+        if (!useNames()) return "\"$name\""
+        val member = "${KotlinNaming.namesMember(node.type)}_${KotlinNaming.namesMember(name)}_INDEX"
+        return "${KotlinNaming.namesObjectName(shortName)}.$member"
     }
 
     /**

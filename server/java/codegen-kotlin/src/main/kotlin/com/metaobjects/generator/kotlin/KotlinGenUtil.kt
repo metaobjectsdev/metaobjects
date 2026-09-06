@@ -8,6 +8,10 @@ import com.metaobjects.field.ObjectField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.database.ColumnNaming
+import com.metaobjects.database.IndexNaming
+import com.metaobjects.identity.MetaIdentity
+import com.metaobjects.index.Index
+import com.metaobjects.index.LookupIndex
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
@@ -210,39 +214,88 @@ public object KotlinGenUtil {
     data class KotlinFieldNames(val name: String, val column: String)
 
     /**
-     * §A2/§A3 — the resolved physical-name shape for an object: what
-     * [KotlinNamesGenerator] emits as `<Entity>Names`, and what Task 6's Exposed table
-     * binding is meant to consume instead of re-deriving the same names independently.
+     * One `source.rdb` child, under the ROLE it plays.
+     *
+     * [alias] is the member-name segment the physical name is carried under — `table`,
+     * `view`, `materializedView`, `proc`, `function` — and it is not invented here: it is
+     * [MetaSource.PHYSICAL_NAME_ATTR_BY_KIND], the metamodel's own FR-016/ADR-0018 alias
+     * map, the same one the canonical serializer rewrites through. A local `when` would be
+     * a second answer to a question the metamodel already answers, and a sixth `@kind`
+     * would then need an edit here to be spelled correctly.
      */
+    data class KotlinSourceNames(
+        val type: String,
+        val subType: String,
+        val kind: String,
+        val schema: String?,
+        val alias: String?,
+        val physicalName: String?,
+    )
+
     /**
-     * The resolved physical-name shape for an object.
+     * One `identity.*` or `index.*` child.
      *
-     * [fields] is every field, INHERITED INCLUDED: it is the lookup surface, and a miss on
-     * an inherited field is exactly the fallback-to-literal this artifact removes.
-     * [ownFields] is what the object DECLARES — inherited constants live on the super's
-     * object and are re-exported by REFERENCE, so a subtype states each physical name once
-     * instead of restating its parent's. That is ADR-0039's ONE sanctioned own-accessor
-     * use, in the exact form the ADR names it.
+     * [subType] is load-bearing rather than decorative: it is the ONLY thing distinguishing
+     * a unique alternate key from a non-unique lookup index, which is the whole reason
+     * ADR-0040 put uniqueness in the type rather than in an attribute.
      *
-     * [kind]/[name]/[schema] are null and [readOnly] false on a FRAGMENT — an abstract base
-     * with no source of its own, which contributes columns to its children and has no
-     * physical name to carry.
+     * [index] — the database name — is present only where [IndexNaming] produces it:
+     * `identity.secondary` and `index.lookup`. It is deliberately ABSENT on
+     * `identity.primary`, because no such name exists to carry: migrate hardcodes
+     * `<table>_pkey` on Postgres, emits an unnamed PK on SQLite, and no port's codegen names
+     * a primary key at all. Carrying it would restate a migrate-only, dialect-conditional
+     * formula in an artifact whose entire promise is that a name is spelled once — the #293
+     * defect, re-created by the mechanism built to prevent it.
+     */
+    data class KotlinKeyNames(
+        val type: String,
+        val subType: String,
+        val name: String,
+        val index: String?,
+    )
+
+    /**
+     * The resolved shape for an object: what [KotlinNamesGenerator] emits as
+     * `<Entity>Names`, and what [KotlinExposedTableGenerator] / [KotlinStoredProcGenerator]
+     * consume instead of re-deriving the same names independently.
      *
-     * [inheritsSource] is true when the primary source is the SUPER'S rather than declared
-     * here (a TPH subtype sharing its base's single table). Reference identity of the
-     * resolved source NODE, never an equality test on the resolved strings: a divergence
-     * guard is precisely what this codebase forbids at a substitution site, and the
-     * question being asked is structural.
+     * The artifact MIRRORS THE METADATA TREE. It used to be flat, and one property carried
+     * the cost: `name` held a table, a view and a stored procedure depending on the object,
+     * told apart only by a sibling `kind`, and in none of them did it hold the object's own
+     * name. Every node now carries its own [type], [subType] and [name], and a physical name
+     * sits under the alias that says what it IS.
+     *
+     * Each collection has an ALL form and an OWN form. The ALL form is the lookup surface —
+     * every field, source, identity and index the object resolves, inherited included —
+     * because a miss on an inherited member is exactly the fallback-to-literal this artifact
+     * removes. The OWN form is what the object DECLARES: inherited constants live on the
+     * super's object and are re-exported by REFERENCE (Kotlin has no static inheritance), so
+     * a subtype states each physical name once instead of restating its parent's. That is
+     * ADR-0039's ONE sanctioned own-accessor use, in the exact form the ADR names it.
+     *
+     * [sources] is EMPTY on a FRAGMENT — an abstract base with no source of its own, which
+     * contributes columns to its children and must never acquire a physical name it never
+     * declared. There is no separate `inheritsSource` flag, and its absence is the own/all
+     * split doing its job rather than an omission: a TPH subtype sharing its base's single
+     * table declares no source of its own, so [ownSources] is empty and every source member
+     * lands in the inherited half, re-exported by reference. That is the same structural
+     * question ("did this object declare a source, or is it using its parent's?") answered
+     * by the accessor that already had to be consulted, instead of by a second derivation
+     * that could disagree with it.
      */
     data class KotlinObjectNames(
-        val kind: String?,
-        val name: String?,
-        val schema: String?,
-        val readOnly: Boolean,
-        val fields: Map<String, KotlinFieldNames>,
+        val type: String,
+        val subType: String,
+        val name: String,
+        val sources: Map<String, KotlinSourceNames> = emptyMap(),
+        val ownSources: Map<String, KotlinSourceNames> = emptyMap(),
+        val fields: Map<String, KotlinFieldNames> = emptyMap(),
         val ownFields: Map<String, KotlinFieldNames> = emptyMap(),
+        val identities: Map<String, KotlinKeyNames> = emptyMap(),
+        val ownIdentities: Map<String, KotlinKeyNames> = emptyMap(),
+        val indexes: Map<String, KotlinKeyNames> = emptyMap(),
+        val ownIndexes: Map<String, KotlinKeyNames> = emptyMap(),
         val superObject: MetaObject? = null,
-        val inheritsSource: Boolean = false,
     )
 
     /**
@@ -266,6 +319,106 @@ public object KotlinGenUtil {
     }
 
     /**
+     * Every `source.rdb` child of [obj], keyed by effective `@role`.
+     *
+     * Role is the honest axis: the loader requires exactly one primary, and every consumer
+     * that binds a second source picks it by role. Keying by role is also what finally gives
+     * a WRITE-THROUGH entity's replica view a home — it declares two physical names and the
+     * artifact carried one, so [KotlinExposedTableGenerator]'s read-view call had nothing to
+     * reference and emitted the second in full.
+     */
+    private fun sourcesOf(obj: MetaObject, includeParentData: Boolean): Map<String, KotlinSourceNames> {
+        val out = LinkedHashMap<String, KotlinSourceNames>()
+        // ADR-0039: getSources(true) resolves through `extends`; getSources(false) is the
+        // sanctioned own-only twin for "what does THIS object declare".
+        for (src in obj.getSources(includeParentData)) {
+            val role = src.role
+            val resolved = sourceNamesOf(src)
+            val existing = out[role]
+            if (existing == null) {
+                out[role] = resolved
+                continue
+            }
+            // The refusal is about DISAGREEMENT, not about the count — deliberately the SAME
+            // rule SourceResolution already enforces for the physical name, rather than a
+            // stricter one invented here. An abstract base and the child that extends it may
+            // each declare a `@role: primary` source naming the same relation; that is legal
+            // today and refusing it would make this artifact stricter than the invariant it
+            // exists to serve.
+            //
+            // Two sources in one role that resolve DIFFERENTLY is the real problem, and
+            // silently keeping one is the failure mode this artifact makes impossible: the
+            // second name is carried nowhere, read by nobody, and the binding quietly takes
+            // the first's.
+            if (existing != resolved) {
+                throw GeneratorException(
+                    "${obj.name} declares more than one source.rdb with @role: \"$role\", and " +
+                        "they do not agree: $existing vs $resolved. The names artifact keys " +
+                        "sources by role, so the second has nowhere to go.")
+            }
+        }
+        return out
+    }
+
+    /**
+     * One source node's names, keyed by the metamodel's own kind-to-alias map.
+     *
+     * `readOnly` is deliberately NOT carried, and its removal is the shape's own rule applied
+     * to itself: it is not metadata at all but a derivation over `@kind`
+     * ([MetaSource.isReadOnly]), and a sweep of all five ports found ZERO consumers,
+     * generated or hand-written. An artifact that mirrors the metadata tree carries what was
+     * declared; a reader who wants read-only-ness asks [kind], which is the thing the author
+     * actually wrote.
+     */
+    private fun sourceNamesOf(source: MetaSource): KotlinSourceNames {
+        // effectiveKind, not a hand-rolled kind list -- derived from the source's own logic
+        // so a second read-only-kind list here can't drift from the loader's.
+        val kind = source.effectiveKind
+        return KotlinSourceNames(
+            type = source.type,
+            subType = source.subType,
+            kind = kind,
+            schema = source.schema?.takeIf { it.isNotEmpty() },
+            alias = MetaSource.PHYSICAL_NAME_ATTR_BY_KIND[kind],
+            physicalName = source.physicalName,
+        )
+    }
+
+    /**
+     * The node types whose database index name the artifact carries.
+     *
+     * A closed set rather than "anything with a name", because the rule is narrow and worth
+     * stating: the artifact carries a physical name only where ONE resolver, shared by every
+     * consumer, produces it. See [KotlinKeyNames].
+     */
+    private val INDEX_NAMED_SUBTYPES = setOf(
+        "${MetaIdentity.TYPE_IDENTITY}.${MetaIdentity.SUBTYPE_SECONDARY}",
+        "${Index.TYPE_INDEX}.${Index.SUBTYPE_LOOKUP}",
+    )
+
+    /** Every `identity.*` / `index.*` child, keyed by metamodel name. */
+    private fun keysOf(nodes: Collection<MetaData>): Map<String, KotlinKeyNames> {
+        val out = LinkedHashMap<String, KotlinKeyNames>()
+        for (node in nodes) {
+            // IndexNaming owns BOTH the package strip and the empty-name refusal, so the
+            // artifact and the DDL cannot disagree about what an index is called. It is the
+            // same door KotlinExposedTableGenerator's `init { uniqueIndex(…) }` block now
+            // goes through, where it used to answer with a local `shortName ?: name`.
+            val named = "${node.type}.${node.subType}" in INDEX_NAMED_SUBTYPES
+            out[node.shortName] = KotlinKeyNames(
+                type = node.type,
+                subType = node.subType,
+                name = node.shortName,
+                index = if (named) IndexNaming.resolve(node) else null,
+            )
+        }
+        return out
+    }
+
+    private fun fieldMap(fields: Collection<MetaField<*>>, strategy: String): Map<String, KotlinFieldNames> =
+        fields.associate { f -> f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy)) }
+
+    /**
      * The names FRAGMENT for an object that a sourced object extends but which declares no
      * source of its own — the `BaseEntity` pattern: shared fields, no table.
      *
@@ -274,8 +427,7 @@ public object KotlinGenUtil {
      * a database participant, so an `object.value` carrying fields resolves to nothing here
      * as it always has. A fragment is emitted only for an object REACHED from a participant
      * by walking `extends` upward — the only context in which its fields are columns at all.
-     * It carries no kind/name/schema/readOnly, because it has no physical name and must
-     * never acquire one.
+     * It carries NO source, because it has no physical name and must never acquire one.
      *
      * Returns null when the object declares no fields of its own: an abstract marker has
      * nothing to reference, and emitting an empty object for it would put a name in the
@@ -288,24 +440,25 @@ public object KotlinGenUtil {
         val own = obj.getMetaFields(false)
         if (own.isEmpty()) return null
         return KotlinObjectNames(
-            kind = null, name = null, schema = null, readOnly = false,
-            fields = obj.metaFields.associate { f ->
-                f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
-            },
-            ownFields = own.associate { f ->
-                f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
-            },
+            type = obj.type,
+            subType = obj.subType,
+            name = obj.shortName,
+            fields = fieldMap(obj.metaFields, strategy),
+            ownFields = fieldMap(own, strategy),
+            identities = keysOf(obj.getIdentities(true)),
+            ownIdentities = keysOf(obj.getIdentities(false)),
+            indexes = keysOf(obj.getChildren(LookupIndex::class.java, true)),
+            ownIndexes = keysOf(obj.getChildren(LookupIndex::class.java, false)),
             superObject = namesArtifactSuperOf(obj),
         )
     }
 
     /**
      * §A2/§A3 — the ONE place a data name is resolved for a generator run. Both
-     * [KotlinNamesGenerator] (the names artifact) and Task 6's Exposed table binding are
-     * meant to call this rather than each re-deriving physical names independently, so
-     * the constant and the binding it describes cannot be produced by two different
-     * resolvers or two different argument sets. A name computed twice is a name that
-     * can disagree with itself.
+     * [KotlinNamesGenerator] (the names artifact) and the Exposed table binding call this
+     * rather than each re-deriving physical names independently, so the constant and the
+     * binding it describes cannot be produced by two different resolvers or two different
+     * argument sets. A name computed twice is a name that can disagree with itself.
      *
      * Returns `null` when [obj] has no primary source — #248: participation in the
      * database derives from a declared primary source, never from the object subtype.
@@ -316,21 +469,7 @@ public object KotlinGenUtil {
         // firstRdbSource nor writableRdbSource/readOnlyRdbSource is the right selector.
         // It also carries the divergence refusal that used to live in THIS function; see
         // below.
-        val source = primaryRdbSource(obj) ?: return null
-
-        // ADR-0039: metaFields is the RESOLVING accessor (getMetaFields() defaults to
-        // includeParentData=true) -- an inherited @column must resolve here, or the
-        // constant disagrees with the column Task 6's binding actually names.
-        val fields = obj.metaFields.associate { f ->
-            f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
-        }
-        // ADR-0039's sanctioned own-accessor use: what this object DECLARES.
-        val ownFields = obj.getMetaFields(false).associate { f ->
-            f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy))
-        }
-        val superObject = namesArtifactSuperOf(obj)
-
-        val name = source.physicalName
+        primaryRdbSource(obj) ?: return null
 
         // D4 -- every consumer downstream is meant to reference this name
         // UNCONDITIONALLY, no per-site equality guard, so an object whose @role: primary
@@ -354,19 +493,26 @@ public object KotlinGenUtil {
         // KotlinNamesDivergentSourceTest, which asserts zero load errors first.
 
         return KotlinObjectNames(
-            // effectiveKind, not a hand-rolled kind list -- derived from the source's own
-            // logic so a second read-only-kind list here can't drift from the loader's.
-            kind = source.effectiveKind,
-            name = name,
-            schema = source.schema,
-            readOnly = source.isReadOnly,
-            fields = fields,
-            ownFields = ownFields,
-            superObject = superObject,
-            // Reference identity of the resolved source NODE, not equality of the resolved
-            // strings: the question is structural — did this object declare a source, or is
-            // it using its parent's?
-            inheritsSource = superObject != null && primaryRdbSource(superObject) === source,
+            type = obj.type,
+            subType = obj.subType,
+            // The object's OWN name. The physical name is reached through
+            // `sources[role].physicalName`, which is the point of the restructure: one
+            // property stopped meaning a table, a view and a procedure depending on the
+            // object.
+            name = obj.shortName,
+            sources = sourcesOf(obj, true),
+            ownSources = sourcesOf(obj, false),
+            // ADR-0039: metaFields is the RESOLVING accessor (getMetaFields() defaults to
+            // includeParentData=true) -- an inherited @column must resolve here, or the
+            // constant disagrees with the column the Exposed binding actually names.
+            fields = fieldMap(obj.metaFields, strategy),
+            // ADR-0039's sanctioned own-accessor use: what this object DECLARES.
+            ownFields = fieldMap(obj.getMetaFields(false), strategy),
+            identities = keysOf(obj.getIdentities(true)),
+            ownIdentities = keysOf(obj.getIdentities(false)),
+            indexes = keysOf(obj.getChildren(LookupIndex::class.java, true)),
+            ownIndexes = keysOf(obj.getChildren(LookupIndex::class.java, false)),
+            superObject = namesArtifactSuperOf(obj),
         )
     }
 

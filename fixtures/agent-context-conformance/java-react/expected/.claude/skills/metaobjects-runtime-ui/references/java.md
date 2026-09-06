@@ -120,9 +120,21 @@ place: the persistence code **you** write behind `<Entity>Repository` (JDBC, jOO
 Spring Data query). Take them from the generated `<Entity>Names` — never a literal:
 
 ```java
-jdbc.query("SELECT " + AuthorNames.NAME_COLUMN + " FROM " + AuthorNames.NAME
+jdbc.query("SELECT " + AuthorNames.NAME_COLUMN + " FROM " + AuthorNames.SOURCE_PRIMARY_TABLE
          + " WHERE " + AuthorNames.ID_COLUMN + " = ?", mapper, id);
 ```
+
+The class mirrors the metadata tree. Every node carries its own `TYPE`/`SUB_TYPE`/`NAME`,
+so `AuthorNames.NAME` is the OBJECT's name (`"Author"`) and the physical name sits under
+the member that says what it IS: `SOURCE_<ROLE>_TABLE` / `_VIEW` / `_MATERIALIZED_VIEW` /
+`_PROC` / `_FUNCTION`. `<ROLE>` is `PRIMARY` or `REPLICA`, so a write-through entity's read
+view has a member of its own rather than sharing the write table's. Alongside them sit
+`SOURCE_<ROLE>_KIND` and, when declared, `SOURCE_<ROLE>_SCHEMA`; there is no `READ_ONLY` —
+it was derived from `@kind`, never declared, so ask `SOURCE_<ROLE>_KIND`. An
+`identity.secondary` or `index.lookup` carries `IDENTITY_<NAME>_INDEX` /
+`INDEX_<NAME>_INDEX`, the database index name; `identity.primary` deliberately has none,
+because migrate names a primary key by a dialect-conditional formula this artifact must not
+restate.
 
 `AuthorNames.COLUMNS_BY_FIELD` carries the whole map when you need to build a projection
 list. It is opt-in on the JVM — add `SpringNamesGenerator` to the pom's `<generators>`

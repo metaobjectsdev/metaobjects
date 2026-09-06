@@ -69,12 +69,21 @@ describe("resolveIndexName", () => {
     expect(resolveIndexName(lookup!)).toBe("ix_cust_email");
   });
 
-  // The JVM loader package-prefixes an index name (`acme::demo::by_name`) where TS does
-  // not, and `KotlinExposedTableGenerator` has always stripped it with `shortName ?: name`
-  // at its own call site. Stripping HERE is what makes the two ports' answer the same
-  // function rather than the same habit; on TS input it is a no-op, which is the point —
-  // the rule holds without a per-port branch.
-  it("strips a package qualifier, so a JVM-shaped name resolves to the database's", async () => {
+  // This test's ORIGINAL justification was false and is kept corrected rather than
+  // deleted, because the false version is the kind that survives review: it named a real
+  // other port, a real file and a real line of code. The claim was that the JVM loader
+  // package-qualifies a nested index name (`acme::demo::by_name`) and that
+  // `KotlinExposedTableGenerator`'s `shortName ?: name` compensated for it. Measured
+  // against the real JVM loader, a nested `identity.secondary` or `index.lookup` is named
+  // FLAT — including when inherited across packages via `extends`. Only a root-level node
+  // takes the file's package. That local strip had been a no-op for its whole life while
+  // reading as the site that owned the rule, which is exactly why nobody questioned it.
+  //
+  // The behaviour stays and the test stays, on the honest reason: a package-qualified name
+  // is a shape a programmatically built node can still carry, normalising it costs one
+  // `lastIndexOf`, and a rule that needs no per-port branch is worth more than a claim
+  // nobody checked.
+  it("strips a package qualifier, whatever produced one", async () => {
     const root = await load(model([
       { "identity.secondary": { name: "uq_cust_email", "@fields": ["email"] } },
     ]));

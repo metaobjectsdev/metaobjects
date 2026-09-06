@@ -51,7 +51,7 @@ plugin `<configuration>` — that is the source of truth for which generators ru
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `ObjectMapper.readValue(` outside a `*Parser.java` file | check if a responding `template.prompt` (`@responseRef`) exists — output-parser codegen ships in Java |
 | `LIMIT ?` / `OFFSET ?` assembled by hand | generated CRUD routes handle pagination; OMDB `getObjects` accepts `QueryOptions` |
-| a table/column string in a repository implementation — JDBC SQL, jOOQ `table("authors")`, a Spring Data query | second spelling of a declared physical name — reference `<Entity>Names` (`AuthorNames.NAME` / `_COLUMN`; opt-in `SpringNamesGenerator`): an un-wired generator is the finding first |
+| a table/column string in a repository implementation — JDBC SQL, jOOQ `table("authors")`, a Spring Data query | second spelling of a declared physical name — reference `<Entity>Names` (`AuthorNames.SOURCE_PRIMARY_TABLE` / `_COLUMN`; opt-in `SpringNamesGenerator`): an un-wired generator is the finding first |
 
 ---
 

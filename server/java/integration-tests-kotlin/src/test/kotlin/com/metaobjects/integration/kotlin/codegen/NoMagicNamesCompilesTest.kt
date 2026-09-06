@@ -35,10 +35,17 @@ import kotlin.test.assertTrue
  *  - TPH: the base's table folds a same-package subtype's column, a CROSS-PACKAGE subtype's
  *    column (a package-qualified reference), and a column declared on an ABSTRACT
  *    intermediate — each referenced on its DECLARING entity's artifact.
- *  - Write-through: the WRITE table references `<Entity>Names.NAME`; the replica view keeps
- *    its own literal (no slot in the artifact) — both must still compile side by side.
- *  - Stored procedure: `PROC_NAME` is a `const val` initialised FROM `<Entity>Names.NAME`,
- *    and each result column is read through `<Entity>Names.<MEMBER>_COLUMN`.
+ *  - Write-through: ONE entity, TWO physical names. The write table references
+ *    `<Entity>Names.SOURCE_PRIMARY_TABLE` and the replica view
+ *    `<Entity>Names.SOURCE_REPLICA_VIEW` — the artifact keys its sources by `@role`, so the
+ *    view stopped being the one literal this model expected. Both must compile side by side
+ *    AND fold to two DIFFERENT names, which is what the two `tableName` assertions below
+ *    check: a role key that always resolved to `primary` would compile just as well and bind
+ *    the read object to the write table.
+ *  - Stored procedure: `PROC_NAME` is a `const val` initialised FROM
+ *    `<Entity>Names.SOURCE_PRIMARY_PROC` (the alias for the source's `@kind` — the artifact
+ *    no longer has one `NAME` member meaning a table, a view or a procedure by turns), and
+ *    each result column is read through `<Entity>Names.<MEMBER>_COLUMN`.
  *
  * Every physical name is `zz_phys_`-prefixed and unrelated to its logical name, exactly as in
  * the text gate, so a generator that re-derived a name could not pass by coincidence.
@@ -127,9 +134,11 @@ class NoMagicNamesCompilesTest {
                 .filter { !it.fileName.toString().endsWith("Names.kt") }
                 .flatMap { p -> Regex("""zz_phys_\w+""").findAll(p.readText()).map { m -> "${outDir.relativize(p)}: ${m.value}" }.toList() }
                 .sorted()
-            // The replica view's name has no slot in the artifact and keeps its literal —
-            // the ONE spelling this model expects outside a names artifact.
-            assertEquals(listOf("acme/fleet/AccountView.kt: zz_phys_view_delta"), leaks)
+            // ZERO, as of the 0.25.0 restructure. This list held exactly one entry —
+            // `AccountView.kt: zz_phys_view_delta` — because `<Entity>Names` carried the
+            // PRIMARY source's physical name and nothing else, so the replica view had
+            // nothing to reference. Keying sources by @role gave it `SOURCE_REPLICA_VIEW`.
+            assertEquals(emptyList(), leaks)
 
             val sources = emitted.map { path ->
                 SourceFile.kotlin(outDir.relativize(path).toString().replace('/', '_'), path.readText())
@@ -159,19 +168,21 @@ class NoMagicNamesCompilesTest {
                 assertTrue(col in vehicleCols, "VehicleTable is missing $col; has $vehicleCols")
             }
 
-            // Write-through: the write table carries the primary source's name via the
-            // constant; the replica view its own literal.
+            // Write-through: each object folds its OWN role's constant. Both assertions
+            // together are the teeth — the second alone would pass on a literal, and the
+            // first alone would pass on a role key stuck at `primary`.
             assertEquals("zz_phys_tbl_delta", table("acme.fleet.AccountTable").tableName)
             assertEquals("zz_phys_view_delta", table("acme.fleet.AccountView").tableName)
             assertEquals(setOf("zz_phys_col_acct"), table("acme.fleet.AccountTable").columns.map { it.name }.toSet())
 
-            // Stored procedure: PROC_NAME folded from ProcOutNames.NAME to the physical name.
+            // Stored procedure: PROC_NAME folded from ProcOutNames.SOURCE_PRIMARY_PROC to
+            // the physical name.
             val proc = result.classLoader.loadClass("acme.fleet.ProcOutProc")
             assertEquals("zz_phys_proc_alpha", proc.getField("PROC_NAME").get(null))
             // ...and the result-row getters read the physical columns (the wrapper's source
             // carries the constant references; the artifact they fold from carries the names).
             val procSrc = emitted.first { it.fileName.toString() == "ProcOutProc.kt" }.readText()
-            assertTrue("const val PROC_NAME = ProcOutNames.NAME" in procSrc, procSrc)
+            assertTrue("const val PROC_NAME = ProcOutNames.SOURCE_PRIMARY_PROC" in procSrc, procSrc)
             assertTrue("total = rs.getLong(ProcOutNames.TOTAL_COLUMN)" in procSrc, procSrc)
             assertTrue("label = rs.getString(ProcOutNames.LABEL_COLUMN)" in procSrc, procSrc)
             val names = result.classLoader.loadClass("acme.fleet.ProcOutNames")

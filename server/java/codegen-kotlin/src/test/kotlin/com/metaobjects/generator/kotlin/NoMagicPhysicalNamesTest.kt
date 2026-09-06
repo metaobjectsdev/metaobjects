@@ -37,6 +37,13 @@ import kotlin.test.assertTrue
  * gate is only ever as wide as its fixture, so treat the model below as the load-bearing
  * part of this file and add to it whenever a generator grows a new path.
  *
+ * As of 0.25.0 this port has ZERO ESCAPE and ZERO KNOWN_LITERAL rows but one, and the one
+ * that remains is genuinely structural rather than undone: a FLATTENED `object.value`'s
+ * nested column is a composite the artifact has no single member for. The three rows that
+ * left — the replica view and the two index names — left because `<Entity>Names` grew the
+ * members they were pinned as lacking, which is what a self-extinguishing ledger row is
+ * for.
+ *
  * Every token carries its REACH — see [Reach]. Every non-[Reach.CONSTANT] value is PINNED,
  * not exempted: the gate asserts the condition it names is still true, so the day a
  * generator starts referencing the constant instead, this test fails and says "promote
@@ -145,17 +152,24 @@ class NoMagicPhysicalNamesTest {
     /**
      * Every de-blinded token, with the constant a generator should have referenced. Kotlin
      * member names are SCREAMING_SNAKE — [KotlinNaming.namesMember] is
-     * `camelToSnake(field).uppercase()` + `_COLUMN`, so `customerId` becomes
-     * `CUSTOMER_ID_COLUMN` — derived from what the artifact ACTUALLY emits, not from another
-     * port's spelling (C# Pascal-cases the first character only, so a member collision that
-     * fires on the JVM does not fire there and vice versa).
+     * `camelToSnake(name).uppercase()`, so `customerId` becomes `CUSTOMER_ID_COLUMN` —
+     * derived from what the artifact ACTUALLY emits, not from another port's spelling (C#
+     * Pascal-cases the first character only, so a member collision that fires on the JVM
+     * does not fire there and vice versa).
+     *
+     * A physical name is reached through the member that says WHAT IT IS —
+     * `SOURCE_<ROLE>_TABLE` / `_VIEW` / `_PROC`, from the metamodel's own kind-to-alias map —
+     * rather than through a single `NAME` that held all three depending on which object you
+     * had. That uppercasing is also why this port needs no reference MASKING, unlike the
+     * TypeScript gate: an index member is `INDEX_ZZ_PHYS_IDX_LKP_INDEX`, so a reference into
+     * the artifact does not contain the lowercase `zz_phys_` token the scans below hunt.
      */
     private val tokens = listOf(
-        Token(table, "CustomerNames.NAME"),
+        Token(table, "CustomerNames.SOURCE_PRIMARY_TABLE"),
         Token(colId, "CustomerNames.ID_COLUMN"),
         Token(colEmail, "CustomerNames.EMAIL_COLUMN"),
         Token(voCol, "CustomerNames.STREET_COLUMN"),
-        Token(orderTable, "OrderNames.NAME"),
+        Token(orderTable, "OrderNames.SOURCE_PRIMARY_TABLE"),
         Token(orderId, "OrderNames.ID_COLUMN"),
         Token(colFk, "OrderNames.CUSTOMER_ID_COLUMN"),
         Token(jsonbCol, "CustomerNames.PROFILE_COLUMN"),
@@ -166,23 +180,25 @@ class NoMagicPhysicalNamesTest {
                 "<Vo>Names, and the owner's artifact carries one constant per FIELD, not per " +
                 "flattened member — there is no single constant to reference.",
         ),
-        Token(view, "CustomerSummaryNames.NAME"),
-        // The write-through entity's WRITE table. Its physical name IS the role=primary source
-        // that AccountNames.NAME resolves from, so the write call references the constant;
-        // only the replica view below has no slot.
-        Token(wtTable, "AccountNames.NAME"),
+        Token(view, "CustomerSummaryNames.SOURCE_PRIMARY_VIEW"),
+        // The write-through entity's TWO physical names, each under the member for the role
+        // its source plays. This is the shape that earns the restructure: one entity, two
+        // physical names, and until 0.25.0 one slot between them.
+        Token(wtTable, "AccountNames.SOURCE_PRIMARY_TABLE"),
         Token(wtId, "AccountNames.ID_COLUMN"),
         Token(
-            wtView, "(no constant exists)", Reach.KNOWN_LITERAL,
-            "A write-through entity has TWO physical names; <Entity>Names carries the PRIMARY " +
-                "source's only (resolveObjectNames), which for an object.entity must be the WRITABLE " +
-                "one. The replica view name has no slot in the artifact, so emitWriteThrough's read " +
-                "view keeps the literal on purpose — the one call the objectNameOverride scope was " +
-                "written for.",
+            wtView, "AccountNames.SOURCE_REPLICA_VIEW", Reach.CONSTANT,
+            "Promoted from KNOWN_LITERAL by the 0.25.0 restructure, and the row is kept with " +
+                "its history because the OLD reason was true and specific: <Entity>Names carried " +
+                "the PRIMARY source's physical name only, so emitWriteThrough's read view had " +
+                "nothing to reference and kept its literal, under a comment calling that " +
+                "deliberate. Keying sources by @role gave it a member. The pin earned its keep — " +
+                "the identical escape sat in C#'s AppDbContext, which is how this was established " +
+                "as the artifact's SHAPE rather than an Exposed quirk.",
         ),
 
         // --- TPH: a discriminator base folds its subtypes' own columns into one table ------
-        Token(tphTable, "VehicleNames.NAME"),
+        Token(tphTable, "VehicleNames.SOURCE_PRIMARY_TABLE"),
         Token(tphId, "VehicleNames.ID_COLUMN"),
         Token(tphDisc, "VehicleNames.KIND_COLUMN"),
         // A subtype's own column is folded into the BASE's table, and the base's artifact
@@ -192,7 +208,7 @@ class NoMagicPhysicalNamesTest {
         Token(tphSubCol, "CarNames.DOORS_COLUMN"),
 
         // --- the enum / index / schema / abstract-base entity ------------------------------
-        Token(widgetTable, "WidgetNames.NAME"),
+        Token(widgetTable, "WidgetNames.SOURCE_PRIMARY_TABLE"),
         Token(enumCol, "WidgetNames.STATUS_COLUMN"),
         Token(enumIntCol, "WidgetNames.GRADE_COLUMN"),
         Token(arrayCol, "WidgetNames.TAGS_COLUMN"),
@@ -203,15 +219,17 @@ class NoMagicPhysicalNamesTest {
         Token(absCol, "WidgetNames.ID_COLUMN"),
         // Promoted from DROPPED, by the row doing exactly what it was pinned to do — it failed
         // with "WidgetNames.SCHEMA IS referenced now — promote it". Exposed takes the qualified
-        // name in the same string argument, so the binding is now
-        // `Table(WidgetNames.SCHEMA + "." + WidgetNames.NAME)`, and the stored-proc wrapper
-        // qualifies its PROC_NAME the same way.
-        Token(schema, "WidgetNames.SCHEMA"),
+        // name in the same string argument, so the binding is
+        // `Table(WidgetNames.SOURCE_PRIMARY_SCHEMA + "." + WidgetNames.SOURCE_PRIMARY_TABLE)`,
+        // and the stored-proc wrapper qualifies its PROC_NAME the same way. The member moved
+        // under the source in 0.25.0: a write-through entity's replica view may declare a
+        // @schema of its own, and a top-level SCHEMA had one slot for both.
+        Token(schema, "WidgetNames.SOURCE_PRIMARY_SCHEMA"),
 
         // --- the callable (stored procedure) ----------------------------------------------
         // The wrapper's `PROC_NAME` is initialised FROM the constant, so the ONE resolver
         // (RdbSource.getPhysicalName, FR-016) decides the procedure name in both artifacts.
-        Token(proc, "ProcOutNames.NAME"),
+        Token(proc, "ProcOutNames.SOURCE_PRIMARY_PROC"),
         // The result-row loop reads each column by its PHYSICAL name through the constant —
         // previously by FIELD name, which asked the result set for a column the procedure
         // never returns (a runtime failure, not a naming nit). KotlinExposedTableGenerator
@@ -220,18 +238,22 @@ class NoMagicPhysicalNamesTest {
 
         // --- index names: a category with no slot in the artifact -------------------------
         Token(
-            secIndex, "(no constant exists)", Reach.KNOWN_LITERAL,
-            "An index's database name IS its metamodel `name` — an identity.secondary and an " +
-                "index.lookup have no `@column`-style physical spelling to diverge from, so there " +
-                "is nothing here for a generator to RESTATE. KotlinObjectNames carries " +
-                "kind/name/schema/fields and no index slot; the Exposed `init { uniqueIndex(\"…\") }` " +
-                "spells the metamodel name. Pinned so that the day the artifact grows an index " +
-                "slot, this row fails and says 'promote it'.",
+            secIndex, "WidgetNames.IDENTITY_ZZ_PHYS_IDX_SEC_INDEX", Reach.CONSTANT,
+            "Promoted from KNOWN_LITERAL in 0.25.0. The old reason read well and was wrong: " +
+                "\"an index's database name IS its metamodel name, so there is nothing to " +
+                "RESTATE\". Nothing to restate is not the same as nothing to reference — the " +
+                "name was still spelled a second time, in the Exposed `init` block, by a loop " +
+                "that had computed it independently with its own `shortName ?: name`. " +
+                "`fdb4118f1` is that lapsing: codegen emitted `idx_<table>_<col>` while the " +
+                "index in the database was `identity.name`. The artifact now carries an " +
+                "`identities` block and IndexNaming is the one door both sites go through.",
         ),
         Token(
-            lkpIndex, "(no constant exists)", Reach.KNOWN_LITERAL,
-            "As secIndex — an index.lookup's database name is its metamodel `name` " +
-                "(`init { index(\"…\", false, …) }`).",
+            lkpIndex, "WidgetNames.INDEX_ZZ_PHYS_IDX_LKP_INDEX", Reach.CONSTANT,
+            "As secIndex. Kept as its own row rather than folded in: ADR-0040 put uniqueness " +
+                "in the TYPE, so a secondary identity and a lookup index live in different " +
+                "collections under different member prefixes and are reached by different " +
+                "paths. One row cannot fail for both.",
         ),
     )
 
