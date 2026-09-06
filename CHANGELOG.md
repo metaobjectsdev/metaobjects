@@ -5,7 +5,40 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.25.0] — npm `0.25.0` · PyPI `0.25.0` · NuGet `0.25.0` · Maven `7.25.0` — 2026-09-06
+
+_All four registries publish, and **not one of them is a version-parity bump** — each carries
+changed product files of its own (npm 123, NuGet 75, Maven 49, PyPI 34 non-test files since
+`v0.24.5`). `expected-registry.json` changed too, which forces all four regardless.
+`metamodelVersion` moves `0.13` → `0.14`._
+
+**Cut as a MINOR, and the pre-1.0 breaking slot is spent on one theme: a name resolved twice
+by two different mechanisms.** Every breaking change in this line is the same defect wearing a
+different hat — two doors answering one question, disagreeing, and nothing noticing because no
+gate ever asked them both. A `<type>.base` node **loaded in three ports and failed in two**, so
+one document had two verdicts depending on which toolchain read it. A bare `{"object": …}` was
+answered by **four JSON parsers in three different wrong ways**, not one of which asked the
+registry what the type's declared default subtype is. A physical database name was spelled independently
+by every emitter that needed it, so codegen and migrate could name the same index two different
+things. `$apiPrefix` was frozen into N entity descriptors at `meta gen` time by a generator that
+had no business knowing a deployment fact. Three ports decided which source is an object's
+primary by **declaration order** rather than by role. `views()[0]` let declaration order pick a
+field's control.
+
+The answer is structural rather than case-by-case: **one door per name.** `<Entity>Names` (all
+five ports) makes a physical data name exist once per run and generated code reference it;
+`resolveIndexName` collapses three resolvers spelling one name; the JSON parsers now consult the
+registry; an authored `<type>.base` fails the load in all five ports with
+`ERR_ABSTRACT_SUBTYPE_AUTHORED`; and the client's base URL moves to the runtime provider, where
+a deployment fact belongs.
+
+**Six changes make previously-working input stop working**, and each has a migration note in its
+own entry below: an authored `<type>.base` fails to load; `$apiPrefix` leaves the entity
+descriptor; a TPH subtype's `$path` changes to the address its routes actually serve;
+`<Entity>Names` mirrors the metadata tree; the `@metaobjectsdev/sdk/agent-docs` subpath is
+removed; and Python's `GenConfig.column_naming` now raises `TypeError` instead of doing nothing.
+Two more change what `meta gen` emits without breaking a load: the five `@emit*` attributes are
+retired, and seven attributes codegen read that no provider registers are removed.
 
 ### Changed — BREAKING: the API base URL leaves the entity descriptor
 
@@ -1572,44 +1605,6 @@ whether anything CALLS it. `test_m2m_codegen.py`'s descriptor assertions all ran
 passed whether the strategy was applied or ignored. The parts were tested; the connection
 was not. Both are now gated at the output level: a `snake_case` descriptor case asserting
 `post_id`, which `literal` cannot produce.
-
-### Fixed — the Python config silently dropped every key it did not read
-
-Reported by an adopter who set a column-naming key in `metaobjects.config.yaml`, got
-exit 0 and "wrote N file(s)", and nothing changed. Two independent defects behind it.
-
-**1. `load_project_config` accepted any key and read four.** It pulled `metadata`,
-`providers`, `libraries` and `targets` out with `raw.get(...)` and never looked at the
-rest, so a key you typed — a real one this port does not have, or a plain typo like
-`metadta:` — was dropped in silence. A deliberately bogus value was accepted the same
-way. That is the failure class the whole `0.24.x` line has been cut to remove: the tool
-reporting success for work it did not do.
-
-**The config's own published schema already forbade this.**
-`metaobjects-config.schema.json` has always declared `"additionalProperties": false`, at
-the top level and per target — so an editor validating against the shipped schema
-rejected the key while the loader, the thing that actually runs, waved it through. The
-loader now refuses an unknown key at either level and names the accepted set, because
-the fix for a typo is the correct spelling. It is the same call the `libraries` check in
-that function already made for an unknown package name — *"a name typed into a config
-file is a mistake worth failing on"* — now applied to the key as well as the value.
-
-**The drift ran in both directions**: `libraries` is a key the loader has long accepted
-and the schema never listed, so under `additionalProperties: false` a perfectly valid
-config was flagged invalid by any editor using it. Added. The test that exists to keep
-the two in step asserted `set(props) >= {…}` — a **superset** — so it could never see a
-key the loader accepts and the schema omits. It compares exact sets now, and a probe
-confirms it fails from either side.
-
-The second half of that report — a `GenConfig` knob that could never work — is its own
-BREAKING entry below.
-
-**Not a defect, and worth stating because it was reported alongside these:** a Python
-read model whose fields moved from `@column` to `field.name` in `0.24.5` did exactly
-what that release says it does. Before it, `<Entity>` keyed by `@column` while
-`<Entity>Create`, `<Entity>Patch`, the generated router and `ObjectManager` all keyed by
-`field.name` — one generated module disagreeing with itself. The camelCase field name is
-the wire name, cross-port; `@column` remains the physical column.
 
 ### BREAKING — `GenConfig.column_naming` is removed (Python)
 

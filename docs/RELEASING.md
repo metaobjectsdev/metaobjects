@@ -514,7 +514,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.24.5`):
+Four packages, version-locked at the C# port version (currently `0.25.0`):
 
 | Package | Contents |
 |---|---|
@@ -606,7 +606,7 @@ How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publis
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `0.24.5`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `0.25.0`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: Trusted Publishing (OIDC)
 
@@ -662,7 +662,7 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on the `7.x` line (currently `7.24.5`) in the parent + module poms. Signed with the
+versioned on the `7.x` line (currently `7.25.0`) in the parent + module poms. Signed with the
 maintainer's GPG key.
 
 ## Procedure
@@ -705,7 +705,7 @@ maintainer's GPG key.
 > ≥`0.7.0` to stop the crash on the next release.
 
 **The `minor.patch` is CONVERGENT across languages, not lockstepped** (standing policy since
-0.24.5): npm, PyPI and NuGet use `0.<m>.<p>` and Maven Central the same `minor.patch` on its
+0.25.0): npm, PyPI and NuGet use `0.<m>.<p>` and Maven Central the same `minor.patch` on its
 historical major `7` — but a registry only takes a number when it actually publishes. A port with
 no changed product file sits the release out and keeps its current version; the next time it ships,
 it adopts whatever `minor.patch` is current and skips the gap.
