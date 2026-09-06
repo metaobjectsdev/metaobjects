@@ -482,7 +482,10 @@ def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -
     # when empty, so a consumer can read it unconditionally.
     lines.append(f"{upper}_COLUMNS_BY_FIELD: Final[dict[str, str]] = {{")
     for name, _column in columns:
-        lines.append(f'    "{name}": {upper}_{_member(name)}_COLUMN,')
+        # _q, not a bare f-string: the KEY is an author-supplied field name, and every
+        # other literal in this module goes through the escaper. Spliced raw, a name
+        # holding a quote emitted a module that does not parse.
+        lines.append(f"    {_q(name)}: {upper}_{_member(name)}_COLUMN,")
     lines.append("}")
     lines.append("")
     return "\n".join(lines)

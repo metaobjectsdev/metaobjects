@@ -275,6 +275,58 @@ public class NamesGeneratorTests
     }
 
     [Fact]
+    public void An_author_supplied_value_containing_a_quote_or_backslash_is_escaped()
+    {
+        // Every VALUE here is author-controlled — object name, key name, @schema, @column.
+        // They were spliced straight into a C# string literal. A quote emitted a file that
+        // does not compile; a backslash compiled to a silently DIFFERENT value, so
+        // `zz\tcol` bound a column name containing a TAB. @column is a quoted SQL
+        // identifier and may legally hold either.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Cust", "children": [
+            { "source.rdb": { "@table": "custs" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "quoted", "@column": "zz\"quote" } },
+            { "field.string": { "name": "slashed", "@column": "zz\\tcol" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]}}
+        ]}}
+        """;
+        var src = Assert.Single(new NamesGenerator().Generate(Ctx(Load(model)))).Content;
+        // Escaped, so the emitted literal reproduces the authored value exactly.
+        Assert.Contains(@"public const string QuotedColumn = ""zz\""quote"";", src);
+        Assert.Contains(@"public const string SlashedColumn = ""zz\\tcol"";", src);
+        // ...and never the raw form, which would end the literal / re-interpret the escape.
+        Assert.DoesNotContain(@"= ""zz""quote""", src);
+    }
+
+    [Fact]
+    public void A_key_name_starting_with_a_digit_does_not_weld_an_underscore_into_the_middle()
+    {
+        // PascalToken returns a SEGMENT and every caller concatenates it after a type
+        // prefix, so the identifier never starts with it. It nonetheless guarded a leading
+        // digit with an `_`, protecting a first character it does not produce and putting
+        // a stray underscore mid-identifier: `2fa-idx` came out `Index_2faIdxIndex`. An
+        // index name is author-chosen and may legally start with a digit; a digit
+        // mid-identifier is legal C#.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Cust", "children": [
+            { "source.rdb": { "@table": "custs" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "email" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "index.lookup":     { "name": "2fa-idx", "@fields": ["email"] } }
+          ]}}
+        ]}}
+        """;
+        var src = Assert.Single(new NamesGenerator().Generate(Ctx(Load(model)))).Content;
+        Assert.Contains("public const string Index2faIdxIndex = \"2fa-idx\";", src);
+        Assert.DoesNotContain("Index_2faIdx", src);
+    }
+
+    [Fact]
     public void The_type_prefix_keeps_an_unnamed_primary_key_off_the_primary_ROLE_members()
     {
         // Load-bearing, not decoration. `identity.primary`'s loader defaultName is "primary"

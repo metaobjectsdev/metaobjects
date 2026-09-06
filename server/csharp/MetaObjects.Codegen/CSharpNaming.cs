@@ -741,8 +741,17 @@ public static class CSharpNaming
     /// index names are snake_case by convention (<c>uq_cust_email</c>, <c>ix_cust_status</c>)
     /// and <c>Pascal</c> would leave <c>Uq_cust_email</c> — a legal identifier, and an ugly
     /// one nobody would reference by hand.</para>
-    /// <para>A leading digit gets an <c>_</c> prefix (<c>2fa-idx</c> → <c>_2faIdx</c>): an
-    /// index name is author-chosen and need not start with a letter.</para>
+    /// <para>This returns a SEGMENT, never a complete identifier, and every caller below
+    /// concatenates it AFTER a type prefix (<c>Identity</c>, <c>Index</c>, <c>Source</c>).
+    /// So it does not guard a leading digit, and must not: it used to prepend <c>_</c> when
+    /// the segment began with one, which protected a first character this function never
+    /// produces and injected a stray underscore into the middle of every identifier that
+    /// hit it — an index named <c>2fa-idx</c> came out as <c>Index_2faIdxIndex</c>. A digit
+    /// mid-identifier is legal C#. If a caller is ever added that puts this segment FIRST,
+    /// the guard belongs at that call site, where the identifier actually starts.</para>
+    /// <para>Two names differing only in non-alphanumerics still fold together
+    /// (<c>2fa</c> and <c>_2fa</c> both tokenize to <c>2fa</c>). That is inherent to
+    /// stripping separators and is caught by the duplicate-member refusal, not here.</para>
     /// </summary>
     public static string PascalToken(string name)
     {
@@ -754,8 +763,9 @@ public static class CSharpNaming
             sb.Append(startOfSegment ? char.ToUpperInvariant(c) : c);
             startOfSegment = false;
         }
-        if (sb.Length == 0) return "_";
-        return char.IsDigit(sb[0]) ? "_" + sb : sb.ToString();
+        // A name made entirely of separators would otherwise vanish, silently welding the
+        // prefix to the member ("IdentityIndex"). "_" keeps the segment visible.
+        return sb.Length == 0 ? "_" : sb.ToString();
     }
 
     /// <summary>The member prefix for one source: <c>Source</c> + the role — <c>SourcePrimary</c>.</summary>

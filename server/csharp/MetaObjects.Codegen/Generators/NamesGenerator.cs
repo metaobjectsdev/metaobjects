@@ -93,8 +93,35 @@ public sealed class NamesGenerator : PerEntityGenerator
     /// node it came from (named in the collision refusal, so a failure points at the model).</summary>
     private readonly record struct Member(string Name, string Decl, string NodePath);
 
+    /// <summary>
+    /// One string constant. The VALUE is author-controlled — an object name, a key name, a
+    /// <c>@schema</c>, a <c>@column</c> — so it is escaped rather than spliced. Unescaped, a
+    /// physical name containing a quote emitted a file that does not compile, and one
+    /// containing a backslash compiled to a silently DIFFERENT value (<c>\t</c> in a
+    /// column name becoming a tab). Neither is exotic: <c>@column</c> is a quoted SQL
+    /// identifier and may hold either character.
+    /// </summary>
     private static Member Str(string name, string value, string nodePath) =>
-        new(name, $"const string {name} = \"{value}\";", nodePath);
+        new(name, $"const string {name} = \"{Escape(value)}\";", nodePath);
+
+    /// <summary>C# string-literal escaping for an author-supplied value.</summary>
+    private static string Escape(string value)
+    {
+        var sb = new System.Text.StringBuilder(value.Length + 8);
+        foreach (var c in value)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
+    }
 
     /// <summary>
     /// Every constant an artifact declares, in emission order, grouped so the emitter can

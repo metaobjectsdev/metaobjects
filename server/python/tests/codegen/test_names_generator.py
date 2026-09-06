@@ -8,17 +8,22 @@ consumer references instead of a string literal. Mirrors the shipped C#
 """
 from __future__ import annotations
 
+import ast
+import json
 from pathlib import Path
 
 import pytest
 
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
 
+from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
 from metaobjects.cli import main
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
+from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.generators.names_generator import (
     NamesGenerator,
+    names_generator,
     render_names,
 )
 from metaobjects.meta.core.field import field_constants as fc
@@ -463,3 +468,56 @@ def test_verify_codegen_with_mismatched_column_naming_reports_drift(tmp_path: Pa
     assert rc == 1
     assert "drifted:" in captured.err
     assert "program_names.py" in captured.err
+
+
+def test_an_author_supplied_field_name_with_a_quote_is_escaped_in_columns_by_field(
+    tmp_path: Path,
+) -> None:
+    # Every literal in the module goes through `_q` except the COLUMNS_BY_FIELD KEY, which
+    # was spliced with a bare f-string. The key is an author-supplied field name, so a name
+    # holding a quote emitted a module that does not parse -- and the module is the lookup
+    # surface every consumer reads a column through.
+    model = {
+        "metadata.root": {
+            "package": "acme",
+            "children": [
+                {
+                    "object.entity": {
+                        "name": "Cust",
+                        "children": [
+                            {"source.rdb": {"@table": "custs"}},
+                            {"field.long": {"name": "id"}},
+                            {"field.string": {"name": 'zz"quoted', "@column": "zz_col"}},
+                            {"identity.primary": {"@fields": ["id"], "@generation": "increment"}},
+                        ],
+                    }
+                }
+            ],
+        }
+    }
+    loader = MetaDataLoader()
+    result = loader.load([
+        InMemoryStringSource(json.dumps(model), format=MetaDataFormat.JSON, id="q.json")
+    ])
+    assert [str(e) for e in result.errors] == []
+    out = tmp_path / "gen"
+    run_gen(
+        GenConfig(out_dir=str(out), column_naming="snake_case"),
+        result.root,
+        generators=[names_generator()],
+    )
+    src = (out / "cust_names.py").read_text()
+
+    # The emitted module must PARSE -- the assertion the SyntaxError would have made.
+    tree = ast.parse(src)
+    # ...and the key must round-trip to the authored name exactly. Read it back off the
+    # AST rather than matching source text: the formatter is free to re-quote the literal
+    # (ruff renders it \'zz"quoted\'), and the guarantee is the VALUE, not the spelling.
+    keys: list[str] = [
+        k.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Dict)
+        for k in node.keys
+        if isinstance(k, ast.Constant) and isinstance(k.value, str)
+    ]
+    assert 'zz"quoted' in keys, keys
