@@ -24,7 +24,25 @@ def _run_ruff(args: list[str], source: str) -> str:
         text=True,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"ruff {args[0]} failed: {proc.stderr.strip()}")
+        # A non-zero exit is read by the caller as "ruff rejected the source" — a
+        # generator bug. A NEGATIVE code is not that: it is death by signal, and a
+        # killed process writes no stderr, so this branch used to raise
+        # `ruff format failed:` naming neither the cause nor the fact that ruff never
+        # looked at the source. Seen on a CI box running five lanes at once, where the
+        # formatter was OOM-killed and the message sent the reader hunting a syntax
+        # error that did not exist. Always carry the code; never claim a source error
+        # for a process that did not finish.
+        detail = proc.stderr.strip()
+        if proc.returncode < 0:
+            raise RuntimeError(
+                f"ruff {args[0]} was killed by signal {-proc.returncode} before it could "
+                f"format the source — this is not a generator bug; the machine most likely "
+                f"ran out of memory" + (f": {detail}" if detail else "")
+            )
+        raise RuntimeError(
+            f"ruff {args[0]} failed (exit {proc.returncode})"
+            + (f": {detail}" if detail else " and wrote nothing to stderr")
+        )
     return proc.stdout
 
 

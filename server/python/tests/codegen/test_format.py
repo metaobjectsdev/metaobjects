@@ -28,3 +28,58 @@ def test_ruff_format_no_op_when_ruff_absent(monkeypatch) -> None:
     monkeypatch.setattr(fmt, "_RUFF_AVAILABLE", False)
     messy = "x={'a':1}\n"
     assert fmt.ruff_format(messy) == messy
+
+
+def test_killed_ruff_says_it_was_killed_and_names_the_signal(monkeypatch) -> None:
+    """A ruff process killed by a signal must not be reported as a source error.
+
+    `_run_ruff` treats a non-zero exit as "ruff rejected the source", which is the
+    generator bug `ruff_format`'s docstring describes. But a process killed by a
+    signal returns a NEGATIVE code and writes no stderr, so that path produced
+    `ruff format failed:` — a message naming neither the cause nor the fact that
+    ruff never ran. Observed on a CI box running five lanes at once.
+    """
+    import subprocess
+
+    import metaobjects.codegen.format as fmt
+
+    def killed(*_a, **_k):
+        return subprocess.CompletedProcess(args=[], returncode=-9, stdout="", stderr="")
+
+    monkeypatch.setattr(fmt.subprocess, "run", killed)
+
+    try:
+        fmt.ruff_format("x = 1\n")
+    except RuntimeError as e:
+        msg = str(e)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    # It must say the process was killed, and by which signal, so the reader is not
+    # left hunting a syntax error in emitted code that ruff never looked at.
+    assert "killed" in msg
+    assert "9" in msg
+    assert msg.rstrip().endswith(")") or "signal" in msg
+
+
+def test_nonzero_ruff_with_no_stderr_still_names_the_exit_code(monkeypatch) -> None:
+    """The other half: a genuine non-zero exit that happens to print nothing must
+    still carry its exit code, rather than trailing off after the colon."""
+    import subprocess
+
+    import metaobjects.codegen.format as fmt
+
+    def quiet_failure(*_a, **_k):
+        return subprocess.CompletedProcess(args=[], returncode=2, stdout="", stderr="")
+
+    monkeypatch.setattr(fmt.subprocess, "run", quiet_failure)
+
+    try:
+        fmt.ruff_format("x = 1\n")
+    except RuntimeError as e:
+        msg = str(e)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    assert "2" in msg
+    assert not msg.rstrip().endswith(":")

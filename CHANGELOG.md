@@ -5,6 +5,36 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+### Fixed — a killed formatter was reported as a syntax error in generated code (Python)
+
+`_run_ruff` treats any non-zero exit from `python -m ruff` as *"ruff rejected the source"* —
+the generator bug `ruff_format`'s own docstring describes. A process killed by a signal is not
+that: it returns a NEGATIVE code and writes no stderr, so the branch raised
+
+```
+RuntimeError: ruff format failed:
+```
+
+naming neither the cause nor the fact that ruff never looked at the source. Observed on the
+self-hosted runner with five lanes in flight at once (`ts-fast`'s mutation gate, `ts-slow`,
+`csharp`, `java-slow`, `python`), where the formatter was OOM-killed: `1 failed, 1971 passed`,
+and the one failure sent a reader hunting a syntax error that did not exist. The same test
+passes in 3.4s on an idle box, and the full suite is green there.
+
+A signal death now says so and names the signal, and every other non-zero exit carries its
+code rather than trailing off after a colon:
+
+```
+ruff check was killed by signal 9 before it could format the source — this is not a
+generator bug; the machine most likely ran out of memory
+ruff check failed (exit 2) and wrote nothing to stderr
+```
+
+Behaviour on the success path is unchanged; a genuine ruff rejection still raises, still with
+its stderr. Both branches are pinned by tests that fail against the old message.
+
 ## [0.25.0] — npm `0.25.0` · PyPI `0.25.0` · NuGet `0.25.0` · Maven `7.25.0` — 2026-09-06
 
 _All four registries publish, and **not one of them is a version-parity bump** — each carries
