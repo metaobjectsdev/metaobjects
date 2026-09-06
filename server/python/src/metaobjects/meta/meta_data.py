@@ -242,18 +242,21 @@ class MetaData:
             # branch it left open: the same write-through shape, but with the BASE also
             # declaring a source, so the first own source takes the replace branch.
             append_queue: list[MetaData] = []
-            claimed: set[int] = set()
+            # A flag array, not a set: `result` does not grow until after this loop, so
+            # the length is known, and this is the memoized effective-children path walked
+            # for every node. Also drops the per-own-child generator frame `next()` built.
+            claimed = bytearray(len(result))
             for own in self._children:
-                idx = next(
-                    (i for i, c in enumerate(result)
-                     if i not in claimed and c.type == own.type and c.name == own.name),
-                    None,
-                )
+                idx = None
+                for i, c in enumerate(result):
+                    if not claimed[i] and c.type == own.type and c.name == own.name:
+                        idx = i
+                        break
                 if idx is None:
                     append_queue.append(own)
                 else:
                     result[idx] = own
-                    claimed.add(idx)
+                    claimed[idx] = 1
             result.extend(append_queue)
         return result
 

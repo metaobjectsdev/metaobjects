@@ -102,26 +102,7 @@ public sealed class NamesGenerator : PerEntityGenerator
     /// identifier and may hold either character.
     /// </summary>
     private static Member Str(string name, string value, string nodePath) =>
-        new(name, $"const string {name} = \"{Escape(value)}\";", nodePath);
-
-    /// <summary>C# string-literal escaping for an author-supplied value.</summary>
-    private static string Escape(string value)
-    {
-        var sb = new System.Text.StringBuilder(value.Length + 8);
-        foreach (var c in value)
-        {
-            switch (c)
-            {
-                case '\\': sb.Append("\\\\"); break;
-                case '"': sb.Append("\\\""); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                case '\t': sb.Append("\\t"); break;
-                default: sb.Append(c); break;
-            }
-        }
-        return sb.ToString();
-    }
+        new(name, $"const string {name} = \"{Fr010FieldMapping.CSharpStringLiteral(value)}\";", nodePath);
 
     /// <summary>
     /// Every constant an artifact declares, in emission order, grouped so the emitter can

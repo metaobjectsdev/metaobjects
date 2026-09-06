@@ -106,7 +106,14 @@ export function namesFile(): Generator {
           if (emitted.has(key)) break;   // already emitted, and so is everything above it
           emitted.add(key);
           const content = renderNamesDecl(sup, {
-            strategy, superSpecifier: superSpecifierFor(sup), fragment: true,
+            strategy, superSpecifier: superSpecifierFor(sup),
+            // "Fragment" means "declares no source". Hardcoding `true` is right for the
+            // shape this pass was written for — an abstract base with columns and no table
+            // — and wrong for the one it also reaches: `meta gen --entities <Subtype>`
+            // walks up to a TPH BASE, which owns the shared table, and a fragment renders
+            // no source at all. The engine derives this itself now (`renderNamesDecl`
+            // consults the object), so the flag says only "this is an ancestor render".
+            fragment: true,
           });
           if (content === "") continue;
           out.push({ path: pathOf(sup), content });

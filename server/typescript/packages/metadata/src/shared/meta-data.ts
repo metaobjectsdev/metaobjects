@@ -507,16 +507,24 @@ export abstract class MetaData {
     // The shape is a write-through entity (two unnamed `source.rdb` children, primary +
     // replica) whose base ALSO declares a source: the entity's own primary was silently
     // dropped, and `primaryRdbSource` reads `children()`.
-    const claimed = new Set<number>();
+    // A flag array, not a Set: `result` does not grow until after this loop, so the length
+    // is known, and this is the memoized effective-children path walked for every node.
+    // One small allocation, index access instead of hashing, and no per-child closure.
+    const claimed = new Uint8Array(result.length);
     for (const ownChild of this._children) {
       // Find the index in result that has the same (type, name).
-      const idx = result.findIndex(
-        (sc, i) => !claimed.has(i) && sc.type === ownChild.type && sc.name === ownChild.name,
-      );
+      let idx = -1;
+      for (let i = 0; i < result.length; i++) {
+        const sc = result[i] as MetaData;
+        if (claimed[i] === 0 && sc.type === ownChild.type && sc.name === ownChild.name) {
+          idx = i;
+          break;
+        }
+      }
       if (idx !== -1) {
         // Replace the super child with our own (in-place override).
         result[idx] = ownChild;
-        claimed.add(idx);
+        claimed[idx] = 1;
       } else {
         // No matching super child — will be appended at the end.
         appendQueue.push(ownChild);

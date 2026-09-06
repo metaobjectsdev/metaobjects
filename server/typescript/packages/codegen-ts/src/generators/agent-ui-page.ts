@@ -43,7 +43,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { hasGeneratedForm, restPath, servesReadApi } from "../api-surface.js";
+import { hasGeneratedForm, restPath, servedPath, servesReadApi } from "../api-surface.js";
 import {
   buildEntityUiDescriptor,
   type UiFieldDescriptor,
@@ -121,7 +121,7 @@ function flag(value: unknown): string {
  * is deliberately no form"; asking the endpoint question announced one for every base.
  */
 function endpointLine(obj: MetaObject, root: MetaRoot, apiPrefix: string): string {
-  const endpoint = `${apiPrefix}${restPath(obj)}`;
+  const endpoint = servedPath(obj, apiPrefix);
   if (hasGeneratedForm(obj)) return `Endpoint \`${endpoint}\`.`;
   // `isTphDiscriminatorBase`, which requires at least one CONCRETE subtype — the same
   // predicate `routes-file.ts` switches on. `@discriminator` with no subtype yet is a

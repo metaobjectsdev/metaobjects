@@ -19,7 +19,7 @@
  */
 import type { ColumnNamingStrategy, MetaObject } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { PHYSICAL_NAME_ATTR_BY_KIND } from "@metaobjectsdev/metadata";
+import { PHYSICAL_NAME_ATTR_BY_KIND, primaryRdbSource } from "@metaobjectsdev/metadata";
 
 /** The physical-name alias keys, in the metamodel's own order. */
 const PHYSICAL_NAME_ALIASES = [...PHYSICAL_NAME_ATTR_BY_KIND.values()] as const;
@@ -55,7 +55,18 @@ export function renderNamesDecl(
   opts?: ColumnNamingStrategy | NamesDeclOpts,
 ): string {
   const o = normalize(opts);
-  const n: ObjectNames | undefined = o.fragment === true
+  // `fragment` says "this is an ANCESTOR render" — emit even though the walk reached this
+  // object by climbing rather than by matching. It does NOT say which shape to render, and
+  // it must not: a caller that hardcodes `true` is correct for an abstract base with
+  // columns and no table, and wrong for the other ancestor this walk reaches — a TPH BASE
+  // under `meta gen --entities <Subtype>`, which owns the shared table. Rendered as a
+  // fragment it emits no source at all while the subtype still spreads it.
+  //
+  // Derived HERE rather than at the call site because the call sites are plural and one of
+  // them is EJECTED: `src/reference/names.ts` is copied into an adopter's repo by
+  // `meta init` and thereafter owned by them. Deciding it in the engine makes every copy
+  // already on disk correct without an edit, and leaves no caller able to get it wrong.
+  const n: ObjectNames | undefined = o.fragment === true && primaryRdbSource(obj) === undefined
     ? resolveSuperFragmentNames(obj, o.strategy)
     : resolveObjectNames(obj, o.strategy);
   if (n === undefined) return "";

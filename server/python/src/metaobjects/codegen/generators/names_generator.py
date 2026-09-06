@@ -96,7 +96,7 @@ from metaobjects.naming import (
     strip_package,
     to_snake_case,
 )
-from metaobjects.shared.base_types import TYPE_IDENTITY, TYPE_INDEX
+from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX
 from metaobjects.source_resolution import primary_rdb_source
 
 #: The nodes whose DATABASE index name this module carries.
@@ -238,6 +238,12 @@ def _field_consts(field: MetaData, column: str) -> list[_Const]:
     ]
 
 
+#: The node types a names module carries. A frozenset of module-level constants rather
+#: than an inline tuple: an inline one is rebuilt on every element compared, because
+#: CPython cannot fold a tuple of globals.
+_NAMES_CONTENT_TYPES = frozenset({TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX})
+
+
 def declares_names_content(entity: MetaObject) -> bool:
     """Whether ``entity`` DECLARES anything a names module carries.
 
@@ -254,10 +260,7 @@ def declares_names_content(entity: MetaObject) -> bool:
     declares, not what it can see. An inherited key belongs to the ancestor that
     declared it and is reached through that ancestor's module.
     """
-    return bool(
-        entity.own_fields()
-        or [c for c in entity.own_children() if c.type in (TYPE_IDENTITY, TYPE_INDEX)]
-    )
+    return any(c.type in _NAMES_CONTENT_TYPES for c in entity.own_children())
 
 
 def names_artifact_super_of(entity: MetaObject) -> MetaObject | None:

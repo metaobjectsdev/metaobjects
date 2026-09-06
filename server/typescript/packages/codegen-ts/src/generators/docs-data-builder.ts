@@ -729,17 +729,18 @@ export function buildEntityDocData(
       // entity: "" for an entity-grain claim, "status" for an L5 member claim. undefined
       // when no target is under this entity.
       let member: string | undefined;
+      let memberD = Number.POSITIVE_INFINITY;
       for (const t of walked.targets) {
         const path = memberPathTo(t.node);
         if (path === undefined) continue;
+        const d = memberDepth(path);
         // Shallowest by SEGMENT COUNT, not string length. `path.length` made "a.b" — two
         // segments, three characters — beat "status", one segment and six, so the row
         // named the deeper member. Ties break lexicographically so the page does not
         // depend on the order the requirement walk happens to return targets in.
-        if (member === undefined
-            || memberDepth(path) < memberDepth(member)
-            || (memberDepth(path) === memberDepth(member) && path < member)) {
+        if (member === undefined || d < memberD || (d === memberD && path < member)) {
           member = path;
+          memberD = d;
         }
       }
       if (member === undefined) continue;

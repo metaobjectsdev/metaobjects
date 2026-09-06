@@ -11,6 +11,7 @@ import {
   resolveColumnName,
   resolveIndexName,
   resolveTableSchema,
+  isMetaObject,
   isMetaSource,
   PHYSICAL_NAME_ATTR_BY_KIND,
   SOURCE_ATTR_SCHEMA,
@@ -278,7 +279,6 @@ const INDEX_NAMED_SUBTYPES: ReadonlySet<string> = new Set([
  * reached through that ancestor's artifact.
  */
 function declaresNamesContent(obj: MetaObject): boolean {
-  if (typeof obj.ownFields !== "function") return false;
   return obj.ownFields().length > 0 ||
     obj.ownIdentities().length > 0 ||
     obj.ownLookupIndexes().length > 0;
@@ -294,9 +294,12 @@ function declaresNamesContent(obj: MetaObject): boolean {
 export function namesArtifactSuperOf(obj: MetaObject): MetaObject | undefined {
   let cur = obj.superData;
   while (cur !== undefined) {
-    const candidate = cur as MetaObject;
-    if (declaresNamesContent(candidate) || primaryRdbSource(candidate) !== undefined) {
-      return candidate;
+    // The exported guard, never `as MetaObject` and never a duck-type check on a method
+    // name: `superData` is only a MetaData, and CLAUDE.md makes this the required
+    // mechanism — two physical copies of the package in one process give a class object
+    // and an instance different identities, so `instanceof` returns false for a real node.
+    if (isMetaObject(cur) && (declaresNamesContent(cur) || primaryRdbSource(cur) !== undefined)) {
+      return cur;
     }
     cur = cur.superData;
   }

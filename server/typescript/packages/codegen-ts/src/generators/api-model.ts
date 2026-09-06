@@ -119,8 +119,7 @@ import { isTphSubtype } from "../templates/zod-validators.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
 import { hasAnyRdbSource } from "../source-detect.js";
-import { resourcePath } from "../templates/entity-constants.js";
-import { restPath } from "../templates/entity-ui-descriptor.js";
+import { servedPath } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
 import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
@@ -600,7 +599,7 @@ function restSymbols(
   obj: MetaObject, layout: OutputLayout, root: MetaRoot, apiPrefix: string,
 ): ApiSymbol[] {
   const name = obj.name;
-  const path = `${apiPrefix}${restPath(obj)}`;
+  const path = servedPath(obj, apiPrefix);
   const readOnly = isProjection(obj) || isTphDiscriminatorBase(obj, root);
 
   // REST endpoints are not importable functions — to WIRE them an adopter
@@ -812,7 +811,7 @@ function restHonoSymbols(
   obj: MetaObject, layout: OutputLayout, apiPrefix: string,
 ): ApiSymbol[] {
   const name = obj.name;
-  const path = `${apiPrefix}${restPath(obj)}`;
+  const path = servedPath(obj, apiPrefix);
   const readOnly = isProjection(obj);
 
   const honoMod = entityModulePath(layout, obj, `${name}.routes.hono`);

@@ -19,7 +19,9 @@
 // for the router or the filter allowlist, no names artifact, and the runtime falling
 // through to the replica view.
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource, primaryRdbSource } from "../src/index.js";
+import {
+  MetaDataLoader, InMemoryStringSource, isMetaSource, primaryRdbSource,
+} from "../src/index.js";
 import type { MetaObject } from "../src/index.js";
 
 // Both halves are load-bearing: with no super the merge loop never runs, and with only
@@ -65,9 +67,9 @@ async function acct(): Promise<MetaObject> {
 
 describe("an own child is shadowed by its super, never by a sibling", () => {
   test("a write-through entity whose BASE also declares a source keeps both of its own", async () => {
-    const sources = (await acct()).children()
-      .filter((c) => c.type === "source")
-      .map((c) => (c as unknown as { role: string }).role);
+    // isMetaSource, not `c.type === "source"` + a cast: the guard is what the package
+    // exports for this, and it narrows, so `.role` needs no double cast to reach.
+    const sources = (await acct()).children().filter(isMetaSource).map((s) => s.role);
     // Before the fix this was ["replica"] — the entity's own primary overwritten by its
     // own sibling, and the base's source gone too, so the object had exactly one source
     // where it declared two.

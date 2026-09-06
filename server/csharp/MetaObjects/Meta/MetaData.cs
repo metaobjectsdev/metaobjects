@@ -511,7 +511,10 @@ public abstract class MetaData
         // child is deferred so it cannot be matched later — and this closes the branch it
         // left open. The shape is a write-through entity (two unnamed source.rdb children)
         // whose base ALSO declares a source: its own primary was silently dropped.
-        var claimed = new HashSet<int>();
+        // A flag array, not a HashSet: `result` does not grow until after this loop, so the
+        // length is known, and this is the memoized effective-children path walked for every
+        // node. One allocation, index access instead of hashing, no boxing.
+        var claimed = new bool[result.Count];
         foreach (var ownChild in _children)
         {
             // Find the index in result that has the same (type, name). An explicit loop
@@ -520,7 +523,7 @@ public abstract class MetaData
             int idx = -1;
             for (int i = 0; i < result.Count; i++)
             {
-                if (!claimed.Contains(i) && result[i].Type == ownChild.Type
+                if (!claimed[i] && result[i].Type == ownChild.Type
                     && result[i].Name == ownChild.Name)
                 {
                     idx = i;
@@ -531,7 +534,7 @@ public abstract class MetaData
             {
                 // Replace the super child with our own (in-place override).
                 result[idx] = ownChild;
-                claimed.Add(idx);
+                claimed[idx] = true;
             }
             else
             {

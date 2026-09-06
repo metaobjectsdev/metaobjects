@@ -22,7 +22,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource } from "./source-detect.js";
-import { resourcePath } from "./templates/entity-ui-descriptor.js";
+import { resourcePath, restPath } from "./templates/entity-ui-descriptor.js";
 import {
   declaresTphDiscriminator,
   isTphSubtype,
@@ -58,6 +58,21 @@ export function servesWriteApi(entity: MetaObject): boolean {
 // the package barrel and `generators/agent-ui-page.ts` import it from, and neither should
 // have to care that the composition moved.
 export { restPath } from "./templates/entity-ui-descriptor.js";
+
+/**
+ * The address the generated routes actually SERVE an object at: the mount prefix plus the
+ * object's REST path.
+ *
+ * One function, because getting this wrong is the defect it exists to prevent, twice over.
+ * `agent/ui.md` documented `/authors` for routes mounted at `/api/authors`; the API
+ * reference did the same, separately, in two more places — three doors composing one
+ * address, each free to drift from the others. `templates/routes-file-hono.ts` and
+ * `routes-file.ts` compose the same thing into GENERATED code and remain the runtime
+ * authority; this is the documentation side mirroring them.
+ */
+export function servedPath(entity: MetaObject, apiPrefix: string): string {
+  return `${apiPrefix}${restPath(entity)}`;
+}
 
 /**
  * True when a FORM is generated for this object.
