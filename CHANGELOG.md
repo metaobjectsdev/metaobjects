@@ -7,6 +7,129 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — BREAKING: `<Entity>Names` mirrors the metadata tree, in all five ports
+
+**Read this first if you have hand-written code importing `<Entity>Names`.** `name` still
+exists and now holds the OBJECT's name, so `pgTable(CustomerNames.name, …)` /
+`[Table(CustomerNames.Name)]` still **compiles** and binds a table called `Customer`. That
+is the only silently-changed member; everything else that moved fails to compile. Grep for
+it before you regenerate. Generated code regenerates itself.
+
+One key used to hold a table, a view and a stored procedure, told apart only by a sibling
+`kind`. From a single run:
+
+```
+LedgerNames.name          = "TBL_LDG_ENTRY"    kind: "table"
+CustomerSummaryNames.name = "V_CUST_ROLLUP"    kind: "view"
+RollupOutNames.name       = "SP_CUST_ROLLUP"   kind: "storedProc"
+```
+
+A consumer reading `.name` could not tell what it had without reading a second key, and in
+none of the three did it hold the object's own name. The artifact now mirrors the metadata
+that declared it — every node carries its own `type`, `subType` and `name`, and a physical
+name sits under the key that says what kind of database object it is:
+
+```ts
+export const CustomerNames = {
+  type: "object", subType: "entity", name: "Customer",
+  sources: {
+    primary: { type: "source", subType: "rdb", kind: "table", table: "TBL_CUST_MASTER" },
+    replica: { type: "source", subType: "rdb", kind: "view",  view:  "V_CUST_RO" },
+  },
+  fields:     { email: { name: "email", column: "EMAIL_ADDR_TXT" } },
+  identities: { uq_cust_email: { type: "identity", subType: "secondary",
+                                 name: "uq_cust_email", index: "uq_cust_email" } },
+  indexes:    { ix_cust_status: { type: "index", subType: "lookup",
+                                  name: "ix_cust_status", index: "ix_cust_status" } },
+} as const;
+```
+
+The alias keys are not invented here: they are `PHYSICAL_NAME_ATTR_BY_KIND`, the
+metamodel's own FR-016/ADR-0018 map, so the artifact spells a physical name the way the
+metadata does. Under `as const`, `LedgerNames.sources.replica.table` is a compile error.
+
+**`readOnly` is removed**, not relocated. It was a derivation over `@kind`
+(`source.isReadOnly()`), never something an author declared, and a sweep of all five ports
+found zero consumers. Ask `sources.<role>.kind`.
+
+Per port: `SourcePrimaryTable` / `SourceReplicaView` (C#), `SOURCE_PRIMARY_TABLE` (Java,
+Kotlin), `<ENTITY>_SOURCE_PRIMARY_TABLE` (Python). Field members are unchanged everywhere.
+
+### Fixed — the last three physical-name escapes, all of which had been ruled structural
+
+- **A write-through entity's replica view.** The artifact carried the primary source only,
+  so an object declaring two physical names had one slot between them and the second was
+  emitted in full — in TypeScript's Drizzle `pgView` AND in C#'s `AppDbContext.ToView`,
+  which is what established it as the artifact's shape rather than either framework's
+  quirk. Keying sources by `@role` gives it a home.
+- **`identity.secondary` and `index.lookup` names.** The standing reason read well and was
+  wrong: *"an index's database name IS its metamodel name, so there is nothing to
+  RESTATE"*. Nothing to restate is not nothing to reference — the name was still spelled a
+  second time, in generated code, by a generator that computed it independently. That is
+  the lapse `fdb4118f1` fixed after the fact, when codegen was declaring
+  `idx_<table>_<col>` against an index the database held under `identity.name`.
+
+TypeScript and Kotlin now emit **no physical name literally at all** — table, view,
+procedure, column, schema and index name all travel as references. The TypeScript ledger
+has zero `knownLiteral` and zero `escape` rows; the one non-constant left is `@schema` on
+sqlite, correctly `dropped` because SQLite has no schema concept and migrate refuses a
+non-default `@schema` there outright.
+
+### Added — `resolveIndexName`, one door for a name three resolvers were spelling
+
+`identity.secondary` and `index.lookup` carry no `@column`-style physical spelling — the
+database name IS the metamodel name — which reads like there is nothing to resolve, and is
+exactly why the answer was written independently in the Drizzle emitter and twice in
+migrate's expected-schema. Now one function in the metadata tier of every port, owning a
+package strip and an empty-name refusal.
+
+The empty-name gap is exactly one node type wide, and only measurement showed that: an
+`identity.secondary` with an empty name is ALREADY refused by the loader in strict and lax
+mode alike (identity nodes carry an FR-024 name check so a dotted `extends` ref can address
+them), while an `index.lookup` is not addressable that way, carries no such check, and
+reaches the emitter. Both arms are asserted, because *"the loader already handles it"* is
+the belief that would delete the refusal — and it is true of one of the two.
+
+### Fixed — a Python-only core defect that the restructure made visible
+
+`MetaData._effective_children_inner` appended a non-shadowing own child INSIDE the matching
+loop, making it eligible to be overwritten by a **later own sibling**. `extends` decides
+what a child overrides; a sibling is not a super. TypeScript and C# both use an append
+queue and have always been correct.
+
+Not an exotic shape: two children collide on `(type, name)` most easily when both are
+UNNAMED, and the everyday model with two unnamed children of one type is a write-through
+entity. On any such entity that also had a super, the primary source was dropped from
+`children()` outright — `primary_rdb_source` returned `None`, so no table for the router or
+the filter allowlist, no names module, and ObjectManager falling through to the read view.
+
+It was pinned by nothing: the 504-test Python codegen suite passes identically with the fix
+reverted. The regression gate now exists and was verified red-then-green.
+
+### Corrected — a justification this project had already shipped
+
+`e9a3a39b3` justified the package strip in `resolveIndexName` by asserting the JVM loader
+package-qualifies a nested index name, with Kotlin's `shortName ?: name` compensating.
+Measured against the real loader, it does not: a nested `identity.secondary` or
+`index.lookup` is named flat, including when inherited across packages. Only a root-level
+node takes the file's package. That local strip had been a no-op for its whole life while
+reading as the site that owned the rule — which is why it survived review: it named a real
+port, a real file and a real line. The behaviour stays, on the honest reason (a
+normalisation nobody has to remember, one `lastIndexOf`); the claim is corrected in place
+and pinned by `IndexNamingTest`.
+
+### Added — the compile gate the restructure needed and did not have
+
+Four generated-output compile gates were green throughout, and not one of their fixtures
+contains an `identity.secondary`, an `index.lookup`, or a `@role: replica` source — the
+exact three paths that changed from emitting a literal to emitting a property access. One
+entity now carries all three in a single fixture, because the replica view and the indexes
+are emitted by different templates into the same file and separate fixtures are how a
+defect BETWEEN two emissions survives. Both arms run: the names-off path is the documented
+ADR-0034 opt-out and has to keep compiling too.
+
+`metamodelVersion` stays `0.13` — no registered vocabulary changed.
+
 ### Added — an `agent/` docs surface, the pointer that routes to it, and `verify --docs`
 
 `meta docs` gains a fourth surface. Three pages, each read BEFORE touching a tier:
