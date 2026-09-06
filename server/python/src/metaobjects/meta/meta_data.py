@@ -221,6 +221,20 @@ class MetaData:
         else:
             visited.add(self.super_data)
             result = self.super_data._effective_children_inner(visited)
+            # Own children that shadow NOTHING are appended only after the whole own
+            # set has been matched — never inside the loop. Appending as we go made an
+            # own child eligible to be shadowed by a LATER OWN SIBLING, which is not
+            # what shadowing means: `extends` decides what a child overrides, and a
+            # sibling is not a super. It cost a real shape, because the practical way
+            # two children share a (type, name) is that BOTH ARE UNNAMED: a
+            # write-through entity declares `source.rdb @role: primary` and `source.rdb
+            # @role: replica`, both with name "", so on any such entity that also has a
+            # super the primary was dropped from `children()` outright — no table for
+            # `primary_rdb_source`, no names module, no router, and the runtime falling
+            # through to the replica view. This is the TypeScript reference's
+            # `appendQueue` (`meta-data.ts::_effectiveChildren`), which has always been
+            # written this way; the divergence was this port's alone.
+            append_queue: list[MetaData] = []
             for own in self._children:
                 idx = next(
                     (i for i, c in enumerate(result)
@@ -228,9 +242,10 @@ class MetaData:
                     None,
                 )
                 if idx is None:
-                    result.append(own)
+                    append_queue.append(own)
                 else:
                     result[idx] = own
+            result.extend(append_queue)
         return result
 
     def freeze(self) -> None:

@@ -165,24 +165,37 @@ JUNCTION_TAG_COL = "zz_phys_col_jtag"    # NOT snake("tagId")
 # modules_actually_define` holds each one to the emitted text; the previous fixture's
 # `CUSTOMER_SUMMARY_NAME` matched no artifact and nothing could tell.
 TOKENS: tuple[Token, ...] = (
-    Token(TABLE, "CUSTOMER_NAME"),
+    Token(TABLE, "CUSTOMER_SOURCE_PRIMARY_TABLE"),
     Token(COL_ID, "CUSTOMER_ID_COLUMN"),
     Token(COL_EMAIL, "CUSTOMER_EMAIL_COLUMN"),
     Token(VO_COL, "CUSTOMER_STREET_COLUMN"),
     Token(JSONB_COL, "CUSTOMER_PROFILE_COLUMN"),
-    Token(ORDER_TABLE, "ORDER_NAME"),
+    Token(ORDER_TABLE, "ORDER_SOURCE_PRIMARY_TABLE"),
     Token(ORDER_ID, "ORDER_ID_COLUMN"),
     Token(COL_FK, "ORDER_CUSTOMER_ID_COLUMN"),
-    Token(VIEW, "CUSTOMERSUMMARY_NAME"),
-    Token(WT_TABLE, "ACCOUNT_NAME"),
+    Token(VIEW, "CUSTOMERSUMMARY_SOURCE_PRIMARY_VIEW"),
+    Token(WT_TABLE, "ACCOUNT_SOURCE_PRIMARY_TABLE"),
     Token(WT_ID, "ACCOUNT_ID_COLUMN"),
+    Token(
+        WT_VIEW, "ACCOUNT_SOURCE_REPLICA_VIEW",
+        why=(
+            "A write-through entity declares TWO physical names — it writes to a table "
+            "and reads through a replica view. The module carried the primary source's "
+            "only, so this row sat in UNCARRIED as `(no constant exists)`; keying "
+            "sources by effective @role gives it a slot. CARRIED AND REFERENCED BY NO "
+            "GENERATED FILE, exactly like every other constant on this port: nothing "
+            "here gained a consumer, because there is no generated binding to consume "
+            "it — the adopter's repository is. `test_no_generated_consumer_imports_a_"
+            "names_module` is what keeps that claim honest."
+        ),
+    ),
 
     # --- TPH: a discriminator base folds its subtypes' own columns into one table ------
     # The subtype's module re-exports the base's source constants BY REFERENCE
     # (`CAR_NAME = VEHICLE_NAME`) and declares only its own column. So the literal for
     # the shared table lives in `vehicle_names.py` and the subtype's own column in
     # `car_names.py` — which is where each `should_use` points.
-    Token(TPH_TABLE, "VEHICLE_NAME"),
+    Token(TPH_TABLE, "VEHICLE_SOURCE_PRIMARY_TABLE"),
     Token(TPH_ID, "VEHICLE_ID_COLUMN"),
     Token(TPH_DISC, "VEHICLE_KIND_COLUMN"),
     Token(
@@ -196,7 +209,7 @@ TOKENS: tuple[Token, ...] = (
     ),
 
     # --- the enum / index / schema entity ---------------------------------------------
-    Token(WIDGET_TABLE, "WIDGET_NAME"),
+    Token(WIDGET_TABLE, "WIDGET_SOURCE_PRIMARY_TABLE"),
     Token(
         ENUM_COL, "WIDGET_STATUS_COLUMN",
         why=(
@@ -211,6 +224,27 @@ TOKENS: tuple[Token, ...] = (
     Token(ARRAY_COL, "WIDGET_TAGS_COLUMN"),
     Token(ALT_COL, "WIDGET_ALT_COLUMN"),
     Token(
+        SEC_INDEX, "WIDGET_IDENTITY_ZZ_PHYS_IDX_SEC_INDEX",
+        why=(
+            "An index's database name IS its metamodel name, and the old reason for "
+            "carrying no slot read well and was wrong: nothing to RESTATE is not "
+            "nothing to REFERENCE. The module now carries it under the identity's own "
+            "`_INDEX` member, resolved by the one shared `resolve_index_name` door. "
+            "CARRIED AND REFERENCED BY NO GENERATED FILE — Python emits no index DDL, "
+            "so as before it is spelled zero times outside the names module; what "
+            "changed is that a constant now EXISTS for the adopter's migration or raw "
+            "SQL to name, not that any generated file reads one."
+        ),
+    ),
+    Token(
+        LKP_INDEX, "WIDGET_INDEX_ZZ_PHYS_IDX_LKP_INDEX",
+        why=(
+            "As SEC_INDEX — an index.lookup's name, carried under `index.*` rather "
+            "than `identity.*` because ADR-0040 put uniqueness in the TYPE. Carried, "
+            "referenced by no generated file."
+        ),
+    ),
+    Token(
         ABS_COL, "ABSTRACTKEYED_ID_COLUMN",
         why=(
             "Declared on an ABSTRACT base, so the literal lives in the base's FRAGMENT "
@@ -220,7 +254,7 @@ TOKENS: tuple[Token, ...] = (
         ),
     ),
     Token(
-        SCHEMA, "WIDGET_SCHEMA",
+        SCHEMA, "WIDGET_SOURCE_PRIMARY_SCHEMA",
         why=(
             "In every ORM-binding port this row is DROPPED: the artifact carries "
             "@schema and no table binding reads it, so the table lands in the default "
@@ -234,7 +268,7 @@ TOKENS: tuple[Token, ...] = (
 
     # --- the callable (stored procedure) ----------------------------------------------
     Token(
-        PROC, "PROCOUT_NAME",
+        PROC, "PROCOUT_SOURCE_PRIMARY_PROC",
         why=(
             "An ESCAPE in TS, whose callableFile spells the proc name into emitted SQL. "
             "Python has NO callable generator in its registry at all — the storedProc "
@@ -247,9 +281,9 @@ TOKENS: tuple[Token, ...] = (
     Token(PROC_OUT_COL, "PROCOUT_TOTAL_COLUMN"),
 
     # --- M:N: junction + target physical names the router has IN HAND -----------------
-    Token(TAG_TABLE, "TAG_NAME"),
+    Token(TAG_TABLE, "TAG_SOURCE_PRIMARY_TABLE"),
     Token(TAG_ID, "TAG_ID_COLUMN"),
-    Token(JUNCTION_TABLE, "ORDERTAG_NAME"),
+    Token(JUNCTION_TABLE, "ORDERTAG_SOURCE_PRIMARY_TABLE"),
     Token(JUNCTION_ORDER_COL, "ORDERTAG_ORDER_ID_COLUMN"),
     Token(JUNCTION_TAG_COL, "ORDERTAG_TAG_ID_COLUMN"),
     # No KNOWN_LITERAL, ESCAPE or DROPPED row: this port emits no physical name outside its
@@ -263,8 +297,15 @@ TOKENS: tuple[Token, ...] = (
 # the four Reach values describes "absent everywhere". They are still declared so the
 # exhaustive test convicts a generator that starts spelling one, and each is PINNED as
 # absent by `test_uncarried_names_are_spelled_nowhere`, so that the day the artifact grows
-# a slot (an index name, the replica view, a value member) the pin fails and says "give it
-# a row" instead of the new carrying passing unnoticed.
+# a slot the pin fails and says "give it a row" instead of the new carrying passing
+# unnoticed.
+#
+# That is not hypothetical: this list held FIVE rows. When `<Entity>Names` was
+# restructured to mirror the metadata tree — sources keyed by @role, identities and
+# indexes carrying their own `_INDEX` member — the replica view, the identity.secondary
+# name and the index.lookup name all acquired slots, and this pin is what failed and sent
+# them to TOKENS. The two below are the ones whose reason is STRUCTURAL rather than
+# unbuilt: neither belongs to an object that has a names module at all.
 UNCARRIED: tuple[Token, ...] = (
     Token(
         VO_MEMBER_COL, "(no constant exists)",
@@ -274,23 +315,6 @@ UNCARRIED: tuple[Token, ...] = (
             "fixture precisely so that claim is tested rather than assumed."
         ),
     ),
-    Token(
-        WT_VIEW, "(no constant exists)",
-        why=(
-            "A write-through entity has TWO physical names; the names module carries the "
-            "PRIMARY source's only. The replica view has no slot, and the Python router "
-            "routes reads to it inside the ObjectManager, never in generated text."
-        ),
-    ),
-    Token(
-        SEC_INDEX, "(no constant exists)",
-        why=(
-            "An index's database name IS its metamodel `name` — nothing to restate, and "
-            "the names module carries no index slot. TS pins this as KNOWN_LITERAL because "
-            "drizzle emits it; Python emits no index DDL, so it is spelled zero times."
-        ),
-    ),
-    Token(LKP_INDEX, "(no constant exists)", why="As SEC_INDEX — an index.lookup's name."),
     Token(
         PROC_ARG_COL, "(no constant exists)",
         why=(
@@ -879,12 +903,14 @@ def test_uncarried_names_are_spelled_nowhere(tmp_path: Path) -> None:
     """Pins each UNCARRIED name as absent from the WHOLE tree, names modules included.
 
     These names have no TOKENS row because no Reach value describes them: the artifact
-    has no slot for an index name, a replica view or a value member, so they are not
-    CONSTANT; nothing spells them, so they are not KNOWN_LITERAL or ESCAPE; and the
-    artifact does not carry them, so they are not DROPPED. Absence is still a claim, and
-    an unpinned claim is how the artifact could grow a slot for one of these — the index
-    slot the TS gate's KNOWN_LITERAL rows anticipate, say — with this file still
-    describing it as unspelled. When that happens this fails and says "give it a row".
+    has no slot for a value object's member column (a value has no source, so no names
+    module) nor for a callable's positionally-bound argument, so they are not CONSTANT;
+    nothing spells them, so they are not KNOWN_LITERAL or ESCAPE; and the artifact does
+    not carry them, so they are not DROPPED. Absence is still a claim, and an unpinned
+    claim is how the artifact could grow a slot for one of these with this file still
+    describing it as unspelled. When that happens this fails and says "give it a row" —
+    which is exactly what it did for the replica view and both index names when the
+    artifact was restructured to mirror the metadata tree.
     """
     tree = _generate(tmp_path)
     everything = "\n".join(tree.values())

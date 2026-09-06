@@ -103,10 +103,13 @@ shapes, router and allowlist all key by field. Take it from the generated
 `<entity_snake>_names.py` (`names` is in the default suite):
 
 ```python
-from generated.author_names import AUTHOR_NAME, AUTHOR_CREATED_AT_COLUMN, AUTHOR_ID_COLUMN
+from generated.author_names import (
+    AUTHOR_SOURCE_PRIMARY_TABLE, AUTHOR_CREATED_AT_COLUMN, AUTHOR_ID_COLUMN,
+)
 
 row = await conn.fetchrow(
-    f"SELECT {AUTHOR_CREATED_AT_COLUMN} FROM {AUTHOR_NAME} WHERE {AUTHOR_ID_COLUMN} = $1",
+    f"SELECT {AUTHOR_CREATED_AT_COLUMN} FROM {AUTHOR_SOURCE_PRIMARY_TABLE} "
+    f"WHERE {AUTHOR_ID_COLUMN} = $1",
     author_id,
 )
 ```

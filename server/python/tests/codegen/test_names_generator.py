@@ -25,14 +25,36 @@ from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.meta_source import MetaSource
+from metaobjects.meta.core.identity.identity_constants import (
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_REFERENCE_ATTR_REFERENCES,
+    IDENTITY_SUBTYPE_PRIMARY,
+    IDENTITY_SUBTYPE_REFERENCE,
+    IDENTITY_SUBTYPE_SECONDARY,
+)
+from metaobjects.meta.core.index.index_constants import (
+    INDEX_ATTR_FIELDS,
+    INDEX_SUBTYPE_LOOKUP,
+)
+from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.persistence.source.source_constants import (
     SOURCE_ATTR_KIND,
+    SOURCE_ATTR_ROLE,
     SOURCE_ATTR_SCHEMA,
+    SOURCE_ATTR_TABLE,
+    SOURCE_ATTR_VIEW,
     SOURCE_KIND_VIEW,
+    SOURCE_ROLE_REPLICA,
     SOURCE_SUBTYPE_RDB,
 )
 from metaobjects.naming import resolve_column_name, to_snake_case
-from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_SOURCE
+from metaobjects.shared.base_types import (
+    TYPE_FIELD,
+    TYPE_IDENTITY,
+    TYPE_INDEX,
+    TYPE_OBJECT,
+    TYPE_SOURCE,
+)
 
 
 def _entity(
@@ -76,10 +98,19 @@ def test_emits_final_constants_for_table_and_columns() -> None:
     )
     src = render_names(entity, "literal")
     assert src is not None
-    assert 'SUBSCRIBER_KIND: Final[str] = "table"' in src
+    # The object's OWN identity — `_NAME` is the metamodel name, NOT the table.
+    assert 'SUBSCRIBER_TYPE: Final[str] = "object"' in src
+    assert 'SUBSCRIBER_SUB_TYPE: Final[str] = "entity"' in src
+    assert 'SUBSCRIBER_NAME: Final[str] = "Subscriber"' in src
+    # ...and the physical name sits under the member named for the source's @kind,
+    # keyed by the role the source plays.
+    assert 'SUBSCRIBER_SOURCE_PRIMARY_TYPE: Final[str] = "source"' in src
+    assert 'SUBSCRIBER_SOURCE_PRIMARY_SUB_TYPE: Final[str] = "rdb"' in src
+    assert 'SUBSCRIBER_SOURCE_PRIMARY_KIND: Final[str] = "table"' in src
     # No @table declared -> step-4 fallback: pluralize(snake_case(entity.name)).
-    assert 'SUBSCRIBER_NAME: Final[str] = "subscribers"' in src
-    assert "SUBSCRIBER_READ_ONLY: Final[bool] = False" in src
+    assert 'SUBSCRIBER_SOURCE_PRIMARY_TABLE: Final[str] = "subscribers"' in src
+    # A derivation over @kind, never declared, read by nothing in any port.
+    assert "READ_ONLY" not in src
     # A2: both names, always, always distinguished.
     assert 'SUBSCRIBER_CREATED_AT_FIELD: Final[str] = "createdAt"' in src
     # This port's default strategy is literal, matching ObjectManager.
@@ -145,17 +176,170 @@ def test_declared_schema_is_emitted() -> None:
     entity = _entity("Subscriber", [_f("id", fc.FIELD_SUBTYPE_LONG)], schema="reporting")
     src = render_names(entity, "literal")
     assert src is not None
-    assert 'SUBSCRIBER_SCHEMA: Final[str] = "reporting"' in src
+    assert 'SUBSCRIBER_SOURCE_PRIMARY_SCHEMA: Final[str] = "reporting"' in src
 
 
-def test_read_only_kind_is_reflected() -> None:
+def test_a_view_source_carries_its_name_under_the_view_member_not_table() -> None:
+    """The half of the restructure that earns it: one member cannot hold a table, a
+    view and a stored procedure and still mean something. The member says what the
+    thing IS, so a reader does not consult a second constant to find out.
+    """
     entity = _entity(
         "SubscriberSummary", [_f("id", fc.FIELD_SUBTYPE_LONG)], source_kind=SOURCE_KIND_VIEW
     )
     src = render_names(entity, "literal")
     assert src is not None
-    assert 'SUBSCRIBERSUMMARY_KIND: Final[str] = "view"' in src
-    assert "SUBSCRIBERSUMMARY_READ_ONLY: Final[bool] = True" in src
+    assert 'SUBSCRIBERSUMMARY_SOURCE_PRIMARY_KIND: Final[str] = "view"' in src
+    assert 'SUBSCRIBERSUMMARY_SOURCE_PRIMARY_VIEW: Final[str] = "subscriber_summaries"' in src
+    # Stated in the negative too: a view must not also be spelled as a table.
+    assert "SUBSCRIBERSUMMARY_SOURCE_PRIMARY_TABLE" not in src
+    # READ_ONLY is a derivation over @kind, not metadata. The reader asks KIND.
+    assert "READ_ONLY" not in src
+
+
+def test_a_write_through_entity_carries_both_physical_names_under_their_roles() -> None:
+    """The slot the flat shape did not have. A write-through entity declares TWO
+    physical names — it writes to a table and reads through a replica view — and the
+    module carried one; keying sources by effective ``@role`` is what gives the view
+    a home.
+    """
+    entity = MetaObject(TYPE_OBJECT, "entity", "Ledger")
+    primary = MetaSource(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, "")
+    primary.set_attr(SOURCE_ATTR_TABLE, "tbl_ldg_entry")
+    replica = MetaSource(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, "")
+    replica.set_attr(SOURCE_ATTR_KIND, SOURCE_KIND_VIEW)
+    replica.set_attr(SOURCE_ATTR_VIEW, "v_ldg_entry_ro")
+    replica.set_attr(SOURCE_ATTR_ROLE, SOURCE_ROLE_REPLICA)
+    entity.add_child(primary)
+    entity.add_child(replica)
+    entity.add_child(_f("id", fc.FIELD_SUBTYPE_LONG))
+
+    src = render_names(entity, "literal")
+    assert src is not None
+    assert 'LEDGER_SOURCE_PRIMARY_TABLE: Final[str] = "tbl_ldg_entry"' in src
+    assert 'LEDGER_SOURCE_REPLICA_VIEW: Final[str] = "v_ldg_entry_ro"' in src
+    assert 'LEDGER_SOURCE_REPLICA_KIND: Final[str] = "view"' in src
+
+
+def _identity(sub_type: str, name: str, fields: str) -> MetaData:
+    node = MetaData(TYPE_IDENTITY, sub_type, name)
+    node.set_attr(IDENTITY_ATTR_FIELDS, fields)
+    return node
+
+
+def test_identities_and_indexes_carry_type_subtype_and_name() -> None:
+    entity = _entity("Customer", [_f("email"), _f("status")])
+    entity.add_child(_identity(IDENTITY_SUBTYPE_PRIMARY, "pk", "email"))
+    entity.add_child(_identity(IDENTITY_SUBTYPE_SECONDARY, "uq_cust_email", "email"))
+    lookup = MetaData(TYPE_INDEX, INDEX_SUBTYPE_LOOKUP, "ix_cust_status")
+    lookup.set_attr(INDEX_ATTR_FIELDS, "status")
+    entity.add_child(lookup)
+
+    src = render_names(entity, "literal")
+    assert src is not None
+    # subType is load-bearing, not decorative: it is the ONLY thing distinguishing a
+    # unique alternate key from a non-unique lookup index (ADR-0040).
+    assert 'CUSTOMER_IDENTITY_UQ_CUST_EMAIL_SUB_TYPE: Final[str] = "secondary"' in src
+    assert 'CUSTOMER_INDEX_IX_CUST_STATUS_SUB_TYPE: Final[str] = "lookup"' in src
+    assert 'CUSTOMER_IDENTITY_UQ_CUST_EMAIL_NAME: Final[str] = "uq_cust_email"' in src
+    assert 'CUSTOMER_INDEX_IX_CUST_STATUS_NAME: Final[str] = "ix_cust_status"' in src
+
+
+def test_only_secondary_and_lookup_carry_a_database_index_name() -> None:
+    """Stated in the negative as well, because the absent half is the ruling.
+
+    ``identity.primary`` has no database name to carry: migrate hardcodes
+    ``<table>_pkey`` on Postgres, emits an unnamed PK on SQLite, and no port's codegen
+    names a primary key at all. Carrying one would restate a migrate-only,
+    dialect-conditional formula in an artifact whose promise is that a name is spelled
+    once — the defect the artifact exists to prevent, re-created by the mechanism built
+    to prevent it. ``identity.reference``'s name is an addressing handle, not a
+    constraint name.
+    """
+    entity = _entity("Customer", [_f("email"), _f("ownerId")])
+    entity.add_child(_identity(IDENTITY_SUBTYPE_PRIMARY, "pk", "email"))
+    entity.add_child(_identity(IDENTITY_SUBTYPE_SECONDARY, "uq_cust_email", "email"))
+    ref = MetaData(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE, "ownerRef")
+    ref.set_attr(IDENTITY_ATTR_FIELDS, "ownerId")
+    ref.set_attr(IDENTITY_REFERENCE_ATTR_REFERENCES, "Owner")
+    entity.add_child(ref)
+
+    src = render_names(entity, "literal")
+    assert src is not None
+    assert 'CUSTOMER_IDENTITY_UQ_CUST_EMAIL_INDEX: Final[str] = "uq_cust_email"' in src
+    assert "CUSTOMER_IDENTITY_PK_INDEX" not in src
+    assert "CUSTOMER_IDENTITY_OWNER_REF_INDEX" not in src
+
+
+def test_an_index_lookup_with_an_empty_name_is_refused() -> None:
+    """The loader accepts it — an ``index.lookup`` is not addressable by a dotted
+    ``extends`` ref, so it carries none of the FR-024 name check an ``identity.*``
+    does — and it would reach an emitter as ``index("")``. ``resolve_index_name`` is
+    the shared door that refuses it, so the module and any DDL cannot disagree about
+    what an index is called.
+    """
+    entity = _entity("Customer", [_f("status")])
+    entity.add_child(MetaData(TYPE_INDEX, INDEX_SUBTYPE_LOOKUP, ""))
+    with pytest.raises(ValueError, match="empty name"):
+        render_names(entity, "literal")
+
+
+def test_the_type_prefix_keeps_a_default_named_primary_key_off_the_primary_source() -> None:
+    """``identity.primary`` carries ``defaultName: "primary"`` (spec/metamodel/
+    identity.json), and a source's role key is also ``primary``. Without the type
+    prefix both want ``<ENTITY>_PRIMARY_*`` and the later assignment silently wins —
+    the module would hand back an identity's subType for a question about the table.
+    """
+    entity = _entity("Customer", [_f("email")])
+    entity.add_child(_identity(IDENTITY_SUBTYPE_PRIMARY, "primary", "email"))
+
+    src = render_names(entity, "literal")
+    assert src is not None
+    assert 'CUSTOMER_SOURCE_PRIMARY_SUB_TYPE: Final[str] = "rdb"' in src
+    assert 'CUSTOMER_IDENTITY_PRIMARY_SUB_TYPE: Final[str] = "primary"' in src
+    # Each is defined exactly once: a collapse would have left one of them missing.
+    assert src.count("CUSTOMER_SOURCE_PRIMARY_SUB_TYPE: Final") == 1
+    assert src.count("CUSTOMER_IDENTITY_PRIMARY_SUB_TYPE: Final") == 1
+
+
+def test_the_collision_guard_spans_collections_naming_both_nodes() -> None:
+    """Whole emitted member set, never per collection. An identity and an index whose
+    author-chosen names fold to the same member land in the SAME module, so the later
+    assignment would silently win.
+    """
+    entity = _entity("Customer", [_f("email"), _f("status")])
+    entity.add_child(_identity(IDENTITY_SUBTYPE_SECONDARY, "byThing", "email"))
+    lookup = MetaData(TYPE_INDEX, INDEX_SUBTYPE_LOOKUP, "by_thing")
+    lookup.set_attr(INDEX_ATTR_FIELDS, "status")
+    entity.add_child(lookup)
+    # Different TYPES, so the prefix keeps them apart — this must NOT raise.
+    assert render_names(entity, "literal") is not None
+
+    clash = _entity("Customer", [_f("email"), _f("status")])
+    clash.add_child(_identity(IDENTITY_SUBTYPE_SECONDARY, "byThing", "email"))
+    clash.add_child(_identity(IDENTITY_SUBTYPE_SECONDARY, "by_thing", "status"))
+    with pytest.raises(ValueError) as exc_info:
+        render_names(clash, "literal")
+    msg = str(exc_info.value)
+    assert "byThing" in msg
+    assert "by_thing" in msg
+    assert "CUSTOMER_IDENTITY_BY_THING" in msg
+
+
+def test_an_index_name_that_is_not_an_identifier_is_folded_not_dropped() -> None:
+    """A dict key can be quoted; a module-level constant cannot. ``2fa-idx`` folds to
+    ``2FA_IDX`` — and the constant still starts with the entity prefix, so it stays a
+    legal identifier. The emitted module has to be importable, so assert it compiles.
+    """
+    entity = _entity("Customer", [_f("status")])
+    lookup = MetaData(TYPE_INDEX, INDEX_SUBTYPE_LOOKUP, "2fa-idx")
+    lookup.set_attr(INDEX_ATTR_FIELDS, "status")
+    entity.add_child(lookup)
+
+    src = render_names(entity, "literal")
+    assert src is not None
+    assert 'CUSTOMER_INDEX_2FA_IDX_INDEX: Final[str] = "2fa-idx"' in src
+    compile(src, "<names>", "exec")
 
 
 def test_no_primary_source_emits_nothing() -> None:

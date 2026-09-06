@@ -52,7 +52,7 @@ regardless of server language — see the migration reference.
 | `def get_all_` / `def create_` / `def update_` / `def delete_` in non-generated files | hand-rolled CRUD — compare to the generated router |
 | `# keep in sync with` / `# mirrors the` | second-source-of-truth comment — always a finding |
 | `try: ... except KeyError` / `?? ''` around format strings in prompt code | silent-degradation hack around a prompt payload — flag it |
-| a table/column string in the repository implementation (SQLAlchemy Core, asyncpg/psycopg SQL) | second spelling of a declared physical name — reference `<entity>_names.py` (`AUTHOR_NAME` / `AUTHOR_<FIELD>_COLUMN`, default suite); no typed handle exists on this port, so that is never the reason to waive it |
+| a table/column string in the repository implementation (SQLAlchemy Core, asyncpg/psycopg SQL) | second spelling of a declared physical name — reference `<entity>_names.py` (`AUTHOR_SOURCE_PRIMARY_TABLE` / `AUTHOR_<FIELD>_COLUMN`, default suite); no typed handle exists on this port, so that is never the reason to waive it |
 
 ---
 

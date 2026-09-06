@@ -8,11 +8,16 @@ namespace Generated;
 /// <summary>
 /// GENERATED — per-object physical database names for Subscriber (spec A1/A2/A6).
 /// </summary>
-public static class SubscriberNames
+public abstract class SubscriberNames
 {
-    public const string Kind = "table";
-    public const string Name = "subscribers";
-    public const bool ReadOnly = false;
+    public const string Type = "object";
+    public const string SubType = "entity";
+    public const string Name = "Subscriber";
+
+    public const string SourcePrimaryType = "source";
+    public const string SourcePrimarySubType = "rdb";
+    public const string SourcePrimaryKind = "table";
+    public const string SourcePrimaryTable = "subscribers";
 
     public const string CreatedAtField = "createdAt";
     public const string CreatedAtColumn = "created_at";
@@ -24,6 +29,10 @@ public static class SubscriberNames
     public const string NameColumn = "name";
     public const string StatusField = "status";
     public const string StatusColumn = "status";
+
+    public const string IdentityPrimaryType = "identity";
+    public const string IdentityPrimarySubType = "primary";
+    public const string IdentityPrimaryName = "primary";
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {

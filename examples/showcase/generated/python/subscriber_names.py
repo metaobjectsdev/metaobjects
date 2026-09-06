@@ -7,9 +7,14 @@ from __future__ import annotations
 
 from typing import Final
 
-SUBSCRIBER_KIND: Final[str] = "table"
-SUBSCRIBER_NAME: Final[str] = "subscribers"
-SUBSCRIBER_READ_ONLY: Final[bool] = False
+SUBSCRIBER_TYPE: Final[str] = "object"
+SUBSCRIBER_SUB_TYPE: Final[str] = "entity"
+SUBSCRIBER_NAME: Final[str] = "Subscriber"
+
+SUBSCRIBER_SOURCE_PRIMARY_TYPE: Final[str] = "source"
+SUBSCRIBER_SOURCE_PRIMARY_SUB_TYPE: Final[str] = "rdb"
+SUBSCRIBER_SOURCE_PRIMARY_KIND: Final[str] = "table"
+SUBSCRIBER_SOURCE_PRIMARY_TABLE: Final[str] = "subscribers"
 
 SUBSCRIBER_CREATED_AT_FIELD: Final[str] = "createdAt"
 SUBSCRIBER_CREATED_AT_COLUMN: Final[str] = "created_at"
@@ -21,6 +26,10 @@ SUBSCRIBER_NAME_FIELD: Final[str] = "name"
 SUBSCRIBER_NAME_COLUMN: Final[str] = "name"
 SUBSCRIBER_STATUS_FIELD: Final[str] = "status"
 SUBSCRIBER_STATUS_COLUMN: Final[str] = "status"
+
+SUBSCRIBER_IDENTITY_PRIMARY_TYPE: Final[str] = "identity"
+SUBSCRIBER_IDENTITY_PRIMARY_SUB_TYPE: Final[str] = "primary"
+SUBSCRIBER_IDENTITY_PRIMARY_NAME: Final[str] = "primary"
 
 SUBSCRIBER_COLUMNS_BY_FIELD: Final[dict[str, str]] = {
     "createdAt": SUBSCRIBER_CREATED_AT_COLUMN,

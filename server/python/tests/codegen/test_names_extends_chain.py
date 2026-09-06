@@ -20,6 +20,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+
+import pytest
 from pathlib import Path
 
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
@@ -107,11 +109,15 @@ def test_the_abstract_base_gets_a_module_carrying_columns_and_no_physical_name(t
     src = _generate(tmp_path)["base_entity_names.py"]
     assert 'BASEENTITY_CREATED_AT_COLUMN: Final[str] = "zz_made_at"' in src
     assert 'BASEENTITY_ID_COLUMN: Final[str] = "id"' in src
-    # It declares no source. A NAME here would be a physical name invented for an object
+    # A fragment keeps its OWN identity — type, subType and name — because those are
+    # facts about the object, not about a table it does not have.
+    assert 'BASEENTITY_TYPE: Final[str] = "object"' in src
+    assert 'BASEENTITY_SUB_TYPE: Final[str] = "entity"' in src
+    assert 'BASEENTITY_NAME: Final[str] = "BaseEntity"' in src
+    # It declares no source. A physical name here would be one invented for an object
     # that declares none — the phantom-table failure #248 exists to prevent.
-    assert "BASEENTITY_NAME" not in src
-    assert "BASEENTITY_KIND" not in src
-    assert "BASEENTITY_READ_ONLY" not in src
+    assert "BASEENTITY_SOURCE_" not in src
+    assert "READ_ONLY" not in src
 
 
 def test_the_child_imports_the_base_constant_instead_of_restating_it(tmp_path: Path) -> None:
@@ -119,17 +125,24 @@ def test_the_child_imports_the_base_constant_instead_of_restating_it(tmp_path: P
     assert "from .base_entity_names import" in src
     assert "AUTHOR_CREATED_AT_COLUMN: Final[str] = BASEENTITY_CREATED_AT_COLUMN" in src
     assert 'AUTHOR_EMAIL_COLUMN: Final[str] = "zz_email_addr"' in src
-    # Its own source, so its own physical name.
-    assert 'AUTHOR_NAME: Final[str] = "zz_authors"' in src
+    # Its own source, so its own physical name — under the member for its @kind.
+    assert 'AUTHOR_SOURCE_PRIMARY_TABLE: Final[str] = "zz_authors"' in src
+    # ...and its own name, which is the OBJECT's, not the table's.
+    assert 'AUTHOR_NAME: Final[str] = "Author"' in src
     # ...and NOT the inherited column, restated.
     assert "zz_made_at" not in src
 
 
 def test_a_tph_subtype_references_the_shared_table_name_rather_than_restating_it(tmp_path: Path) -> None:
     src = _generate(tmp_path)["copay_auth_names.py"]
-    assert "COPAYAUTH_NAME: Final[str] = AUTH_NAME" in src
+    assert "COPAYAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE" in src
     assert "COPAYAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN" in src
     assert 'COPAYAUTH_COPAY_AMOUNT_COLUMN: Final[str] = "zz_copay_cents"' in src
+    # A single-table hierarchy legitimately has two OBJECT names; only the physical one
+    # is shared. So the subtype keeps its own name/type/subType as literals.
+    assert 'COPAYAUTH_NAME: Final[str] = "CopayAuth"' in src
+    # An inherited identity is reached through the base's constant, not restated.
+    assert "COPAYAUTH_IDENTITY_PK_NAME: Final[str] = AUTH_IDENTITY_PK_NAME" in src
     # The whole point: the subtype used to restate the base's table name and every column.
     assert "zz_auths" not in src
 
@@ -159,7 +172,10 @@ def test_the_emitted_modules_import_and_an_inherited_constant_resolves(tmp_path:
         spec.loader.exec_module(mod)
 
         # An inherited constant, reached through the reference the generator emitted.
-        assert mod.COPAYAUTH_NAME == "zz_auths"
+        assert mod.COPAYAUTH_SOURCE_PRIMARY_TABLE == "zz_auths"
+        assert mod.COPAYAUTH_SOURCE_PRIMARY_KIND == "table"
+        assert mod.COPAYAUTH_IDENTITY_PK_SUB_TYPE == "primary"
+        assert mod.COPAYAUTH_NAME == "CopayAuth"
         assert mod.COPAYAUTH_ID_COLUMN == "id"
         assert mod.COPAYAUTH_COPAY_AMOUNT_COLUMN == "zz_copay_cents"
         # COLUMNS_BY_FIELD stays COMPLETE — it is the lookup surface, and a miss on an
@@ -224,3 +240,97 @@ def test_a_child_field_colliding_with_an_inherited_one_is_refused_naming_the_mod
     assert "createdAt" in message
     assert "created_at" in message
     assert "CREATED_AT" in message
+
+
+def _render(model: dict, entity_name: str, strategy: str = "snake_case") -> str | None:
+    from metaobjects.codegen.generators.names_generator import render_names
+
+    result = MetaDataLoader().load([
+        InMemoryStringSource(json.dumps(model), format=MetaDataFormat.JSON, id="roles.json"),
+    ])
+    assert [str(e) for e in result.errors] == []
+    entity = next(o for o in result.root.own_children() if o.name == entity_name)
+    return render_names(entity, strategy)
+
+
+def _role_model(child_source: dict) -> dict:
+    """An abstract base and its child EACH declaring a ``@role: primary`` source.
+
+    Both sources carry an explicit structural ``name``, and that is load-bearing:
+    effective-children shadowing matches an own child over a super child on a
+    ``(type, name)`` pair, so two UNNAMED sources across an ``extends`` boundary
+    collapse into one and never reach the role map at all. Named, both land on the
+    child's effective ``children()`` — which is the shape ``primary_rdb_source``'s
+    own divergence guard documents, and the only one that can put two sources in one
+    role key.
+    """
+    return {
+        "metadata.root": {
+            "package": "acme",
+            "children": [
+                {
+                    "object.entity": {
+                        "name": "RoleBase",
+                        "abstract": True,
+                        "children": [
+                            {"source.rdb": {"name": "base_src", "@table": "zz_shared"}},
+                            {"field.long": {"name": "id"}},
+                        ],
+                    }
+                },
+                {
+                    "object.entity": {
+                        "name": "RoleChild",
+                        "extends": "RoleBase",
+                        "children": [child_source, {"field.string": {"name": "nm"}}],
+                    }
+                },
+            ],
+        }
+    }
+
+
+def test_two_sources_in_one_role_that_AGREE_are_legal() -> None:
+    """The refusal is about DISAGREEMENT, not about the count — deliberately the same
+    rule ``primary_rdb_source`` already enforces, rather than a stricter one invented
+    for this artifact.
+
+    An abstract base and the child that extends it may each declare a ``@role:
+    primary`` source naming the same relation. That loads with zero errors today, so a
+    guard keyed on "more than one source in this role" would make the names module
+    stricter than the invariant it exists to serve — and would fail a model the product
+    itself sanctions.
+    """
+    src = _render(
+        _role_model({"source.rdb": {"name": "child_src", "@table": "zz_shared"}}),
+        "RoleChild",
+    )
+    assert src is not None
+    # One constant for the role, whichever of the two declarations it came from — the
+    # point is that agreeing declarations produce ONE spelling, not a refusal and not
+    # two constants racing to define the same member.
+    assert "ROLECHILD_SOURCE_PRIMARY_TABLE: Final[str] = " in src
+    assert src.count("ROLECHILD_SOURCE_PRIMARY_TABLE: Final") == 1
+
+
+def test_two_sources_in_one_role_that_DISAGREE_are_refused_naming_both() -> None:
+    """...and the disagreement is the real problem, because keeping one silently is the
+    failure this artifact makes impossible: the second name would be carried nowhere,
+    read by nobody, while the binding quietly took the first's.
+
+    A ``@schema`` disagreement is the arm this module owns, and it is what makes the
+    check non-redundant: ``primary_rdb_source`` compares physical NAMES only, so two
+    primaries agreeing on the name and differing on which SCHEMA it lives in get past
+    it and land on one role key here. (A ``@kind`` disagreement in the primary role is
+    unreachable — the loader refuses a read-only primary outright,
+    ``ERR_ENTITY_PRIMARY_SOURCE_READONLY``; a physical-NAME disagreement is refused one
+    level down, by ``primary_rdb_source``.)
+    """
+    model = _role_model(
+        {"source.rdb": {"name": "child_src", "@table": "zz_shared", "@schema": "zz_other"}}
+    )
+    with pytest.raises(ValueError) as exc:
+        _render(model, "RoleChild")
+    message = str(exc.value)
+    assert '@role: "primary"' in message
+    assert "zz_shared" in message

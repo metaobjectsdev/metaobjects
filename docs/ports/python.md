@@ -172,22 +172,84 @@ app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(se
 ### `<entity>_names.py` — the physical names, as constants
 
 The `names` generator ships in the **default generator suite** — a new
-project gets `<entity>_names.py` without configuring anything. It carries the
-physical database names for one object as module-level `Final` constants:
+project gets `<entity>_names.py` without configuring anything. The module
+mirrors the metadata that declared it: every node it describes — the object,
+each `source.rdb` child, each `identity.*` and `index.*` child — carries its
+own `_TYPE`, `_SUB_TYPE` and `_NAME`, and a source's physical name sits under
+the member named for **what kind of database object it is**:
 
 ```python
 # generated/subscriber_names.py (excerpt)
-SUBSCRIBER_KIND: Final[str] = "table"
-SUBSCRIBER_NAME: Final[str] = "subscribers"
-SUBSCRIBER_READ_ONLY: Final[bool] = False
+SUBSCRIBER_TYPE: Final[str] = "object"
+SUBSCRIBER_SUB_TYPE: Final[str] = "entity"
+SUBSCRIBER_NAME: Final[str] = "Subscriber"          # the OBJECT's name, not the table's
+
+SUBSCRIBER_SOURCE_PRIMARY_TYPE: Final[str] = "source"
+SUBSCRIBER_SOURCE_PRIMARY_SUB_TYPE: Final[str] = "rdb"
+SUBSCRIBER_SOURCE_PRIMARY_KIND: Final[str] = "table"
+SUBSCRIBER_SOURCE_PRIMARY_TABLE: Final[str] = "subscribers"
 
 SUBSCRIBER_CREATED_AT_FIELD: Final[str] = "createdAt"
 SUBSCRIBER_CREATED_AT_COLUMN: Final[str] = "created_at"
+
+SUBSCRIBER_IDENTITY_PRIMARY_TYPE: Final[str] = "identity"
+SUBSCRIBER_IDENTITY_PRIMARY_SUB_TYPE: Final[str] = "primary"
+SUBSCRIBER_IDENTITY_PRIMARY_NAME: Final[str] = "primary"
 
 SUBSCRIBER_COLUMNS_BY_FIELD: Final[dict[str, str]] = {
     "createdAt": SUBSCRIBER_CREATED_AT_COLUMN,
 }
 ```
+
+| member | means |
+|---|---|
+| `<E>_TYPE` / `<E>_SUB_TYPE` | the metamodel type of the object — `object.entity`, `object.projection`, … |
+| `<E>_NAME` | the **object's** metamodel name |
+| `<E>_SOURCE_<ROLE>_*` | one `source.rdb` child, keyed by its `@role` (`PRIMARY` \| `REPLICA`) |
+| `<E>_SOURCE_<ROLE>_KIND` | the source's `@kind` — `table`, `view`, `materializedView`, `storedProc`, `tableFunction` |
+| `<E>_SOURCE_<ROLE>_TABLE` / `_VIEW` / `_PROC` / … | the physical name, under the member for that `kind` |
+| `<E>_SOURCE_<ROLE>_SCHEMA` | the DB schema, emitted only when one is declared |
+| `<E>_<FIELD>_FIELD` | the **logical** name — the field as your code and the wire call it |
+| `<E>_<FIELD>_COLUMN` | the **physical** column — `@column` if declared, else the name through `column_naming` |
+| `<E>_IDENTITY_<NAME>_*` / `<E>_INDEX_<NAME>_*` | one `identity.*` / `index.*` child, keyed by its metamodel name |
+| `…_INDEX` | the database index name — on `identity.secondary` and `index.lookup` only |
+
+**Why the physical name is not just `<E>_NAME`.** One member cannot hold a
+table, a view and a stored procedure and still mean something. In a single run
+it used to:
+
+```
+LEDGER_NAME          = "TBL_LDG_ENTRY"    KIND: "table"
+CUSTOMERSUMMARY_NAME = "V_CUST_ROLLUP"    KIND: "view"
+PROCOUT_NAME         = "SP_CUST_ROLLUP"   KIND: "storedProc"
+```
+
+A reader had to consult `<E>_KIND` to find out what they were holding, and in
+none of the three did `<E>_NAME` hold the object's own name.
+
+**A write-through entity has two physical names, and both have a home.** It
+writes to a table and reads through a replica view; keying sources by role is
+what gives the view a slot:
+
+```python
+LEDGER_SOURCE_PRIMARY_KIND: Final[str] = "table"
+LEDGER_SOURCE_PRIMARY_TABLE: Final[str] = "tbl_ldg_entry"
+LEDGER_SOURCE_REPLICA_KIND: Final[str] = "view"
+LEDGER_SOURCE_REPLICA_VIEW: Final[str] = "v_ldg_entry_ro"
+```
+
+**The type segment (`SOURCE` / `IDENTITY` / `INDEX`) is load-bearing, and
+fields are the one exception.** A field's subtype does not change what
+`_COLUMN` denotes, while an object's decides table-vs-view and an identity's
+decides unique-vs-not (ADR-0040 put uniqueness in the type). It is also what
+keeps the members apart at all: `identity.primary` defaults its name to
+`primary`, so an unnamed primary key and a `@role: primary` source would both
+want `<E>_PRIMARY_*` — as the excerpt above shows, that is the common case,
+not a corner one.
+
+**`READ_ONLY` is not carried.** It was a derivation over `@kind`, not something
+anyone declared, and nothing in any port read it. Ask
+`<E>_SOURCE_<ROLE>_KIND` — that is what the author actually wrote.
 
 **It follows `extends`, so a constant you do not find in a module is imported
 from its parent's.** Python has no static inheritance, so an artifact whose
@@ -195,20 +257,26 @@ object extends another re-exports the inherited constants by REFERENCE:
 
 ```python
 # generated/copay_auth_names.py (excerpt)
-from .auth_names import AUTH_ID_COLUMN, AUTH_ID_FIELD, AUTH_KIND, AUTH_NAME, AUTH_READ_ONLY
+from .auth_names import (
+    AUTH_ID_COLUMN, AUTH_ID_FIELD, AUTH_IDENTITY_PK_NAME,
+    AUTH_SOURCE_PRIMARY_KIND, AUTH_SOURCE_PRIMARY_TABLE,
+)
 
-COPAYAUTH_NAME: Final[str] = AUTH_NAME              # the SHARED table, spelled once
+COPAYAUTH_NAME: Final[str] = "CopayAuth"            # its own name, always
+COPAYAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE  # SHARED, spelled once
 COPAYAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN
 COPAYAUTH_COPAY_AMOUNT_COLUMN: Final[str] = "copay_cents"
 ```
 
 Two forms, and which one you get is structural. An object with its OWN source
-declares its own `_KIND`/`_NAME`/`_SCHEMA`/`_READ_ONLY`; one that INHERITS its
-source — a TPH subtype sharing its base's single table — takes all of them
-from the base module. An abstract base a persisted entity extends gets a
-module of its own carrying the columns it declares and **no `_NAME`** — it has
-no table, and must never acquire one. `_COLUMNS_BY_FIELD` stays complete in
-every module, inherited entries included.
+declares its own `_SOURCE_<ROLE>_*` constants; one that INHERITS its source — a
+TPH subtype sharing its base's single table — takes them from the base module.
+Either way each object keeps its own `_NAME`/`_TYPE`/`_SUB_TYPE`, which is what
+a single-table hierarchy legitimately has two of. An abstract base a persisted
+entity extends gets a module of its own carrying the columns and keys it
+declares and **no `_SOURCE_*` at all** — it has no table, and must never
+acquire one. `_COLUMNS_BY_FIELD` stays complete in every module, inherited
+entries included.
 
 **Prefer a typed handle where one exists.** If the ORM gives you a
 type-checked object for the same thing, use that. Replacing it with a string

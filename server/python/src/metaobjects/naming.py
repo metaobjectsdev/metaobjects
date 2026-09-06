@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.meta.meta_data import MetaData
+from metaobjects.shared.separators import PACKAGE_SEP
 
 COLUMN_NAMING_SNAKE_CASE = "snake_case"
 COLUMN_NAMING_LITERAL = "literal"
@@ -93,3 +95,42 @@ def resolve_column_name(field: MetaField, strategy: str = DEFAULT_COLUMN_NAMING)
     if isinstance(col, str) and col:
         return col
     return apply_column_naming_strategy(field.name, strategy)
+
+
+def strip_package(name: str) -> str:
+    """The bare, package-less segment of a metadata name — ``acme::demo::by_name``
+    → ``by_name``.
+
+    A metadata name is package-qualified in some ports and not in others (the JVM
+    loader spells a nested index name with its package; this one does not), so the
+    strip is a no-op here and exists so the RULE holds without a per-port branch.
+    """
+    return name.rsplit(PACKAGE_SEP, 1)[-1]
+
+
+def resolve_index_name(node: MetaData) -> str:
+    """THE database name of an ``identity.secondary`` / ``index.lookup``.
+
+    These nodes carry no ``@column``-style physical spelling — the database name IS
+    the metamodel name — which reads like there is nothing to resolve, and is exactly
+    how the answer came to be written independently in three places in the TypeScript
+    port before ``resolveIndexName`` was made the single door. Nothing to RESTATE is
+    not nothing to REFERENCE.
+
+    Two rules the callers did not each carry:
+
+      * a package qualifier is STRIPPED (see :func:`strip_package`);
+      * an EMPTY name is REFUSED rather than emitted. That gap is exactly one node
+        type wide: an ``identity.*`` with no name is already refused by the loader
+        (``ERR_IDENTITY_NAME_REQUIRED`` — identity nodes carry an FR-024 name check so
+        a dotted ``extends`` ref can address them), while an ``index.lookup`` is not
+        addressable that way and carries no such check, so it loads with ZERO errors
+        and reaches the emitters.
+    """
+    short = strip_package(node.name)
+    if not short:
+        raise ValueError(
+            f"{node.type}.{node.sub_type} declares an empty name; an index's database "
+            f"name IS its metamodel name, so there is nothing to emit. Give it a name."
+        )
+    return short

@@ -8,7 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Generated;
 
-[Table(SubscriberNames.Name)]
+[Table(SubscriberNames.SourcePrimaryTable)]
 public class Subscriber
 {
     public enum SubscriberStatus { active, paused, cancelled }
