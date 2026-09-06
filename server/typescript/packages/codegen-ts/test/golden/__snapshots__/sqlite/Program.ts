@@ -58,7 +58,6 @@ export const Program = {
   $entity: "Program",
   $table: "programs",
   $path: "/programs",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   slug: {
     name: "slug",

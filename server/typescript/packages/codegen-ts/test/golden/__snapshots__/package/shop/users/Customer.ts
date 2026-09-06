@@ -44,7 +44,6 @@ export const Customer = {
   $entity: "Customer",
   $table: CustomerNames.sources.primary.table,
   $path: "/customers",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   email: {
     name: "email",

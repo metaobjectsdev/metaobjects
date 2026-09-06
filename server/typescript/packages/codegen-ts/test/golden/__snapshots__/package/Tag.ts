@@ -63,7 +63,6 @@ export const Tag = {
   $entity: "Tag",
   $table: TagNames.sources.primary.table,
   $path: "/tags",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   label: {
     name: "label",

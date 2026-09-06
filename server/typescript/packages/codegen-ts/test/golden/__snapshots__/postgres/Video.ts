@@ -70,7 +70,6 @@ export const Video = {
   $entity: "Video",
   $table: "videos",
   $path: "/videos",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   exerciseId: {
     name: "exerciseId",

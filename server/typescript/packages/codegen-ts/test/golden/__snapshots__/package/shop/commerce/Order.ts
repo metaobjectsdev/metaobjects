@@ -72,7 +72,6 @@ export const Order = {
   $entity: "Order",
   $table: OrderNames.sources.primary.table,
   $path: "/orders",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   customerId: {
     name: "customerId",

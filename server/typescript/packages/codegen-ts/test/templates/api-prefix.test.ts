@@ -91,32 +91,32 @@ async function loadProjectionFixture() {
 // entity-constants: $apiPrefix
 // ---------------------------------------------------------------------------
 
-describe("renderEntityConstants — $apiPrefix", () => {
-  test("emits $apiPrefix: '' when no prefix provided", () => {
+// This block used to assert the OPPOSITE — that `$apiPrefix` was emitted, for three
+// prefix values and in a fixed position after `$path`. It is inverted rather than
+// deleted, because "the descriptor must not carry the base URL" is now the contract and
+// deserves a test as much as its predecessor did. The `renderRoutesFile` block below is
+// UNCHANGED on purpose: together the two halves state the split this release makes —
+// the client descriptor carries no prefix, and the server routes still mount under one.
+describe("renderEntityConstants — the base URL is not in the descriptor", () => {
+  test("no prefix is emitted when none is passed", () => {
     const entity = makeSimpleEntity();
-    const out = renderEntityConstants(entity).toString();
-    expect(out).toContain('$apiPrefix: ""');
+    expect(renderEntityConstants(entity).toString()).not.toContain("$apiPrefix");
   });
 
-  test("emits $apiPrefix: '/api' when prefix is '/api'", () => {
+  test("no prefix is emitted even when one is passed", () => {
+    const entity = makeSimpleEntity();
+    // The parameter is still ACCEPTED — ADR-0034 ejected copies call this positionally
+    // — so the case that would regress is a caller still supplying a real prefix.
+    expect(renderEntityConstants(entity, "/api").toString()).not.toContain("$apiPrefix");
+    expect(renderEntityConstants(entity, "/api/v1").toString()).not.toContain("$apiPrefix");
+  });
+
+  test("$path survives — the address IS metadata, the base is not", () => {
     const entity = makeSimpleEntity();
     const out = renderEntityConstants(entity, "/api").toString();
-    expect(out).toContain('$apiPrefix: "/api"');
-  });
-
-  test("emits $apiPrefix: '/api/v1' when prefix is '/api/v1'", () => {
-    const entity = makeSimpleEntity();
-    const out = renderEntityConstants(entity, "/api/v1").toString();
-    expect(out).toContain('$apiPrefix: "/api/v1"');
-  });
-
-  test("$apiPrefix appears after $path in output", () => {
-    const entity = makeSimpleEntity();
-    const out = renderEntityConstants(entity, "/api").toString();
-    const pathIdx = out.indexOf("$path");
-    const prefixIdx = out.indexOf("$apiPrefix");
-    expect(pathIdx).toBeGreaterThan(-1);
-    expect(prefixIdx).toBeGreaterThan(pathIdx);
+    // Without this, an emitter that produced nothing at all would pass the two above.
+    expect(out).toContain('$path: "/subscribers"');
+    expect(out).toContain('$entity: "Subscriber"');
   });
 });
 

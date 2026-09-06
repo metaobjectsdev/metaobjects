@@ -87,7 +87,17 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
 
 export function renderEntityConstants(
   obj: MetaObject,
-  apiPrefix = "",
+  /**
+   * @deprecated Accepted and IGNORED. The API base URL left the descriptor: generated
+   * client artifacts emit entity-relative paths and the base is supplied once at the
+   * client provider (`baseUrl`), because where the browser sends a request is a
+   * deployment fact rather than something to freeze at `meta gen` time.
+   *
+   * It must STAY in the signature: `src/reference/entity.ts` is copied verbatim into
+   * adopter repos (ADR-0034) and calls this positionally, so removing the parameter
+   * would fail to compile in every ejected copy. Removal is a separate later break.
+   */
+  _apiPrefix = "",
   // §A6. OPTIONAL, and it must stay optional: `src/reference/entity.ts` is copied
   // verbatim into adopter repos by ADR-0034 scaffold-and-own and calls this with two
   // arguments. A required parameter would fail to compile in every ejected copy.
@@ -116,7 +126,6 @@ export function renderEntityConstants(
       code`  $entity: ${JSON.stringify(entityName)}`,
       tableLine,
       code`  $path: ${JSON.stringify(path)}`,
-      code`  $apiPrefix: ${JSON.stringify(apiPrefix)}`,
       ...fieldEntries.map((e) => code`${e}`),
     ],
     { on: ",\n" },

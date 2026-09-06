@@ -67,7 +67,6 @@ export const Week = {
   $entity: "Week",
   $table: "weeks",
   $path: "/weeks",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   programId: {
     name: "programId",

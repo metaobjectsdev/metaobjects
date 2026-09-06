@@ -76,7 +76,6 @@ export const WorkoutEvent = {
   $entity: "WorkoutEvent",
   $table: "workout_events",
   $path: "/workout_events",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   subscriberId: {
     name: "subscriberId",

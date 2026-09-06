@@ -37,12 +37,16 @@ export function entityMetaSpecifier(entityName: string, extStyle: string | undef
 
 export function renderEntityMetaFile(
   entity: MetaObject,
-  apiPrefix = "",
-  // §A6 fix round 3. OPTIONAL, and it must stay optional: this function is called
-  // from codegen-ts-tanstack's reference/hooks.ts and reference/grid-hook.ts, both
-  // copied verbatim into adopter repos (ADR-0034). A required parameter would fail
-  // to compile in every ejected copy. Forwarded straight through to
-  // renderEntityConstants — same shape, same "no equality guard" rule.
+  /**
+   * @deprecated Accepted and IGNORED — see `renderEntityConstants`. The API base URL
+   * left the descriptor; the client provider's `baseUrl` supplies it at runtime.
+   *
+   * §A6 fix round 3. OPTIONAL, and it must stay optional: this function is called
+   * from codegen-ts-tanstack's reference/hooks.ts and reference/grid-hook.ts, both
+   * copied verbatim into adopter repos (ADR-0034). A required parameter would fail
+   * to compile in every ejected copy.
+   */
+  _apiPrefix = "",
   names?: { readonly name: string; readonly symbol: Code } | undefined,
 ): string {
   const body = code`
@@ -54,7 +58,7 @@ export function renderEntityMetaFile(
 // from here so a client bundle never pulls the ORM in. \`${entity.name}.ts\` also
 // exports this descriptor, for server-side and pre-existing consumers.
 
-${renderEntityConstants(entity, apiPrefix, names)}
+${renderEntityConstants(entity, "", names)}
 `;
   return body.toString();
 }

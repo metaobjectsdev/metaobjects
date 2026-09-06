@@ -62,7 +62,6 @@ export const Product = {
   $entity: "Product",
   $table: ProductNames.sources.primary.table,
   $path: "/products",
-  $apiPrefix: "",
   id: { name: "id", label: "Id", view: "number", htmlType: "number" },
   name: {
     name: "name",
