@@ -8,14 +8,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig, REFERENCE_GENERATOR_NAMES } from "../src/index.js";
 import type { ReferenceGeneratorName, Generator } from "../src/index.js";
-import {
-  entityFile as builtinEntity,
-  queriesFile as builtinQueries,
-  routesFile as builtinRoutes,
-  routesFileHono as builtinRoutesHono,
-  barrel as builtinBarrel,
-  namesFile as builtinNames,
-} from "../src/generators/index.js";
+import { routesFileHono as builtinRoutesHono, namesFile as builtinNames } from "../src/generators/index.js";
+import { barrel as builtinBarrel } from "../src/generators/barrel.js";
+import { entityFile as builtinEntity } from "../src/generators/entity-file.js";
+import { queriesFile as builtinQueries } from "../src/generators/queries-file.js";
+import { routesFile as builtinRoutes } from "../src/generators/routes-file.js";
 import { entityFile as refEntity } from "../src/reference/entity.js";
 import { queriesFile as refQueries } from "../src/reference/queries.js";
 import { routesFile as refRoutes } from "../src/reference/routes.js";
@@ -38,6 +35,15 @@ const FIXTURES = [
   // `extends` at all: the built-in and the reference copy could have diverged on the whole
   // new branch while this gate stayed green.
   "extends-chain.json",
+  // An entity with `@autoSet` timestamps. Added because NOT ONE of the fixtures above
+  // carried one, and `@autoSet` is the sole trigger for the #203 `insertPreserving<Entity>`
+  // escape hatch + its `<Entity>InsertPreservingSchema` import — a whole branch of the
+  // queries composer this gate could not see. It could not see it for a reason that
+  // outlives this fixture: every model here was written to exercise SHAPE (packages,
+  // FKs, value objects, extends), and `@autoSet` is a per-field write RULE, so no
+  // shape-driven corpus grows one by accident. The reference copy had in fact lost the
+  // branch, and the loss is silent — output simply lacks the function.
+  "autoset-timestamps.json",
 ];
 
 let tmp: string;

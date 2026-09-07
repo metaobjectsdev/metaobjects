@@ -23,8 +23,12 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
   `com.metaobjects:*` / `metaobjects` / `MetaObjects.*` deps).
 - [ ] Count metadata source lines + all `@generated` / `DO NOT EDIT` files repo-wide.
 - [ ] **Owned-generators check:** does the project own generators at `codegen/generators/*`
-  (scaffold-and-own via `meta init`), or still import the **deprecated** package export
-  (`@metaobjectsdev/codegen-ts/generators`)? Not owning is itself a finding.
+  (scaffold-and-own via `meta init`), or still import `entityFile` / `queriesFile` /
+  `routesFile` / `barrel` from `@metaobjectsdev/codegen-ts/generators`? Those four were
+  REMOVED at 1.0, so an import of them is an upgrade blocker, not just a style finding.
+  **Match the four NAMES, never the subpath alone** — that subpath is the supported home of
+  the non-ownable generators (`promptRender`, `outputParser`, `routesFileHono`, …), so
+  flagging a hit on the path convicts a correct project.
 - [ ] **Cross-language version consistency (silent-drift check).** If the project uses MetaObjects in more than one language (e.g. a TS web client + a Java/Python/C# backend), enumerate EVERY MetaObjects package across ALL ecosystems (npm `@metaobjectsdev/*`, Maven `com.metaobjects:*`, PyPI `metaobjects`, NuGet `MetaObjects.*`) and record each version. **The version-number LINES differ by ecosystem (npm/PyPI/NuGet `0.x`/`1.x` vs Maven `7.x`/`8.x`), so you CANNOT eyeball drift** — a `0.12` next to a `7.7` looks fine but can be badly out of sync. Compare the **`metamodelVersion`** each port reports (the shared spec version on the registry manifest): a mismatch is real cross-language drift and a **finding** — the ports disagree on vocabulary/wire behavior. Also flag any port not on the latest release for its ecosystem. (This is a known real-world failure mode: newest backend, stale client, invisible because the numbers differ.)
 - [ ] Classify: **Greenfield** (none/minimal) · **Partial** · **Deep** → choose path below.
 
@@ -343,8 +347,11 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
 
 ## Owned-codegen & scaffold-and-own assessment
 
-- If config imports deprecated `@metaobjectsdev/codegen-ts/generators` instead of
-  owned `codegen/generators/*`, recommend the scaffold-and-own migration (`meta init`).
+- If config imports `entityFile` / `queriesFile` / `routesFile` / `barrel` from
+  `@metaobjectsdev/codegen-ts/generators` instead of owned `codegen/generators/*`,
+  recommend the scaffold-and-own migration (`meta init`, or `meta eject <name>`) — on 1.0+
+  those four no longer resolve. Importing the non-ownable generators from that subpath is
+  correct and is not a finding.
 - Audit owned generators: (a) regenerate clean? (b) drifted from reference templates —
   intentional (good) vs stale/accidental (missed upstream fix)? (c) hand-rolling a walk
   that a declarative `scope` + `outputPattern` could replace? (d) bespoke shape better as

@@ -27,12 +27,10 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
-import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  routesFileHono,
-} from "../../src/generators/index.js";
+import { routesFileHono } from "../../src/generators/index.js";
+import { entityFile } from "../../src/generators/entity-file.js";
+import { queriesFile } from "../../src/generators/queries-file.js";
+import { routesFile } from "../../src/generators/routes-file.js";
 import { apiDocsFile } from "../../src/generators/api-docs-file.js";
 import { buildApiModel, type ApiModel } from "../../src/generators/api-model.js";
 import { renderEntityApiPage, renderAgentApi } from "../../src/generators/api-doc-render.js";

@@ -13,7 +13,10 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync
 import { tmpdir } from "node:os";
 import { join, resolve, relative } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
-import { entityFile, queriesFile, routesFile, barrel } from "../../src/generators/index.js";
+import { barrel } from "../../src/generators/barrel.js";
+import { entityFile } from "../../src/generators/entity-file.js";
+import { queriesFile } from "../../src/generators/queries-file.js";
+import { routesFile } from "../../src/generators/routes-file.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";

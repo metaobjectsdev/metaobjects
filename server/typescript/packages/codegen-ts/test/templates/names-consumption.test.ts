@@ -18,7 +18,9 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "../../src/index.js";
 import ts from "typescript";
-import { entityFile, namesFile, queriesFile } from "../../src/generators/index.js";
+import { namesFile } from "../../src/generators/index.js";
+import { entityFile } from "../../src/generators/entity-file.js";
+import { queriesFile } from "../../src/generators/queries-file.js";
 import type { ExtStyle } from "../../src/render-context.js";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/trainer-website-shape.json");

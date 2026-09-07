@@ -60,9 +60,12 @@ describe("examples/showcase — drift gate (the site's corpus)", () => {
   test("committed output is byte-identical to a PRISTINE regen (no hand edits)", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "showcase-pristine-"));
     try {
-      // Model, templates and config only — deliberately NO .gen-state, so the
-      // generator has no merge base and cannot preserve an edit.
-      for (const item of ["metaobjects", "templates", "metaobjects.config.ts"]) {
+      // Model, templates, owned generators and config only — deliberately NO .gen-state,
+      // so the generator has no merge base and cannot preserve an edit. `codegen/` carries
+      // the ADR-0034 owned generator copies the config imports; without it the regen fails
+      // to resolve `./codegen/generators/entity` and this gate reports a config error as
+      // if it were drift.
+      for (const item of ["metaobjects", "templates", "codegen", "metaobjects.config.ts"]) {
         cpSync(join(SHOWCASE, item), join(tmp, item), { recursive: true });
       }
       cpSync(join(SHOWCASE, ".metaobjects", "config.json"),

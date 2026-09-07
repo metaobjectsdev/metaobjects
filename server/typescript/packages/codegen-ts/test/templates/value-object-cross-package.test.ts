@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
-import { entityFile } from "../../src/generators/index.js";
+import { entityFile } from "../../src/generators/entity-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 

@@ -31,7 +31,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import type { Generator } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile } from "@metaobjectsdev/test-generators";
 import { formFile as builtinForm, REFERENCE_GENERATOR_NAMES } from "../src/index.js";
 import type { ReferenceGeneratorName } from "../src/index.js";
 import { formFile as refForm } from "../src/reference/form.js";

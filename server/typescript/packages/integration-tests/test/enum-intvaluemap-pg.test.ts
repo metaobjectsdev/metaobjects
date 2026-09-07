@@ -26,7 +26,7 @@ import {
 } from "@metaobjectsdev/migrate-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig, buildProjectionViews } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, queriesFile } from "@metaobjectsdev/test-generators";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import pg, { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";

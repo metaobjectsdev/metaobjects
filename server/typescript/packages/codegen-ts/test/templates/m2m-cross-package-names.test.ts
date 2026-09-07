@@ -23,7 +23,9 @@ import { tmpdir } from "node:os";
 import { join, dirname, resolve as resolvePath } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../../src/index.js";
-import { entityFile, namesFile, routesFile } from "../../src/generators/index.js";
+import { namesFile } from "../../src/generators/index.js";
+import { entityFile } from "../../src/generators/entity-file.js";
+import { routesFile } from "../../src/generators/routes-file.js";
 
 // Article (shop::blog) <—many:many—> Label (shop::tags), through ArticleLabel
 // (shop::tags) — junction AND target both in a DIFFERENT package from the source, so

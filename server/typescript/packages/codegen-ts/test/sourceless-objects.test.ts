@@ -19,7 +19,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
-import { entityFile, queriesFile, routesFile, routesFileHono } from "../src/generators/index.js";
+import { routesFileHono } from "../src/generators/index.js";
+import { entityFile } from "../src/generators/entity-file.js";
+import { queriesFile } from "../src/generators/queries-file.js";
+import { routesFile } from "../src/generators/routes-file.js";
 import { queriesFile as refQueriesFile } from "../src/reference/queries.js";
 import { routesFile as refRoutesFile } from "../src/reference/routes.js";
 

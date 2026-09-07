@@ -15,13 +15,13 @@ describe("loadMetaobjectsConfig", () => {
         join(dir, "metaobjects.config.ts"),
         [
           `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-          `import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";`,
+          `import { routesFileHono, namesFile, promptRender } from "@metaobjectsdev/codegen-ts/generators";`,
           `import { formFile } from "@metaobjectsdev/codegen-ts-react";`,
           `import { tanstackQuery } from "@metaobjectsdev/codegen-ts-tanstack";`,
           `export default defineConfig({`,
           `  outDir: "out",`,
           `  dialect: "sqlite",`,
-          `  generators: [entityFile(), queriesFile(), barrel(), formFile(), tanstackQuery()],`,
+          `  generators: [routesFileHono(), namesFile(), promptRender(), formFile(), tanstackQuery()],`,
           `});`,
         ].join("\n"),
       );

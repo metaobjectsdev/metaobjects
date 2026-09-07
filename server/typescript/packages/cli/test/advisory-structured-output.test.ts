@@ -72,13 +72,12 @@ function project(extraConfig = ""): string {
   writeFileSync(
     join(dir, "metaobjects.config.ts"),
     `import { defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 export default defineConfig({
   outDir: ${JSON.stringify(join(dir, "generated"))},
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "js",
-  generators: [entityFile()],${extraConfig}
+  generators: ["entity"],${extraConfig}
 });
 `,
   );

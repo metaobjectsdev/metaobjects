@@ -154,6 +154,7 @@
       },
       "devDependencies": {
         "@libsql/client": "^0.14.0",
+        "@metaobjectsdev/test-generators": "workspace:*",
         "@types/node": "^22.0.0",
         "@types/pg": "^8.0.0",
         "bun-types": "latest",
@@ -227,6 +228,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
+        "@metaobjectsdev/test-generators": "workspace:*",
         "bun-types": "latest",
         "typescript": "^5.6.0",
       },
@@ -244,6 +246,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
+        "@metaobjectsdev/test-generators": "workspace:*",
         "bun-types": "latest",
         "typescript": "^5.6.0",
       },
@@ -295,6 +298,7 @@
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/runtime-ts": "workspace:*",
+        "@metaobjectsdev/test-generators": "workspace:*",
         "@testcontainers/postgresql": "^10.13.2",
         "drizzle-orm": "^0.45.1",
         "fastify": "^5.6.2",
@@ -410,6 +414,18 @@
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "zod": "^3.23.0",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
+    "server/typescript/packages/test-generators": {
+      "name": "@metaobjectsdev/test-generators",
+      "version": "0.1.0",
+      "dependencies": {
+        "@metaobjectsdev/codegen-ts": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -681,6 +697,8 @@
     "@metaobjectsdev/sdk": ["@metaobjectsdev/sdk@workspace:server/typescript/packages/sdk"],
 
     "@metaobjectsdev/tanstack": ["@metaobjectsdev/tanstack@workspace:client/web/packages/tanstack"],
+
+    "@metaobjectsdev/test-generators": ["@metaobjectsdev/test-generators@workspace:server/typescript/packages/test-generators"],
 
     "@neon-rs/load": ["@neon-rs/load@0.0.4", "", {}, "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="],
 

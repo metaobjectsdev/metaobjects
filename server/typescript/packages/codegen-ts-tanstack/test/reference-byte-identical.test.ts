@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import type { Generator } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, queriesFile } from "@metaobjectsdev/test-generators";
 import {
   tanstackQuery as builtinHooks,
   tanstackGrid as builtinGrid,

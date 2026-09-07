@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, queriesFile } from "@metaobjectsdev/test-generators";
 import { tanstackQuery, tanstackGrid, tanstackGridHook } from "../src/index.js";
 import { tanstackQuery as refQuery } from "../src/reference/hooks.js";
 import { tanstackGrid as refGrid } from "../src/reference/grid.js";

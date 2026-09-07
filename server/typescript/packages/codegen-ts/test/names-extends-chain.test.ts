@@ -18,7 +18,8 @@ import { join, relative } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
-import { entityFile, namesFile } from "../src/generators/index.js";
+import { namesFile } from "../src/generators/index.js";
+import { entityFile } from "../src/generators/entity-file.js";
 
 const MODEL = {
   "metadata.root": {

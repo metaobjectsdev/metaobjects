@@ -7,6 +7,58 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Removed — the deprecated `codegen-ts/generators` export of the four ownable generators
+
+`entityFile`, `queriesFile`, `routesFile` and `barrel` are no longer exported from
+`@metaobjectsdev/codegen-ts/generators`. They carried an `@deprecated` marker since ADR-0034
+landed; removing them is the ratified 1.0 move (ADR-0035 A3, `docs/1.0-readiness.md` G2).
+**Migration is one file each:** `meta init` scaffolds owned copies into
+`codegen/generators/*.ts`, and `meta eject <name>` copies one at any time. Guide:
+[`docs/features/migrations/0.x-to-1.0.md`](docs/features/migrations/0.x-to-1.0.md) §11.
+
+**The `/generators` subpath itself is NOT removed and is not deprecated.** It stays the
+supported public home of the generators that have no ownable copy — the prompt/output tier
+(`promptRender`, `outputParser`, `outputPrompt`, `extractor`, `renderHelper`,
+`traceHelperFile`) plus `routesFileHono`, `namesFile` and `callableFile`. The CLI's own
+prompt-gate warning names that import path, so deleting the subpath would have contradicted
+the product's own instructions. Scoping this by NAME rather than by path is load-bearing: of
+six adopter estates surveyed before the cut, **five import only non-deprecated names from
+that subpath and one imports the four**; a path-wide removal would have broken all six and
+the owned-copy remedy would have applied to one.
+
+### Fixed — an ejected `queries` generator silently dropped `insertPreserving<Entity>` (#203)
+
+`src/reference/queries.ts` — the template `meta init` scaffolds and `meta eject queries`
+copies — omitted the `@autoSet` branch the built-in composer has: no
+`insertPreserving<Entity>` function and no `<Entity>InsertPreservingSchema` import. So an
+adopter who owned their queries generator lost the #203 escape hatch on exactly the entities
+that have one, with **no error** — the emitted module simply lacked the function. Two engine
+primitives it needs (`renderInsertPreservingFn`, `hasAutoSetFields`) were not public either,
+so an owned copy could not have restored it by hand.
+
+This matters more at 1.0 than it did before: with the built-in export removed, the owned copy
+is the ONLY path, so the degraded output becomes the only output.
+
+**Why the gate that exists for this was green.** `reference-byte-identical.test.ts` runs every
+reference template AND the built-in it was copied from over a fixture corpus and requires
+byte-identical output — and **not one of its seven fixtures carried `@autoSet`**, which is the
+sole trigger for the branch. The reason outlives the fixture: every model in that corpus was
+written to exercise SHAPE (packages, FKs, value objects, `extends`), and `@autoSet` is a
+per-field write RULE, so no shape-driven corpus grows one by accident. A fixture that carries
+one is added, and was confirmed to fail before the fix and pass after.
+
+`renderInsertPreservingFn` and `hasAutoSetFields` are now public engine primitives.
+
+### Fixed — the audit skill convicted correct projects of not owning their codegen
+
+`metaobjects-audit` told an auditing agent that any hit on
+`grep -r '@metaobjectsdev/codegen-ts/generators'` "means the project has not adopted
+scaffold-and-own." Five of six surveyed adopter estates hit that grep while importing only
+generators that have no ownable copy — a false finding against a correct project, and the
+recommended remedy (`meta init`) would not have changed anything. The check now matches the
+four removed NAMES, and the skill states outright that importing the non-ownable tier from
+that subpath is correct.
+
 ### Fixed — two doors disagreed about whether an object has one address (all five ports)
 
 `primaryRdbSource` — the shared authority every consumer asks "which source is this object's

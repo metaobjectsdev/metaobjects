@@ -20,7 +20,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { loadMetadataFile } from "./load-metadata.ts";

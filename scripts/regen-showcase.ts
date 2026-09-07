@@ -73,8 +73,10 @@ if (BUN_ONLY && ALL_PORTS) {
   process.exit(2);
 }
 
-/** The inputs a pristine regen needs. `.gen-state` is deliberately absent. */
-const INPUTS = ["metaobjects", "templates", "metaobjects.config.ts", "jvm"];
+/** The inputs a pristine regen needs. `.gen-state` is deliberately absent.
+ *  `codegen` holds the ADR-0034 owned generator copies the config imports — without it the
+ *  regen cannot resolve `./codegen/generators/entity` and dies as a config error. */
+const INPUTS = ["metaobjects", "templates", "codegen", "metaobjects.config.ts", "jvm"];
 
 interface Port {
   /** Label for the output line. */

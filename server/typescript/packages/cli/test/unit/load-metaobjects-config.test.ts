@@ -26,21 +26,21 @@ describe("loadMetaobjectsConfig", () => {
   test("loads a TS config file and returns its default export", async () => {
     writeFileSync(join(tmp, "metaobjects.config.ts"), `
       import { defineConfig } from "@metaobjectsdev/codegen-ts";
-      import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+      import { routesFileHono, namesFile } from "@metaobjectsdev/codegen-ts/generators";
       export default defineConfig({
         outDir: "out",
         extStyle: "none",
         dbImport: "../db",
         dialect: "sqlite",
-        generators: [entityFile(), barrel()],
+        generators: [routesFileHono(), namesFile()],
       });
     `);
     const cfg = await loadMetaobjectsConfig(tmp);
     expect(cfg.outDir).toBe("out");
     expect(cfg.dialect).toBe("sqlite");
     expect(cfg.generators.length).toBe(2);
-    expect(genName(cfg.generators[0]!)).toBe("entity-file");
-    expect(genName(cfg.generators[1]!)).toBe("barrel");
+    expect(genName(cfg.generators[0]!)).toBe("routes-file-hono");
+    expect(genName(cfg.generators[1]!)).toBe("names");
   });
 
   test("throws a clear error if metaobjects.config.ts is missing", async () => {
@@ -63,16 +63,16 @@ describe("loadMetaobjectsConfig", () => {
     try {
       writeFileSync(join(osTmp, "metaobjects.config.ts"), `
         import { defineConfig } from "@metaobjectsdev/cli";
-        import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+        import { routesFileHono, namesFile } from "@metaobjectsdev/codegen-ts/generators";
         export default defineConfig({
           outDir: "out", extStyle: "none", dbImport: "../db", dialect: "sqlite",
-          generators: [entityFile(), barrel()],
+          generators: [routesFileHono(), namesFile()],
         });
       `);
       const cfg = await loadMetaobjectsConfig(osTmp);
       expect(cfg.generators.length).toBe(2);
-      expect(genName(cfg.generators[0]!)).toBe("entity-file");
-      expect(genName(cfg.generators[1]!)).toBe("barrel");
+      expect(genName(cfg.generators[0]!)).toBe("routes-file-hono");
+      expect(genName(cfg.generators[1]!)).toBe("names");
     } finally {
       rmSync(osTmp, { recursive: true, force: true });
     }
@@ -87,10 +87,10 @@ describe("loadMetaobjectsConfig", () => {
     writeFileSync(stale, `export default { generators: [] };`);
     writeFileSync(join(tmp, "metaobjects.config.ts"), `
       import { defineConfig } from "@metaobjectsdev/codegen-ts";
-      import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+      import { routesFileHono, namesFile } from "@metaobjectsdev/codegen-ts/generators";
       export default defineConfig({
         outDir: "out", extStyle: "none", dbImport: "../db", dialect: "sqlite",
-        generators: [entityFile(), barrel()],
+        generators: [routesFileHono(), namesFile()],
       });
     `);
     expect(existsSync(stale)).toBe(true);
@@ -104,13 +104,13 @@ describe("loadMetaobjectsConfig", () => {
     try {
       writeFileSync(join(osTmp, "metaobjects.config.ts"), `
         import { defineConfig } from "@metaobjectsdev/cli";
-        import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+        import { routesFileHono, namesFile } from "@metaobjectsdev/codegen-ts/generators";
         // import { tanstackQuery } from "@metaobjectsdev/codegen-ts-tanstack";
         // ↑ The package re-exports nothing yet — covered fully in Tasks 8/9.
         // For now: confirm the alias loads without error.
         export default defineConfig({
           outDir: "out", extStyle: "none", dbImport: "../db", dialect: "sqlite",
-          generators: [entityFile(), barrel()],
+          generators: [routesFileHono(), namesFile()],
         });
       `);
       const cfg = await loadMetaobjectsConfig(osTmp);

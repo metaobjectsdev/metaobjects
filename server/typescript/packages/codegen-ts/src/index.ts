@@ -156,12 +156,19 @@ export {
   renderFindByIdFn,
   renderListFn,
   renderCreateFn,
+  // #203 — the `insertPreserving<Entity>` escape hatch, emitted only for an entity with an
+  // `@autoSet` timestamp. Public because an OWNED queries generator must be able to emit it:
+  // without this primitive (and `hasAutoSetFields` below) an ejected copy silently drops the
+  // escape hatch on exactly the entities that have one, and the caller loses the only
+  // generated way to insert a row preserving its own `@autoSet` values.
+  renderInsertPreservingFn,
   renderUpdateFn,
   renderDeleteByIdFn,
   renderReverseFinderFns,
   reverseFksFor,
   getPkInfo,
 } from "./templates/queries.js";
+export { hasAutoSetFields } from "./templates/zod-validators.js";
 
 // Built-in template render functions — the composition seam for adopters who
 // want to call a built-in template, then post-process / append to its output

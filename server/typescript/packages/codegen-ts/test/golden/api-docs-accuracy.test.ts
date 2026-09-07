@@ -37,16 +37,10 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
-import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  routesFileHono,
-  callableFile,
-  promptRender,
-  extractor,
-  renderHelper,
-} from "../../src/generators/index.js";
+import { routesFileHono, callableFile, promptRender, extractor, renderHelper } from "../../src/generators/index.js";
+import { entityFile } from "../../src/generators/entity-file.js";
+import { queriesFile } from "../../src/generators/queries-file.js";
+import { routesFile } from "../../src/generators/routes-file.js";
 import { buildApiModel, type ApiModel, type ApiSymbol } from "../../src/generators/api-model.js";
 import { routesHandlerName, variableNameFromEntity } from "../../src/naming.js";
 import { makeRenderContext } from "../../src/render-context.js";

@@ -99,7 +99,6 @@ const CUSTOM_META = {
 // consumer provider (mirrors how an adopter ships custom types to gen/migrate).
 const CUSTOM_CONFIG = [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
   `import { TypeId, TYPE_FIELD, MetaField } from "@metaobjectsdev/metadata";`,
   `const geoProvider = {`,
   `  id: "test-geo",`,
@@ -117,7 +116,7 @@ const CUSTOM_CONFIG = [
   `export default defineConfig({`,
   `  outDir: "out",`,
   `  dialect: "sqlite",`,
-  `  generators: [entityFile()],`,
+  `  generators: ["entity"],`,
   `  providers: [geoProvider],`,
   `});`,
 ].join("\n");
@@ -618,12 +617,11 @@ const PREFIXED_META = {
 
 const PREFIXED_CONFIG = [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
   `export default defineConfig({`,
   `  outDir: "gen",`,
   `  dialect: "sqlite",`,
   `  apiPrefix: "/api",`,
-  `  generators: [entityFile()],`,
+  `  generators: ["entity"],`,
   `});`,
 ].join("\n");
 

@@ -74,7 +74,9 @@ import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { runGen } from "../src/runner.js";
-import { agentDocsFile, entityFile, routesFile } from "../src/generators/index.js";
+import { agentDocsFile } from "../src/generators/index.js";
+import { entityFile } from "../src/generators/entity-file.js";
+import { routesFile } from "../src/generators/routes-file.js";
 // Both derivations, read through the package barrel so this test exercises the surface a
 // consumer has. The de-blinding check below needs BOTH: agreement is only a measurement
 // while the two still spell different addresses for the fixture's TPH subtype.

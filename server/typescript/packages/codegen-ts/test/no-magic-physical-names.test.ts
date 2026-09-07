@@ -47,9 +47,11 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
-import {
-  entityFile, queriesFile, routesFile, namesFile, callableFile, barrel,
-} from "../src/generators/index.js";
+import { namesFile, callableFile } from "../src/generators/index.js";
+import { barrel } from "../src/generators/barrel.js";
+import { entityFile } from "../src/generators/entity-file.js";
+import { queriesFile } from "../src/generators/queries-file.js";
+import { routesFile } from "../src/generators/routes-file.js";
 
 // ---------------------------------------------------------------------------
 // The de-blinded fixture.

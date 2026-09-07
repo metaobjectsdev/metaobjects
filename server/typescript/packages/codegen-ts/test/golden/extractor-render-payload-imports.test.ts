@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
-import { entityFile } from "../../src/generators/index.js";
+import { entityFile } from "../../src/generators/entity-file.js";
 import { renderExtractor } from "../../src/templates/extractor.js";
 import { renderRenderHelper } from "../../src/templates/render-helper.js";
 import { renderOutputParser } from "../../src/templates/output-parser.js";

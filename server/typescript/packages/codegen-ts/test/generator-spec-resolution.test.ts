@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig, resolveGenerators } from "../src/metaobjects-config.js";
-import { entityFile, routesFile } from "../src/generators/index.js";
+import { entityFile } from "../src/generators/entity-file.js";
+import { routesFile } from "../src/generators/routes-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 

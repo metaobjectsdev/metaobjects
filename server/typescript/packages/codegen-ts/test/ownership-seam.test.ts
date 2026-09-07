@@ -22,7 +22,8 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
 import * as codegenTs from "../src/index.js";
 import { requirementTests } from "../src/generators/requirement-tests.js";
-import { entityFile, barrel } from "../src/generators/index.js";
+import { barrel } from "../src/generators/barrel.js";
+import { entityFile } from "../src/generators/entity-file.js";
 import { renderRequirementTest } from "../src/templates/requirement-test.js";
 import type { RequirementTestArgs } from "../src/templates/requirement-test.js";
 

@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/test-generators";
 import { tanstackQuery, tanstackGrid, tanstackGridHook } from "../src/index.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 

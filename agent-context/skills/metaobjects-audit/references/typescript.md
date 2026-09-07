@@ -69,22 +69,34 @@ import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 ```
 
-**Deprecated import path** (still works, removal planned):
+**Removed import path.** `entityFile` / `queriesFile` / `routesFile` / `barrel` were
+exported from `@metaobjectsdev/codegen-ts/generators` and deprecated; **1.0 removed them**
+(ADR-0035 A3). On 1.0+ this no longer resolves:
 
 ```ts
 import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 ```
 
-**Finding this in a project:** grep for the deprecated path:
+**Do NOT flag the subpath itself.** `@metaobjectsdev/codegen-ts/generators` is the supported,
+non-deprecated home of the generators that have no ownable copy — the prompt/output tier
+(`promptRender`, `outputParser`, `outputPrompt`, `extractor`, `renderHelper`,
+`traceHelperFile`) plus `routesFileHono`, `namesFile` and `callableFile`. The CLI's own
+prompt-gate warning tells adopters to import `promptRender` from exactly this path. A
+project importing those from it is CORRECT, and reporting it as un-adopted scaffold-and-own
+is a false finding.
+
+**Finding this in a project:** grep for the four removed NAMES on that path, never the path
+alone:
 
 ```bash
-grep -r '@metaobjectsdev/codegen-ts/generators' .
+grep -rn '@metaobjectsdev/codegen-ts/generators' . \
+  | grep -E 'entityFile|queriesFile|routesFile|barrel'
 ```
 
-A hit means the project has not adopted scaffold-and-own — recommend `meta init`
-to scaffold the owned copies. The owned generator files themselves (`codegen/generators/*.ts`)
-are the second thing to audit: are they stale relative to the reference templates,
-or intentionally customized?
+A hit is a 1.0 upgrade blocker (the import fails to resolve) — recommend `meta init` (or
+`meta eject <name>`) to scaffold the owned copies, then import those locally. The owned
+generator files themselves (`codegen/generators/*.ts`) are the second thing to audit: are
+they stale relative to the reference templates, or intentionally customized?
 
 ---
 

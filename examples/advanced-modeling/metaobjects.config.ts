@@ -1,12 +1,13 @@
 import { defineConfig } from "@metaobjectsdev/cli";
-// This example is embedded IN the metaobjects monorepo (not `npm install`ed),
-// so there is no scaffolded ADR-0034 owned-copy target for it to import from
-// (`meta init`'s codegen/generators/*.ts copies resolve their OWN imports via
-// a real package install, which this repo-local example doesn't have). A real
-// consumer project runs `meta init` and gets local, editable owned copies —
-// see CLAUDE.md "Codegen architecture (Vite-style plugins)". Here every
-// generator is imported directly from the package.
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// ADR-0034 scaffold-and-own: entityFile / queriesFile / routesFile / barrel are OWNED
+// local copies under codegen/generators/, exactly what `meta init` scaffolds into a real
+// consumer project (and what `meta eject <name>` copies on demand). They are the only
+// import path for these four as of 1.0 — the deprecated
+// `@metaobjectsdev/codegen-ts/generators` export of them was removed at the cut.
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 // React form codegen (PATTERN 2 — entity views: the generated form dispatches
 // per view.* control, incl. <ImageUpload> for view.image).
 import { formFile } from "@metaobjectsdev/codegen-ts-react";

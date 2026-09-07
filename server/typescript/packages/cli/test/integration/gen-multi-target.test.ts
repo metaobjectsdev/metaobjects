@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { run } from "../../src/index.js";
+import { readReferenceTemplate } from "@metaobjectsdev/codegen-ts";
 
 // Temp dirs live inside the monorepo so jiti can resolve @metaobjectsdev/* when
 // it loads metaobjects.config.ts (mirrors gen-sqlite.test.ts).
@@ -32,9 +33,16 @@ function setupRepo(): string {
     },
   }));
 
+  // `routesFile` takes a per-generator `target`, so it cannot be named as a bare registry
+  // string here. Post-1.0 that means an OWNED copy — the same file `meta init` scaffolds —
+  // which is also the shape this gate should be proving: an owned generator resolving the
+  // engine through the CLI alias map, then routing its output to a named target.
+  mkdirSync(join(root, "codegen", "generators"), { recursive: true });
+  writeFileSync(join(root, "codegen", "generators", "routes.ts"), readReferenceTemplate("routes"));
+
   writeFileSync(join(root, "metaobjects.config.ts"), `
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { routesFile } from "./codegen/generators/routes";
 import { tanstackQuery } from "@metaobjectsdev/codegen-ts-tanstack";
 export default defineConfig({
   outDir: ${JSON.stringify(join(root, "packages/database/src/generated"))},
@@ -44,7 +52,7 @@ export default defineConfig({
     api: { outDir: ${JSON.stringify(join(root, "apps/api/src/generated"))}, dbImport: "@acme/database" },
     web: { outDir: ${JSON.stringify(join(root, "apps/web/src/generated"))} },
   },
-  generators: [ entityFile(), queriesFile(), routesFile({ target: "api" }), tanstackQuery({ target: "web" }) ],
+  generators: [ "entity", "queries", routesFile({ target: "api" }), tanstackQuery({ target: "web" }) ],
 });
 `);
   return root;

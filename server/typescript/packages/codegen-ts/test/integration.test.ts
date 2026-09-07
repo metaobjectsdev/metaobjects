@@ -6,7 +6,10 @@ import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "../src/index.js";
-import { entityFile, queriesFile, routesFile, barrel } from "../src/generators/index.js";
+import { barrel } from "../src/generators/barrel.js";
+import { entityFile } from "../src/generators/entity-file.js";
+import { queriesFile } from "../src/generators/queries-file.js";
+import { routesFile } from "../src/generators/routes-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 

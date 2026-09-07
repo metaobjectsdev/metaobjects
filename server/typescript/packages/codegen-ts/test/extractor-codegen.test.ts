@@ -18,7 +18,7 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
 import { renderExtractor } from "../src/templates/extractor.js";
 import { generatePayloadInterfaces } from "../src/payload-codegen.js";
-import { entityFile } from "../src/generators/index.js";
+import { entityFile } from "../src/generators/entity-file.js";
 import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";

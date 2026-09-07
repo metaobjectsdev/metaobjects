@@ -25,7 +25,7 @@ import { tanstackGrid } from "../src/tanstack-grid.js";
 import { tanstackGridHook } from "../src/tanstack-grid-hook.js";
 import { renderColumnsFile } from "../src/templates/columns-file.js";
 import { makeRenderContext, buildPkMap, buildRelationMap, runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile } from "@metaobjectsdev/test-generators";
 
 async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: MetaObject; copay: MetaObject }> {
   const loader = new MetaDataLoader();

@@ -84,9 +84,12 @@ PROJECT ROOT that CONTAINS the metadata — never the metadata directory itself.
 ## The generators
 
 Server-side, framework-neutral. The first four are **scaffolded into your repo** by
-`meta init` and imported from `./codegen/generators/*` (ADR-0034); the rest come from the
-package main entry, `@metaobjectsdev/codegen-ts`. Do **not** import any of them from
-`@metaobjectsdev/codegen-ts/generators` — that subpath is deprecated and removed at 1.0.
+`meta init` and imported from `./codegen/generators/*` (ADR-0034) — 1.0 REMOVED their
+`@metaobjectsdev/codegen-ts/generators` export, so an owned copy is the only path. The
+engine primitives come from the package main entry, `@metaobjectsdev/codegen-ts`. The
+`/generators` subpath itself is NOT deprecated: it is the supported home of the generators
+with no ownable copy — `promptRender`, `outputParser`, `outputPrompt`, `extractor`,
+`renderHelper`, `traceHelperFile`, `routesFileHono`, `namesFile`, `callableFile`.
 
 | Generator | Emits per entity |
 |---|---|

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/test-generators";
 import { tanstackQuery, tanstackGrid } from "../src/index.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";

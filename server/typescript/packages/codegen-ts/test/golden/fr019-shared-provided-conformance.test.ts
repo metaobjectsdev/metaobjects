@@ -13,7 +13,9 @@ import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
-import { entityFile, queriesFile, barrel } from "../../src/generators/index.js";
+import { barrel } from "../../src/generators/barrel.js";
+import { entityFile } from "../../src/generators/entity-file.js";
+import { queriesFile } from "../../src/generators/queries-file.js";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 
 function findRepoRoot(start: string): string {

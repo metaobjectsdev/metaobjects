@@ -45,13 +45,12 @@ function setupCodegenRepo(): string {
     join(root, "metaobjects.config.ts"),
     `
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 export default defineConfig({
   outDir: ${JSON.stringify(genOutDir(root))},
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",
-  generators: [entityFile()],
+  generators: ["entity"],
 });
 `,
   );

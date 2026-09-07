@@ -1,13 +1,15 @@
 import { defineConfig } from "@metaobjectsdev/cli";
-// This example is embedded IN the metaobjects monorepo (not `npm install`ed), so
-// there is no scaffolded ADR-0034 owned-copy target for it to import from — every
-// generator is imported directly from the package. A real consumer project runs
-// `meta init` and gets local, editable owned copies.
+// ADR-0034 scaffold-and-own: the four ownable generators are OWNED local copies under
+// codegen/generators/, exactly what `meta init` scaffolds into a real consumer project.
+// They are the only import path for these four as of 1.0 — the deprecated
+// `@metaobjectsdev/codegen-ts/generators` export of them was removed at the cut.
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
+// The prompt/render tier is NOT ownable — it is upstream-owned and this subpath stays
+// its supported public home.
 import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  barrel,
   promptRender,
   renderHelper,
   requirementTests,

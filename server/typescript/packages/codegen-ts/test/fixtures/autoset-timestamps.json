@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Article",
+          "children": [
+            { "source.rdb": { "@table": "articles" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+            { "field.timestamp": { "name": "createdAt", "@autoSet": "onCreate" } },
+            { "field.timestamp": { "name": "updatedAt", "@autoSet": "onUpdate" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

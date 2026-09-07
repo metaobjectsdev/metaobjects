@@ -21,7 +21,7 @@ import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
-import { entityFile } from "../src/generators/index.js";
+import { entityFile } from "../src/generators/entity-file.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 

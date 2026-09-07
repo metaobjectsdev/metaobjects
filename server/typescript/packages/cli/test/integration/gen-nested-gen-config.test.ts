@@ -29,13 +29,12 @@ const WORKSPACE_TMP = resolve(import.meta.dirname, "../fixtures/__tmp__");
 function genConfigBody(outDir: string): string {
   return `
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 export default defineConfig({
   outDir: ${JSON.stringify(outDir)},
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",
-  generators: [entityFile()],
+  generators: ["entity"],
 });
 `;
 }

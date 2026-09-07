@@ -21,13 +21,12 @@ describe("meta gen --dry-run", () => {
       join(root, "metaobjects.config.ts"),
       `
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 export default defineConfig({
   outDir: ${JSON.stringify(outDir)},
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",
-  generators: [entityFile()],
+  generators: ["entity"],
 });
 `,
     );

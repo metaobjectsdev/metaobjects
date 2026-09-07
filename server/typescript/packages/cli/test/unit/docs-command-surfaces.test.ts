@@ -29,11 +29,10 @@ const META = {
 // exists when there is a gen config).
 const CONFIG = [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
   `export default defineConfig({`,
   `  outDir: "out",`,
   `  dialect: "sqlite",`,
-  `  generators: [entityFile()],`,
+  `  generators: ["entity"],`,
   `});`,
 ].join("\n");
 
@@ -41,10 +40,9 @@ const CONFIG = [
 // is dialect-specific, so the page cannot be built truthfully without one.
 const CONFIG_NO_DIALECT = [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
   `export default defineConfig({`,
   `  outDir: "out",`,
-  `  generators: [entityFile()],`,
+  `  generators: ["entity"],`,
   `});`,
 ].join("\n");
 
@@ -73,11 +71,10 @@ const META_PERSISTED = {
 // only the owned (ts) surface but link BOTH from the model page.
 const CONFIG_TWO_SURFACES = [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
   `export default defineConfig({`,
   `  outDir: "out",`,
   `  dialect: "sqlite",`,
-  `  generators: [entityFile()],`,
+  `  generators: ["entity"],`,
   `  docs: {`,
   `    apiSurfaces: [`,
   `      { lang: "ts", subDir: "api/ts" },`,

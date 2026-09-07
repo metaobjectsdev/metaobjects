@@ -35,7 +35,7 @@ import { MetaDataLoader, resolveColumnName } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
 import { runGen } from "../src/runner.js";
-import { entityFile } from "../src/generators/index.js";
+import { entityFile } from "../src/generators/entity-file.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 
 const META = JSON.stringify({

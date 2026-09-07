@@ -21,7 +21,6 @@ afterAll(async () => {
 // how the migrate column-mapper handles a novel physical type.
 const CUSTOM_CONFIG = [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
   `import { TypeId, TYPE_VALIDATOR, MetaValidator } from "@metaobjectsdev/metadata";`,
   `const geoProvider = {`,
   `  id: "test-geocheck",`,
@@ -39,7 +38,7 @@ const CUSTOM_CONFIG = [
   `export default defineConfig({`,
   `  outDir: "out",`,
   `  dialect: "postgres",`,
-  `  generators: [entityFile()],`,
+  `  generators: ["entity"],`,
   `  providers: [geoProvider],`,
   `});`,
 ].join("\n");

@@ -49,13 +49,12 @@ function setup(libraries: string[] | undefined): { root: string; outDir: string 
     join(root, "metaobjects.config.ts"),
     `
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 export default defineConfig({
   outDir: ${JSON.stringify(outDir)},
   dialect: "postgres",
   dbImport: "~/db",
   extStyle: "none",
-${libraries === undefined ? "" : `  libraries: ${JSON.stringify(libraries)},\n`}  generators: [entityFile()],
+${libraries === undefined ? "" : `  libraries: ${JSON.stringify(libraries)},\n`}  generators: ["entity"],
 });
 `,
   );

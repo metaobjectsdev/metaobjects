@@ -18,13 +18,16 @@
 //                 door for documentation is `meta docs` (D1).
 
 import type { Generator } from "./generator.js";
+// The four ADR-0034 ownable generators are no longer exported from ./generators/index.js
+// (1.0 removed them — see that file's header). They remain the engine's internal composers
+// and the stable-name registry still constructs them, so import them from their own modules.
+import { entityFile } from "./generators/entity-file.js";
+import { queriesFile } from "./generators/queries-file.js";
+import { routesFile } from "./generators/routes-file.js";
+import { barrel } from "./generators/barrel.js";
 import {
-  entityFile,
-  queriesFile,
   callableFile,
-  routesFile,
   routesFileHono,
-  barrel,
   namesFile,
   mermaidErDiagram,
   promptRender,

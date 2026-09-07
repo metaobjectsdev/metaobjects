@@ -19,7 +19,11 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { runGen, defineConfig } from "../src/index.js";
-import { entityFile, queriesFile, routesFile, barrel, namesFile } from "../src/generators/index.js";
+import { namesFile } from "../src/generators/index.js";
+import { barrel } from "../src/generators/barrel.js";
+import { entityFile } from "../src/generators/entity-file.js";
+import { queriesFile } from "../src/generators/queries-file.js";
+import { routesFile } from "../src/generators/routes-file.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
 const META = JSON.stringify({

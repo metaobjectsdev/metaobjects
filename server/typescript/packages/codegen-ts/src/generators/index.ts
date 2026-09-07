@@ -1,21 +1,22 @@
-// ADR-0034 scaffold-and-own — these built-in generator factories remain the engine's
-// internal composers, but importing them from `@metaobjectsdev/codegen-ts/generators`
-// into a consumer's `metaobjects.config.ts` is DEPRECATED. The recommended path is to
-// own copyable reference templates in your repo (`meta init` scaffolds them into
-// `codegen/generators/*.ts`) and import those locally. This package export will be
-// removed in a future major. See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
+// Built-in generator factories.
+//
+// ADR-0034 scaffold-and-own — `entityFile`, `queriesFile`, `routesFile` and `barrel` were
+// exported here and DEPRECATED; 1.0 REMOVED them (ADR-0035 A3, `docs/1.0-readiness.md` G2,
+// `docs/features/migrations/0.x-to-1.0.md` §11). Own a copy instead: `meta init` scaffolds
+// them into `codegen/generators/*.ts` and `meta eject <name>` copies one at any time. They
+// remain in this directory as the engine's internal composers and as the oracle the
+// byte-identity gate holds each reference template to — they are no longer public API.
+//
+// The factories BELOW are not deprecated and this subpath is their supported public home:
+// the prompt/output tier (`promptRender`, `outputParser`, `outputPrompt`, `extractor`,
+// `renderHelper`, `traceHelperFile`) is upstream-owned and has no ownable copy — the CLI's
+// own prompt-gate warning names this import path — and `routesFileHono` / `namesFile` /
+// `callableFile` are stock generators a consumer wires directly.
+// See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
 
-/** @deprecated ADR-0034 — own a copy instead: `import { entityFile } from "./codegen/generators/entity"` (scaffolded by `meta init`). */
-export { entityFile, type EntityFileOpts } from "./entity-file.js";
-/** @deprecated ADR-0034 — own a copy instead: `import { queriesFile } from "./codegen/generators/queries"` (scaffolded by `meta init`). */
-export { queriesFile, type QueriesFileOpts } from "./queries-file.js";
 export { callableFile, type CallableFileOpts } from "./callable-file.js";
-/** @deprecated ADR-0034 — own a copy instead: `import { routesFile } from "./codegen/generators/routes"` (scaffolded by `meta init`). */
-export { routesFile, type RoutesFileOpts } from "./routes-file.js";
 export { routesFileHono, type RoutesFileHonoOpts } from "./routes-file-hono.js";
 export { namesFile } from "./names-file.js";
-/** @deprecated ADR-0034 — own a copy instead: `import { barrel } from "./codegen/generators/barrel"` (scaffolded by `meta init`). */
-export { barrel, type BarrelOpts } from "./barrel.js";
 /** @deprecated ADR-0021 D1 — neutral artifact owned by `meta docs` (ADR-0020); not part of the recommended `meta gen` suite. */
 export { mermaidErDiagram, type MermaidErOptions } from "./mermaid-er.js";
 export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
