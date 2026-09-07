@@ -90,12 +90,16 @@ Everything above answers "what happens when we *change* the contract." This sect
 answers a different question: **what happens when we find that the toolchain accepted
 something the contract never allowed, and the fix makes it stop loading?**
 
-That case is real and it recurs. Four times before 1.0 the loader accepted a form that
-could not work — an index declaring both `@fields` and `@expr`, where one half was
-silently discarded ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342));
+That case is real and it recurs. The doctrine behind it — *a correction of previously-wrong
+acceptance is a bug fix, not a contract change* — has been applied four times before 1.0.
+**Two of those changed only OUTPUT** and are ordinary bug fixes needing no exception: the
+`0.19.1` `@min` clamp (an authored `@min: 0` was silently discarded) and the `0.21.6` `like`
+case-sensitivity fix. **Two made previously-LOADING metadata stop loading**, and those are
+what this section governs: an index declaring both `@fields` and `@expr`, where one half was
+silently thrown away ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342)), and
 `@filterable` on an array field, which emitted SQL that cannot execute
-([#335](https://github.com/metaobjectsdev/metaobjects/issues/335)). Refusing those is
-not a new rule. It is the documented rule finally being enforced.
+([#335](https://github.com/metaobjectsdev/metaobjects/issues/335)). Refusing those two is not
+a new rule. It is the documented rule finally being enforced.
 
 Under ADR-0023 the registry is strict and sealed, so there is no deprecation shim: a
 refusal takes effect on the release that ships it. That makes it important to say
