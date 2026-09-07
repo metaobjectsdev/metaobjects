@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -349,6 +349,63 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     try {
       aliasMap[TS_POET_PKG] = createRequire(codegenTsResolved).resolve(TS_POET_PKG);
     } catch { /* no ts-poet adjacent to codegen-ts — leave project resolution in place */ }
+  }
+
+  // EVERY DECLARED SUBPATH EXPORT NEEDS ITS OWN ENTRY, because jiti's `alias` matches by
+  // PREFIX and then concatenates the remainder onto the mapped value. The mapped value is
+  // a FILE, so `@metaobjectsdev/codegen-ts/templates/inferred-types` became
+  // `…/codegen-ts/dist/index.js/templates/inferred-types` — a path that has never existed,
+  // named in an error message that mentions neither jiti nor the alias map:
+  //
+  //     Cannot find module '…/@metaobjectsdev/codegen-ts/dist/index.js/templates/inferred-types'
+  //
+  // So every subpath the package deliberately exports was unloadable from an owned
+  // generator, and the documented escape (a dynamic `import()`, which this file's own
+  // comment offers) failed identically, because it falls back to the same broken matcher.
+  // A cold adoption probe hit this retargeting the entity tier off Drizzle and got past it
+  // only by reading this file's compiled output — the subpath holds `fieldTsTypeString`,
+  // the one neutral MetaField→TypeScript mapper, which anyone replacing `renderDrizzleSchema`
+  // needs. `rewriteImportSpecifiers` above was always correct here (it anchors on the
+  // closing quote, so a subpath is left alone); only the alias fallback was wrong, and the
+  // fallback is what an OWNED GENERATOR gets, since only the config file is pre-processed.
+  //
+  // DERIVED from each package's own `exports` map rather than listed. A hand-kept list of
+  // subpaths is the same defect one level up: the package adds an export, nobody edits this
+  // file, and it is unloadable again with the same unrecognisable error. Resolution goes
+  // through `createRequire().resolve`, so the exports map — including its conditions — is
+  // the authority, and a subpath that does not resolve is skipped rather than guessed at.
+  for (const [specifier, resolvedPath] of [...Object.entries(aliasMap)]) {
+    if (!specifier.startsWith("@metaobjectsdev/")) continue;
+    // The package root is the specifier itself; a specifier that is already a subpath
+    // (e.g. ".../generators") contributes nothing further.
+    if (specifier.slice("@metaobjectsdev/".length).includes("/")) continue;
+    // Read the manifest off the FILE SYSTEM by walking up from the resolved entry, not by
+    // requiring `<specifier>/package.json` — these packages do not list `./package.json` in
+    // their own exports map, so requiring it throws ERR_PACKAGE_PATH_NOT_EXPORTED and the
+    // derivation silently produces nothing. (Which it did, on the first cut of this fix:
+    // the gate in test/owned-generator-subpath-import.test.ts stayed red and named the
+    // same impossible path, which is exactly what that assertion is for.)
+    let manifest: { exports?: Record<string, unknown> } | undefined;
+    for (let dir = dirname(resolvedPath); ; dir = dirname(dir)) {
+      try {
+        const parsed = JSON.parse(readFileSync(resolve(dir, "package.json"), "utf8")) as {
+          name?: string;
+          exports?: Record<string, unknown>;
+        };
+        if (parsed.name === specifier) { manifest = parsed; break; }
+      } catch { /* not this directory — keep walking */ }
+      const parent = dirname(dir);
+      if (parent === dir) break;   // filesystem root
+    }
+    if (manifest === undefined) continue;   // no readable manifest — leave normal resolution
+    for (const key of Object.keys(manifest?.exports ?? {})) {
+      if (!key.startsWith("./") || key.includes("*")) continue;
+      const sub = `${specifier}/${key.slice(2)}`;
+      if (aliasMap[sub] !== undefined) continue;   // an explicit CLI_PKG_PATHS entry wins
+      try {
+        aliasMap[sub] = createRequire(resolvedPath).resolve(sub);
+      } catch { /* not resolvable under these conditions — skip rather than invent a path */ }
+    }
   }
 
   // Pre-process the config file content to rewrite @metaobjectsdev/* import
