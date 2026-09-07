@@ -9,7 +9,6 @@ import {
 import {
   type AnyPgColumn,
   bigint,
-  bigserial,
   integer,
   pgTable,
   varchar,
@@ -18,7 +17,9 @@ import { z } from "zod";
 import { exercises } from "./Exercise";
 
 export const videos = pgTable("videos", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
+  id: bigint("id", { mode: "number" })
+    .primaryKey()
+    .generatedByDefaultAsIdentity(),
   exerciseId: bigint("exercise_id", { mode: "number" })
     .notNull()
     .references((): AnyPgColumn => exercises.id),

@@ -9,7 +9,6 @@ import {
 import {
   type AnyPgColumn,
   bigint,
-  bigserial,
   integer,
   pgTable,
   varchar,
@@ -18,7 +17,9 @@ import { z } from "zod";
 import { weeks } from "./Week";
 
 export const workouts = pgTable("workouts", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
+  id: bigint("id", { mode: "number" })
+    .primaryKey()
+    .generatedByDefaultAsIdentity(),
   weekId: bigint("week_id", { mode: "number" })
     .notNull()
     .references((): AnyPgColumn => weeks.id),

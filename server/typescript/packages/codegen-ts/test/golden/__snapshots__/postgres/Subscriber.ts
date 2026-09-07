@@ -3,7 +3,7 @@
 // Customize via Subscriber.extra.ts in this directory.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
-  bigserial,
+  bigint,
   boolean,
   pgTable,
   timestamp,
@@ -12,7 +12,9 @@ import {
 import { z } from "zod";
 
 export const subscribers = pgTable("subscribers", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
+  id: bigint("id", { mode: "number" })
+    .primaryKey()
+    .generatedByDefaultAsIdentity(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }),

@@ -50,7 +50,7 @@ export { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 export { apiLabel } from "./generators/api-label.js";
 
 export type { ColumnSpec, DefaultExpr } from "./column-mapper.js";
-export { mapColumnType } from "./column-mapper.js";
+export { mapColumnType, PG_IDENTITY_CAPABLE_FNS } from "./column-mapper.js";
 
 export type { PkInfo } from "./pk-resolver.js";
 export { buildPkMap } from "./pk-resolver.js";

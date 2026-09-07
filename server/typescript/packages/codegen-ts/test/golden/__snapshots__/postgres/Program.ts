@@ -3,7 +3,7 @@
 // Customize via Program.extra.ts in this directory.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
-  bigserial,
+  bigint,
   boolean,
   integer,
   pgTable,
@@ -14,7 +14,9 @@ import {
 import { z } from "zod";
 
 export const programs = pgTable("programs", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
+  id: bigint("id", { mode: "number" })
+    .primaryKey()
+    .generatedByDefaultAsIdentity(),
   slug: varchar("slug", { length: 100 }).notNull().unique(),
   title: varchar("title", { length: 200 }).notNull(),
   description: text("description"),

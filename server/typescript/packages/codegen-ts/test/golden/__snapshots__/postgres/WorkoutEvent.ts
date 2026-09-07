@@ -9,7 +9,6 @@ import {
 import {
   type AnyPgColumn,
   bigint,
-  bigserial,
   integer,
   pgTable,
   timestamp,
@@ -19,7 +18,9 @@ import { subscribers } from "./Subscriber";
 import { workouts } from "./Workout";
 
 export const workoutEvents = pgTable("workout_events", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
+  id: bigint("id", { mode: "number" })
+    .primaryKey()
+    .generatedByDefaultAsIdentity(),
   subscriberId: bigint("subscriber_id", { mode: "number" })
     .notNull()
     .references((): AnyPgColumn => subscribers.id),

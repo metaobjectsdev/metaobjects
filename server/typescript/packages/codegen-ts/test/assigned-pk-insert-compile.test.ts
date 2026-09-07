@@ -122,6 +122,9 @@ const INCR_PK = { "identity.primary": { name: "pk", "@fields": "id", "@generatio
 const UUID_FIELD = { "field.uuid": { name: "id" } };
 const STRING_FIELD = { "field.string": { name: "id" } };
 const INT_FIELD = { "field.long": { name: "id" } };
+// field.int and field.long take DIFFERENT Drizzle builders for an increment PK
+// (integer() vs bigint({mode:"number"})), so one arm cannot stand for the other.
+const INT4_FIELD = { "field.int": { name: "id" } };
 
 describe("assigned (non-generated) PK emits typechecking insert code (TS2769 guard)", () => {
   for (const dialect of ["postgres", "sqlite"] as const) {
@@ -138,8 +141,12 @@ describe("assigned (non-generated) PK emits typechecking insert code (TS2769 gua
       expect(await genAndCompile(dialect, UUID_FIELD, UUID_GEN_PK)).toEqual([]);
     });
 
-    test(`${dialect}: int PK with @generation: increment compiles`, async () => {
+    test(`${dialect}: long PK with @generation: increment compiles`, async () => {
       expect(await genAndCompile(dialect, INT_FIELD, INCR_PK)).toEqual([]);
+    });
+
+    test(`${dialect}: int PK with @generation: increment compiles`, async () => {
+      expect(await genAndCompile(dialect, INT4_FIELD, INCR_PK)).toEqual([]);
     });
   }
 });

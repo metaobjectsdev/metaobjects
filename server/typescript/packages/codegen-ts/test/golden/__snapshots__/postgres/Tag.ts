@@ -2,11 +2,13 @@
 // Source metadata: Tag (Tag)
 // Customize via Tag.extra.ts in this directory.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { bigserial, pgTable, varchar } from "drizzle-orm/pg-core";
+import { bigint, pgTable, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const tags = pgTable("tags", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
+  id: bigint("id", { mode: "number" })
+    .primaryKey()
+    .generatedByDefaultAsIdentity(),
   name: varchar("name", { length: 50 }).notNull().unique(),
   slug: varchar("slug", { length: 50 }).notNull().unique(),
 });

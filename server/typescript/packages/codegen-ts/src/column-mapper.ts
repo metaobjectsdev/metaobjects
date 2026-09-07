@@ -429,6 +429,23 @@ function buildEnumIntCustomType(
   };
 }
 
+/**
+ * The Drizzle pg-core column functions that can carry an IDENTITY clause —
+ * i.e. the builders extending `PgIntColumnBaseBuilder`, the only ones declaring
+ * `.generatedByDefaultAsIdentity()`.
+ *
+ * It lives HERE, beside the switch that produces `fnName`, rather than in the
+ * template that consumes it: the template must not re-derive "is this an
+ * integer column?" from the field subtype, because that is a second answer to a
+ * question this file already answers. A subtype newly mapped onto one of these
+ * functions becomes identity-capable by editing one switch arm.
+ */
+export const PG_IDENTITY_CAPABLE_FNS: ReadonlySet<string> = new Set([
+  "integer",
+  "bigint",
+  "smallint",
+]);
+
 export function mapColumnType(
   field: MetaField,
   dialect: Dialect,
