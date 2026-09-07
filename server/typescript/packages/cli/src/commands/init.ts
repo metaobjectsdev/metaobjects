@@ -2,6 +2,7 @@ import { mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises"
 import { join } from "node:path";
 import { basename, dirname } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
+import { createRequire } from "node:module";
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
 import {
   assemble, resolveAgentContextRoot, planScaffold,
@@ -774,6 +775,7 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
   const declaredType = pkg.type;   // read BEFORE the mutation below overwrites it
   pkg.type = "module";
   const added = addScaffoldDevDependencies(pkg);
+  const addedRuntime = addScaffoldRuntimeDependencies(pkg);
   // Preserve the file's existing indentation rather than reformatting someone's manifest.
   const indent = /\n(\s+)"/.exec(raw)?.[1] ?? "  ";
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf8");
@@ -796,6 +798,13 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
       `added ${added.join(" + ")} to devDependencies — the scaffolded ` +
         "codegen/generators/ are YOUR source now (ADR-0034) and import them. " +
         "Run your package manager's install before `meta gen`.",
+    );
+  }
+  if (addedRuntime.length > 0) {
+    result.warnings.push(
+      `added ${addedRuntime.join(" + ")} to dependencies — the code \`meta gen\` writes ` +
+        "imports them, so `npx tsc` reports TS2307 on the generated files until they are " +
+        "installed. Run your package manager's install before `meta gen`.",
     );
   }
 }
@@ -840,6 +849,86 @@ function addScaffoldDevDependencies(pkg: Record<string, unknown>): string[] {
   }
   if (added.length > 0) {
     pkg.devDependencies = Object.fromEntries(Object.entries(dev).sort(([a], [b]) => a.localeCompare(b)));
+  }
+  return added;
+}
+
+/**
+ * The third-party packages the scaffolded suite's GENERATED OUTPUT imports, each named
+ * with the artifact that imports it. This is the set, not the ranges — see
+ * `scaffoldRuntimeDependencies` for where those come from.
+ *
+ * `@metaobjectsdev/runtime-ts` is deliberately not here: its range is the CLI's own
+ * version, like the two build-time packages above, not a peer range read off itself.
+ */
+const SCAFFOLD_OUTPUT_PEERS = [
+  "drizzle-orm",   // <Entity>.ts (the table + column builders) and <Entity>.queries.ts
+  "zod",           // <Entity>.ts — the Insert/Update schemas
+  "fastify",       // <Entity>.routes.ts — `import type { FastifyInstance }`
+] as const;
+
+/**
+ * The runtime dependencies of the code `meta gen` will WRITE, for `dependencies`.
+ *
+ * `addScaffoldDevDependencies` above fixed this defect one layer in: the generator
+ * SOURCES under `codegen/generators/` import `@metaobjectsdev/codegen-ts` and
+ * `@metaobjectsdev/metadata`, nothing declared them, and the scaffold arrived
+ * un-typecheckable. The same argument reaches one layer further out and was not
+ * followed there. Generated `<Entity>.ts` / `.queries.ts` / `.routes.ts` import
+ * drizzle-orm, zod, fastify and `@metaobjectsdev/runtime-ts/drizzle-fastify` — five
+ * specifiers, none declared — so `npx tsc`, which is the next step `meta gen` itself
+ * prints, reported NINE TS2307s on a brand-new project that had done nothing wrong.
+ * npm hides four of the five by hoisting them out of the CLI's own tree; pnpm's strict
+ * layout, which is the point of testing both, shows all five.
+ *
+ * `dependencies`, not `devDependencies`: generated routes and queries are application
+ * source that runs in production. The two build-time packages stay where they are.
+ *
+ * The RANGES are read from `@metaobjectsdev/runtime-ts`'s own `peerDependencies` rather
+ * than written here. That package already declares the versions its helpers are built
+ * against, bounded above (the peer-range gate enforces the bound), so a second copy of
+ * those ranges in the scaffolder is a second thing to keep in step — and the failure
+ * mode of drift is an adopter installing a major nothing was tested against. If a range
+ * cannot be read, the package is SKIPPED rather than guessed at, and `meta gen` still
+ * type-checks for anyone whose manifest already declares it.
+ */
+function scaffoldRuntimeDependencies(): Record<string, string> {
+  const wanted: Record<string, string> = {
+    "@metaobjectsdev/runtime-ts": `^${cliVersion()}`,
+  };
+  const peers = runtimeTsPeerRanges();
+  for (const name of SCAFFOLD_OUTPUT_PEERS) {
+    const range = peers[name];
+    if (range !== undefined) wanted[name] = range;
+  }
+  return wanted;
+}
+
+/** `@metaobjectsdev/runtime-ts`'s declared peer ranges, or `{}` if it cannot be read. */
+function runtimeTsPeerRanges(): Record<string, string> {
+  try {
+    const req = createRequire(import.meta.url);
+    const manifestPath = req.resolve("@metaobjectsdev/runtime-ts/package.json");
+    const manifest = JSON.parse(readFileSyncWrap(manifestPath, "utf8")) as PackageManifest;
+    return (manifest.peerDependencies ?? {}) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+/** Adds any missing `scaffoldRuntimeDependencies()` to `dependencies`. Only ever ADDS a
+ *  missing key — an existing pin, in any of the four dependency fields, is the user's. */
+function addScaffoldRuntimeDependencies(pkg: Record<string, unknown>): string[] {
+  const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+  const declared = declaredDependencyNames(pkg as PackageManifest);
+  const added: string[] = [];
+  for (const [name, range] of Object.entries(scaffoldRuntimeDependencies())) {
+    if (declared.has(name)) continue;
+    deps[name] = range;
+    added.push(name);
+  }
+  if (added.length > 0) {
+    pkg.dependencies = Object.fromEntries(Object.entries(deps).sort(([a], [b]) => a.localeCompare(b)));
   }
   return added;
 }
