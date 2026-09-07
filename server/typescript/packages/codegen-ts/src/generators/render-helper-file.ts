@@ -64,7 +64,7 @@ export const renderHelper = function renderHelper(opts?: RenderHelperOpts): Gene
           // renderRenderHelper THROWS (fails codegen) on a mustache↔VO drift —
           // intentionally NOT caught: a drifted template is a build error.
           path: `${dirPrefix}${t.name}.render.ts`,
-          content: renderRenderHelper(root, t.name, provider),
+          content: renderRenderHelper(root, t.name, provider, ctx.config.extStyle ?? "js"),
         });
       }
       return files;

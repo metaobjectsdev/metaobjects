@@ -271,3 +271,32 @@ describe("extractor/render payload import resolves against the REAL generated VO
     expect(ts2304, `unresolved type names (TS2304):\n${ts2304.join("\n")}`).toEqual([]);
   });
 });
+
+// F17 — the render helper was the one emitter that neither carried the `@generated`
+// marker nor read the project's `extStyle`. It hardcoded `./<Payload>.js`.
+//
+// Nothing BROKE: `.js` resolves under nodenext and bundler alike, so this was one
+// file spelling its imports differently from every other in the same project, and
+// one generated file a reader had no marker telling them not to edit.
+describe("the render helper honours extStyle and marks itself generated", () => {
+  test('extStyle "none" drops the extension from the payload import', async () => {
+    const root = await loadRoot(MODEL);
+    const src = renderRenderHelper(root, "OrderDoc", PROVIDER, "none");
+    expect(src).toMatch(/from "\.\/[A-Za-z0-9_]+";/);
+    expect(src).not.toMatch(/from "\.\/[A-Za-z0-9_]+\.js";/);
+  });
+
+  test('extStyle "js" keeps it — and is the default, so an existing caller is unchanged', async () => {
+    const root = await loadRoot(MODEL);
+    const explicit = renderRenderHelper(root, "OrderDoc", PROVIDER, "js");
+    const defaulted = renderRenderHelper(root, "OrderDoc", PROVIDER);
+    expect(explicit).toMatch(/from "\.\/[A-Za-z0-9_]+\.js";/);
+    expect(defaulted).toBe(explicit);
+  });
+
+  test("the emitted file opens with the @generated marker, like every sibling", async () => {
+    const root = await loadRoot(MODEL);
+    const src = renderRenderHelper(root, "OrderDoc", PROVIDER);
+    expect(src.split("\n")[0]).toContain("@generated");
+  });
+});

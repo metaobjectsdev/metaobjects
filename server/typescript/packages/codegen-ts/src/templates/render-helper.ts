@@ -53,6 +53,8 @@ import {
   type VerifyError,
 } from "@metaobjectsdev/render";
 import { templateSymbolBase } from "../naming.js";
+import { GENERATED_HEADER } from "../constants.js";
+import type { ExtStyle } from "../metaobjects-config.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 // ADR-0042: package-local — resolveObjectRef binds a bare @objectRef in `referrerPkg` first (else root-level), an FQN exactly.
@@ -150,6 +152,16 @@ export function renderRenderHelper(
   root: MetaData,
   templateName: string,
   provider: Provider,
+  /**
+   * The project's import-extension style, as every other emitter honours it.
+   * Defaults to "js" — the engine default — so an existing caller is unchanged.
+   *
+   * This file used to hardcode `.js` regardless. Both spellings happen to resolve
+   * under nodenext AND bundler, so nothing broke; it was simply the one emitter
+   * that did not read the setting, which is how a project with `extStyle: "none"`
+   * ended up with one file spelling its imports differently from every other.
+   */
+  extStyle: ExtStyle = "js",
 ): string {
   const tmpl = findTemplate(root, templateName);
   if (!tmpl) {
@@ -186,6 +198,9 @@ export function renderRenderHelper(
   // resolution above (findObject/derivePayloadFieldTree) intentionally keeps
   // using the raw `payloadRef`.
   const payloadTypeName = stripPackage(payloadRef);
+  // The emitted relative import's extension, from the project's setting rather than
+  // hardcoded — see the `extStyle` parameter doc.
+  const ext = extStyle === "none" ? "" : ".js";
 
   // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
   const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT)
@@ -215,9 +230,10 @@ export function renderRenderHelper(
         ? `\n    textBody: render({ ref: ${JSON.stringify(textBodyRef)}, payload, format: "text", provider, verify: ${ft} }),`
         : "";
 
-    return `import { render } from "@metaobjectsdev/render";
+    return `// ${GENERATED_HEADER} — DO NOT EDIT.
+import { render } from "@metaobjectsdev/render";
 import type { Provider, EmailDocument } from "@metaobjectsdev/render";
-import type { ${payloadTypeName} } from "./${payloadTypeName}.js";
+import type { ${payloadTypeName} } from "./${payloadTypeName}${ext}";
 
 /**
  * Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a
@@ -255,9 +271,10 @@ export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): Emai
   const maxCharsArg =
     maxChars !== undefined && Number.isFinite(maxChars) ? `, maxChars: ${maxChars}` : "";
 
-  return `import { render } from "@metaobjectsdev/render";
+  return `// ${GENERATED_HEADER} — DO NOT EDIT.
+import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
-import type { ${payloadTypeName} } from "./${payloadTypeName}.js";
+import type { ${payloadTypeName} } from "./${payloadTypeName}${ext}";
 
 /**
  * Render the ${templateName} document from a typed ${payloadTypeName} payload. Wraps the
