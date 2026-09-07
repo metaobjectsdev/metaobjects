@@ -17,19 +17,24 @@ that: it returns a NEGATIVE code and writes no stderr, so the branch raised
 RuntimeError: ruff format failed:
 ```
 
-naming neither the cause nor the fact that ruff never looked at the source. Observed on the
-self-hosted runner with five lanes in flight at once (`ts-fast`'s mutation gate, `ts-slow`,
-`csharp`, `java-slow`, `python`), where the formatter was OOM-killed: `1 failed, 1971 passed`,
-and the one failure sent a reader hunting a syntax error that did not exist. The same test
-passes in 3.4s on an idle box, and the full suite is green there.
+naming neither the exit status nor the fact that ruff never looked at the source. Observed on
+the self-hosted runner with four lanes in flight at once: `1 failed, 1971 passed`, and the one
+failure sent a reader hunting a syntax error that did not exist. The same test passes in 3.4s
+on an idle box, and the full suite is green there.
 
-A signal death now says so and names the signal, and every other non-zero exit carries its
-code rather than trailing off after a colon:
+**An empty stderr is provably not a source rejection.** Measured against ruff 0.15.14: a source
+it cannot parse exits **2 with stderr** (`error: Failed to parse at 1:7: ...`). So the branch
+that fired had a process which never got far enough to report. What killed it is **not
+established** — the kernel log records no OOM event anywhere near the failure — and that is the
+point: the old message destroyed the one piece of evidence (the exit status) that would say.
+
+The message now records what happened and does not guess at why:
 
 ```
 ruff check was killed by signal 9 before it could format the source — this is not a
-generator bug; the machine most likely ran out of memory
-ruff check failed (exit 2) and wrote nothing to stderr
+source error; the formatter never ran to completion
+ruff check failed (exit 2) and wrote nothing to stderr — ruff reports an unparseable
+source WITH stderr, so this is not a source error
 ```
 
 Behaviour on the success path is unchanged; a genuine ruff rejection still raises, still with

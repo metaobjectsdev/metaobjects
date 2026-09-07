@@ -25,23 +25,35 @@ def _run_ruff(args: list[str], source: str) -> str:
     )
     if proc.returncode != 0:
         # A non-zero exit is read by the caller as "ruff rejected the source" — a
-        # generator bug. A NEGATIVE code is not that: it is death by signal, and a
-        # killed process writes no stderr, so this branch used to raise
-        # `ruff format failed:` naming neither the cause nor the fact that ruff never
-        # looked at the source. Seen on a CI box running five lanes at once, where the
-        # formatter was OOM-killed and the message sent the reader hunting a syntax
-        # error that did not exist. Always carry the code; never claim a source error
-        # for a process that did not finish.
+        # generator bug. Two things make that reading unsafe, so record what actually
+        # happened instead of asserting a cause.
+        #
+        # First, ruff reports a source it cannot parse as exit 2 WITH stderr (measured,
+        # ruff 0.15.14: `error: Failed to parse at 1:7: ...`). So an EMPTY stderr is not
+        # a source rejection — the process did not get far enough to say anything.
+        # Second, a NEGATIVE returncode is death by signal, which is not a verdict on
+        # the source at all.
+        #
+        # This branch used to raise `ruff format failed:` — trailing off after the colon
+        # whenever stderr was empty, naming neither the exit status nor the fact that
+        # ruff never looked at the source, and sending a reader hunting a syntax error
+        # that did not exist. Always carry the status; never claim a source error for a
+        # process that did not finish, and do not guess at WHY it did not finish.
         detail = proc.stderr.strip()
         if proc.returncode < 0:
             raise RuntimeError(
                 f"ruff {args[0]} was killed by signal {-proc.returncode} before it could "
-                f"format the source — this is not a generator bug; the machine most likely "
-                f"ran out of memory" + (f": {detail}" if detail else "")
+                f"format the source — this is not a source error; the formatter never ran "
+                f"to completion" + (f": {detail}" if detail else "")
             )
         raise RuntimeError(
             f"ruff {args[0]} failed (exit {proc.returncode})"
-            + (f": {detail}" if detail else " and wrote nothing to stderr")
+            + (
+                f": {detail}"
+                if detail
+                else " and wrote nothing to stderr — ruff reports an unparseable source"
+                     " WITH stderr, so this is not a source error"
+            )
         )
     return proc.stdout
 
