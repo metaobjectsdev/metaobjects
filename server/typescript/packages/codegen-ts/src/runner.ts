@@ -141,6 +141,20 @@ function orderable(v: string | undefined): [number, number, number] | undefined 
   return m === null ? undefined : [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
+/** True when `a` sorts strictly before `b` under `[major, minor, patch]` order. The
+ *  shared comparison the two "did we just cross a release boundary" predicates below
+ *  reduce to once both sides are `orderable()` — their SILENCE rules (what makes a
+ *  boundary crossing worth noting at all) stay separate; only this pure ordering is
+ *  common between them. */
+function versionBefore(a: readonly [number, number, number], b: readonly [number, number, number]): boolean {
+  for (let i = 0; i < 3; i++) {
+    const ai = a[i] as number;
+    const bi = b[i] as number;
+    if (ai !== bi) return ai < bi;
+  }
+  return false;
+}
+
 /**
  * True exactly on the FIRST gen after upgrading past the release that moved the API base
  * URL out of the entity descriptor, and only for a project that actually had a prefix to
@@ -167,12 +181,7 @@ export function shouldNoteBaseUrlMove(
   const was = orderable(recordedEngine);
   const move = orderable(moveVersion);
   if (was === undefined || move === undefined) return false;
-  for (let i = 0; i < 3; i++) {
-    const a = was[i] as number;
-    const b = move[i] as number;
-    if (a !== b) return a < b;
-  }
-  return false;
+  return versionBefore(was, move);
 }
 
 /** The release in which `<Entity>Names` became the way a physical name is spelled once. */
@@ -214,12 +223,7 @@ export function shouldNoteNamesArtifactAbsent(
   const was = orderable(recordedEngine);
   const since = orderable(sinceVersion);
   if (was === undefined || since === undefined) return false;
-  for (let i = 0; i < 3; i++) {
-    const a = was[i] as number;
-    const b = since[i] as number;
-    if (a !== b) return a < b;
-  }
-  return false;
+  return versionBefore(was, since);
 }
 
 export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {

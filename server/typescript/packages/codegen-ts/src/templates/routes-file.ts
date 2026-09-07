@@ -50,16 +50,17 @@ export function renderRoutesFile(
 
   const entityName = entity.name;
   const handlerName = routesHandlerName(entityName);
+  const entityPkg = effectivePackage(entity);
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    effectivePackage(entity),
+    entityPkg,
     entityName,
     ctx.extStyle,
   );
-  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, effectivePackage(entity), ctx.dbImport, ctx.extStyle);
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, entityPkg, ctx.dbImport, ctx.extStyle);
 
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
@@ -261,10 +262,15 @@ function renderM2mMount(
   ctx: RenderContext,
   fastifyVar: string,
 ): Code {
+  // `source` never changes across this function, so its effective package is computed
+  // once and reused below (both crossEntitySpecifier calls, and the three
+  // resolveJunctionColumn calls' `fromPackage` — see that comment for why it must be
+  // SOURCE's package rather than the junction/target entity's own).
+  const sourcePkg = effectivePackage(source);
   const junctionVarSym = imp(
     `${ctx.collectionName(entry.junctionEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
-      effectivePackage(source),
+      sourcePkg,
       ctx.packageOf.get(entry.junctionEntity),
       entry.junctionEntity,
       ctx.extStyle,
@@ -273,7 +279,7 @@ function renderM2mMount(
   const targetVarSym = imp(
     `${ctx.collectionName(entry.targetEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
-      effectivePackage(source),
+      sourcePkg,
       ctx.packageOf.get(entry.targetEntity),
       entry.targetEntity,
       ctx.extStyle,
@@ -285,13 +291,13 @@ function renderM2mMount(
   // fromPackage = source.package: this routes file is SOURCE's own module, never the
   // junction's or the target's — see resolveJunctionColumn's doc comment (B1).
   const sourceColumn: Code = junction
-    ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx, effectivePackage(source))
+    ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx, sourcePkg)
     : code`${JSON.stringify(entry.sourceJoinField!)}`;
   const targetColumn: Code = junction
-    ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx, effectivePackage(source))
+    ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx, sourcePkg)
     : code`${JSON.stringify(entry.targetJoinField!)}`;
   const targetPkColumn: Code = target
-    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx, effectivePackage(source))
+    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx, sourcePkg)
     : code`${JSON.stringify("id")}`;
 
   return code`  ${mountM2mRouteSym}({
@@ -369,10 +375,11 @@ function renderTphRoutesFile(
   const discField = plan.discriminatorField;
   const tableVar = ctx.collectionName(baseName);
 
+  const basePkg = effectivePackage(base);
   const baseFileSpec = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(base), baseName, ctx.extStyle,
+    ctx.selfTarget, ctx.entityModuleTarget, basePkg, baseName, ctx.extStyle,
   );
-  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, effectivePackage(base), ctx.dbImport, ctx.extStyle);
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, basePkg, ctx.dbImport, ctx.extStyle);
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");

@@ -140,14 +140,15 @@ export function renderEntityFile(
   if (writeThrough) {
     const camel = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
     const fields = entity.fields();
+    const entityPkg = effectivePackage(entity);
     // ADR-0044/#228 — resolve a view column's `@objectRef` to the value object's
     // EMITTED name + module TOGETHER (lock-step), so the read-view artifact imports
     // `AcmeAlphaNote` from `./AcmeAlphaNote.js` (not a bare `Note` → `./Note.js`)
     // under a cross-package short-name collision.
     const voRef = (field: MetaField): { name: string; module: string } => {
       const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-      const name = ctx.resolveValueObjectName(typeof ref === "string" ? ref : "", fieldDeclaringPackage(field, effectivePackage(entity)));
-      const module = valueObjectModuleSpecifier(name, ctx.packageOf, effectivePackage(entity), ctx.outputLayout, ctx.extStyle);
+      const name = ctx.resolveValueObjectName(typeof ref === "string" ? ref : "", fieldDeclaringPackage(field, entityPkg));
+      const module = valueObjectModuleSpecifier(name, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle);
       return { name, module };
     };
     // ONE selection of the replica source: `projectionViewName` names it, and this is the

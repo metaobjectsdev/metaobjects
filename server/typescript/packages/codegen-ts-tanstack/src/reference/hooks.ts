@@ -86,8 +86,9 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       // generator's own target — no separate check needed.
       const rc = ctx.renderContext;
       const metaNames = namesRef(entity, rc);
+      const pkg = effectivePackage(entity);
       const metaFile = {
-        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity),
+        path: entityOutputPath(ctx.renderContext.outputLayout, pkg,
           entityMetaFileName(entity.name)),
         content: await formatTs(renderEntityMetaFile(
           entity,
@@ -96,7 +97,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
         )),
       };
       return [metaFile, {
-        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.hooks.ts`),
+        path: entityOutputPath(ctx.renderContext.outputLayout, pkg, `${entity.name}.hooks.ts`),
         // Outside formatTs deliberately: the directive must stay the module's first
         // token, and a formatter is entitled to move a leading string expression.
         content: withClientDirective(

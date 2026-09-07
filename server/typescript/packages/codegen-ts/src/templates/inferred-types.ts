@@ -306,9 +306,10 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       // layout/package/extStyle-aware helper (the SAME one the Zod schema +
       // Drizzle .$type<> use) so all three agree. Without a ctx (bare unit-test
       // calls) fall back to the bare name + flat same-dir specifier.
-      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(entity))) : stripPackage(ref);
+      const entityPkg = effectivePackage(entity);
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entityPkg)) : stripPackage(ref);
       const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(entity), ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}@${moduleSpec}`);
       return field.resolvedIsArray() ? code`${refImp}[]` : code`${refImp}`;
@@ -320,9 +321,10 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(entity))) : stripPackage(ref);
+      const entityPkg = effectivePackage(entity);
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entityPkg)) : stripPackage(ref);
       const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(entity), ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}@${moduleSpec}`);
       return code`Record<string, ${refImp}>`;

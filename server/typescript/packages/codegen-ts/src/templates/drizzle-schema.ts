@@ -105,6 +105,10 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // `isMetaObject`, never `instanceof`: two physical copies of @metaobjectsdev/metadata in
   // one process give the class object and the instance different identities, so the check
   // would return false for a real node — silently.
+  // `obj` never changes across this function, so its effective package is computed once
+  // and reused everywhere below (the `fromPackage` passed to `namesRef` here, and the
+  // per-field `renderColumn` calls in both the own-field and TPH-subtype-fold loops).
+  const pkg = effectivePackage(obj);
   const columnNameExpr = (field: MetaField, dbName: string): Code => {
     if (names === undefined || names.resolved.fields[field.name] !== undefined) {
       return columnExpr(names, field.name, dbName);
@@ -114,7 +118,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // base's), not to the subtype's own package.
     const ownerNames =
       owner !== undefined && isMetaObject(owner) && owner !== obj
-        ? namesRef(owner, ctx, effectivePackage(obj))
+        ? namesRef(owner, ctx, pkg)
         : undefined;
     return columnExpr(ownerNames, field.name, dbName);
   };
@@ -205,7 +209,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, effectivePackage(obj), obj.name);
+    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
@@ -225,7 +229,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     }
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
-      spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, effectivePackage(obj), obj.name, true,
+      spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, pkg, obj.name, true,
     );
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL

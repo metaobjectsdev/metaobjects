@@ -594,9 +594,10 @@ function zodFieldExpr(
       // layout/package/extStyle-aware helper (the SAME one the field's TS type +
       // Drizzle .$type<> use) so all three agree. Without owner/ctx (bare
       // unit-test calls) fall back to the bare name + flat same-dir.
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(owner))) : stripPackage(ref);
+      const ownerPkg = (ctx && owner) ? effectivePackage(owner) : undefined;
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, ownerPkg)) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(owner), ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, ownerPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
       let base: Code = code`${refImp}`;
@@ -615,9 +616,10 @@ function zodFieldExpr(
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(owner))) : stripPackage(ref);
+      const ownerPkg = (ctx && owner) ? effectivePackage(owner) : undefined;
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, ownerPkg)) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(owner), ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, ownerPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
       return appendValidatorChain(code`z.record(z.string(), ${refImp})`, field, forceRequired);

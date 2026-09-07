@@ -104,14 +104,15 @@ export function renderProjectionDecl(
   // package-qualified on a cross-package short-name collision, so the projection's
   // VO import matches the entity's. Layout/package/extStyle-aware when a render
   // context is present, else a flat same-dir import (zodFieldExpr's fallback).
+  const projectionPkg = effectivePackage(projection);
   const voRef = (field: MetaField): { name: string; module: string } => {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     const rawRef = typeof ref === "string" ? ref : "";
     const name = ctx
-      ? ctx.resolveValueObjectName(rawRef, fieldDeclaringPackage(field, effectivePackage(projection)))
+      ? ctx.resolveValueObjectName(rawRef, fieldDeclaringPackage(field, projectionPkg))
       : stripPackage(rawRef);
     const module = ctx
-      ? valueObjectModuleSpecifier(name, ctx.packageOf, effectivePackage(projection), ctx.outputLayout, ctx.extStyle)
+      ? valueObjectModuleSpecifier(name, ctx.packageOf, projectionPkg, ctx.outputLayout, ctx.extStyle)
       : `./${name}.js`;
     return { name, module };
   };

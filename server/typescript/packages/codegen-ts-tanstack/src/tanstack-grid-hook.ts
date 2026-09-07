@@ -82,8 +82,9 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     // module's).
     const rc = ctx.renderContext;
     const metaNames = namesRef(entity, rc);
+    const pkg = effectivePackage(entity);
     return [{
-      path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity),
+      path: entityOutputPath(ctx.renderContext.outputLayout, pkg,
         entityMetaFileName(entity.name)),
       content: await formatTs(renderEntityMetaFile(
         entity,
@@ -93,7 +94,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     }, {
       path: entityOutputPath(
         ctx.renderContext.outputLayout,
-        effectivePackage(entity),
+        pkg,
         `${entity.name}.grid.ts`,
       ),
       content: withClientDirective(

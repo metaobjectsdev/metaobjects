@@ -68,6 +68,20 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
 }
 
 /**
+ * The three lines every emitted render-helper module opens with: the generated-file
+ * marker, the `render()` import, and the typed payload import. Identical between the
+ * email and document kinds below — only the `@metaobjectsdev/render` type import
+ * differs (email additionally needs `EmailDocument`), so that piece is a parameter
+ * rather than a second near-copy of this block.
+ */
+function renderHelperHeader(typeImports: string, payloadTypeName: string, ext: string): string {
+  return `// ${GENERATED_HEADER} — DO NOT EDIT.
+import { render } from "@metaobjectsdev/render";
+import type { ${typeImports} } from "@metaobjectsdev/render";
+import type { ${payloadTypeName} } from "./${payloadTypeName}${ext}";`;
+}
+
+/**
  * Walk an `object.value` view-object into a render `PayloadField[]`. Object-ref
  * fields recurse into their referenced view-object; a `seen` set guards a
  * (pathological) reference cycle. Replicates cli's `derivePayloadFieldTree` —
@@ -230,10 +244,7 @@ export function renderRenderHelper(
         ? `\n    textBody: render({ ref: ${JSON.stringify(textBodyRef)}, payload, format: "text", provider, verify: ${ft} }),`
         : "";
 
-    return `// ${GENERATED_HEADER} — DO NOT EDIT.
-import { render } from "@metaobjectsdev/render";
-import type { Provider, EmailDocument } from "@metaobjectsdev/render";
-import type { ${payloadTypeName} } from "./${payloadTypeName}${ext}";
+    return `${renderHelperHeader("Provider, EmailDocument", payloadTypeName, ext)}
 
 /**
  * Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a
@@ -271,10 +282,7 @@ export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): Emai
   const maxCharsArg =
     maxChars !== undefined && Number.isFinite(maxChars) ? `, maxChars: ${maxChars}` : "";
 
-  return `// ${GENERATED_HEADER} — DO NOT EDIT.
-import { render } from "@metaobjectsdev/render";
-import type { Provider } from "@metaobjectsdev/render";
-import type { ${payloadTypeName} } from "./${payloadTypeName}${ext}";
+  return `${renderHelperHeader("Provider", payloadTypeName, ext)}
 
 /**
  * Render the ${templateName} document from a typed ${payloadTypeName} payload. Wraps the

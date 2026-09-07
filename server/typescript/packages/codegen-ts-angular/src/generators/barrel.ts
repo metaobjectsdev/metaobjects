@@ -48,16 +48,17 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
       const lines: string[] = [];
       const eligible = [...entities].sort((a, b) => a.name.localeCompare(b.name));
       for (const e of eligible) {
+        const pkg = effectivePackage(e);
         // Each line mirrors its generator's filter exactly — a re-export of a file
         // that was never emitted is a hard build break in the consumer app.
         if (servesReadApi(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, effectivePackage(e), `${e.name}.service`))};`);
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.service`))};`);
         }
         if (servesWriteApi(e) && !isProjection(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, effectivePackage(e), `${e.name}.form.component`))};`);
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.form.component`))};`);
         }
         if (servesReadApi(e) && hasDataGridLayout(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, effectivePackage(e), `${e.name}.grid.component`))};`);
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.grid.component`))};`);
         }
       }
       const content = `// ${GENERATED_HEADER}-angular — DO NOT EDIT.\n${lines.join("\n")}\n`;

@@ -816,9 +816,8 @@ export function buildEntityDocData(
     data.hasNeighborhoodEr = true;
   }
   if (src !== undefined) data.entity.source = src;
-  const dataPkg = effectivePackage(entity);
-  if (dataPkg !== undefined && dataPkg !== "") {
-    data.entity.package = dataPkg;
+  if (pkg !== undefined && pkg !== "") {
+    data.entity.package = pkg;
   }
 
   if (hasStorage) {

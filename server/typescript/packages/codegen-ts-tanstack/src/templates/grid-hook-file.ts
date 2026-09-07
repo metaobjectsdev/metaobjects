@@ -61,12 +61,14 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
 
   if (grids.length === 0) return "";
 
+  const pkg = effectivePackage(entity);
+
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
   const entityModule = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    effectivePackage(entity),
+    pkg,
     entityName,
     ctx.extStyle,
   );
@@ -93,7 +95,7 @@ import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityMo
 
   // Columns file is a same-target sibling of the grid-hook (both emitted to
   // selfTarget) — always relative, package-layout aware.
-  const columnsModule = siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entityName}.columns`, ctx.extStyle);
+  const columnsModule = siblingSpecifier(ctx.selfTarget, pkg, `${entityName}.columns`, ctx.extStyle);
   const filterPresetImportCode: Code =
     filterPresetImports.length > 0
       ? code`import { ${filterPresetImports.join(", ")} } from ${JSON.stringify(columnsModule)};\n`
