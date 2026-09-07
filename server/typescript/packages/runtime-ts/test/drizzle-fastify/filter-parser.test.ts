@@ -140,12 +140,54 @@ describe("parseFilterParams — happy path", () => {
     expect(r.orderBy?.length).toBe(1);
   });
 
-  test("sort default is asc when no order specified", () => {
+  test("sort default is asc when no order specified and the field declares none", () => {
     const r = parseFilterParams({
       query: parsedQs("?sort=email"),
       table, allowlist, sortAllowlist, dialect: "sqlite",
     });
     expect(r.orderBy?.length).toBe(1);
+    expect(collectSqlText(r.orderBy?.[0]).toLowerCase()).toContain("asc");
+  });
+
+  // `@sortableDefaultOrder` is authored by adopters, carried through the loader, and
+  // emitted into the generated `<Entity>SortAllowlist` as `{ defaultOrder: "desc" }`
+  // — and nothing read it back. One door in, no door out: every unqualified sort came
+  // back ascending regardless of what the model declared.
+  //
+  // It survived because every sort assertion in this file checked
+  // `orderBy?.length === 1` and NOTHING checked the direction, so asc and desc were
+  // indistinguishable to the suite. The assertions below read the direction out of the
+  // SQL, which is the only form that could have caught it.
+  describe("a field's declared defaultOrder is the read side of @sortableDefaultOrder", () => {
+    test("?sort=field with no order uses the field's declared default", () => {
+      const r = parseFilterParams({
+        query: parsedQs("?sort=createdAt"),
+        table, allowlist, sortAllowlist, dialect: "sqlite",
+      });
+      expect(collectSqlText(r.orderBy?.[0]).toLowerCase()).toContain("desc");
+    });
+
+    test("an explicit order still WINS over the declared default", () => {
+      const r = parseFilterParams({
+        query: parsedQs("?sort=createdAt:asc"),
+        table, allowlist, sortAllowlist, dialect: "sqlite",
+      });
+      const txt = collectSqlText(r.orderBy?.[0]).toLowerCase();
+      expect(txt).toContain("asc");
+      expect(txt).not.toContain("desc");
+    });
+
+    test("no ?sort at all still means NO ordering", () => {
+      // Deliberately unchanged. Applying a field's default when the caller named no
+      // field would give every endpoint an ordering it does not have today — the
+      // attribute says which way a COLUMN runs when you do not say, not which column
+      // to sort by.
+      const r = parseFilterParams({
+        query: parsedQs("?limit=5"),
+        table, allowlist, sortAllowlist, dialect: "sqlite",
+      });
+      expect(r.orderBy).toBeUndefined();
+    });
   });
 
   test("limit + offset pass through", () => {

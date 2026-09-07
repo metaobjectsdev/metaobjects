@@ -266,11 +266,26 @@ function ensureArray(v: unknown, key: string): unknown[] {
 function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist): SQLWrapper[] {
   const colonIdx = spec.indexOf(":");
   const field = colonIdx === -1 ? spec : spec.slice(0, colonIdx);
-  const orderRaw = colonIdx === -1 ? "asc" : spec.slice(colonIdx + 1);
-  const order = orderRaw.toLowerCase();
   if (!sortAllowlist[field]) {
     throw new FilterParseError("sort.unknown_field", `Unknown sort field "${field}".`, { field, allowed: Object.keys(sortAllowlist) });
   }
+  // `?sort=field` with no `:order` takes the field's DECLARED default order.
+  //
+  // This is the read side of `@sortableDefaultOrder`, and until now there was none.
+  // The attribute was authored by an adopter, carried through the loader, and emitted
+  // into the generated `<Entity>SortAllowlist` as `{ defaultOrder: "desc" }` — and then
+  // nothing read it back. One door in, no door out: the adopter authored a promise the
+  // product never kept, and every unqualified sort came back ascending regardless.
+  //
+  // Scoped deliberately to "field named, order omitted". Applying it when `?sort` is
+  // ABSENT ENTIRELY would give every endpoint a default ordering it does not have
+  // today — a behaviour change for every consumer, to honour an attribute about how a
+  // FIELD sorts. The declaration says which way this column runs when you do not say;
+  // it does not say which column to sort by.
+  const orderRaw = colonIdx === -1
+    ? (sortAllowlist[field]?.defaultOrder ?? "asc")
+    : spec.slice(colonIdx + 1);
+  const order = orderRaw.toLowerCase();
   if (order !== "asc" && order !== "desc") {
     throw new FilterParseError("sort.invalid_order", `Sort order must be asc|desc, got "${orderRaw}".`, { expected: "asc | desc" });
   }
