@@ -22,14 +22,13 @@ import {
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
+  DOC_ATTR_TITLE,
 } from "@metaobjectsdev/metadata/constants";
 import type { GridConfig } from "./fetcher.js";
 
 const DEFAULT_PAGE_SIZE = 25;
 const DEFAULT_GRID_NAME = "default";
-// The view's display-label attr. Mirrors the literal used by the columns-file
-// codegen; there is no exported constant for it in @metaobjectsdev/metadata.
-const VIEW_ATTR_LABEL = "label";
+
 
 /** A neutral, framework-agnostic column descriptor derived from metadata. */
 export interface MetaColumn {
@@ -52,11 +51,21 @@ function humanize(s: string): string {
 }
 
 function firstView(field: MetaField): MetaView | undefined {
-  return field.ownViews()[0];
+  // views(), not ownViews(): ADR-0039 — a field that `extends` an abstract parent
+  // inherits the parent's view, and an own-only read drops it, so the column would
+  // silently lose both its header and its renderer hint.
+  return field.views()[0];
 }
 
 function header(field: MetaField): string {
-  const label = firstView(field)?.ownAttr(VIEW_ATTR_LABEL);
+  // DOC_ATTR_TITLE, not the literal "label". `@label` is registered by NO provider in
+  // any port — `@title` is the documentation commonAttr chartered as the display label
+  // — so this read was `undefined` for every field that ever set one, and every grid
+  // header silently fell back to humanize(field.name). Same shape as `attr("isArray")`:
+  // an unregistered name answers `undefined`, which is indistinguishable from "unset".
+  //
+  // attr(), not ownAttr(), for the same ADR-0039 reason as firstView above.
+  const label = firstView(field)?.attr(DOC_ATTR_TITLE);
   return typeof label === "string" ? label : humanize(field.name);
 }
 

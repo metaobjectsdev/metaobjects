@@ -78,3 +78,73 @@ describe("buildGrid (metadata-driven, generic)", () => {
     expect(columns.map((c) => c.header)).toEqual(["Id", "Amount Due"]);
   });
 });
+
+// A declared display label must reach the column header.
+//
+// The header read `view.ownAttr("label")`, and `@label` is registered by NO provider
+// in any port — `@title` is the documentation commonAttr chartered as the display
+// label. So the read answered `undefined` for every field that ever declared one, and
+// every grid header silently fell back to the humanized field name. Nothing here
+// covered the path, which is why 49 green tests said nothing about it.
+//
+// Same shape as `attr("isArray")`: an unregistered name answers `undefined`, which is
+// indistinguishable from "the author did not set it".
+describe("a declared @title reaches the column header", () => {
+  const WITH_TITLE = {
+    "metadata.root": {
+      package: "demo",
+      children: [
+        { "object.entity": { name: "Subscriber", children: [
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "firstName", children: [
+            { "view.text": { name: "display", "@title": "Given Name" } },
+          ] } },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+        ] } },
+      ],
+    },
+  };
+
+  test("the header is the declared title, not the humanized field name", async () => {
+    const obj = await loadObject(WITH_TITLE, "Subscriber");
+    const { columns } = buildGrid(obj);
+    const firstName = columns.find((c) => c.field === "firstName");
+    expect(firstName?.header).toBe("Given Name");
+    // Stated in the negative too: the humanized fallback is what the broken read
+    // produced, so a positive-only assertion would pass against the defect if the
+    // field name happened to humanize to the same string.
+    expect(firstName?.header).not.toBe("First Name");
+  });
+
+  test("a field with no title still humanizes", async () => {
+    const obj = await loadObject(WITH_TITLE, "Subscriber");
+    const { columns } = buildGrid(obj);
+    expect(columns.find((c) => c.field === "id")?.header).toBe("Id");
+  });
+
+  test("a title INHERITED through extends is honoured", async () => {
+    // ADR-0039: the read was `ownAttr` on an `ownViews()` result, so both halves
+    // dropped what a parent contributed. A concrete field extending an abstract one
+    // must see the parent's view AND its title.
+    const doc = {
+      "metadata.root": {
+        package: "demo",
+        children: [
+          { "object.entity": { name: "Base", abstract: true, children: [
+            { "field.string": { name: "firstName", children: [
+              { "view.text": { name: "display", "@title": "Given Name" } },
+            ] } },
+          ] } },
+          { "object.entity": { name: "Subscriber", children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "firstName", extends: "Base.firstName" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ] } },
+        ],
+      },
+    };
+    const obj = await loadObject(doc, "Subscriber");
+    const { columns } = buildGrid(obj);
+    expect(columns.find((c) => c.field === "firstName")?.header).toBe("Given Name");
+  });
+});
