@@ -23,7 +23,9 @@ function metaModuleOf(entityModule: string): string {
     : `${entityModule}.meta`;
 }
 
-import { GENERATED_HEADER, entityModuleSpecifier, siblingSpecifier } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, entityModuleSpecifier, siblingSpecifier,
+  effectivePackage,
+} from "@metaobjectsdev/codegen-ts";
 
 interface GridSpec {
   name: string;           // e.g. "default", "activeOnly"
@@ -64,7 +66,7 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
   const entityModule = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );
@@ -76,7 +78,7 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
   const SortingStateSym       = imp("t:SortingState@@tanstack/react-table");
   const PaginationStateSym    = imp("t:PaginationState@@tanstack/react-table");
   const ColumnFiltersStateSym = imp("t:ColumnFiltersState@@tanstack/react-table");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
+  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
   const buildFilterQsSym    = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
@@ -91,7 +93,7 @@ import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityMo
 
   // Columns file is a same-target sibling of the grid-hook (both emitted to
   // selfTarget) — always relative, package-layout aware.
-  const columnsModule = siblingSpecifier(ctx.selfTarget, entity.package, `${entityName}.columns`, ctx.extStyle);
+  const columnsModule = siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entityName}.columns`, ctx.extStyle);
   const filterPresetImportCode: Code =
     filterPresetImports.length > 0
       ? code`import { ${filterPresetImports.join(", ")} } from ${JSON.stringify(columnsModule)};\n`
@@ -114,7 +116,7 @@ export function ${hookName}() {
   const [columnFilters, setColumnFilters] = ${useStateSym}<${ColumnFiltersStateSym}>([]);
   const [search,        setSearch]        = ${useStateSym}<string>("");
 
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
 
   const qs = ${useMemoSym}(() => {
     const filterObj: Record<string, unknown> = ${presetConst ? `{ ...${presetConst} }` : `{}`};

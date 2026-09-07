@@ -84,3 +84,43 @@ configuration supplied once (openapi-fetch's `createClient({ baseUrl })`, NSwag'
 - Nested providers still override, base and all.
 - On the first `meta gen` after upgrading, a project whose `apiPrefix` is non-empty gets
   a one-time note naming the `baseUrl` to set. It does not repeat.
+
+## Check every non-entity path that shares your fetcher
+
+**This is the part with the blast radius, and no gate can find it for you.**
+
+Before 1.0 the provider passed your fetcher through unchanged and generated hooks
+composed `$apiPrefix` themselves. Now the provider **binds** the fetcher to `baseUrl`,
+so the hook hands your transport an already-prefixed URL. For the entity-relative paths
+generated hooks emit, that is the whole point.
+
+But the fetcher is a *shared seam*, and the documentation has always said it should be —
+*"never call `fetch()` directly; the fetcher is the ONE place base-URL policy lives."*
+An adopter who followed that advice has hand-written call sites going through the same
+hook, and **every absolute app path through it is now rewritten**:
+
+```
+baseUrl: "/api"
+
+  /internal/leads/1/notes   →  /api/internal/leads/1/notes    404
+  /api/decisions/1          →  /api/api/decisions/1           404
+```
+
+In one estate that was ten write actions, all 404, all silent. The bound fetcher has the
+**same signature** as the unbound one, so nothing in the compiler, the unit suite,
+`meta verify`, `--db` or `--codegen` can see it. Only a request in a browser does.
+
+**What to do:** grep for every call site of the fetcher hook that is not generated code,
+and check what kind of path each one passes.
+
+| The path you pass | What to do |
+|---|---|
+| entity-relative (`${Entity.$path}/…`) | nothing — this is what the seam is for |
+| an absolute app route that must NOT be prefixed | call your transport directly, outside the hook |
+| an app route that SHOULD be prefixed | keep it, and delete any prefix you were adding by hand |
+| already carries the prefix | remove the hand-written prefix, or it doubles |
+
+The hook is renamed to say this: **`useEntityFetcher()` → `useEntityPathFetcher()`**. The
+argument is an *entity path*, not an application path. `useEntityFetcher` stays as a
+deprecated alias — identical behaviour, so nothing breaks on upgrade — and will be
+removed in a future major. Generated hooks emit the new name; regenerate to adopt it.

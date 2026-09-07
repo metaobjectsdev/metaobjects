@@ -3,7 +3,7 @@
 import type { Program as ProgramRow } from "./Program";
 import { Program } from "./Program.meta";
 import { buildFilterQs } from "@metaobjectsdev/runtime-web";
-import { useEntityFetcher } from "@metaobjectsdev/tanstack";
+import { useEntityPathFetcher } from "@metaobjectsdev/tanstack";
 import { useQuery } from "@tanstack/react-query";
 import type {
   ColumnFiltersState,
@@ -21,7 +21,7 @@ export function useProgramDefaultGrid() {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [search, setSearch] = useState<string>("");
 
-  const fetcher = useEntityFetcher();
+  const fetcher = useEntityPathFetcher();
 
   const qs = useMemo(() => {
     const filterObj: Record<string, unknown> = {};
@@ -70,7 +70,7 @@ export function useProgramCompactGrid() {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [search, setSearch] = useState<string>("");
 
-  const fetcher = useEntityFetcher();
+  const fetcher = useEntityPathFetcher();
 
   const qs = useMemo(() => {
     const filterObj: Record<string, unknown> = {};

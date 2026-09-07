@@ -290,8 +290,9 @@ USAGE:
 
 FLAGS:
   --refresh-docs        Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
-  --docs-only           Write only the agent-context files (no metaobjects/ project scaffold).
-                        Pair with --refresh-docs to update an existing project after upgrading.
+  --docs-only           Write only the agent-context files — no metadata sources, no
+                        codegen scaffold, no config. Pair with --refresh-docs to update
+                        an existing project after upgrading.
   --server <lang>       Declare a server language for the agent context (repeatable;
                         e.g. csharp, kotlin, python, node)
   --client <fw>         Declare a client framework for the agent context (repeatable;

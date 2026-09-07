@@ -20,6 +20,7 @@ import {
   isTphDiscriminatorBase,
   tphPlan,
   getPkInfo,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 /**
@@ -35,7 +36,7 @@ import {
  *   - useUpdate<Entity>
  *   - useDelete<Entity>
  *
- * All hooks call useEntityFetcher() (from @metaobjectsdev/tanstack) for
+ * All hooks call useEntityPathFetcher() (from @metaobjectsdev/tanstack) for
  * the underlying HTTP. Mutations aggressively invalidate <entity>Keys.all().
  */
 export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string {
@@ -44,7 +45,7 @@ export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string 
   const entityModule = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entity.name,
     ctx.extStyle,
   );
@@ -105,7 +106,7 @@ function renderM2mHooks(
   const useQuerySym = imp("useQuery@@tanstack/react-query");
   const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
   const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
+  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
 
   const source = entity.name;
 
@@ -141,7 +142,7 @@ export function ${hookName}(
   sourceId: ${pkType} | undefined,
   opts?: Omit<${useQueryOptionsSym}<${targetSym}[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${targetSym}[]> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   return ${useQuerySym}<${targetSym}[]>({
     queryKey: ${keysVar}.relation(${relLit}, sourceId),
     queryFn: () => fetcher<${targetSym}[]>(\`\${${source}.$path}/\${sourceId}/${e.name}\`),
@@ -177,7 +178,7 @@ function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string, ctx: 
   const useQuerySym = imp("useQuery@@tanstack/react-query");
   const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
   const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
+  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
   const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
@@ -203,7 +204,7 @@ export function use${entityName}(
   id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   return ${useQuerySym}<${entityName}Row>({
     queryKey: ${keysVar}.detail(id),
     queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`),
@@ -215,7 +216,7 @@ export function use${entityNamePlural}(
   filter?: ${entityName}Filter,
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row[]> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${entityName}Row[]>({
     queryKey: ${keysVar}.list(filter),
@@ -256,7 +257,7 @@ function renderFullHooksFile(entity: MetaObject, entityModule: string, ctx: Rend
   const useMutationOptionsSym = imp("t:UseMutationOptions@@tanstack/react-query");
   const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
   const useMutationResultSym = imp("t:UseMutationResult@@tanstack/react-query");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
+  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
   const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
@@ -284,7 +285,7 @@ export function use${entityName}(
   id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   return ${useQuerySym}<${entityName}Row>({
     queryKey: ${keysVar}.detail(id),
     queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`),
@@ -296,7 +297,7 @@ export function use${entityNamePlural}(
   filter?: ${entityName}Filter,
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row[]> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${entityName}Row[]>({
     queryKey: ${keysVar}.list(filter),
@@ -312,7 +313,7 @@ export function use${entityNamePlural}(
 export function useCreate${entityName}(
   opts?: Omit<${useMutationOptionsSym}<${entityName}Row, Error, ${entityName}Insert>, "mutationFn">,
 ): ${useMutationResultSym}<${entityName}Row, Error, ${entityName}Insert> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}<${entityName}Row, Error, ${entityName}Insert>({
     mutationFn: (input) => fetcher<${entityName}Row>(\`\${${entityName}.$path}\`, {
@@ -331,7 +332,7 @@ export function useCreate${entityName}(
 export function useUpdate${entityName}(
   opts?: Omit<${useMutationOptionsSym}<${entityName}Row, Error, { id: ${pkType}; input: ${entityName}Update }>, "mutationFn">,
 ): ${useMutationResultSym}<${entityName}Row, Error, { id: ${pkType}; input: ${entityName}Update }> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
     mutationFn: ({ id, input }) => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`, {
@@ -350,7 +351,7 @@ export function useUpdate${entityName}(
 export function useDelete${entityName}(
   opts?: Omit<${useMutationOptionsSym}<void, Error, ${pkType}>, "mutationFn">,
 ): ${useMutationResultSym}<void, Error, ${pkType}> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
     mutationFn: (id) => fetcher<void>(\`\${${entityName}.$path}/\${id}\`, { method: "DELETE" }),
@@ -396,7 +397,7 @@ function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: st
   const useMutationOptionsSym = imp("t:UseMutationOptions@@tanstack/react-query");
   const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
   const useMutationResultSym = imp("t:UseMutationResult@@tanstack/react-query");
-  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
+  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
   const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const subtypes = plan.subtypes;
@@ -408,7 +409,7 @@ function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: st
   // allowlist actually permits.
   const subImportLines = subtypes
     .map((s) => {
-      const m = entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, s.entity.package, s.entity.name, ctx.extStyle);
+      const m = entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(s.entity), s.entity.name, ctx.extStyle);
       return `import { type ${s.entity.name}, type ${s.entity.name}Filter } from ${JSON.stringify(m)};`;
     })
     .join("\n");
@@ -439,7 +440,7 @@ export function use${baseName}(
   id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${baseName}>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${baseName}> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   return ${useQuerySym}<${baseName}>({
     queryKey: ${keysVar}.detail(id),
     queryFn: () => fetcher<${baseName}>(\`\${${baseName}.$path}/\${id}\`),
@@ -451,7 +452,7 @@ export function use${pluralize(baseName)}(
   filter?: ${baseName}Filter,
   opts?: Omit<${useQueryOptionsSym}<${baseName}[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${baseName}[]> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${baseName}[]>({
     queryKey: ${keysVar}.list(filter),
@@ -473,7 +474,7 @@ export function use${pluralize(subName)}(
   filter?: ${subName}Filter,
   opts?: Omit<${useQueryOptionsSym}<${subName}[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${subName}[]> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
   return ${useQuerySym}<${subName}[]>({
     queryKey: ${keysVar}.subtypeList(${valueLit}, filter),
@@ -486,7 +487,7 @@ export function use${subName}(
   id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${subName}>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${subName}> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   return ${useQuerySym}<${subName}>({
     queryKey: ${keysVar}.subtypeDetail(${valueLit}, id),
     queryFn: () => fetcher<${subName}>(\`\${${baseName}.$path}/${seg}/\${id}\`),
@@ -497,7 +498,7 @@ export function use${subName}(
 export function useCreate${subName}(
   opts?: Omit<${useMutationOptionsSym}<${subName}, Error, ${createInput}>, "mutationFn">,
 ): ${useMutationResultSym}<${subName}, Error, ${createInput}> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}<${subName}, Error, ${createInput}>({
     mutationFn: (input) => fetcher<${subName}>(${subPath}, {
@@ -516,7 +517,7 @@ export function useCreate${subName}(
 export function useUpdate${subName}(
   opts?: Omit<${useMutationOptionsSym}<${subName}, Error, { id: ${pkType}; input: ${updateInput} }>, "mutationFn">,
 ): ${useMutationResultSym}<${subName}, Error, { id: ${pkType}; input: ${updateInput} }> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
     mutationFn: ({ id, input }) => fetcher<${subName}>(\`\${${baseName}.$path}/${seg}/\${id}\`, {
@@ -535,7 +536,7 @@ export function useUpdate${subName}(
 export function useDelete${subName}(
   opts?: Omit<${useMutationOptionsSym}<void, Error, ${pkType}>, "mutationFn">,
 ): ${useMutationResultSym}<void, Error, ${pkType}> {
-  const fetcher = ${useEntityFetcherSym}();
+  const fetcher = ${useEntityPathFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
     mutationFn: (id) => fetcher<void>(\`\${${baseName}.$path}/${seg}/\${id}\`, { method: "DELETE" }),

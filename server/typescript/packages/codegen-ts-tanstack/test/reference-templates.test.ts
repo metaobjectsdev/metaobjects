@@ -30,7 +30,7 @@ describe("codegen-ts-tanstack reference templates", () => {
 
   test("the hooks template names the client-component coupling", () => {
     const src = readReferenceTemplate("hooks");
-    expect(src).toContain("useEntityFetcher()");
+    expect(src).toContain("useEntityPathFetcher()");
     expect(src).toContain("@metaobjectsdev/tanstack");
   });
 

@@ -41,14 +41,49 @@ export function EntityFetcherProvider({
   return <EntityFetcherContext.Provider value={value}>{children}</EntityFetcherContext.Provider>;
 }
 
-/** Reads the fetcher from context, already bound to `baseUrl`. Throws if not provided. */
-export function useEntityFetcher(): EntityFetcher {
+/**
+ * The fetcher from context, already bound to `baseUrl`.
+ *
+ * **Every path you hand this is rewritten**: `baseUrl` is prefixed onto it. That
+ * is exactly right for the ENTITY-RELATIVE paths generated hooks emit
+ * (`${Entity.$path}/…`), and it is the reason for the name — the argument is an
+ * entity path, not an application path.
+ *
+ * It is NOT a general-purpose `fetch`. Handing it an absolute app route silently
+ * relocates the request: with `baseUrl="/api"`, `/internal/leads/1/notes` becomes
+ * `/api/internal/leads/1/notes`, and an already-prefixed `/api/decisions/1`
+ * becomes `/api/api/decisions/1`. Both are type-correct, so nothing in the
+ * compiler, the unit suite or `meta verify` can see them — only a request that
+ * 404s at runtime. An adopter who had followed the "the fetcher is the ONE place
+ * base-URL policy lives" advice and shared this seam with hand-written call sites
+ * lost ten write actions this way, silently.
+ *
+ * For non-entity paths, call your own transport directly, or compose `joinBaseUrl`
+ * from `@metaobjectsdev/runtime-web` yourself where you DO want the prefix.
+ *
+ * Throws if no `<EntityFetcherProvider>` is above it.
+ */
+export function useEntityPathFetcher(): EntityFetcher {
   const fetcher = useContext(EntityFetcherContext);
   if (!fetcher) {
     throw new Error(
-      "useEntityFetcher() called outside <EntityFetcherProvider>. " +
+      "useEntityPathFetcher() called outside <EntityFetcherProvider>. " +
         "Wrap your app (or the relevant subtree) with EntityFetcherProvider fetcher={...}.",
     );
   }
   return fetcher;
 }
+
+/**
+ * @deprecated Renamed to {@link useEntityPathFetcher}. Identical behaviour — the
+ * new name says what the hook does to the path it is given, which is what the old
+ * name hid: before 1.0 the provider passed its fetcher through unchanged, so
+ * "entity fetcher" was an accurate description of a hook that rewrote nothing.
+ * 1.0 made it BIND the fetcher to `baseUrl` (generated hooks stopped composing
+ * `$apiPrefix` themselves), and the name did not move with the behaviour.
+ *
+ * This alias will be removed in a future major. If you share this seam with
+ * hand-written non-entity call sites, read {@link useEntityPathFetcher} first —
+ * those paths are being rewritten.
+ */
+export const useEntityFetcher = useEntityPathFetcher;

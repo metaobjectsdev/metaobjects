@@ -4,7 +4,7 @@ import type { Subscriber as SubscriberRow } from "./Subscriber";
 import { Subscriber } from "./Subscriber.meta";
 import { subscriberActiveFilter } from "./Subscriber.columns";
 import { buildFilterQs } from "@metaobjectsdev/runtime-web";
-import { useEntityFetcher } from "@metaobjectsdev/tanstack";
+import { useEntityPathFetcher } from "@metaobjectsdev/tanstack";
 import { useQuery } from "@tanstack/react-query";
 import type {
   ColumnFiltersState,
@@ -22,7 +22,7 @@ export function useSubscriberActiveGrid() {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [search, setSearch] = useState<string>("");
 
-  const fetcher = useEntityFetcher();
+  const fetcher = useEntityPathFetcher();
 
   const qs = useMemo(() => {
     const filterObj: Record<string, unknown> = { ...subscriberActiveFilter };
