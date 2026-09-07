@@ -1237,9 +1237,12 @@ export async function verifyCommand(
 
   // -- docs drift -------------------------------------------------------------
   // Gated on --docs. Runs `meta docs` into a temp dir and diffs the committed docs
-  // tree. See lib/docs-drift.ts for the two deliberate differences from --codegen
-  // (a byte difference IS drift here, and a committed file a regen would not emit is
-  // never reported — `docs.outDir` is full of files MetaObjects did not write).
+  // tree. See lib/docs-drift.ts for the deliberate differences from --codegen: a byte
+  // difference IS drift here; a committed file a regen would not emit is reported ONLY
+  // under `agent/` and only when it opens with the @generated marker (`docs.outDir` is
+  // otherwise full of files MetaObjects did not write); and a page the project
+  // GIT-IGNORES is exempt, because `docs.outDir` is a directory rather than a namespace
+  // MetaObjects owns.
   //
   // It needs a config for the same reason `--codegen` does: `docs.outDir` says which
   // tree to compare against, and the `agent` surface will not even materialise
@@ -1275,21 +1278,44 @@ export async function verifyCommand(
       return 2;
     }
 
+    // What the gate did NOT check, on BOTH the passing and the failing line. A gate
+    // that quietly compared two of 589 pages and reported "no drift" would be
+    // indistinguishable from one that compared everything.
+    const notChecked =
+      result.ignoreReason !== undefined
+        ? `; .gitignore not consulted — ${result.ignoreReason} — so every page a fresh run emits was expected to be committed`
+        : result.ignored > 0
+          ? `; ${result.ignored} git-ignored page(s) not checked`
+          : "";
+
     if (result.clean) {
       // The denominator is what was actually COMPARED, so the passing line and the
       // failing line below count the same set. A gate whose two halves divide by
       // different numbers is how `verify --templates` came to report seven templates
       // vanishing between a red run and a green one.
-      say(`meta verify — ${result.checked} docs page(s) match a fresh 'meta docs' (no docs drift).`);
+      say(
+        `meta verify — ${result.checked} docs page(s) match a fresh 'meta docs' ` +
+          `(no docs drift${notChecked}).`,
+      );
       return 0;
     }
 
     log.error(
       `meta verify — docs drift (${result.driftedFiles.length} of ${result.checked} page(s) ` +
-        `differ from a fresh 'meta docs'):`,
+        `differ from a fresh 'meta docs'${notChecked}):`,
     );
     for (const line of result.lines) log.error(`  ${line}`);
     log.error("Run 'meta docs' to regenerate, then commit the result.");
+    // The one-command path to green, named at the point of conviction — a page reported
+    // as uncommitted is the one case where regenerating is NOT the answer.
+    if (result.lines.some((l) => l.startsWith("+ "))) {
+      log.error(
+        result.ignoreReason === undefined
+          ? "A page you deliberately do not commit is exempt once it is git-ignored."
+          : `.gitignore was not consulted (${result.ignoreReason}), so a page you ` +
+            `deliberately do not commit is reported above.`,
+      );
+    }
     return 1;
   }
 }

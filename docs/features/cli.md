@@ -52,7 +52,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
 | `verify --codegen` | **Codegen drift** — regenerate from metadata into a temp dir and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). | no |
-| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, if a page a fresh run emits was never committed, or if a generated page under `agent/` is committed that a fresh run no longer emits. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
+| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, if a page a fresh run emits was never committed AND is not git-ignored, or if a generated page under `agent/` is committed that a fresh run no longer emits. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
 
 Rules of the contract:
 
@@ -66,14 +66,33 @@ Rules of the contract:
   against the configured `outDir` (and any per-target `outDir`) from
   `metaobjects.config.ts`. With no config it errors clearly (exit 2) rather than
   silently passing — there is nothing to diff against.
-- **`--docs` needs the same, and diffs `docs.outDir`.** Two things it does
-  DIFFERENTLY from `--codegen`, both deliberate. A byte difference IS drift: a docs
-  page is read, never imported, so there is no three-way merge to honour and nothing
-  records what was written. And it **never reports a file as extra** — `docs.outDir`
-  defaults to `./docs`, which in a real repository is full of hand-written
-  documentation MetaObjects did not write, and with no manifest to prove ownership
-  the gate has no standing to convict one. The cost is stated plainly: a page for an
-  entity you DELETED stays committed and the gate stays green.
+- **`--docs` needs the same, and diffs `docs.outDir`.** Three things it does
+  DIFFERENTLY from `--codegen`, all deliberate.
+
+  A byte difference IS drift: a docs page is read, never imported, so there is no
+  three-way merge to honour.
+
+  It reports a committed file as EXTRA only under `agent/`, and only when the file
+  opens with the `@generated` marker — the one tree it can prove it wrote.
+  `docs.outDir` defaults to `./docs`, which in a real repository is full of
+  hand-written documentation MetaObjects did not write, and with no manifest to prove
+  ownership the gate has no standing to convict one elsewhere.
+
+  **A page the project GIT-IGNORES is exempt.** `docs.outDir` is a directory, not a
+  namespace MetaObjects owns — the jurisdiction rule `--codegen` got in 0.24.3 — but
+  `meta docs` keeps no manifest of what it wrote, so the gate asks the project
+  instead. A project that commits its whole docs tree ignores nothing and so is
+  checked in full; a project that generates 589 pages and commits 2 on purpose is
+  checked on the 2 it chose. Both counts appear on the pass AND the fail line, so a
+  gate that checked two of 589 cannot be mistaken for one that checked everything,
+  and a run where every page is ignored is REFUSED (exit 2) rather than reported
+  clean. When git cannot answer — not a repository, not on PATH — the gate checks
+  every page a fresh run emits, exactly as it did before, and says that it did.
+
+  Note the division of labour: **`docs.surfaces` says what this project's docs ARE;
+  `.gitignore` says which of them it COMMITS.** Narrowing `surfaces` to silence the
+  gate also stops `meta docs` producing those pages, which is usually not what you
+  want.
 - **Unknown/invalid flag → exit 2** with usage.
 
 **Port status (staged per ADR-0021):** the **TypeScript Node `meta` is the

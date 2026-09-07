@@ -194,7 +194,11 @@ FLAGS:
   --codegen             Codegen drift — regenerate to temp dir and diff committed output
                         Needs metaobjects.config.ts; exit 2 if absent.
   --docs                Docs drift — run 'meta docs' to a temp dir and diff docs.outDir
-                        Needs metaobjects.config.ts; exit 2 if absent.
+                        Needs metaobjects.config.ts; exit 2 if absent. A page the
+                        project GIT-IGNORES is exempt (docs.outDir is a directory, not
+                        a namespace MetaObjects owns); the count of exempt pages is
+                        reported either way, and a run where every page is ignored is
+                        refused rather than reported clean.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.

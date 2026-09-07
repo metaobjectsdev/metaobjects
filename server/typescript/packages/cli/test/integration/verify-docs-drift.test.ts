@@ -13,6 +13,7 @@ import { describe, test, expect } from "bun:test";
 import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { run } from "../../src/index.js";
 
 // test/integration/ -> cli -> packages -> typescript -> server -> repo root
@@ -152,6 +153,200 @@ describe("meta verify --docs", () => {
       expect(await run(["verify", "--cwd", dir, "--docs"])).toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A page the project deliberately does NOT commit is not drift.
+//
+// The gate diffed everything a fresh `meta docs` would emit against the committed
+// tree, and called every page it did not find committed drift. An estate generating
+// three surfaces and committing 2 files of 589 — gitignoring the rest, with a comment
+// explaining they are a derived view of metadata that is already the source of truth —
+// was told it had 588 drifted pages. EXACTLY ONE was real.
+//
+// `docs.outDir` is a directory, not a namespace MetaObjects owns: the jurisdiction
+// ruling 0.24.3 made for `verify --codegen`. That one could key on
+// `.gen-state/.hashes.json`, a record of what the generator WROTE; `meta docs` keeps no
+// manifest, so the gate asks the project instead, through git.
+// ---------------------------------------------------------------------------
+
+function git(dir: string, ...args: string[]): { status: number; stderr: string } {
+  const r = spawnSync("git", ["-C", dir, ...args], { encoding: "utf-8" });
+  return { status: r.status ?? -1, stderr: r.stderr ?? "" };
+}
+
+/** A showcase copy that is its own git repository, with `body` as .gitignore. */
+function gitProject(body: string): string {
+  const dir = project();
+  writeFileSync(join(dir, ".gitignore"), body);
+  git(dir, "init", "-q");
+  git(dir, "config", "user.email", "t@example.com");
+  git(dir, "config", "user.name", "t");
+  return dir;
+}
+
+/** Capture what the gate printed, without printing it. */
+async function runCapturingStderr(args: string[]): Promise<{ exit: number; out: string }> {
+  const chunks: string[] = [];
+  const orig = console.error;
+  console.error = (...a: unknown[]) => { chunks.push(a.map(String).join(" ")); };
+  try {
+    const exit = await run(args);
+    return { exit, out: chunks.join("\n") };
+  } finally {
+    console.error = orig;
+  }
+}
+
+describe("meta verify --docs — a git-ignored page is not drift", () => {
+  test("the F27 reproduction: generate all, commit two, gate is clean", async () => {
+    const dir = gitProject("docs/*\n!docs/requirements.md\n!docs/requirements.toon\n");
+    try {
+      await generateDocs(dir);
+      git(dir, "add", "-f", ".gitignore", "docs/requirements.md", "docs/requirements.toon");
+      git(dir, "commit", "-qm", "docs");
+
+      const { exit, out } = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
+      expect(`${exit}: ${out}`).toContain("0: ");
+      expect(exit).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("...and a REAL edit to one of the two committed pages still convicts", async () => {
+    // The other half. A rule that exempts everything is not a fix, it is a mute button.
+    const dir = gitProject("docs/*\n!docs/requirements.md\n!docs/requirements.toon\n");
+    try {
+      await generateDocs(dir);
+      git(dir, "add", "-f", ".gitignore", "docs/requirements.md", "docs/requirements.toon");
+      git(dir, "commit", "-qm", "docs");
+      writeFileSync(join(dir, "docs", "requirements.md"), "hand-edited\n");
+
+      const { exit, out } = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
+      expect(exit).toBe(1);
+      // Exactly ONE line, and it is the `~`. No `+` for the 587 the project ignores.
+      expect(out).toContain("~ requirements.md");
+      expect(out).not.toContain("+ ");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a TRACKED page is compared even when a pattern would ignore it", async () => {
+    // The property the whole design rests on: git never reports a tracked path as
+    // ignored. So this rule can never be used to hide a page the project commits.
+    const dir = gitProject("docs/\n");
+    try {
+      await generateDocs(dir);
+      git(dir, "add", "-f", ".gitignore", "docs/agent/schema.md");
+      git(dir, "commit", "-qm", "docs");
+      writeFileSync(join(dir, "docs", "agent", "schema.md"), "hand-edited\n");
+
+      const { exit, out } = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
+      expect(exit).toBe(1);
+      expect(out).toContain("~ agent/schema.md");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("ignoring EVERYTHING is refused, not reported clean", async () => {
+    // A gate asked to check pages that could check none must not answer "no drift".
+    const dir = gitProject("docs/\n");
+    try {
+      await generateDocs(dir);
+      git(dir, "add", "-f", ".gitignore");
+      git(dir, "commit", "-qm", "ignore");
+
+      const { exit, out } = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
+      expect(exit).toBe(2);
+      expect(out).toContain("every one of them is git-ignored");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a page that is neither committed nor ignored is STILL drift", async () => {
+    // The defect the simpler rule ("never report an absent page") would have lost: a
+    // tracked page deleted by hand, or lost in a merge, produces no `~` anywhere.
+    const dir = gitProject("");
+    try {
+      await generateDocs(dir);
+      git(dir, "add", "-f", "docs");
+      git(dir, "commit", "-qm", "docs");
+      rmSync(join(dir, "docs", "README.md"));
+
+      const { exit, out } = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
+      expect(exit).toBe(1);
+      expect(out).toContain("+ README.md");
+      // And it names the escape, at the point of conviction.
+      expect(out).toContain("git-ignored");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("git unavailable degrades to the FULL check, and says so", async () => {
+    // Fails closed, loudly. It must never silently treat "cannot say" as "nothing is
+    // ignored" while reporting a denominator that implies it checked everything.
+    //
+    // Stated as a CONTRAST on one fixture, because that is the only form that proves
+    // the exemption is what produced the clean run: the same project, the same missing
+    // page, exempt when git can answer and convicted when it cannot.
+    const dir = gitProject("docs/*\n!docs/requirements.md\n!docs/requirements.toon\n");
+    try {
+      await generateDocs(dir);
+      git(dir, "add", "-f", ".gitignore", "docs/requirements.md", "docs/requirements.toon");
+      git(dir, "commit", "-qm", "docs");
+      // An ignored page that is NOT on disk — the fresh-clone shape.
+      rmSync(join(dir, "docs", "README.md"));
+
+      const withGit = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
+      expect(withGit.exit).toBe(0);
+
+      const prev = process.env.META_GEN_GIT;
+      process.env.META_GEN_GIT = join(dir, "no-such-git-binary");
+      try {
+        const { exit, out } = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
+        expect(exit).toBe(1);
+        expect(out).toContain("+ README.md");
+        expect(out).toContain(".gitignore not consulted");
+      } finally {
+        if (prev === undefined) delete process.env.META_GEN_GIT;
+        else process.env.META_GEN_GIT = prev;
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the verdict does not depend on which files this machine happens to have", async () => {
+    // The exemption is computed over the fresh set BY NAME, on disk or not. Deciding
+    // per-file-existence would have made `checked` a property of the machine: a dev box
+    // that has run `meta docs` has all 589 pages present and a CI runner has two.
+    const body = "docs/*\n!docs/requirements.md\n!docs/requirements.toon\n";
+    const withPages = gitProject(body);
+    const withoutPages = gitProject(body);
+    try {
+      for (const dir of [withPages, withoutPages]) {
+        await generateDocs(dir);
+        git(dir, "add", "-f", ".gitignore", "docs/requirements.md", "docs/requirements.toon");
+        git(dir, "commit", "-qm", "docs");
+      }
+      // One machine keeps every locally generated page; the other is a fresh clone.
+      rmSync(join(withoutPages, "docs", "README.md"));
+      rmSync(join(withoutPages, "docs", "agent"), { recursive: true, force: true });
+
+      const a = await runCapturingStderr(["verify", "--cwd", withPages, "--docs"]);
+      const b = await runCapturingStderr(["verify", "--cwd", withoutPages, "--docs"]);
+      expect(a.exit).toBe(0);
+      expect(b.exit).toBe(0);
+    } finally {
+      rmSync(withPages, { recursive: true, force: true });
+      rmSync(withoutPages, { recursive: true, force: true });
     }
   });
 });

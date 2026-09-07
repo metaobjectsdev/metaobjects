@@ -49,6 +49,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, lstatSync }
 import { tmpdir } from "node:os";
 import { join, relative, resolve, isAbsolute, sep } from "node:path";
 import { docsCommand } from "../commands/docs.js";
+import { gitIgnored } from "./git-ignore.js";
 
 export interface DocsDriftResult {
   /** True when every page a fresh `meta docs` would write is committed and identical. */
@@ -59,8 +60,19 @@ export interface DocsDriftResult {
   /** Human-readable, one line per file. */
   lines: string[];
   /** The denominator both the passing and the failing report divide by: the pages a fresh
-   *  run produced, plus any committed page under `agent/` it no longer emits. */
+   *  run produced, plus any committed page under `agent/` it no longer emits, MINUS the
+   *  git-ignored ones. A pure function of (fresh set, repository ignore rules) — never of
+   *  which files happen to be on this machine's disk. */
   checked: number;
+  /** How many pages a fresh run emits that the project git-ignores, so did not check.
+   *  Reported on BOTH the passing and the failing line: a gate that quietly checked two
+   *  of 589 pages and said "no drift" would be indistinguishable from one that checked
+   *  everything. */
+  ignored: number;
+  /** Why the ignore rules could not be consulted, when they could not be. Undefined means
+   *  they were. The gate then falls back to checking EVERY page a fresh run emits — the
+   *  pre-existing behaviour — and says so rather than degrading silently. */
+  ignoreReason?: string | undefined;
   /** Set when the gate could not run at all. */
   error?: string;
 }
@@ -163,6 +175,7 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
         driftedFiles: [],
         lines: [],
         checked: 0,
+        ignored: 0,
         error:
           `verify --docs: 'meta docs' exited ${exit}, so the committed pages could not be ` +
           `compared against a fresh run. Fix that first — the error is above.`,
@@ -176,19 +189,89 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
         driftedFiles: [],
         lines: [],
         checked: 0,
+        ignored: 0,
         error:
           "verify --docs: a fresh 'meta docs' produced no pages, so there is nothing to " +
           "compare. Check that this project declares metadata the docs surfaces cover.",
       };
     }
 
+    // Committed-but-not-regenerated, inside the directories this command owns.
+    const freshSet = new Set(fresh);
+    const ownedOrphans = listFiles(docsDir)
+      .filter((rel) => !freshSet.has(rel) && isOurs(docsDir, rel))
+      .sort();
+
+    // A page the project deliberately does not commit is not drift.
+    //
+    // `docs.outDir` is a directory, not a namespace MetaObjects owns — the same
+    // jurisdiction ruling 0.24.3 made for `verify --codegen`. But `--codegen` could key
+    // on `.gen-state/.hashes.json`, a record of what the generator WROTE, and `meta
+    // docs` keeps no such manifest. What it can ask instead is what the PROJECT says:
+    // a page under `docs.outDir` that git reports ignored is one the project has
+    // declared it does not commit.
+    //
+    // This is not a guess about intent, it is the project's own statement of it. And it
+    // cannot be used to hide a file the project actually tracks: git never reports a
+    // TRACKED path as ignored, whatever pattern matches it, so a committed page is
+    // always compared.
+    //
+    // The exemption is computed over the FRESH set by NAME, present on disk or not.
+    // That is what makes the verdict machine-independent: a developer box that has run
+    // `meta docs` locally has all 589 pages on disk and a CI runner has two, and both
+    // must report the same denominator. Deciding per-file-existence would have made
+    // `checked` a property of the machine.
+    //
+    // Without it: an estate generating three surfaces and committing 2 files of 589 —
+    // gitignoring the rest with a comment explaining they are a derived view of
+    // metadata that is already the source of truth — was told it had 588 drifted pages,
+    // of which exactly ONE was real.
+    const ignoreCandidates = [...fresh, ...ownedOrphans];
+    // honourGlobalExcludes: false — this verdict must be a property of the repository.
+    // A gate that passes for the author and fails in CI because of a personal ignore
+    // file is worse than no gate.
+    const ignoreLookup = gitIgnored(docsDir, ignoreCandidates, {
+      honourGlobalExcludes: false,
+    });
+    const ignored: ReadonlySet<string> =
+      "ignored" in ignoreLookup ? ignoreLookup.ignored : new Set<string>();
+    const ignoreReason: string | undefined =
+      "unavailable" in ignoreLookup ? ignoreLookup.unavailable : undefined;
+    const isIgnored = (rel: string): boolean => ignored.has(rel.split(sep).join("/"));
+
+    const toCheck = fresh.filter((rel) => !isIgnored(rel));
+    const orphans = ownedOrphans.filter((rel) => !isIgnored(rel));
+    const ignoredCount = fresh.length - toCheck.length;
+
+    // A gate asked to check pages that could check NONE must not answer "no drift".
+    if (toCheck.length === 0 && orphans.length === 0) {
+      return {
+        clean: false,
+        driftedFiles: [],
+        lines: [],
+        checked: 0,
+        ignored: ignoredCount,
+        ignoreReason,
+        error:
+          `verify --docs: a fresh 'meta docs' produced ${fresh.length} page(s) and every ` +
+          `one of them is git-ignored, so there is nothing to compare. Commit the pages ` +
+          `you want checked, or run without --docs.`,
+      };
+    }
+
     const driftedFiles: string[] = [];
     const lines: string[] = [];
-    for (const rel of fresh) {
+    for (const rel of toCheck) {
       const committedPath = join(docsDir, rel);
       if (!existsSync(committedPath)) {
         driftedFiles.push(rel);
-        lines.push(`+ ${rel} (a fresh 'meta docs' emits it; not committed)`);
+        // When the rules could not be consulted the last clause would be a claim we
+        // have not checked, so it is dropped rather than asserted.
+        lines.push(
+          ignoreReason === undefined
+            ? `+ ${rel} (a fresh 'meta docs' emits it; not committed, not git-ignored)`
+            : `+ ${rel} (a fresh 'meta docs' emits it; not committed)`,
+        );
         continue;
       }
       const a = readFileSync(committedPath, "utf8");
@@ -198,14 +281,9 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
         lines.push(`~ ${rel} (committed content differs from a fresh 'meta docs')`);
       }
     }
-    // Committed-but-not-regenerated, inside the directories this command owns. Counted
-    // into `checked` as well as `driftedFiles` so the failing line and the passing line
-    // keep dividing by the same set — the `verify --templates` mistake, where a red run
-    // and a green run reported different denominators for the same project.
-    const freshSet = new Set(fresh);
-    const orphans = listFiles(docsDir)
-      .filter((rel) => !freshSet.has(rel) && isOurs(docsDir, rel))
-      .sort();
+    // Counted into `checked` as well as `driftedFiles` so the failing line and the
+    // passing line keep dividing by the same set — the `verify --templates` mistake,
+    // where a red run and a green run reported different denominators for one project.
     for (const rel of orphans) {
       driftedFiles.push(rel);
       lines.push(`- ${rel} (committed; a fresh 'meta docs' no longer emits it)`);
@@ -214,7 +292,9 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
       clean: driftedFiles.length === 0,
       driftedFiles: driftedFiles.sort(),
       lines,
-      checked: fresh.length + orphans.length,
+      checked: toCheck.length + orphans.length,
+      ignored: ignoredCount,
+      ignoreReason,
     };
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });

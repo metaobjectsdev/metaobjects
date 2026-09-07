@@ -16,39 +16,13 @@
 // unused artifact would be wrong.
 
 import { existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { log } from "./log.js";
+import { isGitIgnored } from "./git-ignore.js";
 
 /** Project-relative path of the manifest — the one artifact of `.gen-state/` that is
  *  meant to be committed. */
 export const HASH_MANIFEST_REL = join(".metaobjects", ".gen-state", ".hashes.json");
-
-/**
- * Ask git whether `relPath` is ignored, or undefined when the question cannot be
- * answered (not a repository, git missing).
- *
- * `check-ignore` is the only reliable answer: parsing `.gitignore` by hand would have
- * to reimplement precedence, negation and nested ignore files — and the specific trap
- * this check exists to catch (`.gen-state/` excluding a directory so a `!` negation
- * inside it can never apply) is exactly the rule a hand-rolled parser gets wrong.
- */
-function isGitIgnored(cwd: string, relPath: string): boolean | undefined {
-  const gitBin = process.env.META_GEN_GIT ?? "git";
-  let res;
-  try {
-    res = spawnSync(gitBin, ["-C", cwd, "check-ignore", "-q", "--", relPath], {
-      encoding: "utf-8",
-    });
-  } catch {
-    return undefined;
-  }
-  if (res.error !== undefined) return undefined;
-  // 0 = ignored, 1 = not ignored, 128 = not a git repo / other git error.
-  if (res.status === 0) return true;
-  if (res.status === 1) return false;
-  return undefined;
-}
 
 /**
  * Warn once when the hash manifest is git-ignored, naming the fix.
@@ -61,7 +35,10 @@ export function warnIfManifestIgnored(cwd: string): void {
   // Nothing generated yet ⇒ nothing at risk ⇒ nothing worth saying.
   if (!existsSync(join(cwd, HASH_MANIFEST_REL))) return;
 
-  if (isGitIgnored(cwd, HASH_MANIFEST_REL) !== true) return;
+  // honourGlobalExcludes: TRUE here, and that is the opposite call to the docs gate.
+  // The question this warning asks is "will this file reach another machine?", and a
+  // per-user ignore file answers it just as truly as a committed .gitignore does.
+  if (isGitIgnored(cwd, HASH_MANIFEST_REL, { honourGlobalExcludes: true }) !== true) return;
 
   log.warn(
     `${HASH_MANIFEST_REL} is git-ignored, so it never reaches another machine — ` +
