@@ -20,7 +20,7 @@
 //                prepend to it, or replace the call entirely with your own renderer.
 // composes-with: entity.ts (imports the table/schemas these hooks fetch/validate against).
 
-import { type MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
@@ -109,4 +109,4 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
     generator.target = opts.target;
   }
   return generator;
-} as GeneratorFactory<TanstackQueryOpts | void>;
+} as GeneratorFactory<TanstackQueryOpts | undefined>;

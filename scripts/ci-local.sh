@@ -209,6 +209,23 @@ gate_metamodel_version() { node scripts/check-metamodel-version.mjs && node scri
 # adopter resolves. The check reads MANIFESTS, so it needs no network.
 gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
 
+# ── the templates `meta eject` writes must lint clean where they LAND ─────────
+# A reference template becomes an ADOPTER'S file: `meta init` copies five, `meta eject`
+# copies any of them on demand, and from then on their lint config reads it. Six of the
+# ten shipped with 14 recommended-rule findings, so the first thing an adopter saw after
+# taking ownership was errors on code they did not write. Nothing could see it — the
+# templates are excluded from each package's BUILD tsconfig, this repo ships no
+# biome.json of its own, and the per-package reference-byte-identical gates compare
+# EMITTED OUTPUT, which is unchanged whether a template asserts non-null or narrows.
+# Discovery keys on the "REFERENCE TEMPLATE — copy this into your repo" header rather
+# than a path, so it reaches all 22 copies (three src/reference dirs, test-generators,
+# and both examples/ scaffolds) — every one carried the identical findings. Lint only,
+# deliberately not `biome check`: formatting is a diff the adopter's own formatter owns
+# and re-runs. bun_install FIRST — biome comes from the codegen packages' node_modules.
+gate_reference_templates_lint() {
+  bun_install && bun scripts/check-reference-templates-lint.ts && bun scripts/test-reference-templates-lint.ts
+}
+
 # ── shipped metadata examples must still load ─────────────────────────────────
 # Three times an adopter — never a gate — found that a doc or an agent-context skill
 # taught vocabulary the loader had already retired (#337 @verifiedBy, #342 @fields with
@@ -576,6 +593,7 @@ if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_cov
 if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
+if want gates; then step_if bun "reference templates lint"     gate_reference_templates_lint; fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
 if want gates; then step_if bun "no retired \$apiPrefix"        gate_no_api_prefix;          fi
 if want gates; then step_if bun "site payload is true"         gate_site_payload;           fi

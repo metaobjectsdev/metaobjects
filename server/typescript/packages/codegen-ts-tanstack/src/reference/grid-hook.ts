@@ -22,7 +22,7 @@
 //                pass the SAME `tphSubtypeGrids` predicate to both, or a TPH subtype gets
 //                a .grid.ts with no .columns.tsx beside it (#287).
 
-import { type MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
@@ -151,4 +151,4 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     generator.target = opts.target;
   }
   return generator;
-} as GeneratorFactory<TanstackGridHookOpts | void>;
+} as GeneratorFactory<TanstackGridHookOpts | undefined>;

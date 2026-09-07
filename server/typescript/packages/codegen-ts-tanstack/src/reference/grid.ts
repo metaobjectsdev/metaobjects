@@ -22,7 +22,7 @@
 //                hooks.ts (the query hook a grid usually pairs with),
 //                grid-hook.ts (pass it the SAME `tphSubtypeGrids` predicate).
 
-import { type MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
@@ -114,4 +114,4 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     generator.target = opts.target;
   }
   return generator;
-} as GeneratorFactory<TanstackGridOpts | void>;
+} as GeneratorFactory<TanstackGridOpts | undefined>;

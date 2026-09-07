@@ -54,17 +54,23 @@ export interface BarrelOpts {
 export const barrel = function barrel(opts?: BarrelOpts): Generator {
   const generator: Generator = {
     name: "barrel",
-    generate: oncePerRun(async (entities, ctx) => ({
-      path: "index.ts",
-      content: await formatTs(
-        renderBarrel(
-          entities.map((e) => ({ name: ctx.renderContext!.valueObjectEmittedName(e), package: e.package })),
-          ctx.renderContext!.extStyle,
-          ctx.renderContext!.selfTarget,
-          ctx.renderContext!.entityModuleTarget,
+    generate: oncePerRun(async (entities, ctx) => {
+      if (!ctx.renderContext) {
+        throw new Error("barrel: renderContext is required (provided by runGen)");
+      }
+      const rc = ctx.renderContext;
+      return {
+        path: "index.ts",
+        content: await formatTs(
+          renderBarrel(
+            entities.map((e) => ({ name: rc.valueObjectEmittedName(e), package: e.package })),
+            rc.extStyle,
+            rc.selfTarget,
+            rc.entityModuleTarget,
+          ),
         ),
-      ),
-    })),
+      };
+    }),
   };
   if (opts?.target) {
     generator.target = opts.target;

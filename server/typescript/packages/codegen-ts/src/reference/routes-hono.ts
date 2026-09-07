@@ -26,7 +26,7 @@
 //                rejects them (ERR_UNKNOWN_ATTR).
 // composes-with: entity.ts (imports the table/schemas/allowlists), queries.ts.
 
-import { type MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
@@ -83,12 +83,12 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
       // `meta gen` time rather than discovered as missing endpoints in production.
       const skipped = ctx.entities.filter((e) => passesOtherGates(e) && isTphSubtype(e));
       if (skipped.length > 0) {
-        ctx.warn(
-          `no Hono routes emitted for the TPH subtype(s) ${skipped.map((e) => e.name).join(", ")} — ` +
+        const why =
           "the Hono adapter has no discriminator scoping yet, so per-subtype CRUD would " +
           "return and mutate OTHER subtypes' rows. Use routesFile() (Fastify), which " +
-          "dispatches TPH correctly, or hand-write the scoped routes.",
-        );
+          "dispatches TPH correctly, or hand-write the scoped routes.";
+        const names = skipped.map((e) => e.name).join(", ");
+        ctx.warn(`no Hono routes emitted for the TPH subtype(s) ${names} — ${why}`);
       }
       return emit(ctx);
     },

@@ -92,7 +92,7 @@ function renderQueries(obj: MetaObject, ctx: RenderContext): string {
       : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
   const dbTypeAlias =
     ctx.dialect === "postgres"
-      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;`
+      ? "type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;"
       : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;`;
 
   // #203 — an @autoSet entity additionally imports its preserving-shape schema and emits

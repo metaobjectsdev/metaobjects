@@ -34,7 +34,7 @@
 //                own handlers (auth, side effects).
 // composes-with: entity.ts (imports the table/schemas/allowlists), queries.ts.
 
-import { type MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
