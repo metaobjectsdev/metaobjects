@@ -24,11 +24,14 @@ longer asks for "one coordinated release with no metamodel-breaking change." It 
 variable the maintainer sets, and it had already converged — `metamodelVersion` held at `0.13`
 across `v0.24.2`–`v0.24.5`, four consecutive releases — before `0.25.0` spent the breaking slot
 by decision. It is replaced by **G3a** (declared scope covered, nothing outstanding needs new
-vocabulary), **G3b** (DONE — `docs/compatibility-policy.md` carries the *correction bar*: the
-three-part test under which input that never had a valid meaning may stop loading in a PATCH,
-explicitly NOT covering retirement of vocabulary that worked) and **G3c** (DONE — the migration
-guide and compat policy are current at the cut). Ruling in ADR-0035 **Amendment 3**. Do not
-reintroduce a waiting gate in any form.
+vocabulary — **DECLARED 2026-09-07**), **G3b** (DONE — `docs/compatibility-policy.md` carries
+the *correction bar*: the three-part test under which input that never had a valid meaning may
+stop loading in a PATCH, explicitly NOT covering retirement of vocabulary that worked), **G3c**
+(DONE — the migration guide and compat policy are current at the cut) and **G3d** (OPEN, and the
+one gate now blocking the cut — an adopter estate must run the RELEASE CANDIDATE with the drift
+gate ENFORCED before promote; ruled 2026-09-07 knowing all six adopters are maintainer-owned,
+because a conformance corpus gates the ports against each other and never against use). Ruling
+in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
 **TypeScript reference implementation** is **published to npm at `0.25.0`** (14 `@metaobjectsdev/*` publish candidates on the `latest` tag, full lockstep; the two `angular` packages are versioned on their own `0.6.x` line and are **NOT published to npm — source-only by decision** (ADR-0048): they build in-repo, and stay off the registry until they meet the ADR's promotion bar). C# at `0.25.0` (NuGet); Python at `0.25.0` (PyPI); Java / Kotlin at `7.25.0` (Maven Central). **The four registries no longer move in lockstep — since `0.24.5` a registry publishes only when it has a changed product file**, and when it does it adopts the shared `minor.patch` then current, skipping the numbers it sat out (ADR-0035 Amendment 1 / `docs/RELEASING.md`). Two carve-outs: the 14 npm packages still move atomically with each other, and a change to `expected-registry.json` / `metamodelVersion` still forces all four. So a lagging number is INFORMATION — PyPI at `0.25.0` while npm is at `0.25.2` says PyPI has had no product change since `0.25.0`.
