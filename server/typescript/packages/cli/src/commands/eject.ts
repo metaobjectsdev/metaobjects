@@ -12,6 +12,7 @@ import * as tanstackTpl from "@metaobjectsdev/codegen-ts-tanstack";
 import { parseEjectArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { declaredDependencyNames, readPackageManifest } from "../lib/package-manifest.js";
+import { compareOwnedCopy, type OwnedComparison } from "../lib/owned-copy.js";
 
 // Mirrors `OWNED_GENERATORS_DIR` in init.ts's `writeOwnedGenerators` — same directory,
 // same never-clobber-without-consent contract. Kept as its own local constant rather
@@ -134,15 +135,7 @@ export interface EjectResult {
    * green, because nothing compares an owned copy to anything. Reporting this is the
    * cheapest thing that makes that condition observable.
    */
-  local?: "identical" | "differs" | undefined;
-  /** Lines of the previous file that the reference does not have. Set only when it differs. */
-  changedLines?: number | undefined;
-}
-
-/** Lines present in `a` and not in `b` — a cheap "how far apart" for a report line. */
-function changedLineCount(a: string, b: string): number {
-  const other = new Set(b.split("\n"));
-  return a.split("\n").filter((l) => l.trim() !== "" && !other.has(l)).length;
+  comparison?: OwnedComparison | undefined;
 }
 
 /** The `@metaobjectsdev/*` packages an ejected template imports, read from the file
@@ -221,15 +214,11 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
   };
 
   const existing = (await fileExists(abs)) ? await readFile(abs, "utf8") : undefined;
-  const local =
-    existing === undefined ? undefined : existing === templateSource ? "identical" : "differs";
-  const changedLines =
-    local === "differs" && existing !== undefined
-      ? changedLineCount(existing, templateSource)
-      : undefined;
+  const comparison =
+    existing === undefined ? undefined : await compareOwnedCopy(existing, templateSource);
 
   if (!opts.force && existing !== undefined) {
-    return { ...common, status: "preserved", local, changedLines };
+    return { ...common, status: "preserved", comparison };
   }
 
   await mkdir(join(opts.cwd, OWNED_GENERATORS_DIR), { recursive: true });
@@ -237,8 +226,7 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
   return {
     ...common,
     status: existing === undefined ? "created" : "replaced",
-    local,
-    changedLines,
+    comparison,
   };
 }
 
@@ -272,13 +260,16 @@ async function listOutput(cwd: string): Promise<string> {
         continue;
       }
       const owned = await readFile(abs, "utf8");
-      if (owned === ref) {
+      const cmp = await compareOwnedCopy(owned, ref);
+      if (cmp.verdict === "identical") {
         lines.push(`  ${name}  [owned — identical to the reference]`);
+      } else if (cmp.verdict === "reformatted") {
+        lines.push(`  ${name}  [owned — same content as the reference, your formatting]`);
       } else {
         anyStale = true;
         lines.push(
-          `  ${name}  [owned — DIFFERS from the reference by ` +
-            `${changedLineCount(owned, ref)} line(s)]`,
+          `  ${name}  [owned — DIFFERS: ${cmp.referenceOnly} line(s) behind, ` +
+            `${cmp.localOnly} line(s) of your own]`,
         );
       }
     }
@@ -286,8 +277,17 @@ async function listOutput(cwd: string): Promise<string> {
   }
   if (anyStale) {
     lines.push(
-      "A copy that DIFFERS is either your customization or upstream having moved on — " +
-        "`meta eject <name>` prints the diff command that tells you which.",
+      "Both counts ignore formatting: each file is re-formatted and its lines sorted " +
+        "before comparing, so re-wrapping and import order never show up here.",
+    );
+    lines.push(
+      "  \"behind\"       — lines the reference has that your copy does not. Upstream moved.",
+    );
+    lines.push(
+      "  \"of your own\"  — lines your copy has that the reference does not. Your customization.",
+    );
+    lines.push(
+      "`meta eject <name>` prints the diff command that shows which lines they are.",
     );
     lines.push("");
   }
@@ -321,15 +321,29 @@ export async function ejectCommand(args: string[], cwd: string): Promise<number>
       // question nobody has. What an owner needs to know is whether their copy still
       // matches what this CLI ships — the only way an owned generator's staleness is
       // ever observable, since no gate compares the two.
-      if (result.local === "identical") {
+      if (result.comparison?.verdict === "identical") {
         log.info(
           `${result.path} already exists and is IDENTICAL to the ${result.packageName} ` +
             "reference template — nothing to do.",
         );
+      } else if (result.comparison?.verdict === "reformatted") {
+        // Worth its own branch: this is the state a project that formats what it owns
+        // is in permanently, and calling it DIFFERS taught every one of them to ignore
+        // the line that is supposed to warn them.
+        log.info(
+          `${result.path} already exists and has the SAME CONTENT as the ` +
+            `${result.packageName} reference template, in your own formatting — ` +
+            "nothing to do.",
+        );
       } else {
         log.info(
           `${result.path} already exists and DIFFERS from the ${result.packageName} ` +
-            `reference template (${result.changedLines} line(s) not in the reference) — left untouched.`,
+            `reference template (${result.comparison?.referenceOnly ?? 0} line(s) behind it, ` +
+            `${result.comparison?.localOnly ?? 0} line(s) of your own) — left untouched.`,
+        );
+        log.info(
+          "  Formatting is not counted: both files are re-formatted and their lines " +
+            "sorted before comparing, so re-wrapping and import order never show up.",
         );
         log.info(
           "  That difference is either YOUR customization or upstream having moved on. " +
@@ -348,9 +362,11 @@ export async function ejectCommand(args: string[], cwd: string): Promise<number>
       // only record that the customization was deliberate.
       log.info(
         `Ejected "${flags.name}" -> ${result.path}, REPLACING the file that was there` +
-          (result.local === "differs"
-            ? ` and DISCARDING ${result.changedLines} line(s) it had that the reference does not.`
-            : " (it was already identical to the reference)."),
+          (result.comparison?.verdict === "differs"
+            ? ` and DISCARDING ${result.comparison.localOnly} line(s) it had that the reference does not.`
+            : result.comparison?.verdict === "reformatted"
+              ? " (its content was already the reference's — only your formatting is gone)."
+              : " (it was already identical to the reference)."),
       );
     } else {
       log.info(`Ejected "${flags.name}" -> ${result.path}. You own it now (ADR-0034 scaffold-and-own).`);

@@ -5,6 +5,7 @@ import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ejectGenerator, ejectableNames } from "../src/commands/eject.js";
+import { Biome, Distribution } from "@biomejs/js-api";
 
 let cwd: string;
 beforeEach(async () => { cwd = await mkdtemp(join(tmpdir(), "mo-eject-")); });
@@ -162,12 +163,39 @@ describe("meta eject", () => {
 // branch — with every gate green, because nothing compares an owned copy to anything.
 // `meta eject` said only "already exists — left untouched", which answers a question
 // nobody has.
+// A stand-in for "the adopter ran their own formatter". Deliberately the REAL Biome —
+// with settings this repo does not use (tabs, a 120-column width, single quotes) — plus
+// the import-specifier sort that `organizeImports` performs, since `formatContent` does
+// not reorder. A hand-rolled reformat is not usable here: re-indenting every line also
+// rewrites the interiors of the `code` template literals this template emits, which is
+// a CONTENT change, and the comparison is right to call that `differs`.
+async function reformatAsAnotherProjectWould(src: string): Promise<string> {
+  const biome = await Biome.create({ distribution: Distribution.NODE });
+  biome.applyConfiguration({
+    formatter: { enabled: true, indentStyle: "tab", lineWidth: 120 },
+    javascript: { formatter: { quoteStyle: "single", semicolons: "always" } },
+  });
+  // Anchored at column 0, so the emitted `import { eq } from "drizzle-orm"` lines INSIDE
+  // the template literals (always indented) are left alone. Sorted LINE-wise and kept
+  // multi-line, which is what organizeImports does: a specifier's trailing comment
+  // travels with it. Flattening the block instead detaches the comment onto a line of
+  // its own, which is a real content change and rightly reads as `differs`.
+  const sorted = src.replace(
+    /^(import (?:type )?\{\n)([\s\S]*?)(\n\} from "[^"]+";)$/gm,
+    (_m, open: string, inner: string, close: string) =>
+      open + inner.split("\n").sort().join("\n") + close,
+  );
+  const result = biome.formatContent(sorted, { filePath: "in-memory.ts" });
+  expect(result.diagnostics).toEqual([]);
+  return result.content;
+}
+
 describe("meta eject reports how the owned copy compares to the reference", () => {
-  async function own(name: string, mutate?: (src: string) => string): Promise<void> {
+  async function own(name: string, mutate?: (src: string) => string | Promise<string>): Promise<void> {
     await ejectGenerator({ cwd, name });
     if (mutate) {
       const p = join(cwd, `codegen/generators/${name}.ts`);
-      await writeFile(p, mutate(await readFile(p, "utf8")), "utf8");
+      await writeFile(p, await mutate(await readFile(p, "utf8")), "utf8");
     }
   }
 
@@ -175,16 +203,43 @@ describe("meta eject reports how the owned copy compares to the reference", () =
     await own("queries");
     const r = await ejectGenerator({ cwd, name: "queries" });
     expect(r.status).toBe("preserved");
-    expect(r.local).toBe("identical");
-    expect(r.changedLines).toBeUndefined();
+    expect(r.comparison).toEqual({ verdict: "identical", localOnly: 0, referenceOnly: 0 });
   });
 
-  test("a customized copy reports differs, and how far", async () => {
+  test("a customized copy reports differs, and in which direction", async () => {
     await own("queries", (s) => `${s}\n// my own line\n// and another\n`);
     const r = await ejectGenerator({ cwd, name: "queries" });
     expect(r.status).toBe("preserved");
-    expect(r.local).toBe("differs");
-    expect(r.changedLines).toBe(2);
+    expect(r.comparison?.verdict).toBe("differs");
+    expect(r.comparison?.localOnly).toBe(2);
+    // added lines only — nothing of the reference is missing, so it is not BEHIND
+    expect(r.comparison?.referenceOnly).toBe(0);
+  });
+
+  test("a copy the reference has moved past reports how far BEHIND it is", async () => {
+    // The direction that matters for staleness, and the one the byte comparison never
+    // reported: upstream gained lines this copy does not have. Deleting from the copy
+    // is the same shape as upstream adding to the reference.
+    await own("queries", (s) => s.split("\n").filter((l) => !l.includes("export const queriesFile")).join("\n"));
+    const r = await ejectGenerator({ cwd, name: "queries" });
+    expect(r.comparison?.verdict).toBe("differs");
+    expect(r.comparison?.referenceOnly).toBeGreaterThan(0);
+  });
+
+  test("a REFORMATTED copy is not reported as differing", async () => {
+    // The defect this comparison exists for. A project that runs its own formatter over
+    // the code it owns had every copy reading DIFFERS forever, with a line count made
+    // almost entirely of re-wrapping and import order — so the one signal that says
+    // "you have fallen behind upstream" was noise on every project that formats.
+    //
+    // Each mutation below is one thing a formatter does and nothing a human means:
+    // re-order the import specifiers, collapse the indentation, and re-wrap.
+    await own("queries", (src) => reformatAsAnotherProjectWould(src));
+    const r = await ejectGenerator({ cwd, name: "queries" });
+    expect(r.status).toBe("preserved");
+    expect(r.comparison?.verdict).toBe("reformatted");
+    expect(r.comparison?.localOnly).toBe(0);
+    expect(r.comparison?.referenceOnly).toBe(0);
   });
 
   test("--force over a DIFFERING copy reports what it destroyed", async () => {
@@ -193,8 +248,8 @@ describe("meta eject reports how the owned copy compares to the reference", () =
     await own("queries", (s) => `${s}\n// deliberate: trimmed to read-only finders\n`);
     const r = await ejectGenerator({ cwd, name: "queries", force: true });
     expect(r.status).toBe("replaced");
-    expect(r.local).toBe("differs");
-    expect(r.changedLines).toBe(1);
+    expect(r.comparison?.verdict).toBe("differs");
+    expect(r.comparison?.localOnly).toBe(1);
     // and it really did replace it
     expect(await readFile(join(cwd, "codegen/generators/queries.ts"), "utf8"))
       .not.toContain("deliberate: trimmed");
@@ -204,12 +259,12 @@ describe("meta eject reports how the owned copy compares to the reference", () =
     await own("queries");
     const r = await ejectGenerator({ cwd, name: "queries", force: true });
     expect(r.status).toBe("replaced");
-    expect(r.local).toBe("identical");
+    expect(r.comparison?.verdict).toBe("identical");
   });
 
   test("a first eject reports no comparison at all", async () => {
     const r = await ejectGenerator({ cwd, name: "barrel" });
     expect(r.status).toBe("created");
-    expect(r.local).toBeUndefined();
+    expect(r.comparison).toBeUndefined();
   });
 });
