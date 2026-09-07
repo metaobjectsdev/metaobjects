@@ -208,7 +208,9 @@ describe("meta verify — requirements exit-code contract", () => {
       req({
         ...L4,
         "@implementedBy": ["Order"],
-        "@title": "FR-467 — Order recording",
+        // A title that is ONLY an id. "FR-467 — Order recording" carries a label as
+        // well and is deliberately NOT flagged — see the lint's own narrowing.
+        "@title": "FR-467",
       }),
     );
     const warns = await captureWarn(async () => {

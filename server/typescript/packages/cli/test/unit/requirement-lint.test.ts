@@ -342,19 +342,37 @@ describe("content written where nothing reads it", () => {
   });
 
   test("a title that OPENS with a catalogue id is reported, and told to SPLIT", async () => {
-    const { diags } = await lint(one({ title: '"FR-467 — Order recording"' }));
+    const { diags } = await lint(one({ title: '"REQ-1234"' }));
     const d = diags.find((x) => x.code === WARN_REQUIREMENT_TITLE_IS_AN_ID);
-    expect(d?.message).toContain("FR-467");
+    expect(d?.message).toContain("REQ-1234");
     expect(d?.message).toContain("trackedBy");
-    // SPLIT, not move: the real values carry an id AND a noun phrase, so relocating the
-    // whole string to @trackedBy throws the label away.
-    expect(d?.message).toContain("SPLIT");
-    // It is not ALSO reported as inert — the slot is fine, its contents are overloaded.
+    // It is not ALSO reported as inert — the slot is fine, its contents are not a label.
     expect(codes(diags)).not.toContain(WARN_REQUIREMENT_INERT_DOC_SLOT);
   });
 
-  test("an id-shaped title is recognised in the shapes real ledgers use", async () => {
-    for (const t of ['"FR-448 — prompt construction"', '"PLAT-77 money declares currency"', '"ABC123 thing"']) {
+  test("a title that carries an id AND a phrase is NOT flagged", async () => {
+    // Measured on a 323-node adopter ledger that uses @title deliberately as its bridge
+    // to a spec catalogue: the un-narrowed rule fired 203 times, on every run, telling
+    // that author their whole convention was wrong and offering a 203-entry edit. That
+    // is the "355 findings, all false" shape the 0.24.2 narrowing exists to avoid,
+    // reproduced by a check that narrowing shipped alongside. A lint people argue with
+    // is a lint people mute, and muting takes the six useful checks with it.
+    //
+    // The warning's own NAME is false for these: a label with a citation prefix is not
+    // "an id", it is a house style.
+    for (const t of [
+      '"FR-448 — prompt construction as typed payloads"',
+      '"PLAT-77 money declares currency"',
+      '"ABC123 thing"',
+    ]) {
+      expect(codes((await lint(one({ title: t }))).diags)).not.toContain(WARN_REQUIREMENT_TITLE_IS_AN_ID);
+    }
+  });
+
+  test("a title that is ONLY an id IS flagged — the case the rule was written for", async () => {
+    // A slot holding a citation and no label anywhere says nothing a reader can use.
+    // Trailing separators are part of the id, not a label: "REQ-1234 —" is still empty.
+    for (const t of ['"REQ-1234"', '"FR-448"', '"PLAT-77 -"', '"ABC123:"']) {
       expect(codes((await lint(one({ title: t }))).diags)).toContain(WARN_REQUIREMENT_TITLE_IS_AN_ID);
     }
     // A phrase that merely CONTAINS digits or capitals is not an id.

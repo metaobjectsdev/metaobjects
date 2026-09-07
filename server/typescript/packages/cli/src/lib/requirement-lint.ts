@@ -155,6 +155,26 @@ const INERT_SLOTS = [DOC_ATTR_SUMMARY] as const;
  */
 const TITLE_IS_AN_ID = /^[A-Z]{2,}[- ]?\d+/;
 
+/**
+ * What is LEFT of a title once a leading catalogue id and its separator are removed.
+ *
+ * The rule fires only when that remainder is empty — when the label IS the id and
+ * nothing else. A title that carries an id AND a noun phrase is not "an id"; it is a
+ * label with a citation prefix, which is a house style, and the warning's own name is
+ * false for it.
+ *
+ * Measured on a 323-node adopter ledger that uses `@title` deliberately as its bridge
+ * to a spec catalogue: the un-narrowed rule fired **203 times**, on every run, telling
+ * that author their entire convention was wrong and offering a 203-entry edit. That is
+ * the "355 findings, all false" shape the 0.24.2 narrowing exists to avoid, reproduced
+ * by the check that narrowing shipped alongside. A lint people argue with is a lint
+ * people mute, and muting takes the six useful checks with it.
+ *
+ * `@title: "REQ-1234"` — a slot holding only a citation, with no label anywhere — is
+ * still caught, and that is the case the rule was written for.
+ */
+const TITLE_ID_ONLY = /^[A-Z]{2,}[- ]?\d+[\s\-–—:.]*$/;
+
 /** Lowercase, drop everything that is not alphanumeric, collapse the gaps.
  *  Two slots "say the same thing" only if they survive this identically — no
  *  similarity score, no threshold. A fuzzy match on prose produces findings the
@@ -343,12 +363,13 @@ export function lintRequirements(
 
     // -- an id is not a label -------------------------------------------------
     const title = readOwnSlot(node, DOC_ATTR_TITLE);
-    if (title !== undefined && TITLE_IS_AN_ID.test(title.trim())) {
+    if (title !== undefined && TITLE_ID_ONLY.test(title.trim())) {
       out.push(warn(path, WARN_REQUIREMENT_TITLE_IS_AN_ID,
-        `@title opens with a catalogue or ticket id: ${excerpt(title)}. A title is a NOUN PHRASE and ` +
-        `an id is not a name, so this is two things in one slot. SPLIT them — put the id in ` +
-        `@${REQUIREMENT_ATTR_TRACKED_BY}, which is the free-form reference slot and IS read, and leave ` +
-        `the phrase as the title. Moving the whole string would throw the label away.`));
+        `@title holds only a catalogue or ticket id: ${excerpt(title)}. A title is the entry's ` +
+        `LABEL and an id is not a name, so this slot says nothing a reader can use. Put the id in ` +
+        `@${REQUIREMENT_ATTR_TRACKED_BY}, which is the free-form reference slot and IS read, and ` +
+        `give @${DOC_ATTR_TITLE} a noun phrase. A title that carries an id AND a phrase ` +
+        `("FR-448 — prompt construction as typed payloads") is a house style and is NOT flagged.`));
     }
   }
 
