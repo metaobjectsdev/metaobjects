@@ -47,8 +47,35 @@ function heading(depth: number): string {
  */
 function headingLine(r: RequirementRow): string {
   const title = r.title?.replace(/\s+/g, " ").trim();
-  const label = title === undefined || title === "" ? "" : ` — ${title}`;
+  const label =
+    title === undefined || title === "" || titleRestatesLeaf(r.path, title)
+      ? ""
+      : ` — ${title}`;
   return `${heading(r.depth)} ${r.path}${label}`;
+}
+
+/**
+ * True when the title says nothing the path's LEAF SEGMENT does not already say.
+ *
+ * Measured on a hand-curated 262-entry ledger: **64 headings (24%)** read
+ * `## security — Security`, `### security.integrity — Integrity`. That is not bad
+ * authoring — `title` is chartered as "a short display label", and for a node called
+ * `integrity` the honest label IS "Integrity". The redundancy is in the RENDER, so
+ * the render is what changes.
+ *
+ * Only the LEAF is compared, never the whole path: a node `security.integrity`
+ * titled "Data Integrity" keeps its title, and one titled "Integrity" loses it. And
+ * the path always survives — dropping the path instead would break the two
+ * properties the heading is built on (it is unique by construction, so anchors
+ * cannot collide, and every sibling surface names a requirement by it).
+ *
+ * Comparison is case- and separator-insensitive so `data-integrity` / "Data
+ * Integrity" / "data integrity" all count as the same word.
+ */
+function titleRestatesLeaf(path: string, title: string): boolean {
+  const normalize = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const leaf = path.slice(path.lastIndexOf(".") + 1);
+  return normalize(leaf) === normalize(title);
 }
 
 /** The one-line fact bar: the attrs that are scannable rather than readable. */

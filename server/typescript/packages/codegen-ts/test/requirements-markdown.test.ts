@@ -156,3 +156,50 @@ describe("renderRequirementsMarkdown", () => {
     expect(md).not.toContain("undefined");
   });
 });
+
+// A title that only restates the path's leaf segment says nothing the heading has not
+// already said. Measured on a hand-curated 262-entry ledger: 64 headings (24%) read
+// `## security — Security`. That is not bad authoring — for a node called `integrity`
+// the honest label IS "Integrity" — so the render is what changes, not the ledger.
+describe("a title that restates the leaf is dropped from the heading", () => {
+  test("exact restatement, modulo case", () => {
+    const out = renderRequirementsMarkdown([
+      row({ path: "security.integrity", depth: 1, title: "Integrity" }),
+    ]);
+    expect(out).toContain("## security.integrity");
+    expect(out).not.toContain("— Integrity");
+  });
+
+  test("restatement across a separator", () => {
+    // `data-integrity` / "Data Integrity" / "data integrity" are one word.
+    const out = renderRequirementsMarkdown([
+      row({ path: "security.data-integrity", depth: 1, title: "Data Integrity" }),
+    ]);
+    expect(out).not.toContain("— Data Integrity");
+  });
+
+  test("a title that ADDS something is kept", () => {
+    // The half that keeps this from eating real labels: only the leaf is compared,
+    // so a node named `integrity` titled "Data Integrity" keeps its title.
+    const out = renderRequirementsMarkdown([
+      row({ path: "security.integrity", depth: 1, title: "Data Integrity" }),
+    ]);
+    expect(out).toContain("— Data Integrity");
+  });
+
+  test("only the LEAF is compared, never the whole path", () => {
+    const out = renderRequirementsMarkdown([
+      row({ path: "security.integrity", depth: 1, title: "Security" }),
+    ]);
+    expect(out).toContain("— Security");
+  });
+
+  test("the path always survives", () => {
+    // Dropping the path instead would break both properties the heading is built on:
+    // uniqueness (so anchors cannot collide) and greppability from every sibling surface.
+    const out = renderRequirementsMarkdown([
+      row({ path: "security.integrity", depth: 1, title: "Integrity" }),
+    ]);
+    expect(out).toContain("security.integrity");
+  });
+});

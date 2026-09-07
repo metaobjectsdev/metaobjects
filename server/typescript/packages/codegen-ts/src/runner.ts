@@ -526,6 +526,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // directory their policy's relative paths are measured from. Collected here
   // because `writeOutDir` is resolved per generator inside this loop.
   const orphanJobs: OrphanJob[] = [];
+  // Generators that ran and produced no file. See the note at the `files.length === 0`
+  // check below. A Set because a generator may run once per target.
+  const emptyGenerators = new Set<string>();
+
   for (const generator of config.generators) {
     // ADR-0025: `meta docs` is the single docs door. A `meta gen` config that
     // still lists a deprecated doc generator is warned + skipped, not run — the
@@ -618,6 +622,17 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     let files: EmittedFile[];
     try {
       files = await generator.generate(ctx);
+      // A generator the author DELIBERATELY WIRED that matched nothing is a fact
+      // worth one line. `namesFile()` on a model with no DB-backed object emitted
+      // zero files with no line, no count and no warning, and an adopter could not
+      // tell that from a run that had done the work. 0.21.4 gave `tanstackGrid()`
+      // a self-extinguishing warning for exactly this shape.
+      //
+      // Collected rather than warned per generator: one aggregated line names every
+      // silent generator, so a suite with several inapplicable ones costs one line,
+      // not five. Emitting nothing is often CORRECT — a form generator on a model
+      // with no forms — so this reports, it never fails.
+      if (files.length === 0) emptyGenerators.add(generator.name);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // `cause` preserves the original throw. Without it a `runGen` caller sees a
@@ -648,6 +663,21 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       }
       emitted.push({ fullPath, content: file.content, generatedBy: generator.name });
     }
+  }
+
+  // One line for every wired generator that matched nothing — see the note at the
+  // collection site. Deliberately AFTER the loop so the message is a single line
+  // naming all of them, and deliberately a warning: emitting nothing is frequently
+  // the correct outcome, and a gate that failed on it would be wrong more often
+  // than right.
+  if (emptyGenerators.size > 0) {
+    const names = [...emptyGenerators].sort();
+    warnings.push(
+      `${names.length} wired generator(s) matched nothing and wrote no file: ` +
+        `${names.join(", ")}. That is often correct — a generator whose metadata this ` +
+        `model does not declare has nothing to emit. It is reported because a run that ` +
+        `emitted nothing and a run that did the work otherwise look identical.`,
+    );
   }
 
   // 5. Write phase.

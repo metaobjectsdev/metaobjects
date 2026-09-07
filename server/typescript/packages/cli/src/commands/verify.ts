@@ -404,12 +404,23 @@ export async function verifyCommand(
       return 2;
     }
 
-    // --dialect wins; else migrate's resolved dialect; else refuse. There is no --db
-    // to infer from, so guessing would replay a postgres chain through sqlite.
-    const dialect: Dialect | undefined = flags.dialect ?? migrateConfig.dialect;
+    // --dialect wins; else migrate's resolved dialect; else the project's DECLARED
+    // dialect from metaobjects.config.ts; else refuse. There is no --db to infer
+    // from, so guessing would replay a postgres chain through sqlite.
+    //
+    // The last fallback was missing, and its absence made one fact need two
+    // spellings: a TypeScript project declares `dialect: "postgres"` in
+    // metaobjects.config.ts, `meta gen`, `meta verify --codegen` and `meta migrate`
+    // all honour it, and `--replay` alone refused and demanded `migrate.dialect` in
+    // .metaobjects/config.json — the spelling a TypeScript project is least likely
+    // to have. migrate's own resolution still WINS where it has an answer, because
+    // it is the more specific statement about the chain being replayed.
+    const dialect: Dialect | undefined =
+      flags.dialect ?? migrateConfig.dialect ?? forgeConfig?.dialect;
     if (dialect === undefined) {
       log.error(
-        `meta verify --replay: no dialect — pass --dialect <postgres|sqlite>, or set migrate.dialect in .metaobjects/config.json`,
+        `meta verify --replay: no dialect — pass --dialect <postgres|sqlite>, ` +
+          `set 'dialect' in metaobjects.config.ts, or set migrate.dialect in .metaobjects/config.json`,
       );
       return 2;
     }
