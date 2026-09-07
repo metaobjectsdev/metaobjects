@@ -18,8 +18,29 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
  * artifact is a MINOR under docs/compatibility-policy.md and adds zero bytes to existing
  * files, where a flag would move every $table-carrying golden for the same functionality.
  */
-export function namesFile(): Generator {
-  return {
+export interface NamesFileOpts {
+  /**
+   * Narrow which objects get a names artifact. ANDed with the generator's own
+   * gates, so it can only narrow.
+   *
+   * A multi-package model is the reason this exists: one metadata tree can drive
+   * several consumers (a TypeScript data layer, a wire protocol, a JVM rail), and
+   * only some of those objects belong to the tier being generated. Without a
+   * filter, wiring this generator emitted an artifact for every persistable object
+   * in the tree — including the ones another rail owns — while every sibling
+   * generator carried `filter` and narrowed correctly.
+   *
+   * Note the abstract bases a MATCHED object extends are still emitted, filter or
+   * not: the matched object's own artifact `extends` them, so excluding them would
+   * emit an artifact whose import does not resolve.
+   */
+  filter?: (entity: MetaObject) => boolean;
+  /** Named output target, as on every other generator. */
+  target?: string;
+}
+
+export function namesFile(opts?: NamesFileOpts): Generator {
+  const generator: Generator = {
     name: "names",
     // §A6 — the marker the runner aggregates into ResolvedGenConfig.includeNames, so the
     // entity generator can tell whether this artifact will exist. Exactly the mechanism
@@ -95,4 +116,11 @@ export function namesFile(): Generator {
       return out;
     },
   };
+  if (opts?.filter) {
+    generator.filter = opts.filter;
+  }
+  if (opts?.target) {
+    generator.target = opts.target;
+  }
+  return generator;
 }

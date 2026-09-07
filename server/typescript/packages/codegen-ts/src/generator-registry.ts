@@ -120,6 +120,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity physical database name constants (table/view, schema, columns).",
     tier: "native",
     factory: () => namesFile(),
+    options: "filter?, target?",
   },
   "prompt-render": {
     name: "prompt-render",

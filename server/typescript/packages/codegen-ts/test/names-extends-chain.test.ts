@@ -72,7 +72,10 @@ const MODEL = {
   },
 };
 
-async function generate(model: unknown = MODEL): Promise<{ tree: Record<string, string>; dir: string }> {
+async function generate(
+  model: unknown = MODEL,
+  namesOpts?: Parameters<typeof namesFile>[0],
+): Promise<{ tree: Record<string, string>; dir: string }> {
   const { root, errors } = await new MetaDataLoader().load([
     new InMemoryStringSource(JSON.stringify(model), { id: "extends-chain.json" }),
   ]);
@@ -82,7 +85,7 @@ async function generate(model: unknown = MODEL): Promise<{ tree: Record<string, 
   await runGen({
     config: defineConfig({
       outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite",
-      generators: [namesFile(), entityFile()],
+      generators: [namesFile(namesOpts), entityFile()],
     }),
     metadata: root,
   });
@@ -362,6 +365,49 @@ describe("a scoped run still names the shared table", () => {
       const errs = ts.getPreEmitDiagnostics(program)
         .map((d) => `${d.file?.fileName ?? ""}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`);
       expect(errs).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// A multi-package model drives several consumers from one metadata tree, and only some of
+// its objects belong to the tier being generated. `namesFile()` was the ONE native
+// generator taking no options at all — `meta gen --list` advertised `filter?, target?` on
+// every sibling and nothing on this one — so wiring it emitted an artifact for every
+// persistable object in the tree, including the ones another rail owns.
+//
+// The ancestor arm is the half that is easy to get wrong: filtering must NOT drop the
+// abstract base a matched object extends, because the matched object's own artifact
+// `extends` it and the import would not resolve. So this asserts both directions —
+// what the filter removes, and what it must keep despite not matching.
+describe("namesFile({ filter }) narrows emission without breaking the extends chain", () => {
+  test("only matched objects emit — and the base a match extends comes along", async () => {
+    const { tree, dir } = await generate(MODEL, {
+      filter: (e) => e.name === "Author",
+    });
+    try {
+      const names = Object.keys(tree).filter((f) => f.endsWith(".names.ts")).sort();
+      // Author matched; BaseEntity did NOT match but is Author's super, so its
+      // fragment must still be emitted or `Author.names.ts` imports nothing.
+      expect(names).toEqual(["Author.names.ts", "BaseEntity.names.ts"]);
+      // The TPH pair belongs to another tier here and must be gone.
+      expect(tree["Auth.names.ts"]).toBeUndefined();
+      expect(tree["CopayAuth.names.ts"]).toBeUndefined();
+      // And the surviving artifact still really extends the base it kept.
+      expect(tree["Author.names.ts"]).toContain("BaseEntityNames");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no filter emits every participant — the baseline the filter is narrowing FROM", async () => {
+    const { tree, dir } = await generate();
+    try {
+      const names = Object.keys(tree).filter((f) => f.endsWith(".names.ts")).sort();
+      expect(names).toEqual([
+        "Auth.names.ts", "Author.names.ts", "BaseEntity.names.ts", "CopayAuth.names.ts",
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

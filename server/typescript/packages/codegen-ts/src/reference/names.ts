@@ -42,8 +42,22 @@ import {
 } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 
-export function namesFile(): Generator {
-  return {
+export interface NamesFileOpts {
+  /**
+   * Narrow which objects get a names artifact. ANDed with the generator's own
+   * gates, so it can only narrow — the abstract bases a MATCHED object extends
+   * are still emitted, because the matched object's artifact `extends` them.
+   *
+   * A multi-package model is why this exists: one metadata tree can drive several
+   * consumers, and only some of its objects belong to the tier being generated.
+   */
+  filter?: (entity: MetaObject) => boolean;
+  /** Named output target, as on every other generator. */
+  target?: string;
+}
+
+export function namesFile(opts?: NamesFileOpts): Generator {
+  const generator: Generator = {
     name: "names",
     // §A6 — the marker the runner aggregates into ResolvedGenConfig.includeNames, so the
     // entity generator can tell whether this artifact will exist. Exactly the mechanism
@@ -122,4 +136,11 @@ export function namesFile(): Generator {
       return out;
     },
   };
+  if (opts?.filter) {
+    generator.filter = opts.filter;
+  }
+  if (opts?.target) {
+    generator.target = opts.target;
+  }
+  return generator;
 }
