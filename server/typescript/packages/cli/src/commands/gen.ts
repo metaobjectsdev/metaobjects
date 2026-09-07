@@ -17,10 +17,12 @@ import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
-function mapStatus(s: WriteStatus): GenFileStatus {
+export function mapStatus(s: WriteStatus): GenFileStatus {
   switch (s) {
-    case "new":
-    case "overwrite": return "new";
+    case "new":       return "new";
+    // NOT folded into "new": an existing artifact being rewritten is a different
+    // fact from an entity appearing, and the engine has always distinguished them.
+    case "overwrite": return "overwrite";
     case "merged":    return "merged";
     case "conflict":  return "conflict";
     case "unchanged":

@@ -68,7 +68,7 @@ export type {
   BaselineMode,
   DecideAndWriteOpts,
 } from "./overwrite-policy.js";
-export { decideAndWrite, GitMissingError } from "./overwrite-policy.js";
+export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-policy.js";
 // The committed half of `.gen-state`. Exported for `verify --codegen`, which needs
 // the same "is this still exactly what the generator wrote?" evidence the write path
 // uses — without it the gate cannot tell a preserved hand edit from stale output.
