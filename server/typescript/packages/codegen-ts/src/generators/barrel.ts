@@ -1,6 +1,7 @@
 import { oncePerRun, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderBarrel } from "../templates/barrel.js";
 import { formatTs } from "../format.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export interface BarrelOpts {
   target?: string;
@@ -13,7 +14,7 @@ export const barrel = function barrel(opts?: BarrelOpts): Generator {
       path: "index.ts",
       content: await formatTs(
         renderBarrel(
-          entities.map((e) => ({ name: ctx.renderContext!.valueObjectEmittedName(e), package: e.package })),
+          entities.map((e) => ({ name: ctx.renderContext!.valueObjectEmittedName(e), package: effectivePackage(e) })),
           ctx.renderContext!.extStyle,
           ctx.renderContext!.selfTarget,
           ctx.renderContext!.entityModuleTarget,

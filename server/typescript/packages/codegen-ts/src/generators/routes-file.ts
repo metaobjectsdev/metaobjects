@@ -6,6 +6,7 @@ import { hasAnyRdbSource } from "../source-detect.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export interface RoutesFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -49,7 +50,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
         throw new Error("routes-file: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.routes.ts`),
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
         content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),
       };
     }),

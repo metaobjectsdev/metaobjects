@@ -25,6 +25,7 @@ import {
   entityOutputPath,
   hasGeneratedForm,
   withClientDirective,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "@metaobjectsdev/codegen-ts-react";
 
@@ -73,7 +74,7 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
         ctx.renderContext.clientDirective,
       );
       return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.form.tsx`),
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.form.tsx`),
         content: body,
       };
     }),

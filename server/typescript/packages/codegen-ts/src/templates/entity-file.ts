@@ -30,6 +30,7 @@ import { namesRef, namesConstArg, physicalNameExpr, sourceSchemaExpr } from "../
 import { hasWritableRdbSource } from "../source-detect.js";
 import { renderValueObjectFile } from "./value-object-file.js";
 import { isAbstract } from "../instance-artifacts.js";
+import { effectivePackage } from "../docs-paths.js";
 
 /**
  * Render-time options for the entity-file composer.
@@ -145,8 +146,8 @@ export function renderEntityFile(
     // under a cross-package short-name collision.
     const voRef = (field: MetaField): { name: string; module: string } => {
       const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-      const name = ctx.resolveValueObjectName(typeof ref === "string" ? ref : "", fieldDeclaringPackage(field, entity.package));
-      const module = valueObjectModuleSpecifier(name, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle);
+      const name = ctx.resolveValueObjectName(typeof ref === "string" ? ref : "", fieldDeclaringPackage(field, effectivePackage(entity)));
+      const module = valueObjectModuleSpecifier(name, ctx.packageOf, effectivePackage(entity), ctx.outputLayout, ctx.extStyle);
       return { name, module };
     };
     // ONE selection of the replica source: `projectionViewName` names it, and this is the

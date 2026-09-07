@@ -18,7 +18,7 @@ import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
 import type { ApiModel, ApiUnitDoc, ApiSymbol, ApiSymbolKind, UnitExample } from "./api-model.js";
 import { inlineShape, type FieldShape } from "./api-field-shape.js";
-import { docPageHref, type DocPageNode } from "../docs-paths.js";
+import { docPageHref, type DocPageNode, effectivePackage } from "../docs-paths.js";
 import type { OutputLayout } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 

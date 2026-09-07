@@ -35,6 +35,7 @@ import { GENERATED_HEADER } from "../constants.js";
 import { crossEntitySpecifier } from "../import-path.js";
 import { resolveObjectNames } from "../names.js";
 import type { RenderContext } from "../render-context.js";
+import { effectivePackage } from "../docs-paths.js";
 
 const CALLABLE_KINDS: ReadonlySet<string> = new Set([
   SOURCE_KIND_STORED_PROC,
@@ -128,7 +129,7 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
   const namesImport = namesConst === undefined
     ? ""
     : `import { ${namesConst} } from "${crossEntitySpecifier(
-        ctx!.selfTarget.outputLayout, entity.package, entity.package,
+        ctx!.selfTarget.outputLayout, effectivePackage(entity), effectivePackage(entity),
         `${entity.name}.names`, ctx!.extStyle,
       )}";\n`;
   // The identifier must stay an IDENTIFIER. A bare interpolation into drizzle's `sql` tag

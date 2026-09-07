@@ -46,6 +46,7 @@ import {
   hasAnyRdbSource,
   formatTs,
   entityOutputPath,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 export interface RoutesFileOpts {
@@ -79,7 +80,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
         throw new Error("routes-file: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.routes.ts`),
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
         content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),
       };
     }),

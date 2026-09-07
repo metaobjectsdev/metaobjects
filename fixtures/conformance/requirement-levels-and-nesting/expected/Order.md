@@ -4,6 +4,7 @@
 
 **Type:** `object.entity`
 **Source:** `meta.shop.json`
+**Package:** `acme::shop`
 
 ## Identity
 

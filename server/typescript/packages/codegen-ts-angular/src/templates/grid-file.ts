@@ -20,6 +20,7 @@ import {
   entityModuleSpecifier,
   viewForContext,
   VIEW_CONTEXT_GRID,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 interface ColumnSpec {
@@ -118,7 +119,7 @@ export function renderGridFile(entity: MetaObject, ctx: RenderContext): string {
   const entityModule = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );

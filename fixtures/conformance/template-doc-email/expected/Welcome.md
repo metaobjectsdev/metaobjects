@@ -4,6 +4,7 @@
 
 **Type:** `object.value`
 **Source:** `meta.json`
+**Package:** `acme::site`
 
 ## Fields
 

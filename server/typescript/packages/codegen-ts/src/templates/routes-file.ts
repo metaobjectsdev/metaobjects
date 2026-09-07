@@ -30,6 +30,7 @@ import { isProjection, isWriteThrough } from "../projection/projection-detector.
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
 import { type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export function renderRoutesFile(
   entity: MetaObject,
@@ -54,11 +55,11 @@ export function renderRoutesFile(
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );
-  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, entity.package, ctx.dbImport, ctx.extStyle);
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, effectivePackage(entity), ctx.dbImport, ctx.extStyle);
 
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
@@ -263,7 +264,7 @@ function renderM2mMount(
   const junctionVarSym = imp(
     `${ctx.collectionName(entry.junctionEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
-      source.package,
+      effectivePackage(source),
       ctx.packageOf.get(entry.junctionEntity),
       entry.junctionEntity,
       ctx.extStyle,
@@ -272,7 +273,7 @@ function renderM2mMount(
   const targetVarSym = imp(
     `${ctx.collectionName(entry.targetEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
-      source.package,
+      effectivePackage(source),
       ctx.packageOf.get(entry.targetEntity),
       entry.targetEntity,
       ctx.extStyle,
@@ -284,13 +285,13 @@ function renderM2mMount(
   // fromPackage = source.package: this routes file is SOURCE's own module, never the
   // junction's or the target's — see resolveJunctionColumn's doc comment (B1).
   const sourceColumn: Code = junction
-    ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx, source.package)
+    ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx, effectivePackage(source))
     : code`${JSON.stringify(entry.sourceJoinField!)}`;
   const targetColumn: Code = junction
-    ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx, source.package)
+    ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx, effectivePackage(source))
     : code`${JSON.stringify(entry.targetJoinField!)}`;
   const targetPkColumn: Code = target
-    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx, source.package)
+    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx, effectivePackage(source))
     : code`${JSON.stringify("id")}`;
 
   return code`  ${mountM2mRouteSym}({
@@ -369,9 +370,9 @@ function renderTphRoutesFile(
   const tableVar = ctx.collectionName(baseName);
 
   const baseFileSpec = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, base.package, baseName, ctx.extStyle,
+    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(base), baseName, ctx.extStyle,
   );
-  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, base.package, ctx.dbImport, ctx.extStyle);
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, effectivePackage(base), ctx.dbImport, ctx.extStyle);
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
@@ -405,7 +406,7 @@ function renderTphRoutesFile(
 
   const subtypeMounts: Code[] = plan.subtypes.map(({ entity: sub, value, routeSegment: segment }) => {
     const subFileSpec = entityModuleSpecifier(
-      ctx.selfTarget, ctx.entityModuleTarget, sub.package, sub.name, ctx.extStyle,
+      ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(sub), sub.name, ctx.extStyle,
     );
     const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
     // FR-036 Program B: the per-subtype UPDATE must carry the FR-035 present-key

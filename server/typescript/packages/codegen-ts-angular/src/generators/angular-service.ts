@@ -6,6 +6,7 @@ import {
   formatTs,
   entityOutputPath,
   servesReadApi,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { renderServiceFile } from "../templates/service-file.js";
 
@@ -39,7 +40,7 @@ export const angularServiceFile = function angularServiceFile(
         throw new Error("angular-service: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.service.ts`),
+        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.service.ts`),
         content: await formatTs(renderServiceFile(entity, ctx.renderContext)),
       };
     }),

@@ -19,6 +19,7 @@ import { buildRelationMap } from "./relation-resolver.js";
 import { makeRenderContext } from "./render-context.js";
 import { sweepOrphans, type OrphanJob } from "./orphan-sweep.js";
 import { refusedOrphanMessage } from "./reconcile-orphans.js";
+import { effectivePackage } from "./docs-paths.js";
 import {
   decideAndWrite,
   previewWriteStatus,
@@ -411,7 +412,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     const key = o.subType === OBJECT_SUBTYPE_VALUE
       ? (valueObjectNames.get(o.resolutionKey()) ?? o.name)
       : o.name;
-    packageOf.set(key, o.package);
+    packageOf.set(key, effectivePackage(o));
   }
 
   // Auto-detect: is the OPT-IN Hono routes generator in the active suite? If so,

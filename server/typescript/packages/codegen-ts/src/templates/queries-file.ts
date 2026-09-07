@@ -26,6 +26,7 @@ import { GENERATED_HEADER } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { hasAutoSetFields } from "./zod-validators.js";
+import { effectivePackage } from "../docs-paths.js";
 
 /**
  * The dialect-correct Drizzle `Db` type alias + its import — parameter-passed into every
@@ -94,7 +95,7 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   const entityFileName = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    obj.package,
+    effectivePackage(obj),
     entityName,
     ctx.extStyle,
   );
@@ -163,7 +164,7 @@ function renderProjectionQueriesFile(obj: MetaObject, ctx: RenderContext): strin
   const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const viewVar = `${camelName}View`;
   const entityFileName = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, obj.package, entityName, ctx.extStyle,
+    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(obj), entityName, ctx.extStyle,
   );
   const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
   const eqSym = imp("eq@drizzle-orm");
@@ -215,7 +216,7 @@ function renderWriteThroughQueriesFile(obj: MetaObject, ctx: RenderContext): str
   const tableVar = ctx.collectionName(entityName);
   const singularVar = camelName;
   const entityFileName = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, obj.package, entityName, ctx.extStyle,
+    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(obj), entityName, ctx.extStyle,
   );
   const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
   const pkFields = getPkFields(obj);
@@ -309,7 +310,7 @@ function renderTphQueriesFile(base: MetaObject, ctx: RenderContext): string {
   const { fieldName: pkField, tsType: pkType } = getPkInfo(base, ctx);
 
   const baseFileSpec = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, base.package, baseName, ctx.extStyle,
+    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(base), baseName, ctx.extStyle,
   );
   const tableSym = imp(`${tableVar}@${baseFileSpec}`);
   const baseTypeSym = imp(`t:${baseName}@${baseFileSpec}`);
@@ -342,7 +343,7 @@ export async function list${pluralize(baseName)}(db: Db, opts?: { limit?: number
     const value = sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) as string;
     const valueLit = JSON.stringify(value);
     const subFileSpec = entityModuleSpecifier(
-      ctx.selfTarget, ctx.entityModuleTarget, sub.package, sub.name, ctx.extStyle,
+      ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(sub), sub.name, ctx.extStyle,
     );
     const subTypeSym = imp(`t:${sub.name}@${subFileSpec}`);
     const subSchemaSym = imp(`${sub.name}Schema@${subFileSpec}`);

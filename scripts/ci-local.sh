@@ -209,6 +209,13 @@ gate_metamodel_version() { node scripts/check-metamodel-version.mjs && node scri
 # adopter resolves. The check reads MANIFESTS, so it needs no network.
 gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
 
+# ── this repo's OWNED copies of the reference templates must BE the templates ──
+# owned-copies-current.test.ts already asserts byte-identity; this runs the same check
+# from the gates lane so a stale copy is named with the command that fixes it. Changing
+# a reference template turns 12 tests red at once, and without a re-sync command the
+# cheap move is to edit the gate.
+gate_owned_template_copies() { bun scripts/sync-owned-template-copies.ts --check; }
+
 # ── the templates `meta eject` writes must lint clean where they LAND ─────────
 # A reference template becomes an ADOPTER'S file: `meta init` copies five, `meta eject`
 # copies any of them on demand, and from then on their lint config reads it. Six of the
@@ -593,6 +600,7 @@ if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_cov
 if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
+if want gates; then step_if bun "owned template copies current" gate_owned_template_copies; fi
 if want gates; then step_if bun "reference templates lint"     gate_reference_templates_lint; fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
 if want gates; then step_if bun "no retired \$apiPrefix"        gate_no_api_prefix;          fi

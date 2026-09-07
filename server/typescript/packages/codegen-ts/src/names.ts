@@ -26,6 +26,7 @@ import {
 import { code, imp, type Code } from "ts-poet";
 import { crossEntitySpecifier } from "./import-path.js";
 import type { RenderContext } from "./render-context.js";
+import { effectivePackage } from "./docs-paths.js";
 
 export interface FieldNames { readonly name: string; readonly column: string; }
 
@@ -335,7 +336,7 @@ export function resolveObjectNames(
   const superObj = namesArtifactSuperOf(obj);
   const superNames: SuperNames | undefined = superObj === undefined
     ? undefined
-    : { name: superObj.name, package: superObj.package };
+    : { name: superObj.name, package: effectivePackage(superObj) };
   // Identity of the resolved source NODE, not equality of the resolved strings: a
   // divergence guard is exactly what this codebase forbids here, and the question being
   // asked is structural — did this object declare a source, or is it using its parent's?
@@ -438,7 +439,7 @@ export function resolveSuperFragmentNames(
     ownIndexes: keysOf(obj.ownLookupIndexes()),
     superNames: superObj === undefined
       ? undefined
-      : { name: superObj.name, package: superObj.package },
+      : { name: superObj.name, package: effectivePackage(superObj) },
     inheritsSource: false,
   };
 }
@@ -466,7 +467,7 @@ export function resolveSuperFragmentNames(
 export function namesRef(
   obj: MetaObject,
   ctx: RenderContext,
-  fromPackage: string | undefined = obj.package,
+  fromPackage: string | undefined = effectivePackage(obj),
 ): { readonly resolved: ObjectNames; readonly symbol: Code } | undefined {
   if (!ctx.includeNames) return undefined;
   const resolved = resolveObjectNames(obj, ctx.columnNamingStrategy);
@@ -475,7 +476,7 @@ export function namesRef(
     `${obj.name}Names@${crossEntitySpecifier(
       ctx.selfTarget.outputLayout,
       fromPackage,
-      obj.package,
+      effectivePackage(obj),
       `${obj.name}.names`,
       ctx.extStyle,
     )}`,

@@ -4,7 +4,7 @@
 //
 // RUNTIME: this file executes under whatever runs `meta gen` — NODE, even in a Bun
 // project. Do not reach for `Bun.*` globals here.
-// targets:       TanStack Query. The emitted hook calls `useEntityFetcher()` from
+// targets:       TanStack Query. The emitted hook calls `useEntityPathFetcher()` from
 //                `@metaobjectsdev/tanstack`, so the module is a CLIENT component.
 //                If your framework compiles server and client from one tree and resolves
 //                each half under different conditions, the emitted file may need a marker
@@ -36,6 +36,7 @@ import {
   withClientDirective,
   namesRef,
   namesConstArg,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import {
   renderGridHookFile,
@@ -120,7 +121,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     const rc = ctx.renderContext;
     const metaNames = namesRef(entity, rc);
     return [{
-      path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
+      path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity),
         entityMetaFileName(entity.name)),
       content: await formatTs(renderEntityMetaFile(
         entity,
@@ -130,7 +131,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     }, {
       path: entityOutputPath(
         ctx.renderContext.outputLayout,
-        entity.package,
+        effectivePackage(entity),
         `${entity.name}.grid.ts`,
       ),
       content: withClientDirective(

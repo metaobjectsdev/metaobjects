@@ -42,6 +42,7 @@ import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "../enum-import.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
+import { effectivePackage } from "../docs-paths.js";
 
 /**
  * Emit Drizzle's InferSelectModel / InferInsertModel aliases for an entity.
@@ -179,7 +180,7 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
     // configured external module; never redeclare the union here.
     const spec = shared.provided
       ? providedEnumImportSpecifier(ctx!, shared.name)
-      : sharedEnumImportSpecifier(ctx!, entity.package);
+      : sharedEnumImportSpecifier(ctx!, effectivePackage(entity));
     // Re-export the runtime constant beside the type for a MATERIALIZED shared enum, so a
     // consumer reaches its members the same way it reaches an inline enum's, without having
     // to know which kind it is or which module the shared one landed in.
@@ -305,9 +306,9 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       // layout/package/extStyle-aware helper (the SAME one the Zod schema +
       // Drizzle .$type<> use) so all three agree. Without a ctx (bare unit-test
       // calls) fall back to the bare name + flat same-dir specifier.
-      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entity.package)) : stripPackage(ref);
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(entity))) : stripPackage(ref);
       const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(entity), ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}@${moduleSpec}`);
       return field.resolvedIsArray() ? code`${refImp}[]` : code`${refImp}`;
@@ -319,9 +320,9 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entity.package)) : stripPackage(ref);
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(entity))) : stripPackage(ref);
       const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(entity), ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}@${moduleSpec}`);
       return code`Record<string, ${refImp}>`;
@@ -349,7 +350,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
         if (shared !== undefined) {
           const spec = shared.provided
             ? providedEnumImportSpecifier(ctx, shared.name)
-            : sharedEnumImportSpecifier(ctx, entity.package);
+            : sharedEnumImportSpecifier(ctx, effectivePackage(entity));
           const sym = imp(`t:${shared.name}@${spec}`);
           return field.resolvedIsArray() ? code`${sym}[]` : code`${sym}`;
         }

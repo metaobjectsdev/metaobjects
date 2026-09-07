@@ -20,6 +20,7 @@ import {
   isSortableField,
   viewForContext,
   VIEW_CONTEXT_GRID,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 /** FR-017 TPH grid context, threaded into extractGrids when the entity is a
@@ -251,7 +252,7 @@ export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(grid.fil
   const entityModule = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );

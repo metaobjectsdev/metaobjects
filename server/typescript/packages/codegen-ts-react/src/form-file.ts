@@ -1,5 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, hasGeneratedForm, withClientDirective } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, hasGeneratedForm, withClientDirective,
+  effectivePackage,
+} from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -40,7 +42,7 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
         throw new Error("form-file: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.form.tsx`),
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.form.tsx`),
         content: withClientDirective(
           renderFormFile(entity, ctx.renderContext),
           ctx.renderContext.clientDirective,

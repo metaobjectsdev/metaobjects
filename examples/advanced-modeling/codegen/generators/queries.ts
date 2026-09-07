@@ -30,7 +30,7 @@
 // primitives below, or (with a globally-installed / linked CLI, where the project and
 // the CLI resolve ts-poet to different physical copies) every section renders
 // standalone with its own duplicate import header.
-import { code, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, joinCode, type Code, effectivePackage } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
@@ -71,7 +71,7 @@ function renderQueries(obj: MetaObject, ctx: RenderContext): string {
   const entityFileName = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    obj.package,
+    effectivePackage(obj),
     entityName,
     ctx.extStyle,
   );
@@ -162,7 +162,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
         throw new Error("queries-file: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.queries.ts`),
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.queries.ts`),
         content: await formatTs(renderQueries(entity, ctx.renderContext)),
       };
     }),

@@ -3,6 +3,7 @@ import { entityOutputPath, crossEntitySpecifier } from "../import-path.js";
 import { renderNamesDecl } from "../templates/names-decl.js";
 import { namesArtifactSuperOf, resolveObjectNames } from "../names.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import { effectivePackage } from "../docs-paths.js";
 
 /**
  * §A1/§A2/§A6 — `<Entity>Names`: the physical database names for one object, as constants a
@@ -60,13 +61,13 @@ export function namesFile(opts?: NamesFileOpts): Generator {
         // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
         // conflicting-duplicate-path failure as soon as two packages declare a
         // same-bare-named entity.
-        entityOutputPath(layout, obj.package, `${obj.name}.names.ts`);
+        entityOutputPath(layout, effectivePackage(obj), `${obj.name}.names.ts`);
 
       const superSpecifierFor = (obj: MetaObject): string | undefined => {
         const sup = namesArtifactSuperOf(obj);
         return sup === undefined
           ? undefined
-          : crossEntitySpecifier(layout, obj.package, sup.package, `${sup.name}.names`, extStyle);
+          : crossEntitySpecifier(layout, effectivePackage(obj), effectivePackage(sup), `${sup.name}.names`, extStyle);
       };
 
       const out: EmittedFile[] = [];

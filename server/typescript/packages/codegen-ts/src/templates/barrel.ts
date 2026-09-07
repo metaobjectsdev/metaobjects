@@ -3,6 +3,7 @@
 import { GENERATED_HEADER } from "../constants.js";
 import { type ExtStyle } from "../render-context.js";
 import { barrelModuleSpecifier, type ResolvedTarget } from "../import-path.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export interface BarrelEntry {
   name: string;

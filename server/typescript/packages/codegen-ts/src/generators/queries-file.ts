@@ -5,6 +5,7 @@ import { isTphSubtype } from "../templates/zod-validators.js";
 import { hasAnyRdbSource } from "../source-detect.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export interface QueriesFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -40,7 +41,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
         throw new Error("queries-file: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.queries.ts`),
+        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.queries.ts`),
         content: await formatTs(renderQueriesFile(entity, ctx.renderContext)),
       };
     }),

@@ -8,6 +8,7 @@ import {
   servesReadApi,
   servesWriteApi,
   isProjection,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import {
   GENERATED_HEADER,
@@ -50,13 +51,13 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
         // Each line mirrors its generator's filter exactly — a re-export of a file
         // that was never emitted is a hard build break in the consumer app.
         if (servesReadApi(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.service`))};`);
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, effectivePackage(e), `${e.name}.service`))};`);
         }
         if (servesWriteApi(e) && !isProjection(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.form.component`))};`);
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, effectivePackage(e), `${e.name}.form.component`))};`);
         }
         if (servesReadApi(e) && hasDataGridLayout(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.grid.component`))};`);
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, effectivePackage(e), `${e.name}.grid.component`))};`);
         }
       }
       const content = `// ${GENERATED_HEADER}-angular — DO NOT EDIT.\n${lines.join("\n")}\n`;

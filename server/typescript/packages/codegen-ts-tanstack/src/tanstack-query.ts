@@ -1,6 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype,
   withClientDirective, namesRef, namesConstArg,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
@@ -11,7 +12,7 @@ export interface TanstackQueryOpts {
 
 /**
  * Per-entity generator that emits <Entity>.hooks.ts — a query-key factory
- * plus 2 query hooks and 3 mutation hooks backed by useEntityFetcher().
+ * plus 2 query hooks and 3 mutation hooks backed by useEntityPathFetcher().
  *
  * If the user supplies their own filter, it AND-composes with the built-in gates.
  *
@@ -52,7 +53,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       const rc = ctx.renderContext;
       const metaNames = namesRef(entity, rc);
       const metaFile = {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
+        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity),
           entityMetaFileName(entity.name)),
         content: await formatTs(renderEntityMetaFile(
           entity,
@@ -61,7 +62,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
         )),
       };
       return [metaFile, {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),
+        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.hooks.ts`),
         // Outside formatTs deliberately: the directive must stay the module's first
         // token, and a formatter is entitled to move a leading string expression.
         content: withClientDirective(

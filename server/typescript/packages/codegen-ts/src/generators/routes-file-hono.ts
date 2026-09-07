@@ -6,6 +6,7 @@ import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export interface RoutesFileHonoOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -87,7 +88,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
       return {
         path: entityOutputPath(
           ctx.config.outputLayout ?? "flat",
-          entity.package,
+          effectivePackage(entity),
           `${entity.name}.routes.hono.ts`,
         ),
         content: await formatTs(renderRoutesFileHono(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),

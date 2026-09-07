@@ -42,6 +42,7 @@ import { valueObjectModuleSpecifier } from "../import-path.js";
 // FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
 // drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
 import { isRequired } from "../column-mapper.js";
+import { effectivePackage } from "../docs-paths.js";
 
 /**
  * FR-017 Tier 1 — when this object is a TPH subtype (@discriminatorValue set
@@ -593,9 +594,9 @@ function zodFieldExpr(
       // layout/package/extStyle-aware helper (the SAME one the field's TS type +
       // Drizzle .$type<> use) so all three agree. Without owner/ctx (bare
       // unit-test calls) fall back to the bare name + flat same-dir.
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, owner.package)) : stripPackage(ref);
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(owner))) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(owner), ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
       let base: Code = code`${refImp}`;
@@ -614,9 +615,9 @@ function zodFieldExpr(
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, owner.package)) : stripPackage(ref);
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, effectivePackage(owner))) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, effectivePackage(owner), ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
       return appendValidatorChain(code`z.record(z.string(), ${refImp})`, field, forceRequired);

@@ -32,6 +32,7 @@ import {
   servesReadApi,
   isTphSubtype,
   withClientDirective,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import {
   renderColumnsFile,
@@ -95,7 +96,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
       throw new Error("tanstack-grid: renderContext is required (provided by runGen)");
     }
     return {
-      path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.columns.tsx`),
+      path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.columns.tsx`),
       content: withClientDirective(
         await formatTs(renderColumnsFile(entity, ctx.renderContext)),
         ctx.renderContext.clientDirective,

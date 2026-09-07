@@ -49,7 +49,7 @@ import {
 import type { Dialect } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type { OutputLayout } from "../import-path.js";
-import { docPageHref, docPageNode } from "../docs-paths.js";
+import { docPageHref, docPageNode, effectivePackage } from "../docs-paths.js";
 import { fieldAnchorHtml } from "./field-anchor.js";
 import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
@@ -767,8 +767,9 @@ export function buildEntityDocData(
   preambleLines.push(`**Type:** \`${typeStr}\``);
   const src = sourceLine(entity);
   if (src !== undefined) preambleLines.push(`**Source:** \`${src}\``);
-  if (entity.package !== undefined && entity.package !== "") {
-    preambleLines.push(`**Package:** \`${entity.package}\``);
+  const pkg = effectivePackage(entity);
+  if (pkg !== undefined && pkg !== "") {
+    preambleLines.push(`**Package:** \`${pkg}\``);
   }
   const preambleHeader = preambleLines.join("\n");
 
@@ -815,8 +816,9 @@ export function buildEntityDocData(
     data.hasNeighborhoodEr = true;
   }
   if (src !== undefined) data.entity.source = src;
-  if (entity.package !== undefined && entity.package !== "") {
-    data.entity.package = entity.package;
+  const dataPkg = effectivePackage(entity);
+  if (dataPkg !== undefined && dataPkg !== "") {
+    data.entity.package = dataPkg;
   }
 
   if (hasStorage) {

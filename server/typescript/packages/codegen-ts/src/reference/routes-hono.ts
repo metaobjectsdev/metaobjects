@@ -38,6 +38,7 @@ import {
   hasAnyRdbSource,
   formatTs,
   entityOutputPath,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 export interface RoutesFileHonoOpts {
@@ -100,7 +101,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
       return {
         path: entityOutputPath(
           ctx.config.outputLayout ?? "flat",
-          entity.package,
+          effectivePackage(entity),
           `${entity.name}.routes.hono.ts`,
         ),
         content: await formatTs(renderRoutesFileHono(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),

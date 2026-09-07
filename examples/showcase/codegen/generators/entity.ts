@@ -32,7 +32,7 @@
 // primitives below, or (with a globally-installed / linked CLI, where the project and
 // the CLI resolve ts-poet to different physical copies) every section renders
 // standalone with its own duplicate import header.
-import { joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { joinCode, type Code, effectivePackage } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
@@ -164,7 +164,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
       return [];
     }
     return {
-      path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.ts`),
+      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.ts`),
       content: await formatTs(renderEntity(entity, ctx.renderContext, { allowlists })),
     };
   });

@@ -25,6 +25,7 @@ import { resolveTableSchema } from "@metaobjectsdev/metadata";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
+import { effectivePackage } from "../docs-paths.js";
 
 /**
  * Render the Drizzle table definition for one entity, including:
@@ -113,7 +114,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // base's), not to the subtype's own package.
     const ownerNames =
       owner !== undefined && isMetaObject(owner) && owner !== obj
-        ? namesRef(owner, ctx, obj.package)
+        ? namesRef(owner, ctx, effectivePackage(obj))
         : undefined;
     return columnExpr(ownerNames, field.name, dbName);
   };
@@ -204,7 +205,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, obj.package, obj.name);
+    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, effectivePackage(obj), obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
@@ -224,7 +225,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     }
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
-      spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, obj.package, obj.name, true,
+      spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, effectivePackage(obj), obj.name, true,
     );
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL

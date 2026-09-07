@@ -26,6 +26,7 @@ import {
   barrelModuleSpecifier,
   formatTs,
   GENERATED_HEADER,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 interface BarrelEntry {

@@ -7,6 +7,7 @@ import { CARDINALITY_ONE, CARDINALITY_MANY } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier } from "../import-path.js";
 import type { RelationEntry } from "../relation-resolver.js";
+import { effectivePackage } from "../docs-paths.js";
 
 /**
  * Render the relations() block for one entity.
@@ -28,7 +29,7 @@ export function renderRelationsBlock(entity: MetaObject, ctx: RenderContext): Co
   if (hasMany) paramParts.push("many");
   const params = `{ ${paramParts.join(", ")} }`;
 
-  const thisEntityPackage = entity.package;
+  const thisEntityPackage = effectivePackage(entity);
   const lines: Code[] = entries.map((entry) =>
     renderRelationEntry(entry, ctx, varName, thisEntityPackage),
   );

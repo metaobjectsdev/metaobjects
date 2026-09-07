@@ -7,6 +7,7 @@ import {
   formatTs,
   entityOutputPath,
   servesReadApi,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { renderGridFile } from "../templates/grid-file.js";
 
@@ -46,7 +47,7 @@ export const angularGridFile = function angularGridFile(
         throw new Error("angular-grid: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.grid.component.ts`),
+        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.grid.component.ts`),
         content: await formatTs(renderGridFile(entity, ctx.renderContext)),
       };
     }),

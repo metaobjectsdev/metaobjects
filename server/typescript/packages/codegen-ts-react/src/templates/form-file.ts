@@ -66,6 +66,7 @@ import {
   valueObjectFor,
   viewForContext,
   VIEW_CONTEXT_FORM,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
@@ -333,7 +334,7 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );

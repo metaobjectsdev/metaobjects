@@ -330,7 +330,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
  *  (`<Name>` / `<Name>.queries` / `<Name>.routes`), folded by the SAME
  *  entityOutputPath logic the emitting generator uses. */
 function entityModulePath(layout: OutputLayout, obj: MetaObject, basename: string): string {
-  return stripTs(entityOutputPath(layout, obj.package, `${basename}.ts`));
+  return stripTs(entityOutputPath(layout, effectivePackage(obj), `${basename}.ts`));
 }
 
 /** Extension-less module specifier for a template-derived file

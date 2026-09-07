@@ -5,6 +5,7 @@ import { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "../templates/enums
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { isAbstract } from "../instance-artifacts.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export interface EntityFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -45,7 +46,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     // reference imports. Entities are never in the collision set → bare name.
     const emittedName = ctx.renderContext.valueObjectEmittedName(entity);
     return {
-      path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${emittedName}.ts`),
+      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${emittedName}.ts`),
       content: await formatTs(renderEntityFile(entity, ctx.renderContext, { allowlists })),
     };
   });

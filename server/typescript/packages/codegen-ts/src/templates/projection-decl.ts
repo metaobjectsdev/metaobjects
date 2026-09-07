@@ -23,6 +23,7 @@ import { renderFilterType } from "./filter-type.js";
 import { buildUiFieldDescriptor, resourcePath } from "./entity-ui-descriptor.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { primaryIdentityFieldNames } from "./zod-validators.js";
+import { effectivePackage } from "../docs-paths.js";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -107,10 +108,10 @@ export function renderProjectionDecl(
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     const rawRef = typeof ref === "string" ? ref : "";
     const name = ctx
-      ? ctx.resolveValueObjectName(rawRef, fieldDeclaringPackage(field, projection.package))
+      ? ctx.resolveValueObjectName(rawRef, fieldDeclaringPackage(field, effectivePackage(projection)))
       : stripPackage(rawRef);
     const module = ctx
-      ? valueObjectModuleSpecifier(name, ctx.packageOf, projection.package, ctx.outputLayout, ctx.extStyle)
+      ? valueObjectModuleSpecifier(name, ctx.packageOf, effectivePackage(projection), ctx.outputLayout, ctx.extStyle)
       : `./${name}.js`;
     return { name, module };
   };

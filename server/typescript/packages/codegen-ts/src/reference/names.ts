@@ -39,6 +39,7 @@ import {
   type EmittedFile,
   type GenContext,
   type Generator,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 
@@ -77,13 +78,13 @@ export function namesFile(opts?: NamesFileOpts): Generator {
         // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
         // conflicting-duplicate-path failure as soon as two packages declare a
         // same-bare-named entity.
-        entityOutputPath(layout, obj.package, `${obj.name}.names.ts`);
+        entityOutputPath(layout, effectivePackage(obj), `${obj.name}.names.ts`);
 
       const superSpecifierFor = (obj: MetaObject): string | undefined => {
         const sup = namesArtifactSuperOf(obj);
         return sup === undefined
           ? undefined
-          : crossEntitySpecifier(layout, obj.package, sup.package, `${sup.name}.names`, extStyle);
+          : crossEntitySpecifier(layout, effectivePackage(obj), effectivePackage(sup), `${sup.name}.names`, extStyle);
       };
 
       const out: EmittedFile[] = [];

@@ -11,6 +11,7 @@ import { perEntity, type Generator, type GeneratorFactory } from "../generator.j
 import { renderCallableFile, isCallableEntity } from "../templates/callable-file.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export interface CallableFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -30,7 +31,7 @@ export const callableFile = function callableFile(opts?: CallableFileOpts): Gene
       return {
         path: entityOutputPath(
           ctx.config.outputLayout ?? "flat",
-          entity.package,
+          effectivePackage(entity),
           `${entity.name}.callable.ts`,
         ),
         content: await formatTs(renderCallableFile(entity, ctx.renderContext)),

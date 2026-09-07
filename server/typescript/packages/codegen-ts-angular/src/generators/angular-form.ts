@@ -7,6 +7,7 @@ import {
   entityOutputPath,
   servesWriteApi,
   isProjection,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "../templates/form-file.js";
 
@@ -43,7 +44,7 @@ export const angularFormFile = function angularFormFile(
         throw new Error("angular-form: renderContext is required (provided by runGen)");
       }
       return {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.form.component.ts`),
+        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.form.component.ts`),
         content: await formatTs(renderFormFile(entity, ctx.renderContext)),
       };
     }),

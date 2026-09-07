@@ -1,6 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype,
   withClientDirective, namesRef, namesConstArg,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
 import { renderGridHookFile } from "./templates/grid-hook-file.js";
@@ -82,7 +83,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     const rc = ctx.renderContext;
     const metaNames = namesRef(entity, rc);
     return [{
-      path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
+      path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity),
         entityMetaFileName(entity.name)),
       content: await formatTs(renderEntityMetaFile(
         entity,
@@ -92,7 +93,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     }, {
       path: entityOutputPath(
         ctx.renderContext.outputLayout,
-        entity.package,
+        effectivePackage(entity),
         `${entity.name}.grid.ts`,
       ),
       content: withClientDirective(

@@ -31,6 +31,7 @@ import { entityModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { type CrudVerb, exposeLine } from "../routes-expose.js";
+import { effectivePackage } from "../docs-paths.js";
 
 export function renderRoutesFileHono(
   entity: MetaObject,
@@ -49,7 +50,7 @@ export function renderRoutesFileHono(
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );

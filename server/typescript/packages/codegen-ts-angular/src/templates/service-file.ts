@@ -17,6 +17,7 @@ import {
   type RenderContext,
   GENERATED_HEADER,
   entityModuleSpecifier,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
 export function renderServiceFile(entity: MetaObject, ctx: RenderContext): string {
@@ -26,7 +27,7 @@ export function renderServiceFile(entity: MetaObject, ctx: RenderContext): strin
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );

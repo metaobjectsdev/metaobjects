@@ -6,7 +6,7 @@
 // match. Fixtures without an expected markdown file are skipped.
 
 import { describe, it, expect } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { docsFile } from "../../src/generators/docs-file.js";
@@ -18,6 +18,13 @@ import type { GenContext } from "../../src/generator.js";
 // Corpus is six levels up from this file:
 //   test/golden → test → codegen-ts → packages → typescript → server → repo-root/fixtures/conformance
 const CORPUS = resolve(import.meta.dir, "../../../../../../fixtures/conformance");
+
+// Regenerate the expected markdown with:
+//   UPDATE_DOCS_CONFORMANCE=1 bun test test/golden/docs-file-conformance.test.ts
+// These expectations are TypeScript-only — `meta docs` is TS-owned, and no other
+// port reads `expected/*.md` — so regenerating them is not a cross-port event.
+// Review the diff: this corpus exists to make a docs-output change VISIBLE.
+const UPDATE = process.env.UPDATE_DOCS_CONFORMANCE === "1";
 
 function makeCtx(
   root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"],
@@ -86,6 +93,10 @@ describe("docsFile() conformance — expected/<Entity>.md byte-match", () => {
       for (const fname of expectedFiles) {
         const emitted = out.find((f) => f.path === fname);
         expect(emitted, `${fixtureName}: missing emitted file ${fname}`).toBeDefined();
+        if (UPDATE) {
+          writeFileSync(join(expectedDir, fname), emitted!.content);
+          continue;
+        }
         const expected = readFileSync(join(expectedDir, fname), "utf-8");
         expect(
           emitted!.content,

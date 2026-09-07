@@ -24,7 +24,9 @@ import {
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN,
 } from "@metaobjectsdev/metadata";
-import { type RenderContext, GENERATED_HEADER, entityModuleSpecifier } from "@metaobjectsdev/codegen-ts";
+import { type RenderContext, GENERATED_HEADER, entityModuleSpecifier,
+  effectivePackage,
+} from "@metaobjectsdev/codegen-ts";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
@@ -89,7 +91,7 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
-    entity.package,
+    effectivePackage(entity),
     entityName,
     ctx.extStyle,
   );

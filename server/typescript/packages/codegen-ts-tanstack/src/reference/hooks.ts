@@ -4,7 +4,7 @@
 //
 // RUNTIME: this file executes under whatever runs `meta gen` — NODE, even in a Bun
 // project. Do not reach for `Bun.*` globals here.
-// targets:       TanStack Query. The emitted hooks call `useEntityFetcher()` from
+// targets:       TanStack Query. The emitted hooks call `useEntityPathFetcher()` from
 //                `@metaobjectsdev/tanstack`, so the module is a CLIENT component.
 //                If your framework compiles server and client from one tree and resolves
 //                each half under different conditions, the emitted file may need a marker
@@ -35,6 +35,7 @@ import {
   withClientDirective,
   namesRef,
   namesConstArg,
+  effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -45,7 +46,7 @@ export interface TanstackQueryOpts {
 
 /**
  * Per-entity generator that emits <Entity>.hooks.ts — a query-key factory
- * plus 2 query hooks and 3 mutation hooks backed by useEntityFetcher().
+ * plus 2 query hooks and 3 mutation hooks backed by useEntityPathFetcher().
  *
  * If the user supplies their own filter, it AND-composes with the built-in gates.
  *
@@ -86,7 +87,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       const rc = ctx.renderContext;
       const metaNames = namesRef(entity, rc);
       const metaFile = {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
+        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity),
           entityMetaFileName(entity.name)),
         content: await formatTs(renderEntityMetaFile(
           entity,
@@ -95,7 +96,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
         )),
       };
       return [metaFile, {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),
+        path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.hooks.ts`),
         // Outside formatTs deliberately: the directive must stay the module's first
         // token, and a formatter is entitled to move a leading string expression.
         content: withClientDirective(
