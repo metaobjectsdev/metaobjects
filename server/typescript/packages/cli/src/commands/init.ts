@@ -713,7 +713,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     result.preserved.push(".gitignore");
   }
 
-  await ensureEsmPackageType(opts.cwd, result);
+  await prepareManifestForScaffold(opts.cwd, result);
 
   return result;
 }
@@ -734,8 +734,13 @@ export async function init(opts: InitOptions): Promise<InitResult> {
  * So set it — but never silently take a real CommonJS project with it. A project
  * that has actual CJS sources gets a loud, specific warning instead of an edit,
  * because changing a module system out from under working code is not ours to do.
+ *
+ * IT ALSO DECLARES WHAT THE SCAFFOLD AND THE GENERATED OUTPUT IMPORT, and the name it used
+ * to carry (`ensureEsmPackageType`) is why that went wrong: a function named for one job
+ * accreted a second, and the second silently inherited the first's early returns. The
+ * declarations are unconditional on a readable manifest — see the comment at that point.
  */
-async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<void> {
+async function prepareManifestForScaffold(cwd: string, result: InitResult): Promise<void> {
   const pkgPath = join(cwd, "package.json");
   if (!(await fileExists(pkgPath))) {
     // No package.json at all: say what is needed rather than inventing a manifest
@@ -760,39 +765,59 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
     return;
   }
 
-  if (pkg.type === "module") return;   // already correct — nothing to do, nothing to say
+  // TWO INDEPENDENT JOBS FROM HERE, and they must not share an exit.
+  //
+  // The module system is one; declaring what the scaffold and the generated output import
+  // is the other, and it is true of every project with a readable manifest — including the
+  // one that already had `"type": "module"` and needs no module-system edit at all. Those
+  // two were folded together, below this function's early returns, and the consequence was
+  // that the adopter who had set their project up CORRECTLY got no declarations and no
+  // warning: `meta gen` worked (the CLI aliases those specifiers for itself) while `tsc`
+  // reported TS2307 on all five files `meta init` had just written. Under a strict
+  // installer that is every one of them; npm's hoisting hid roughly half.
+  //
+  // `moduleSystemNote` is computed first and applied last so the two jobs share ONE write
+  // of the manifest, rather than one job's early return deciding the other's fate.
+  let moduleSystemNote: string | undefined;
 
-  if (await hasCommonJsSources(cwd)) {
-    result.warnings.push(
-      'this project has CommonJS sources, so `"type": "module"` was NOT set for you — ' +
-        "but the scaffolded generators and all generated code are ESM and will not " +
-        "compile without it. Either migrate the project to ESM, or keep the generated " +
-        "code in a sub-directory with its own package.json declaring `\"type\": \"module\"`.",
-    );
-    return;
+  if (pkg.type !== "module") {
+    if (await hasCommonJsSources(cwd)) {
+      // `"type": "module"` is NOT set — changing a module system out from under working
+      // CJS code is not ours to do. The dependency declarations below still apply: they
+      // are about what the generated code imports, not about how it is loaded.
+      result.warnings.push(
+        'this project has CommonJS sources, so `"type": "module"` was NOT set for you — ' +
+          "but the scaffolded generators and all generated code are ESM and will not " +
+          "compile without it. Either migrate the project to ESM, or keep the generated " +
+          "code in a sub-directory with its own package.json declaring `\"type\": \"module\"`.",
+      );
+    } else {
+      const declaredType = pkg.type;   // read BEFORE the mutation below overwrites it
+      pkg.type = "module";
+      // Past tense, deliberately: this reports an edit already made. The imperative
+      // ("set `\"type\": \"module\"`") read as a TODO on the one line a newcomer sees
+      // last, so a scaffold that had just done the right thing looked like it had failed.
+      //
+      // And it must not claim the manifest was SILENT on the point: `npm init -y` writes
+      // `"type": "commonjs"` explicitly (npm 11.x), which is the dominant first-touch path,
+      // so "declared no module system" was false exactly where it is read most. Report what
+      // was actually there.
+      const previous = typeof declaredType === "string" ? declaredType : undefined;
+      moduleSystemNote =
+        `package.json ${previous === undefined ? "declared no module system" : `declared "type": "${previous}"`} — ` +
+        'set `"type": "module"` for you, because MetaObjects scaffolds and generates ESM, ' +
+        "which a CommonJS project cannot compile.";
+    }
   }
 
-  const declaredType = pkg.type;   // read BEFORE the mutation below overwrites it
-  pkg.type = "module";
   const added = addScaffoldDevDependencies(pkg);
   const addedRuntime = addScaffoldRuntimeDependencies(pkg);
-  // Preserve the file's existing indentation rather than reformatting someone's manifest.
-  const indent = /\n(\s+)"/.exec(raw)?.[1] ?? "  ";
-  await writeFile(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf8");
-  // Past tense, deliberately: this reports an edit already made. The imperative
-  // ("set `\"type\": \"module\"`") read as a TODO on the one line a newcomer sees
-  // last, so a scaffold that had just done the right thing looked like it had failed.
-  //
-  // And it must not claim the manifest was SILENT on the point: `npm init -y` writes
-  // `"type": "commonjs"` explicitly (npm 11.x), which is the dominant first-touch path,
-  // so "declared no module system" was false exactly where it is read most. Report what
-  // was actually there.
-  const previous = typeof declaredType === "string" ? declaredType : undefined;
-  result.warnings.push(
-    `package.json ${previous === undefined ? "declared no module system" : `declared "type": "${previous}"`} — ` +
-      'set `"type": "module"` for you, because MetaObjects scaffolds and generates ESM, ' +
-      "which a CommonJS project cannot compile.",
-  );
+  if (moduleSystemNote !== undefined || added.length > 0 || addedRuntime.length > 0) {
+    // Preserve the file's existing indentation rather than reformatting someone's manifest.
+    const indent = /\n(\s+)"/.exec(raw)?.[1] ?? "  ";
+    await writeFile(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf8");
+  }
+  if (moduleSystemNote !== undefined) result.warnings.push(moduleSystemNote);
   if (added.length > 0) {
     result.warnings.push(
       `added ${added.join(" + ")} to devDependencies — the scaffolded ` +

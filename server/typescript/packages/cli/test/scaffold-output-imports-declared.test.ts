@@ -59,17 +59,46 @@ function bareImports(source: string): Set<string> {
   return found;
 }
 
+/**
+ * THE STARTING MANIFEST IS A DIMENSION, and leaving it fixed is what let this ship broken.
+ *
+ * The declarations were made inside the function that fixes the module system, BELOW its
+ * early returns — so they happened only on the one path where `"type"` had to be changed.
+ * A project that already said `"type": "module"` got no declarations and no warning, and
+ * the guard's own comment read "nothing to do, nothing to say". That is the adopter who
+ * set their project up correctly, and under a strict installer their first `tsc` reported
+ * TS2307 on all five files `meta init` had just written.
+ *
+ * This test could not see it because it used exactly one shape — `npm init -y`'s
+ * `"type": "commonjs"` — which is the path that worked. A cold adoption probe on
+ * Kysely + Express + pnpm found it in about ten minutes, on rc.4, the day the fix shipped.
+ */
+const STARTING_MANIFESTS = [
+  // The `npm init -y` shape, which is the documented first step.
+  { label: 'type: "commonjs" (npm init -y)', type: "commonjs" as string | undefined },
+  // Already ESM — needs NO module-system edit, and used to get no declarations either.
+  { label: 'type: "module" (already ESM)', type: "module" as string | undefined },
+  // Silent on the point.
+  { label: "no type field", type: undefined },
+];
+
 describe("meta init declares what meta gen's output imports", () => {
-  test("every bare specifier in the generated files is a declared dependency", async () => {
+  for (const manifest of STARTING_MANIFESTS) {
+  test(`every bare specifier in the generated files is a declared dependency — ${manifest.label}`, async () => {
     // In-package, so `gen` can resolve the scaffolded generators' own imports.
     const root = join(import.meta.dirname, "fixtures", "__tmp__");
     mkdirSync(root, { recursive: true });
     const dir = mkdtempSync(join(root, "scaffold-deps-"));
     try {
-      // The `npm init -y` shape, which is the documented first step.
       writeFileSync(
         join(dir, "package.json"),
-        `${JSON.stringify({ name: "probe", version: "1.0.0", type: "commonjs" }, null, 2)}\n`,
+        `${JSON.stringify(
+          manifest.type === undefined
+            ? { name: "probe", version: "1.0.0" }
+            : { name: "probe", version: "1.0.0", type: manifest.type },
+          null,
+          2,
+        )}\n`,
       );
       expect(await initCommand([], dir)).toBe(0);
       writeFileSync(join(dir, "metaobjects", "meta.common.json"), PROBE_ENTITY);
@@ -103,4 +132,5 @@ describe("meta init declares what meta gen's output imports", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+  }
 });
