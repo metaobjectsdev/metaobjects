@@ -91,9 +91,24 @@ function loadAsset(name: string, overrideDir?: string): string {
 // ─── Nav HTML ─────────────────────────────────────────────────────────────────
 
 /**
- * Build the sidebar nav HTML for a specific page as a collapsible tree.
- * Each package is a <details> element (open if it's the current page's package).
- * Members are listed as links within each package. Deterministic: sorted packages, sorted members.
+ * Build the sidebar nav HTML for a specific page.
+ *
+ * The current page's package is a `<details open>` listing its members; every other package is a
+ * plain link to its own index, which is where ITS members are listed.
+ *
+ * THE MEMBERS OF OTHER PACKAGES ARE NOT INLINED, and that is the whole point of the shape. This
+ * function runs once per page, so listing every member of every package made the site quadratic:
+ * n pages each carrying an n-link tree. Measured on a 656-page model, the nav was 62.3 MB of a
+ * 68.6 MB site — 90.8% of the output — against 6.3 MB of actual documentation, and the generated
+ * site blew a downstream consumer's storage cap. A 306-page model showed the same pathology at
+ * 83%. Doubling the pages quadrupled the bytes.
+ *
+ * It bought nothing visible. Non-current packages render `<details>` CLOSED, so on any given page
+ * 574 of those 654 anchors were in the DOM and never displayed — the browser was parsing ~97 KB
+ * to show ~80 links. What is dropped here is the ability to expand a foreign package in place
+ * without navigating; its index page is one click away and lists the same members.
+ *
+ * Deterministic: sorted packages, sorted members.
  */
 function buildNavHtml(
   g: LinkGraph,
@@ -108,9 +123,17 @@ function buildNavHtml(
     if (pkgList.length === 0) return "";
     const parts: string[] = [`<div class="text-xs font-semibold opacity-50 mt-3 mb-1">${label}</div>`];
     for (const p of pkgList) {
-      const isOpen = p.pkgPath === currentPkgPath;
+      const isCurrent = p.pkgPath === currentPkgPath;
       const pkgHref = escBadge(relRoot + p.pkgPath + "/index.html");
       const pkgLabel = escBadge(p.pkg);
+      if (!isCurrent) {
+        // A link, not an empty `<details>`: a disclosure triangle that opens onto nothing is worse
+        // than no triangle at all.
+        parts.push(
+          `<a href="${pkgHref}" class="font-mono text-xs opacity-70 hover:opacity-100 block">${pkgLabel}</a>`
+        );
+        continue;
+      }
       const members = nodes
         .filter((n) => n.pkg === p.pkg)
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -118,7 +141,7 @@ function buildNavHtml(
         `<a href="${escBadge(relRoot + m.href)}" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">${escBadge(m.name)}</a>`
       ).join("\n");
       parts.push(
-        `<details${isOpen ? " open" : ""}>\n` +
+        `<details open>\n` +
         `<summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="${pkgHref}">${pkgLabel}</a></summary>\n` +
         memberLinks + `\n</details>`
       );

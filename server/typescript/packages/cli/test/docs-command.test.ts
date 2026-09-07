@@ -496,9 +496,18 @@ describe("meta docs --site — HTML documentation site", () => {
     expect(await docsCommand([root, "--site", "--out", out], root)).toBe(0);
     expect(existsSync(join(out, "site", "index.html"))).toBe(true);
     // Both models are in the site, so neither source was dropped to dodge the collision.
+    //
+    // Asserted on the PAGES and the package indexes, not on the root index's sidebar. The sidebar
+    // lists members only for the current page's package — the root index belongs to none — so
+    // reading member names off it once worked by accident and would go on passing if a source were
+    // dropped but its name happened to survive in a diagram caption.
     const index = await readFile(join(out, "site", "index.html"), "utf8");
-    expect(index).toContain("Welcome");
-    expect(index).toContain("SharedThing");
+    expect(index).toContain("acme/site/index.html");
+    expect(index).toContain("acme/shared/index.html");
+    for (const [pkg, model] of [["site", "Welcome"], ["shared", "SharedThing"]]) {
+      expect(existsSync(join(out, "site", "acme", pkg, `${model}.html`))).toBe(true);
+      expect(await readFile(join(out, "site", "acme", pkg, "index.html"), "utf8")).toContain(model);
+    }
   });
 });
 
