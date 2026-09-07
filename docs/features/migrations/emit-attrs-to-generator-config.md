@@ -1,7 +1,7 @@
 # Migration: the `@emit*` attributes become generator configuration
 
 **Applies to:** `@emitRoutes`, `@emitTanstack`, `@emitForm`, `@emitAngular`, `@emitGrid`
-**Retired in:** 0.24.6 · **Ports affected:** TypeScript only
+**Retired in:** 0.25.0 · **Ports affected:** TypeScript only
 **Automatic fix:** `meta upgrade --apply`
 
 ## What changed

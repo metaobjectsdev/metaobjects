@@ -41,7 +41,7 @@ const DELIBERATELY_NAMED_RETIRED_OR_CUT = new Set<string>([
   "@violation",     // renamed to @counterexample
   "@verifiedBy",    // dropped — it proved a NAME existed, never that the test verified the claim
   "@supersededBy",  // dropped — a requirement is prescriptive, never a journal
-  // FR-040 (0.24.6) — the @emit* family. Named for the same reason as the requirement rows
+  // FR-040 (0.25.0) — the @emit* family. Named for the same reason as the requirement rows
   // above, one step further: these were never REGISTERED AT ALL. They were read off metadata
   // by the TS generators and documented as the per-entity opt-out, so they passed `meta gen`
   // (open load) and failed `meta verify` (strict). The audit skill names all five so an

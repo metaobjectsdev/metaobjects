@@ -255,7 +255,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     // caught this exists to prevent.
     rewrite: { kind: "dropAttr" },
   },
-  // ── FR-040: the @emit* family leaves the model (0.24.6) ──
+  // ── FR-040: the @emit* family leaves the model (0.25.0) ──
   //
   // Five attributes — @emitRoutes, @emitTanstack, @emitForm, @emitGrid, @emitAngular — were
   // READ by the TypeScript generators as per-entity kill switches, and documented as THE way
@@ -280,7 +280,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   // run also warns by name, rather than letting the file appear with no explanation.
   {
     type: "object", subType: "*", attr: "emitRoutes",
-    since: "0.24.6",
+    since: "0.25.0",
     why: "it was never registered vocabulary, so the opt-out we documented passed `meta gen` " +
          "and failed `meta verify`",
     replacedBy: "the routes generator's own `filter` — routesFile({ filter: (e) => … })",
@@ -289,7 +289,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   },
   {
     type: "object", subType: "*", attr: "emitTanstack",
-    since: "0.24.6",
+    since: "0.25.0",
     why: "it was never registered vocabulary, so the opt-out we documented passed `meta gen` " +
          "and failed `meta verify`",
     replacedBy: "the `filter` option on tanstackQuery() / tanstackGrid() / tanstackGridHook()",
@@ -298,7 +298,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   },
   {
     type: "object", subType: "*", attr: "emitForm",
-    since: "0.24.6",
+    since: "0.25.0",
     why: "it was never registered vocabulary, and its own doc comment described it backwards " +
          "— as opt-IN via `true`, while the code implemented opt-OUT via `false`",
     replacedBy: "formFile({ filter: (e) => … })",
@@ -307,7 +307,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   },
   {
     type: "object", subType: "*", attr: "emitAngular",
-    since: "0.24.6",
+    since: "0.25.0",
     why: "it was never registered vocabulary, and unlike its four siblings it was not even a " +
          "named constant — just a bare string literal in four generators",
     replacedBy: "the `filter` option on the Angular generators",
@@ -319,7 +319,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     // ANDed with the built-in gates and can only ever narrow. It became a generator OPTION,
     // which must be passed to BOTH grid generators — they emit a matched pair of files.
     type: "object", subType: "*", attr: "emitGrid",
-    since: "0.24.6",
+    since: "0.25.0",
     why: "it was never registered vocabulary, and being an opt-IN it could not be expressed " +
          "by a generator filter, which only ever narrows",
     replacedBy: "the `tphSubtypeGrids` option on BOTH tanstackGrid() and tanstackGridHook()",

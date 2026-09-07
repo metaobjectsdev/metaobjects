@@ -168,7 +168,7 @@ const CASES: readonly Case[] = [
   // starts flagging correct documentation gets switched off, and then catches nothing.
   {
     // The exact shape that motivated the work: a retired attribute two lines above the
-    // `...` that hid it. `@emitTanstack` is retired vocabulary as of 0.24.6 (FR-040 —
+    // `...` that hid it. `@emitTanstack` is retired vocabulary as of 0.25.0 (FR-040 —
     // the @emit* family left the model), which is what makes it the right fixture and
     // not merely an unused name: this is a spelling the docs really did teach.
     name: "an elision no longer hides a retired attribute",

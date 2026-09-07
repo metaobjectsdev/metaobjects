@@ -12,7 +12,7 @@
 // fails, with the same error code. Only the message improves.
 
 import { describe, test, expect } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   retiredAttr,
@@ -113,6 +113,46 @@ describe("the map itself", () => {
   test("every entry states the version that retired it", () => {
     for (const e of RETIRED_VOCABULARY) {
       expect(e.since).toMatch(/^\d+\.\d+\.\d+$/);
+    }
+  });
+
+  // The shape check above passed on `0.24.6` — a release that was never cut. The @emit*
+  // retirements were authored while 0.24.6 was the expected next version, the line was
+  // renumbered to 0.25.0 when the breaking batch made it a MINOR, and the `since` strings
+  // stayed behind. Nothing noticed: no test reads the number, and the message it feeds
+  // ("retired in 0.24.6 — …") sends an adopter to a CHANGELOG entry that does not exist.
+  //
+  // A version is ALLOWED to have no heading while it is genuinely the upcoming release —
+  // a retirement is authored before the release that carries it, under `[Unreleased]`. So
+  // the rule is: a `since` BELOW the version we currently ship must have shipped. That is
+  // false exactly when a planned number is superseded, and it fails at the release bump,
+  // which is when the mistake becomes real.
+  test("every `since` below the current version names a release the CHANGELOG carries", () => {
+    const repoRoot = resolve(import.meta.dir, "../../../../..");
+    const changelog = readFileSync(join(repoRoot, "CHANGELOG.md"), "utf8");
+    const shipped = new Set(
+      [...changelog.matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm)].map((m) => m[1] as string),
+    );
+    const current = JSON.parse(
+      readFileSync(join(import.meta.dir, "../package.json"), "utf8"),
+    ).version as string;
+
+    const order = (v: string): number[] => v.split(".").map(Number);
+    const below = (a: string, b: string): boolean => {
+      const [x, y] = [order(a), order(b)];
+      for (let i = 0; i < 3; i++) {
+        if ((x[i] as number) !== (y[i] as number)) return (x[i] as number) < (y[i] as number);
+      }
+      return false;
+    };
+
+    for (const e of RETIRED_VOCABULARY) {
+      if (!below(e.since, current) || shipped.has(e.since)) continue;
+      throw new Error(
+        `${e.type}.${e.subType} ${e.attr ?? ""}: retired in ${e.since}, but no such release — ` +
+          `we ship ${current} and the CHANGELOG has no [${e.since}] heading. ` +
+          `A planned version was superseded; restamp it with the release that carried it.`,
+      );
     }
   });
 
