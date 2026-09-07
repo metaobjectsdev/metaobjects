@@ -257,12 +257,18 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
                 out.put(role, resolved);
                 continue;
             }
-            // The refusal is about DISAGREEMENT, not about the count — deliberately the
-            // SAME rule SourceResolution already enforces for the physical name, rather
-            // than a stricter one invented here. An abstract base and the child that
-            // extends it may each declare a `@role: primary` source naming the same
-            // relation; that is legal today and refusing it would make this artifact
-            // stricter than the invariant it exists to serve.
+            // The refusal is about DISAGREEMENT, not about the count — the SAME rule
+            // SourceResolution enforces, which now compares the whole ADDRESS
+            // (SourceResolution.addressKey: kind, schema, physical name) rather than the
+            // bare name. This used to say "deliberately the SAME rule" when the two in
+            // fact differed: that one compared physical NAMES, so two primaries agreeing
+            // on the name and differing on `@schema` got past it and were refused only
+            // here. They are the same rule now; what remains for this loop is every
+            // NON-primary role, which the authority does not see.
+            //
+            // An abstract base and the child that extends it may each declare a
+            // `@role: primary` source naming the same relation; that is legal and
+            // refusing it would make this artifact stricter than the invariant it serves.
             //
             // Two sources in one role that resolve DIFFERENTLY is the real problem, and
             // silently keeping one is the failure mode this artifact makes impossible: the
@@ -271,7 +277,8 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             if (!existing.equals(resolved)) {
                 throw new GeneratorException(
                     obj.getName() + " declares more than one source.rdb with @role: \"" + role
-                        + "\", and they do not agree: " + existing + " vs " + resolved
+                        + "\", and they disagree on the object's physical address: "
+                        + existing + " vs " + resolved
                         + ". The names artifact keys sources by role, so the second has "
                         + "nowhere to go.");
             }

@@ -396,17 +396,20 @@ describe("resolveObjectNames — extends chain", () => {
 });
 
 
-describe("two same-role sources: what refuses, and what does not", () => {
-  // A model that LOADS with zero errors, that `primaryRdbSource` accepts, and that
-  // `resolveObjectNames` refuses. Both halves are pinned deliberately: the divergence is
-  // real and undecided, and a test that asserted only the half it liked would let the
-  // other half move without anyone noticing.
+describe("two same-role sources: one address, one comparator", () => {
+  // A model that LOADS with zero errors and is refused by BOTH doors, because both now
+  // compare the same thing: the resolved ADDRESS (kind, schema, physical name).
   //
-  // The two doors compare different things. `primaryRdbSource` compares the bare physical
-  // name, for `primary` only. `sourcesOf` compares the whole resolved record — kind,
-  // schema, physical name — for every role. So two primaries agreeing on `@table` and
-  // disagreeing on `@schema` pass one and fail the other, and `meta gen` fails on a model
-  // every other door admits.
+  // This used to pin a divergence. `primaryRdbSource` compared the bare physical name,
+  // for `primary` only, while `sourcesOf` compared the whole resolved record for every
+  // role — so this model passed one door and failed the other, and `meta gen` failed on
+  // a model every other door admitted.
+  //
+  // What decided it was not the asymmetry but WHICH source the permissive door returned.
+  // `primaries[0]` is the INHERITED source in TS/C#/Python (`children()` puts the super's
+  // entries first) and the OWN source on the JVM. So this exact model silently bound
+  // `s1.t` in three ports and `s2.t` in two — one document, two verdicts depending on
+  // which toolchain read it, which is the defect 0.25.0 spent its breaking slot on.
   //
   // Named sources are what makes it reachable: unnamed ones shadow on (type, name), so
   // only one survives `children()` and there is nothing left to compare.
@@ -445,12 +448,63 @@ describe("two same-role sources: what refuses, and what does not", () => {
     return root.objects().find((o) => o.name === "Acct") as MetaObject;
   }
 
-  test("the shared authority ACCEPTS it — it compares the bare physical name", async () => {
-    expect(primaryRdbSource(await acct())?.physicalName).toBe("t");
+  test("the shared authority REFUSES it — it compares the whole address", async () => {
+    const e = await acct();
+    expect(() => primaryRdbSource(e)).toThrow(/disagree on the object's physical address/);
+    // The message must show the ADDRESS, not the name: the names agree here, so a
+    // message naming only "t" would describe two identical things as different.
+    expect(() => primaryRdbSource(e)).toThrow(/"s1"\."t"/);
+    expect(() => primaryRdbSource(e)).toThrow(/"s2"\."t"/);
   });
 
-  test("the names artifact REFUSES it — it compares the whole address, schema included", async () => {
+  test("the names artifact refuses it too — the same rule, through the same door", async () => {
     await expect(async () => resolveObjectNames(await acct()))
-      .toThrow(/do not agree/);
+      .toThrow(/disagree on the object's physical address/);
+  });
+});
+
+describe("an absent @schema is not the same address as an explicit one", () => {
+  // Deliberately REFUSED, and the reason is dialect-shaped. On Postgres an absent
+  // @schema and `"public"` do address the same relation — migrate normalizes the two
+  // (DEFAULT_DB_SCHEMA_POSTGRES). On SQLite/D1 they do not: the expected-schema builder
+  // throws on ANY declared schema, `"public"` included, while an absent one is fine.
+  //
+  // So the comparison stays RAW. Normalizing to the Postgres default here would import
+  // one dialect's rule into a dialect-free tier, where it is wrong for another — and
+  // `resolveTableSchema` documents that deciding what "undefined" means belongs to the
+  // caller, not to this layer.
+  const MODEL = {
+    "metadata.root": {
+      package: "acme",
+      children: [
+        {
+          "object.entity": {
+            name: "Base", abstract: true,
+            children: [
+              { "field.long": { name: "id" } },
+              { "source.rdb": { name: "a", "@table": "t", "@role": "primary" } },
+            ],
+          },
+        },
+        {
+          "object.entity": {
+            name: "Acct", extends: "Base",
+            children: [
+              { "source.rdb": { name: "b", "@table": "t", "@schema": "public", "@role": "primary" } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  test("absent vs \"public\" is refused — spell the address once", async () => {
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(MODEL), { id: "absent-vs-public.json" }),
+    ]);
+    expect(errors.map((e) => e.message)).toEqual([]);
+    const acct = root.objects().find((o) => o.name === "Acct") as MetaObject;
+    expect(() => primaryRdbSource(acct)).toThrow(/disagree on the object's physical address/);
   });
 });

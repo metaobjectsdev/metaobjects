@@ -570,12 +570,17 @@ public static class CSharpNaming
 
     /// <summary>
     /// Every <c>source.rdb</c> child of an object, keyed by effective <c>@role</c>.
-    /// <para>The refusal below is about DISAGREEMENT, not about the count — deliberately the
-    /// SAME rule <see cref="SourceResolution.PrimaryRdbSource"/> already enforces for the
-    /// physical name, rather than a stricter one invented here. An abstract base and the
-    /// child that extends it may each declare a <c>@role: primary</c> source naming the same
-    /// relation; that is legal today, and refusing it would make this artifact stricter than
-    /// the invariant it exists to serve.</para>
+    /// <para>The refusal below is about DISAGREEMENT, not about the count — the SAME rule
+    /// <see cref="SourceResolution.PrimaryRdbSource"/> enforces, which now compares the whole
+    /// ADDRESS (<see cref="SourceResolution.AddressKey"/>: kind, schema, physical name) rather
+    /// than the bare name. This used to say "deliberately the SAME rule" while the two in fact
+    /// differed — that one compared physical NAMES, so two primaries agreeing on the name and
+    /// differing on <c>@schema</c> got past it and were refused only here. They are the same
+    /// rule now; what remains for this loop is every NON-primary role, which the authority
+    /// does not see.</para>
+    /// <para>An abstract base and the child that extends it may each declare a
+    /// <c>@role: primary</c> source naming the same relation; that is legal, and refusing it
+    /// would make this artifact stricter than the invariant it exists to serve.</para>
     /// <para>Two sources in one role that resolve DIFFERENTLY is the real problem, and
     /// silently keeping one is the `dropped` failure mode this artifact makes impossible:
     /// the second name would be carried nowhere, read by nobody, while the binding quietly
@@ -593,8 +598,8 @@ public static class CSharpNaming
             if (existing != resolved)
                 throw new InvalidOperationException(
                     $"{where} declares more than one source.rdb with @role: \"{src.Role}\", and they " +
-                    $"do not agree: {existing} vs {resolved}. The names artifact keys sources by " +
-                    "role, so the second has nowhere to go.");
+                    $"disagree on the object's physical address: {existing} vs {resolved}. The names " +
+                    "artifact keys sources by role, so the second has nowhere to go.");
         }
         return outMap;
     }

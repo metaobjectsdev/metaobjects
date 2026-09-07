@@ -389,18 +389,22 @@ def test_two_sources_in_one_role_that_AGREE_are_legal() -> None:
     assert src.count("ROLECHILD_SOURCE_PRIMARY_TABLE: Final") == 1
 
 
-def test_two_sources_in_one_role_that_DISAGREE_are_refused_naming_both() -> None:
+def test_a_schema_disagreement_in_the_primary_role_is_refused_by_the_AUTHORITY() -> None:
     """...and the disagreement is the real problem, because keeping one silently is the
     failure this artifact makes impossible: the second name would be carried nowhere,
     read by nobody, while the binding quietly took the first's.
 
-    A ``@schema`` disagreement is the arm this module owns, and it is what makes the
-    check non-redundant: ``primary_rdb_source`` compares physical NAMES only, so two
-    primaries agreeing on the name and differing on which SCHEMA it lives in get past
-    it and land on one role key here. (A ``@kind`` disagreement in the primary role is
-    unreachable — the loader refuses a read-only primary outright,
-    ``ERR_ENTITY_PRIMARY_SOURCE_READONLY``; a physical-NAME disagreement is refused one
-    level down, by ``primary_rdb_source``.)
+    This test used to assert the message came from THIS module, and documented why:
+    ``primary_rdb_source`` compared physical NAMES only, so two primaries agreeing on
+    the name and differing on which SCHEMA it lives in got past it and landed on one
+    role key here. That gap is closed — the authority now compares the whole ADDRESS
+    (kind, schema, physical name), so it refuses one level down and this module never
+    sees the shape.
+
+    Why it was closed rather than left: the weaker key did not merely accept the model,
+    it made the accepted answer PORT-DEPENDENT. ``primaries[0]`` is the inherited source
+    in Python/TS/C# (``children()`` puts the super's entries first) and the own source
+    on the JVM, so this exact model bound one schema in three ports and the other in two.
     """
     model = _role_model(
         {"source.rdb": {"name": "child_src", "@table": "zz_shared", "@schema": "zz_other"}}
@@ -408,8 +412,36 @@ def test_two_sources_in_one_role_that_DISAGREE_are_refused_naming_both() -> None
     with pytest.raises(ValueError) as exc:
         _render(model, "RoleChild")
     message = str(exc.value)
-    assert '@role: "primary"' in message
-    assert "zz_shared" in message
+    assert "disagree on the object's physical address" in message
+    # The ADDRESS, not the bare name: the names agree here, so a message naming only
+    # "zz_shared" would describe two identical things as different.
+    assert '"zz_other"."zz_shared"' in message
+    assert '"zz_shared" (table)' in message
+
+
+def test_two_REPLICAS_that_disagree_are_still_refused_by_this_module() -> None:
+    """The per-role check here is not redundant with the authority: the authority only
+    knows about ``@role: primary``. Two sources sharing any OTHER role key still land
+    here, and the second still has nowhere to go in a map keyed by role.
+
+    Without this case, closing the primary-role gap would leave the whole per-role loop
+    unexercised — a check nothing reaches is a check that can rot.
+    """
+    # The child keeps a primary that AGREES with the base's — `validate_source_roles` is
+    # own-only, so a child declaring replicas alone fails the load with
+    # ERR_SOURCE_NO_PRIMARY before this module is ever reached.
+    model = _role_model({"source.rdb": {"name": "child_src", "@table": "zz_shared"}})
+    model["metadata.root"]["children"][1]["object.entity"]["children"].extend(
+        [
+            {"source.rdb": {"name": "r1", "@table": "zz_replica", "@role": "replica"}},
+            {"source.rdb": {"name": "r2", "@table": "zz_elsewhere", "@role": "replica"}},
+        ]
+    )
+    with pytest.raises(ValueError) as exc:
+        _render(model, "RoleChild")
+    message = str(exc.value)
+    assert '@role: "replica"' in message
+    assert "disagree on the object's physical address" in message
 
 
 TPH_MODEL = {

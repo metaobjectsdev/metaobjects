@@ -134,6 +134,72 @@ public class SourceResolutionDivergenceTest extends SharedRegistryTestBase {
         }
     }
 
+    /**
+     * Direction 3 — the two primaries AGREE on the physical name and disagree only on
+     * {@code @schema}. This is the arm the bare-name comparison could not see: it loaded
+     * clean, {@code primaryRdbSource} ACCEPTED it, and only the names generator refused —
+     * so {@code mvn metaobjects:generate} failed on a model every other door admitted.
+     *
+     * <p>What made it worth closing is not the asymmetry but WHICH source the weaker key
+     * returned. {@code getSources(true)} puts OWN entries first on the JVM while
+     * {@code children()} puts the SUPER's first in TS/C#/Python, so this exact model bound
+     * {@code s2.t} here and {@code s1.t} there — one document, two verdicts depending on
+     * which toolchain read it.</p>
+     */
+    private static final String SCHEMA_ONLY_DIVERGENCE =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+      + "  { \"object.entity\": { \"name\": \"ParentWeird\", \"abstract\": true, \"children\": ["
+      + "      { \"source.rdb\": { \"name\": \"a\", \"@table\": \"child_table\", \"@schema\": \"s1\" } },"
+      + "      { \"field.long\": { \"name\": \"id\" } } ] } },"
+      + "  { \"object.entity\": { \"name\": \"ChildWeird\", \"extends\": \"ParentWeird\", \"children\": ["
+      + "      { \"source.rdb\": { \"name\": \"b\", \"@table\": \"child_table\", \"@schema\": \"s2\" } },"
+      + "      { \"identity.primary\": { \"name\": \"pk\", \"@fields\": [\"id\"] } } ] } }"
+      + "] } }";
+
+    @Test
+    public void direction3_primariesAgreeingOnNameButDisagreeingOnSchemaAreRefused() {
+        MetaObject child = loadObject(SCHEMA_ONLY_DIVERGENCE, "divergent-schema", "ChildWeird");
+        try {
+            SourceResolution.primaryRdbSource(child);
+            fail("expected primaryRdbSource to refuse a schema-only divergence");
+        } catch (MetaDataException e) {
+            String m = e.getMessage();
+            assertTrue(m, m.contains("physical address"));
+            // The ADDRESS, not the bare name: the names AGREE here, so a message quoting
+            // only "child_table" would describe two identical things as different.
+            assertTrue(m, m.contains("\"s1\".\"child_table\""));
+            assertTrue(m, m.contains("\"s2\".\"child_table\""));
+        }
+    }
+
+    /**
+     * An absent {@code @schema} is NOT the same address as an explicit one, and that is
+     * dialect-shaped rather than pedantic: on Postgres absent and {@code "public"} address
+     * the same relation, but on SQLite/D1 the expected-schema builder rejects ANY declared
+     * schema, {@code "public"} included, while an absent one is fine. The comparison stays
+     * RAW so one dialect's default is not imported into a dialect-free tier.
+     */
+    private static final String ABSENT_VS_EXPLICIT =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+      + "  { \"object.entity\": { \"name\": \"ParentWeird\", \"abstract\": true, \"children\": ["
+      + "      { \"source.rdb\": { \"name\": \"a\", \"@table\": \"child_table\" } },"
+      + "      { \"field.long\": { \"name\": \"id\" } } ] } },"
+      + "  { \"object.entity\": { \"name\": \"ChildWeird\", \"extends\": \"ParentWeird\", \"children\": ["
+      + "      { \"source.rdb\": { \"name\": \"b\", \"@table\": \"child_table\", \"@schema\": \"public\" } },"
+      + "      { \"identity.primary\": { \"name\": \"pk\", \"@fields\": [\"id\"] } } ] } }"
+      + "] } }";
+
+    @Test
+    public void absentSchemaIsNotTheSameAddressAsAnExplicitOne() {
+        MetaObject child = loadObject(ABSENT_VS_EXPLICIT, "absent-vs-public", "ChildWeird");
+        try {
+            SourceResolution.primaryRdbSource(child);
+            fail("expected primaryRdbSource to refuse absent-vs-public");
+        } catch (MetaDataException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("physical address"));
+        }
+    }
+
     @Test
     public void direction1_readOnlyInheritedPrimaryBesideWritableOwnPrimaryIsRefused() {
         assertRefused(READ_ONLY_INHERITED, "divergent-ro", "v_parent");

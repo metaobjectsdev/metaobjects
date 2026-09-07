@@ -194,26 +194,25 @@ function sourcesOf(sources: readonly MetaSource[], where: string): Record<string
     // keeping one is the `dropped` failure mode this artifact makes impossible: the second
     // name is carried nowhere, read by nobody, and the binding quietly takes the first's.
     //
-    // WHAT IS COMPARED, AND HOW IT DIFFERS FROM `primaryRdbSource`. This compares the whole
-    // resolved record — kind, schema and the physical name under its alias — for EVERY
-    // role. `primaryRdbSource` compares the bare physical name, and only for `primary`.
-    // This comment used to claim the two were "deliberately the SAME rule"; they are not,
-    // and the gap is reachable: two `@role: primary` sources agreeing on `@table` but
-    // disagreeing on `@schema` load with zero errors, are accepted by `primaryRdbSource`,
-    // and are refused here — so `meta gen` fails on a model every other door admits.
+    // WHAT IS COMPARED. The whole resolved record — kind, schema and the physical name
+    // under its alias — for EVERY role. `primaryRdbSource` now compares the same address
+    // (`sourceAddressKey`) for `primary`, so the two doors agree by construction rather
+    // than by coincidence.
     //
-    // The strict half is the defensible one: a schema is part of the address, so those two
-    // sources name DIFFERENT tables and "every consumer binds ONE name" is not satisfied
-    // merely because the unqualified names match. Loosening this to match would enshrine
-    // that. Tightening `primaryRdbSource` instead is the real fix and is deliberately NOT
-    // made here: it is the shared authority, implemented in all five ports, and a model
-    // that loads today would begin to throw. `names.test.ts` pins BOTH sides of the
-    // divergence so it stays visible until it is decided.
+    // This comment used to claim the two were "deliberately the SAME rule" when they were
+    // not, and the gap was reachable: two `@role: primary` sources agreeing on `@table`
+    // but disagreeing on `@schema` loaded clean, were ACCEPTED by `primaryRdbSource` and
+    // refused here, so `meta gen` failed on a model every other door admitted. Worse, the
+    // weaker key made the accepted answer port-dependent — `primaries[0]` is the inherited
+    // source in TS/C#/Python and the own source on the JVM. That is now closed at the
+    // authority; this stays because it also covers the non-primary roles (two disagreeing
+    // REPLICAs) and because it is what builds the keyed map.
     if (JSON.stringify(existing) !== JSON.stringify(resolved)) {
       throw new Error(
-        `${where} declares more than one source.rdb with @role: "${role}", and they do ` +
-        `not agree: ${JSON.stringify(existing)} vs ${JSON.stringify(resolved)}. The names ` +
-        `artifact keys sources by role, so the second has nowhere to go.`,
+        `${where} declares more than one source.rdb with @role: "${role}", and they ` +
+        `disagree on the object's physical address: ${JSON.stringify(existing)} vs ` +
+        `${JSON.stringify(resolved)}. The names artifact keys sources by role, so the ` +
+        `second has nowhere to go.`,
       );
     }
   }

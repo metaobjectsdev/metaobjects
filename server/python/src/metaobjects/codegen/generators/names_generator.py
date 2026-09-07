@@ -286,24 +286,28 @@ def _sources_by_role(entity: MetaObject) -> dict[str, MetaSource]:
     ADR-0039: ``children()`` RESOLVES — a source inherited via ``extends`` (the TPH
     pattern) is seen; ``own_children()`` would miss it.
 
-    The refusal is about DISAGREEMENT, not about the count — deliberately the SAME
-    rule :func:`primary_rdb_source` already enforces for the physical name, rather
-    than a stricter one invented here. An abstract base and the child that extends it
-    may each declare a ``@role: primary`` source naming the same relation; that is
-    legal today, and refusing it would make this module stricter than the invariant
-    it exists to serve.
+    The refusal is about DISAGREEMENT, not about the count — the SAME rule
+    :func:`primary_rdb_source` enforces, which now compares the whole ADDRESS
+    (:func:`source_address_key`: kind, schema, physical name) rather than the bare
+    name. An abstract base and the child that extends it may each declare a
+    ``@role: primary`` source naming the same relation; that is legal, and refusing it
+    would make this module stricter than the invariant it exists to serve.
 
     Two sources in one role that resolve DIFFERENTLY is the real problem, and silently
     keeping one is the failure mode this artifact makes impossible: the second name is
     carried nowhere, read by nobody, and the binding quietly takes the first's.
 
-    What this sees that :func:`primary_rdb_source` cannot is the non-name half —
-    ``@kind`` and ``@schema``. That function compares physical NAMES, so two primaries
-    agreeing on the name and differing on which schema it lives in get past it and land
-    on one role key here. (Two sources reach one role key only when both are OWN
-    children or both carry an explicit structural ``name``: effective-children
-    shadowing matches on ``(type, name)``, so two UNNAMED sources across an ``extends``
-    boundary collapse into one before this ever runs.)
+    This docstring used to claim the two were "deliberately the SAME rule" while
+    describing, two paragraphs later, exactly how they differed — that function
+    compared physical NAMES, so two primaries agreeing on the name and differing on
+    ``@schema`` got past it and landed on one role key here. They are the same rule
+    now. What remains for this loop is every NON-primary role: the authority knows only
+    about ``@role: primary``, so two disagreeing REPLICAs still land here.
+
+    (Two sources reach one role key only when both are OWN children or both carry an
+    explicit structural ``name``: effective-children shadowing matches on
+    ``(type, name)``, so two UNNAMED sources across an ``extends`` boundary collapse
+    into one before this ever runs.)
     """
     out: dict[str, MetaSource] = {}
     for child in entity.children():
@@ -329,9 +333,9 @@ def _sources_by_role(entity: MetaObject) -> dict[str, MetaSource]:
             )
             raise ValueError(
                 f'{entity.name} declares more than one source.rdb with @role: "{role}", '
-                f'and they do not agree — "{existing.physical_name()}" vs '
-                f'"{child.physical_name()}" ({detail}). The names module keys sources '
-                f"by role, so the second has nowhere to go."
+                f"and they disagree on the object's physical address — "
+                f'"{existing.physical_name()}" vs "{child.physical_name()}" ({detail}). '
+                f"The names module keys sources by role, so the second has nowhere to go."
             )
     return out
 

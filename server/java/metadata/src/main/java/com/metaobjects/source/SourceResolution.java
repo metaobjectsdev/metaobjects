@@ -113,13 +113,31 @@ public final class SourceResolution {
      */
     private static void refuseDivergentPrimaries(MetaObject obj, List<MetaSource> primaries) {
         List<String> distinct = primaries.stream()
-            .map(MetaSource::getPhysicalName).distinct().sorted().toList();
+            .map(SourceResolution::addressKey).distinct().sorted().toList();
         if (distinct.size() <= 1) return;
         // Sorted, so the message is identical in every port regardless of source order.
-        String joined = distinct.stream().map(n -> "\"" + n + "\"").collect(Collectors.joining(", "));
+        String joined = String.join(" vs ", distinct);
         throw new MetaDataException(
-            obj.getName() + ": role=primary sources disagree on the object's physical name — "
-                + joined + ". Every consumer binds ONE name. Give them matching physical "
-                + "names, or drop the extra role=primary declaration.");
+            obj.getName() + ": role=primary sources disagree on the object's physical address — "
+                + joined + ". Every consumer binds ONE address. Give them a matching @kind, "
+                + "@schema and physical name, or drop the extra role=primary declaration.");
+    }
+
+    /**
+     * The RESOLVED address of a source — the same three parts the names artifact compares,
+     * so the shared authority and the generated artifact cannot answer "is this one object?"
+     * differently. Rendered rather than structural because every port must produce a
+     * byte-identical message from it.
+     *
+     * <p>RAW, deliberately: an absent {@code @schema} is NOT folded into a dialect default.
+     * On Postgres absent and {@code "public"} address the same relation, but on SQLite/D1
+     * they do not — the expected-schema builder rejects ANY declared schema, {@code "public"}
+     * included, while an absent one is fine. Deciding what "absent" means belongs to the
+     * caller's dialect, not to this layer.</p>
+     */
+    public static String addressKey(MetaSource source) {
+        String schema = source.getSchema();
+        String qualifier = (schema == null || schema.isEmpty()) ? "" : "\"" + schema + "\".";
+        return qualifier + "\"" + source.getPhysicalName() + "\" (" + source.getEffectiveKind() + ")";
     }
 }

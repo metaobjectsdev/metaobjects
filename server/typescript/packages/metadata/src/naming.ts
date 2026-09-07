@@ -88,7 +88,20 @@ export function pluralize(s: string): string {
  * ## The refusal
  *
  * An object whose `@role: primary` sources resolve to MORE THAN ONE physical
- * name has no single answer to give, so this throws rather than picking one.
+ * ADDRESS has no single answer to give, so this throws rather than picking one.
+ * The address is `(kind, schema, physical name)` — see `sourceAddressKey`. It was
+ * once the bare physical name, which was a WEAKER key than any consumer's: migrate
+ * keys every table it compares by schema-or-default + name, Postgres DDL is
+ * `CREATE TABLE "s"."t"`, and since 0.25.0 generated code binds the schema half too
+ * (`pgSchema(...).table(...)`, `[Table(..., Schema = ...)]`). Two primaries agreeing
+ * on `@table` and disagreeing on `@schema` therefore passed here and were refused by
+ * the names artifact, so `meta gen` failed on a model every other door admitted.
+ *
+ * What decided it was not the asymmetry but WHICH source the weaker key returned:
+ * `primaries[0]` is the INHERITED source in TS/C#/Python (`children()` puts the
+ * super's entries first) and the OWN source on the JVM, so such a model silently
+ * bound one schema in three ports and the other in two — one document, two verdicts
+ * depending on which toolchain read it.
  * The shape loads with ZERO errors: `validateSourceRoles` enforces "exactly one
  * primary" over `ownChildren()` only, and `_effectiveChildren` shadows an own
  * child over a super child only on a (type, name) match — so two `source.rdb`
@@ -111,24 +124,41 @@ export function pluralize(s: string): string {
  * of the two is read-only — and, since `children()` places inherited entries
  * first, only when the read-only one is the inherited one.
  *
- * Two primaries AGREEING on a name is not a divergence and stays legal: the
- * invariant is that an object has ONE physical name, not that it declares one
- * source. A read-only primary beside a non-primary REPLICA does not reach it
- * either — a replica is not `role === "primary"`.
+ * Two primaries AGREEING on an address is not a divergence and stays legal: the
+ * invariant is that an object has ONE address, not that it declares one source.
+ * A read-only primary beside a non-primary REPLICA does not reach it either — a
+ * replica is not `role === "primary"`.
  */
+export function sourceAddressKey(source: MetaSource): string {
+  // The RESOLVED address, and the same three parts the names artifact compares — so the
+  // shared authority and the generated artifact cannot answer "is this one object?"
+  // differently. Rendered rather than structural because every port has to produce a
+  // byte-identical message from it.
+  //
+  // RAW, deliberately: an absent `@schema` is NOT folded into a dialect default. On
+  // Postgres absent and "public" address the same relation, but on SQLite/D1 they do
+  // not — `migrate-ts`'s expected-schema builder throws on ANY declared schema, "public"
+  // included, while an absent one is fine. `resolveTableSchema` already documents that
+  // deciding what "undefined" means belongs to the caller's dialect, not to this layer,
+  // so normalizing here would import one dialect's rule into a dialect-free tier.
+  const schema = source.attr(SOURCE_ATTR_SCHEMA);
+  const qualifier = typeof schema === "string" && schema !== "" ? `"${schema}".` : "";
+  return `${qualifier}"${source.physicalName}" (${source.effectiveKind})`;
+}
+
 export function primaryRdbSource(entity: MetaData): MetaSource | undefined {
   const primaries = entity.children().filter(
     (c): c is MetaSource => isMetaSource(c) && c.role === SOURCE_ROLE_PRIMARY,
   );
   if (primaries.length === 0) return undefined;
-  const distinct = [...new Set(primaries.map((s) => s.physicalName))].sort();
+  const distinct = [...new Set(primaries.map(sourceAddressKey))].sort();
   if (distinct.length > 1) {
     // Sorted, so the message is identical in every port regardless of children() order.
-    const joined = distinct.map((n) => `"${n}"`).join(", ");
+    const joined = distinct.join(" vs ");
     throw new MetaModelError(
-      `${entity.name}: role=primary sources disagree on the object's physical name — ` +
-      `${joined}. Every consumer binds ONE name. Give them matching physical names, ` +
-      `or drop the extra role=primary declaration.`,
+      `${entity.name}: role=primary sources disagree on the object's physical address — ` +
+      `${joined}. Every consumer binds ONE address. Give them a matching @kind, @schema ` +
+      `and physical name, or drop the extra role=primary declaration.`,
     );
   }
   return primaries[0];

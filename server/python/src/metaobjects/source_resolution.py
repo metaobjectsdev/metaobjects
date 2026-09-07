@@ -45,6 +45,24 @@ from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
 
 
+def source_address_key(source: MetaSource) -> str:
+    """The RESOLVED address of *source* — the same three parts the names artifact
+    compares, so the shared authority and the generated artifact cannot answer
+    "is this one object?" differently. Rendered rather than structural because
+    every port must produce a byte-identical message from it.
+
+    RAW, deliberately: an absent ``@schema`` is NOT folded into a dialect default.
+    On Postgres absent and ``"public"`` address the same relation, but on
+    SQLite/D1 they do not — the expected-schema builder rejects ANY declared
+    schema, ``"public"`` included, while an absent one is fine. Deciding what
+    "absent" means belongs to the caller's dialect, not to this layer, so
+    normalizing here would import one dialect's rule into a dialect-free tier.
+    """
+    schema = source.schema()
+    qualifier = f'"{schema}".' if schema else ""
+    return f'{qualifier}"{source.physical_name()}" ({source.effective_kind()})'
+
+
 def primary_rdb_source(entity: MetaObject) -> MetaSource | None:
     """THE primary ``source.rdb`` for *entity*, or ``None``.
 
@@ -61,7 +79,8 @@ def primary_rdb_source(entity: MetaObject) -> MetaSource | None:
 
     Raises :class:`ValueError` — mirroring the other four ports' wording exactly —
     when the resolving children carry MORE THAN ONE ``@role: primary`` source and
-    they do not agree on a physical name. Direction-blind: it compares every
+    they do not agree on a physical ADDRESS (kind, schema, physical name; see
+    :func:`source_address_key`). Direction-blind: it compares every
     primary against every other, so it does not matter which of them is writable,
     nor which was declared first. See the module docstring for why that matters.
     No downstream consumer re-checks this; the refusal lives here, once, so every
@@ -75,13 +94,14 @@ def primary_rdb_source(entity: MetaObject) -> MetaSource | None:
     if not primaries:
         return None
 
-    names = sorted({s.physical_name() for s in primaries})
-    if len(names) > 1:
-        joined = ", ".join(f'"{n}"' for n in names)
+    addresses = sorted({source_address_key(s) for s in primaries})
+    if len(addresses) > 1:
+        joined = " vs ".join(addresses)
         raise ValueError(
             f"{entity.name}: role=primary sources disagree on the object's physical "
-            f"name — {joined}. Every consumer binds ONE name. Give them matching "
-            f"physical names, or drop the extra role=primary declaration."
+            f"address — {joined}. Every consumer binds ONE address. Give them a "
+            f"matching @kind, @schema and physical name, or drop the extra "
+            f"role=primary declaration."
         )
     return primaries[0]
 

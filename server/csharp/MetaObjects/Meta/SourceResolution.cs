@@ -79,6 +79,25 @@ public static class SourceResolution
     public static void RefuseDivergentPrimaries(MetaObject obj) => Refuse(obj, PrimaryRdbSources(obj));
 
     /// <summary>
+    /// The RESOLVED address of a source — the same three parts the names artifact
+    /// compares, so the shared authority and the generated artifact cannot answer
+    /// "is this one object?" differently. Rendered rather than structural because every
+    /// port must produce a byte-identical message from it.
+    ///
+    /// RAW, deliberately: an absent <c>@schema</c> is NOT folded into a dialect default.
+    /// On Postgres absent and "public" address the same relation, but on SQLite/D1 they
+    /// do not — the expected-schema builder rejects ANY declared schema, "public"
+    /// included, while an absent one is fine. Deciding what "absent" means belongs to the
+    /// caller's dialect, not to this layer.
+    /// </summary>
+    public static string AddressKey(MetaSource source)
+    {
+        string schema = source.Schema ?? "";
+        string qualifier = schema.Length == 0 ? "" : $"\"{schema}\".";
+        return $"{qualifier}\"{source.PhysicalName}\" ({source.EffectiveKind})";
+    }
+
+    /// <summary>
     /// The refusal itself, over a primary list the caller already has. ONE implementation
     /// and ONE copy of the message: a check written twice is a check that can disagree
     /// with itself, which is the same defect one level down from the one this class
@@ -88,16 +107,16 @@ public static class SourceResolution
     private static void Refuse(MetaObject obj, IReadOnlyList<MetaSource> primaries)
     {
         var distinct = primaries
-            .Select(s => s.PhysicalName)
+            .Select(AddressKey)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
         if (distinct.Count <= 1) return;
         // Sorted, so the message is identical in every port regardless of source order.
-        var joined = string.Join(", ", distinct.Select(n => $"\"{n}\""));
+        var joined = string.Join(" vs ", distinct);
         throw new InvalidOperationException(
-            $"{obj.Name}: role=primary sources disagree on the object's physical name — " +
-            $"{joined}. Every consumer binds ONE name. Give them matching physical names, " +
-            "or drop the extra role=primary declaration.");
+            $"{obj.Name}: role=primary sources disagree on the object's physical address — " +
+            $"{joined}. Every consumer binds ONE address. Give them a matching @kind, @schema " +
+            "and physical name, or drop the extra role=primary declaration.");
     }
 }

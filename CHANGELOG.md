@@ -7,6 +7,60 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — two doors disagreed about whether an object has one address (all five ports)
+
+`primaryRdbSource` — the shared authority every consumer asks "which source is this object's
+primary?" — refused two `@role: primary` sources only when their bare physical **names**
+differed. The names artifact compared the whole resolved record (kind, schema, physical name)
+for every role. So a model with two primaries agreeing on `@table` and disagreeing on
+`@schema` **loaded with zero errors, was accepted by the authority, and was refused by the
+names generator** — `meta gen` failing on a model every other door admitted.
+
+**What decided it is not the asymmetry but which source the weaker key returned.** The
+accepted answer is `primaries[0]`, and that is the INHERITED source in TypeScript, C# and
+Python (`children()` puts the super's entries first) and the OWN source on the JVM. So one
+document bound `"s1"."t"` in three ports and `"s2"."t"` in two — silently, with no error
+anywhere. That is the same sentence this release spends its breaking slot on, still true of
+the table address after the release that claimed one door per name.
+
+The bare name was also a **weaker key than any consumer's**: `migrate-ts` keys every table it
+compares by schema-or-default plus name, Postgres DDL is `CREATE TABLE "s"."t"`, and 0.25.0
+made generated code bind the schema half too (`pgSchema(...).table(...)`,
+`[Table(..., Schema = ...)]`). The authority was deciding "one name" with less information
+than everything downstream used.
+
+`sourceAddressKey(source)` is now the one comparator — `(kind, schema, physical name)`,
+rendered so every port produces a byte-identical message — and both doors use it. The message
+names the ADDRESS, because the names agree in exactly the case this fixes:
+
+```
+Acct: role=primary sources disagree on the object's physical address — "s1"."t" (table) vs
+"s2"."t" (table). Every consumer binds ONE address. Give them a matching @kind, @schema and
+physical name, or drop the extra role=primary declaration.
+```
+
+**An absent `@schema` is deliberately NOT folded into a dialect default**, so absent vs an
+explicit `"public"` is refused. On Postgres the two address the same relation, but on
+SQLite/D1 they do not — the expected-schema builder rejects *any* declared schema, `"public"`
+included, while an absent one is fine. Normalizing in this tier would import one dialect's
+rule into a dialect-free layer, and `resolveTableSchema` already documents that deciding what
+"absent" means belongs to the caller.
+
+Not breaking, and not a `metamodelVersion` move: **no load verdict changes**, the vocabulary
+is untouched, and the shape is reachable only with NAMED `source.rdb` children at two levels
+of an `extends` chain — measured at **0 of 362 objects** across every model in this repo.
+Previously-working input keeps working; what changes is that a model which used to fail in
+one door and pass in another now fails in both, with a message that names the address.
+
+Two primaries AGREEING on the whole address stay legal, pinned in every port: the invariant
+is that an object has one address, not that it declares one source. The per-role loop in each
+names generator stays, because the authority knows only about `@role: primary` — two
+disagreeing REPLICAs still land there, and that arm now has a test in Python that reaches it.
+
+Four ports' comments asserted the two doors were "deliberately the SAME rule" while the code
+disagreed (Python's docstring contradicted itself two paragraphs apart). They are the same
+rule now, and each says so once.
+
 ### Fixed — a killed formatter was reported as a syntax error in generated code (Python)
 
 `_run_ruff` treats any non-zero exit from `python -m ruff` as *"ruff rejected the source"* —
