@@ -83,7 +83,12 @@ export { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 
 export { formatTs } from "./format.js";
 
-export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjection } from "./naming.js";
+export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjection, routesHandlerName } from "./naming.js";
+// routesHandlerName is public for the same reason the routes-expose members below are: the
+// routes reference template tells an adopter retargeting to another HTTP framework to copy
+// `renderRoutesFile`'s body out of the package source, and that body names this. See the
+// owned-composition-imports gate in test/ — it derives the required set from that body rather
+// than trusting this list to stay complete.
 
 export { packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpecifier, relativeModuleSpecifier, entityModuleSpecifier, siblingSpecifier, barrelModuleSpecifier } from "./import-path.js";
 export type { OutputLayout, ResolvedTarget } from "./import-path.js";
@@ -194,7 +199,7 @@ export { renderEntityConstants, resourcePath } from "./templates/entity-constant
 export { renderQueriesFile } from "./templates/queries-file.js";
 // #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED
 // routes generator (ADR-0034) composes the same render call and needs the same option.
-export { CRUD_VERBS, resolveExpose, intersectExpose, exposeLine } from "./routes-expose.js";
+export { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, resolveExpose, intersectExpose, exposeLine } from "./routes-expose.js";
 export type { CrudVerb, ExposeOption } from "./routes-expose.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
