@@ -440,9 +440,32 @@ everywhere — **each physical name is spelled once, and generated code referenc
 | Kotlin | `<Entity>Names.kt` | `ProgramNames.CREATED_AT_COLUMN` |
 | Python | `<entity_snake>_names.py` | `PROGRAM_CREATED_AT_COLUMN` |
 
-On TypeScript (`meta init`), C# and Python the names generator is in the default suite; on
-the JVM it is opt-in — add `SpringNamesGenerator` / `KotlinNamesGenerator` to the pom's
-`<generators>`, and the Exposed table binding switches to the constants once it is present.
+**Check that it is actually wired before you reference it — on three of five ports an
+EXISTING project emits none.** "In the default suite" and "what a fresh scaffold writes"
+are different facts, and only C# and Python have the first:
+
+| Port | Where the suite is decided | An existing project upgrading gets it? |
+|---|---|---|
+| C# | `GenCommand.DefaultGeneratorNames` — a real default | **Yes**, with no edit |
+| Python | `cli.py` `_default_generators()` — a real default | **Yes**, with no edit |
+| TypeScript | `metaobjects.config.ts` `generators: [...]` — **the complete list; there is no default suite** | **No** — add `namesFile()` |
+| Java / Kotlin | the pom's `<generators>` — the complete list | **No** — add `SpringNamesGenerator` / `KotlinNamesGenerator` |
+
+TypeScript's `meta init` scaffolds `namesFile()`, so a project *initialized* at 1.0 has it;
+a project initialized earlier has the config `meta init` wrote then, and upgrading the
+package never edits a config. So on TypeScript the artifact is opt-in exactly as it is on
+the JVM — the scaffold is not a default. To wire it into an existing TS project:
+
+```ts
+import { namesFile } from "./codegen/generators/names.js";   // after `meta eject names`
+export default defineConfig({ generators: [entityFile(), queriesFile(), namesFile(), barrel()] });
+```
+
+`meta eject names` copies the owned generator in; `namesFile` is also importable from
+`@metaobjectsdev/codegen-ts/generators` if you would rather not own it. Once it is present,
+the entity generator and the Exposed / Drizzle table bindings switch to referencing the
+constants instead of embedding the physical names a second time — so wiring it changes
+generated output, and that diff is the point.
 
 **It follows `extends`.** An object that extends another does not restate what it
 inherits: C# and Java use real class inheritance (`class CopayAuthNames extends

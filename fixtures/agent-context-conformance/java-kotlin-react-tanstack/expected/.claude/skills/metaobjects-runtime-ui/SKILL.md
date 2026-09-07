@@ -62,8 +62,17 @@ an EF Core property is type-checked against the schema; swapping it for a string
 trades a compile error for a runtime one. The constants are for the places with no
 handle: raw SQL, a string-keyed query builder, and a hand-written repository on a port
 whose generated model carries no persistence binding at all (Java, Python). Your server
-reference names the handle and the artifact for this stack; on the JVM the names
-generator is opt-in, and the `metaobjects-codegen` skill says how to wire it.
+reference names the handle and the artifact for this stack.
+
+**First check the artifact exists — on TypeScript and the JVM it is opt-in, and an
+existing project almost certainly has none.** C# and Python emit it from a real default
+suite, so upgrading is enough. TypeScript's `generators: [...]` and the JVM's
+`<generators>` are each the COMPLETE list: `meta init` scaffolds `namesFile()` for a
+project initialized at 1.0, and upgrading the package never edits a config that was
+written earlier. Look for `<Entity>.names.ts` / `<Entity>Names` in the generated output
+before you write `ProgramNames.fields.x.column` against it; if it is not there, wiring the
+generator is the first step and the `metaobjects-codegen` skill says how. Writing raw SQL
+with literal names because "there is no constant" is the loop this closes.
 
 ## The REST contract
 
