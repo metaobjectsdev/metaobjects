@@ -154,3 +154,62 @@ describe("meta eject", () => {
     expect(r.path).toBe("codegen/generators/form.ts");
   });
 });
+
+// An owned copy is the one artifact ADR-0034 hands an adopter and then never speaks about
+// again. On the public reference app, three of them were ~five minor lines behind the
+// engine they ran against — carrying a bare `ts-poet` import (the 0.21.6 split-tree
+// defect), the pre-#248 subtype persistability check, and a missing `isWriteThrough`
+// branch — with every gate green, because nothing compares an owned copy to anything.
+// `meta eject` said only "already exists — left untouched", which answers a question
+// nobody has.
+describe("meta eject reports how the owned copy compares to the reference", () => {
+  async function own(name: string, mutate?: (src: string) => string): Promise<void> {
+    await ejectGenerator({ cwd, name });
+    if (mutate) {
+      const p = join(cwd, `codegen/generators/${name}.ts`);
+      await writeFile(p, mutate(await readFile(p, "utf8")), "utf8");
+    }
+  }
+
+  test("an untouched copy reports identical", async () => {
+    await own("queries");
+    const r = await ejectGenerator({ cwd, name: "queries" });
+    expect(r.status).toBe("preserved");
+    expect(r.local).toBe("identical");
+    expect(r.changedLines).toBeUndefined();
+  });
+
+  test("a customized copy reports differs, and how far", async () => {
+    await own("queries", (s) => `${s}\n// my own line\n// and another\n`);
+    const r = await ejectGenerator({ cwd, name: "queries" });
+    expect(r.status).toBe("preserved");
+    expect(r.local).toBe("differs");
+    expect(r.changedLines).toBe(2);
+  });
+
+  test("--force over a DIFFERING copy reports what it destroyed", async () => {
+    // This is the step that silently destroys an adopter's customization — and the
+    // file's own header is often the only record the customization was deliberate.
+    await own("queries", (s) => `${s}\n// deliberate: trimmed to read-only finders\n`);
+    const r = await ejectGenerator({ cwd, name: "queries", force: true });
+    expect(r.status).toBe("replaced");
+    expect(r.local).toBe("differs");
+    expect(r.changedLines).toBe(1);
+    // and it really did replace it
+    expect(await readFile(join(cwd, "codegen/generators/queries.ts"), "utf8"))
+      .not.toContain("deliberate: trimmed");
+  });
+
+  test("--force over an IDENTICAL copy is a replace with nothing lost", async () => {
+    await own("queries");
+    const r = await ejectGenerator({ cwd, name: "queries", force: true });
+    expect(r.status).toBe("replaced");
+    expect(r.local).toBe("identical");
+  });
+
+  test("a first eject reports no comparison at all", async () => {
+    const r = await ejectGenerator({ cwd, name: "barrel" });
+    expect(r.status).toBe("created");
+    expect(r.local).toBeUndefined();
+  });
+});

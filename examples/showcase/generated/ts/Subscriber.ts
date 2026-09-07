@@ -99,6 +99,7 @@ export const Subscriber = {
     label: "Status",
     view: "dropdown",
     rules: { required: "Status is required" },
+    options: ["active", "paused", "cancelled"] as const,
   },
   createdAt: {
     name: "createdAt",

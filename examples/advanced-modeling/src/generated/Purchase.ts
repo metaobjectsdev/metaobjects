@@ -99,7 +99,12 @@ export const Purchase = {
     currency: "USD",
     locale: "en-US",
   },
-  status: { name: "status", label: "Status", view: "dropdown" },
+  status: {
+    name: "status",
+    label: "Status",
+    view: "dropdown",
+    options: ["pending", "completed", "refunded"] as const,
+  },
   purchasedAt: {
     name: "purchasedAt",
     label: "Purchased At",

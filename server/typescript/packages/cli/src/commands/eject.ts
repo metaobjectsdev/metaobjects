@@ -121,7 +121,28 @@ export interface EjectResult {
   packageName: string;
   /** Advisory lines about packages the ejected file imports but the project lacks. */
   dependencyNotes: string[];
-  status: "created" | "preserved";
+  status: "created" | "preserved" | "replaced";
+  /**
+   * How the file ALREADY on disk compares to the reference template this CLI ships.
+   * `undefined` when there was no file.
+   *
+   * An owned copy is the one artifact ADR-0034 hands an adopter and then never speaks
+   * about again. It can sit any number of releases behind the engine it runs against —
+   * on the public reference app three of them were ~five minor lines stale, carrying a
+   * bare `ts-poet` import (the 0.21.6 split-tree defect), the pre-#248 subtype
+   * persistability check and a missing `isWriteThrough` branch — and every gate was
+   * green, because nothing compares an owned copy to anything. Reporting this is the
+   * cheapest thing that makes that condition observable.
+   */
+  local?: "identical" | "differs" | undefined;
+  /** Lines of the previous file that the reference does not have. Set only when it differs. */
+  changedLines?: number | undefined;
+}
+
+/** Lines present in `a` and not in `b` — a cheap "how far apart" for a report line. */
+function changedLineCount(a: string, b: string): number {
+  const other = new Set(b.split("\n"));
+  return a.split("\n").filter((l) => l.trim() !== "" && !other.has(l)).length;
 }
 
 /** The `@metaobjectsdev/*` packages an ejected template imports, read from the file
@@ -199,22 +220,75 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
     dependencyNotes: notes,
   };
 
-  if (!opts.force && (await fileExists(abs))) {
-    return { ...common, status: "preserved" };
+  const existing = (await fileExists(abs)) ? await readFile(abs, "utf8") : undefined;
+  const local =
+    existing === undefined ? undefined : existing === templateSource ? "identical" : "differs";
+  const changedLines =
+    local === "differs" && existing !== undefined
+      ? changedLineCount(existing, templateSource)
+      : undefined;
+
+  if (!opts.force && existing !== undefined) {
+    return { ...common, status: "preserved", local, changedLines };
   }
 
   await mkdir(join(opts.cwd, OWNED_GENERATORS_DIR), { recursive: true });
   await writeFile(abs, templateSource, "utf8");
-  return { ...common, status: "created" };
+  return {
+    ...common,
+    status: existing === undefined ? "created" : "replaced",
+    local,
+    changedLines,
+  };
 }
 
-function listOutput(): string {
+/**
+ * `--list` doubles as the staleness report for what this project ALREADY owns.
+ *
+ * A listing of names you could eject is the less useful half. The half nobody had is
+ * "which of the copies I own have fallen behind" — the condition that let a reference
+ * app run generators ~five minor lines old, carrying three retired patterns, with every
+ * gate green. Marking each owned copy `identical` / `differs` makes it a one-command
+ * answer instead of a diff nobody thinks to run.
+ */
+async function listOutput(cwd: string): Promise<string> {
   const lines: string[] = [];
   lines.push("Ejectable generators (copy any of these into codegen/generators/ and own it):");
   lines.push("");
+  let anyStale = false;
   for (const source of SOURCES) {
     lines.push(`${source.packageName}:`);
-    lines.push(`  ${source.names.join(", ")}`);
+    for (const name of source.names) {
+      const abs = join(cwd, OWNED_GENERATORS_DIR, `${name}.ts`);
+      if (!(await fileExists(abs))) {
+        lines.push(`  ${name}`);
+        continue;
+      }
+      let ref: string;
+      try {
+        ref = await readFile(join(source.root(), `${name}.ts`), "utf8");
+      } catch {
+        lines.push(`  ${name}  [owned]`);
+        continue;
+      }
+      const owned = await readFile(abs, "utf8");
+      if (owned === ref) {
+        lines.push(`  ${name}  [owned — identical to the reference]`);
+      } else {
+        anyStale = true;
+        lines.push(
+          `  ${name}  [owned — DIFFERS from the reference by ` +
+            `${changedLineCount(owned, ref)} line(s)]`,
+        );
+      }
+    }
+    lines.push("");
+  }
+  if (anyStale) {
+    lines.push(
+      "A copy that DIFFERS is either your customization or upstream having moved on — " +
+        "`meta eject <name>` prints the diff command that tells you which.",
+    );
     lines.push("");
   }
   lines.push("Run: meta eject <name>");
@@ -231,7 +305,7 @@ export async function ejectCommand(args: string[], cwd: string): Promise<number>
   }
 
   if (flags.list) {
-    log.info(listOutput());
+    log.info(await listOutput(cwd));
     return 0;
   }
 
@@ -243,7 +317,41 @@ export async function ejectCommand(args: string[], cwd: string): Promise<number>
   try {
     const result = await ejectGenerator({ cwd, name: flags.name, force: flags.force });
     if (result.status === "preserved") {
-      log.info(`${result.path} already exists — left untouched (pass --force to overwrite).`);
+      // "already exists — left untouched" was the whole message, and it answered the
+      // question nobody has. What an owner needs to know is whether their copy still
+      // matches what this CLI ships — the only way an owned generator's staleness is
+      // ever observable, since no gate compares the two.
+      if (result.local === "identical") {
+        log.info(
+          `${result.path} already exists and is IDENTICAL to the ${result.packageName} ` +
+            "reference template — nothing to do.",
+        );
+      } else {
+        log.info(
+          `${result.path} already exists and DIFFERS from the ${result.packageName} ` +
+            `reference template (${result.changedLines} line(s) not in the reference) — left untouched.`,
+        );
+        log.info(
+          "  That difference is either YOUR customization or upstream having moved on. " +
+            "See which, before deciding:",
+        );
+        log.info(`    diff -u node_modules/${result.packageName}/src/reference/${flags.name}.ts ${result.path}`);
+        log.info(
+          "  To take upstream changes AND keep your customization, three-way merge them — " +
+            "`git merge-file --diff3 <your copy> <the reference you ejected from> <the reference above>`. " +
+            "`--force` does NOT merge: it replaces the file and your customization with it.",
+        );
+      }
+    } else if (result.status === "replaced") {
+      // Never let a --force over a modified file be silent: this is the step that
+      // destroys an adopter's customization, and the file's own header is often the
+      // only record that the customization was deliberate.
+      log.info(
+        `Ejected "${flags.name}" -> ${result.path}, REPLACING the file that was there` +
+          (result.local === "differs"
+            ? ` and DISCARDING ${result.changedLines} line(s) it had that the reference does not.`
+            : " (it was already identical to the reference)."),
+      );
     } else {
       log.info(`Ejected "${flags.name}" -> ${result.path}. You own it now (ADR-0034 scaffold-and-own).`);
     }

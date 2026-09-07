@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — `meta eject` says how your copy compares to the reference
+
+An owned generator is the one artifact ADR-0034 hands an adopter and then never speaks
+about again, and **nothing in the toolchain compares an owned copy to anything.** On the
+public reference app three of them were ~five minor lines behind the engine they ran
+against — carrying a bare `ts-poet` import (the 0.21.6 split-tree defect), the pre-#248
+subtype persistability check, and a missing `isWriteThrough` branch — with every gate
+green. `meta eject <name>` said `already exists — left untouched`, which answers a question
+nobody has.
+
+- `meta eject <name>` on an existing file now reports **IDENTICAL** or **DIFFERS (N lines)**,
+  prints the `diff -u` command against the installed reference, and says that a difference
+  is either your customization or upstream having moved — with the `git merge-file --diff3`
+  form that keeps both, and the warning that `--force` does not merge.
+- `meta eject <name> --force` over a DIFFERING file now says how many lines it destroyed.
+  It used to replace silently; the file's own header is often the only record that a
+  customization was deliberate.
+- `meta eject --list` marks every already-owned copy `identical` / `DIFFERS by N line(s)` —
+  a one-command staleness report for what a project owns, rather than only a list of what
+  it could own.
+
+Nothing is written to record which version a copy came from, so the merge base is still
+something you identify (the closest published `src/reference/<name>.ts`). **A tool-driven
+`meta eject --merge` is deliberately post-1.0**: the hard half of that merge is judging
+which side of each conflict is a deliberate customization and which is stale, and that is
+judgement, not a three-way diff.
+
 ### Fixed — a `view: "dropdown"` descriptor carried no options
 
 `0.25.0` moved a `field.enum`'s FORM view from `text` to `dropdown`. The generated
