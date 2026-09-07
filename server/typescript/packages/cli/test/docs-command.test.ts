@@ -504,7 +504,10 @@ describe("meta docs --site — HTML documentation site", () => {
     const index = await readFile(join(out, "site", "index.html"), "utf8");
     expect(index).toContain("acme/site/index.html");
     expect(index).toContain("acme/shared/index.html");
-    for (const [pkg, model] of [["site", "Welcome"], ["shared", "SharedThing"]]) {
+    // `as const` so each pair destructures as a [string, string] tuple rather than string[],
+    // whose elements are `string | undefined`. `bun test` transpiles per file without
+    // typechecking, so this suite ran green while `tsc` reported three errors.
+    for (const [pkg, model] of [["site", "Welcome"], ["shared", "SharedThing"]] as const) {
       expect(existsSync(join(out, "site", "acme", pkg, `${model}.html`))).toBe(true);
       expect(await readFile(join(out, "site", "acme", pkg, "index.html"), "utf8")).toContain(model);
     }
