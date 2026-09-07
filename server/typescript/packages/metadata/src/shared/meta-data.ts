@@ -1,6 +1,6 @@
 import { TypeId } from "../registry.js";
 import { TYPE_ATTR } from "./base-types.js";
-import { PACKAGE_SEPARATOR, RESERVED_KEY_VALUE } from "./structural.js";
+import { PACKAGE_SEPARATOR, RESERVED_KEY_VALUE, assertNotStructuralKeyword } from "./structural.js";
 import type { DataType } from "../data-type.js";
 import type { MetaAttr } from "../core/attr/meta-attr.js";
 import { inferAttrSubType } from "../serializer-json.js";
@@ -370,11 +370,13 @@ export abstract class MetaData {
 
   /** Effective attr value for `name`, or undefined. */
   attr(name: string): AttrValue | undefined {
+    assertNotStructuralKeyword(name, "attr");
     return this.attrs().get(name);
   }
 
   /** True if `name` resolves to an effective attr (own or inherited). */
   hasAttr(name: string): boolean {
+    assertNotStructuralKeyword(name, "hasAttr");
     return this.attrs().has(name);
   }
 
