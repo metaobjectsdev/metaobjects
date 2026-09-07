@@ -728,9 +728,19 @@ export async function verifyCommand(
     // "11 drift error(s) across 29 template(s)" while failing and "22 template(s)
     // clean" once fixed: seven templates apparently vanishing on the way to green,
     // and a failure line claiming a denominator of work that had not been done.
-    // `checkedTemplates` is now the single unit — templates at least one body of
-    // which was verified. (An @kind=email template has up to three bodies and still
-    // counts once; the line says "template(s)", so it counts templates.)
+    // `checkedTemplates` is the single unit — templates this check ENGAGED with: one
+    // whose body verified, or one that produced an error. (An @kind=email template has
+    // up to three bodies and still counts once; the line says "template(s)", so it counts
+    // templates.)
+    //
+    // "Engaged with" rather than "verified" because an error is not always reached
+    // THROUGH a verified body: an unresolvable @payloadRef, or a body ref that resolves
+    // to nothing, errors and verifies nothing. Counting only verified bodies made the
+    // failure line divide by the population that SUCCEEDED, so a run where every template
+    // failed to resolve its body read "22 drift error(s) across 0 template(s)" — an
+    // errors-with-no-population line that says nothing was checked while naming 22
+    // failures. Found running this gate against a real adopter estate. The clean line is
+    // unaffected: on a passing run no template errors, so engaged == verified.
     let checkedTemplates = 0;
 
     for (const tmpl of templates) {
@@ -750,6 +760,7 @@ export async function verifyCommand(
             `@payloadRef "${payloadRef}" did not resolve to a loaded object.value`,
         );
         errorCount++;
+        checkedTemplates++;
         continue;
       }
 
@@ -796,6 +807,7 @@ export async function verifyCommand(
       const requiredTags = promptRules ? attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_TAGS)) : [];
 
       let anyBodyChecked = false;
+      let anyErrorHere = false;
       for (const { label, ref } of refs) {
         // Render-engine drift check: mustache variables ↔ payload field names.
         const text = provider.resolve(ref);
@@ -804,6 +816,7 @@ export async function verifyCommand(
             `[${tmpl.name}] (${label}) ${ERR_PARTIAL_UNRESOLVED}: ref "${ref}" did not resolve under ${promptsDir}`,
           );
           errorCount++;
+          anyErrorHere = true;
           continue;
         }
         const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
@@ -815,10 +828,11 @@ export async function verifyCommand(
           } else {
             log.error(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}`);
             errorCount++;
+            anyErrorHere = true;
           }
         }
       }
-      if (anyBodyChecked) checkedTemplates++;
+      if (anyBodyChecked || anyErrorHere) checkedTemplates++;
     }
 
     if (errorCount > 0) {

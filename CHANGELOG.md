@@ -49,6 +49,38 @@ one is added, and was confirmed to fail before the fix and pass after.
 
 `renderInsertPreservingFn` and `hasAutoSetFields` are now public engine primitives.
 
+### Fixed — the drift gate's failure line reported a denominator of zero
+
+`meta verify --templates` printed `22 drift error(s) across 0 template(s)` — a headline that
+names 22 failures and says nothing was checked. `0.24.4` made both report lines divide by the
+same unit, "templates at least one body of which was VERIFIED", which is right for the clean
+line and wrong for the failure line: an error is not always reached through a verified body.
+An unresolvable `@payloadRef`, or a body ref that resolves to nothing, errors and verifies
+nothing — so when that happened to every template the denominator collapsed to zero, and a
+run that had examined 22 templates reported none. The unit is now templates the check
+ENGAGED with (a body verified, or an error reported). Clean runs are unaffected: nothing
+errors, so engaged == verified.
+
+The pair test `0.24.4` added could not see it — its fixture's body resolves and drifts, so a
+body always verified. A case whose body ref does not resolve at all is added, and was
+confirmed to print `across 0 template(s)` before the fix.
+
+Found by running the gate against a real adopter estate whose prompt root is not where the
+default looks. On the same tree and the same command, `0.24.3` said `across 29 template(s)`
+and current main said `across 0`.
+
+### Fixed — the removed generator imports failed with a bare TypeError
+
+On 1.0 a config still importing `entityFile` from `@metaobjectsdev/codegen-ts/generators`
+died with `(0, _index2.entityFile) is not a function` — naming neither MetaObjects, nor the
+removal, nor the remedy. The config loader now detects it and reports which names were
+removed, one `meta eject <name>` command per name (that command takes at most one), the
+import to write instead, and that **the subpath itself is fine**. Reproduced against the one
+adopter estate that hits it.
+
+The check matches the four NAMES, never the subpath: five of the six estates surveyed import
+only non-ownable generators from it and must keep loading.
+
 ### Fixed — the audit skill convicted correct projects of not owning their codegen
 
 `metaobjects-audit` told an auditing agent that any hit on

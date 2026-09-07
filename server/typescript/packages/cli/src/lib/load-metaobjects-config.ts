@@ -131,6 +131,55 @@ function resolveCliPkg(specifier: string): string {
  * import of an aliased package falls back to normal module resolution (and to
  * jiti's alias map on non-Bun runtimes).
  */
+/**
+ * 1.0 removed `entityFile` / `queriesFile` / `routesFile` / `barrel` from
+ * `@metaobjectsdev/codegen-ts/generators` (ADR-0035 A3; ADR-0034 scaffold-and-own). Without
+ * this check the removal surfaces as a bare runtime TypeError from the transpiled config —
+ * `(0, _index2.entityFile) is not a function` — which names neither MetaObjects, nor the
+ * removal, nor the one-command remedy. A breaking change an adopter WILL hit deserves a
+ * diagnostic, and this is the only place that can give one: the subpath still exists (it is
+ * the supported home of the generators with no ownable copy), so nothing upstream of here
+ * can tell a correct import from a removed one.
+ *
+ * It reads the config SOURCE rather than catching the throw because the throw happens inside
+ * a generator factory call with no reference back to the import that produced it, and only a
+ * config declaring one of these in `generators: [...]` throws at all — a stale type-only
+ * import would fail silently at typecheck-time instead.
+ */
+const REMOVED_GENERATOR_EXPORTS = ["entityFile", "queriesFile", "routesFile", "barrel"] as const;
+const GENERATORS_SUBPATH = "@metaobjectsdev/codegen-ts/generators";
+
+export function removedGeneratorImportError(source: string): string | undefined {
+  const re = new RegExp(
+    `import\\s*(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*['"]${GENERATORS_SUBPATH.replace(/[/\\]/g, "\\$&")}['"]`,
+    "g",
+  );
+  const hits = new Set<string>();
+  for (const m of source.matchAll(re)) {
+    for (const raw of (m[1] ?? "").split(",")) {
+      const name = raw.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim();
+      if (name && (REMOVED_GENERATOR_EXPORTS as readonly string[]).includes(name)) hits.add(name);
+    }
+  }
+  if (hits.size === 0) return undefined;
+  const names = [...hits].sort();
+  const templateOf = (n: string) => n.replace(/File$/, "");
+  // One command per name: `meta eject` takes at most one generator name.
+  const commands = names.map((n) => `    meta eject ${templateOf(n)}`).join("\n");
+  const example = names[0] ?? "";
+  return (
+    `metaobjects.config.ts imports ${names.join(", ")} from "${GENERATORS_SUBPATH}". ` +
+    `1.0 REMOVED ${names.length === 1 ? "that export" : "those exports"} (ADR-0034 scaffold-and-own): ` +
+    `these generators are yours to own, so the package no longer ships them as an import.\n` +
+    `  Fix — copy ${names.length === 1 ? "it" : "each of them"} into your repo:\n${commands}\n` +
+    `  then import the copies, e.g. ` +
+    `import { ${example} } from "./codegen/generators/${templateOf(example)}";\n` +
+    `  The subpath itself is fine — promptRender, outputParser, routesFileHono and the rest ` +
+    `still live there. Only ${names.length === 1 ? "this one" : `these ${names.length}`} moved.\n` +
+    `  Guide: docs/features/migrations/0.x-to-1.0.md §11`
+  );
+}
+
 function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string>): string {
   let result = source;
   for (const [specifier, resolvedPath] of Object.entries(aliasMap)) {
@@ -308,6 +357,8 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
   // a belt-and-suspenders fallback for runtimes where jiti's transformer IS
   // active, but under Bun the pre-processed source is the operative fix.
   const original = await readFile(fullPath, "utf8");
+  const removed = removedGeneratorImportError(original);
+  if (removed !== undefined) throw new Error(removed);
   const processed = rewriteImportSpecifiers(original, aliasMap);
 
   // When any specifiers were rewritten, write the modified source to a temp

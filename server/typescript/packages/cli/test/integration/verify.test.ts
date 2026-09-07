@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../../src/index.js";
+import { ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 
 // A view-object payload (AuthorBrief) + a template that renders against it.
 const META = {
@@ -235,6 +236,28 @@ describe("meta verify", () => {
       try {
         expect(await run(["verify", "--cwd", tmp])).toBe(1);
         expect([...out, ...err].join("\n")).toContain("across 1 template(s)");
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    // The case above still VERIFIES a body — the html resolves and drifts — so the
+    // denominator came out right even while it counted only bodies that verified. An
+    // error is not always reached through a verified body: an unresolvable body ref
+    // errors and verifies nothing, and a run where that happens to EVERY template read
+    // "N drift error(s) across 0 template(s)" — a failure line reporting that nothing
+    // was checked while naming N failures. Found by running the gate against a real
+    // adopter estate whose prompt root was not where the default looks.
+    test("counts a template whose body ref does not resolve at all", async () => {
+      const tmp = scaffoldEmail("<p>Hi {{name}}</p>");
+      try {
+        rmSync(join(tmp, "prompts", "e", "html"));
+        rmSync(join(tmp, "prompts", "e", "subj"));
+        expect(await run(["verify", "--cwd", tmp])).toBe(1);
+        const all = [...out, ...err].join("\n");
+        expect(all).toContain(ERR_PARTIAL_UNRESOLVED);
+        // ONE template, two unresolvable bodies: two errors, one template — never zero.
+        expect(all).toContain("2 drift error(s) across 1 template(s)");
       } finally {
         rmSync(tmp, { recursive: true, force: true });
       }
