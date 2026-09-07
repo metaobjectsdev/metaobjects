@@ -474,6 +474,57 @@ async function writeOwnedGenerators(opts: InitOptions, result: InitResult): Prom
     await writeFile(abs, readReferenceTemplate(name), "utf8");
     result.created.push(rel);
   }
+  await writeCodegenTsconfig(opts, result);
+}
+
+/** The owned codegen tier's own tsconfig — see writeCodegenTsconfig. */
+const CODEGEN_TSCONFIG_REL = "tsconfig.codegen.json";
+
+const CODEGEN_TSCONFIG_BODY = `{
+  // The owned codegen tier typechecks itself.
+  //
+  // \`meta gen\` loads metaobjects.config.ts and ./codegen/** through jiti, which
+  // TRANSPILES WITHOUT TYPECHECKING. So a generator here can import a symbol the
+  // engine no longer exports, or call a method that does not exist, and every gate
+  // stays green until the import is evaluated — which for a generator you have not
+  // wired into \`generators: [...]\` may be never.
+  //
+  // A project's app tsconfig usually covers src/ and tests/ and NOT this tier, so
+  // without this file nothing compiles the code your build depends on. Run it with:
+  //   npx tsc -p tsconfig.codegen.json --noEmit
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["metaobjects.config.ts", "codegen/**/*.ts"]
+}
+`;
+
+/**
+ * Scaffold a tsconfig that covers the tier `meta init` just handed the adopter.
+ *
+ * Reported from an estate that found TWO real defects the moment one existed: a
+ * generator importing `CODEGEN_ATTR_EMIT_ROUTES` (retired with the `@emit*` family,
+ * and invisible because that generator was not in `generators: [...]`), and a wired
+ * generator carrying five type errors including `ownFields()` on a node that has no
+ * such method. Both found on the first run.
+ *
+ * Written only when absent, like every other scaffolded file — an adopter who has
+ * their own arrangement keeps it, and it is reported as preserved rather than
+ * silently skipped.
+ */
+async function writeCodegenTsconfig(opts: InitOptions, result: InitResult): Promise<void> {
+  const abs = join(opts.cwd, CODEGEN_TSCONFIG_REL);
+  if (await fileExists(abs)) {
+    result.preserved.push(CODEGEN_TSCONFIG_REL);
+    return;
+  }
+  await writeFile(abs, CODEGEN_TSCONFIG_BODY, "utf8");
+  result.created.push(CODEGEN_TSCONFIG_REL);
 }
 
 /**
@@ -607,6 +658,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     );
     result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
     for (const name of SCAFFOLDED_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);
+    result.created.push(CODEGEN_TSCONFIG_REL);
     result.created.push("metaobjects.config.ts", DB_STUB_REL_PATH, ".gitignore");
     return result;
   }

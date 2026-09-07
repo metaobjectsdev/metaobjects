@@ -742,3 +742,50 @@ describe("init() — dbImport throwing stub (Task 15)", () => {
     }
   }, 30_000);
 });
+
+// `meta gen` loads metaobjects.config.ts and ./codegen/** through jiti, which
+// TRANSPILES WITHOUT TYPECHECKING — so a generator can import a symbol the engine no
+// longer exports and every gate stays green until the import is evaluated, which for
+// an unwired generator may be never. A project's app tsconfig covers src/ and tests/
+// and not this tier, so without a tsconfig of its own NOTHING compiles the code the
+// build depends on.
+//
+// Reported from an estate that found two real defects the moment one existed: a
+// generator importing `CODEGEN_ATTR_EMIT_ROUTES` (retired with the `@emit*` family,
+// invisible because that generator was not wired), and a WIRED generator carrying
+// five type errors including `ownFields()` on a node with no such method.
+describe("meta init scaffolds a tsconfig for the tier it just handed you", () => {
+  test("writes tsconfig.codegen.json and reports it", async () => {
+    const result = await init({ cwd });
+    expect(result.created).toContain("tsconfig.codegen.json");
+    expect(existsSync(join(cwd, "tsconfig.codegen.json"))).toBe(true);
+  });
+
+  test("its include covers BOTH the config and the owned generators", async () => {
+    // Either one alone leaves half the tier unchecked, and the half it leaves is the
+    // half that broke on the estate.
+    await init({ cwd });
+    const body = readFileSync(join(cwd, "tsconfig.codegen.json"), "utf8");
+    expect(body).toContain("metaobjects.config.ts");
+    expect(body).toContain("codegen/**/*.ts");
+    expect(body).toContain('"noEmit": true');
+    // nodenext, because the scaffolded tier is ESM and the generated imports carry
+    // extensions — a bundler-resolution tsconfig would accept code `meta gen` cannot run.
+    expect(body).toContain('"moduleResolution": "nodenext"');
+  });
+
+  test("an existing tsconfig.codegen.json is PRESERVED, not clobbered", async () => {
+    // An adopter with their own arrangement keeps it, and is told it was kept rather
+    // than left to discover a silent skip.
+    writeFileSync(join(cwd, "tsconfig.codegen.json"), '{"mine": true}\n');
+    const result = await init({ cwd });
+    expect(result.preserved).toContain("tsconfig.codegen.json");
+    expect(readFileSync(join(cwd, "tsconfig.codegen.json"), "utf8")).toContain('"mine"');
+  });
+
+  test("--print-only names it without writing it", async () => {
+    const result = await init({ cwd, printOnly: true });
+    expect(result.created).toContain("tsconfig.codegen.json");
+    expect(existsSync(join(cwd, "tsconfig.codegen.json"))).toBe(false);
+  });
+});
