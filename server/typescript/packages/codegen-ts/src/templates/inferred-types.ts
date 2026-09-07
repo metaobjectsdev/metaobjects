@@ -37,6 +37,7 @@ import { variableNameFromEntity, toPascalCase } from "../naming.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
 import { stripPackage } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
+import { sharedEnumZodConstName } from "./enums-file.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "../enum-import.js";
@@ -131,7 +132,7 @@ export function enumUnionString(values: string[]): string {
 export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): Code | null {
   // De-duplicate by type-alias name — multiple fields can extend the same abstract enum.
   const seen = new Set<string>();
-  const lines: string[] = [];
+  const lines: Code[] = [];
   // ADR-0044/#228 — an inline enum's alias is `<Owner><Field>`; `<Owner>` is this
   // object's EMITTED name so a collision-qualified value object declares (and its
   // interface references) `AcmeAlphaNoteStatus`, not a bare `NoteStatus`. Entities
@@ -153,8 +154,25 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
     // always pass ctx (entity-file template), so shared materialization applies.
     const shared = ctx !== undefined ? sharedEnumForField(field) : undefined;
     if (shared === undefined) {
-      // Inline enum — emit the literal union exactly as before.
-      lines.push(`export type ${typeName} = ${enumUnionString(values)};`);
+      // Inline enum — the literal union, PLUS a named runtime constant.
+      //
+      // The type alias alone is erased at runtime, so hand-written code that needs a
+      // MEMBER had nothing to import and wrote the symbol as a literal — while the same
+      // list appeared three or four more times in this one generated file (the Drizzle
+      // `enum:` option and each Zod schema). A package-level SHARED enum has always had
+      // a runtime constant (`<E>Enum` in the shared enums module); an inline one had
+      // none anywhere, so "use the constant, not a magic string" was advice an adopter
+      // could not follow. Same name-shape as the shared one, so which kind of enum it is
+      // stops mattering at the call site.
+      //
+      // `.options` is the member array and `.enum.<Member>` the individual symbol, in
+      // both Zod 3 and Zod 4 — generated code here must be safe on both.
+      lines.push(code`export type ${typeName} = ${enumUnionString(values)};`);
+      lines.push(
+        code`export const ${sharedEnumZodConstName(typeName)} = ${imp("z@zod")}.enum([${values
+          .map((v) => JSON.stringify(v))
+          .join(", ")}]);`,
+      );
       continue;
     }
     // Shared / provided enum — re-export from the materialized module or the
@@ -162,10 +180,22 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
     const spec = shared.provided
       ? providedEnumImportSpecifier(ctx!, shared.name)
       : sharedEnumImportSpecifier(ctx!, entity.package);
-    lines.push(`export { type ${shared.name} } from ${JSON.stringify(spec)};`);
+    // Re-export the runtime constant beside the type for a MATERIALIZED shared enum, so a
+    // consumer reaches its members the same way it reaches an inline enum's, without having
+    // to know which kind it is or which module the shared one landed in.
+    //
+    // NOT for a `@provided` enum. That declaration lives in a module the ADOPTER owns and
+    // configured, and nothing here knows or can require that it exports a Zod constant —
+    // naming one would emit an import of a symbol that may not exist and fail their build.
+    // Only the type is contracted for a provided enum, and only the type is re-exported.
+    lines.push(
+      shared.provided
+        ? code`export { type ${shared.name} } from ${JSON.stringify(spec)};`
+        : code`export { type ${shared.name}, ${sharedEnumZodConstName(shared.name)} } from ${JSON.stringify(spec)};`,
+    );
   }
 
-  return lines.length > 0 ? code`${lines.join("\n")}` : null;
+  return lines.length > 0 ? joinCode(lines, { on: "\n" }) : null;
 }
 
 // ---------------------------------------------------------------------------

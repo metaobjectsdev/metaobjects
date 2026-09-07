@@ -41,6 +41,7 @@ export type Purchase = InferSelectModel<typeof purchases>;
 export type PurchaseInsert = InferInsertModel<typeof purchases>;
 export type PurchaseUpdate = Partial<PurchaseInsert>;
 export type PurchaseStatus = "pending" | "completed" | "refunded";
+export const PurchaseStatusEnum = z.enum(["pending", "completed", "refunded"]);
 export const PurchaseInsertSchema = z.object({
   programId: z.string(),
   amountCents: z.number().int().optional(),

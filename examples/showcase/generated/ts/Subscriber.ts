@@ -27,6 +27,7 @@ export type Subscriber = InferSelectModel<typeof subscribers>;
 export type SubscriberInsert = InferInsertModel<typeof subscribers>;
 export type SubscriberUpdate = Partial<SubscriberInsert>;
 export type SubscriberStatus = "active" | "paused" | "cancelled";
+export const SubscriberStatusEnum = z.enum(["active", "paused", "cancelled"]);
 export const SubscriberInsertSchema = z.object({
   email: z.string().min(1).max(320),
   name: z.string().optional(),

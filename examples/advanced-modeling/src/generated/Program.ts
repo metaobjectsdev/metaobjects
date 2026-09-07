@@ -51,6 +51,7 @@ export type Program = InferSelectModel<typeof programs>;
 export type ProgramInsert = InferInsertModel<typeof programs>;
 export type ProgramUpdate = Partial<ProgramInsert>;
 export type ProgramStatus = "draft" | "published" | "archived";
+export const ProgramStatusEnum = z.enum(["draft", "published", "archived"]);
 export const ProgramInsertSchema = z.object({
   title: z.string().min(1).max(200),
   status: z.enum(["draft", "published", "archived"]).optional(),

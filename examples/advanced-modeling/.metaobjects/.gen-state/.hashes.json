@@ -11,7 +11,7 @@
   "src/generated/Program.form.tsx": "e3c03e5497b7b8d65758a71c0d43e4a0a73c3edcfa3eb25ebd69af3a1efe3c84",
   "src/generated/Program.queries.ts": "b9d6f55d56d933b6b081cacb7e144f08828b1c1b92c6eaa7126b0e02f9f65d34",
   "src/generated/Program.routes.ts": "b4b01ad507bac678d17c634ae5b89cb5f4ff7bc8596960278cb69cdd621b733a",
-  "src/generated/Program.ts": "fc8ac56506859c2742e56681debb04e73effc17cfd89267e81101b8e6a815a6f",
+  "src/generated/Program.ts": "a38a07dffdfeff955f1ba3e80b2a0328764d0c1f8757346d500097b91c4d636b",
   "src/generated/ProgramDescriptionOutput.output.ts": "f13b7b2108bf8507b6aeb1e819edd06eb2d689ed259dc04784d19d62bee9dfd2",
   "src/generated/ProgramDescriptionOutput.render.ts": "f9e939a98693e7da14b978e78d2a4291702e9e5563d73ba22ea1677f9707899b",
   "src/generated/ProgramDescriptionPayload.form.tsx": "a9dff101453450117aff3029b2c5259e7d0866667aaab722ba890beaaa20f95d",
@@ -22,7 +22,7 @@
   "src/generated/Purchase.form.tsx": "7ddb107c14a991df1b414830ee19ccbdc7f7bc4b29e648628b5bc13c34326921",
   "src/generated/Purchase.queries.ts": "53ad59b680f8530dba3f2309c30fda79f6157c09fcb5774b4db34db96a5364d8",
   "src/generated/Purchase.routes.ts": "2f3551c366c3e7d60010555c73e07d818718398d8f56244edf2066b5c99702fa",
-  "src/generated/Purchase.ts": "112861bec89e4b1015f31e8c36f02c965a29ab20d1ab688220c1e4b792aec6f8",
+  "src/generated/Purchase.ts": "0ba16258692e13d1bfd9512bbe38304d466cad4ae8fc0f13cc38c9a876a9d023",
   "src/generated/SyllabusSection.ts": "43336e7d774bf0405a17b7fdba556f98dba922b09b358d59e3cc6d3900fe2080",
   "src/generated/index.ts": "0f7e35f89de3edcb69227aec7341fdf400f8627799fe562d52d4f8cb8ce8451f",
   "src/generated/prompts.ts": "16f0650d11b95b23bec0a8547f26bdac399fa73a330868f18e43c845b0cdf8ab"

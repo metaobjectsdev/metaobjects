@@ -34,6 +34,30 @@ something you identify (the closest published `src/reference/<name>.ts`). **A to
 which side of each conflict is a deliberate customization and which is stale, and that is
 judgement, not a three-way diff.
 
+### Added — an inline `field.enum` gets a runtime constant, not just a type
+
+A type alias is erased at runtime, so hand-written code needing a MEMBER had nothing to
+import and wrote the symbol as a literal — while the same member list appeared three or four
+more times inside the one generated file (the Drizzle `enum:` option, the type union, each
+Zod schema). A package-level **shared** enum has always had a runtime constant (`<E>Enum` in
+the shared enums module); an **inline** one had none anywhere, which made the generated
+file's own advice — *"use these instead of magic strings"* — something an adopter could not
+follow for the one field kind where a typo is most likely.
+
+An inline `field.enum` now emits `export const <Owner><Field>Enum = z.enum([...])` beside its
+type alias, under the same name shape as the shared one, so which kind of enum it is stops
+mattering at the call site. `.options` is the member array and `.enum.<Member>` an individual
+symbol, in both Zod 3 and Zod 4.
+
+An entity file also re-exports a **materialized** shared enum's constant beside its type, for
+the same reason. It deliberately does **not** for a `@provided` enum: that declaration lives
+in a module the adopter owns, and nothing here can require it to export a Zod constant —
+naming one would emit an import of a symbol that may not exist. Only the type is contracted
+for a provided enum, and the FR-019 conformance test caught the attempt.
+
+Found on the public reference app running the 1.0 candidate, where the same status symbols
+appeared as literals across five hand-written files.
+
 ### Fixed — a `view: "dropdown"` descriptor carried no options
 
 `0.25.0` moved a `field.enum`'s FORM view from `text` to `dropdown`. The generated

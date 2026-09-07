@@ -14,6 +14,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderEntityConstants } from "../src/templates/entity-constants.js";
 import { buildUiFieldDescriptor } from "../src/templates/entity-ui-descriptor.js";
+import { renderEnumTypeAliases } from "../src/templates/inferred-types.js";
 
 const MODEL = {
   "metadata.root": {
@@ -73,5 +74,28 @@ describe("an enum field's descriptor carries its members", () => {
     expect(out).toContain(`options: ["open", "closed"] as const`);
     // Exactly two option lists — the string field must not grow one.
     expect(out.match(/options:/g)?.length).toBe(2);
+  });
+});
+
+// The type alias is erased at runtime, so an adopter needing a MEMBER had nothing to
+// import and wrote the symbol as a literal — while the same list appeared three or four
+// more times in the same generated file. A package-level SHARED enum has always had a
+// runtime constant; an inline one had none anywhere, which made "use the constant, not a
+// magic string" advice nobody could follow.
+describe("an inline enum gets a runtime constant, not just a type", () => {
+  test("the const is emitted beside the alias, under the shared naming convention", async () => {
+    const out = renderEnumTypeAliases(await loadOrder())!.toString();
+    expect(out).toContain("export type OrderStatus =");
+    expect(out).toContain(`export const OrderStatusEnum = z.enum(["pending", "shipped", "cancelled"])`);
+  });
+
+  test("a field inheriting @values through extends gets one too", async () => {
+    const out = renderEnumTypeAliases(await loadOrder())!.toString();
+    expect(out).toContain(`export const OrderStateEnum = z.enum(["open", "closed"])`);
+  });
+
+  test("one const per alias — two fields on one abstract enum do not emit it twice", async () => {
+    const out = renderEnumTypeAliases(await loadOrder())!.toString();
+    expect(out.match(/export const OrderStateEnum/g)?.length).toBe(1);
   });
 });

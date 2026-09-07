@@ -76,7 +76,11 @@ describe("renderEntityFile", () => {
     // (re-exported from the ./enums module), and never emits "OrderStatus".
     expect(out).not.toContain('export type Status =');
     expect(out).not.toContain("export type OrderStatus");
-    expect(out).toContain('export { type Status } from "./enums.js"');
+    // The re-export carries the runtime constant beside the type: a consumer reaches a
+    // shared enum's MEMBERS the same way it reaches an inline enum's, without knowing
+    // which kind it is. (A `@provided` enum re-exports the type only — see the FR-019
+    // conformance test; nothing here can require an adopter's own module to export one.)
+    expect(out).toContain('export { type Status, StatusEnum } from "./enums.js"');
   });
 
   test("two fields extending the SAME abstract field.enum → ONE type alias", async () => {
@@ -115,7 +119,8 @@ describe("renderEntityFile", () => {
     const out = renderEntityFile(order, ctx);
     // FR-019: both fields share the "Status" super → ONE re-export of the shared
     // type, no inline redeclaration. De-duplicated by alias name.
-    const reexportCount = out.split('export { type Status } from "./enums.js"').length - 1;
+    const reexportCount =
+      out.split('export { type Status, StatusEnum } from "./enums.js"').length - 1;
     expect(reexportCount).toBe(1);
     expect(out).not.toContain('export type Status =');
   });
