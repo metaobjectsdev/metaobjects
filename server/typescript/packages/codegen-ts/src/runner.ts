@@ -175,6 +175,53 @@ export function shouldNoteBaseUrlMove(
   return false;
 }
 
+/** The release in which `<Entity>Names` became the way a physical name is spelled once. */
+const NAMES_ARTIFACT_VERSION = "1.0.0";
+
+/**
+ * True exactly on the FIRST gen after crossing into the release that made
+ * `<Entity>Names` the doctrine, for a project that has DB-backed objects and has not
+ * wired `namesFile()`. Exported for test.
+ *
+ * The problem it addresses was reported from three separate adopter estates: on
+ * TypeScript `generators: [...]` IS the complete suite — there is no default set to
+ * inherit — so an EXISTING project emits no names artifact until the line is added, and
+ * `meta gen` said nothing about it. One estate carried ~200 physical names as string
+ * literals in hand-written SQL and the whole run contained zero occurrences of the word
+ * "names". `meta init` scaffolds the generator, so the gap is only ever for projects that
+ * already exist — which is exactly the population that cannot be reached by a scaffold.
+ *
+ * Keyed on the #232 engine stamp for the same reason `shouldNoteBaseUrlMove` is: whether
+ * an adopter has DECIDED against the artifact is not something `meta gen` can see, so a
+ * condition-only trigger would nag for ever with no way to satisfy it — the cry-wolf
+ * failure that got the `timestampMode` warning deleted from this file. Crossing the
+ * version boundary is an event that happens once.
+ *
+ * Silence is the default for an absent or unorderable recorded version, matching
+ * `shouldNoteBaseUrlMove`: no gen history means nothing has been generated the old way,
+ * and a project generating for the first time under 1.0 is not migrating.
+ */
+export function shouldNoteNamesArtifactAbsent(
+  namesWired: boolean,
+  hasDbBackedObject: boolean,
+  recordedEngine: string | undefined,
+  sinceVersion: string = NAMES_ARTIFACT_VERSION,
+): boolean {
+  if (namesWired) return false;
+  // Nothing with a physical name to spell — an all-value / sourceless model has no
+  // artifact to miss, and saying so would be noise rather than a finding.
+  if (!hasDbBackedObject) return false;
+  const was = orderable(recordedEngine);
+  const since = orderable(sinceVersion);
+  if (was === undefined || since === undefined) return false;
+  for (let i = 0; i < 3; i++) {
+    const a = was[i] as number;
+    const b = since[i] as number;
+    if (a !== b) return a < b;
+  }
+  return false;
+}
+
 export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const warnings: string[] = [];
   const strategy = opts.mergeStrategy ?? "overwrite";
@@ -442,6 +489,29 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // this, said nothing — while `meta verify` reported the template "clean". See
   // prompt-generator-gate.ts. Self-extinguishing; warning only.
   warnMissingPromptGenerators(root, config.generators, (m) => warnings.push(m));
+
+  // <Entity>Names is opt-in on TypeScript and an existing project gets no signal that
+  // it exists. Fires ONCE, on the first gen after crossing the release that made it the
+  // doctrine — see shouldNoteNamesArtifactAbsent for why it is keyed on the engine stamp
+  // rather than on the condition alone.
+  if (
+    shouldNoteNamesArtifactAbsent(
+      namesTargets.size > 0,
+      safeEntities.some((e) => hasAnyRdbSource(e)),
+      recordedEngine,
+    )
+  ) {
+    warnings.push(
+      `no <Entity>Names artifact: namesFile() is not in this run's generators, so every ` +
+        `physical table/column name your hand-written SQL, upserts and fixtures spell is a ` +
+        `string literal that nothing checks against the metadata. Add it — ` +
+        `import { namesFile } from "@metaobjectsdev/codegen-ts/generators" (or the copy ` +
+        `'meta eject names' writes) — then reference <Entity>Names instead of the literals. ` +
+        `A typed ORM handle already in a name position is CORRECT and should stay; the ` +
+        `constants are for where no handle exists (raw SQL, excluded.<column>). ` +
+        `This note appears once.`,
+    );
+  }
 
   // A retired `@emit*` codegen flag still sitting in the metadata suppresses nothing now.
   // Named here rather than left to be discovered as a file that reappeared. Scoped to
