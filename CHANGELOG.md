@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a `view: "dropdown"` descriptor carried no options
+
+`0.25.0` moved a `field.enum`'s FORM view from `text` to `dropdown`. The generated
+`<Entity>` descriptor kept emitting no member list, so it told a consumer to render a
+`<select>` and handed it nothing to fill one with — while `@values` sat in the metadata all
+along. Every consumer then restated the members by hand.
+
+`UiFieldDescriptor` gains `options`, emitted for any `field.enum`, read through the
+resolving accessor so members inherited from an abstract enum via `extends` are carried too.
+
+Found on the public reference app running the 1.0 candidate, where the same four symbols
+appeared as literals across five hand-written files. **Nothing caught it: the entire
+codegen suite passed unchanged when `options` was added, because not one fixture asserted
+an enum field's descriptor output at all.** That assertion now exists, and was confirmed to
+fail before the fix.
+
 ### Removed — the deprecated `codegen-ts/generators` export of the four ownable generators
 
 `entityFile`, `queriesFile`, `routesFile` and `barrel` are no longer exported from

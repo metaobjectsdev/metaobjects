@@ -76,6 +76,13 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
   if (f.htmlType !== undefined) entries.push(`htmlType: ${JSON.stringify(f.htmlType)}`);
   if (f.rules.length > 0) entries.push(`rules: { ${f.rules.map(renderRule).join(", ")} }`);
 
+  // A `field.enum`'s member symbols. Emitted whenever the field has them, because the
+  // descriptor reports `view: "dropdown"` for an enum and a dropdown without options is
+  // a promise the descriptor cannot keep.
+  if (f.options !== undefined && f.options.length > 0) {
+    entries.push(`options: [${f.options.map((v) => JSON.stringify(v)).join(", ")}] as const`);
+  }
+
   // Currency-specific keys: only emitted for currency-subtype fields.
   if (f.currency !== undefined) {
     entries.push(`currency: ${JSON.stringify(f.currency.currency)}`);

@@ -52,6 +52,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor } from "./field-meta.js";
 import { VIEW_CONTEXT_FORM } from "../view-context.js";
+import { enumValues } from "../enum-meta.js";
 import { isProjection } from "../projection/projection-detector.js";
 // `restPath` lives HERE rather than in api-surface.ts, which is where it used to sit and
 // which now re-exports it. The descriptor is what emits `$path`, so the composition has to
@@ -81,6 +82,17 @@ export interface UiFieldDescriptor {
   readonly rules: readonly UiRule[];
   /** Present only for a `field.currency`. */
   readonly currency?: { readonly currency: string; readonly locale: string } | undefined;
+  /**
+   * The member symbols, present exactly when the field is a `field.enum`.
+   *
+   * A descriptor that reports `view: "dropdown"` and carries no options tells a consumer
+   * to render a `<select>` and gives it nothing to put in one. That was the shape between
+   * 0.25.0 — which moved an enum field's form view from `text` to `dropdown` — and this,
+   * and it forced every consumer to restate the member list the metadata already declares.
+   * Found on the public reference app, where the same four symbols appeared as literals in
+   * five hand-written files.
+   */
+  readonly options?: readonly string[] | undefined;
   /**
    * Present when the generated FORM renders this field as a nested value-object
    * sub-form rather than an input — a `field.object` whose `@objectRef` resolves (see
@@ -284,6 +296,11 @@ export function buildUiFieldDescriptor(field: MetaField, root?: MetaRoot): UiFie
     currency: currencyMeta === null
       ? undefined
       : { currency: currencyMeta.currency, locale: currencyMeta.locale },
+    // Whatever the field's view resolves to, an enum's members belong on the descriptor:
+    // they are declared metadata, and withholding them is what makes a consumer hard-code
+    // them. Read through the RESOLVING accessor (ADR-0039) so a field that inherits
+    // `@values` from an abstract enum via `extends` carries them too.
+    options: enumValues(field),
     nested: vo === undefined
       ? undefined
       : { objectRef: vo.name, isArray: field.resolvedIsArray() },
