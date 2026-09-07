@@ -19,22 +19,25 @@ export interface InitFlags {
   configOnly: boolean;
 }
 
+/** The flag table `parseInitArgs` parses. Exported so the help text can be gated against it. */
+export const INIT_OPTIONS = {
+  force: { type: "boolean", default: false },
+  quiet: { type: "boolean", default: false },
+  "print-only": { type: "boolean", default: false },
+  "refresh-docs": { type: "boolean", default: false },
+  d1: { type: "boolean", default: false },
+  server: { type: "string", multiple: true },
+  client: { type: "string", multiple: true },
+  "no-skills": { type: "boolean", default: false },
+  "no-wire-root": { type: "boolean", default: false },
+  "docs-only": { type: "boolean", default: false },
+  "config-only": { type: "boolean", default: false },
+} as const;
+
 export function parseInitArgs(argv: string[]): InitFlags {
   const { values } = parseArgs({
     args: argv,
-    options: {
-      force: { type: "boolean", default: false },
-      quiet: { type: "boolean", default: false },
-      "print-only": { type: "boolean", default: false },
-      "refresh-docs": { type: "boolean", default: false },
-      d1: { type: "boolean", default: false },
-      server: { type: "string", multiple: true },
-      client: { type: "string", multiple: true },
-      "no-skills": { type: "boolean", default: false },
-      "no-wire-root": { type: "boolean", default: false },
-      "docs-only": { type: "boolean", default: false },
-      "config-only": { type: "boolean", default: false },
-    },
+    options: INIT_OPTIONS,
     strict: true,
     allowPositionals: false,
   });
@@ -65,16 +68,19 @@ export interface AgentDocsFlags {
   wireRoot: boolean;
 }
 
+/** The flag table `parseAgentDocsArgs` parses. Exported so the help text can be gated against it. */
+export const AGENT_DOCS_OPTIONS = {
+  server: { type: "string", multiple: true },
+  client: { type: "string", multiple: true },
+  out: { type: "string" },
+  "no-skills": { type: "boolean", default: false },
+  "no-wire-root": { type: "boolean", default: false },
+} as const;
+
 export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
   const { values } = parseArgs({
     args: argv,
-    options: {
-      server: { type: "string", multiple: true },
-      client: { type: "string", multiple: true },
-      out: { type: "string" },
-      "no-skills": { type: "boolean", default: false },
-      "no-wire-root": { type: "boolean", default: false },
-    },
+    options: AGENT_DOCS_OPTIONS,
     strict: true,
     allowPositionals: false,
   });
@@ -111,16 +117,19 @@ export interface GenFlags {
   limit: number;
 }
 
+/** The flag table `parseGenArgs` parses. Exported so the help text can be gated against it. */
+export const GEN_OPTIONS = {
+  "dry-run": { type: "boolean", default: false },
+  "baseline": { type: "string" },
+  "list": { type: "boolean", default: false },
+  "no-antipatterns": { type: "boolean", default: false },
+  "limit": { type: "string" },
+} as const;
+
 export function parseGenArgs(argv: string[]): GenFlags {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: {
-      "dry-run": { type: "boolean", default: false },
-      "baseline": { type: "string" },
-      "list": { type: "boolean", default: false },
-      "no-antipatterns": { type: "boolean", default: false },
-      "limit": { type: "string" },
-    },
+    options: GEN_OPTIONS,
     strict: true,
     allowPositionals: true,
   });
@@ -150,12 +159,15 @@ export interface ExportFlags {
   out: string | undefined;
 }
 
+/** The flag table `parseExportArgs` parses. Exported so the help text can be gated against it. */
+export const EXPORT_OPTIONS = {
+  out: { type: "string" },
+} as const;
+
 export function parseExportArgs(argv: string[]): ExportFlags {
   const { values } = parseArgs({
     args: argv,
-    options: {
-      out: { type: "string" },
-    },
+    options: EXPORT_OPTIONS,
     strict: true,
     allowPositionals: false,
   });
@@ -306,27 +318,30 @@ export interface VerifyFlags {
   limit: number;
 }
 
+/** The flag table `parseVerifyArgs` parses. Exported so the help text can be gated against it. */
+export const VERIFY_OPTIONS = {
+  prompts: { type: "string" },
+  db: { type: "string" },
+  dialect: { type: "string" },
+  allow: { type: "string" },
+  "skip-schema": { type: "boolean", default: false },
+  templates: { type: "boolean", default: false },
+  codegen: { type: "boolean", default: false },
+  docs: { type: "boolean", default: false },
+  replay: { type: "boolean", default: false },
+  "replay-snapshot": { type: "boolean", default: false },
+  "no-antipatterns": { type: "boolean", default: false },
+  "no-requirement-lint": { type: "boolean", default: false },
+  lax: { type: "boolean", default: false },
+  "d1": { type: "string" },
+  "remote": { type: "boolean", default: false },
+  "limit": { type: "string" },
+} as const;
+
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
   const { values } = parseArgs({
     args: argv,
-    options: {
-      prompts: { type: "string" },
-      db: { type: "string" },
-      dialect: { type: "string" },
-      allow: { type: "string" },
-      "skip-schema": { type: "boolean", default: false },
-      templates: { type: "boolean", default: false },
-      codegen: { type: "boolean", default: false },
-      docs: { type: "boolean", default: false },
-      replay: { type: "boolean", default: false },
-      "replay-snapshot": { type: "boolean", default: false },
-      "no-antipatterns": { type: "boolean", default: false },
-      "no-requirement-lint": { type: "boolean", default: false },
-      lax: { type: "boolean", default: false },
-      "d1": { type: "string" },
-      "remote": { type: "boolean", default: false },
-      "limit": { type: "string" },
-    },
+    options: VERIFY_OPTIONS,
     strict: true,
     allowPositionals: false,
   });
@@ -395,13 +410,16 @@ export interface PromptSnapshotFlags {
   prompts: string | undefined;
 }
 
+/** The flag table `parsePromptSnapshotArgs` parses. Exported so the help text can be gated against it. */
+export const PROMPT_SNAPSHOT_OPTIONS = {
+  check: { type: "boolean", default: false },
+  prompts: { type: "string" },
+} as const;
+
 export function parsePromptSnapshotArgs(argv: string[]): PromptSnapshotFlags {
   const { values } = parseArgs({
     args: argv,
-    options: {
-      check: { type: "boolean", default: false },
-      prompts: { type: "string" },
-    },
+    options: PROMPT_SNAPSHOT_OPTIONS,
     strict: true,
     allowPositionals: false,
   });
@@ -447,25 +465,28 @@ export interface MigrateFlags {
   applyPending: boolean;
 }
 
+/** The flag table `parseMigrateArgs` parses. Exported so the help text can be gated against it. */
+export const MIGRATE_OPTIONS = {
+  "db": { type: "string" },
+  "dialect": { type: "string" },
+  "migration-format": { type: "string" },
+  "out-dir": { type: "string" },
+  "slug": { type: "string" },
+  "allow": { type: "string" },
+  "on-ambiguous": { type: "string" },
+  "dry-run": { type: "boolean", default: false },
+  "from-db": { type: "boolean", default: false },
+  "d1": { type: "string" },
+  "remote": { type: "boolean", default: false },
+  "apply": { type: "boolean", default: false },
+  "rollback": { type: "string" },
+  "yes": { type: "boolean", default: false },
+} as const;
+
 export function parseMigrateArgs(argv: string[]): MigrateFlags {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: {
-      "db": { type: "string" },
-      "dialect": { type: "string" },
-      "migration-format": { type: "string" },
-      "out-dir": { type: "string" },
-      "slug": { type: "string" },
-      "allow": { type: "string" },
-      "on-ambiguous": { type: "string" },
-      "dry-run": { type: "boolean", default: false },
-      "from-db": { type: "boolean", default: false },
-      "d1": { type: "string" },
-      "remote": { type: "boolean", default: false },
-      "apply": { type: "boolean", default: false },
-      "rollback": { type: "string" },
-      "yes": { type: "boolean", default: false },
-    },
+    options: MIGRATE_OPTIONS,
     strict: true,
     allowPositionals: true,
   });
@@ -541,13 +562,16 @@ export interface EjectFlags {
   force: boolean;
 }
 
+/** The flag table `parseEjectArgs` parses. Exported so the help text can be gated against it. */
+export const EJECT_OPTIONS = {
+  "list": { type: "boolean", default: false },
+  "force": { type: "boolean", default: false },
+} as const;
+
 export function parseEjectArgs(argv: string[]): EjectFlags {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: {
-      "list": { type: "boolean", default: false },
-      "force": { type: "boolean", default: false },
-    },
+    options: EJECT_OPTIONS,
     strict: true,
     allowPositionals: true,
   });

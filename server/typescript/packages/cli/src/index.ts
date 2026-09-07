@@ -55,6 +55,12 @@ GLOBAL OPTIONS:
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
+  --list                Print the generator registry (name, tier, options) and exit —
+                        no config or metadata required
+  --baseline <default|fresh>
+                        First-time-on-existing-file behavior. Default: write-if-different,
+                        adopting existing content as the canonical baseline. "fresh"
+                        overwrites and re-baselines.
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --limit <n|all>       How many advisory lines TEXT output prints before it truncates
                         (default 20). Never applies to --format toon/json, which
@@ -127,7 +133,7 @@ ship in later sub-projects. See https://metaobjects.com for docs.
 `;
 
 /** Focused per-subcommand usage slices shown by `<cmd> --help`. */
-const COMMAND_HELP: Record<string, string> = {
+export const COMMAND_HELP: Record<string, string> = {
   gen: `meta gen — codegen TS targets from your declared metadata
 
 USAGE:
@@ -135,6 +141,12 @@ USAGE:
 
 FLAGS:
   --dry-run             Compute and print, don't write
+  --list                Print the generator registry (name, tier, options) and exit —
+                        no config or metadata required
+  --baseline <default|fresh>
+                        First-time-on-existing-file behavior. Default: write-if-different,
+                        adopting existing content as the canonical baseline. "fresh"
+                        overwrites and re-baselines.
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --limit <n|all>       Advisory lines TEXT output prints before truncating (default 20)
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
@@ -204,6 +216,10 @@ FLAGS:
   --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
   --remote              Target remote D1 instead of local (only with --dialect d1) —
                         the ONLY way to verify the actual deployed D1 database
+  --lax                 Load with the legacy OPEN attribute set instead of strict
+                        (ADR-0023). Strict is the default: an undeclared or typo'd own
+                        @attr fails verify with ERR_UNKNOWN_ATTR. Use only while
+                        migrating a model onto a registered provider.
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
   --limit <n|all>       Advisory lines TEXT output prints PER SECTION before truncating
@@ -274,6 +290,13 @@ USAGE:
 
 FLAGS:
   --refresh-docs        Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  --docs-only           Write only the agent-context files (no metaobjects/ project scaffold).
+                        Pair with --refresh-docs to update an existing project after upgrading.
+  --server <lang>       Declare a server language for the agent context (repeatable;
+                        e.g. csharp, kotlin, python, node)
+  --client <fw>         Declare a client framework for the agent context (repeatable;
+                        e.g. react, vue)
+  --no-skills           Skip the .claude/skills/ scaffold
   --force               Overwrite existing files
   --quiet               Suppress output
   --print-only          Print what would be written, don't write

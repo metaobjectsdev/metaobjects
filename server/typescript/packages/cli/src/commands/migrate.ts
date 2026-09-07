@@ -59,7 +59,7 @@ import {
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 
-const MIGRATE_HELP_TEXT = `meta migrate — diff metadata vs live DB; emit migration SQL files
+export const MIGRATE_HELP_TEXT = `meta migrate — diff metadata vs live DB; emit migration SQL files
 
 USAGE:
   meta migrate [baseline|apply-pending] [flags]
