@@ -807,6 +807,22 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
         "installed. Run your package manager's install before `meta gen`.",
     );
   }
+  // Never degrade in silence. The first version of this returned `{}` on any failure to
+  // read runtime-ts's peer ranges and skipped the three packages that come from them —
+  // which is exactly what happened against the published package, and the run looked
+  // successful while leaving the project with the six TS2307s this code exists to
+  // prevent. A fallback that cannot be observed is indistinguishable from a bug.
+  const undeclarable = SCAFFOLD_OUTPUT_PEERS.filter(
+    (name) => !declaredDependencyNames(pkg as PackageManifest).has(name),
+  );
+  if (undeclarable.length > 0) {
+    result.warnings.push(
+      `could NOT declare ${undeclarable.join(" + ")} — the version ranges are read from ` +
+        "@metaobjectsdev/runtime-ts's own peerDependencies and that manifest could not be " +
+        "read. Generated code imports them, so add them to dependencies by hand or " +
+        "`npx tsc` will report TS2307 on files `meta gen` writes.",
+    );
+  }
 }
 
 /**
@@ -904,13 +920,39 @@ function scaffoldRuntimeDependencies(): Record<string, string> {
   return wanted;
 }
 
-/** `@metaobjectsdev/runtime-ts`'s declared peer ranges, or `{}` if it cannot be read. */
+/**
+ * `@metaobjectsdev/runtime-ts`'s declared peer ranges, or `{}` if they cannot be read.
+ *
+ * Resolves the package's ENTRY and walks up to the nearest package.json, rather than
+ * asking for `"@metaobjectsdev/runtime-ts/package.json"` directly. That direct form is
+ * the obvious one and it is WRONG: a package's `exports` map gates every subpath, and
+ * runtime-ts's exports are `.` / `./drivers` / `./fastify` / `./drizzle-fastify` /
+ * `./hono` — no `./package.json`. Under real Node it throws
+ * ERR_PACKAGE_PATH_NOT_EXPORTED. It appeared to work here only because the workspace
+ * runs this under bun against a symlinked source tree; against the published package it
+ * failed on the first try, silently, and `meta init` declared one package instead of
+ * four. Resolving the entry is never gated — `.` is the one subpath every package
+ * exports — so this form works under npm, pnpm, bun and a linked checkout alike.
+ */
 function runtimeTsPeerRanges(): Record<string, string> {
   try {
     const req = createRequire(import.meta.url);
-    const manifestPath = req.resolve("@metaobjectsdev/runtime-ts/package.json");
-    const manifest = JSON.parse(readFileSyncWrap(manifestPath, "utf8")) as PackageManifest;
-    return (manifest.peerDependencies ?? {}) as Record<string, string>;
+    let dir = dirname(req.resolve("@metaobjectsdev/runtime-ts"));
+    // The entry sits under dist/; the manifest is at the package root above it.
+    for (let hops = 0; hops < 8; hops++) {
+      const candidate = join(dir, "package.json");
+      if (existsSyncWrap(candidate)) {
+        const manifest = JSON.parse(readFileSyncWrap(candidate, "utf8")) as PackageManifest & { name?: string };
+        // Guard against stopping at a nested manifest that is not the package itself.
+        if (manifest.name === "@metaobjectsdev/runtime-ts") {
+          return (manifest.peerDependencies ?? {}) as Record<string, string>;
+        }
+      }
+      const up = dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+    return {};
   } catch {
     return {};
   }
