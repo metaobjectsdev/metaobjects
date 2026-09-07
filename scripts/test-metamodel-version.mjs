@@ -284,6 +284,30 @@ else ok("post-1.0 breaking requires a major");
 if (bump("breaking", "0.9") !== "minor") bad("pre-1.0 breaking requires a minor, not a major");
 else ok("pre-1.0 breaking requires a minor, not a major");
 
+// ── the correction path (docs/compatibility-policy.md, "Correcting input we wrongly
+// accepted") ────────────────────────────────────────────────────────────────────────
+//
+// Post-1.0, `breaking → major` with no exception would make the project's most common
+// change — refusing a form the loader never should have accepted — unshippable inside
+// 1.x. `0.24.1` is the worked example: #342 and #335 each made a previously-loading form
+// fail, and each moved the metamodel MINOR (0.11 → 0.12). The flag reproduces that, so a
+// correction still moves the contract and still is not a Metamodel 2.0 event.
+const corr = (sev, base) => requiredBump(sev, v(base), { correction: true });
+if (corr("breaking", "1.0") !== "minor") bad("post-1.0 a correction requires a minor, NOT a major");
+else ok("post-1.0 a correction requires a minor, NOT a major");
+// It must never reach "none" — the metadata contract did change, so the number must move
+// and the changelog must say so. A correction that demanded no bump would be invisible.
+if (corr("breaking", "1.0") === "none") bad("a correction must still move the version");
+else ok("a correction must still move the version");
+// Pre-1.0 the flag is a no-op, which is why it can be added without reclassifying history.
+if (corr("breaking", "0.9") !== bump("breaking", "0.9")) bad("pre-1.0 the correction flag changes nothing");
+else ok("pre-1.0 the correction flag changes nothing");
+// It cannot upgrade a lesser severity into a bump it did not earn.
+if (corr("none", "1.0") !== "none") bad("a correction over `none` is still none");
+else ok("a correction over `none` is still none");
+if (corr("additive", "1.0") !== "minor") bad("a correction over `additive` is still a minor");
+else ok("a correction over `additive` is still a minor");
+
 const sat = (b, base, cur) => satisfies(b, v(base), v(cur));
 if (sat("minor", "1.0", "1.0")) bad("an unmoved version must NOT satisfy a minor");
 else ok("an unmoved version must NOT satisfy a minor");

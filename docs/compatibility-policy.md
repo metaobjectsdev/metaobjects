@@ -84,6 +84,61 @@ The trigger is **new public surface, not code size**:
   contract itself changes. Most releases are per-port package moves that do *not*
   touch the spec version.
 
+## Correcting input we wrongly accepted (the one narrow exception)
+
+Everything above answers "what happens when we *change* the contract." This section
+answers a different question: **what happens when we find that the toolchain accepted
+something the contract never allowed, and the fix makes it stop loading?**
+
+That case is real and it recurs. Four times before 1.0 the loader accepted a form that
+could not work — an index declaring both `@fields` and `@expr`, where one half was
+silently discarded ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342));
+`@filterable` on an array field, which emitted SQL that cannot execute
+([#335](https://github.com/metaobjectsdev/metaobjects/issues/335)). Refusing those is
+not a new rule. It is the documented rule finally being enforced.
+
+Under ADR-0023 the registry is strict and sealed, so there is no deprecation shim: a
+refusal takes effect on the release that ships it. That makes it important to say
+exactly when this is allowed, because a category this shape can be abused to smuggle a
+real break past the promise.
+
+**A correction ships as a PATCH — not a Metamodel major — only when ALL THREE hold:**
+
+1. **It was never validly expressible.** The form contradicted the documented contract
+   or the vocabulary's own stated rules. Deciding we prefer a different design is not
+   this; that is a break.
+2. **It produced no correct outcome for anyone.** The form silently discarded part of
+   its own declaration, emitted output that cannot run, or behaved differently in
+   different ports. If it did what its author reasonably expected in even one port,
+   this exception does not apply.
+3. **The repair is mechanical or exactly named.** `meta upgrade --apply` carries the
+   estate forward, or the load error names the precise edit. If fixing it requires
+   guessing what the author *meant*, it is a break.
+
+**Retiring vocabulary is never in this category, however good the reason.** A retired
+element worked; removing it is a Metamodel major after 1.0. The distinction is the
+whole basis for this exception: `retired-vocabulary.ts` deliberately refuses to let a
+retirement load again — "a 'helpful' shim is how a retirement quietly stops being one"
+— and that reasoning is about undoing an *adjudicated decision*. Input that never had
+a valid meaning is a different population, and admitting it here does not weaken that
+doctrine.
+
+**Every such correction owes you three things:** a `meta upgrade --apply` path where the
+edit is mechanical, a load error naming the exact fix where it is not, and a CHANGELOG
+entry that says previously-loading metadata stops loading. A correction that cannot
+offer the first two is not eligible for this exception.
+
+> **What the tooling does NOT check, stated plainly.** `scripts/check-metamodel-version.mjs`
+> compares the *registry manifest* between releases. This class of correction usually
+> lives in loader validation and leaves no manifest footprint — `0.24.1` is the worked
+> example: its manifest diff was a `required: true → false` relaxation plus prose, which
+> classifies as **additive**, in the very release where two previously-loading forms
+> stopped loading. So the gate cannot see this class and does not pretend to. The check
+> is a question asked at release time — *does this release refuse anything it used to
+> accept?* — and it is answered by a person, in the CHANGELOG. Do not read a green
+> version gate as a finding that nothing broke.
+
+
 ## Spec-version support across ports
 
 All ports that ship a given release implement the **same** Metamodel spec version,

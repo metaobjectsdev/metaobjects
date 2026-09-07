@@ -307,8 +307,9 @@ properly without holding the GA.
 all of it rides ONE minor.** That resolves the open tension named at the end of this section,
 which is left in place below as the record of what was decided and why.
 
-**What it cost, recorded rather than discovered:** the §G3 quiet-period clock in
-`docs/1.0-readiness.md` **resets to `0.24.0`**, so 1.0 now needs at least one coordinated
+**What it cost, recorded rather than discovered *(the clock named here was retired
+2026-09-06 — ADR-0035 Amendment 3)*:** the §G3 quiet-period clock in
+`docs/1.0-readiness.md` **reset to `0.24.0`**, so 1.0 then needed at least one coordinated
 release after this one with no metamodel-breaking change. That was adjudicated as the price
 of converting four adopter migrations into one — under ADR-0023's sealed strict registry a
 retirement has no deprecation shim, so each breaking MINOR is a migration somebody must
@@ -336,11 +337,14 @@ case-sensitivity fix, and both of these): each corrects acceptance that was alwa
 than changing a contract, and in both cases the adopter fix is deleting an attribute that was
 doing nothing.
 
-**That opens a question §G3 has to answer explicitly, and it is not answered yet** — see
-[`docs/1.0-readiness.md`](../docs/1.0-readiness.md) §G3. The quiet-period clock reset to `0.24.0`;
-whether `0.24.1` is the quiet release that satisfies it, or resets it again, depends on whether a
-previously-wrong-acceptance correction counts as "metamodel-breaking" for G3's purpose. **This is
-unratified.** The recommendation recorded there is the conservative one: it does NOT satisfy G3.
+**That opened a question §G3 had to answer — ANSWERED 2026-09-06, and the gate that asked it is
+retired.** The quiet-period criterion is gone (`docs/1.0-readiness.md` §G3; ADR-0035 Amendment 3),
+so "does a previously-wrong-acceptance correction reset the clock?" no longer has to be decided.
+What replaced it answers the underlying question directly: `docs/compatibility-policy.md` now
+carries the **correction bar** — the three-part test under which a form that never had a valid
+meaning may stop loading in a PATCH, explicitly NOT covering the retirement of vocabulary that
+worked. Both `0.24.1` corrections (#342, #335) meet that bar, and both are written up in
+[`0.x-to-1.0.md`](../docs/features/migrations/0.x-to-1.0.md) §9.
 
 ### What the window carried, and why it precedes GA
 
@@ -377,15 +381,18 @@ that retires registered vocabulary. Chartered to ride the next such MINOR:
 
 **Why not carry the break in the `1.0` cut itself?** `1.0.0` is a MAJOR under semver, so a
 break landing *in* the renumbering is neither a pre-1.0 MINOR nor a 2.0 event — it looks like a
-free slot. It is not: §G3 requires "at least one coordinated release after the last breaking
-move … with **no** metamodel-breaking changes, **to prove the rate has actually dropped**". A
-1.0 that carries a break has had no quiet period at all, so it freezes the vocabulary on the
-strength of a stability claim nothing tested. The gate is about evidence, not arithmetic.
+free slot. It is not — a 1.0 that carries a break freezes the vocabulary in the same breath as
+breaking it, and the adopter absorbs a migration and a stability promise together.
 
-**Cost, stated plainly:** landing any of these resets the §G3 quiet-period clock in
-`docs/1.0-readiness.md` — "at least one coordinated release after the last breaking move with no
-metamodel-breaking changes". So this MINOR pushes the 1.0 renumbering out by at least one
-coordinated release. That trade was already adjudicated for the analogous #210 case (see the
+*(This paragraph originally rested on §G3's quiet-period requirement, which is **retired** —
+ADR-0035 Amendment 3. The conclusion is unchanged and no longer depends on it: the reason not
+to carry a break in the cut is that the cut is where the promise starts, not that a counter
+needs to reach one.)*
+
+**Cost, stated plainly *(as assessed at the time — the clock referred to here is retired;
+ADR-0035 Amendment 3)*:** landing any of these resets the §G3 quiet-period clock in
+`docs/1.0-readiness.md`, pushing the 1.0 renumbering out by at least one coordinated release.
+That trade was already adjudicated for the analogous #210 case (see the
 Group-B entry above: it rides the breaking batch "while 1.0 stays unscheduled", with "1.0 being
 scheduled imminently" listed as the reversal trigger). Note that ADR-0035's own §C3 text still
 names `0.15.1` as the last breaking move — stale; `0.21.0` superseded it.
@@ -404,7 +411,8 @@ still available. See
 both said GA was the next release move and that nothing outstanding blocked the promotion;
 this section said a breaking MINOR came first. They were reconcilable only by deciding which
 goes first, and **the ruling is: the breaking batch first, then 1.0.** So `0.24.0` carries all
-four retirements and GA follows the §G3 quiet period.
+four retirements and GA follows. *(It originally read "GA follows the §G3 quiet period"; that
+gate is retired — ADR-0035 Amendment 3. The ordering ruling stands on its own.)*
 
 The alternative #210's reversal trigger offered — ship the break as
 documentation-and-rule-of-thumb and let the vocabulary changes become 2.0 work — was NOT

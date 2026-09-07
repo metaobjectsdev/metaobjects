@@ -101,9 +101,24 @@ export function parseVersion(raw, where) {
  *  `0.y` makes no compatibility claim to break. At 1.0 the major becomes real. */
 const isPre1 = (v) => v.major === 0;
 
-export function requiredBump(severity, base) {
+/**
+ * `correction` asserts the breaking findings are all *corrections of previously-wrong
+ * acceptance* under the bar in `docs/compatibility-policy.md` — input that never had a
+ * valid meaning, that produced no correct outcome for anyone, and whose repair is
+ * mechanical or exactly named. Such a change still moves the metamodel contract, so it
+ * still demands a MINOR; what it is not is a Metamodel MAJOR.
+ *
+ * Pre-1.0 this changes nothing — breaking already maps to minor there. It exists because
+ * post-1.0 `breaking → major` with NO exception would make the project's most common kind
+ * of change (a defect the loader wrongly accepted) unshippable inside 1.x, and under
+ * ADR-0023's sealed registry there is no deprecation shim to soften it either. The flag
+ * records a justification rather than bypassing the gate: see `main()`, which refuses an
+ * empty one and refuses the flag outright when nothing breaking was found.
+ */
+export function requiredBump(severity, base, { correction = false } = {}) {
   if (severity === "none") return "none";
   if (severity === "additive") return "minor";
+  if (correction) return "minor"; // breaking, but a correction — never a metamodel major
   return isPre1(base) ? "minor" : "major"; // breaking
 }
 
@@ -376,6 +391,7 @@ function main() {
   }
 
   const explain = argv.includes("--explain");
+  const correction = arg("--correction"); // null when absent; `arg` refuses a missing value
   const against = arg("--against") ?? lastReleaseTag();
 
   if (!against && argv.includes("--allow-no-baseline")) {
@@ -412,7 +428,27 @@ function main() {
   let severity = "none";
   if (breaking.length) severity = "breaking";
   else if (additive.length) severity = "additive";
-  const bump = requiredBump(severity, baseVer);
+  // `--correction "<why>"` — see requiredBump. Refused unless it is actually doing
+  // something, so it cannot drift into a flag someone always passes.
+  if (correction !== null) {
+    if (!String(correction).trim()) {
+      fail(
+        "--correction needs a justification.\n\n" +
+          "  It records WHY these findings are corrections rather than contract changes,\n" +
+          "  and that sentence belongs in the CHANGELOG too. An unexplained override is\n" +
+          "  the thing this flag exists to not be.",
+      );
+    }
+    if (!breaking.length) {
+      fail(
+        "--correction was given, but nothing classified as breaking.\n\n" +
+          "  The flag downgrades a BREAKING finding from a metamodel major to a minor. With\n" +
+          "  no breaking finding it changes nothing, and a flag that is always safe to pass\n" +
+          "  stops being read. Drop it.",
+      );
+    }
+  }
+  const bump = requiredBump(severity, baseVer, { correction: correction !== null });
 
   if (explain) {
     process.stdout.write(`metamodel-version: ${against} (${baseVer.raw}) → working tree (${curVer.raw})\n\n`);

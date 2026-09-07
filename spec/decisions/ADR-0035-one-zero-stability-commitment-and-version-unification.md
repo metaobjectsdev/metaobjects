@@ -52,7 +52,8 @@ backwards to `1.0` (§2) — which is what drove the decoupled, spec-versioned s
 
 Since this ADR was drafted, one more breaking round shipped: **`0.15.1`/`7.7.1` —
 the `index.*` type + `identity.secondary` key-purity (ADR-0040, `@unique` removed)**.
-That is now the last breaking move, and it reset the quiet-period clock.
+That was the last breaking move when this was written; `0.21.0`, `0.24.0`, `0.24.1` and
+`0.25.0` followed. The quiet-period clock it reset is **retired — see Amendment 3.**
 
 ## Decision
 
@@ -138,14 +139,17 @@ still want, then freeze. Before cutting 1.0:
   **reserved but unregistered** post-1.0 (they are already absent from
   `expected-registry.json`; ADR-0030 defines the shape). Adding them later is
   *additive*, so deferral costs nothing and keeps the declared-API surface out of the
-  1.0 breaking window. This is what makes the quiet period achievable — it removes the
-  only remaining candidate for another breaking round (§C3). Tracked in #10.
+  1.0 breaking window. It removes the only remaining candidate for another breaking round
+  (§C3), and is the ratified half of the 1.0 scope statement (readiness G3a). *(It was
+  originally justified as "what makes the quiet period achievable"; that gate is retired —
+  Amendment 3.)* Tracked in #10.
 - **Deprecated `codegen-ts/generators` export — [RATIFIED: REMOVE at the cut].** The
   `@deprecated ADR-0034` re-exports (`entityFile`/`queriesFile`/`routesFile`/`barrel`
   from `@metaobjectsdev/codegen-ts/generators`) are removed **as part of the 1.0/8.0
   major bump (G2)** — *not before*. Removing an export is itself a breaking change;
-  doing it at the major absorbs it, whereas doing it during the run-up would restart
-  the quiet-period clock (§G3). Consumers migrate to the `meta init`-scaffolded owned
+  doing it at the major absorbs it. *(The original reason not to do it earlier was that it
+  would restart the quiet-period clock; that gate is retired — Amendment 3. Removing the
+  export at the major is still right, because it is a breaking change either way.)* Consumers migrate to the `meta init`-scaffolded owned
   copies under `codegen/generators/*`.
 - **Cross-port "own your codegen" — [RATIFIED: idiomatic + document].** The per-port
   split is intentional and *not* a parity gap to close: TS uses `meta init`
@@ -154,11 +158,12 @@ still want, then freeze. Before cutting 1.0:
   `docs/features/own-your-codegen.md` (readiness D4).
 - **Metamodel freeze:** the metamodel-1.0 vocabulary program (`0.15.0`/`7.7.0`;
   ADR-0036/0037/0038) was the intended finalization, and ADR-0037 sets the framework
-  for future additions; `registry-conformance` is the enforcer. **The actual last
-  breaking move was `0.15.1`/`7.7.1` — the `index.*` type + `identity.secondary`
-  key-purity (ADR-0040, `@unique` removed).** That resets the quiet-period clock
-  (§G3): the first *no-metamodel-breaking* coordinated release must come *after*
-  `0.15.1`/`7.7.1` (only A2/FR-024 could add another breaking round — hence it must
+  for future additions; `registry-conformance` is the enforcer. **When this was written
+  the last breaking move was `0.15.1`/`7.7.1` — the `index.*` type + `identity.secondary`
+  key-purity (ADR-0040, `@unique` removed); it is now `0.25.0`/`7.25.0`, and the current
+  chain is tracked in `docs/1.0-readiness.md` C3 rather than restated here.** The
+  quiet-period clock this bullet went on to require is **retired — Amendment 3**
+  (only A2/FR-024 could add another breaking round — hence it must
   land additively or defer).
 - **Cadence discipline (going forward).** The fast Maven minor cadence (`7.3→7.7` in
   ~17 days) was breaking-change *velocity*, not mislabeling — but the decouple scheme
@@ -272,6 +277,45 @@ version to have moved by at least that much. Its one blind spot is stated rather
 hidden — a rule can change with no machine-readable footprint (#210's only manifest edit
 was a `rules` prose string), so prose changes prompt a question instead of being
 classified. Operational detail: `docs/RELEASING.md` → "The two-contracts rule".
+
+## Amendment 3 (2026-09-06) — the quiet period is retired; the correction bar replaces it
+
+**Every reference to a "quiet-period clock" above is superseded by this amendment.** Where
+the text below says a breaking move "resets the quiet-period clock" (§Context, §Decision's
+metamodel-freeze and deprecated-export bullets), read it as a record of the reasoning at the
+time, not as a live constraint. `docs/1.0-readiness.md` §G3 carries the ruling in full.
+
+**What was retired.** G3 required "at least one coordinated release after the last breaking
+move with no metamodel-breaking changes, to prove the rate has actually dropped."
+
+**Why — and it is NOT that the gate failed to converge.** It did converge:
+`metamodelVersion` held at `0.13` across `v0.24.2`, `v0.24.3`, `v0.24.4` and `v0.24.5`, four
+consecutive coordinated releases, and `0.24.2` was ruled the quiet release. `0.25.0` moved it
+to `0.14` **by decision**, spending the pre-1.0 breaking slot deliberately.
+
+That is the defect. **A quiet period samples a variable the maintainer sets** — whether we
+chose to break something lately — and hands the answer back as though it were evidence about
+the design's stability. Intent is better declared than sampled. Its incentive also runs
+backwards: the cheapest way to earn 1.0 under it is to stop improving the metamodel, and at
+this project's cadence what it reads is velocity, not instability.
+
+**And it does not buy what it appears to buy.** Under Amendment 2 the metamodel and package
+axes are separate contracts, so post-1.0 `^1.0.0` accepts `1.1.0` and a metamodel change
+reaches an adopter on a routine update with no package major to refuse it. A quiet release
+before the cut protects none of that.
+
+**What carries the promise instead** is the correction bar now in
+`docs/compatibility-policy.md` ("Correcting input we wrongly accepted") plus the
+`meta upgrade --apply` path: a three-part test under which a form that never had a valid
+meaning may stop loading in a PATCH, explicitly NOT covering the retirement of vocabulary
+that worked. That distinction is what makes the bar admissible — `retired-vocabulary.ts`
+refuses to let a *retirement* load again on the reasoning that "a 'helpful' shim is how a
+retirement quietly stops being one", and input that never had a valid meaning is a different
+population.
+
+**Consequence for §2's readiness argument:** A2's deferral of FR-024 is still correct and
+still load-bearing, but it is now the ratified half of a **scope statement** (readiness G3a),
+not a way to "make the quiet period achievable."
 
 ## Consequences
 
