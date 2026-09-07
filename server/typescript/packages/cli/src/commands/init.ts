@@ -138,9 +138,15 @@ export default defineConfig({
     barrel(),
   ],
   docs: {
-    outDir:   "./docs",        // model + api surfaces both land here (run: meta docs)
+    outDir:   "./docs",        // every surface lands here (run: meta docs)
     layout:   "flat",          // or "package" for multi-package models
-    surfaces: ["model", "api"],
+    // surfaces defaults to ["model", "api", "requirements", "agent"] — all four.
+    // Deliberately NOT narrowed here: the requirements and agent surfaces emit ZERO
+    // files for a project that has nothing for them to describe, and the always-on
+    // agent context points at the agent/ pages by name. Scaffolding a narrower list
+    // turned that pointer into a pointer at nothing. Narrow it yourself if you want
+    // fewer docs — but note it says what your docs ARE, not which of them you commit
+    // (a page you do not commit is exempt from verify --docs once it is git-ignored).
   },
 });
 `;

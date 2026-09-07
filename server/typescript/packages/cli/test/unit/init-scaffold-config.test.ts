@@ -35,7 +35,13 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     // `docs:` config block consumed by `meta docs`, not via a deprecated generator.
     expect(body).not.toContain("apiDocsFile");
     expect(body).toContain("docs:");
-    expect(body).toContain("surfaces:");
+    // ...and does NOT narrow `surfaces`. The resolver defaults to all four, and its
+    // own rationale is that `agent` must default ON "so the always-on agent-context
+    // pointer can name the files: a pointer to a page an adopter has to opt into is a
+    // pointer at nothing." The scaffold used to write ["model", "api"], switching off
+    // `requirements` and `agent` for every scaffolded project and defeating exactly
+    // that. Asserted as an ABSENCE because the correct scaffold says nothing here.
+    expect(body).not.toMatch(/^\s*surfaces:\s*\[/m);
     expect(nextStepsBlock(true)).toContain("meta docs");
   });
 
