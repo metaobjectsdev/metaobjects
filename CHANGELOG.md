@@ -41,6 +41,146 @@ Also removed from `@metaobjectsdev/sdk`: the forge memory record schemas (`Recor
 `listRecords` / `promoteRecord` / `supersede` / …). Nothing in the library imported either,
 and a sweep of all seven adopter estates found no use of any of the fifteen names.
 
+### BREAKING — `meta docs` defaults `outDir` to `./docs/generated`
+
+It was `./docs`, which in most repositories is the *human* documentation folder. One estate's
+held a business-strategy document, four product screenshots, email drafts and an analytics
+roadmap, and a bare `meta docs` scattered **29 generated pages** through it — then wanted to
+own `docs/README.md`. `meta verify --docs` reported all 29 as missing until the adopter found
+the config key.
+
+The docs gate's own design language is right — *"`docs.outDir` is a directory, not a namespace
+MetaObjects owns"* — and that is exactly the argument against defaulting into the most-owned
+directory name in the ecosystem. A project relying on the old default pins `docs: { outDir:
+"./docs" }` and nothing moves; `meta init` now scaffolds the key so a new project's choice is
+visible rather than implied. `--metamodel` keeps `./docs/metamodel` — a different artifact,
+not this project's pages. Migration: [`0.x-to-1.0.md` §13](docs/features/migrations/0.x-to-1.0.md).
+
+Two smaller things travel with it. The flag default and the config default are now **one
+constant** — they were two literals that happened to be the same string. And `meta docs
+--help` documented only `--out`, the flag that does **not** survive the run, which is the one
+thing a gate needs: it now names the config key.
+
+**The change exposed a suite that was never comparing the two doors.** The docs-drift
+integration cases generated with an explicit `--out <dir>/docs` while `verify --docs` resolved
+the config default, and passed only because the two coincided. Sixteen cases failed the moment
+they stopped. They now take the config path, which is what the gate reads.
+
+### Fixed — `agent/ui.md` described a UI tier the run does not emit
+
+`meta docs --agent`'s own `--help` promises *"each page is skipped when its tier has nothing to
+describe."* It emitted `agent/ui.md` for an estate with `generators: []`, no `view.*` node and
+no route anywhere — and the page was not empty, it was **specific and wrong**: a
+control/HTML-type/rules table per entity for forms that do not exist, and an `Endpoint` line
+per object (`/wake_events`, `/alarms`, …) for addresses nothing serves. The audience is an
+agent the surface explicitly instructs to read the page BEFORE touching a tier, i.e. the
+audience least able to check. Same family as the headless-project agent-docs finding, with the
+failure **inverted**: that one emitted nothing where something was expected; this emits
+something where nothing is true.
+
+The gate was `hasUiSurface(obj) = servesReadApi(obj)` — a **metadata** predicate, which answers
+"could a UI be generated for this object?" and can never answer "does this run generate one?".
+Whether an artifact exists is a GENERATOR fact. The page now gates on `emitsUiTier`, a marker
+on each form/hook/grid generator aggregated by the runner into
+`ResolvedGenConfig.includeUiTier` — the same mechanism `emitsHonoRoutes` and `emitsNames`
+already use — through `runEmitsUiTier`, the ONE derivation both doors call (`meta gen`'s runner
+and `meta docs`, the other door onto this page). The sibling pages are unaffected: the
+showcase, which wires no UI generator, keeps the `agent/schema.md` that is genuinely true for
+it. An owned copy ejected before the marker existed still emits the page (matched by name) and
+**warns**, naming the one-line fix; `includeUiTier` in the config covers a copy that was also
+renamed. Nothing degrades quietly.
+
+**Found while wiring the second door:** `meta docs` read the RAW config, where a generator
+wired by stable name (`generators: ["routes-hono"]`, legal under ADR-0021 #1) is a *string*
+carrying no marker at all — so `api-docs` documented the Fastify-only surface for a project
+that had wired the Hono one. Both aggregations now run after `resolveGenerators`, and an
+unresolvable suite says so rather than silently answering "no".
+
+### Fixed — `verify --replay`'s remedy prescribed something that cannot work
+
+`meta verify --replay` earned its keep immediately on two estates — it turned a paragraph of
+tribal knowledge into an exit code. Then it printed *"Applied migrations are immutable, so fix
+this with a NEW migration that creates the missing object."* **That fix cannot work, in any
+case:** migrations apply in timestamp order, so anything authored now sorts AFTER the file that
+failed and the object is still missing when it runs.
+
+Two estates hit it from opposite directions. One's chain has a FIRST migration needing a schema
+an out-of-band script creates (the *third* migration emits `CREATE SCHEMA IF NOT EXISTS`; the
+first predates it), so nothing in the chain could have created it. The other's schema is built
+by **drizzle-kit**, with `.metaobjects/migrations/` holding later incremental patches —
+following the printed remedy literally means hand-authoring every `CREATE TABLE` into the
+MetaObjects chain, i.e. duplicating a schema this project does not own, which is the opposite
+of what the agent context teaches two paragraphs into its own Principles. One message,
+assuming MetaObjects is the only schema authority and offering no third possibility.
+
+The remedy now names the fixes that exist: don't wire `--replay` when another tool owns
+creation; correct the migration in place if no database has applied it yet; or re-baseline from
+a live database. Immutability is stated as the **condition** it is — a checksum guard on
+databases that already ran the file — rather than a blanket ban, because a migration nothing
+has applied is edited in place every day. The head of the chain gets the extra sentence that is
+only true there. Choosing correctly needs the POSITION, so `applyPending` now throws
+`MigrationApplyError` carrying the migration name, its index among the pending set and the
+pending count — which also means `meta migrate apply-pending` finally names the file that
+failed instead of printing a bare driver error over a directory of migrations.
+
+### Added — `meta verify` advises when a provider silently drops `apiPrefix`
+
+1.0 moved `$apiPrefix` out of the entity descriptor, and the migration note rests its safety
+argument on `<EntityFetcherProvider value={…}>` no longer typechecking. A real adopter tree
+falsified two unstated preconditions.
+
+**It only protects a project that runs `tsc`.** On an estate whose web app had no typecheck
+script, no turbo task and no CI job, the unmigrated tree passed `turbo run build` (vite
+transpiles, it does not typecheck), 150 tests and every `meta verify` gate. `tsc --noEmit`, run
+by hand, was the only signal in the building.
+
+**And `tsc` cannot see the half that compiles.** `baseUrl` is optional with default `""`, so
+reading the note, renaming `value` → `fetcher` and stopping there is type-correct and silently
+drops the prefix from every generated hook — the likelier outcome, precisely because it
+compiles. On that estate it would have shipped eleven objects × five hooks plus six grids
+404ing across a public storefront and an admin app. A project whose `apiPrefix` is `""` is
+unaffected, which is why the trap is easy to ship: `meta init` scaffolds `apiPrefix: ""`, so
+the default-configured project is the one the design was reasoned about.
+
+So `meta verify` now advises when `apiPrefix` is non-empty and a source file mounts a provider
+with no `baseUrl`, covering both tiers (the JSX provider and Angular's
+`provideEntityFetcher`). It rides in the existing verify-as-teacher pass — same suppression
+flag, same structured row shape, **never** an exit code, since a project may legitimately serve
+its API at the origin root. The JSX match spans the whole opening tag rather than one line,
+because real providers are written multi-line and a `>` inside an attribute would otherwise cut
+the tag in half. The migration note now states the precondition out loud.
+
+### Fixed — Python `.gen-state` keys were relative to `--out`, not to the project
+
+The manifest lives at the project root (`<project>/.metaobjects/.gen-state`, anchored on the
+metadata directory's parent — deliberate, and matching C#). Its **keys** were relative to
+`--out`, so two runs with different `--out` shared ONE manifest keyed by names that mean
+different files: `gen --out a` and `gen --out b` both record `Program.py`, and whichever ran
+last decided whether the other run's file still counted as ours. That manifest is the only
+thing that can tell "this is exactly what I wrote" from "somebody edited this" on a machine
+that did not generate the code, so one that can be populated from an unrelated tree and keyed
+ambiguously is one that can **say yes to the wrong file**. The multi-target path (#267) has the
+same shape by construction: every target writes its own `outDir` and all of them share one
+gen-state dir.
+
+Keys are now project-root-relative, as TypeScript's have always been — which is also what makes
+multiple output targets work there. **Nothing to do:** the old spelling is read as a fallback
+and dropped once each file is recorded under the new key, so an existing manifest keeps working
+and converges on its own. Re-keying with no fallback is fail-closed (`gen` REFUSES a
+now-unrecorded file) and the wrong cost to impose for a change an adopter did not ask for.
+
+`verify --codegen`'s jurisdiction guard reads the same manifest and moved with it. **That half
+fails in the direction nothing notices:** a lookup that finds nothing makes every file "not
+ours", so the `extra` verdict silently empties while the gate still prints `in sync` — the
+break-probe run printed *"in sync (0 file(s))"* over stale committed output. The existing
+jurisdiction test covered only the negative direction (a stranger's file is not convicted) and
+would have stayed green throughout; the positive direction is now gated too. Migration:
+[`0.x-to-1.0.md` §13](docs/features/migrations/0.x-to-1.0.md).
+
+*(The report that found this also claimed `_record` replaces the manifest wholesale — 21
+entries becoming 6. Not reproducible from the code: `_record` loads and adds. Only the keying
+was wrong.)*
+
 ### Fixed — a hand-edited `<Entity>Names` read as "in sync with the metadata"
 
 Hand-edit a generated `Subscriber.names.ts` so a column reads `first_name_BROKEN` and
