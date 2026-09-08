@@ -31,29 +31,60 @@ import { join, relative, resolve } from "node:path";
 
 const REPO = resolve(import.meta.dir, "..", "..", "..", "..", "..");
 
-/** The resolver is the ONE sanctioned reader of the grid's sort attrs. */
-const SANCTIONED = "server/typescript/packages/codegen-ts/src/templates/filter-shared.ts";
+/**
+ * The sanctioned readers of the grid's sort attrs — TWO, and the second is not a
+ * concession, it is the package boundary.
+ *
+ * `filter-shared.ts` is the resolver every server-side generator routes through.
+ * `grid-from-metadata.ts` is its runtime twin: `buildGrid()` answers the SAME question
+ * (a grid's initial sort) for a browser that builds its grid at runtime instead of
+ * generating it. It cannot import the resolver — `runtime-web` is the pure browser core
+ * and may depend only on `@metaobjectsdev/metadata` (#287: one value import from the
+ * wrong entry point made every browser bundle fail), while `filter-shared.ts` lives in a
+ * SERVER package. So the rule is implemented exactly twice, deliberately, and both are
+ * listed here with the requirement that each keeps reading the attrs.
+ *
+ * Excluding `client/web` from the scan entirely — which this gate did — rested on the
+ * claim that the runtime read is "a different tier answering a different question
+ * (`?sort=field` from a client, not a grid's initial state)". That is true of the fetcher
+ * and false of `buildGrid`, which computes precisely a grid's initial state; it read only
+ * `@defaultSortOrder` and so returned ascending for a grid the generated code sorted
+ * descending. A gate that scopes itself by a rationale it has not checked reports clean
+ * about a tree it never looked at.
+ */
+const SANCTIONED = [
+  "server/typescript/packages/codegen-ts/src/templates/filter-shared.ts",
+  "client/web/packages/runtime-web/src/grid-from-metadata.ts",
+] as const;
 
 /**
  * Source trees that could implement a grid's initial sort.
  *
- * Scoped to `src/` of the generator packages, not the whole repo: `spec/` and the
- * metadata provider definitions NAME these attrs to register them (that is their job,
- * not a second implementation), and the runtime read is a different tier answering a
- * different question (`?sort=field` from a client, not a grid's initial state) — it is
- * gated by the api-contract corpus instead, which drives it over real HTTP.
+ * Scoped to `src/` of the generator packages plus the browser runtime core, not the whole
+ * repo: `spec/` and the metadata provider definitions NAME these attrs to register them
+ * (that is their job, not a second implementation).
  */
 const TREES = [
   "server/typescript/packages/codegen-ts/src",
   "server/typescript/packages/codegen-ts-tanstack/src",
   "server/typescript/packages/codegen-ts-react/src",
   "server/typescript/packages/codegen-ts-angular/src",
+  "client/web/packages/runtime-web/src",
 ] as const;
 
-/** The two attrs that together answer "which way does this grid sort initially". */
+/**
+ * The two attrs that together answer "which way does this grid sort initially", each
+ * paired with the `MetaLayout` convenience getter that returns the SAME value.
+ *
+ * Matching only `attr(CONSTANT)` left a live bypass: `MetaLayout` exposes
+ * `defaultSortField` / `defaultSortOrder` getters, and a generator reaching for
+ * `l.defaultSortOrder` hand-rolls the rule while passing this gate silently. That is not a
+ * hypothetical route — `grid-hook-file.ts` already reads `l.pageSize` and `l.filter`
+ * through those same getters, so it is the most natural way to write the next second door.
+ */
 const GRID_SORT_ATTRS = [
-  "LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD",
-  "LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER",
+  { constant: "LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD", getter: "defaultSortField" },
+  { constant: "LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER", getter: "defaultSortOrder" },
 ] as const;
 
 function tsFiles(dir: string): string[] {
@@ -77,38 +108,48 @@ describe("the grid's initial sort has exactly one reader", () => {
     expect(names).toContain("server/typescript/packages/codegen-ts-tanstack/src/templates/columns-file.ts");
     expect(names).toContain("server/typescript/packages/codegen-ts-tanstack/src/templates/grid-hook-file.ts");
     expect(names).toContain("server/typescript/packages/codegen-ts/src/generators/agent-ui-page.ts");
+    // …and the browser twin, the tree this gate used to skip entirely.
+    expect(names).toContain("client/web/packages/runtime-web/src/grid-from-metadata.ts");
   });
 
-  for (const attr of GRID_SORT_ATTRS) {
-    test(`only the resolver reads ${attr}`, () => {
-      // The READ is `<node>.attr(CONSTANT)`, so that is the pattern matched. Matching a
-      // bare mention instead would point a failure at the multi-line `import { ... }`
-      // block's member lines rather than at the call site that is the actual second
-      // door — a gate that names the wrong line trains its reader to distrust it.
-      const read = new RegExp(`attr\\s*\\(\\s*${attr}\\s*\\)`);
+  for (const { constant, getter } of GRID_SORT_ATTRS) {
+    test(`only the sanctioned readers read ${constant}`, () => {
+      // Two spellings of the same READ: `<node>.attr(CONSTANT)` and the `MetaLayout`
+      // convenience getter `<node>.<getter>` that wraps it. Matching a bare mention of the
+      // constant instead would point a failure at the multi-line `import { ... }` block's
+      // member lines rather than at the call site that is the actual second door — a gate
+      // that names the wrong line trains its reader to distrust it.
+      const read = new RegExp(`attr\\s*\\(\\s*${constant}\\s*\\)|\\.${getter}\\b`);
       const readers = scanned
         .map((f) => ({ path: relative(REPO, f).replaceAll("\\", "/"), text: readFileSync(f, "utf8") }))
-        .filter((f) => f.path !== SANCTIONED)
+        .filter((f) => !SANCTIONED.includes(f.path as (typeof SANCTIONED)[number]))
         .map((f) => ({ ...f, uses: f.text.split("\n").filter((line) => read.test(line)) }))
         .filter((f) => f.uses.length > 0);
 
       expect(
         readers.map((r) => `${r.path}:${r.uses[0]!.trim()}`).join("\n"),
-        `${attr} read outside the sanctioned resolver — route it through ` +
-        `resolveGridDefaultSort() instead, or the new door will disagree with the ` +
-        `grid const, the hook, and the generated agent page.`,
+        `${constant} (or the .${getter} getter that wraps it) read outside the sanctioned ` +
+        `readers — route it through resolveGridDefaultSort() instead, or the new door will ` +
+        `disagree with the grid const, the hook, and the generated agent page.`,
       ).toBe("");
     });
   }
 
-  test("the sanctioned resolver itself reads both", () => {
-    // Guards the vacuous-pass case: if the resolver stopped reading the attrs, "nobody
-    // reads them" would satisfy both tests above and every grid would silently lose its
-    // initial sort. Something MUST read them, somewhere.
-    const text = readFileSync(resolve(REPO, SANCTIONED), "utf8");
-    for (const attr of GRID_SORT_ATTRS) {
-      expect(text, `resolver no longer reads ${attr}`).toContain(attr);
-    }
+  for (const sanctioned of SANCTIONED) {
+    test(`the sanctioned reader ${sanctioned.split("/").pop()} still reads both attrs`, () => {
+      // Guards the vacuous-pass case: if a sanctioned reader stopped reading the attrs,
+      // "nobody reads them" would satisfy every test above while grids silently lost their
+      // initial sort. Something MUST read them — in BOTH tiers, since the two are
+      // independent implementations and either can rot on its own.
+      const text = readFileSync(resolve(REPO, sanctioned), "utf8");
+      for (const { constant } of GRID_SORT_ATTRS) {
+        expect(text, `${sanctioned} no longer reads ${constant}`).toContain(constant);
+      }
+    });
+  }
+
+  test("the server-side resolver is still the one the generators call", () => {
+    const text = readFileSync(resolve(REPO, SANCTIONED[0]), "utf8");
     expect(text).toContain("resolveGridDefaultSort");
   });
 });

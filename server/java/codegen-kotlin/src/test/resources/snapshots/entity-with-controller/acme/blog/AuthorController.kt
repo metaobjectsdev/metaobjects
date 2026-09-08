@@ -39,11 +39,17 @@ private val AuthorSortAllowlist = setOf(
     "name",
 )
 
+/** GENERATED — declared @sortableDefaultOrder per field for Author. */
+private val AuthorSortDefaultOrder: Map<String, String> = mapOf(
+    "name" to "desc",
+)
+
 private fun parseAuthorSort(raw: String): Pair<String, SortOrder>? {
     val parts = raw.split(":", limit = 2)
     val field = parts.getOrNull(0) ?: return null
     if (field !in AuthorSortAllowlist) return null
-    val dirRaw = parts.getOrNull(1)?.lowercase() ?: "asc"
+    val dirRaw = parts.getOrNull(1)?.lowercase()
+        ?: AuthorSortDefaultOrder[field] ?: "asc"
     val dir = when (dirRaw) {
         "asc" -> SortOrder.ASC
         "desc" -> SortOrder.DESC
@@ -256,7 +262,11 @@ class AuthorController(private val objectMapper: ObjectMapper, private val valid
             val parsed = parseAuthorSort(sort)
                 ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
             val (field, dir) = parsed
-            q = q.orderBy(AuthorTable.columns.first { it.name == field } to dir)
+            q = q.orderBy(when (field) {
+                "id" -> AuthorTable.id
+                "name" -> AuthorTable.name
+                else -> error("Author: sort field has no column (generator drift): " + field)
+            } to dir)
         }
         val total: Long = if (withCount == 1) q.count() else -1L
         val effectiveLimit = limit ?: 50

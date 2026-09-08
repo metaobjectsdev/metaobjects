@@ -39,11 +39,16 @@ private val AuthLineSortAllowlist = setOf(
     "label",
 )
 
+/** GENERATED — declared @sortableDefaultOrder per field for AuthLine. */
+private val AuthLineSortDefaultOrder: Map<String, String> = mapOf(
+)
+
 private fun parseAuthLineSort(raw: String): Pair<String, SortOrder>? {
     val parts = raw.split(":", limit = 2)
     val field = parts.getOrNull(0) ?: return null
     if (field !in AuthLineSortAllowlist) return null
-    val dirRaw = parts.getOrNull(1)?.lowercase() ?: "asc"
+    val dirRaw = parts.getOrNull(1)?.lowercase()
+        ?: AuthLineSortDefaultOrder[field] ?: "asc"
     val dir = when (dirRaw) {
         "asc" -> SortOrder.ASC
         "desc" -> SortOrder.DESC
@@ -256,7 +261,11 @@ class AuthLineController(private val objectMapper: ObjectMapper, private val val
             val parsed = parseAuthLineSort(sort)
                 ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
             val (field, dir) = parsed
-            q = q.orderBy(AuthLineTable.columns.first { it.name == field } to dir)
+            q = q.orderBy(when (field) {
+                "id" -> AuthLineTable.id
+                "label" -> AuthLineTable.label
+                else -> error("AuthLine: sort field has no column (generator drift): " + field)
+            } to dir)
         }
         val total: Long = if (withCount == 1) q.count() else -1L
         val effectiveLimit = limit ?: 50

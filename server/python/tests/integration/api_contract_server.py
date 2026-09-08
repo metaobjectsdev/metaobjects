@@ -40,6 +40,14 @@ from .postgres_container import PostgresInfo
 # fields outside it elicit the cross-port 400 invalid_sort envelope.
 _SORT_ALLOWLIST: frozenset[str] = frozenset({"id", "name", "createdAt"})
 
+# Cross-port contract: each field's DECLARED @sortableDefaultOrder — the direction a
+# `?sort=<field>` carrying no `:dir` takes. Hardcoded from meta.json for the same reason
+# the allowlist above is: this is the hand-rolled fixed point the generated routers are
+# measured against, so it must not reach the generator's code to agree with it. A field
+# absent here declares nothing and takes the "asc" fallback at the read — one place per
+# port spells the default.
+_SORT_DEFAULT_ORDER: dict[str, str] = {"createdAt": "desc"}
+
 # Per-entity FR-009 filter allowlist for Author. Mirror of what
 # `filter_allowlist_generator` would emit for the Author entity (the
 # integration test is hand-wired so we duplicate the constants here; the
@@ -446,7 +454,13 @@ def make_app(repo: AuthorRepository) -> FastAPI:
             field = parts[0]
             if field not in _SORT_ALLOWLIST:
                 return JSONResponse(status_code=400, content={"error": "invalid_sort"})
-            direction = parts[1].lower() if len(parts) == 2 else "asc"
+            # No `:dir` supplied -> the named field's declared @sortableDefaultOrder, and
+            # "asc" when it declares none. The explicit branch is untouched, so a
+            # caller-supplied order always beats the declaration.
+            direction = (
+                parts[1].lower() if len(parts) == 2
+                else _SORT_DEFAULT_ORDER.get(field, "asc")
+            )
             if direction not in ("asc", "desc"):
                 return JSONResponse(status_code=400, content={"error": "invalid_sort"})
             sort_field, sort_dir = field, direction.upper()

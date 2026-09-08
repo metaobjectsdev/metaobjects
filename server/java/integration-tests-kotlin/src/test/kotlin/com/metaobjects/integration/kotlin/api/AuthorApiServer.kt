@@ -334,7 +334,11 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val parts = raw.split(":", limit = 2)
         val field = parts.getOrNull(0) ?: return InvalidSort
         if (field !in SORT_ALLOWLIST) return InvalidSort
-        val dir = when ((parts.getOrNull(1) ?: "asc").lowercase()) {
+        // No `:dir` supplied -> the named field's declared @sortableDefaultOrder, and
+        // "asc" when it declares none. The explicit branch is untouched, so a
+        // caller-supplied order always beats the declaration.
+        val dir = when ((parts.getOrNull(1)
+            ?: SORT_DEFAULT_ORDER[field] ?: "asc").lowercase()) {
             "asc" -> SortOrder.ASC
             "desc" -> SortOrder.DESC
             else -> return InvalidSort
@@ -516,6 +520,14 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     companion object {
         // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
         private val SORT_ALLOWLIST = setOf("id", "name", "createdAt")
+
+        // Cross-port contract: each field's DECLARED @sortableDefaultOrder — the direction
+        // a `?sort=<field>` carrying no `:dir` takes. Hardcoded from meta.json for the same
+        // reason the allowlist above is: this is the hand-rolled fixed point the generated
+        // controllers are measured against, so it must not reach the generator's code to
+        // agree with it. A field absent here declares nothing and takes the "asc" fallback
+        // at the read — one place per port spells the default.
+        private val SORT_DEFAULT_ORDER = mapOf("createdAt" to "desc")
 
         // Cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST). An
         // over-cap `in` list is rejected with the `filter.in_too_large` envelope.

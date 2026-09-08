@@ -52,6 +52,14 @@ final class AuthorApiServer implements AutoCloseable {
     // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
     private static final Set<String> SORT_ALLOWLIST = Set.of("id", "name", "createdAt");
 
+    // Cross-port contract: each field's DECLARED @sortableDefaultOrder — the direction a
+    // {@code ?sort=<field>} carrying no {@code :dir} takes. Hardcoded from meta.json for
+    // the same reason the allowlist above is: this is the hand-rolled fixed point the
+    // generated controllers are measured against, so it must not reach the generator's
+    // code to agree with it. A field absent here declares nothing and takes the "asc"
+    // fallback at the read — one place per port spells the default.
+    private static final Map<String, String> SORT_DEFAULT_ORDER = Map.of("createdAt", "desc");
+
     // Cross-port FILTER_ALLOWLIST — mirrors the TS api-contract-server. Per
     // FR-009 §5 the operator set per field is gated by its subtype:
     //   string                     → eq, ne, in, like, isNull
@@ -207,7 +215,12 @@ final class AuthorApiServer implements AutoCloseable {
                 sendJson(exchange, 400, Map.of("error", "invalid_sort"));
                 return;
             }
-            String dir = parts.length > 1 ? parts[1].toLowerCase(Locale.ROOT) : "asc";
+            // No `:dir` supplied -> the named field's declared @sortableDefaultOrder, and
+            // "asc" when it declares none. The explicit branch is untouched, so a
+            // caller-supplied order always beats the declaration.
+            String dir = parts.length > 1
+                ? parts[1].toLowerCase(Locale.ROOT)
+                : SORT_DEFAULT_ORDER.getOrDefault(field, "asc");
             if (!dir.equals("asc") && !dir.equals("desc")) {
                 sendJson(exchange, 400, Map.of("error", "invalid_sort"));
                 return;

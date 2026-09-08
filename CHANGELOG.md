@@ -7,6 +7,148 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `@sortableDefaultOrder` names two doors and only one was open, in every port
+
+`0.25.0` finished this attribute's read side at the HTTP boundary: `?sort=field` with no
+`:order` takes the field's declared direction. What the change did not do is read the
+sentence that has described the attribute since it was registered, in the byte-gated
+registry every port matches against: *"Default sort direction applied when this field is
+**the default sort field**."* That is a `layout.dataGrid` concept, and the grid tier never
+implemented it — so one declaration had, again, two answers.
+
+**Three codegen doors answered it three different ways**, and two more in the runtime tiers:
+
+- `columns-file.ts` emitted `defaultSort` only when the layout declared **both**
+  `@defaultSortField` **and** `@defaultSortOrder`. Name a field, let the field supply the
+  direction, and the grid const silently got **no initial sort at all**.
+- `grid-hook-file.ts` read the order with `=== "desc"`, folding every absent order to
+  ascending. So the hook's `initialSorting` and the const beside it disagreed by
+  construction — the grid rendered one order while the endpoint it queried returned another.
+- `agent-ui-page.ts` printed `default sort: \`reference\`` with no direction for the
+  field-declared case — an agent-context page stating the grid has no stated direction,
+  about a grid that sorts descending.
+- The **plain Fastify `ObjectManager` mount** carries its own `parseSort`, documented as
+  "mirrors the drizzle-fastify filter-parser's sort semantics". `0.25.0` fixed the drizzle
+  one and left this one hardcoded to `"asc"` — so the same query string against the same
+  generated allowlist returned different rows depending on which mount a project mounted.
+- `runtime-web`'s **`buildGrid()`** — the published runtime twin of the grid codegen, which
+  builds a grid from metadata in the browser instead of generating it — read only
+  `@defaultSortOrder`, so it returned ascending for exactly the model the attribute exists
+  for. A page that renders a runtime grid beside a generated one had the two sorting
+  opposite ways off one declaration. The same call also read every layout attr with
+  `ownAttr`, so a `layout.dataGrid` inheriting its attrs via `extends` lost all of them —
+  no columns, default page size, no initial sort (ADR-0039); the file already applied the
+  resolving rule to its FIELD reads and had simply never had it applied to its layout ones.
+
+All of them now resolve through **one** function per tier — `resolveGridDefaultSort()`
+server-side, and a documented twin in `runtime-web`, which cannot import it because
+`runtime-web` may depend only on `@metaobjectsdev/metadata` (#287). A derived gate refuses
+any read of the grid sort attrs outside those two — it finds its own subject set by walking
+the sources, so the next emitter that hand-rolls the answer fails it with no edit to the
+gate. It caught the Angular tier's `grid-file.ts`, which had the identical defect and was
+not on anyone's list.
+
+**That gate had two holes of its own, and they are the more useful finding.** It scoped
+itself to the server trees on the stated ground that the runtime read is "a different tier
+answering a different question" — true of the fetcher, false of `buildGrid`, which is why
+the fifth door sat unseen in a tree the gate never opened. And it matched only
+`attr(CONSTANT)`, while `MetaLayout` exposes `defaultSortField` / `defaultSortOrder` getters
+returning the same value — a bypass that is not hypothetical, since `grid-hook-file.ts`
+already reads `pageSize` and `filter` through those same getters. Both are closed: the
+browser tree is scanned, both sanctioned readers are named and each is required to keep
+reading the attrs, and the getter spelling is matched. A gate that scopes itself by a
+rationale nobody re-checked reports clean about a tree it never looked at.
+
+**Cross-port, the read side landed in TypeScript only.** `@sortableDefaultOrder` is
+registered vocabulary in all five ports, and Java, Kotlin, Python and C# each generate a
+sort allowlist and parse `?sort=` — none of them had a read for the declaration, so
+`?sort=createdAt` returned DESC from a TS server and ASC from the other four against one
+model. The read now exists in all five: each emits its port's idiomatic declaration map
+(a Java/Kotlin/Python `Map`/`mapOf`/`dict`, a C# `Dictionary<bool>` keyed Pascal like its
+allowlist sibling) and reads it at the same point in the precedence chain.
+
+Two rules held across all five deliberately: **the map carries declarations only** — an
+undeclared field is absent and the read supplies ascending — so the fallback is spelled
+exactly once per port rather than in an artifact and at a read, which is how a port bakes
+in a different default; and **a caller-supplied order always beats the declaration**,
+because the attribute fills in a missing direction and never fights a present one.
+
+**Why no gate saw any of it:** the one fixture with a `dataGrid`
+(`codegen-ts-tanstack/test/fixtures/single-entity.json`) declares **both** layout attrs, so
+the `sortField && sortOrder` branch was always true and the field-only path — the only path
+the registered contract describes — was never exercised. Same for the Kotlin snapshot
+fixtures and the `agent-docs` model, all of which now carry the field-only form. The corpus
+blind spot was narrower and more interesting than "no sort coverage":
+`api-contract-conformance/scenarios/sort-asc-desc.yaml` **does** assert direction — always
+with an explicit `:asc`/`:desc`, so it exercised the parser's present-order branch and
+could not see the omitted one. The new **`sort-default-order`** scenario closes that in all
+five ports × both lanes, with an arm per precedence case including the undeclared field
+falling back to ascending. Proven by removal: with the read taken out, the Python reference
+lane returns ascending where descending is declared and the scenario fails by name.
+
+The registry description now names both doors — `?sort=<field>` with no `:order`, and a
+grid whose `@defaultSortField` names the field with no `@defaultSortOrder` — in all four
+spec copies and the regenerated manifest, docs fixture and published reference.
+
+### Fixed — the Kotlin generated controller 500'd on `?sort=` for every multi-word field
+
+Found by the `sort-default-order` scenario above, not by looking for it: the first scenario
+in the corpus that sorted on a field whose name is not already its own column name.
+
+The generated list handler resolved the sort field with
+
+```kotlin
+$table.columns.first { it.name == field }
+```
+
+**Exposed's `Column.name` is the physical SQL identifier** — `created_at` under the
+port's default `snake_case` column strategy — **while the query string carries the
+metadata field name**, `createdAt`. The predicate matched nothing, and `first` on an empty
+collection throws: `NoSuchElementException: Collection contains no element matching the
+predicate`, escaping through the request handler as an **HTTP 500 on a valid,
+allowlisted request**. Any Kotlin consumer sorting on a camelCase field — which is most of
+them, since camelCase is the authoring convention — was returning an error page for a query
+their own `<Entity>SortAllowlist` explicitly permitted.
+
+Sorting is now emitted as a generated `when` dispatch from field name to the **table
+property itself** (`AuthorTable.createdAt`), keyed through the same
+`KotlinNaming.safeColumnProperty` the table generator uses to emit that property, so the
+two cannot drift and a `@column` override needs no special case — a property reference has
+no name to compare. The `else` arm throws rather than 400s: the allowlist is built from the
+same field list, so reaching it is generator drift, and answering a legitimate request with
+a client error would mislabel the fault.
+
+**Why no gate saw it:** the corpus's only sort scenario sorted on `name`, where the metadata
+name and the SQL name coincide, and the Kotlin snapshot goldens are **text** comparisons —
+`AuthorTable.columns.first { it.name == field }` is an entirely ordinary-looking string. Only
+the integration lane, which compiles the emitted controller with `KotlinCompilation` and
+boots it, could see either this or the `mapOf` inference break above. That asymmetry — a
+snapshot gate that pins characters and a compile gate that can read them — is the reason the
+Kotlin lane is not optional.
+
+Same scenario also surfaced a second compile-level fault in the same change: a generated
+`private val XSortDefaultOrder = mapOf(` with **no** pairs cannot infer `K`/`V` and fails to
+compile, and "no field declares `@sortableDefaultOrder`" is the common case. The type is now
+stated. Both were invisible to every text-level gate.
+
+**Java carried the mirror image of that fault, at the other extreme.** The same map was
+emitted there as `Map.of(k1, v1, …)`, and `Map.of` is a family of fixed-arity overloads
+topping out at **ten pairs** with no varargs form — alternating key/value types make one
+impossible. An entity whose eleventh field declares `@sortableDefaultOrder` therefore
+emitted a controller that did not compile, on metadata with nothing wrong with it. The trap
+is the sibling line: `SORT_ALLOWLIST` two lines above uses `Set.of(...)` at unbounded arity
+and is perfectly safe, because `Set.of` *does* have a `Set.of(E...)` overload — so the two
+reads as one idiom and only one of them scales. Now `Map.ofEntries(...)`, which has no
+ceiling and infers its type parameters at zero entries, so the empty case needs no special
+branch. Gated by a test that lifts the emitted declaration out and **actually compiles it**
+at eleven pairs with the in-process JDK compiler, then reads the map back so a truncation to
+ten fails too — a text assertion is precisely the gate class that cannot see this, which is
+the same reason the Kotlin half above needed the integration lane. The Java map is also no
+longer built by looking each allowlist name back up: `MetaObject.getMetaField(name)` throws
+rather than returning null for an absent name, so a name-keyed lookup would turn any future
+divergence between the allowlist and the map into an aborted build instead of a skipped
+entry.
+
 ### Changed — `meta eject` says how your copy compares to the reference
 
 An owned generator is the one artifact ADR-0034 hands an adopter and then never speaks

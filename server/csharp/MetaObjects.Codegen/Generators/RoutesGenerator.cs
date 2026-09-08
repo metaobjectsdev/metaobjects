@@ -150,6 +150,7 @@ public class RoutesGenerator : PerEntityGenerator
         foreach (var name in sortFields) sb.AppendLine($"        \"{name}\",");
         sb.AppendLine("    };");
         sb.AppendLine();
+        AppendSortDefaultOrder(sb, entity, "SortDefaultDesc");
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
 
@@ -170,9 +171,15 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
         sb.AppendLine("                var field = parts[0];");
-        sb.AppendLine("                var desc = parts.Length > 1 && string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase);");
         sb.AppendLine("                if (!SortAllowlist.TryGetValue(field, out var resolved))");
         sb.AppendLine("                    return Results.BadRequest(new { error = \"invalid_sort\" });");
+        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+        // Keyed on `resolved` — the allowlist's canonical Pascal spelling — so a
+        // case-insensitive wire name still finds its declaration. Ascending stays the
+        // fallback HERE, one place per port.
+        sb.AppendLine("                var desc = parts.Length > 1");
+        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
+        sb.AppendLine("                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         sb.AppendLine($"                q = ApplySort{cls}(q, resolved, desc);");
         sb.AppendLine("            }");
         sb.AppendLine();
@@ -371,6 +378,7 @@ public class RoutesGenerator : PerEntityGenerator
         foreach (var name in sortFields) sb.AppendLine($"        \"{name}\",");
         sb.AppendLine("    };");
         sb.AppendLine();
+        AppendSortDefaultOrder(sb, baseEntity, "SortDefaultDesc");
 
         // Per-subtype sort allowlists (case-insensitive) over each subtype's EFFECTIVE
         // scalar fields (inherited base + own). The per-subtype list resolves the qs
@@ -390,6 +398,7 @@ public class RoutesGenerator : PerEntityGenerator
             foreach (var name in subSortFields) sb.AppendLine($"        \"{name}\",");
             sb.AppendLine("    };");
             sb.AppendLine();
+            AppendSortDefaultOrder(sb, st.Entity, $"{subClsName}SortDefaultDesc");
         }
 
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
@@ -406,8 +415,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
-        sb.AppendLine("                var desc = parts.Length > 1 && string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase);");
         sb.AppendLine("                if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = \"invalid_sort\" });");
+        sb.AppendLine("                var desc = parts.Length > 1");
+        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
+        sb.AppendLine("                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         sb.AppendLine("                q = ApplySort(q, resolved, desc);");
         sb.AppendLine("            }");
         sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);");
@@ -893,8 +904,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
-        sb.AppendLine("                var desc = parts.Length > 1 && string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase);");
         sb.AppendLine($"                if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\" }});");
+        sb.AppendLine("                var desc = parts.Length > 1");
+        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
+        sb.AppendLine($"                    : {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         sb.AppendLine("                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved));");
         sb.AppendLine("            }");
         sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);");
@@ -1026,4 +1039,33 @@ public class RoutesGenerator : PerEntityGenerator
         var fkField = nav.Junction.FindField(nav.SourceField);
         return fkField is not null ? CSharpNaming.ScalarFor(fkField.SubType) ?? "long" : "long";
     }
+
+    /// <summary>
+    /// Emit a case-insensitive dictionary of each sortable field's DECLARED
+    /// <c>@sortableDefaultOrder</c>, keyed by the SAME Pascal name the sort allowlist
+    /// carries so the generated lookup can key on the allowlist's resolved value.
+    /// </summary>
+    /// <remarks>
+    /// Declared orders only — a field with no <c>@sortableDefaultOrder</c> is absent and
+    /// the generated handler supplies ascending. That split matches the other four ports:
+    /// one place per port spells the fallback, so no port can drift by baking a different
+    /// default into its map. <c>Attr()</c> is the RESOLVING accessor (ADR-0039), so an
+    /// order inherited via <c>extends</c> is honoured.
+    /// </remarks>
+    private static void AppendSortDefaultOrder(StringBuilder sb, MetaObject owner, string constName)
+    {
+        sb.Append($"    private static readonly System.Collections.Generic.Dictionary<string, bool> {constName} =");
+        sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
+        sb.AppendLine("    {");
+        foreach (var f in owner.Fields())
+        {
+            if (CSharpNaming.ScalarFor(f.SubType) is null || f.ResolvedIsArray()) continue;
+            if (f.Attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) is not string v) continue;
+            if (v != "asc" && v != "desc") continue;
+            sb.AppendLine($"        [\"{CSharpNaming.Pascal(f.Name)}\"] = {(v == "desc" ? "true" : "false")},");
+        }
+        sb.AppendLine("    };");
+        sb.AppendLine();
+    }
+
 }

@@ -10,6 +10,7 @@ import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
 import com.metaobjects.field.MapField
+import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
@@ -312,6 +313,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("    \"$field\",\n")
             }
             append(")\n\n")
+            appendSortDefaultOrders(this, shortName, entity, sortFields)
 
             // parseSort: returns (field, asc|desc) or null for malformed/disallowed input.
             // Returning null lets the handler emit the 400 envelope itself rather than
@@ -321,7 +323,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("    val parts = raw.split(\":\", limit = 2)\n")
             append("    val field = parts.getOrNull(0) ?: return null\n")
             append("    if (field !in ${shortName}SortAllowlist) return null\n")
-            append("    val dirRaw = parts.getOrNull(1)?.lowercase() ?: \"asc\"\n")
+            // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+            // The "asc" fallback stays at the READ, one place per port.
+            append("    val dirRaw = parts.getOrNull(1)?.lowercase()\n")
+            append("        ?: ${shortName}SortDefaultOrder[field] ?: \"asc\"\n")
             append("    val dir = when (dirRaw) {\n")
             append("        \"asc\" -> SortOrder.ASC\n")
             append("        \"desc\" -> SortOrder.DESC\n")
@@ -404,7 +409,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("            val parsed = parse${shortName}Sort(sort)\n")
             append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
             append("            val (field, dir) = parsed\n")
-            append("            q = q.orderBy(${readObj}.columns.first { it.name == field } to dir)\n")
+            append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields)} to dir)\n")
             append("        }\n")
             append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
             append("        val effectiveLimit = limit ?: 50\n")
@@ -779,11 +784,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("private val ${shortName}SortAllowlist = setOf(\n")
             for (f in sortFields) append("    \"$f\",\n")
             append(")\n\n")
+            // The polymorphic sort surface is the BASE's own columns, so the declared
+            // orders are read off the base too — same owner the allowlist came from.
+            appendSortDefaultOrders(this, shortName, base, sortFields)
             append("private fun parse${shortName}Sort(raw: String): Pair<String, SortOrder>? {\n")
             append("    val parts = raw.split(\":\", limit = 2)\n")
             append("    val field = parts.getOrNull(0) ?: return null\n")
             append("    if (field !in ${shortName}SortAllowlist) return null\n")
-            append("    val dir = when (parts.getOrNull(1)?.lowercase() ?: \"asc\") {\n")
+            append("    val dir = when (parts.getOrNull(1)?.lowercase()\n")
+            append("        ?: ${shortName}SortDefaultOrder[field] ?: \"asc\") {\n")
             append("        \"asc\" -> SortOrder.ASC\n")
             append("        \"desc\" -> SortOrder.DESC\n")
             append("        else -> return null\n")
@@ -830,7 +839,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("            val parsed = parse${shortName}Sort(sort)\n")
             append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
             append("            val (field, dir) = parsed\n")
-            append("            q = q.orderBy($table.columns.first { it.name == field } to dir)\n")
+            append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields)} to dir)\n")
             append("        }\n")
             append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
             append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
@@ -884,7 +893,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            val parsed = parse${shortName}Sort(sort)\n")
                 append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
                 append("            val (field, dir) = parsed\n")
-                append("            q = q.orderBy($table.columns.first { it.name == field } to dir)\n")
+                append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields)} to dir)\n")
                 append("        }\n")
                 append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
                 append("        ResponseEntity.ok(rows as Any)\n")
@@ -1492,4 +1501,73 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
         KotlinNaming.controllerName(PackageMapping.splitFqn(md.name).second) + ".kt"
+}
+
+/**
+ * Emit the per-entity `<Entity>SortDefaultOrder` map the generated `parse<Entity>Sort` reads
+ * for a `?sort=field` carrying no `:order`.
+ *
+ * Carries DECLARED orders only — a field with no `@sortableDefaultOrder` is absent and the
+ * generated read supplies `"asc"`. That split matches the other four ports: one place per
+ * port spells the fallback, so no port can drift by baking a different default into its map.
+ *
+ * ADR-0039: resolving accessor — `@sortableDefaultOrder` may be inherited via `extends`.
+ */
+private fun appendSortDefaultOrders(
+    sb: StringBuilder,
+    shortName: String,
+    owner: MetaObject,
+    sortFields: List<String>,
+) {
+    val declared = sortFields.mapNotNull { name ->
+        val f = owner.metaFields.firstOrNull { it.name == name } ?: return@mapNotNull null
+        if (!f.hasMetaAttr(MetaField.ATTR_SORTABLE_DEFAULT_ORDER)) return@mapNotNull null
+        val v = f.getMetaAttr(MetaField.ATTR_SORTABLE_DEFAULT_ORDER).valueAsString
+        if (v == "asc" || v == "desc") name to v else null
+    }
+    sb.append("/** GENERATED — declared @sortableDefaultOrder per field for $shortName. */\n")
+    // The type is STATED, not inferred. `mapOf()` with zero pairs leaves K and V with
+    // nothing to resolve and Kotlin refuses to compile — and the common case is zero
+    // pairs, because most models declare no @sortableDefaultOrder at all. A text-golden
+    // snapshot cannot see this: it pins the emitted characters, and `mapOf(\n)` is a
+    // perfectly ordinary-looking string. Only compiling the output catches it, which is
+    // what the integration lane is for.
+    sb.append("private val ${shortName}SortDefaultOrder: Map<String, String> = mapOf(\n")
+    for ((name, v) in declared) sb.append("    \"$name\" to \"$v\",\n")
+    sb.append(")\n\n")
+}
+
+/**
+ * The generated Kotlin expression resolving a sort FIELD NAME to its Exposed column.
+ *
+ * Deliberately NOT `$table.columns.first { it.name == field }`. Exposed's `Column.name` is
+ * the PHYSICAL SQL identifier — `created_at` under the default snake_case strategy — while
+ * the query string carries the METADATA field name, `createdAt`. Comparing the two threw
+ * `NoSuchElementException: Collection contains no element matching the predicate` out of the
+ * request handler, i.e. an HTTP 500 on `?sort=<field>` for every multi-word sortable field.
+ * The api-contract corpus never caught it because its only sort scenario sorted on `name`,
+ * a single word where both spellings coincide.
+ *
+ * The dispatch pairs each name with `$table.<prop>` using the SAME
+ * [KotlinNaming.safeColumnProperty] the table generator uses to emit that property, so the
+ * two cannot drift, and `@column` overrides need no special case — the reference is the
+ * property itself, never a name string.
+ *
+ * The `else` arm is unreachable by construction: the sort allowlist `parse${shortName}Sort`
+ * gates against is built from this same `sortFields` list. It throws rather than returning
+ * `null` so a future divergence between the two surfaces a generator bug instead of
+ * answering a valid request with a 400.
+ */
+private fun sortColumnExpr(tableVar: String, shortName: String, sortFields: List<String>): String {
+    if (sortFields.isEmpty()) return "error(\"$shortName has no sortable fields\")"
+    val sb = StringBuilder("when (field) {\n")
+    for (name in sortFields) {
+        val prop = KotlinNaming.safeColumnProperty(name)
+        sb.append("                \"").append(name).append("\" -> ")
+          .append(tableVar).append(".").append(prop).append("\n")
+    }
+    sb.append("                else -> error(\"").append(shortName)
+      .append(": sort field has no column (generator drift): \" + field)\n")
+    sb.append("            }")
+    return sb.toString()
 }

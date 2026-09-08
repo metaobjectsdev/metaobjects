@@ -40,11 +40,17 @@ private val AuthSortAllowlist = setOf(
     "reference",
 )
 
+/** GENERATED — declared @sortableDefaultOrder per field for Auth. */
+private val AuthSortDefaultOrder: Map<String, String> = mapOf(
+    "reference" to "desc",
+)
+
 private fun parseAuthSort(raw: String): Pair<String, SortOrder>? {
     val parts = raw.split(":", limit = 2)
     val field = parts.getOrNull(0) ?: return null
     if (field !in AuthSortAllowlist) return null
-    val dir = when (parts.getOrNull(1)?.lowercase() ?: "asc") {
+    val dir = when (parts.getOrNull(1)?.lowercase()
+        ?: AuthSortDefaultOrder[field] ?: "asc") {
         "asc" -> SortOrder.ASC
         "desc" -> SortOrder.DESC
         else -> return null
@@ -278,7 +284,12 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             val parsed = parseAuthSort(sort)
                 ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
             val (field, dir) = parsed
-            q = q.orderBy(AuthTable.columns.first { it.name == field } to dir)
+            q = q.orderBy(when (field) {
+                "id" -> AuthTable.id
+                "type" -> AuthTable.type
+                "reference" -> AuthTable.reference
+                else -> error("Auth: sort field has no column (generator drift): " + field)
+            } to dir)
         }
         val total: Long = if (withCount == 1) q.count() else -1L
         val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowToAuth(it) }
@@ -312,7 +323,12 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             val parsed = parseAuthSort(sort)
                 ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
             val (field, dir) = parsed
-            q = q.orderBy(AuthTable.columns.first { it.name == field } to dir)
+            q = q.orderBy(when (field) {
+                "id" -> AuthTable.id
+                "type" -> AuthTable.type
+                "reference" -> AuthTable.reference
+                else -> error("Auth: sort field has no column (generator drift): " + field)
+            } to dir)
         }
         val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowToAuth(it) }
         ResponseEntity.ok(rows as Any)
@@ -392,7 +408,12 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             val parsed = parseAuthSort(sort)
                 ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
             val (field, dir) = parsed
-            q = q.orderBy(AuthTable.columns.first { it.name == field } to dir)
+            q = q.orderBy(when (field) {
+                "id" -> AuthTable.id
+                "type" -> AuthTable.type
+                "reference" -> AuthTable.reference
+                else -> error("Auth: sort field has no column (generator drift): " + field)
+            } to dir)
         }
         val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowToAuth(it) }
         ResponseEntity.ok(rows as Any)
@@ -472,7 +493,12 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             val parsed = parseAuthSort(sort)
                 ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
             val (field, dir) = parsed
-            q = q.orderBy(AuthTable.columns.first { it.name == field } to dir)
+            q = q.orderBy(when (field) {
+                "id" -> AuthTable.id
+                "type" -> AuthTable.type
+                "reference" -> AuthTable.reference
+                else -> error("Auth: sort field has no column (generator drift): " + field)
+            } to dir)
         }
         val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowToAuth(it) }
         ResponseEntity.ok(rows as Any)

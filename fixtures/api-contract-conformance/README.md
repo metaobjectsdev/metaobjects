@@ -23,6 +23,7 @@ fixtures/api-contract-conformance/
     ├── list-with-pagination.yaml
     ├── list-with-withcount.yaml
     ├── sort-asc-desc.yaml
+    ├── sort-default-order.yaml  # bare `?sort=<field>` → @sortableDefaultOrder
     ├── get-by-id.yaml
     ├── get-by-id-not-found.yaml
     ├── create-201.yaml
@@ -52,7 +53,7 @@ package:
 | `id`         | `field.long`     | `identity.primary @generation=increment` |
 | `name`       | `field.string`   | `@required` + `@maxLength 100`       |
 | `bio`        | `field.string`   | nullable + `@maxLength 1000`         |
-| `createdAt`  | `field.timestamp`| `@required`                          |
+| `createdAt`  | `field.timestamp`| `@required` + `@sortableDefaultOrder=desc` (carrier for `sort-default-order`) |
 
 `source.rdb @table="authors"` — the URL segment per the cross-port grammar
 is therefore `/api/authors` (lowercased + pluralized).

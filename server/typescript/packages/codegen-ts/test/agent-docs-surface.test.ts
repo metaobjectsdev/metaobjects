@@ -154,11 +154,24 @@ describe("agent/ui.md", () => {
     // agent the grid has no stated direction, when both the endpoint and the generated
     // grid in fact sort it descending — prose that disagrees with generated code is the
     // failure mode this whole surface exists to prevent.
-    const model = structuredClone(MODEL) as typeof MODEL;
-    const root = model["metadata.root"];
-    const order = root.children.find((c) => "object.entity" in c)!;
-    const entity = order["object.entity"];
-    entity.children = entity.children
+    // The literal type inferred from MODEL narrows each child to exactly the keys that
+    // literal happens to carry — the wrong shape for a fixture this test MUTATES, since
+    // it sets an attr no MODEL node declares. A local structural view keeps every edit
+    // type-checked without an `any` escape hatch, and `load()` takes `unknown`, so
+    // nothing downstream needs the literal type back.
+    type NodeBody = { name?: string; children?: MetaNode[]; [k: string]: unknown };
+    type MetaNode = Record<string, NodeBody>;
+
+    const model = structuredClone(MODEL) as unknown as {
+      "metadata.root": { children: MetaNode[] };
+    };
+    // Both `!`s are guarded by the `in` predicate above: the fixture declares exactly one
+    // object.entity, so the find hits and the key is present (noUncheckedIndexedAccess
+    // still types the index read as optional).
+    const entity = model["metadata.root"].children.find((c) => "object.entity" in c)![
+      "object.entity"
+    ]!;
+    entity.children = (entity.children ?? [])
       .filter((c) => !("layout.dataGrid" in c))
       // The direction now has ONE source: the field. Nothing on the layout says asc|desc.
       .map((c) => {
@@ -172,7 +185,7 @@ describe("agent/ui.md", () => {
         "@columns": ["reference", "status"],
         "@defaultSortField": "reference",
       },
-    } as unknown as (typeof entity.children)[number]);
+    });
 
     const ui = (await emit(await load(model))).get("agent/ui.md") ?? "";
     expect(ui).toContain("default sort: `reference:desc`");

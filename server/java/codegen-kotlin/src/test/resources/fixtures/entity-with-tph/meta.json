@@ -9,7 +9,7 @@
           { "source.rdb":       { "@table": "auths" } },
           { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
           { "field.enum":       { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"], "@filterable": true } },
-          { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true, "@sortableDefaultOrder": "desc" } },
           { "relationship.composition": { "name": "lines", "@cardinality": "many", "@objectRef": "AuthLine", "@onDelete": "cascade" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]

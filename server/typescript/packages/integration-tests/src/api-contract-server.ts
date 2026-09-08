@@ -34,6 +34,14 @@ const ROUTE_BASE = "/api/authors";
 // Cross-port contract: the sort allowlist is the set of fields the server will
 // accept in `?sort=<field>:asc|desc`. Anything else → 400 invalid_sort.
 const SORT_ALLOWLIST = new Set(["id", "name", "createdAt"]);
+// Cross-port contract: each field's DECLARED @sortableDefaultOrder, the direction a
+// `?sort=<field>` with no `:dir` takes. Hardcoded from meta.json for the same reason the
+// allowlist above is: this is the hand-rolled fixed point the generated servers are
+// checked against, so it must not read the generator's code to reach the same answer.
+// Fields absent here declare nothing and take the "asc" fallback below — one place per
+// port spells the default, which is what keeps five ports from drifting by baking a
+// different one into an allowlist artifact.
+const SORT_DEFAULT_ORDER: Record<string, "asc" | "desc"> = { createdAt: "desc" };
 
 // Cross-port contract: the filter allowlist gates which fields accept which
 // operators in `?filter[<field>][<op>]=<value>`. Per FR-009 §5, operators are
@@ -380,7 +388,10 @@ function parseSort(raw: string | undefined): [string, "asc" | "desc"] | null | "
   if (raw === undefined || raw === "") return null;
   const [field, dirRaw] = raw.split(":", 2);
   if (!field || !SORT_ALLOWLIST.has(field)) return "invalid";
-  const dir = (dirRaw ?? "asc").toLowerCase();
+  // No `:dir` supplied → the named field's declared @sortableDefaultOrder; "asc" when it
+  // declares none. The explicit branch is untouched, so a caller-supplied order always
+  // beats the declaration.
+  const dir = (dirRaw ?? SORT_DEFAULT_ORDER[field] ?? "asc").toLowerCase();
   if (dir !== "asc" && dir !== "desc") return "invalid";
   return [field, dir];
 }

@@ -22,6 +22,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
+  FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
   DOC_ATTR_TITLE,
 } from "@metaobjectsdev/metadata/constants";
 import type { GridConfig } from "./fetcher.js";
@@ -74,6 +75,32 @@ function viewKind(field: MetaField): string {
 }
 
 /**
+ * A grid's initial sort DIRECTION: the layout's `@defaultSortOrder` when it declares one,
+ * otherwise the named field's `@sortableDefaultOrder`, otherwise ascending.
+ *
+ * This is the runtime twin of `resolveGridDefaultSort()` in `codegen-ts`'s
+ * `filter-shared.ts`, and it must stay identical to it. It is duplicated rather than
+ * imported because that module lives in a SERVER package: `runtime-web` is the pure
+ * browser core and may depend only on `@metaobjectsdev/metadata` (see #287 — a single
+ * value import from the wrong entry point made every browser bundle fail).
+ *
+ * Reading only `@defaultSortOrder` — which this did — makes the runtime-built grid sort
+ * the opposite way from the generated grid AND from the endpoint it queries, for the one
+ * case the attribute exists to cover: a layout that names a field and lets the field say
+ * which way it runs.
+ *
+ * ADR-0039: `attr()` resolves, so a `@sortableDefaultOrder` inherited via `extends` counts.
+ */
+function gridDefaultSortOrder(
+  declaredOrder: unknown,
+  field: MetaField | undefined,
+): "asc" | "desc" {
+  if (declaredOrder === "asc" || declaredOrder === "desc") return declaredOrder;
+  const fromField = field?.attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER);
+  return fromField === "desc" ? "desc" : "asc";
+}
+
+/**
  * Build a grid (config + columns) from a MetaObject at runtime.
  *
  * If the object declares a `dataGrid` layout (optionally selected by `gridName`),
@@ -87,7 +114,12 @@ export function buildGrid(meta: MetaObject, gridName?: string): MetaGrid {
 
   const fieldsByName = new Map(meta.fields().map((f) => [f.name, f] as const));
 
-  const columnsAttr = layout?.ownAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
+  // attr(), not ownAttr(), on every layout read below — same ADR-0039 reason as
+  // firstView/header above, which this file already applies to its FIELD reads: a
+  // `layout.dataGrid` that inherits its attrs via `extends` keeps them on the parent,
+  // and an own-only read silently drops every one of them (no columns, default page
+  // size, no initial sort) on a grid that plainly declares them.
+  const columnsAttr = layout?.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
   const names: string[] = Array.isArray(columnsAttr)
     ? columnsAttr.filter((x): x is string => typeof x === "string")
     : meta.fields().map((f) => f.name);
@@ -97,16 +129,16 @@ export function buildGrid(meta: MetaObject, gridName?: string): MetaGrid {
     .filter((f): f is MetaField => f !== undefined)
     .map((f) => ({ field: f.name, header: header(f), viewKind: viewKind(f) }));
 
-  const pageSizeAttr = layout?.ownAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
-  const sortField = layout?.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
-  const sortOrder = layout?.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+  const pageSizeAttr = layout?.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
+  const sortField = layout?.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+  const sortOrder = layout?.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
 
   const config: GridConfig = {
     name: layout?.name ?? gridName ?? DEFAULT_GRID_NAME,
     pageSize: typeof pageSizeAttr === "number" ? pageSizeAttr : DEFAULT_PAGE_SIZE,
-    filterable: layout?.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
+    filterable: layout?.attr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
     ...(typeof sortField === "string"
-      ? { defaultSort: { field: sortField, order: sortOrder === "desc" ? "desc" : "asc" } }
+      ? { defaultSort: { field: sortField, order: gridDefaultSortOrder(sortOrder, fieldsByName.get(sortField)) } }
       : {}),
   };
 

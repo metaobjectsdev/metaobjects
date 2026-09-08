@@ -39,7 +39,7 @@ export const UI_DEFINITION: ProviderDefinition = {
             "asc",
             "desc"
           ],
-          "description": "Default sort direction applied when this field is the default sort field."
+          "description": "Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to 'asc'."
         },
         {
           "type": "attr",
@@ -96,7 +96,7 @@ export const UI_DEFINITION: ProviderDefinition = {
             "asc",
             "desc"
           ],
-          "description": "Initial sort direction for the default sort field: 'asc' or 'desc'."
+          "description": "Initial sort direction for the default sort field: 'asc' or 'desc'. When omitted, the named field's @sortableDefaultOrder applies."
         },
         {
           "type": "attr",

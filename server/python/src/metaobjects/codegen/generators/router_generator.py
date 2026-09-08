@@ -201,6 +201,27 @@ def _py_set_literal(names: list[str], *, frozen: bool = False) -> str:
     return f"frozenset({body})" if frozen else body
 
 
+def _py_sort_default_order_literal(fields: list[MetaField]) -> str:
+    """A ``dict[str, str]`` literal of each field's DECLARED ``@sortableDefaultOrder``.
+
+    Declared orders only — a field with no ``@sortableDefaultOrder`` is absent and the
+    generated ``_parse_sort`` supplies ``"asc"``. That split matches the other four
+    ports: one place per port spells the fallback, so no port can drift by baking a
+    different default into its map.
+
+    ADR-0039: ``attrs()`` is the RESOLVING accessor in Python (``attr()`` is own-only),
+    so an ``@sortableDefaultOrder`` inherited via ``extends`` is honoured.
+    """
+    rows = []
+    for f in fields:
+        v = f.attrs().get(fc.FIELD_ATTR_SORTABLE_DEFAULT_ORDER)
+        if v in ("asc", "desc"):
+            rows.append(f'    "{f.name}": "{v}",\n')
+    if not rows:
+        return "{}"
+    return "{\n" + "".join(rows) + "}"
+
+
 def _pk_py_type(entity: MetaObject) -> PyType:
     """The Python type of the entity's primary-key path/id parameter, derived
     from the PK field's declared subtype via ``type_map.py_type_for`` — the same
@@ -542,14 +563,17 @@ class RouterGenerator:
 
         # Sort allowlist = base scalar fields ∪ every subtype's own scalar fields, so a
         # per-subtype list can sort on a subtype-only column too. Stable order.
-        sort_fields: list[str] = [f.name for f in _scalar_fields(entity)]
+        sort_field_nodes = list(_scalar_fields(entity))
+        sort_fields: list[str] = [f.name for f in sort_field_nodes]
         seen = set(sort_fields)
         for st in plan.subtypes:
             for f in _scalar_fields(st.entity):
                 if f.name not in seen:
                     seen.add(f.name)
                     sort_fields.append(f.name)
+                    sort_field_nodes.append(f)
         sort_set_body = _py_set_literal(sort_fields)
+        sort_default_order_body = _py_sort_default_order_literal(sort_field_nodes)
         # FR-035 PATCH-2: @required fields across the base AND every subtype — an
         # explicit null on any of these is a 400 (the per-subtype update handlers
         # guard against it before the repo call). Union, stable order.
@@ -632,6 +656,9 @@ class RouterGenerator:
         parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
         parts.append("")
         parts.append("")
+        parts.append(f"_SORT_DEFAULT_ORDER: dict[str, str] = {sort_default_order_body}")
+        parts.append("")
+        parts.append("")
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
         parts.append("")
         parts.append("")
@@ -646,7 +673,12 @@ class RouterGenerator:
         parts.append('    parts = raw.split(":", 1)')
         parts.append("    if not parts or parts[0] not in _SORT_ALLOWLIST:")
         parts.append("        return None")
-        parts.append('    direction = parts[1].lower() if len(parts) == 2 else "asc"')
+        # `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+        # The "asc" fallback stays at the READ, one place per port.
+        parts.append('    direction = (')
+        parts.append('        parts[1].lower() if len(parts) == 2')
+        parts.append('        else _SORT_DEFAULT_ORDER.get(parts[0], "asc")')
+        parts.append('    )')
         parts.append('    if direction not in ("asc", "desc"):')
         parts.append("        return None")
         parts.append("    return _SortClause(field=parts[0], direction=direction)")
@@ -847,13 +879,15 @@ class RouterGenerator:
         pk = _pk_py_type(entity)
         pk_type = pk.expr
         repo_class = f"{short_name}Repository"
-        sort_fields = [f.name for f in _scalar_fields(entity)]
+        sort_field_nodes = list(_scalar_fields(entity))
+        sort_fields = [f.name for f in sort_field_nodes]
         upper = short_name.upper()
         fields_const = f"{upper}_FILTER_FIELDS"
         ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
         allowlist_module = f"{snake}_filter_allowlist"
 
         sort_set_body = _py_set_literal(sort_fields)
+        sort_default_order_body = _py_sort_default_order_literal(sort_field_nodes)
         # FR-035 PATCH-2: an explicit null on a @required field (scalar or jsonb)
         # is a 400 — the update handler guards these before the repo call.
         required_set_body = _py_set_literal(_required_field_names(entity), frozen=True)
@@ -928,6 +962,9 @@ class RouterGenerator:
         parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
         parts.append("")
         parts.append("")
+        parts.append(f"_SORT_DEFAULT_ORDER: dict[str, str] = {sort_default_order_body}")
+        parts.append("")
+        parts.append("")
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
         parts.append("")
         parts.append("")
@@ -942,7 +979,12 @@ class RouterGenerator:
         parts.append('    parts = raw.split(":", 1)')
         parts.append("    if not parts or parts[0] not in _SORT_ALLOWLIST:")
         parts.append("        return None")
-        parts.append('    direction = parts[1].lower() if len(parts) == 2 else "asc"')
+        # `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+        # The "asc" fallback stays at the READ, one place per port.
+        parts.append('    direction = (')
+        parts.append('        parts[1].lower() if len(parts) == 2')
+        parts.append('        else _SORT_DEFAULT_ORDER.get(parts[0], "asc")')
+        parts.append('    )')
         parts.append('    if direction not in ("asc", "desc"):')
         parts.append("        return None")
         parts.append("    return _SortClause(field=parts[0], direction=direction)")

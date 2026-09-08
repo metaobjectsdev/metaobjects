@@ -144,6 +144,16 @@ feature demand (it is a consistency/safety divergence, not a capability).
 
 - `sort=<field>:asc|desc` — single sort key (multi-sort not in the
   default contract). Field must appear in `<Entity>SortAllowlist`.
+- `sort=<field>` — the `:asc|desc` half is OPTIONAL, and when omitted the
+  direction comes from that field's `@sortableDefaultOrder`, defaulting to
+  `asc` for a field that declares none. An order the caller DOES supply always
+  wins: the declaration fills in a missing direction, it never overrides a
+  present one. Applies per named field, so `?sort=name` on a model where
+  `createdAt` declares `desc` still sorts `name` ascending.
+  Guarded cross-port by the `sort-default-order` scenario
+  (`fixtures/api-contract-conformance/scenarios/`), whose three arms cover the
+  declared field, an explicit order beating it, and an undeclared field falling
+  back to `asc`.
 - `limit=N` — page size.
 - `offset=N` — page offset.
 - `withCount=1` — opt-in flag that switches the list response from
@@ -389,9 +399,13 @@ port is the contract; deviation is a port bug.
 The URL-grammar half (qs parsing, route mounting, status codes, JSON
 envelope shape) is exercised by the cross-port corpus at
 [`fixtures/api-contract-conformance/`](../../fixtures/api-contract-conformance/)
-(10 scenarios — `list-empty`, `list-with-pagination`, `list-with-withcount`,
-`sort-asc-desc`, `get-by-id`, `get-by-id-not-found`, `create-201`,
-`update-patch-and-put`, `delete-204-and-404`, `invalid-sort-400`). Each
+The scenario count is deliberately not restated here — it was stale in this
+sentence the last time it was written, and `ls
+fixtures/api-contract-conformance/scenarios/` is always right. Representative
+cases: `list-empty`, `list-with-pagination`, `list-with-withcount`,
+`sort-asc-desc`, `sort-default-order`, `get-by-id`, `create-201`,
+`update-patch-and-put`, `delete-204-and-404`, `invalid-sort-400`, and the
+`filter-*` operator family. Each
 port's runner spins up a real HTTP server hosting its emitted routes for the
 canonical `Author` entity, walks the scenarios, and asserts byte-shape
 identical responses against the cross-port `expect.body.*` vocabulary.

@@ -64,6 +64,51 @@ describe("buildGrid (metadata-driven, generic)", () => {
     });
   });
 
+  test("a layout naming a field with NO order takes the field's @sortableDefaultOrder", async () => {
+    // The test above declares BOTH layout attrs, so it can only ever exercise the
+    // explicit branch — the same blind spot that let every other grid tier ship with no
+    // read for @sortableDefaultOrder. Here the layout names a field and says nothing
+    // about direction, so the FIELD decides. A runtime grid answering "asc" here would
+    // render the opposite way from both the generated grid and the endpoint it queries.
+    const doc = SUBSCRIBER([
+      { "layout.dataGrid": { name: "default", "@defaultSortField": "createdAt" } },
+    ]) as unknown as {
+      "metadata.root": { children: { "object.entity": { children: unknown[] } }[] };
+    };
+    doc["metadata.root"].children[0]!["object.entity"].children.unshift({
+      "field.timestamp": { name: "createdAt", "@sortableDefaultOrder": "desc" },
+    });
+
+    const { config } = buildGrid(await loadObject(doc, "Subscriber"));
+    expect(config.defaultSort).toEqual({ field: "createdAt", order: "desc" });
+  });
+
+  test("a layout order still WINS over the field's declared one", async () => {
+    // Precedence, the other half of the contract: the field fills in a MISSING
+    // direction, it never overrides a present one.
+    const doc = SUBSCRIBER([
+      { "layout.dataGrid": {
+        name: "default",
+        "@defaultSortField": "createdAt",
+        "@defaultSortOrder": "asc",
+      } },
+    ]) as unknown as {
+      "metadata.root": { children: { "object.entity": { children: unknown[] } }[] };
+    };
+    doc["metadata.root"].children[0]!["object.entity"].children.unshift({
+      "field.timestamp": { name: "createdAt", "@sortableDefaultOrder": "desc" },
+    });
+
+    const { config } = buildGrid(await loadObject(doc, "Subscriber"));
+    expect(config.defaultSort).toEqual({ field: "createdAt", order: "asc" });
+  });
+
+  test("a named field declaring nothing falls back to ascending", async () => {
+    const grid = { "layout.dataGrid": { name: "default", "@defaultSortField": "firstName" } };
+    const { config } = buildGrid(await loadObject(SUBSCRIBER([grid]), "Subscriber"));
+    expect(config.defaultSort).toEqual({ field: "firstName", order: "asc" });
+  });
+
   test("is generic — the SAME call works on a different object with no shared names", async () => {
     const doc = { "metadata.root": { package: "demo", children: [
       { "object.entity": { name: "Invoice", children: [

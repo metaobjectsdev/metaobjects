@@ -1,0 +1,54 @@
+name: sort-default-order
+description: >
+  The bare-`?sort=<field>` door: when a request names a sortable field and omits
+  the `:asc|desc` order, the direction comes from that field's declared
+  @sortableDefaultOrder. `Author.createdAt` declares "desc" in meta.json, so
+  `?sort=createdAt` orders newest-first — WITHOUT the client saying so.
+
+  WHY THIS CASE IS NOT REDUNDANT WITH sort-asc-desc: that scenario always spells
+  `name:asc` / `name:desc`, so it exercises the parser's explicit branch and can
+  never see the omitted-order branch. `@sortableDefaultOrder` is registered
+  vocabulary in all five ports and lives entirely in that unexercised branch —
+  which is how it shipped with a write side, an emitted allowlist entry, and no
+  read at all. A corpus whose only sort case spells the direction cannot express
+  the defect.
+
+  The two arms together also pin the PRECEDENCE, which is the other half of the
+  contract: r2 asks for asc explicitly on the same field that declares desc. A
+  port that applied the declared default unconditionally — overriding what the
+  caller asked for — would pass r1 and fail r2. The declaration fills in a
+  missing order; it does not fight a present one.
+
+  Both arms are order-sensitive on purpose, and the seed makes that meaningful:
+  createdAt ascends with id (Ada 01-01 … Edsger 01-05), so a DESC result is not
+  producible by a server that ignored `sort` and echoed insertion order, and it
+  differs from the id/name orderings every other scenario in this corpus yields.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?sort=createdAt
+    expect:
+      status: 200
+      body:
+        # No `:dir` supplied — createdAt's declared @sortableDefaultOrder governs.
+        # Newest first: Edsger (01-05), Donald (01-04), Grace (01-03), Alan (01-02), Ada (01-01).
+        names: ["Edsger Dijkstra", "Donald Knuth", "Grace Hopper", "Alan Turing", "Ada Lovelace"]
+  - id: r2
+    method: GET
+    path: /api/authors?sort=createdAt:asc
+    expect:
+      status: 200
+      body:
+        # An explicit order beats the declared default, even on the same field.
+        names: ["Ada Lovelace", "Alan Turing", "Grace Hopper", "Donald Knuth", "Edsger Dijkstra"]
+  - id: r3
+    method: GET
+    path: /api/authors?sort=name
+    expect:
+      status: 200
+      body:
+        # `name` declares NO @sortableDefaultOrder, so the bare form falls back to
+        # ascending. This is the arm that catches a port which baked a default into
+        # its allowlist artifact instead of leaving the fallback at the read: the
+        # undeclared field must still come back ascending, not inherit anything.
+        names: ["Ada Lovelace", "Alan Turing", "Donald Knuth", "Edsger Dijkstra", "Grace Hopper"]

@@ -36,7 +36,7 @@ A metadata-driven data grid attached to an object: declares the displayed column
 | --- | --- | --- | --- | --- | --- | --- |
 | `@columns` | string[] | no |  |  | metaobjects-ui | Flat ordered list of field names to display as grid columns. |
 | `@defaultSortField` | string | no |  |  | metaobjects-ui | Field name the grid is sorted by on initial render. Must reference an actual field on the entity. |
-| `@defaultSortOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Initial sort direction for the default sort field: 'asc' or 'desc'. |
+| `@defaultSortOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Initial sort direction for the default sort field: 'asc' or 'desc'. When omitted, the named field's @sortableDefaultOrder applies. |
 | `@filter` | filter | no |  |  | metaobjects-ui | Structured preset filter object applied to the grid at the metadata level. Desugared to canonical { field: { op: value } } form at parse time. |
 | `@filterable` | boolean | no |  |  | metaobjects-ui | When true, the generated grid exposes column filtering UI. |
 | `@pageSize` | int | no |  |  | metaobjects-ui | Number of rows per page in the generated data grid. |

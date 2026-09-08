@@ -28,6 +28,15 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     private static readonly HashSet<string> SortAllowlist = new(StringComparer.Ordinal)
         { "id", "name", "createdAt" };
 
+    // Cross-port contract: each field's DECLARED @sortableDefaultOrder — the direction a
+    // `?sort=<field>` carrying no `:dir` takes. Hardcoded from meta.json for the same
+    // reason the allowlist above is: this is the hand-rolled fixed point the generated
+    // servers are measured against, so it must not reach the generator's code to agree
+    // with it. A field absent here declares nothing and takes the "asc" fallback at the
+    // read — one place per port spells the default.
+    private static readonly Dictionary<string, string> SortDefaultOrder = new(StringComparer.Ordinal)
+        { ["createdAt"] = "desc" };
+
     // Cross-port FILTER_ALLOWLIST — mirrors the Java/Kotlin api-contract server.
     // Per FR-009 §5 the operator set per field is gated by its subtype:
     //   string                     → eq, ne, in, like, isNull
@@ -250,7 +259,12 @@ internal sealed class AuthorApiServer : IAsyncDisposable
                 await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_sort" });
                 return;
             }
-            string dir = parts.Length > 1 ? parts[1].ToLowerInvariant() : "asc";
+            // No `:dir` supplied → the named field's declared @sortableDefaultOrder, and
+            // "asc" when it declares none. The explicit branch is untouched, so a
+            // caller-supplied order always beats the declaration.
+            string dir = parts.Length > 1
+                ? parts[1].ToLowerInvariant()
+                : (SortDefaultOrder.TryGetValue(field, out var declared) ? declared : "asc");
             if (dir != "asc" && dir != "desc")
             {
                 await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_sort" });

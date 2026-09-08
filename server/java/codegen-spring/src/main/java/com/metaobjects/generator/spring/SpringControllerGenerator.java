@@ -216,6 +216,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append('"').append(sortFields.get(i)).append('"');
         }
         src.append(");\n\n");
+        appendSortDefaultOrders(src, entity, sortFields);
 
         // Repository wiring — constructor injection (Spring's recommended idiom; avoids
         // field-injection magic, plays well with final fields + final test seams). The
@@ -378,7 +379,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    private static ").append(repoName).append(".SortClause parseSort(String raw) {\n");
         src.append("        String[] parts = raw.split(\":\", 2);\n");
         src.append("        if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;\n");
-        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase() : \"asc\";\n");
+        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+        // The "asc" fallback stays HERE, at the read, so it is spelled once per port and
+        // SORT_DEFAULT_ORDER carries declarations only.
+        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase()\n");
+        src.append("            : SORT_DEFAULT_ORDER.getOrDefault(parts[0], \"asc\");\n");
         src.append("        if (!dir.equals(\"asc\") && !dir.equals(\"desc\")) return null;\n");
         src.append("        return new ").append(repoName).append(".SortClause(parts[0], dir);\n");
         src.append("    }\n");
@@ -505,6 +510,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append('"').append(sortFields.get(i)).append('"');
         }
         src.append(");\n\n");
+        // The polymorphic sort surface is the BASE's own columns, so the declared orders
+        // are read off the base too — same owner the allowlist above was built from.
+        appendSortDefaultOrders(src, base, sortFields);
 
         // FR-036 Program B: constructor-inject the ObjectMapper (binds each present PATCH value via
         // <Sub>Patch.fromJson, same wire codecs as create) + the jakarta Validator (per-field
@@ -702,7 +710,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    private static ").append(repoName).append(".SortClause parseSort(String raw) {\n");
         src.append("        String[] parts = raw.split(\":\", 2);\n");
         src.append("        if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;\n");
-        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase() : \"asc\";\n");
+        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+        // The "asc" fallback stays HERE, at the read, so it is spelled once per port and
+        // SORT_DEFAULT_ORDER carries declarations only.
+        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase()\n");
+        src.append("            : SORT_DEFAULT_ORDER.getOrDefault(parts[0], \"asc\");\n");
         src.append("        if (!dir.equals(\"asc\") && !dir.equals(\"desc\")) return null;\n");
         src.append("        return new ").append(repoName).append(".SortClause(parts[0], dir);\n");
         src.append("    }\n");
@@ -747,4 +759,50 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     protected String getSingleOutputFilename(MetaObject md) {
         return SpringNaming.splitFqn(md.getName())[1] + "Controller.java";
     }
+
+    /**
+     * Emit the per-entity {@code SORT_DEFAULT_ORDER} constant the generated {@code parseSort}
+     * reads for a {@code ?sort=field} carrying no {@code :order}.
+     *
+     * <p>Carries DECLARED orders only — a field with no {@code @sortableDefaultOrder} is absent
+     * and the generated read supplies {@code "asc"}. That split is deliberate and matches the
+     * other four ports: one place per port spells the fallback, so a port cannot drift by
+     * baking a different default into its allowlist.
+     *
+     * <p>ADR-0039: resolving accessor — {@code @sortableDefaultOrder} may be inherited via
+     * {@code extends}.
+     *
+     * <p>Emitted as {@code Map.ofEntries(Map.entry(..), ..)}, deliberately NOT {@code Map.of(..)}.
+     * {@code Map.of} is a set of fixed-arity overloads topping out at TEN pairs with no varargs
+     * form — alternating key/value types make one impossible — so an entity whose eleventh field
+     * declares {@code @sortableDefaultOrder} emits a controller that does not compile
+     * ({@code no suitable method found for of(..)}). The sibling {@code SORT_ALLOWLIST} above is
+     * safe at any size only because {@code Set.of} DOES have a {@code Set.of(E...)} varargs
+     * overload, which is what makes {@code Map.of} look safe by analogy when it is not.
+     * {@code Map.ofEntries} takes varargs and has no ceiling; it also infers K and V from the
+     * assignment target at zero entries, so the empty case — the common one, since most models
+     * declare no {@code @sortableDefaultOrder} at all — needs no special branch.
+     */
+    private static void appendSortDefaultOrders(StringBuilder src, MetaObject owner, List<String> sortFields) {
+        // Walk the owner's OWN field list and keep the sortable ones, rather than looking each
+        // allowlist name back up. `MetaObject.getMetaField(name)` does not return null for an
+        // absent name — it THROWS MetaDataNotFoundException — so a name-keyed lookup turns any
+        // future divergence between the allowlist and this map into an aborted build instead of
+        // a skipped entry. Today both are sourced from this same owner, so nothing diverges;
+        // this keeps that from being load-bearing. Mirrors the Kotlin sibling's `firstOrNull`.
+        java.util.Set<String> sortable = new java.util.LinkedHashSet<>(sortFields);
+        StringBuilder entries = new StringBuilder();
+        for (MetaField f : owner.getMetaFields()) {
+            String name = f.getName();
+            if (!sortable.contains(name)) continue;
+            if (!f.hasMetaAttr(MetaField.ATTR_SORTABLE_DEFAULT_ORDER)) continue;
+            String v = f.getMetaAttr(MetaField.ATTR_SORTABLE_DEFAULT_ORDER).getValueAsString();
+            if (!"asc".equals(v) && !"desc".equals(v)) continue;
+            if (entries.length() > 0) entries.append(", ");
+            entries.append("Map.entry(\"").append(name).append("\", \"").append(v).append("\")");
+        }
+        src.append("    private static final Map<String, String> SORT_DEFAULT_ORDER = Map.ofEntries(")
+           .append(entries).append(");\n\n");
+    }
+
 }
