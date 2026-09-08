@@ -1055,6 +1055,21 @@ def _relative_set(root: Path) -> dict[str, str]:
     return files
 
 
+def _out_prefix(out_dir: str, project_root: Path) -> str:
+    """The out dir, relative to the project — the translation between this diff's
+    out-dir-relative keys and the manifest's project-relative ones.
+
+    BOTH SIDES RESOLVED, and that is the whole content of this function. `project_root`
+    arrives resolved; relpath from a resolved anchor to an unresolved path is not the
+    path between the two directories, and under a directory symlink it walks OUT of the
+    project. Every lookup then misses, `is_ours` is false for every file, and the gate
+    prints a clean verdict over stale output — silent in the direction that matters.
+    It is written once here rather than at each of the three call sites, because three
+    spellings of one translation is how they came to disagree in the first place.
+    """
+    return os.path.relpath(Path(out_dir).resolve(), project_root)
+
+
 def _is_ours_for(gen_state_dir: str | None, out_prefix: str = ""):
     """Jurisdiction predicate for the ``extra`` verdict: did WE write this path?
 
@@ -1226,7 +1241,7 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     project_root = project_root_for(args.metadata_dir)
     return _diff_report(
         expected, committed, gen_state_dir_for(args.metadata_dir),
-        os.path.relpath(Path(args.out).resolve(), project_root),
+        _out_prefix(args.out, project_root),
     )
 
 
@@ -1283,7 +1298,7 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
     # must be built from that, not from args.metadata_dir (None here by definition).
     return _diff_report(
         expected, committed, str(root_dir.resolve() / ".metaobjects" / ".gen-state"),
-        os.path.relpath(Path(args.out).resolve(), root_dir.resolve()),
+        _out_prefix(args.out, root_dir.resolve()),
     )
 
 
@@ -1406,9 +1421,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             # their identically-named files apart is the one anchored on the project.
             is_ours = _is_ours_for(
                 gen_state_dir_for(config.metadata_dir()),
-                os.path.relpath(
-                    Path(real_outdir).resolve(), project_root_for(config.metadata_dir())
-                ),
+                _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
             )
             extra = sorted(k for k in committed if k not in expected and is_ours(k))
 

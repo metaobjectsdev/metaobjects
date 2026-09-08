@@ -141,7 +141,20 @@ def run_gen(
         # two runs with different --out cannot collide on one key inside the single
         # manifest that is anchored on that project. `rel` rides along as the legacy
         # spelling so an existing manifest keeps working and converges on the new one.
-        key = os.path.relpath(full, config.project_root) if config.project_root else rel
+        # BOTH SIDES RESOLVED. `project_root` arrives resolved (project_root_for calls
+        # .resolve()) while `full` is built from the raw `out_dir`, and relpath between a
+        # resolved anchor and an unresolved path is not the path between the two
+        # directories — under a directory symlink it walks OUT of the project
+        # (`../link/gen/X.py`). Every key then points outside, `_is_ours_for` matches
+        # none of them, and `verify --codegen` prints `in sync (0 file(s))` over stale
+        # output. The pre-existing `relpath(full, out_dir)` was immune by accident: both
+        # sides came from the same unresolved string, so it was symmetric. Symmetry is
+        # the property, and resolving both is how it is kept deliberately.
+        key = (
+            os.path.relpath(os.path.realpath(full), config.project_root)
+            if config.project_root
+            else rel
+        )
         status = decide_and_write(
             full,
             content,

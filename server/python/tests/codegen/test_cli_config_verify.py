@@ -290,3 +290,57 @@ def test_config_mode_ignores_a_discovered_spec(tmp_path: Path) -> None:
     )
     assert main(["gen", "--config", str(cfg)]) == 0
     assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
+
+
+# --- the `extra` verdict at the two rungs the flag-mode test cannot reach ------------
+#
+# Manifest keys are project-root-relative while this diff is keyed relative to `--out`;
+# `out_prefix` is what translates one into the other, and `_is_ours_for` needs it to find
+# the record proving we wrote a file. It is threaded at THREE call sites and only the
+# explicit-flag rung was gated (`test_verify_codegen_still_convicts_output_it_did_write`).
+#
+# The uncovered direction fails silently, which is why it needs its own case per rung: a
+# lookup that finds nothing makes every file "not ours", so `extra` empties and the gate
+# prints a CLEAN verdict over stale committed output. Both cases below were confirmed to
+# pass with `out_prefix` removed at their rung before they were written — i.e. the whole
+# Python codegen suite could not see it.
+
+
+def test_neutral_fallback_convicts_output_it_did_write(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The `.metaobjects/config.json` `sources` rung."""
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "meta.fitness.json").write_text(FITNESS.read_text())
+    d = tmp_path / ".metaobjects"
+    d.mkdir()
+    (d / "config.json").write_text(
+        '{"schema_version": 1, "sources": [{"path": "model"}]}'
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen", "--out", "gen/models"]) == 0
+    assert (tmp_path / "gen/models/Program.py").exists()
+
+    # A regen no longer emits Program.py, but it IS committed and IS in the manifest —
+    # the definition of stale output.
+    (model / "meta.fitness.json").write_text(
+        '{"metadata.root": {"package": "fitness", "children": []}}'
+    )
+    assert main(["verify", "--codegen", "--out", "gen/models"]) == 1
+
+
+def test_config_mode_convicts_output_it_did_write(tmp_path: Path) -> None:
+    """The declarative `metaobjects.config.yaml` per-target rung — the one where the
+    prefix matters most, because every target has its own outDir and all of them share
+    ONE manifest."""
+    cfg = _project(tmp_path)
+    assert main(["gen", "--config", str(cfg)]) == 0
+    assert (tmp_path / "gen/models/Program.py").exists()
+
+    # Narrow `models` to one entity: Week.py stays committed and recorded while a fresh
+    # regen no longer emits it.
+    cfg.write_text(
+        TWO_TARGETS.replace("entities: [Program, Week]", "entities: [Program]")
+    )
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 1

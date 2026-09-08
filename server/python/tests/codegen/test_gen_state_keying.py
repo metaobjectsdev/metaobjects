@@ -126,5 +126,57 @@ def test_read_prefers_the_new_key_over_the_legacy_one(tmp_path: Path) -> None:
         json.dumps({"gen/names.py": "new", "names.py": "legacy"}), encoding="utf-8"
     )
     assert read_generated_hash(str(gen_state), "gen/names.py", "names.py") == "new"
-    # And the legacy key alone still answers, for a file not yet re-recorded.
-    assert read_generated_hash(str(gen_state), "gen/other.py", "other.py") is None
+    # The legacy key alone still answers, for a file not yet re-recorded under the new
+    # spelling: the new key is absent, so the fallback is what finds the record.
+    assert read_generated_hash(str(gen_state), "gen/not-yet-rekeyed.py", "names.py") == "legacy"
+    # A key present in NEITHER spelling stays unrecorded — the fallback must not become a
+    # way to say yes to a file nobody recorded.
+    assert read_generated_hash(str(gen_state), "gen/absent.py", "absent.py") is None
+
+
+def test_a_project_reached_through_a_symlink_keeps_its_jurisdiction(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The anchor and the path must be resolved on the SAME side.
+
+    ``project_root`` arrives resolved; ``full`` is built from the raw ``out_dir``. Relpath
+    between a resolved anchor and an unresolved path is not the path between the two
+    directories — under a directory symlink it walks OUT of the project, so every key
+    read ``../link/gen/X.py``, ``_is_ours_for`` matched none of them, and
+    ``verify --codegen`` printed ``in sync (0 file(s))`` over 68 genuinely stale files.
+
+    The spelling this replaced (``relpath(full, out_dir)``) was immune by ACCIDENT: both
+    sides came from one unresolved string, so it was symmetric. Symmetry is the property;
+    this pins it deliberately. ``/tmp`` is a symlink on macOS, so any project there hits
+    it directly.
+    """
+    real = tmp_path / "proj"
+    (real / "metaobjects").mkdir(parents=True)
+    fixture = (
+        Path(__file__).parents[4]
+        / "fixtures"
+        / "persistence-conformance"
+        / "canonical"
+        / "meta.fitness.json"
+    )
+    meta_file = real / "metaobjects" / "meta.fitness.json"
+    meta_file.write_text(fixture.read_text(), encoding="utf-8")
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    from metaobjects.cli import main
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen", str(link / "metaobjects"), "--out", str(link / "gen")]) == 0
+
+    manifest = json.loads(
+        (real / ".metaobjects" / ".gen-state" / ".hashes.json").read_text(encoding="utf-8")
+    )
+    assert manifest, "gen recorded no manifest"
+    # Not one key escapes the project. A `../` key is the whole defect.
+    assert not any(k.startswith("..") for k in manifest), sorted(manifest)[:3]
+    assert all(k.startswith("gen/") for k in manifest), sorted(manifest)[:3]
+
+    # And the gate still convicts stale output reached through the link.
+    meta_file.write_text('{"metadata.root": {"package": "fitness", "children": []}}')
+    assert main(["verify", "--codegen", str(link / "metaobjects"), "--out", str(link / "gen")]) == 1

@@ -5,15 +5,19 @@
 // hashes identically on every port.
 //
 // The KEYS deliberately do not match across ports, and a manifest is NOT portable
-// between them. TS keys by path relative to the PROJECT ROOT because it supports
-// multiple output targets; C# and Python key relative to their single out dir. An
-// earlier version of this comment claimed a conformance fixture could compare two
-// ports' manifests directly — it cannot, and the claim was never true.
+// between them. TS and Python key by path relative to the PROJECT ROOT (TS because it
+// supports multiple output targets; Python because its manifest is ANCHORED on the
+// project, so an out-dir-relative key made two runs with different --out collide on one
+// entry). C# alone still keys relative to its single out dir. An earlier version of this
+// comment claimed a conformance fixture could compare two ports' manifests directly — it
+// cannot, and the claim was never true.
 //
 // One consequence worth knowing: because the key here is out-dir-relative, running gen
 // twice with different out dirs against ONE gen-state dir collides two distinct files
-// onto one key. Point each out dir at its own gen-state dir, or use the TS toolchain,
-// which is project-rooted and does not have the ambiguity.
+// onto one key — and the advice this comment used to give ("point each out dir at its own
+// gen-state dir") is not followable, because the gen-state dir is DERIVED from the project,
+// not configured. C# has the same latent ambiguity Python just fixed; closing it here means
+// the same re-key plus a legacy-key fallback, and it is not done yet.
 //
 // This file is meant to be COMMITTED. It is one hash per generated path — small and
 // reviewable — where a full snapshot of previously-generated content would be a second
