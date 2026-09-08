@@ -19,6 +19,7 @@ import type { ObjectManager } from "../object-manager.js";
 import type { Row } from "../persistence-driver.js";
 import type { RouteShorthandOptions } from "fastify";
 import type { SortAllowlist } from "../drizzle-fastify/filter-allowlist.js";
+import { sortOrderSpec } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode } from "../drizzle-fastify/util.js";
 
 // ---------------------------------------------------------------------------
@@ -155,7 +156,11 @@ function parseSort(
 ): { orderBy?: [string, "asc" | "desc"]; error?: string } {
   const [field, orderRaw] = spec.split(":");
   if (!field || !sortAllowlist[field]) return { error: "sort.unknown_field" };
-  const order = (orderRaw ?? "asc").toLowerCase();
+  // Precedence (caller order > declared @sortableDefaultOrder > asc) comes from the
+  // shared sortOrderSpec, so this mount cannot answer one declaration differently from
+  // the drizzle mount again. Validation stays here because this mount reports a bad
+  // order as an error CODE rather than a thrown FilterParseError.
+  const order = sortOrderSpec(sortAllowlist, field, orderRaw).toLowerCase();
   if (order !== "asc" && order !== "desc") return { error: "sort.invalid_order" };
   return { orderBy: [field, order] };
 }

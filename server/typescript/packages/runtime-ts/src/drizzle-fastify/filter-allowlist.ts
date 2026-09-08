@@ -41,3 +41,33 @@ export interface SortFieldRule {
 }
 
 export type SortAllowlist = Readonly<Record<string, SortFieldRule>>;
+
+/**
+ * The direction a `?sort=<field>` runs: the caller's order if it gave one, else the
+ * field's DECLARED `@sortableDefaultOrder`, else ascending.
+ *
+ * One function because there are two mounts that need it — the drizzle-fastify one and
+ * the plain-fastify ObjectManager one — and when the declared-default read first landed
+ * it landed in only the former, so the same query string against the same generated
+ * allowlist returned rows in different orders depending on which mount a project
+ * mounted. Delegating keeps that structurally impossible rather than merely tested.
+ *
+ * Returns the RAW string to interpret — it does not normalize or validate. That is
+ * deliberate: a caller-supplied `?sort=x:bogus` must still 400, and a helper that
+ * returned a tidy `"asc" | "desc"` would have to guess in order to be total, silently
+ * accepting input both mounts reject today. Normalizing and reporting a bad order stays
+ * with the caller, because the two mounts report it differently — one throws
+ * `FilterParseError`, the other returns an error code — and that difference is part of
+ * each one's contract. What is shared is only the precedence, which is the part that had
+ * drifted.
+ */
+export function sortOrderSpec(
+  allowlist: SortAllowlist,
+  field: string,
+  supplied: string | undefined,
+): string {
+  // The `?? "asc"` here is the ONLY place TypeScript's runtime spells the fallback. An
+  // allowlist artifact carries declarations and nothing else — baking the default into
+  // it would put the answer in two places per port, which is how a port drifts.
+  return supplied ?? allowlist[field]?.defaultOrder ?? "asc";
+}

@@ -8,11 +8,15 @@ import type { SortAllowlist } from "../../src/drizzle-fastify/filter-allowlist.j
 // In-memory fake ObjectManager — exercises only the surface the plain fastify
 // mount calls (findMany + count). Keeps the test off a real DB so it stays a
 // fast unit test of the route-layer contract (withCount / invalid_sort).
-type Author = { id: number; name: string };
+type Author = { id: number; name: string; createdAt: string };
+// createdAt is deliberately ordered NEITHER like `name` nor like `id`, so every arm
+// below yields a distinct permutation: a server that ignored `sort` and echoed id
+// order could not accidentally match an expected result.
+//   asc  → Bob(01) Carol(02) Alice(03)   desc → Alice(03) Carol(02) Bob(01)
 const SEED: Author[] = [
-  { id: 1, name: "Alice" },
-  { id: 2, name: "Bob" },
-  { id: 3, name: "Carol" },
+  { id: 1, name: "Alice", createdAt: "2026-01-03" },
+  { id: 2, name: "Bob", createdAt: "2026-01-01" },
+  { id: 3, name: "Carol", createdAt: "2026-01-02" },
 ];
 
 function fakeOm(): ObjectManager {
@@ -43,7 +47,9 @@ function fakeOm(): ObjectManager {
 
 const InsertSchema = z.object({ name: z.string() });
 const UpdateSchema = InsertSchema.partial();
-const sortAllowlist: SortAllowlist = { name: {} };
+// createdAt carries the DECLARED default; name declares none — the pair the read
+// side has to tell apart.
+const sortAllowlist: SortAllowlist = { name: {}, createdAt: { defaultOrder: "desc" } };
 
 let app: FastifyInstance;
 beforeAll(async () => {
@@ -91,4 +97,36 @@ describe("plain fastify mount — contract parity", () => {
     const body = JSON.parse(r.body) as Author[];
     expect(body.map((a) => a.name)).toEqual(["Carol", "Bob", "Alice"]);
   });
+
+  // The plain fastify mount carries its OWN parseSort, documented as mirroring the
+  // drizzle-fastify parser's sort semantics. When @sortableDefaultOrder's read side
+  // landed it landed in the drizzle parser only, so this mount kept hardcoding "asc"
+  // and the two mounts answered one declaration two ways — same query string, same
+  // generated allowlist, different rows depending on which mount a project mounted.
+  // These cases pin the read here so the drift cannot return silently.
+  test("?sort=<field> with no :order applies that field's DECLARED defaultOrder", async () => {
+    const r = await app.inject({ method: "GET", url: "/authors?sort=createdAt" });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as Author[];
+    expect(body.map((a) => a.createdAt)).toEqual(["2026-01-03", "2026-01-02", "2026-01-01"]);
+  });
+
+  test("a DECLARED order does not override an explicit one", async () => {
+    // createdAt declares desc; the caller asks for asc. The declaration fills in a
+    // MISSING direction, it never fights a present one.
+    const r = await app.inject({ method: "GET", url: "/authors?sort=createdAt:asc" });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as Author[];
+    expect(body.map((a) => a.createdAt)).toEqual(["2026-01-01", "2026-01-02", "2026-01-03"]);
+  });
+
+  test("a field declaring NOTHING falls back to asc", async () => {
+    // The fallback is spelled once per port, at the read — not baked into the
+    // allowlist artifact, or a port could drift by baking a different default there.
+    const r = await app.inject({ method: "GET", url: "/authors?sort=name" });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body) as Author[];
+    expect(body.map((a) => a.name)).toEqual(["Alice", "Bob", "Carol"]);
+  });
+
 });

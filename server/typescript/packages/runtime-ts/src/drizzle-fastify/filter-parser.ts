@@ -3,6 +3,7 @@ import {
   type SQL, type SQLWrapper,
 } from "drizzle-orm";
 import type { FilterAllowlist, FilterOp, FilterFieldRule, SortAllowlist } from "./filter-allowlist.js";
+import { sortOrderSpec } from "./filter-allowlist.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -282,9 +283,11 @@ function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist):
   // today — a behaviour change for every consumer, to honour an attribute about how a
   // FIELD sorts. The declaration says which way this column runs when you do not say;
   // it does not say which column to sort by.
-  const orderRaw = colonIdx === -1
-    ? (sortAllowlist[field]?.defaultOrder ?? "asc")
-    : spec.slice(colonIdx + 1);
+  const orderRaw = sortOrderSpec(
+    sortAllowlist,
+    field,
+    colonIdx === -1 ? undefined : spec.slice(colonIdx + 1),
+  );
   const order = orderRaw.toLowerCase();
   if (order !== "asc" && order !== "desc") {
     throw new FilterParseError("sort.invalid_order", `Sort order must be asc|desc, got "${orderRaw}".`, { expected: "asc | desc" });
