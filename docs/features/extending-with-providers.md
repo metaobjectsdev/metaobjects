@@ -219,10 +219,22 @@ The semantic rule is identical across ports:
 > determinism — same providers list + same metadata → same registry, no
 > classpath order surprises, no bundler import-order surprises.
 
-The TS / C# / Python loaders default to `[...coreProviders, forgeTypesProvider,
-...callerProviders]` when the caller supplies `providers`. Pass
-`{ replaceDefaults: true }` (TS) or the per-port equivalent to skip the
-defaults entirely — rare, but supported.
+Every port's loader defaults to `[...coreProviders, ...callerProviders]` when the
+caller supplies `providers`. Pass `{ replaceDefaults: true }` (TS) or the per-port
+equivalent to skip the defaults entirely — rare, but supported.
+
+**`forgeTypesProvider` is TypeScript-only, and this page used to say otherwise.** It
+was listed here as part of the default composition for "the TS / C# / Python loaders";
+in fact only TypeScript has it — `@metaobjectsdev/sdk`'s `loadMemory` composes it, and
+no C#, Python, Java or Kotlin registry registers any `@forge*` attribute or `decision` /
+`principle` / `convention` / `glossary` / `failure` type at all. Nor does
+`expected-registry.json`, which is the manifest all five ports byte-match, so the
+cross-port gate never had jurisdiction over it.
+
+The consequence is worth stating plainly rather than leaving to be discovered: a
+document carrying `@forgeConfidence` **loads on TypeScript and fails
+`ERR_UNKNOWN_ATTR` on the other four ports** — one document, two verdicts, decided by
+which toolchain reads it.
 
 ## Stable error codes
 
