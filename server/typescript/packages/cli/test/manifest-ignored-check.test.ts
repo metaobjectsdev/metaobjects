@@ -98,3 +98,39 @@ describe("warnIfManifestIgnored", () => {
     expect(captureWarnings(() => warnIfManifestIgnored(root))).toEqual([]);
   });
 });
+
+describe("the advisory names the rule that is actually in force", () => {
+  // Found on an adopter estate: the exclusion was in the ROOT `.gitignore` as
+  // `.metaobjects/.gen-state/`, not in `.metaobjects/.gitignore` as the message assumed.
+  // Editing the named file changed nothing and the same advisory printed again — the loop
+  // shape. The remedy has to be derived from git, not from a convention.
+  test("a rule in the ROOT .gitignore is named, not the .metaobjects one", () => {
+    gitInit();
+    writeManifest();
+    writeFileSync(join(root, ".gitignore"), ".metaobjects/.gen-state/\n");
+    const warns = captureWarnings(() => warnIfManifestIgnored(root));
+    expect(warns).toHaveLength(1);
+    // It must point at the file that HOLDS the rule...
+    expect(warns[0]).toContain(".gitignore:1");
+    expect(warns[0]).toContain(".metaobjects/.gen-state/");
+    // ...and must NOT prescribe editing a file that does not hold it.
+    expect(warns[0]).not.toContain("Fix it in .metaobjects/.gitignore");
+  });
+
+  test("a rule in .metaobjects/.gitignore is named too, with its own pattern", () => {
+    gitInit();
+    writeManifest();
+    writeIgnore(".gen-state/\n");
+    const warns = captureWarnings(() => warnIfManifestIgnored(root));
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toContain(".metaobjects/.gitignore:1");
+    expect(warns[0]).toContain("!.gen-state/.hashes.json");
+  });
+
+  test("when git cannot say, it degrades to the generic form and asserts no location", () => {
+    // No repository at all: the verdict path returns undefined, so this warning never
+    // fires — proving the advisory cannot invent a location it does not have.
+    writeManifest();
+    expect(captureWarnings(() => warnIfManifestIgnored(root))).toEqual([]);
+  });
+});

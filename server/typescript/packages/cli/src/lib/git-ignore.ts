@@ -113,3 +113,47 @@ export function isGitIgnored(
   if ("unavailable" in res) return undefined;
   return res.ignored.has(toPosix(rel));
 }
+
+/**
+ * WHICH rule ignores `rel` — the `.gitignore` file, its line, and the pattern.
+ *
+ * Advisories that tell an adopter to fix an ignore rule have to name the rule that is
+ * actually in force, not a conventional location. The exclusion can live in ANY
+ * `.gitignore` up the tree, in `.git/info/exclude`, or in a per-user excludes file, and an
+ * advisory that assumes one of them sends the reader to edit a file that does not hold the
+ * rule — after which the same advisory prints again, unchanged. `git check-ignore -v`
+ * answers it exactly, so nothing has to be assumed.
+ *
+ * `undefined` when git cannot say or nothing matches. The verdict itself still comes from
+ * `isGitIgnored`; this is only for the message, so a failure here degrades the wording
+ * rather than the check.
+ */
+export function gitIgnoreSource(
+  dir: string,
+  rel: string,
+  opts: GitIgnoreOptions,
+): { file: string; line: string; pattern: string } | undefined {
+  const gitBin = process.env.META_GEN_GIT ?? "git";
+  const args: string[] = [];
+  if (!opts.honourGlobalExcludes) {
+    args.push("-c", `core.excludesFile=${NO_SUCH_EXCLUDES_FILE}`);
+  }
+  args.push("-C", dir, "check-ignore", "-v", "--", toPosix(rel));
+
+  let res;
+  try {
+    res = spawnSync(gitBin, args, { encoding: "utf-8" });
+  } catch {
+    return undefined;
+  }
+  if (res.error !== undefined || res.status !== 0) return undefined;
+  // `<source>:<line>:<pattern>\t<path>` — the source may itself contain a colon on
+  // Windows, so split from the RIGHT of the first tab-delimited field.
+  const first = (res.stdout ?? "").split("\n")[0];
+  if (first === undefined || first === "") return undefined;
+  const lhs = first.split("\t")[0];
+  if (lhs === undefined) return undefined;
+  const m = /^(.*):(\d+):(.*)$/.exec(lhs);
+  if (m === null) return undefined;
+  return { file: m[1]!, line: m[2]!, pattern: m[3]! };
+}

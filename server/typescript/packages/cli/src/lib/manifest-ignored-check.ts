@@ -18,7 +18,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "./log.js";
-import { isGitIgnored } from "./git-ignore.js";
+import { gitIgnoreSource, isGitIgnored } from "./git-ignore.js";
 
 /** Project-relative path of the manifest — the one artifact of `.gen-state/` that is
  *  meant to be committed. */
@@ -40,13 +40,28 @@ export function warnIfManifestIgnored(cwd: string): void {
   // per-user ignore file answers it just as truly as a committed .gitignore does.
   if (isGitIgnored(cwd, HASH_MANIFEST_REL, { honourGlobalExcludes: true }) !== true) return;
 
+  // WHERE the rule actually lives, asked of git rather than assumed. This used to name
+  // `.metaobjects/.gitignore` and the literal pattern `.gen-state/`, which is only one of
+  // the places the exclusion can sit: an adopter estate had it in the ROOT `.gitignore` as
+  // `.metaobjects/.gen-state/`, so following this advisory to the letter edited a file that
+  // did not hold the rule, changed nothing, and printed this same line again — the loop
+  // shape. `git check-ignore -v` knows the answer, so nothing is guessed. When git cannot
+  // say, the wording degrades to the generic form rather than asserting a location.
+  const src = gitIgnoreSource(cwd, HASH_MANIFEST_REL, { honourGlobalExcludes: true });
+  const where =
+    src !== undefined
+      ? `The rule is '${src.pattern}' at ${src.file}:${src.line} — replace it there with ` +
+        `a '/*' form plus a '!' negation for the manifest ` +
+        `(e.g. '${src.pattern.replace(/\/$/, "")}/*' and '!${src.pattern.replace(/\/$/, "")}/.hashes.json')`
+      : `Find the rule with 'git check-ignore -v ${HASH_MANIFEST_REL}' and replace it with ` +
+        `a '/*' form plus a '!' negation for the manifest`;
+
   log.warn(
     `${HASH_MANIFEST_REL} is git-ignored, so it never reaches another machine — ` +
       `on a fresh clone or CI runner 'meta gen' cannot tell your hand edits from its ` +
-      `own stale output, and will refuse to overwrite rather than guess. Fix it in ` +
-      `.metaobjects/.gitignore by replacing '.gen-state/' with '.gen-state/*' plus ` +
-      `'!.gen-state/.hashes.json' (the glob matters — git will not descend into an ` +
-      `excluded directory, so a negation under '.gen-state/' can never apply), then ` +
-      `commit the manifest. If you deliberately do not commit generated output, ignore this.`,
+      `own stale output, and will refuse to overwrite rather than guess. ${where} ` +
+      `(the glob matters — git will not descend into an excluded directory, so a negation ` +
+      `INSIDE an excluded directory can never apply), then commit the manifest. ` +
+      `If you deliberately do not commit generated output, ignore this.`,
   );
 }

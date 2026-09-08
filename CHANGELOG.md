@@ -72,6 +72,21 @@ integration cases generated with an explicit `--out <dir>/docs` while `verify --
 the config default, and passed only because the two coincided. Sixteen cases failed the moment
 they stopped. They now take the config path, which is what the gate reads.
 
+### Fixed — the hash-manifest advisory prescribed editing a file that may not hold the rule
+
+It hardcoded `.metaobjects/.gitignore` and the literal pattern `.gen-state/`. That is only one
+of the places the exclusion can sit: it can be in ANY `.gitignore` up the tree, in
+`.git/info/exclude`, or in a per-user excludes file. Found by running an adopter estate against
+the RC — its rule was in the **ROOT** `.gitignore` as `.metaobjects/.gen-state/`, so following
+the advisory to the letter edited a file that did not hold the rule, changed nothing, and
+printed the same line again. The loop shape, in a second command.
+
+`git check-ignore -v` returns the exact `<file>:<line>:<pattern>` that matched, and the check
+already shells out to `check-ignore` for the verdict. The advisory now names the real rule and
+builds the `/*` + `!` negation from the pattern it found. When git cannot say, the wording
+degrades to "find it with `git check-ignore -v …`" rather than asserting a location — the same
+discipline the rest of this check follows, where "cannot say" is never reported as a fact.
+
 ### Changed — `--limit` is documented as per printed LIST, which is what it always was
 
 Its doc said "per SECTION, never shared across them". The anti-pattern tier prints TWO
