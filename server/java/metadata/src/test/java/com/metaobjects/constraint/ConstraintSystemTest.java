@@ -90,24 +90,38 @@ public class ConstraintSystemTest {
     }
 
     /**
-     * Test that constraint system enforces required attributes.
+     * A field with no name is REFUSED before it can join a metadata tree.
+     *
+     * NEVER ASSERT ON THE MESSAGE OF AN EXCEPTION YOU DID NOT THROW. This test used to
+     * require {@code e.getMessage()} to contain "name" or "null", and it passed only by
+     * accident: the refusal here is not a constraint violation at all but a bare
+     * {@link NullPointerException} raised by the child map ({@code Cannot invoke
+     * "Object.hashCode()" because "key" is null}), whose text is a JVM diagnostic and not
+     * a contract of ours. {@code MetaData(String,String,String)} deliberately admits a
+     * null name — three throws sit commented out in it — so nothing on this path ever
+     * produces a named error to assert on.
+     *
+     * That text is not even always produced. Once the throwing path is hot, HotSpot's
+     * fast-throw optimisation replaces it with a PREALLOCATED, message-less NPE, and
+     * {@code getMessage()} returns null. Measured 2026-09-08: green on every developer box
+     * and green running this class alone, RED in the full-reactor CI job — 1554 tests in
+     * one JVM is enough to make the path hot — where the failure surfaced as an NPE inside
+     * the assertion rather than as anything about metadata.
+     *
+     * So this asserts what is actually guaranteed: the tree refuses the field. When a
+     * named constraint takes over that refusal, tighten this to the exception it throws.
      */
     @Test
     public void testRequiredAttributeConstraint() {
+        EntityMetaObject metaObject = new EntityMetaObject("testObject");
+        StringField field = new StringField(null); // Invalid - no name
+
         try {
-            // Field should require a name
-            StringField field = new StringField(null); // Invalid - no name
-            
-            EntityMetaObject metaObject = new EntityMetaObject("testObject");
             metaObject.addMetaField(field);
             loader.getRoot().addChild(metaObject);
-            
-            fail("Expected constraint violation for missing field name");
-            
-        } catch (Exception e) {
-            // Expected - constraint system should enforce required attributes
-            assertTrue("Should indicate constraint or validation error", 
-                      e.getMessage().contains("name") || e.getMessage().contains("null"));
+            fail("Expected a nameless field to be refused");
+        } catch (Exception expected) {
+            // Refused, which is the guarantee. Its message is the JVM's business.
         }
     }
 

@@ -281,6 +281,21 @@
         <artifactId>maven-failsafe-plugin</artifactId>
         <version>${failsafe.plugin.version}</version>
       </plugin>
+      <!-- Surefire, PINNED here rather than left to whatever the running Maven
+           distribution defaults to. The property has existed since the reactor did, but
+           only four leaf modules declared the plugin, so every other module — `metadata`
+           among them, the largest test set in the build — took the default binding. A
+           default resolved from the running Maven, which is not the same number twice.
+           Measured 2026-09-08 on `metadata`: 3.2.5 unpinned on a developer box (Maven
+           3.9.9), 3.5.4 unpinned on the hosted runner, 3.5.2 with this pin — three
+           surefire versions over one test set, which is the one build input a
+           "green here, red there" investigation cannot afford to have floating. Found while diagnosing a full-reactor-only test failure in
+           September 2026; it was not the cause, and it made the cause harder to see. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.plugin.version}</version>
+      </plugin>
       <!-- JaCoCo Code Coverage Plugin -->
       <plugin>
         <groupId>org.jacoco</groupId>
