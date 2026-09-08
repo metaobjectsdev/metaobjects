@@ -52,6 +52,14 @@
 #                                    #   machine where skips indicate real problems.
 #   scripts/ci-local.sh --help
 #
+# POSTGRES SIDECAR (see ensure_pg_sidecar below). Any lane that runs integration
+# tests shares ONE Postgres container instead of booting a Testcontainers instance
+# per scenario. It is started (or reused) automatically and costs ~6s cold, ~1s warm.
+# Measured on this repo: python integration 6m54s -> 11s, kotlin integration 47s with
+# zero containers booted. If METAOBJECTS_TEST_PG_URL is already set — as local-ci.yml
+# does from its `services:` block — nothing here changes. Opt out with
+# MO_CI_NO_PG_SIDECAR=1; rename it with MO_PG_SIDECAR_NAME.
+#
 # Set MO_CI_LIST_ONLY=1 to print the steps that would run (given the current
 # flags) and exit 0 without running anything — useful for verifying section
 # selection without waiting for tests to complete.
@@ -553,9 +561,86 @@ gate_embedded_library_drift() {
 gate_integration() { scripts/integration-test.sh all; }
 gate_integration_port() { scripts/integration-test.sh "$1"; }
 
+# The Postgres SIDECAR every integration lane shares.
+#
+# This is the single biggest wall-clock lever in the repo and it used to exist ONLY in
+# CI. `local-ci.yml` supplies METAOBJECTS_TEST_PG_URL from its `services:` block, so a
+# hand-run of THIS script silently took the slow path: every scenario in every port booted
+# its own Testcontainers Postgres (the java+kotlin lanes alone boot ~30-40 serially). The
+# gap is not small — measured on one cross-port change, python integration took 6m54s
+# locally against 34s in CI, and `--only java` took 28 minutes against 46s + 3m for the two
+# CI lanes. Nothing warned that the slow path had been taken; the run just looked slow.
+#
+# So: if the variable is already set (CI, or a deliberate override) this does nothing at
+# all. Otherwise it starts — or REUSES — a container named below and exports the same URL
+# shape CI uses. Reuse is the point: the second local run pays nothing.
+#
+# Two details are load-bearing, both learned the hard way:
+#   * the host port is DYNAMIC (`-p 5432`, read back with `docker port`), never 5432:5432
+#     — this box already runs several Postgres containers and a fixed port collides;
+#   * readiness is POLLED before the URL is exported. The original shared-sidecar mode had
+#     no readiness gate and that was the dominant flake: the first connect to a
+#     transiently-slow sidecar hung to the test timeout.
+#
+# Opt out with MO_CI_NO_PG_SIDECAR=1 to get the old per-scenario-container behaviour.
+MO_PG_SIDECAR_NAME="${MO_PG_SIDECAR_NAME:-metaobjects-ci-sidecar}"
+
+ensure_pg_sidecar() {
+  [ -n "${METAOBJECTS_TEST_PG_URL:-}" ] && return 0   # CI, or an explicit override
+  [ "${MO_CI_NO_PG_SIDECAR:-0}" = "1" ] && return 0
+
+  local name="$MO_PG_SIDECAR_NAME" port
+  if [ -z "$(docker ps -q -f "name=^${name}$" 2>/dev/null)" ]; then
+    # Clear a stopped leftover of the same name, then start fresh.
+    docker rm -f "$name" >/dev/null 2>&1 || true
+    if ! docker run -d --name "$name" \
+        -e POSTGRES_USER=metaobjects -e POSTGRES_PASSWORD=metaobjects \
+        -e POSTGRES_DB=metaobjects_test \
+        -p 5432 postgres:16 >/dev/null 2>&1; then
+      echo "  ⚠ could not start the Postgres sidecar — falling back to per-scenario" >&2
+      echo "    containers (slow). Integration results are unaffected." >&2
+      return 0
+    fi
+    echo "  ▸ started Postgres sidecar '$name'"
+  else
+    echo "  ▸ reusing Postgres sidecar '$name'"
+  fi
+
+  port="$(docker port "$name" 5432/tcp 2>/dev/null | head -1 | sed 's/.*://')"
+  if [ -z "$port" ]; then
+    echo "  ⚠ sidecar has no published port — falling back to per-scenario containers." >&2
+    return 0
+  fi
+
+  # Poll for real readiness. Postgres reports ready once during init and then restarts,
+  # so pg_isready alone can pass against a server about to bounce — require it twice.
+  local i=0 ok=0
+  while [ "$i" -lt 60 ]; do
+    if docker exec "$name" pg_isready -U metaobjects -d metaobjects_test >/dev/null 2>&1; then
+      ok=$((ok + 1)); [ "$ok" -ge 2 ] && break
+    else
+      ok=0
+    fi
+    i=$((i + 1)); sleep 1
+  done
+  if [ "$ok" -lt 2 ]; then
+    echo "  ⚠ sidecar did not become ready in 60s — falling back to per-scenario" >&2
+    echo "    containers (slow). Integration results are unaffected." >&2
+    return 0
+  fi
+
+  # Same URL shape local-ci.yml exports. MIGRATE_TS_PG_URL points at the same database,
+  # exactly as the ts-slow job does, so migrate-ts's real-Postgres suites run locally
+  # instead of self-skipping.
+  export METAOBJECTS_TEST_PG_URL="postgres://metaobjects:metaobjects@localhost:${port}/metaobjects_test"
+  export MIGRATE_TS_PG_URL="$METAOBJECTS_TEST_PG_URL"
+  echo "    METAOBJECTS_TEST_PG_URL -> localhost:${port} (stop it: docker rm -f $name)"
+}
+
 run_integration_for() { # run_integration_for "<label>" <runner...>
   local label="$1"; shift
   if docker info >/dev/null 2>&1; then
+    ensure_pg_sidecar
     local r; for r in "$@"; do step "integration-tests ($r)" gate_integration_port "$r"; done
   elif [ "$STRICT" -eq 1 ]; then
     FAIL+=("integration-tests $label (docker down, strict)")
