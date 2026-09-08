@@ -2,7 +2,6 @@ import { code, type Code } from "ts-poet";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
-  FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
@@ -15,7 +14,7 @@ import {
   FIELD_SUBTYPE_CURRENCY,
   opsForField,
 } from "@metaobjectsdev/metadata";
-import { sortableFields } from "./filter-shared.js";
+import { sortableFields, declaredSortDefaultOrder } from "./filter-shared.js";
 import type { RenderContext } from "../render-context.js";
 
 const NUMBER_SUBTYPES = new Set<string>([
@@ -108,11 +107,15 @@ export const ${entity.name}SortAllowlist = {} as const satisfies SortAllowlist;
   }
   const rows = sortable
     .map((f) => {
-      const defaultOrder = f.attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) as string | undefined;
+      // The DECLARED order only — an undeclared field stays `{}` so the runtime's own
+      // `?? "asc"` remains the single place the fallback is spelled. Read through the
+      // shared resolver, never off the attr here, so this allowlist and the grid tier
+      // cannot answer one declaration two ways.
+      const defaultOrder = declaredSortDefaultOrder(f);
       const rule =
-        defaultOrder === "asc" || defaultOrder === "desc"
-          ? `{ defaultOrder: ${JSON.stringify(defaultOrder)} as const }`
-          : `{}`;
+        defaultOrder === undefined
+          ? `{}`
+          : `{ defaultOrder: ${JSON.stringify(defaultOrder)} as const }`;
       return `  ${f.name}: ${rule}`;
     })
     .join(",\n");

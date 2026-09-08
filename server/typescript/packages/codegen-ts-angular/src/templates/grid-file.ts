@@ -8,8 +8,6 @@ import type { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
-  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
-  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   VIEW_SUBTYPE_HIDDEN,
@@ -20,6 +18,8 @@ import {
   entityModuleSpecifier,
   viewForContext,
   VIEW_CONTEXT_GRID,
+  resolveGridDefaultSort,
+  type GridDefaultSort,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
@@ -32,8 +32,12 @@ interface ColumnSpec {
 interface GridSpec {
   name:               string;
   pageSize:           number;
-  defaultSortField?:  string;
-  defaultSortOrder?:  "asc" | "desc";
+  // One RESOLVED value, never a field and an order that can disagree — see the same
+  // note in codegen-ts-tanstack/src/templates/columns-file.ts. Emitting `defaultSort`
+  // only when BOTH layout attrs were present is what silently dropped the initial sort
+  // of every grid that named a field and let the field's @sortableDefaultOrder supply
+  // the direction.
+  defaultSort?:       GridDefaultSort;
   filterable:         boolean;
   columns:            ColumnSpec[];
 }
@@ -85,16 +89,14 @@ function extractGrids(entity: MetaObject): GridSpec[] {
       if (viewKind === VIEW_SUBTYPE_HIDDEN) return [];
       return [{ id: name, header: fieldLabel(f), viewKind }];
     });
-    const sortField = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
-    const sortOrder = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+    const defaultSort = resolveGridDefaultSort(entity, layout);
     const grid: GridSpec = {
       name: layout.name || "default",
       pageSize: (layout.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE) as number | undefined) ?? 25,
       filterable: layout.attr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
       columns,
     };
-    if (typeof sortField === "string") grid.defaultSortField = sortField;
-    if (sortOrder === "asc" || sortOrder === "desc") grid.defaultSortOrder = sortOrder;
+    if (defaultSort !== undefined) grid.defaultSort = defaultSort;
     out.push(grid);
   }
   return out;
@@ -132,8 +134,8 @@ export function renderGridFile(entity: MetaObject, ctx: RenderContext): string {
     throw new Error(`renderGridFile: no dataGrid layout on ${entityName}`);
   }
   const columnsLiteral = primary.columns.map(renderColumnLiteral).join(",\n");
-  const sortPart = primary.defaultSortField && primary.defaultSortOrder
-    ? `,\n    defaultSort: { field: ${JSON.stringify(primary.defaultSortField)}, order: ${JSON.stringify(primary.defaultSortOrder)} }`
+  const sortPart = primary.defaultSort
+    ? `,\n    defaultSort: { field: ${JSON.stringify(primary.defaultSort.field)}, order: ${JSON.stringify(primary.defaultSort.order)} }`
     : "";
 
   const literalImports = code`

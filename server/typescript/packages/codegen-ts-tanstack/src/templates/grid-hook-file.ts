@@ -24,15 +24,16 @@ function metaModuleOf(entityModule: string): string {
 }
 
 import { GENERATED_HEADER, entityModuleSpecifier, siblingSpecifier,
-  effectivePackage,
+  effectivePackage, resolveGridDefaultSort, type GridDefaultSort,
 } from "@metaobjectsdev/codegen-ts";
 
 interface GridSpec {
   name: string;           // e.g. "default", "activeOnly"
   pageSize: number;
   hasFilterPreset: boolean;
-  defaultSortField?: string | undefined;
-  defaultSortOrder?: "asc" | "desc" | undefined;
+  // Resolved through the SAME call the grid const uses, so the hook's initial
+  // sorting and the const's `defaultSort` cannot disagree about one declaration.
+  defaultSort?: GridDefaultSort | undefined;
 }
 
 function extractGrids(entity: MetaObject): GridSpec[] {
@@ -43,8 +44,7 @@ function extractGrids(entity: MetaObject): GridSpec[] {
       name: l.name || "default",
       pageSize: l.pageSize ?? 25,
       hasFilterPreset: l.filter !== undefined,
-      defaultSortField: l.defaultSortField,
-      defaultSortOrder: l.defaultSortOrder as "asc" | "desc" | undefined,
+      defaultSort: resolveGridDefaultSort(entity, l),
     });
   }
   return out;
@@ -106,8 +106,8 @@ import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityMo
     const hookName = `use${entityName}${cap}Grid`;
     const presetConst = grid.hasFilterPreset ? `${lcEntity}${cap}Filter` : null;
 
-    const initialSorting = grid.defaultSortField
-      ? `[{ id: ${JSON.stringify(grid.defaultSortField)}, desc: ${JSON.stringify(grid.defaultSortOrder === "desc")} }]`
+    const initialSorting = grid.defaultSort
+      ? `[{ id: ${JSON.stringify(grid.defaultSort.field)}, desc: ${JSON.stringify(grid.defaultSort.order === "desc")} }]`
       : `[]`;
     const initialPagination = `{ pageIndex: 0, pageSize: ${grid.pageSize} }`;
 

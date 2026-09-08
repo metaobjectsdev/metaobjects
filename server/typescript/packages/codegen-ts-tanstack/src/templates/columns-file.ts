@@ -3,8 +3,6 @@ import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
-  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
-  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   LAYOUT_DATA_GRID_ATTR_FILTER,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
@@ -21,6 +19,8 @@ import {
   viewForContext,
   VIEW_CONTEXT_GRID,
   effectivePackage,
+  resolveGridDefaultSort,
+  type GridDefaultSort,
 } from "@metaobjectsdev/codegen-ts";
 
 /** FR-017 TPH grid context, threaded into extractGrids when the entity is a
@@ -43,8 +43,11 @@ interface ColumnSpec {
 interface GridSpec {
   name:               string;
   pageSize:           number;
-  defaultSortField?:  string;
-  defaultSortOrder?:  "asc" | "desc";
+  // One RESOLVED value, never a field and an order that can disagree: emitting
+  // `defaultSort` only when BOTH attrs were declared is what silently dropped the
+  // initial sort of every grid that named a field and let the field's
+  // @sortableDefaultOrder supply the direction.
+  defaultSort?:       GridDefaultSort;
   filterable:         boolean;
   filter?:            Record<string, unknown>;   // desugared, load-time-validated @filter object
   columns:            ColumnSpec[];
@@ -151,8 +154,7 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
     });
 
     // ADR-0039: resolving — dataGrid layout attrs may be inherited via extends.
-    const sortField = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
-    const sortOrder = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+    const defaultSort = resolveGridDefaultSort(entity, layout);
 
     const filterAttr = layout.attr(LAYOUT_DATA_GRID_ATTR_FILTER);
     const grid: GridSpec = {
@@ -161,8 +163,7 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
       filterable: layout.attr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
       columns,
     };
-    if (typeof sortField === "string") grid.defaultSortField = sortField;
-    if (sortOrder === "asc" || sortOrder === "desc") grid.defaultSortOrder = sortOrder;
+    if (defaultSort !== undefined) grid.defaultSort = defaultSort;
     if (typeof filterAttr === "object" && filterAttr !== null && !Array.isArray(filterAttr)) {
       grid.filter = filterAttr as Record<string, unknown>;
     }
@@ -210,8 +211,8 @@ export function renderColumnsFile(entity: MetaObject, ctx: RenderContext): strin
     const gridConstName    = `${lcEntity}${capitalize(grid.name)}Grid`;
     const columnsConstName = `${lcEntity}${capitalize(grid.name)}Columns`;
 
-    const sortBlock = grid.defaultSortField && grid.defaultSortOrder
-      ? `  defaultSort: { field: ${JSON.stringify(grid.defaultSortField)}, order: ${JSON.stringify(grid.defaultSortOrder)} as const },\n`
+    const sortBlock = grid.defaultSort
+      ? `  defaultSort: { field: ${JSON.stringify(grid.defaultSort.field)}, order: ${JSON.stringify(grid.defaultSort.order)} as const },\n`
       : "";
     const gridConst = code`
 export const ${gridConstName} = {

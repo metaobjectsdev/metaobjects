@@ -145,6 +145,40 @@ describe("agent/ui.md", () => {
     expect(ui).toContain("default sort: `reference:desc`");
     expect(ui).toContain("page size: 25");
   });
+
+  test("the grid's default sort line always carries a direction, including a FIELD-declared one", async () => {
+    // MODEL above declares BOTH layout attrs, so it can only ever show the explicit
+    // path — the same blind spot that let the grid tier ship with no read for
+    // @sortableDefaultOrder. Here the grid names a field and gives NO order, and the
+    // ORDER comes from the field. A page that printed `reference` bare would tell an
+    // agent the grid has no stated direction, when both the endpoint and the generated
+    // grid in fact sort it descending — prose that disagrees with generated code is the
+    // failure mode this whole surface exists to prevent.
+    const model = structuredClone(MODEL) as typeof MODEL;
+    const root = model["metadata.root"];
+    const order = root.children.find((c) => "object.entity" in c)!;
+    const entity = order["object.entity"];
+    entity.children = entity.children
+      .filter((c) => !("layout.dataGrid" in c))
+      // The direction now has ONE source: the field. Nothing on the layout says asc|desc.
+      .map((c) => {
+        if (!("field.string" in c) || c["field.string"].name !== "reference") return c;
+        c["field.string"]["@sortableDefaultOrder"] = "desc";
+        return c;
+      });
+    entity.children.push({
+      "layout.dataGrid": {
+        name: "default",
+        "@columns": ["reference", "status"],
+        "@defaultSortField": "reference",
+      },
+    } as unknown as (typeof entity.children)[number]);
+
+    const ui = (await emit(await load(model))).get("agent/ui.md") ?? "";
+    expect(ui).toContain("default sort: `reference:desc`");
+    // Never a bare field name — the resolved direction is always spelled out.
+    expect(ui).not.toContain("default sort: `reference`");
+  });
 });
 
 describe("agent/requirements.md", () => {

@@ -35,8 +35,6 @@ import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_FORM_EXCLUDE,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
-  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
-  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
   LAYOUT_SUBTYPE_DATA_GRID,
   TYPE_LAYOUT,
@@ -49,7 +47,7 @@ import {
   type UiFieldDescriptor,
   type UiRule,
 } from "../templates/entity-ui-descriptor.js";
-import { isSortableField } from "../templates/filter-shared.js";
+import { isSortableField, resolveGridDefaultSort } from "../templates/filter-shared.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { declaresTphDiscriminator } from "../templates/zod-validators.js";
 
@@ -172,7 +170,7 @@ export function hasUiSurface(obj: MetaObject): boolean {
   return servesReadApi(obj);
 }
 
-function gridSection(grid: MetaData): string[] {
+function gridSection(obj: MetaObject, grid: MetaData): string[] {
   const out: string[] = [];
   out.push(`**Grid \`${grid.name}\`**`);
   out.push("");
@@ -180,11 +178,13 @@ function gridSection(grid: MetaData): string[] {
   if (Array.isArray(columns) && columns.length > 0) {
     out.push(`- columns: ${columns.map((c) => `\`${String(c)}\``).join(", ")}`);
   }
-  const sortField = grid.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
-  if (typeof sortField === "string" && sortField !== "") {
-    const order = grid.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
-    const suffix = typeof order === "string" && order !== "" ? `:${order}` : "";
-    out.push(`- default sort: \`${sortField}${suffix}\``);
+  // The RESOLVED sort, through the same call the grid const and grid hook use — a
+  // page that read the two attrs itself would print no direction for a grid whose
+  // direction comes from the named field's @sortableDefaultOrder, i.e. would teach
+  // an agent the opposite of what the generated grid does.
+  const defaultSort = resolveGridDefaultSort(obj, grid);
+  if (defaultSort !== undefined) {
+    out.push(`- default sort: \`${defaultSort.field}:${defaultSort.order}\``);
   }
   const pageSize = grid.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
   if (typeof pageSize === "number") out.push(`- page size: ${pageSize}`);
@@ -281,7 +281,7 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
     }
     for (const grid of dataGrids(obj)) {
       out.push("");
-      out.push(...gridSection(grid));
+      out.push(...gridSection(obj, grid));
     }
     out.push("");
   }

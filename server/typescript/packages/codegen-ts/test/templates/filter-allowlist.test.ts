@@ -61,6 +61,18 @@ describe("renderSortAllowlist", () => {
     expect(out).toMatch(/createdAt:\s*\{[^}]*defaultOrder:\s*"desc"/);
   });
 
+  test("an UNDECLARED field stays {} — the fallback is not baked into the allowlist", async () => {
+    // createdAt declares desc; email is @filterable with no @sortableDefaultOrder. The
+    // SHAPE of the undeclared entry is the assertion: emitting `{ defaultOrder: "asc" }`
+    // here would spell the default in two places per port (this artifact and the
+    // runtime's `?? "asc"`), which is how a port drifts by baking a different fallback
+    // into its allowlist. Declarations only travel; the read owns the default.
+    const entity = await loadEntity("Subscriber");
+    const out = renderSortAllowlist(entity).toString();
+    expect(out).toMatch(/email:\s*\{\s*\}/);
+    expect(out).not.toMatch(/email:\s*\{[^}]*defaultOrder/);
+  });
+
   test("@filterable + @sortable:false field is excluded from SortAllowlist", async () => {
     // lastName has @filterable:true + @sortable:false — must NOT appear in SortAllowlist.
     const entity = await loadEntity("Subscriber");
