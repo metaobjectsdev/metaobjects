@@ -36,6 +36,7 @@ import {
   namesArtifactSuperOf,
   renderNamesDecl,
   resolveObjectNames,
+  NAMES_FILE_SUFFIX,
   type EmittedFile,
   type GenContext,
   type Generator,
@@ -78,7 +79,10 @@ export function namesFile(opts?: NamesFileOpts): Generator {
         // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
         // conflicting-duplicate-path failure as soon as two packages declare a
         // same-bare-named entity.
-        entityOutputPath(layout, effectivePackage(obj), `${obj.name}.names.ts`);
+        // NAMES_FILE_SUFFIX, not a literal: `meta verify --codegen` treats this artifact as
+        // fail-closed (a hand edit in it IS drift, unlike every other generated file) and
+        // recognises it BY THIS SUFFIX. Rename it and you opt out of that protection.
+        entityOutputPath(layout, effectivePackage(obj), `${obj.name}${NAMES_FILE_SUFFIX}`);
 
       const superSpecifierFor = (obj: MetaObject): string | undefined => {
         const sup = namesArtifactSuperOf(obj);

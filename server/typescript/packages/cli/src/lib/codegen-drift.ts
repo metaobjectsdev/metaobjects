@@ -44,6 +44,7 @@ import {
   contentHash,
   readGeneratedHash,
   listGeneratedPaths,
+  NAMES_FILE_SUFFIX,
 } from "@metaobjectsdev/codegen-ts";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import type { MetaData } from "@metaobjectsdev/metadata";
@@ -232,14 +233,40 @@ export async function computeCodegenDrift(
         } else {
           const a = readFileSync(join(committed, rel), "utf8");
           const b = readFileSync(join(fresh, rel), "utf8");
-          // Not `a !== b` alone: that convicts the hand edit `meta gen` preserved.
-          // The question this gate can honestly answer is "is the GENERATED
-          // contribution current?", and the recorded hash answers exactly it.
-          // FAILS CLOSED, matching `isPristineGenerated`: with no recorded hash
-          // nothing is proven, so the old byte verdict stands.
-          if (a !== b && readGeneratedHash(projectGenStateDir, relKey) !== contentHash(b)) {
-            driftedFiles.add(relKey);
-            lines.push(`~ ${relKey} (committed content differs from a fresh regen)`);
+          if (a !== b) {
+            // A `<Entity>Names` artifact is the ONE generated file where a hand edit is
+            // itself the defect, so the exemption below does not reach it. RULED: if you
+            // want a constant of your own, put it in a file of your own.
+            //
+            // The exemption exists because `meta gen` MERGES a hand edit and reports
+            // "merged", so convicting it printed a remedy that could not work — gen
+            // merges again and the next verify fails identically. A names artifact is not
+            // that shape. It is a module of physical database names, every value a string:
+            // no compiler can see a wrong one, no test reads it, and the whole point of
+            // the artifact is that a name is spelled ONCE per run and referenced. So an
+            // edited one silently renames a column for every consumer of it, while the
+            // gate reports "generated output is in sync with the metadata" — the exact
+            // failure the artifact was added to prevent, committed inside the artifact.
+            //
+            // Keyed on the suffix the emitter and the reference template both spell from
+            // one constant. An adopter who owns the generator and RENAMES the artifact
+            // opts out of this — stated rather than hidden; the gate cannot recognise a
+            // file shape it was never told about.
+            if (rel.endsWith(NAMES_FILE_SUFFIX)) {
+              driftedFiles.add(relKey);
+              lines.push(
+                `~ ${relKey} (hand-edited; a names artifact must match a fresh regen exactly — ` +
+                  `put constants of your own in a file of your own)`,
+              );
+            } else if (readGeneratedHash(projectGenStateDir, relKey) !== contentHash(b)) {
+              // Not `a !== b` alone: that convicts the hand edit `meta gen` preserved.
+              // The question this gate can honestly answer is "is the GENERATED
+              // contribution current?", and the recorded hash answers exactly it.
+              // FAILS CLOSED, matching `isPristineGenerated`: with no recorded hash
+              // nothing is proven, so the old byte verdict stands.
+              driftedFiles.add(relKey);
+              lines.push(`~ ${relKey} (committed content differs from a fresh regen)`);
+            }
           }
         }
       }

@@ -1,5 +1,6 @@
 import type { Generator, GenContext, EmittedFile } from "../generator.js";
 import { entityOutputPath, crossEntitySpecifier } from "../import-path.js";
+import { NAMES_FILE_SUFFIX } from "../constants.js";
 import { renderNamesDecl } from "../templates/names-decl.js";
 import { namesArtifactSuperOf, resolveObjectNames } from "../names.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
@@ -61,7 +62,7 @@ export function namesFile(opts?: NamesFileOpts): Generator {
         // its entity sits at <pkg>/<Entity>.ts — an unresolvable import, and a hard
         // conflicting-duplicate-path failure as soon as two packages declare a
         // same-bare-named entity.
-        entityOutputPath(layout, effectivePackage(obj), `${obj.name}.names.ts`);
+        entityOutputPath(layout, effectivePackage(obj), `${obj.name}${NAMES_FILE_SUFFIX}`);
 
       const superSpecifierFor = (obj: MetaObject): string | undefined => {
         const sup = namesArtifactSuperOf(obj);

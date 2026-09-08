@@ -191,7 +191,10 @@ USAGE:
 
 FLAGS:
   --templates           Template/prompt {{field}}↔payload drift (default when bare)
-  --codegen             Codegen drift — regenerate to temp dir and diff committed output
+  --codegen             Codegen drift — is the GENERATED contribution current? A hand
+                        edit 'meta gen' preserves is not drift; a stale generated part is.
+                        An <Entity>.names.ts artifact is the exception: it must match a
+                        fresh regen exactly — a hand edit in it is itself the defect.
                         Needs metaobjects.config.ts; exit 2 if absent.
   --docs                Docs drift — run 'meta docs' to a temp dir and diff docs.outDir
                         Needs metaobjects.config.ts; exit 2 if absent. A page the

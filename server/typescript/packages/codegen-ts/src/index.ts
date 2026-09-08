@@ -78,7 +78,7 @@ export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-pol
 export { contentHash, readGeneratedHash, listGeneratedPaths } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
-export { GENERATED_HEADER, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, type RetiredCodegenAttr } from "./constants.js";
+export { GENERATED_HEADER, NAMES_FILE_SUFFIX, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, type RetiredCodegenAttr } from "./constants.js";
 export { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 
 export { formatTs } from "./format.js";

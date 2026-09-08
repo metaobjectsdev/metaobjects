@@ -55,6 +55,25 @@ export default defineConfig({
   return root;
 }
 
+/** Same repo, plus the `<Entity>Names` artifact — a module of physical-name constants. */
+function setupRepoWithNames(): string {
+  const root = setupRepo();
+  writeFileSync(
+    join(root, "metaobjects.config.ts"),
+    `
+import { defineConfig } from "@metaobjectsdev/codegen-ts";
+export default defineConfig({
+  outDir: ${JSON.stringify(join(root, OUT))},
+  dialect: "sqlite",
+  dbImport: "~/db",
+  extStyle: "none",
+  generators: ["entity", "names"],
+});
+`,
+  );
+  return root;
+}
+
 /** The sanctioned move: hand-edit inside a generated file. */
 function handEdit(root: string): void {
   appendFileSync(
@@ -149,6 +168,54 @@ describe("meta verify --codegen — hand-edited generated output", () => {
       expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
       // The edit survived the remedy; that is why the loop existed.
       expect(readFileSync(join(root, USER_TS), "utf8")).toContain("HAND_EDIT");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a hand-edited <Entity>Names IS drift — the exemption does not reach it", async () => {
+    // RULED: constants belong in your own files, not in a generated one. The
+    // hand-edit exemption exists because `meta gen` MERGES an edit and reports
+    // "merged", so convicting it printed a remedy that could not work. A names
+    // artifact is not that: it is a module of physical-name constants with no
+    // hand-editable surface, no compiler check (every value is a string) and no
+    // test that reads it — so an edited one silently renames a column for every
+    // consumer while the gate reports "in sync with the metadata".
+    const root = setupRepoWithNames();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      const names = join(root, OUT, "User.names.ts");
+      expect(existsSync(names)).toBe(true);
+
+      const before = readFileSync(names, "utf8");
+      // A physical name silently changed — exactly the failure the artifact exists
+      // to prevent, made inside the artifact itself.
+      const edited = before.replace(/"([a-z_]+)"/, '"$1_BROKEN"');
+      expect(edited).not.toBe(before);
+      writeFileSync(names, edited);
+
+      out = []; err = [];
+      const exit = await run(["verify", "--cwd", root, "--codegen"]);
+      expect(all()).toContain("User.names.ts");
+      expect(exit).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("...and an untouched names artifact beside a preserved hand edit stays clean", async () => {
+    // The other half. Failing closed on names files must not fail a project that
+    // did the sanctioned thing somewhere else.
+    const root = setupRepoWithNames();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      handEdit(root);
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+
+      out = []; err = [];
+      const exit = await run(["verify", "--cwd", root, "--codegen"]);
+      expect(all()).not.toContain("User.names.ts");
+      expect(exit).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

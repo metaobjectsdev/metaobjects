@@ -263,7 +263,7 @@ export interface VerifyFlags {
   // command layer applies the bare-verify default (= --templates) when none are.
   /** Run the template/prompt {{field}}↔payload drift gate. */
   templates: boolean;
-  /** Run the codegen-drift gate (regenerate-to-temp and diff committed output). */
+  /** Run the codegen-drift gate: is the GENERATED contribution of each file current? */
   codegen: boolean;
   /**
    * Run the docs-drift gate: regenerate the `meta docs` surfaces into a temp dir and diff

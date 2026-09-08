@@ -1223,7 +1223,11 @@ export async function verifyCommand(
     }
 
     if (result.clean) {
-      say("meta verify — generated output is in sync with the metadata (no codegen drift).");
+      // Says what it CHECKED, not more. Since 0.24.3 this gate asks whether each file's
+      // GENERATED contribution is current — a hand edit `meta gen` preserves is exempt —
+      // so "output is in sync with the metadata" claimed a stronger property than it had
+      // verified, and did so over a file whose committed content contradicted the model.
+      say("meta verify — every file's generated contribution is current (no codegen drift).");
       return 0;
     }
 
