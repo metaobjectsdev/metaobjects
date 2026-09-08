@@ -101,6 +101,34 @@ read a declarative [`metaobjects.config.yaml`](../features/cli.md) (#267) — ru
 either with no positional `<metadata_dir>` to use it; the flag path above stays
 byte-identical.
 
+### Taking one tier and not the rest
+
+`--generators <csv>` runs exactly the named generators instead of the default
+suite (`--list` names all of them). This is the answer for a project that wants
+one tier without adopting the others — most often a **schema-only adopter** whose
+tables come from `meta migrate` and whose application code is not generated at all,
+but which still has physical table and column names hard-coded across its data
+layer:
+
+```bash
+metaobjects gen ./metadata --out ./generated --generators names
+```
+
+It emits one `<entity>_names.py` per object and nothing else. Each carries
+`<ENTITY>_SOURCE_PRIMARY_TABLE`, a `<ENTITY>_<FIELD>_COLUMN` per field, a
+`<ENTITY>_COLUMNS_BY_FIELD` map, and `<ENTITY>_SOURCE_PRIMARY_SCHEMA` when the
+source declares a `@schema`. On the 16-entity persistence-conformance model the
+default suite emits 68 files and this emits 19 — so adopting the names tier does
+not drag a REST surface into a repo that does not want one.
+
+**Pass the same `--column-naming` the schema was created with.** It defaults to
+`literal` here, matching this port's `ObjectManager` — **not** `meta migrate`'s
+`snake_case`. On a schema built by `meta migrate`, the default emits
+`PROGRAM_PRICE_CENTS_COLUMN = "priceCents"` for a column actually named
+`price_cents`: a constant that names a column which does not exist, which is worse
+than the literal it replaced. Use `--column-naming snake_case` there. (A field
+carrying an explicit `@column` is unaffected either way.)
+
 **Both `pydantic` and `fastapi` are consumer-installed, not transitive deps of
 `metaobjects` itself** — the entity/router files this emits `import pydantic`
 and `import fastapi`, so add them before importing the generated code:
