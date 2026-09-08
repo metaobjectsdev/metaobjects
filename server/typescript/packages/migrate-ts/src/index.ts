@@ -104,6 +104,7 @@ export {
 } from "./apply/ledger.js";
 export {
   applyPending,
+  MigrationApplyError,
   rollbackTo,
   type ApplyPendingOptions,
   type ApplyPendingResult,

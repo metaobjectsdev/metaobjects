@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { applyPending } from "../../src/apply/apply.js";
+import { applyPending, MigrationApplyError } from "../../src/apply/apply.js";
 import { ensureLedger, appliedNames } from "../../src/apply/ledger.js";
 
 function writeMig(root: string, name: string, up: string): void {
@@ -36,6 +36,46 @@ describe("applyPending — ordered, transactional, ledger-tracked", () => {
   afterEach(async () => {
     await db.destroy();
     rmSync(tmp, { recursive: true, force: true });
+  });
+
+  // F58/F71 — the failure has to name WHICH file, and where it sits in the chain.
+  //
+  // The driver reports what the database refused ("no such table: x") and nothing about
+  // who asked, so every caller printed that over a directory of migrations. `verify
+  // --replay` then guessed at a remedy, and the guess was wrong: it prescribed a NEW
+  // migration, which sorts AFTER the file that failed and cannot create what that file
+  // needs. Choosing correctly requires the POSITION, which is why it rides on the error
+  // rather than being re-derived by each caller.
+  test("a failing migration throws MigrationApplyError naming the file and its position", async () => {
+    writeMig(migDir, "20260101000000-a", "CREATE TABLE a (id INTEGER PRIMARY KEY);");
+    writeMig(migDir, "20260102000000-b", "INSERT INTO nonexistent VALUES (1);");
+    writeMig(migDir, "20260103000000-c", "CREATE TABLE c (id INTEGER PRIMARY KEY);");
+    await ensureLedger(db);
+
+    const err = await applyPending(db, migDir, { dryRun: false }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MigrationApplyError);
+    const applyErr = err as MigrationApplyError;
+    expect(applyErr.migration).toBe("20260102000000-b");
+    expect(applyErr.index).toBe(1);
+    expect(applyErr.pendingCount).toBe(3);
+    // The driver's own text survives — the message adds the file, it does not replace
+    // what the database said.
+    expect(applyErr.message).toContain("20260102000000-b");
+    expect(applyErr.message).toMatch(/nonexistent/);
+    // The run stopped there: 'a' applied, 'c' never ran.
+    expect(await tableExists(db, "a")).toBe(true);
+    expect(await tableExists(db, "c")).toBe(false);
+  });
+
+  test("index is 0 when the FIRST migration in the chain fails — the case with its own remedy", async () => {
+    writeMig(migDir, "20260101000000-a", "INSERT INTO nonexistent VALUES (1);");
+    writeMig(migDir, "20260102000000-b", "CREATE TABLE b (id INTEGER PRIMARY KEY);");
+    await ensureLedger(db);
+
+    const err = (await applyPending(db, migDir, { dryRun: false })
+      .catch((e: unknown) => e)) as MigrationApplyError;
+    expect(err.index).toBe(0);
+    expect(err.migration).toBe("20260101000000-a");
   });
 
   test("runs only pending files, in order, and records them", async () => {

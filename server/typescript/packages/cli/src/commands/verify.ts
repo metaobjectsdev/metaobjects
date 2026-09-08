@@ -18,6 +18,7 @@ import {
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
+import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
@@ -461,11 +462,7 @@ export async function verifyCommand(
         applied = await applyPending(engine.db, dir, { dryRun: false, dialect });
       } catch (err) {
         log.error(`meta verify --replay: ${(err as Error).message}`);
-        log.error(
-          `meta verify --replay: the committed chain does not apply to an empty database. ` +
-            `Applied migrations are immutable, so fix this with a NEW migration that creates the ` +
-            `missing object — not by editing a committed up.sql.`,
-        );
+        for (const line of replayRemedy(err)) log.error(`meta verify --replay: ${line}`);
         return 1;
       }
 

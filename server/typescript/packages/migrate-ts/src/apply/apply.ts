@@ -45,6 +45,29 @@ export interface ApplyPendingResult {
   applied: string[];
 }
 
+/**
+ * A committed migration's SQL failed. Carries WHICH one, because the driver's error says
+ * only what the database refused ("no such table: purchases") and never which file asked.
+ *
+ * The position matters to callers, not just the name: `--replay` prescribes a different
+ * remedy at the HEAD of the chain, where nothing earlier in this chain could have created
+ * what the migration needs, so the base schema must come from outside it.
+ */
+export class MigrationApplyError extends Error {
+  constructor(
+    /** `<timestamp>-<slug>` directory name of the migration that failed. */
+    readonly migration: string,
+    /** 0-based position among the PENDING migrations this run attempted. */
+    readonly index: number,
+    /** How many migrations were pending when the run started. */
+    readonly pendingCount: number,
+    override readonly cause: unknown,
+  ) {
+    super(`migration '${migration}' failed to apply: ${(cause as Error)?.message ?? String(cause)}`);
+    this.name = "MigrationApplyError";
+  }
+}
+
 interface DiscoveredMigration {
   /** `<timestamp>-<slug>` directory name — stable id + sort key. */
   name: string;
@@ -106,14 +129,24 @@ export async function applyPending(
     }
 
     const applied: string[] = [];
-    for (const m of pending) {
+    for (const [i, m] of pending.entries()) {
       const text = await readFile(m.upPath, "utf8");
       const checksum = checksumOf(text);
       // Run the file's SQL + the ledger insert in ONE transaction. A failure
       // rolls the whole file back (unrecorded) and propagates — stopping the run.
-      await runSqlFileWithLedgerMutation(db, text, (trx) =>
-        recordApplied(trx, m.name, checksum, dialect, ledger),
-      );
+      //
+      // Wrapped so the failure names the FILE. The driver reports what the database
+      // refused and nothing about who asked, which left every caller — `apply-pending`
+      // and `verify --replay` alike — printing "no such table: purchases" over a
+      // directory of migrations, and `--replay` guessing at a remedy it could not
+      // have chosen correctly without knowing the position.
+      try {
+        await runSqlFileWithLedgerMutation(db, text, (trx) =>
+          recordApplied(trx, m.name, checksum, dialect, ledger),
+        );
+      } catch (err) {
+        throw new MigrationApplyError(m.name, i, pending.length, err);
+      }
       applied.push(m.name);
     }
 
