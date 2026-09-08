@@ -68,17 +68,32 @@ export function planScaffold(opts: {
   const conflicts: ScaffoldDecision["conflicts"] = [];
   const files: Record<string, string> = {};
 
+  // The manifest records what we WROTE, never what we merely produced. It used to be
+  // stamped with `hashContents(f.contents)` for every assembled file, before the write /
+  // decline decision — so a DECLINED path (contents parked in `<path>.new`, original left
+  // alone by design) was recorded with the hash of the file that was not written. That hash
+  // matched neither the disk nor anything this tool had ever written: pure fiction in the
+  // one record that exists to tell "still exactly what we scaffolded" from "hand-edited",
+  // sitting under a `generatedBy` asserting the context was current at this version while
+  // the file on disk was the predecessor's text.
+  //
+  // A declined path keeps the PRIOR hash — what we last actually wrote — so the comparison
+  // stays meaningful: revert the hand edit and the next refresh sees an unmodified file and
+  // refreshes it. A declined path we have never written (a file that was already there,
+  // unmanaged) gets no entry at all, because there is no true value to record.
   for (const f of assembled) {
-    files[f.path] = hashContents(f.contents);
     const current = readCurrent(f.path);
     if (current === undefined) {
+      files[f.path] = hashContents(f.contents);
       writes.push({ path: f.path, contents: f.contents });
       continue;
     }
     const priorHash = prior?.files[f.path];
     if (priorHash !== undefined && hashContents(current) === priorHash) {
+      files[f.path] = hashContents(f.contents);
       writes.push({ path: f.path, contents: f.contents }); // unmodified → refresh to latest
     } else {
+      if (priorHash !== undefined) files[f.path] = priorHash;
       conflicts.push({ path: f.path, newPath: `${f.path}.new`, contents: f.contents });
     }
   }

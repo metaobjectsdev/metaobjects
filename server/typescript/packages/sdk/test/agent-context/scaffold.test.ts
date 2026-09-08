@@ -168,3 +168,60 @@ describe("agentContextStaleness", () => {
     expect(agentContextStaleness({ manifest: m("dev"), currentVersion: "0.24.4" })).not.toBeNull();
   });
 });
+
+// F53 — the manifest must record what was WRITTEN, never what was merely produced.
+//
+// It used to stamp `hashContents(f.contents)` for every assembled file, before the
+// write/decline decision. So a DECLINED path — contents parked in `<path>.new`, original
+// left alone, which is the "tell, don't merge" design working — was recorded with the hash
+// of the file that was NOT written: a value matching neither the disk nor anything this
+// tool had ever written, in the one record that exists to tell "still exactly what we
+// scaffolded" from "hand-edited", under a `generatedBy` asserting the context was current
+// at this version while the file on disk was the predecessor's text.
+describe("planScaffold — the manifest never records content it declined to write", () => {
+  const hand: AssembledFile[] = [{ path: ".metaobjects/AGENTS.md", contents: "fresh v3" }];
+
+  test("a declined path keeps the PRIOR hash, not the hash of the unwritten file", () => {
+    const prior: Manifest = {
+      version: 1,
+      servers: ["typescript"],
+      clients: ["react"],
+      files: { ".metaobjects/AGENTS.md": hashContents("what we wrote last time") },
+    };
+    const d = planScaffold({
+      stack,
+      assembled: hand,
+      prior,
+      readCurrent: () => "hand-edited by the adopter",
+      generatedBy: "1.0.0",
+    });
+    expect(d.conflicts.map((c) => c.newPath)).toEqual([".metaobjects/AGENTS.md.new"]);
+    expect(d.writes).toEqual([]);
+    // The recorded value is what we last WROTE — so reverting the hand edit makes the next
+    // refresh see an unmodified file and refresh it cleanly.
+    expect(d.manifest.files[".metaobjects/AGENTS.md"]).toBe(hashContents("what we wrote last time"));
+    expect(d.manifest.files[".metaobjects/AGENTS.md"]).not.toBe(hashContents("fresh v3"));
+  });
+
+  test("a declined path we have NEVER written gets no entry at all", () => {
+    // A file that was simply already there, unmanaged (the estate's `forge init`-era
+    // context). There is no true value to record, so nothing is recorded.
+    const d = planScaffold({
+      stack,
+      assembled: hand,
+      prior: undefined,
+      readCurrent: () => "a file this tool never wrote",
+      generatedBy: "1.0.0",
+    });
+    expect(d.conflicts).toHaveLength(1);
+    expect(Object.keys(d.manifest.files)).not.toContain(".metaobjects/AGENTS.md");
+  });
+
+  test("...and a path that WAS written still records the new hash", () => {
+    const d = planScaffold({
+      stack, assembled: hand, prior: undefined, readCurrent: () => undefined, generatedBy: "1.0.0",
+    });
+    expect(d.writes).toHaveLength(1);
+    expect(d.manifest.files[".metaobjects/AGENTS.md"]).toBe(hashContents("fresh v3"));
+  });
+});

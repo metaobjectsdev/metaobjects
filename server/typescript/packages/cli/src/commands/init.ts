@@ -8,7 +8,8 @@ import {
   assemble, resolveAgentContextRoot, planScaffold,
   AGENT_CONTEXT_MANIFEST_PATH, type Manifest, type Stack,
 } from "@metaobjectsdev/sdk/agent-context";
-import { resolveStack } from "../lib/detect-stack.js";
+import { assertKnownStackValues, resolveStack } from "../lib/detect-stack.js";
+import { reportIgnoredScaffold } from "../lib/ignored-scaffold-check.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { cliVersion } from "../lib/version.js";
@@ -1135,6 +1136,11 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
   let flags;
   try {
     flags = parseInitArgs(args);
+    // Refused HERE, before anything is written: a value that names nothing used to be
+    // dropped silently, and a non-empty override array then suppressed both the prior
+    // manifest's stack and detection — so the scaffolded context asserted an empty stack
+    // and a missing config about a project that had both. See `assertKnownStackValues`.
+    assertKnownStackValues({ servers: flags.servers ?? [], clients: flags.clients ?? [] });
   } catch (err) {
     log.error((err as Error).message);
     return 2;
@@ -1163,6 +1169,14 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
     }
 
     if (!flags.quiet) {
+      // A count is not a guarantee that the files reached the repository. Many projects
+      // git-ignore `.claude/` under a comment about credentials — a common and defensible
+      // convention — and eight of the eleven files land there. Ignored, they exist only on
+      // the machine that ran this: not committed, absent from CI and from a fresh clone,
+      // invisible to a teammate, while `.agent-context.json` (which IS committed) tracks
+      // them. That silently voids the whole downstream agent-context design, and the answer
+      // was available from the outputs this command had just written.
+      reportIgnoredScaffold(cwd, result.created);
       if (flags.docsOnly) {
         log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
         for (const w of result.warnings) log.info(`  ${w}`);

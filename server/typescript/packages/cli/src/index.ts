@@ -300,10 +300,12 @@ FLAGS:
   --docs-only           Write only the agent-context files — no metadata sources, no
                         codegen scaffold, no config. Pair with --refresh-docs to update
                         an existing project after upgrading.
-  --server <lang>       Declare a server language for the agent context (repeatable;
-                        e.g. csharp, kotlin, python, node)
-  --client <fw>         Declare a client framework for the agent context (repeatable;
-                        e.g. react, vue)
+  --server <lang>       Declare a server language for the agent context (repeatable):
+                        typescript | java | kotlin | csharp | python
+                        ('node' is accepted as an alias for typescript; an unknown
+                        value is refused, never dropped)
+  --client <fw>         Declare a client framework for the agent context (repeatable):
+                        react | tanstack | angular
   --no-skills           Skip the .claude/skills/ scaffold
   --force               Overwrite existing files
   --quiet               Suppress output
@@ -320,8 +322,8 @@ USAGE:
   meta agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [flags]
 
 FLAGS:
-  --server <lang>       Server language (repeatable; e.g. csharp, kotlin, python, node)
-  --client <fw>         Client framework (repeatable; e.g. react, vue)
+  --server <lang>       Server language (repeatable): typescript|java|kotlin|csharp|python
+  --client <fw>         Client framework (repeatable): react|tanstack|angular
   --out <dir>           Output directory (default: current directory)
   --no-skills           Skip .claude/skills/ scaffold
   --no-wire-root        Skip wiring root CLAUDE.md @import
