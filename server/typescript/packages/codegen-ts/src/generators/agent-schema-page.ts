@@ -81,8 +81,21 @@ function defaultCell(column: SchemaColumnLike): string {
   return `\`${mdCell(column.default.value)}\``;
 }
 
+/**
+ * The key columns, each carrying its direction when it is not the default.
+ *
+ * `desc` is written where it applies rather than only when the whole index is descending: a
+ * mixed `(a ASC, b DESC)` index is a different index from `(a, b)`, and a reader deciding
+ * whether an existing index serves their ORDER BY needs the per-column answer.
+ */
+function keyColumns(ix: SchemaIndexLike): string {
+  return ix.columns
+    .map((c, i) => (ix.orders?.[i] === "desc" ? `\`${c}\` desc` : `\`${c}\``))
+    .join(", ");
+}
+
 function indexLine(ix: SchemaIndexLike): string {
-  const key = ix.expr !== undefined ? `\`${mdCell(ix.expr)}\`` : cols(ix.columns);
+  const key = ix.expr !== undefined ? `\`${mdCell(ix.expr)}\`` : keyColumns(ix);
   const parts = [`\`${ix.name}\``, ix.unique ? "unique" : "index", `on ${key}`];
   if (ix.using !== undefined && ix.using !== "" && ix.using !== "btree") parts.push(`using \`${ix.using}\``);
   if (ix.where !== undefined && ix.where !== "") parts.push(`where \`${mdCell(ix.where)}\``);

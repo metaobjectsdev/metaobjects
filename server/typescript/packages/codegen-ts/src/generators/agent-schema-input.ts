@@ -37,6 +37,17 @@ export interface SchemaIndexLike {
   readonly where?: string | undefined;
   readonly expr?: string | undefined;
   readonly using?: string | undefined;
+  /**
+   * Per-column direction, positionally aligned with `columns`. Absent ⇒ all ascending.
+   *
+   * This field did not exist, so `agent/schema.md` rendered a `btree (ts DESC)` recency
+   * index as "on `ts`" — reading as ascending on the page whose stated job is "the physical
+   * shape of the database … read it before writing a query, a migration, or anything that
+   * names a table or a column". The ordering IS the index for that shape. `@where`, `@expr`
+   * and `@using` were all already rendered; this was the one member of the set the input
+   * type never carried.
+   */
+  readonly orders?: readonly ("asc" | "desc")[] | undefined;
 }
 
 export interface SchemaFkLike {

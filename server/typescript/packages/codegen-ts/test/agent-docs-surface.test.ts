@@ -269,6 +269,33 @@ describe("agent/schema.md", () => {
     ...over,
   });
 
+  // F76 — a `btree (ts DESC)` recency index rendered as "on `ts`", reading as ascending on the
+  // page whose stated job is "the physical shape of the database … read it before writing a
+  // query, a migration, or anything that names a table or a column". The ordering IS the index
+  // for that shape. `@where`, `@expr` and `@using` were all already rendered; `orders` was the
+  // one member of the set the input type never carried.
+  test("a DESC index says desc — the ordering is not decoration", async () => {
+    const page = renderAgentSchemaPage(input({
+      tables: [{
+        name: "wake_events",
+        columns: [column("id", { identity: "increment" }), column("ts"), column("device_id")],
+        indexes: [
+          { name: "wake_events_ts_idx", columns: ["ts"], unique: false, orders: ["desc"] },
+          { name: "wake_events_device_idx", columns: ["device_id", "ts"], unique: false, orders: ["asc", "desc"] },
+          { name: "wake_events_plain_idx", columns: ["device_id"], unique: false },
+        ],
+        foreignKeys: [], checks: [], primaryKey: ["id"],
+      }],
+    }), { declaredBy: new Map(), viewLineage: new Map(), relationships: [], enums: [] });
+    expect(page).toContain("`ts` desc");
+    // Mixed directions are per-COLUMN: `(device_id ASC, ts DESC)` is a different index from
+    // `(device_id, ts)`, and a reader deciding whether it serves their ORDER BY needs that.
+    expect(page).toContain("`device_id`, `ts` desc");
+    // An all-ascending index stays plain — `asc` everywhere would be noise, not information.
+    expect(page).toMatch(/wake_events_plain_idx.*`device_id`/);
+    expect(page).not.toContain("`device_id` asc");
+  });
+
   test("a composite unique is labelled composite — a bare `unique` here would be false", async () => {
     const composite = input({
       tables: [
