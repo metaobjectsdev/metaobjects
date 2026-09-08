@@ -603,6 +603,16 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
 }
 
 export async function init(opts: InitOptions): Promise<InitResult> {
+  // Refused HERE, in the shared function, before anything is written — NOT at one CLI
+  // entry point. It was at `initCommand`'s arg parse only, and `meta agent-docs` calls
+  // this directly: `meta init --docs-only --server klingon` exited 2 with the message
+  // while `meta agent-docs --server klingon` exited 0, reported "11 files", and recorded
+  // `"servers": []`. That is the worse of the two doors to miss — `agent-docs` is the
+  // canonical redirect target for every language port, so the ports used the unguarded
+  // one. A non-empty override array suppresses both the prior manifest's stack AND
+  // detection, so a dropped value does not degrade, it inverts three statements in the
+  // generated context.
+  assertKnownStackValues({ servers: opts.servers ?? [], clients: opts.clients ?? [] });
   const result: InitResult = { created: [], preserved: [], removed: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
   const metaobjectsDir = join(opts.cwd, DEFAULT_METADATA_DIR);
@@ -1138,10 +1148,8 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
   let flags;
   try {
     flags = parseInitArgs(args);
-    // Refused HERE, before anything is written: a value that names nothing used to be
-    // dropped silently, and a non-empty override array then suppressed both the prior
-    // manifest's stack and detection — so the scaffolded context asserted an empty stack
-    // and a missing config about a project that had both. See `assertKnownStackValues`.
+    // Also here, so a bad value is a USAGE error (exit 2) rather than the exit 1 an
+    // init failure gets. `init()` refuses it too, which is what covers every other door.
     assertKnownStackValues({ servers: flags.servers ?? [], clients: flags.clients ?? [] });
   } catch (err) {
     log.error((err as Error).message);

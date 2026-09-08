@@ -17,7 +17,10 @@
 > number when you do (standing policy since 0.24.5, replacing the version-parity rule of
 > 0.20.13):** a registry publishes only when it has a changed product file, and when it does it
 > adopts the **current shared `minor.patch`** — skipping the numbers it sat out. npm / PyPI /
-> NuGet on `0.<m>.<p>`, Maven on `7.<m>.<p>` (only the major differs, for historical continuity).
+> NuGet on `<M>.<m>.<p>`, Maven on `<M+7>.<m>.<p>` — only the MAJOR differs, and the offset is
+> permanent (`scripts/maven-coordinate.mjs` is the single derivation; every script imports it).
+> Concretely: npm `0.25.0` is Maven `7.25.0`, and npm `1.0.0` is Maven **`8.0.0`**. Do not type
+> a literal `7.` anywhere — at the 1.0 cut it asks Central for a version BELOW the last release.
 > Two carve-outs: the **14 npm packages still move atomically with each other** (they
 > cross-depend — that is intra-npm lockstep and it is unchanged), and a change to
 > `expected-registry.json` / `metamodelVersion` **forces all four**, because that is the
@@ -161,7 +164,8 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    displayed a coordinate yet.
 
    So `release.mjs` pushes `main` and **stops**. After the ports are bumped, committed,
-   pushed and tagged (`python-v*`, `csharp-v*`, `java-v7.*`), run:
+   pushed and tagged (`python-v*`, `csharp-v*`, `java-v<npm major + 7>.*` — `java-v8.*` at the
+   1.0 cut, NOT `java-v7.*`), run:
 
    ```bash
    bun scripts/finish-release.mjs <version>            # gates, then tags and pushes
@@ -662,8 +666,8 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on the `7.x` line (currently `7.25.0`) in the parent + module poms. Signed with the
-maintainer's GPG key.
+versioned on its own major line — npm major + 7, so `7.x` while npm is `0.x` and `8.x` from the
+1.0 cut (currently `7.25.0`) — in the parent + module poms. Signed with the maintainer's GPG key.
 
 ## Procedure
 

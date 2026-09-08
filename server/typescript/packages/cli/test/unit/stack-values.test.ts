@@ -45,3 +45,45 @@ describe("stack value validation", () => {
     expect(stack.servers).toContain("typescript");
   });
 });
+
+// The guard has to sit in the SHARED function, not at one CLI entry point.
+//
+// It was at `initCommand`'s arg parse only, and `meta agent-docs` calls `init()` directly:
+// `meta init --docs-only --server klingon` exited 2 with the message, while
+// `meta agent-docs --server klingon` exited 0, reported "Scaffolded … (11 files)" and
+// wrote `"servers": []` into the manifest. That is the worse door to miss — index.ts
+// labels `agent-docs` the "canonical redirect target for all language ports", so the four
+// non-TS ports were the ones using the unguarded one.
+describe("every door refuses an unknown stack value", () => {
+  test("init() itself refuses, so a programmatic caller cannot bypass it", async () => {
+    const { init } = await import("../../src/commands/init.js");
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "stack-guard-"));
+    try {
+      await expect(init({ cwd: dir, servers: ["klingon"], docsOnly: true })).rejects.toThrow(/klingon/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  test("meta agent-docs refuses it too, and writes nothing", async () => {
+    const { run } = await import("../../src/index.js");
+    const { mkdtemp, rm, readdir } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "stack-guard-cli-"));
+    const orig = console.error;
+    const lines: string[] = [];
+    console.error = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    try {
+      const exit = await run(["agent-docs", "--server", "klingon", "--out", dir]);
+      expect(exit).not.toBe(0);
+      expect(lines.join("\n")).toContain("klingon");
+      // Nothing scaffolded: the refusal lands before any write, as it does for init.
+      expect(await readdir(dir)).toEqual([]);
+    } finally {
+      console.error = orig;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
