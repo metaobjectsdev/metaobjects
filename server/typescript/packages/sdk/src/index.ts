@@ -1,26 +1,11 @@
-// Records
-export { RecordCore, RecordType, RecordSource } from "./records/core.js";
-export { ConventionRecord } from "./records/convention.js";
-export { DecisionRecord } from "./records/decision.js";
-export { PrincipleRecord } from "./records/principle.js";
-export { GlossaryRecord } from "./records/glossary.js";
-export { FailureRecord } from "./records/failure.js";
-export { AnyRecord } from "./records/any.js";
-
-// Storage
-export {
-  readRecord,
-  recordExists,
-  writeRecord,
-  removeRecord,
-  listRecords,
-  promoteRecord,
-  supersede,
-  ForgeRecordNotFoundError,
-  ForgeAlreadyPromotedError,
-  ForgeRecordParseError,
-} from "./storage/index.js";
-export type { ListOptions } from "./storage/index.js";
+// The forge memory RECORD schemas (`RecordCore`, `DecisionRecord`, …) and their file
+// STORAGE layer (`readRecord` / `writeRecord` / `listRecords` / `promoteRecord` /
+// `supersede`) were exported here and are removed. Nothing in this repository imported
+// either — not the CLI, not a generator, not a test beyond the schemas' own — and no
+// adopter estate did. The storage half had no test at all. They are the predecessor
+// product's record store, and the vocabulary they describe is no longer in any default
+// composition (see `defaultLoadMemoryProviders`); keeping a published API for a store
+// nothing reads would have frozen it into 1.0.
 
 // Paths
 export { recordPath, resolveMetaRoot } from "./paths.js";
