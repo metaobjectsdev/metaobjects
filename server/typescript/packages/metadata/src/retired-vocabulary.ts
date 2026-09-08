@@ -89,7 +89,8 @@ export type VocabularyRewrite =
       readonly otherwise: "drop" | "refuse";
     };
 
-/** One retirement. `subType: "*"` means every subtype of `type`. */
+/** One retirement. `subType: "*"` means every subtype of `type`; `type: "*"` means
+ *  every type, which is what a retired COMMON attribute needs. */
 export interface RetiredEntry extends RetirementNote {
   readonly type: string;
   /** `*` for every subtype of `type`, else the exact subtype. */
@@ -108,6 +109,44 @@ export interface RetiredEntry extends RetirementNote {
 const REQUIREMENT_MIGRATION = "docs/features/migrations/verified-by-retirement.md";
 const RETIRED_STATUS_MIGRATION = "docs/features/migrations/retired-status-restore.md";
 const EMIT_ATTR_MIGRATION = "docs/features/migrations/emit-attrs-to-generator-config.md";
+
+const FORGE_MIGRATION = "docs/features/migrations/0.x-to-1.0.md";
+
+/**
+ * The `@forge*` common attributes, deregistered from the DEFAULT provider composition at
+ * the 1.0 cut (`forgeTypesProvider` left `defaultLoadMemoryProviders`).
+ *
+ * They are here so `meta upgrade` NAMES them and points at the migration — and
+ * deliberately WITHOUT a `rewrite`, which is the map's way of saying the fix is judgment.
+ * That is not conservatism: this vocabulary still LOADS for a project that opts the
+ * provider back in (`loadMemory(root, { providers: [forgeTypesProvider] })`, the chartered
+ * ADR-0023 escape hatch). An automated strip would therefore destroy valid metadata for
+ * exactly the adopters who made that choice deliberately, while the two real options —
+ * opt the provider in, or delete the attributes — are a decision only they can make.
+ *
+ * Before this, three shipped places promised `meta upgrade --apply` would strip them and
+ * the tool reported "nothing to rewrite, exit 0" on a project carrying nine such nodes.
+ * A migration instruction that silently does nothing is worse than one that refuses.
+ */
+const FORGE_ATTRS = [
+  "forgeAlternatives", "forgeAppliesTo", "forgeCapturedAt", "forgeCodeAnchors",
+  "forgeConfidence", "forgeCounterExamples", "forgeDefinition", "forgeEnforcement",
+  "forgeExamples", "forgeLastValidatedCommit", "forgeOccurrences",
+  "forgePatternDescription", "forgePrimaryLocation", "forgeRationale", "forgeScope",
+  "forgeSeeAlso", "forgeSource", "forgeStatement", "forgeSynonyms", "forgeTerm",
+  "forgeWhatWasTried", "forgeWhyItFailed",
+] as const;
+
+const FORGE_ENTRIES: readonly RetiredEntry[] = FORGE_ATTRS.map((attr) => ({
+  type: "*", subType: "*", attr,
+  since: "1.0.0",
+  why: "it was registered by a TypeScript-only provider and appears nowhere in " +
+       "expected-registry.json, so one document had two verdicts depending on which " +
+       "port read it — and 1.0 would have frozen that",
+  replacedBy: "`forgeTypesProvider`, opted in explicitly — " +
+              "loadMemory(root, { providers: [forgeTypesProvider] }) — or delete them",
+  migration: FORGE_MIGRATION,
+}));
 
 export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   // ── 0.24.0: `@violation` is renamed `@counterexample` ──
@@ -326,6 +365,9 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     migration: EMIT_ATTR_MIGRATION,
     rewrite: { kind: "dropAttr" },
   },
+
+  // Deregistered from the default composition at the 1.0 cut — see FORGE_ENTRIES.
+  ...FORGE_ENTRIES,
 ];
 
 
@@ -339,7 +381,11 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
 export function scopeMatches(entry: RetiredEntry, typeKey: string): boolean {
   const dot = typeKey.indexOf(".");
   if (dot < 0) return false;
-  if (entry.type !== typeKey.slice(0, dot)) return false;
+  // `type: "*"` is for an attribute that was registered as a COMMON attr — valid on
+  // EVERY node, so its retirement is scoped the way its registration was. Without it
+  // such an entry needs one row per top-level type, and the row for whichever type
+  // nobody thought of is the one that goes silently unmatched.
+  if (entry.type !== "*" && entry.type !== typeKey.slice(0, dot)) return false;
   return entry.subType === "*" || entry.subType === typeKey.slice(dot + 1);
 }
 

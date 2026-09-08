@@ -9,9 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### BREAKING — the default provider composition registered vocabulary no other port has
 
-`forgeTypesProvider` leaves `defaultLoadMemoryProviders` and `meta types`. Metadata carrying
-`@forgeConfidence` — or a `decision` / `principle` / `convention` / `glossary` / `failure`
-node — now fails to load unless the project opts the provider in.
+`forgeTypesProvider` leaves `defaultLoadMemoryProviders` and `meta types`. A `decision` /
+`principle` / `convention` / `glossary` / `failure` **node** now fails to load unless the
+project opts the provider in. An `@forge*` **attribute** is rejected by `meta verify`
+(`ERR_UNKNOWN_ATTR`) and silently IGNORED by `meta gen` — the TypeScript loader is lax on
+unknown attributes and only `verify` is strict, a distinction this entry originally flattened
+into "fails to load", which is true of the node half only.
 
 That vocabulary was registered in **TypeScript and nowhere else**: no C#, Python, Java or
 Kotlin registry declares a line of it, and `expected-registry.json` — the manifest all five
@@ -25,7 +28,10 @@ agrees with it.
 
 The provider is still exported and unchanged: `loadMemory(root, { providers:
 [forgeTypesProvider] })` is the chartered ADR-0023 opt-in, and a project taking it knows it
-has a surface the other four ports do not. `meta upgrade --apply` strips the attributes.
+has a surface the other four ports do not. `meta upgrade` names every occurrence with its
+line, reason and guide and deliberately does NOT rewrite it — the vocabulary still loads for a
+project that opts the provider back in, so an automatic strip would destroy valid metadata for
+the adopters who chose that on purpose.
 Migration: [`0.x-to-1.0.md` §12](docs/features/migrations/0.x-to-1.0.md).
 
 **The gate closes the door, not the instance.** `metadata`'s registry-conformance test pins

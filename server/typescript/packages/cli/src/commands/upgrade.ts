@@ -26,6 +26,7 @@ import {
   composeRegistry,
   coreProviders,
   SUBTYPE_BASE,
+  retirementSuggestions,
 } from "@metaobjectsdev/metadata";
 import { log } from "../lib/log.js";
 
@@ -147,10 +148,22 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     log.info(`\n${rel}`);
     for (const c of r.changes) log.info(`  ${c.line}: @${c.from} → ${c.to}`);
     for (const f of r.refusals) {
+      // The WHY and the replacement both print, and the guide is not an alternative to
+      // them. This used to read `Retired in <since>. See <guide>` — dropping `why`
+      // whenever a guide existed, which is almost always, and dropping `replacedBy`
+      // unconditionally. For the `@forge*` entries that removed the only actionable
+      // sentence there is ("opt the provider in explicitly"), and for an authored
+      // `<type>.base` it announced a retirement of something that was never authorable —
+      // telling the reader they used to have a working feature. Hence "no longer accepted
+      // as of", which is true of both, with the carefully-written `why` beside it.
       log.warn(
-        `  ${f.line}: ${f.subject}${f.value !== undefined ? `: ${f.value}` : ""} — needs a decision. ` +
-          `Retired in ${f.since}. ${f.migration !== undefined ? `See ${f.migration}` : f.why}`,
+        `  ${f.line}: ${f.subject}${f.value !== undefined ? `: ${f.value}` : ""} — needs a decision ` +
+          `(no longer accepted as of ${f.since}).`,
       );
+      log.warn(`      ${f.why}`);
+      // The same suggestion list every OTHER door prints for a retirement, rather than a
+      // second rendering of the same note that can drift from it.
+      for (const line of retirementSuggestions(f)) log.warn(`      ${line}`);
     }
 
     totalChanges += r.changes.length;

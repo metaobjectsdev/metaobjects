@@ -223,18 +223,23 @@ Every port's loader defaults to `[...coreProviders, ...callerProviders]` when th
 caller supplies `providers`. Pass `{ replaceDefaults: true }` (TS) or the per-port
 equivalent to skip the defaults entirely — rare, but supported.
 
-**`forgeTypesProvider` is TypeScript-only, and this page used to say otherwise.** It
-was listed here as part of the default composition for "the TS / C# / Python loaders";
-in fact only TypeScript has it — `@metaobjectsdev/sdk`'s `loadMemory` composes it, and
-no C#, Python, Java or Kotlin registry registers any `@forge*` attribute or `decision` /
-`principle` / `convention` / `glossary` / `failure` type at all. Nor does
-`expected-registry.json`, which is the manifest all five ports byte-match, so the
-cross-port gate never had jurisdiction over it.
+**`forgeTypesProvider` is TypeScript-only, and is no longer in any default
+composition.** It was listed here as part of the default composition for "the TS / C# /
+Python loaders"; in fact only TypeScript ever had it, and no C#, Python, Java or Kotlin
+registry registers any `@forge*` attribute or `decision` / `principle` / `convention` /
+`glossary` / `failure` type at all. Nor does `expected-registry.json`, the manifest all
+five ports byte-match, so the cross-port gate never had jurisdiction over it — one
+document had two verdicts, decided by which toolchain read it, and 1.0 would have frozen
+that in.
 
-The consequence is worth stating plainly rather than leaving to be discovered: a
-document carrying `@forgeConfidence` **loads on TypeScript and fails
-`ERR_UNKNOWN_ATTR` on the other four ports** — one document, two verdicts, decided by
-which toolchain reads it.
+At the 1.0 cut it left `defaultLoadMemoryProviders` and `meta types`. It is still
+exported and unchanged, as the chartered opt-in:
+
+```ts
+const root = await loadMemory("./", { providers: [forgeTypesProvider] });
+```
+
+A project taking it knows it has a surface the other four ports do not.
 
 ## Stable error codes
 

@@ -179,9 +179,11 @@ import { loadMemory } from "@metaobjectsdev/sdk";
 const root = await loadMemory("./", { providers: [yourProvider] });
 ```
 
-Default composition is `[...coreProviders, forgeTypesProvider,
-...callerProviders]`. Pass `{ replaceDefaults: true }` to skip the core
-bundle entirely (rare — usually only useful in tests). See
+Default composition is `[...coreProviders, ...callerProviders]`. Pass
+`{ replaceDefaults: true }` to skip the core bundle entirely (rare — usually
+only useful in tests). `forgeTypesProvider` left the default set at the 1.0
+cut: it is TypeScript-only vocabulary no other port registers, so pass it
+explicitly if you want it. See
 [`../features/extending-with-providers.md`](../features/extending-with-providers.md)
 for the full contract and
 [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)

@@ -171,8 +171,10 @@ function def(
  * `@forgeConfidence` loaded on TS and failed `ERR_UNKNOWN_ATTR` everywhere else. It is
  * opt-in now, the chartered ADR-0023 consumer-provider way.
  *
- * Use via `composeRegistry([...coreProviders, forgeTypesProvider])` or via
- * `loadMemory()`'s default bundle (forge is included by default).
+ * Use via `composeRegistry([...coreProviders, forgeTypesProvider])` or
+ * `loadMemory(root, { providers: [forgeTypesProvider] })`. It is NOT in any default
+ * composition — this line used to say "forge is included by default", contradicting the
+ * paragraph above it inside one docblock.
  */
 export const forgeTypesProvider: MetaDataTypeProvider = {
   id: "metaobjects-forge",
