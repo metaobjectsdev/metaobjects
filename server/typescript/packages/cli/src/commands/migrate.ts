@@ -58,6 +58,23 @@ import {
 } from "../lib/wrangler.js";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
+import { describeLoadError } from "../lib/load-error.js";
+
+/**
+ * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
+ * code, the file, the json path, and the loader's own next steps — instead of the bare
+ * `err.message` five commands used to print. See `lib/load-error.ts`.
+ */
+function reportLoadError(
+  log: { error: (msg: string) => void },
+  prefix: string,
+  err: unknown,
+): void {
+  const report = describeLoadError(err);
+  log.error(`${prefix}: ${report.text}`);
+  for (const s of report.suggestions ?? []) log.error(`  ${s}`);
+}
+
 
 export const MIGRATE_HELP_TEXT = `meta migrate — diff metadata vs live DB; emit migration SQL files
 
@@ -628,7 +645,7 @@ export async function migrateCommand(
       ...postgresLoadOptions,
     });
   } catch (err) {
-    log.error(`failed to load metadata: ${(err as Error).message}`);
+    reportLoadError(log, "failed to load metadata", err);
     return 2;
   }
 
@@ -1056,7 +1073,7 @@ export async function runBaseline(
         ...baselineLoadOptions,
       });
     } catch (err) {
-      log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
+      reportLoadError(log, "migrate baseline: failed to load metadata", err);
       return 2;
     }
     const baselineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: baselineStrategy });
@@ -1195,7 +1212,7 @@ export async function runOfflineGenerate(
       ...offlineLoadOptions,
     });
   } catch (err) {
-    log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
+    reportLoadError(log, "migrate: failed to load metadata", err);
     return 2;
   }
 

@@ -243,6 +243,30 @@ function abstractSubtypeMessage(type: string): string {
   );
 }
 
+/**
+ * The concrete subtypes to offer instead, as ADR-0009 `suggestions[]`.
+ *
+ * DERIVED from the registry, never a written list: the substitution the migration guide
+ * prints for `object.base` is exactly "the other subtypes this type registers", so reading
+ * it from the registry means a new subtype appears in the advice the day it is registered,
+ * and a removed one stops being suggested. The message alone said "declare a concrete
+ * subtype" without ever naming one, so the next step was in a guide the reader had to
+ * already know existed.
+ */
+function abstractSubtypeSuggestions(type: string, registry: TypeRegistry): string[] {
+  const concrete = registry.allSubTypesOf(type).filter((sub) => sub !== SUBTYPE_BASE).sort();
+  const out = [
+    concrete.length > 0
+      ? `declare one of: ${concrete.map((sub) => `"${type}.${sub}"`).join(" | ")}`
+      : `declare a concrete "${type}.<subType>"`,
+  ];
+  out.push(
+    "which one is a decision about the node, not a rename — see " +
+      "docs/features/migrations/base-subtypes-are-not-authorable.md",
+  );
+  return out;
+}
+
 // The same rule reached by the OTHER spelling: a BARE wrapper key (`{"field": …}`, no fused
 // subType) whose registry default resolves to the abstract anchor. The author did not type
 // `.base`, so this is a MISSING subtype rather than an authored-anchor error — and
@@ -507,6 +531,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
         ? new ParseError(abstractSubtypeMessage(rootType), {
             code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
             source: src,
+            suggestions: abstractSubtypeSuggestions(rootType, opts.registry),
           })
         : new ParseError(missingSubtypeMessage(rootType), {
             code: "ERR_MISSING_SUBTYPE",
@@ -1372,6 +1397,7 @@ function processChildren(
           ? new ParseError(abstractSubtypeMessage(childType), {
               code: "ERR_ABSTRACT_SUBTYPE_AUTHORED",
               source: errSource(),
+              suggestions: abstractSubtypeSuggestions(childType, registry),
             })
           : new ParseError(missingSubtypeMessage(childType), {
               code: "ERR_MISSING_SUBTYPE",

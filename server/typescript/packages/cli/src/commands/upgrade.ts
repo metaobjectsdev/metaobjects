@@ -21,7 +21,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { extname, relative } from "node:path";
 import { resolveCollection } from "@metaobjectsdev/sdk";
-import { rewriteDocument } from "@metaobjectsdev/metadata";
+import {
+  rewriteDocument,
+  composeRegistry,
+  coreProviders,
+  SUBTYPE_BASE,
+} from "@metaobjectsdev/metadata";
 import { log } from "../lib/log.js";
 
 /** YAML authoring (ADR-0006). Rewritten by the `yaml`-backed arm, loaded on demand below. */
@@ -96,7 +101,29 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     ? (await import("@metaobjectsdev/metadata/vocabulary-rewrite-yaml")).rewriteYamlDocument
     : undefined;
 
-  const opts = flags.maxVersion !== undefined ? { maxVersion: flags.maxVersion } : {};
+  // Which types have an ABSTRACT ANCHOR at `<type>.base`, derived from the core registry
+  // rather than listed here: `base` is an anchor exactly when the type registers some OTHER
+  // subtype for it to anchor. The rewriter is registry-free on purpose, so the caller — this
+  // command, which can build a registry — supplies the fact.
+  //
+  // Without it, `meta upgrade` answered "nothing to rewrite" on an estate whose
+  // `{"object.base": …}` the loader refuses (ERR_ABSTRACT_SUBTYPE_AUTHORED) — the change
+  // §10A of the 1.0 guide LEADS WITH. The one command whose job is "what does the new
+  // version need me to change?" said "nothing", and the adopter then hit the load failure.
+  const registry = composeRegistry(coreProviders);
+  // `allTypes()` yields one TypeId per registered type.subType pair, so take the distinct
+  // TYPE names off it.
+  const abstractAnchorTypes = [...new Set(registry.allTypes().map((id) => id.type))]
+    .filter((t) => {
+      const subs = registry.allSubTypesOf(t);
+      return subs.includes(SUBTYPE_BASE) && subs.some((sub) => sub !== SUBTYPE_BASE);
+    })
+    .sort();
+
+  const opts = {
+    abstractAnchorTypes,
+    ...(flags.maxVersion !== undefined ? { maxVersion: flags.maxVersion } : {}),
+  };
 
   for (const file of files) {
     const rel = relative(projectRoot, file);

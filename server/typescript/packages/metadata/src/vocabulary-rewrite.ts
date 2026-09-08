@@ -88,6 +88,17 @@ export interface RewriteResult {
 export interface RewriteOpts {
   /** Only apply retirements at or before this version. */
   readonly maxVersion?: string;
+  /**
+   * Types whose `<type>.base` is an ABSTRACT ANCHOR, so authoring one is a load error
+   * (`ERR_ABSTRACT_SUBTYPE_AUTHORED`). Supplied by the CALLER rather than derived here,
+   * because this module is deliberately registry-free — and the fact is a registry
+   * question: `base` is an anchor exactly when the type registers some OTHER subtype for
+   * it to anchor, which a third-party provider's base-only type does not.
+   *
+   * Omitted ⇒ no anchor refusals, which is the honest default for a caller that cannot
+   * say. `meta upgrade` supplies the core set.
+   */
+  readonly abstractAnchorTypes?: readonly string[];
 }
 
 /** `0.24.0` → `[0,24,0]`, for an ordered comparison rather than a string one. */
@@ -344,6 +355,28 @@ export function rewriteDocument(source: string, opts: RewriteOpts = {}): Rewrite
       if (`${entry.type}.${entry.subType}` !== r.typeKey) continue;
       refusals.push({ ...note(entry), subject: r.typeKey, line: lineAt(source, r.keyIndex) });
     }
+  }
+
+  // An authored `<type>.base` is a LOAD ERROR, not a retirement — the anchor was never
+  // authorable, and three of five ports accepted it anyway until 1.0. It belongs here for
+  // the same reason retired subtypes do: `meta upgrade` is the command an adopter runs to
+  // ask "what does the new version need me to change?", and answering "nothing" about the
+  // change the migration guide LEADS WITH is worse than not being asked. It is a REFUSAL
+  // because choosing the concrete subtype is a decision about what the node IS, which no
+  // rewriter can make.
+  for (const r of ranges) {
+    const dot = r.typeKey.lastIndexOf(".");
+    if (dot < 0 || r.typeKey.slice(dot + 1) !== "base") continue;
+    if (!(opts.abstractAnchorTypes ?? []).includes(r.typeKey.slice(0, dot))) continue;
+    refusals.push({
+      since: "1.0.0",
+      why:
+        `"${r.typeKey}" may not be authored — every "base" subtype is an abstract registry ` +
+        "anchor that concrete subtypes inherit from, with no runtime semantics of its own.",
+      migration: "docs/features/migrations/base-subtypes-are-not-authorable.md",
+      subject: r.typeKey,
+      line: lineAt(source, r.keyIndex),
+    });
   }
 
   // ── Attribute contradictions: two LIVE attrs that may not sit on one node ──

@@ -304,6 +304,25 @@ export function rewriteYamlDocument(source: string, opts: RewriteOpts = {}): Yam
         if (`${entry.type}.${entry.subType}` !== key) continue;
         refusals.push({ ...note(entry), subject: key, line: lineOf(span.keyStart) });
       }
+      // The SAME rule as the JSON arm: an authored `<type>.base` is a load error, not a
+      // retirement, and `meta upgrade` must not answer "nothing to rewrite" about it. Kept
+      // beside its sibling rather than in one shared pass because these two rewriters walk
+      // different structures — the shared thing is `RewriteOpts.abstractAnchorTypes`, which
+      // both read, so neither can be given a different answer to the same question.
+      const dot = key.lastIndexOf(".");
+      if (dot >= 0
+        && key.slice(dot + 1) === "base"
+        && (opts.abstractAnchorTypes ?? []).includes(key.slice(0, dot))) {
+        refusals.push({
+          since: "1.0.0",
+          why:
+            `"${key}" may not be authored — every "base" subtype is an abstract registry ` +
+            "anchor that concrete subtypes inherit from, with no runtime semantics of its own.",
+          migration: "docs/features/migrations/base-subtypes-are-not-authorable.md",
+          subject: key,
+          line: lineOf(span.keyStart),
+        });
+      }
       return;
     }
 

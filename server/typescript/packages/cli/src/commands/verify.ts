@@ -85,6 +85,7 @@ import {
   REQUIREMENT_STATUSES,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
+import { describeLoadError } from "../lib/load-error.js";
 
 const DEFAULT_PROMPTS_DIR = "prompts";
 
@@ -250,7 +251,10 @@ export async function verifyCommand(
     });
   } catch (err) {
     const msg = (err as Error).message;
-    log.error(`failed to load metadata: ${msg}`);
+    // Everything the loader's envelope carried, not just the message: the stable code a
+    // CI job keys on, and the FILE + json path the message itself can never name.
+    const report = describeLoadError(err);
+    log.error(`failed to load metadata: ${report.text}`);
     // Strict-load rejection (ADR-0023). Two different failures reach here and they need
     // different advice:
     //
@@ -280,6 +284,14 @@ export async function verifyCommand(
     // report — only why there is none.
     emitStructured({
       error: `failed to load metadata: ${msg}`,
+      // ADR-0009 promises a stable `code`, and the docs name codes a CI job is meant to
+      // branch on — but this payload used to carry the message string and nothing else,
+      // so there was nothing to branch on. Each field is present only when the loader
+      // actually supplied it; absence here means the loader had none, never that it was
+      // dropped in transit.
+      ...(report.code !== undefined ? { code: report.code } : {}),
+      ...(report.files !== undefined ? { files: [...report.files] } : {}),
+      ...(report.jsonPath !== undefined ? { jsonPath: report.jsonPath } : {}),
       hint: suggestions !== undefined && suggestions.length > 0
         ? suggestions.join(" ")
         : isStrictAttr ? strictHint : "fix the metadata error above and re-run",
