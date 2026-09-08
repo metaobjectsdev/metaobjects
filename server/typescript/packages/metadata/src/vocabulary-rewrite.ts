@@ -79,6 +79,44 @@ export interface RewriteRefusal extends RetirementNote {
   readonly line: number;
 }
 
+/**
+ * The refusal for an authored `<type>.base`, or `undefined` when `typeKey` is not one.
+ *
+ * Shared by BOTH rewriters. Their detection legitimately differs — one walks JSON key
+ * ranges, the other YAML node spans — but the verdict does not, and the `why` plus the
+ * migration path were spelled out twice, byte-identically, in two files. A message an
+ * adopter reads is a contract: two copies are two places for the next wording or the next
+ * guide path to reach one and not the other, and the reader has no way to tell which arm
+ * answered them.
+ *
+ * `line` is deliberately NOT returned. It is the one part that genuinely differs between
+ * the arms (a JSON key index vs a YAML span start), so each caller supplies its own.
+ *
+ * An authored `base` is a LOAD ERROR, not a retirement — the anchor was never authorable,
+ * and three of five ports accepted it anyway until 1.0. It is reported here for the same
+ * reason retired subtypes are: `meta upgrade` is the command an adopter runs to ask "what
+ * does the new version need me to change?", and answering "nothing" about the change the
+ * migration guide LEADS WITH is worse than not being asked. It is a REFUSAL rather than a
+ * rewrite because choosing the concrete subtype is a decision about what the node IS,
+ * which no rewriter can make.
+ */
+export function authoredBaseRefusal(
+  typeKey: string,
+  abstractAnchorTypes: readonly string[] | undefined,
+): Omit<RewriteRefusal, "line"> | undefined {
+  const dot = typeKey.lastIndexOf(".");
+  if (dot < 0 || typeKey.slice(dot + 1) !== "base") return undefined;
+  if (!(abstractAnchorTypes ?? []).includes(typeKey.slice(0, dot))) return undefined;
+  return {
+    since: "1.0.0",
+    why:
+      `"${typeKey}" may not be authored — every "base" subtype is an abstract registry ` +
+      "anchor that concrete subtypes inherit from, with no runtime semantics of its own.",
+    migration: "docs/features/migrations/base-subtypes-are-not-authorable.md",
+    subject: typeKey,
+  };
+}
+
 export interface RewriteResult {
   readonly text: string;
   readonly changes: readonly RewriteChange[];
@@ -357,26 +395,13 @@ export function rewriteDocument(source: string, opts: RewriteOpts = {}): Rewrite
     }
   }
 
-  // An authored `<type>.base` is a LOAD ERROR, not a retirement — the anchor was never
-  // authorable, and three of five ports accepted it anyway until 1.0. It belongs here for
-  // the same reason retired subtypes do: `meta upgrade` is the command an adopter runs to
-  // ask "what does the new version need me to change?", and answering "nothing" about the
-  // change the migration guide LEADS WITH is worse than not being asked. It is a REFUSAL
-  // because choosing the concrete subtype is a decision about what the node IS, which no
-  // rewriter can make.
+  // An authored `<type>.base` — see authoredBaseRefusal for why this is reported at all.
+  // Only the LINE is this arm's own; the verdict is shared with the YAML rewriter.
   for (const r of ranges) {
-    const dot = r.typeKey.lastIndexOf(".");
-    if (dot < 0 || r.typeKey.slice(dot + 1) !== "base") continue;
-    if (!(opts.abstractAnchorTypes ?? []).includes(r.typeKey.slice(0, dot))) continue;
-    refusals.push({
-      since: "1.0.0",
-      why:
-        `"${r.typeKey}" may not be authored — every "base" subtype is an abstract registry ` +
-        "anchor that concrete subtypes inherit from, with no runtime semantics of its own.",
-      migration: "docs/features/migrations/base-subtypes-are-not-authorable.md",
-      subject: r.typeKey,
-      line: lineAt(source, r.keyIndex),
-    });
+    const refusal = authoredBaseRefusal(r.typeKey, opts.abstractAnchorTypes);
+    if (refusal !== undefined) {
+      refusals.push({ ...refusal, line: lineAt(source, r.keyIndex) });
+    }
   }
 
   // ── Attribute contradictions: two LIVE attrs that may not sit on one node ──

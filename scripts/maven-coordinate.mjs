@@ -47,5 +47,9 @@ export function mavenVersion(npmVersion) {
   const s = String(npmVersion);
   const m = /^(\d+)\.(\d+)\.(\d+)(-.+)?$/.exec(s);
   if (!m) throw new Error(`maven-coordinate: "${s}" is not a three-part version`);
-  return `${Number(m[1]) + MAVEN_MAJOR_OFFSET}.${m[2]}.${m[3]}${m[4] ?? ""}`;
+  // Through `mavenMajor`, not `Number(m[1]) + MAVEN_MAJOR_OFFSET` again. This file exists
+  // because the offset had four doors and two were wrong; inlining it here made a fifth,
+  // and left `mavenMajor` with no production caller at all — an exported rule whose only
+  // exercise was its own unit test, beside a copy of itself that every release actually ran.
+  return `${mavenMajor(s)}.${m[2]}.${m[3]}${m[4] ?? ""}`;
 }

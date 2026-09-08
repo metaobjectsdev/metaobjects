@@ -142,3 +142,59 @@ def test_the_unresolved_sentinel_is_never_canonicalized_into_agreement() -> None
     # the one case where both sides genuinely say the same unknown thing.)
     assert agent_context_staleness({"generatedBy": "0.0.0"}, "1.0.0rc5") is not None
     assert agent_context_staleness({"generatedBy": "1.0.0-rc.5"}, "0.0.0") is not None
+
+
+# ── the MAJOR is information on THIS port ────────────────────────────────────
+# Both helpers dropped the leading major, borrowing the Java port's rationale verbatim.
+# That rationale is explicitly "a fact peculiar to the JVM": Maven Central carries a
+# historical major of npm-major + 7, so `7.24.1` and `0.24.1` ARE one release and the
+# coordinate has to drop the major to compare them.
+#
+# Nothing of the kind is true here. `generatedBy` is stamped by the Node CLI (npm) and
+# `installed_metaobjects_version()` reads the PyPI distribution version — and npm and PyPI
+# share the major by policy (both go to 1.0.0 at the cut). So on this port the major is
+# real information, and dropping it made the nudge assert agreement across a whole major.
+
+
+def test_a_context_a_MAJOR_behind_is_not_in_sync() -> None:
+    # `1.0.0` vs `2.0.0` reduced to the same (0, 0) coordinate and read as one release.
+    assert agent_context_staleness({"generatedBy": "1.0.0"}, "2.0.0") is not None
+    assert agent_context_staleness({"generatedBy": "0.25.0"}, "1.25.0") is not None
+
+
+def test_the_1_0_cut_itself_nudges_a_0_x_context() -> None:
+    # The live case at the cut, and the reason this is not hypothetical: a Python install
+    # upgraded to 1.0.0 whose agent context was scaffolded at 0.25.0 got NO advisory at
+    # all. `_context_is_ahead_of_install` compared (25, 0) against (0, 0), concluded the
+    # 0.25.0 context was NEWER than the 1.0.0 install, and suppressed the nudge — on the
+    # single upgrade the whole feature exists to catch.
+    msg = agent_context_staleness(
+        {"version": 1, "servers": ["python"], "clients": [], "files": {"a": "h"}, "generatedBy": "0.25.0"},
+        "1.0.0",
+    )
+    assert msg is not None
+    assert "0.25.0" in msg
+
+
+def test_a_context_a_MAJOR_ahead_is_still_silent() -> None:
+    # The publish-what-changed exemption is unchanged and still applies WITHIN and ACROSS
+    # majors: the canonical scaffolder is npm, so a stamp genuinely newer than this port's
+    # install is correct and must not nudge.
+    assert agent_context_staleness({"generatedBy": "1.0.0"}, "0.25.0") is None
+
+
+def test_same_release_and_same_series_agree_on_finals() -> None:
+    # The two helpers parsed the same grammar with two different regexes. They must not be
+    # able to disagree: the ordering coordinate is the equality coordinate restricted to
+    # FINAL releases, so a final that compares equal must also compare not-ahead either way.
+    from metaobjects.agent_context.scaffold import (
+        _context_is_ahead_of_install,
+        _same_release,
+    )
+
+    for v in ("0.24.5", "1.0.0", "10.2.30"):
+        assert _same_release(v, v) is True
+        assert _context_is_ahead_of_install(v, v) is False
+    # and a prerelease is "not orderable" to BOTH, so it keeps nudging
+    for v in ("1.0.0-rc.5", "1.0.0rc5", "0.24.5+abc", "0.0.0", "nope"):
+        assert _context_is_ahead_of_install(v, "1.0.0") is False

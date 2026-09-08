@@ -42,6 +42,7 @@ import {
   type RetiredEntry,
 } from "../retired-vocabulary.js";
 import type { RewriteChange, RewriteRefusal, RewriteOpts, RewriteResult } from "../vocabulary-rewrite.js";
+import { authoredBaseRefusal } from "../vocabulary-rewrite.js";
 
 /**
  * A rewrite result that can also report "I could not read this file".
@@ -304,24 +305,13 @@ export function rewriteYamlDocument(source: string, opts: RewriteOpts = {}): Yam
         if (`${entry.type}.${entry.subType}` !== key) continue;
         refusals.push({ ...note(entry), subject: key, line: lineOf(span.keyStart) });
       }
-      // The SAME rule as the JSON arm: an authored `<type>.base` is a load error, not a
-      // retirement, and `meta upgrade` must not answer "nothing to rewrite" about it. Kept
-      // beside its sibling rather than in one shared pass because these two rewriters walk
-      // different structures — the shared thing is `RewriteOpts.abstractAnchorTypes`, which
-      // both read, so neither can be given a different answer to the same question.
-      const dot = key.lastIndexOf(".");
-      if (dot >= 0
-        && key.slice(dot + 1) === "base"
-        && (opts.abstractAnchorTypes ?? []).includes(key.slice(0, dot))) {
-        refusals.push({
-          since: "1.0.0",
-          why:
-            `"${key}" may not be authored — every "base" subtype is an abstract registry ` +
-            "anchor that concrete subtypes inherit from, with no runtime semantics of its own.",
-          migration: "docs/features/migrations/base-subtypes-are-not-authorable.md",
-          subject: key,
-          line: lineOf(span.keyStart),
-        });
+      // The SAME verdict as the JSON arm, from the SAME function. The two rewriters walk
+      // different structures — JSON key ranges vs YAML node spans — so the DETECTION stays
+      // per-arm, but the refusal an adopter reads is one decision and now has one source.
+      // Only the line number is this arm's own.
+      const baseRefusal = authoredBaseRefusal(key, opts.abstractAnchorTypes);
+      if (baseRefusal !== undefined) {
+        refusals.push({ ...baseRefusal, line: lineOf(span.keyStart) });
       }
       return;
     }

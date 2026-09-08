@@ -45,7 +45,10 @@ const parts = VERSION?.match(/^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/);
 const IS_RC = Boolean(parts?.[4]);
 const PYPI_VERSION = parts && `${parts[1]}.${parts[2]}.${parts[3]}${IS_RC ? `rc${parts[4]}` : ""}`;
 const MVN = args.find((a) => a.startsWith("--maven="))?.slice("--maven=".length)
-  ?? (parts && mavenVersion(`${parts[1]}.${parts[2]}.${parts[3]}${IS_RC ? `-rc.${parts[4]}` : ""}`));
+  // `VERSION` itself, not its captures reassembled: `parts` came from matching VERSION
+  // against that exact grammar, so the reconstruction could only ever equal what it was
+  // built from — while giving the RC suffix a second, hand-written spelling to get wrong.
+  ?? (parts && mavenVersion(VERSION));
 
 // A pre-release is published to `next` and must NOT move `latest` — checking `latest`
 // against an RC would fail every correct RC cut, and the mistake it is really guarding

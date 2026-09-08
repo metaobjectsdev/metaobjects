@@ -80,8 +80,6 @@ class Manifest:
 # The sentinel a port stamps when it cannot resolve its own installed version.
 _UNRESOLVED_VERSION = "0.0.0"
 
-_RELEASE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
-
 #: A release with an optional PRE-RELEASE segment, in either spelling one ecosystem uses.
 #: npm/NuGet/Maven write ``1.0.0-rc.5``; PEP 440 writes ``1.0.0rc5``. Both are the SAME
 #: release, and comparing their SPELLINGS is what made the nudge unsatisfiable — see
@@ -104,13 +102,19 @@ _PEP440_LABEL_ALIASES = {
 }
 
 
-def _release_coordinate(version: object) -> tuple[int, int, str, int] | None:
-    """``(minor, patch, pre_label, pre_number)`` for a version in ANY ecosystem spelling.
+def _release_coordinate(version: object) -> tuple[int, int, int, str, int] | None:
+    """``(major, minor, patch, pre_label, pre_number)`` for a version in ANY ecosystem
+    spelling.
 
-    The MAJOR is dropped for the same reason ``_release_series`` drops it: it is a
-    per-registry constant, not information (npm/PyPI/NuGet ship ``<M>.<m>.<p>`` and Maven
-    Central the same ``<m>.<p>`` on a major seven higher). ``minor.patch`` plus the
-    pre-release IS the shared release coordinate.
+    The MAJOR is INFORMATION on this port, and both helpers here used to drop it. That
+    reduction is correct on the JVM and only there: Maven Central carries a historical
+    major of npm-major + 7 by design, so ``7.24.1`` and ``0.24.1`` genuinely name one
+    release and the coordinate must ignore the major to see it. Nothing of the kind holds
+    here — ``generatedBy`` is stamped by the Node CLI (an npm version) and
+    :func:`installed_metaobjects_version` reads the PyPI distribution version, and npm and
+    PyPI share the major by policy. Dropping it made ``1.0.0`` and ``2.0.0`` compare EQUAL,
+    and made a ``0.25.0``-stamped context read as NEWER than a ``1.0.0`` install — so the
+    1.0 upgrade, the single upgrade this advisory exists to catch, produced no nudge.
 
     The pre-release label is lower-cased and its separators dropped, so ``-rc.5``,
     ``rc5`` and ``-RC5`` all reduce to ``("rc", 5)``. A final release sorts ABOVE every
@@ -133,7 +137,13 @@ def _release_coordinate(version: object) -> tuple[int, int, str, int] | None:
     number = int(m.group(5)) if m.group(5) is not None else 0
     # A FINAL release is newer than every pre-release of the same number. "~" sorts above
     # every ASCII letter, so the sentinel does that with plain tuple comparison.
-    return (int(m.group(2)), int(m.group(3)), label if label else "~", number)
+    return (
+        int(m.group(1)),
+        int(m.group(2)),
+        int(m.group(3)),
+        label if label else "~",
+        number,
+    )
 
 
 def _same_release(generated_by: object, current_version: str) -> bool:
@@ -156,28 +166,26 @@ def _same_release(generated_by: object, current_version: str) -> bool:
     return stamped is not None and stamped == installed
 
 
-def _release_series(version: object) -> tuple[int, int] | None:
-    """Ordered release coordinate ``(minor, patch)``, or ``None`` when not orderable.
+def _release_series(version: object) -> tuple[int, int, int] | None:
+    """Ordered release coordinate ``(major, minor, patch)``, or ``None`` when not orderable.
 
-    The MAJOR is deliberately dropped. It is a per-registry constant, not information:
-    npm/PyPI/NuGet ship ``0.<m>.<p>`` and Maven Central the same ``<m>.<p>`` on its
-    historical major ``7``, so minor.patch IS the shared release coordinate across all
-    four ports.
+    Derived from :func:`_release_coordinate` rather than parsed again. These two functions
+    used to answer the same grammar with two different regexes — differential-checked
+    identical over 200k inputs, which is the good outcome of a coin flip, not a guarantee.
+    The ordering coordinate simply IS the equality coordinate restricted to FINAL releases,
+    and saying so in code means the two cannot drift apart.
 
     ``None`` means "not orderable, so nudge", and deliberately covers prereleases
-    (``0.24.5-rc.1``), build metadata (``0.24.5+abc``) and the ``0.0.0`` sentinel. Each
-    must keep nudging: an RC-scaffolded context against a final release is still worth
-    refreshing, and an unknown install must never assert "in sync".
+    (``0.24.5-rc.1``, ``1.0.0rc5``), build metadata (``0.24.5+abc``) and the ``0.0.0``
+    sentinel. Each must keep nudging: an RC-scaffolded context against a final release is
+    still worth refreshing, and an unknown install must never assert "in sync".
     """
-    if not isinstance(version, str):
+    coord = _release_coordinate(version)
+    # A pre-release carries a real label; a final carries the "~" sentinel. Only finals are
+    # orderable here, which is what the previous release-only regex enforced by construction.
+    if coord is None or coord[3] != "~":
         return None
-    v = version.strip()
-    if v == _UNRESOLVED_VERSION:
-        return None
-    m = _RELEASE_RE.match(v)
-    if m is None:
-        return None
-    return int(m.group(2)), int(m.group(3))
+    return coord[0], coord[1], coord[2]
 
 
 def _context_is_ahead_of_install(generated_by: object, current_version: str) -> bool:

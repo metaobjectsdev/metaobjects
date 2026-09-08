@@ -72,6 +72,71 @@ integration cases generated with an explicit `--out <dir>/docs` while `verify --
 the config default, and passed only because the two coincided. Sixteen cases failed the moment
 they stopped. They now take the config path, which is what the gate reads.
 
+### Fixed — the Python nudge was blind to the 1.0 cut it exists to catch
+
+`agent_context_staleness` on the Python port dropped the leading MAJOR from both of its
+version coordinates, borrowing the Java port's rationale verbatim. That rationale is
+explicitly "a fact peculiar to the JVM": Maven Central carries a historical major of
+npm-major + 7, so `7.24.1` and `0.24.1` genuinely name one release and the coordinate must
+ignore the major to see it. Nothing of the kind is true here — `generatedBy` is stamped by
+the Node CLI (an npm version), `installed_metaobjects_version()` reads the PyPI distribution
+version, and npm and PyPI share the major by policy.
+
+So `1.0.0` and `2.0.0` compared EQUAL, and — the live case — a Python install upgraded to
+`1.0.0` whose agent context was scaffolded at `0.25.0` got **no advisory at all**: the
+ordering helper compared `(25, 0)` against `(0, 0)`, concluded the 0.25.0 context was NEWER
+than the 1.0.0 install, and took the publish-what-changed exemption. That is the single
+upgrade the whole feature exists to catch, and every Python adopter would have hit it the
+moment 1.0 shipped. The "known bound" the docstring owned — a `0.24.x` context against a
+`1.0.0` install reading as ahead — was also not the "suppressed once" it claimed: nothing
+changes the state, so the suppression was permanent.
+
+Both coordinates now carry the major, and the ordering coordinate is DERIVED from the
+equality one rather than parsed by a second regex — differential-checked over 11k inputs as
+identical on orderability and on `(minor, patch)`. The PEP 440 spelling equivalence
+(`1.0.0rc5` == `1.0.0-rc.5`) and the publish-what-changed exemption are unchanged; the
+exemption now applies across majors too, which is correct, since the canonical scaffolder is
+npm and a genuinely newer stamp must still not nudge.
+
+### Removed — the sdk's `.meta` path helpers, and a README example that could only throw
+
+`recordPath` and `resolveMetaRoot` are gone, finishing the removal that took the forge memory
+record schemas and their storage layer. `recordPath` built `<metaRoot>/memory/<type>/<id>.json`
+— the layout of exactly that deleted store. `resolveMetaRoot` walked up for a `.meta`
+directory, which `meta init` does not scaffold and this package's own test asserts is NOT
+created.
+
+Its only caller anywhere was the sdk README's usage example, which was wrong twice: it would
+throw `no .meta directory found` before reaching `loadConfig`, and `loadConfig` reads
+`<dir>/config.json` while a project's config lives under `.metaobjects/`. The example now
+shows `resolveCollection` — the documented single authority for locating a project — feeding
+`loadMemory`, and was verified by running it verbatim against a freshly `meta init`-ed
+project rather than by reading it.
+
+Also corrected: a comment in `sdk/src/index.ts` claimed the removed storage layer "had no
+test at all". The same commit that wrote that sentence deleted `sdk/test/storage.test.ts`,
+217 lines of it.
+
+### Fixed — three rules that had a second, unexercised spelling
+
+- The authored-`<type>.base` refusal was written twice, in the JSON and YAML arms of
+  `meta upgrade`'s rewriter, with a byte-identical `why` and migration path. The DETECTION
+  legitimately differs (JSON key ranges vs YAML node spans) and stays per-arm; the verdict an
+  adopter reads is one decision and now has one source, with only the line number supplied
+  per arm.
+- `mavenVersion` inlined `Number(major) + MAVEN_MAJOR_OFFSET` instead of calling `mavenMajor`
+  — in the very file that exists because that offset had four doors and two of them were
+  wrong. It made a fifth, and left `mavenMajor` with **no production caller at all**: an
+  exported rule exercised only by its own unit test, sitting beside a copy of itself that
+  every release actually ran.
+- `release-verify.mjs` reassembled `VERSION` from the captures of the match it had just made
+  on `VERSION`, giving the RC suffix a second hand-written spelling to get wrong. It passes
+  the string through.
+- Python's `gen_state_dir_for` re-derived `Path(metadata_dir).resolve().parent` rather than
+  calling `project_root_for`, whose own docstring already claimed the former "is anchored
+  here". The manifest KEY and the manifest LOCATION have to agree on where the project is, or
+  a lookup finds nothing and every file reads as "not ours".
+
 ### Fixed — four checks that could not fire, and the duplication behind two of them
 
 Each of these was GREEN and each was inert. They came out of the review pass over the RC

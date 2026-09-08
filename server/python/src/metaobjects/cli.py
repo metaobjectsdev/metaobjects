@@ -470,12 +470,17 @@ def _generate(
 def gen_state_dir_for(metadata_dir: str) -> str:
     """Where a project's codegen hash manifest lives.
 
-    Anchored on the project — the metadata dir's parent, i.e. the directory holding
-    ``metaobjects/`` — never on ``Path.cwd()``, which is whatever directory the process
-    happens to sit in and would scatter ``.metaobjects/`` into any package that merely
-    runs a generator.
+    Anchored on the project — never on ``Path.cwd()``, which is whatever directory the
+    process happens to sit in and would scatter ``.metaobjects/`` into any package that
+    merely runs a generator.
+
+    It resolves the project through :func:`project_root_for` rather than repeating
+    ``Path(metadata_dir).resolve().parent``. That function's own docstring already claimed
+    this one "is anchored here" while the code spelled the rule out a second time, and the
+    manifest key and the manifest LOCATION have to agree on where the project is or a
+    lookup finds nothing and every file reads as "not ours".
     """
-    return str(Path(metadata_dir).resolve().parent / ".metaobjects" / ".gen-state")
+    return str(project_root_for(metadata_dir) / ".metaobjects" / ".gen-state")
 
 
 #: The conventional declarative-template-spec file (SP-1 §4), discovered when

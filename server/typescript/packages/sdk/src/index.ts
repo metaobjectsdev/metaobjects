@@ -1,14 +1,19 @@
-// The forge memory RECORD schemas (`RecordCore`, `DecisionRecord`, …) and their file
-// STORAGE layer (`readRecord` / `writeRecord` / `listRecords` / `promoteRecord` /
-// `supersede`) were exported here and are removed. Nothing in this repository imported
-// either — not the CLI, not a generator, not a test beyond the schemas' own — and no
-// adopter estate did. The storage half had no test at all. They are the predecessor
-// product's record store, and the vocabulary they describe is no longer in any default
-// composition (see `defaultLoadMemoryProviders`); keeping a published API for a store
-// nothing reads would have frozen it into 1.0.
-
-// Paths
-export { recordPath, resolveMetaRoot } from "./paths.js";
+// The forge memory RECORD schemas (`RecordCore`, `DecisionRecord`, …), their file STORAGE
+// layer (`readRecord` / `writeRecord` / `listRecords` / `promoteRecord` / `supersede`) and
+// the `.meta` PATH helpers (`recordPath` / `resolveMetaRoot`) were exported here and are
+// removed. Nothing in this repository imported any of them outside their own tests — not
+// the CLI, not a generator — and no adopter estate did. They are the predecessor product's
+// record store, and the vocabulary they describe is no longer in any default composition
+// (see `defaultLoadMemoryProviders`); keeping a published API for a store nothing reads
+// would have frozen it into 1.0.
+//
+// `recordPath` built `<metaRoot>/memory/<type>/<id>.json` — the layout of exactly that
+// deleted store. `resolveMetaRoot` walked up for a `.meta` directory, which `meta init`
+// does not scaffold and this package's own test asserts is NOT created; the one caller
+// anywhere was this README's usage example, where it was paired with `loadConfig` — and
+// `loadConfig` reads `<dir>/config.json`, while a project's config lives under
+// `.metaobjects/`. The example therefore threw before it could read the wrong file. It now
+// shows `resolveCollection`, the documented single authority for locating a project.
 
 // Config
 export { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, AllowTokenEnum } from "./config.js";

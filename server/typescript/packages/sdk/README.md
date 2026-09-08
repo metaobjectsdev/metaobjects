@@ -1,6 +1,6 @@
 # @metaobjectsdev/sdk
 
-Programmatic SDK for MetaObjects: workspace memory records, path resolution, and project config loading. Consumed by the `meta` CLI and by AI-collaboration tooling (MCP exposers, codegen prompts).
+Programmatic SDK for MetaObjects: project/collection resolution, metadata loading, and project config loading. Consumed by the `meta` CLI and by AI-collaboration tooling (MCP exposers, codegen prompts).
 
 ## Install
 
@@ -11,10 +11,13 @@ pnpm add @metaobjectsdev/sdk
 ## Usage
 
 ```ts
-import { resolveMetaRoot, loadConfig } from "@metaobjectsdev/sdk";
+import { resolveCollection, loadMemory } from "@metaobjectsdev/sdk";
 
-const metaRoot = await resolveMetaRoot(process.cwd());
-const config = await loadConfig(metaRoot);
+// `resolveCollection` is the single authority for "which project is this, and which
+// metadata files does it declare?" — it discovers the project root, reads its
+// `.metaobjects/config.json` if there is one, and resolves the declared `sources`.
+const collection = await resolveCollection(process.cwd());
+const root = await loadMemory(collection.configDir, { files: collection.files });
 ```
 
 ## agent-context
