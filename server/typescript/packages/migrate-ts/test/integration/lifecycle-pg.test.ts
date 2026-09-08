@@ -28,7 +28,7 @@ import {
 } from "../../src/index.js";
 import { applyPending, rollbackTo } from "../../src/apply/apply.js";
 import { appliedNames } from "../../src/apply/ledger.js";
-import { normalizeCheckExpr } from "../../src/check-expr-compare.js";
+import { checkExprEquals } from "../../src/check-expr-compare.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
 const d = PG_URL ? describe : describe.skip;
@@ -108,11 +108,23 @@ function tableNames(tables: TableDescriptor[]): string[] {
 function colNames(t: TableDescriptor): string[] {
   return t.columns.map((c) => c.name).sort();
 }
-// Use the LIBRARY normalizer so the test reflects the same canonicalization the
-// diff uses — PG returns `status = ANY (ARRAY[...])` for an `IN` list, which
-// normalizeCheckExpr folds back to `... in ...`.
-function checkExprs(t: TableDescriptor): string[] {
-  return t.checks.map((c) => normalizeCheckExpr(c.expression)).sort();
+/**
+ * Does this table hold a CHECK the diff would consider equal to `authored`?
+ *
+ * Asserting the normalizer's OUTPUT spelling was the mistake here. These tests carried
+ * `"qty >= 1"` — the canonical form at the time — and the moment the comparator learned
+ * to collapse operator whitespace (so a live `(a ->> 'b'::text)` stops reading as drift
+ * against the authored `(a->>'b')`), three literals went stale and this lane went red
+ * looking like a product regression. The normalized string is an internal comparison
+ * KEY: `normalizeCheckExpr` is only ever used under `===` in diff/index.ts and is never
+ * emitted, printed, or stored. A test has no business pinning its spelling.
+ *
+ * So compare through the product's own equality, against the expression as a person
+ * would AUTHOR it. That is the claim worth making — "the live database holds the check
+ * we declared" — and it survives any future canonicalization the comparator learns.
+ */
+function hasCheck(t: TableDescriptor, authored: string): boolean {
+  return t.checks.some((c) => checkExprEquals(c.expression, authored));
 }
 
 d("migrate-ts lifecycle against real Postgres", () => {
@@ -157,10 +169,15 @@ d("migrate-ts lifecycle against real Postgres", () => {
     expect(colNames(orders1)).toEqual(["email", "id", "qty", "status"]);
     expect(orders1.primaryKey).toEqual(["id"]);
     expect(orders1.indexes.some((i) => i.unique && i.columns.includes("email"))).toBe(true);
-    // enum + numeric checks present
-    expect(checkExprs(orders1)).toEqual(
-      ["qty >= 1", "status in 'open','closed'"].sort(),
-    );
+    // enum + numeric checks present, compared as the diff compares them — and the COUNT
+    // too, so a check that vanished cannot hide behind two that matched.
+    expect(orders1.checks).toHaveLength(2);
+    expect(hasCheck(orders1, "qty >= 1")).toBe(true);
+    expect(hasCheck(orders1, "status in 'open','closed'")).toBe(true);
+    // Proves `hasCheck` can convict: if the comparator ever normalized everything to one
+    // value, every assertion above would pass while proving nothing, and this is the line
+    // that would say so.
+    expect(hasCheck(orders1, "qty >= 2")).toBe(false);
 
     // ---- v2: evolve ---------------------------------------------------------
     const root2 = await loadRoot(V2);
@@ -188,9 +205,10 @@ d("migrate-ts lifecycle against real Postgres", () => {
     expect(colNames(orders2)).toEqual(["customer_id", "email", "id", "note", "qty", "status"]);
     expect(orders2.foreignKeys.some((f) => f.refTable === "lc_customers")).toBe(true);
     // evolved checks
-    const c2 = checkExprs(orders2);
-    expect(c2).toContain("status in 'open','closed','cancelled'");
-    expect(c2).toContain("qty >= 1 and qty <= 1000");
+    expect(hasCheck(orders2, "status in 'open','closed','cancelled'")).toBe(true);
+    expect(hasCheck(orders2, "qty >= 1 and qty <= 1000")).toBe(true);
+    // The pre-evolution bound is GONE, not merely joined by a second check.
+    expect(hasCheck(orders2, "qty >= 1")).toBe(false);
 
     // ---- rollback v2 → v1 (down) --------------------------------------------
     const rb = await rollbackTo(db, migRoot, "20260101000000-init", { dialect: "postgres" });
@@ -202,9 +220,11 @@ d("migrate-ts lifecycle against real Postgres", () => {
     const ordersBack = live[0]!;
     expect(colNames(ordersBack)).toEqual(["email", "id", "qty", "status"]); // note/customerId dropped
     expect(ordersBack.foreignKeys).toHaveLength(0);            // fk dropped
-    expect(checkExprs(ordersBack)).toEqual(
-      ["qty >= 1", "status in 'open','closed'"].sort(),       // original checks restored
-    );
+    // original checks restored — and only those two, so a down that left the evolved
+    // constraint behind alongside the restored one still fails here.
+    expect(ordersBack.checks).toHaveLength(2);
+    expect(hasCheck(ordersBack, "qty >= 1")).toBe(true);
+    expect(hasCheck(ordersBack, "status in 'open','closed'")).toBe(true);
 
     // ---- idempotency: re-diff v1 against the live (rolled-back) DB ----------
     const liveSnap = await introspectPostgres(db);
@@ -326,8 +346,8 @@ d("migrate-ts lifecycle against real Postgres", () => {
       expect(posts.foreignKeys.some((f) => f.refTable === "gf_users")).toBe(true);
       expect(comments.foreignKeys.map((f) => f.refTable).sort()).toEqual(["gf_posts", "gf_users"]);
       // enum + numeric checks + unique indexes survived the round-trip
-      expect(checkExprs(gf.find((t) => t.name === "gf_users")!)).toContain("role in 'admin','editor','viewer'");
-      expect(checkExprs(posts).some((e) => e.includes("views >= 0"))).toBe(true);
+      expect(hasCheck(gf.find((t) => t.name === "gf_users")!, "role in 'admin','editor','viewer'")).toBe(true);
+      expect(hasCheck(posts, "views >= 0")).toBe(true);
       expect(gf.find((t) => t.name === "gf_tags")!.indexes.some((i) => i.unique && i.columns.includes("name"))).toBe(true);
 
       // greenfield rollback: tear the whole app back down to an empty database

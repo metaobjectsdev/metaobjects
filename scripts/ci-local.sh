@@ -644,8 +644,19 @@ ensure_pg_sidecar() {
   # Same URL shape local-ci.yml exports. MIGRATE_TS_PG_URL points at the same database,
   # exactly as the ts-slow job does, so migrate-ts's real-Postgres suites run locally
   # instead of self-skipping.
+  #
+  # The two *_EXPECT sentinels are armed HERE and nowhere else — at the one point where a
+  # database is proven up and its URL exported. Every fallback above returns before this,
+  # so a box with no docker, no published port or a sidecar that never became ready still
+  # self-skips as it always did rather than failing for want of a database it was never
+  # going to have. Armed, they turn "the URL stopped being set" from a silent 26-test skip
+  # reported as ✓ into a loud failure. Hosted CI sets both from its `services:` block; the
+  # local run had neither, which is why a local ✓ and a hosted ✖ could disagree about the
+  # only real-engine gate on migration correctness.
   export METAOBJECTS_TEST_PG_URL="postgres://metaobjects:metaobjects@localhost:${port}/metaobjects_test"
   export MIGRATE_TS_PG_URL="$METAOBJECTS_TEST_PG_URL"
+  export MIGRATE_TS_PG_EXPECT=1
+  export RUNTIME_TS_PG_EXPECT=1
   echo "    METAOBJECTS_TEST_PG_URL -> localhost:${port} (stop it: docker rm -f $name)"
 }
 
@@ -769,8 +780,19 @@ else
     # runs (umbrella `ts` / local full), its build already produced it — only build
     # here when ts-slow runs in isolation (the CI ts-slow job).
     if want_any ts ts-slow && ! want_any ts ts-fast; then step_if bun "ts build (for integration)" gate_ts_build; fi
+    # Bring the sidecar up BEFORE the two real-PG gates, not just before the docker
+    # integration step. `ensure_pg_sidecar` exports MIGRATE_TS_PG_URL and its own comment
+    # says that is so "migrate-ts's real-Postgres suites run locally instead of
+    # self-skipping" — but it was only ever called from run_integration_for, which runs
+    # AFTER both gates. So on a local run the suite that calls itself "the ONLY
+    # real-engine gate on migration correctness" ran with no database, self-skipped 26
+    # tests, and the lane reported ✓. Hosted ts-slow ran the same 26 and went red on
+    # three stale assertions; a local run could not see it, which is how a red reached
+    # main believing it was green.
+    #
     # Ordered BEFORE the docker integration step so a container-readiness flake there
     # can never prevent the migrate verdict from being produced.
+    if want_any ts ts-slow && docker info >/dev/null 2>&1; then ensure_pg_sidecar; fi
     want_any ts ts-slow        && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
     want_any ts ts-slow        && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
     want_any ts ts-slow        && run_integration_for ts     ts
