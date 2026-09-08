@@ -310,11 +310,19 @@ export interface VerifyFlags {
    */
   lax: boolean;
   /**
-   * How many advisory lines TEXT output prints per SECTION before truncating
-   * (`DEFAULT_ADVISORY_LIMIT`, or Infinity for `--limit all`). Per-section, never
-   * shared across them — the reason the two caps were separate in the first place
-   * is that one shared budget lets the authoring lint push every gate warning off
-   * the end. It never applies to a structured payload, which carries everything.
+   * How many advisory lines TEXT output prints per printed LIST before truncating
+   * (`DEFAULT_ADVISORY_LIMIT`, or Infinity for `--limit all`). Never shared across
+   * lists — one shared budget lets the biggest list push every other finding off the
+   * end. It never applies to a structured payload, which carries everything.
+   *
+   * Per LIST, not per section, and the distinction is real rather than pedantic: the
+   * anti-pattern tier prints TWO separately-headed lists (the hand-rolling findings and
+   * the F52 missing-`baseUrl` findings) while being ONE section everywhere else — one
+   * structured list keyed by `rule`, one `--no-antipatterns` muting both. So that
+   * section's text output can reach a MULTIPLE of the cap. Deliberate: a project with 200
+   * money-float sites would otherwise never see its `baseUrl` advisory, which is the one
+   * that silently drops the API prefix from every generated hook, and starving the small
+   * list is the worse failure. Pinned in advisory-structured-output.test.ts.
    */
   limit: number;
 }

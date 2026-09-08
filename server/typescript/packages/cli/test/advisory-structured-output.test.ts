@@ -58,12 +58,22 @@ const ENTITY_JSON = JSON.stringify({
  * sites — each a money word plus minor-unit math on one line, which is the
  * scanner's high-precision `money-float` rule.
  */
-function project(extraConfig = ""): string {
+function project(extraConfig = "", baseUrlSites = 0): string {
   const dir = mkdtempSync(join(tmpdir(), "mo-advisory-"));
   mkdirSync(join(dir, "metaobjects"), { recursive: true });
   mkdirSync(join(dir, ".metaobjects"), { recursive: true });
   mkdirSync(join(dir, "src"), { recursive: true });
   writeFileSync(join(dir, "metaobjects", "meta.shop.json"), ENTITY_JSON);
+  // F52 sites: an entity-fetcher provider mounted with no baseUrl. A SECOND advisory list
+  // inside the same section as the anti-patterns above — see the two-list cap test.
+  if (baseUrlSites > 0) {
+    for (let i = 0; i < baseUrlSites; i++) {
+      writeFileSync(
+        join(dir, "src", `mount${i}.tsx`),
+        `<EntityFetcherProvider fetcher={fetcher}>\n  <App />\n</EntityFetcherProvider>\n`,
+      );
+    }
+  }
   writeFileSync(join(dir, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, sources: [] }));
   writeFileSync(
     join(dir, "src", "checkout.ts"),
@@ -272,6 +282,51 @@ describe("text mode caps, --limit raises it, and every site honors one constant"
       expect(all.exit).toBe(0);
       expect(adviceLines(all.err)).toHaveLength(FINDINGS);
       expect(all.err).not.toContain("more.");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT_MS);
+
+  test("the cap is per printed LIST, so a two-list section can print 2x it", async () => {
+    // A DECISION, pinned, because it reads like a defect: `--limit 3` yields up to SIX
+    // advisory lines here. The anti-pattern tier prints two separately-headed lists — the
+    // hand-rolling findings and the F52 missing-baseUrl findings — and they are one SECTION
+    // everywhere else: one structured list keyed by `rule`, and one `--no-antipatterns`
+    // suppressing both.
+    //
+    // They keep separate caps for exactly the reason the caps are per-section at all: a
+    // shared budget lets the larger list push the smaller one off the end entirely. A
+    // project with 200 money-float sites would never see its baseUrl advisory, which is the
+    // one that silently drops the API prefix from every generated hook. Starving the small
+    // list is the worse failure, so each list gets its own budget and the section total can
+    // reach a multiple of the cap.
+    const dir = project(`\n  apiPrefix: "/api",`, 5);
+    try {
+      const { exit, err } = await capture(["verify", "--format", "text", "--limit", "3", "--cwd", dir]);
+      expect(exit).toBe(0);
+      // Both lists are present and each is capped at 3 — neither starved the other.
+      expect(adviceLines(err)).toHaveLength(3);
+      // "src/mount", not "mount" — the section HEADER says "mounted with no baseUrl".
+      const baseUrlLines = err.split("\n").filter((l) => l.includes("src/mount"));
+      expect(baseUrlLines).toHaveLength(3);
+      // ...and each list says how many IT held back, rather than one shared tail.
+      expect(err).toContain(`…and ${FINDINGS - 3} more`);
+      expect(err).toContain("…and 2 more");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT_MS);
+
+  test("...and the structured payload still carries both lists in ONE section, uncapped", async () => {
+    const dir = project(`\n  apiPrefix: "/api",`, 5);
+    try {
+      const { exit, out } = await capture(["verify", "--format", "json", "--limit", "1", "--cwd", dir]);
+      expect(exit).toBe(0);
+      const doc = JSON.parse(out) as { antiPatterns?: { total?: number; rows?: FindingRow[] } };
+      const rows = doc.antiPatterns?.rows ?? [];
+      expect(rows.filter((r) => r.rule === "missing-base-url")).toHaveLength(5);
+      expect(rows.filter((r) => r.rule !== "missing-base-url")).toHaveLength(FINDINGS);
+      expect(doc.antiPatterns?.total).toBe(FINDINGS + 5);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

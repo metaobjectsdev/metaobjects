@@ -72,6 +72,21 @@ integration cases generated with an explicit `--out <dir>/docs` while `verify --
 the config default, and passed only because the two coincided. Sixteen cases failed the moment
 they stopped. They now take the config path, which is what the gate reads.
 
+### Changed — `--limit` is documented as per printed LIST, which is what it always was
+
+Its doc said "per SECTION, never shared across them". The anti-pattern tier prints TWO
+separately-headed lists — the hand-rolling findings and the F52 missing-`baseUrl` findings —
+while being ONE section everywhere else: one structured list keyed by `rule`, one
+`--no-antipatterns` muting both. So `--limit 3` can print six advisory lines from a section
+the payload calls one, and reads like a defect.
+
+It is not. The separate budgets exist for the same reason the caps are per-section at all: a
+shared budget lets the larger list push the smaller one off the end entirely. A project with
+200 money-float sites would never see its `baseUrl` advisory — the one that silently drops
+the API prefix from every generated hook — and starving the small list is the worse failure.
+No behaviour changed; the doc now states the rule the code follows, and a test pins it, so it
+is a decision on the record rather than an accident nobody had measured.
+
 ### Fixed — the Python nudge was blind to the 1.0 cut it exists to catch
 
 `agent_context_staleness` on the Python port dropped the leading MAJOR from both of its
