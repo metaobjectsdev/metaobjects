@@ -241,7 +241,14 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
 
     const toCheck = fresh.filter((rel) => !isIgnored(rel));
     const orphans = ownedOrphans.filter((rel) => !isIgnored(rel));
-    const ignoredCount = fresh.length - toCheck.length;
+    // BOTH halves. `ignoreCandidates` above tests fresh pages AND owned orphans, so an
+    // ignored orphan is dropped from the check exactly like an ignored fresh page — but
+    // counting only the fresh half reported a number SMALLER than the work actually
+    // skipped. That is the `verify --templates` denominator mistake in miniature (a line
+    // describing work the command did not do), which is the very thing the orphan loop
+    // below is written to avoid; the two must be consistent about the same set.
+    const ignoredCount =
+      fresh.length - toCheck.length + (ownedOrphans.length - orphans.length);
 
     // A gate asked to check pages that could check NONE must not answer "no drift".
     if (toCheck.length === 0 && orphans.length === 0) {
