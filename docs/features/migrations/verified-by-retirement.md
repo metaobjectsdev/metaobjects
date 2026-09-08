@@ -1,13 +1,28 @@
 # Migration — the requirement vocabulary becomes prescriptive-only (`0.24.0` / Maven `7.24.0`)
 
+> **SUPERSEDED IN PART BY `0.24.2`. Read this before acting on §2.**
+> This guide describes the `0.24.0` change as it shipped, and §2 tells you to DELETE every
+> `abandoned` / `superseded` entry. **That instruction is correct only for a project landing
+> on `0.24.0` or `0.24.1`.** `0.24.2` restored a home for exactly those nodes —
+> **`@status: retired`** — and re-registered `@supersededBy` as a reference the loader
+> resolves. On `0.24.2` or later (1.0 included) the migration is **`meta upgrade --apply`**,
+> which rewrites the status, keeps a `@supersededBy` and drops the `@implementedBy` a retired
+> entry may not carry. **Do not delete the node.** See
+> [retired-status-restore.md](retired-status-restore.md).
+>
+> This matters because the deletion is irreversible and the guide that reverses it is a
+> separate file: at least one adopting estate followed §2 as written and destroyed ledger
+> entries that `retired` would now hold. `@verifiedBy`'s retirement below is unaffected —
+> it never came back.
+
 **Breaking.** Four pieces of `requirement.*` vocabulary are retired in one change:
 
-| retired | now fails with |
-|---|---|
-| `@verifiedBy` | `ERR_UNKNOWN_ATTR` |
-| `@supersededBy` | `ERR_UNKNOWN_ATTR` |
-| `@status: abandoned` | `ERR_BAD_ATTR_VALUE` |
-| `@status: superseded` | `ERR_BAD_ATTR_VALUE` |
+| retired | now fails with | still true at 1.0? |
+|---|---|---|
+| `@verifiedBy` | `ERR_UNKNOWN_ATTR` | yes |
+| `@supersededBy` | `ERR_UNKNOWN_ATTR` | **no** — re-registered in `0.24.2` as a resolved reference, legal on `retired` |
+| `@status: abandoned` | `ERR_BAD_ATTR_VALUE` | yes — but the entry moves to `@status: retired`, it is not deleted |
+| `@status: superseded` | `ERR_BAD_ATTR_VALUE` | yes — same: it moves to `@status: retired` |
 
 Under the strict, sealed registry (ADR-0023) there is no deprecation shim — metadata still
 carrying any of them fails the **load**, in every language port. `@status` is now a closed set
@@ -49,6 +64,11 @@ existed only for the retired scan, and the `VerifyConfig` type is gone from
 the first now passes.
 
 ### 2. Delete every `abandoned` / `superseded` requirement outright
+
+> **Only on `0.24.0` / `0.24.1`.** On `0.24.2` or later — including 1.0 — do NOT delete:
+> run `meta upgrade --apply`, which moves the entry to `@status: retired`. The rest of this
+> section is kept because it is what that window's upgrade did, and because "where the record
+> goes" still answers the question for an entry you genuinely want gone.
 
 Not "change its status" — **delete the node**. That is the whole point: the entry recorded
 history, and history is not what a requirement is for.

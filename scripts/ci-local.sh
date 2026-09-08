@@ -208,6 +208,15 @@ gate_no_prerelease_versions() { scripts/check-no-prerelease-versions.sh; }
 # have moved by at least that much. Offline; git + one JSON file.
 gate_metamodel_version() { node scripts/check-metamodel-version.mjs && node scripts/test-metamodel-version.mjs; }
 
+# ── a migration guide must not tell you to delete vocabulary that came back ───
+# `verified-by-retirement.md` told adopters to DELETE every `@supersededBy` and every
+# `abandoned`/`superseded` requirement. `0.24.2` re-registered `@supersededBy` and gave
+# those entries a home (`@status: retired`) — in a SEPARATE guide, while the original kept
+# saying "delete the node". An estate followed it as written and destroyed ledger entries.
+# Derived from expected-registry.json (what is registered TODAY), never a hand-kept list.
+# Offline; git-free, one JSON file plus the guide directory.
+gate_migration_guides() { node scripts/check-migration-guides-vs-registry.mjs && node scripts/test-migration-guides-vs-registry.mjs; }
+
 # ── peer ranges must have a finite upper bound ────────────────────────────────
 # An open `>=` peer silently accepts a future breaking major. `@tanstack/react-table:
 # ">=8.20.0"` accepted v9 — a rewrite that deleted useReactTable/getCoreRowModel, both
@@ -684,6 +693,7 @@ if want gates; then step    "script-name hook collisions"      gate_script_name_
 if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
 if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
+if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
 # Every gate below this line runs bun over workspace TypeScript, and on a FRESH CI
 # checkout there is no node_modules — so a bare `@metaobjectsdev/*` specifier either
 # fails to resolve (what `owned template copies current` did, red on CI and green on
