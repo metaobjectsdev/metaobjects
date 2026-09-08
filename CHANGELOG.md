@@ -7,6 +7,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — four release scripts derived the Maven coordinate and two were wrong
+
+ADR-0035's decoupled cut fixes the JVM major at **`npm major + 7`**, so `1.0.0` on
+npm/PyPI/NuGet is `8.0.0` on Maven Central. Four scripts each worked that out for themselves:
+`finish-release.mjs` (correct, rationale written out); `release-verify.mjs` (correct, but only
+since it was fixed for asking Central for `7.0.0` — a version *below* the last release — and
+would have reported all nine live modules missing); **`prerelease.mjs`** (`const MAVEN_MAJOR =
+7`, so a `1.0.0` base derives `7.0.0-rc.N` — the same defect, still shipped, in the script that
+PUBLISHES); and **`release.mjs`** (prints `java-v7.<minor>.<patch>` as the tag to create — an
+instruction to a human, and therefore the hardest of the four to catch, because nothing
+executes it and no gate reads it).
+
+Two of those are one defect wearing a different hat, which is what a rule with four doors
+eventually produces. `scripts/maven-coordinate.mjs` is now the single derivation and all four
+import it; no hardcoded `7` remains outside it.
+
+**The 1.0 cases are the whole reason it needs a test:** every one of them is a version this
+repo has never released, which is exactly how two derivations stayed wrong with every gate
+green. The test pins the historical `0.x` mappings unchanged, the `1.0`/`2.0` majors, an RC
+suffix surviving verbatim (`1.0.0-rc.5` → `8.0.0-rc.5`), and malformed input throwing rather
+than deriving a plausible-looking wrong coordinate. It runs in `gate_release_tag`, beside the
+tag gate it serves. `finish-release.test.ts` copies the script under test into a temp tree, so
+it now copies the module too — a REAL copy, not a stub, because a stub would let that suite
+pass while the shipped derivation was wrong.
+
+Verified end to end rather than by inspection: `release-verify.mjs 1.0.0-rc.5
+--registries=maven` derives `8.0.0-rc.5` through the shared module and finds all nine modules
+live on Central.
+
 ### Fixed — the 1.0 upgrade path told adopters to destroy records 1.0 keeps
 
 `verified-by-retirement.md` §2 says, in bold, *"Not 'change its status' — **delete the
