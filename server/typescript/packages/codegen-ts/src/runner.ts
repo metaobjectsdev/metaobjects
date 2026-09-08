@@ -470,14 +470,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Auto-detect: is the OPT-IN Hono routes generator in the active suite? If so,
   // surface it on every generator's ctx.config so api-docs documents the Hono
   // CRUD surface it actually emits (rather than silently omitting it).
-  const includeHonoRoutes = runEmitsHonoRoutes(config.generators);
+  // The explicit config key WINS over the marker aggregation, at both doors. `meta docs`
+  // already read `loadedConfig?.includeHonoRoutes ?? …`, and the runner did not — so an
+  // adopter who set the key got the surface documented and not emitted, or the reverse.
+  // The key is settable because `MetaobjectsGenConfig extends Omit<ResolvedGenConfig,…>`,
+  // and it is the escape hatch for an owned generator whose name was changed; an escape
+  // hatch honoured by one of two doors is the defect these flags exist to close.
+  const includeHonoRoutes = config.includeHonoRoutes ?? runEmitsHonoRoutes(config.generators);
 
   // Same auto-detection for the CLIENT UI tier. `agent/ui.md` describes forms, grids
   // and the endpoints their hooks call; whether any of that is emitted is a generator
   // fact, and the page's own gate could only see metadata. Run-scoped like
   // includeHonoRoutes — the page asks "is this surface in the run?", never "does it
   // land in my target?".
-  const includeUiTier = runEmitsUiTier(config.generators);
+  const includeUiTier = config.includeUiTier ?? runEmitsUiTier(config.generators);
 
   // §A6 — same auto-detection for the OPT-IN names generator. The entity tier may only
   // REFERENCE `<Entity>Names` when something in this run actually emits it; the names

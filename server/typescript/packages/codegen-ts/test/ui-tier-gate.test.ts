@@ -61,3 +61,56 @@ describe("warnUnmarkedUiGenerators", () => {
     expect(msgs).toEqual([]);
   });
 });
+
+// The explicit config key must win at BOTH doors. `meta docs` honoured
+// `loadedConfig?.includeUiTier ?? runEmitsUiTier(...)` from the start; `runGen` computed
+// the aggregation unconditionally and ignored the key — so an adopter with a renamed
+// owned generator got `agent/ui.md` from `meta docs` and not from `meta gen`. An escape
+// hatch honoured by one of two doors is the same defect the marker exists to close.
+describe("the config key overrides the aggregation", () => {
+  const uiGen = (): Generator => gen("form-file", { emitsUiTier: true });
+
+  /** What the runner told the generators, for one config. */
+  async function seenBy(
+    generators: Generator[], includeUiTier?: boolean,
+  ): Promise<boolean | undefined> {
+    const { runGen } = await import("../src/runner.js");
+    const { MetaDataLoader, InMemoryStringSource } = await import("@metaobjectsdev/metadata");
+    const loaded = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify({
+        "metadata.root": { package: "acme", children: [
+          { "object.value": { name: "Note", children: [{ "field.string": { name: "body" } }] } },
+        ] },
+      }), { id: "m.json", format: "json" }),
+    ]);
+    expect(loaded.errors).toEqual([]);
+    let seen: boolean | undefined;
+    const spy: Generator = {
+      name: "spy",
+      generate: (ctx) => { seen = ctx.config.includeUiTier; return []; },
+    };
+    await runGen({
+      config: {
+        outDir: "/tmp/ui-tier-key", extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        generators: [spy, ...generators],
+        ...(includeUiTier === undefined ? {} : { includeUiTier }),
+      },
+      metadata: loaded.root,
+      genStateDir: "/tmp/ui-tier-key-state",
+    });
+    return seen;
+  }
+
+  test("an explicit true wins over a suite with no UI generator", async () => {
+    expect(await seenBy([], true)).toBe(true);
+  });
+
+  test("an explicit FALSE wins over a suite that HAS one — an override, not a hint", async () => {
+    expect(await seenBy([uiGen()], false)).toBe(false);
+  });
+
+  test("unset falls back to the marker aggregation, in both directions", async () => {
+    expect(await seenBy([])).toBe(false);
+    expect(await seenBy([uiGen()])).toBe(true);
+  });
+});

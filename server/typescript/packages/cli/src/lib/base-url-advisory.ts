@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
 /**
@@ -50,19 +50,25 @@ const PROVIDERS: readonly { construct: string; open: RegExp; kind: "jsx" | "call
   { construct: "provideEntityFetcher()", open: /provideEntityFetcher\s*\(/g, kind: "call" },
 ];
 
-/** Nesting introduced by `c`: +1 for an opener, -1 for a closer, 0 otherwise. */
-function nesting(c: string): number {
-  if (c === "{" || c === "(" || c === "[") return 1;
-  if (c === "}" || c === ")" || c === "]") return -1;
-  return 0;
-}
-
 /**
  * The text of the opening construct that begins at `start`.
  *
- * JSX: up to the `>` that closes the opening TAG — tracked by nesting depth, because
- * `onSomething={() => x}` puts a `>` inside an attribute and a naive first-`>` search
- * would cut the tag in half and miss a `baseUrl` written after it.
+ * JSX: up to the `>` that closes the opening TAG. Call this a one-file tokenizer rather
+ * than a bracket count, because a bracket count is what the first version was and it was
+ * wrong in both directions:
+ *
+ *   <EntityFetcherProvider title="a > b" fetcher={f} baseUrl="/api">
+ *       → the `>` inside the STRING ended the tag before `baseUrl`, warning about a
+ *         correct provider.
+ *   <EntityFetcherProvider fetcher={mk(")")}>
+ *       → the unbalanced `)` inside a string meant depth never returned to 0, so the
+ *         4000-char cap swallowed an unrelated `baseUrl` later in the file and SUPPRESSED
+ *         a real finding.
+ *
+ * So string literals (all three quote styles, with escapes), line comments and block
+ * comments are skipped rather than counted. A regex literal is deliberately NOT handled —
+ * telling `/` division from a regex needs real parsing, and a regex inside a JSX opening
+ * tag is vanishingly rare next to the cost of getting it wrong.
  *
  * Call: to the `)` balancing the argument list, so a nested object or arrow does not end
  * it early.
@@ -75,9 +81,31 @@ function constructText(src: string, start: number, kind: "jsx" | "call"): string
   let depth = 0;
   for (let i = start; i < limit; i++) {
     const c = src[i]!;
+
+    // --- skip what is not code -------------------------------------------------
+    if (c === '"' || c === "'" || c === "`") {
+      i++;
+      while (i < limit && src[i] !== c) { if (src[i] === "\\") i++; i++; }
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < limit && src[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      i += 2;
+      while (i < limit && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i++;
+      continue;
+    }
+
+    // --- code ------------------------------------------------------------------
     if (kind === "jsx" && c === ">" && depth === 0) return src.slice(start, i + 1);
-    depth += nesting(c);
-    if (kind === "call" && depth === 0 && c === ")") return src.slice(start, i + 1);
+    if (c === "{" || c === "(" || c === "[") depth++;
+    else if (c === "}" || c === ")" || c === "]") {
+      if (kind === "call" && depth === 1 && c === ")") return src.slice(start, i + 1);
+      depth--;
+    }
   }
   return src.slice(start, limit);
 }
@@ -109,15 +137,19 @@ function walk(dir: string, root: string, acc: BaseUrlFinding[], apiPrefix: strin
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
   for (const e of entries) {
-    if (e.name.startsWith(".") && e.name !== ".") { if (IGNORE_SEGMENTS.has(e.name)) continue; }
     if (IGNORE_SEGMENTS.has(e.name)) continue;
     const abs = join(dir, e.name);
-    // Follow directories through symlinks the way the anti-pattern scan does not need to,
-    // but never re-enter one: statSync on a broken link throws, which is caught here.
-    let isDir: boolean;
-    try { isDir = e.isDirectory() || (e.isSymbolicLink() && statSync(abs).isDirectory()); }
-    catch { continue; }
-    if (isDir) { walk(abs, root, acc, apiPrefix); continue; }
+    // Symlinked directories are NOT followed — same as the anti-pattern scan beside it.
+    //
+    // The first version did follow them, with a comment claiming it "never re-enters
+    // one". There was no visited set, so `src/loop -> <root>` produced 41 findings for a
+    // single file (`src/loop/src/loop/…`), terminating only because Linux's 40-symlink
+    // ELOOP limit made readdirSync throw into the catch below. It also meant a link
+    // pointing outside the project — a monorepo sibling, a linked package — got walked on
+    // every `meta verify`. A provider reachable only through a symlink is reachable
+    // through its real path too, so following them buys nothing and the duplicates
+    // inflate the count the header prints.
+    if (e.isDirectory()) { walk(abs, root, acc, apiPrefix); continue; }
     if (!SCAN_EXT.test(e.name) || SKIP_FILE.test(e.name)) continue;
     let src: string;
     try { src = readFileSync(abs, "utf8"); } catch { continue; }

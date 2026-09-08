@@ -67,6 +67,10 @@ drops the prefix from every generated hook:
 a provider mounted with no `baseUrl`. It is a warning, never an exit code, and it is the
 only gate that can see this half.
 
+It rides in the same advisory pass as the hand-rolled-modeling nags, so **`--no-antipatterns`
+(or `META_NO_ANTIPATTERNS=1`) turns it off with them.** If you suppress that pass, this is
+what you are also suppressing.
+
 If your own code read `<Entity>.$apiPrefix`, it no longer compiles. Take the base from
 the same config your provider does.
 

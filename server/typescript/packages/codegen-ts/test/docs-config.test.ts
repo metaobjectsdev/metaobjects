@@ -22,8 +22,8 @@ test("defaults when no docs block and no overrides", () => {
 // owns" — is the argument for not defaulting into the most-owned name in the ecosystem.
 test("the default docs dir is a sub-directory MetaObjects can own", () => {
   expect(DEFAULT_DOCS_DIR).toBe("./docs/generated");
-  expect(resolveDocsConfig(undefined, {}, "flat").outDir).toBe("./docs/generated");
-  // The point of the change: it is not the repo's own documentation root.
+  // The point of the change, stated as such: not the repo's own documentation root.
+  // (The resolved value is already pinned in full by the defaults test above.)
   expect(resolveDocsConfig(undefined, {}, "flat").outDir).not.toBe("./docs");
 });
 

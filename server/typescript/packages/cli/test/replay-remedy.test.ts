@@ -71,3 +71,42 @@ describe("replayRemedy", () => {
     expect(msg).not.toContain("FIRST migration in the chain");
   });
 });
+
+describe("replayRemedy — the error identity", () => {
+  test("recognises the engine's error by NAME, across a split package copy", () => {
+    // Two physical copies of migrate-ts in one process (a linked global `meta` plus a
+    // project-local dependency) give the class and the instance different identities, so
+    // `instanceof` returns false for a real error and the remedy silently loses its
+    // position — printing the un-positioned form for a head-of-chain failure. Simulated
+    // the way `metadata`'s cross-realm test does: a structurally identical error from a
+    // foreign "realm".
+    class ForeignMigrationApplyError extends Error {
+      constructor(readonly migration: string, readonly index: number, readonly pendingCount: number) {
+        super(`migration '${migration}' failed to apply: boom`);
+        this.name = "MigrationApplyError";
+      }
+    }
+    const foreign = new ForeignMigrationApplyError("20260521012518-init", 0, 3);
+    expect(foreign instanceof MigrationApplyError).toBe(false);  // guards the guard
+    const msg = replayRemedy(foreign).join(" ");
+    expect(msg).toContain("'20260521012518-init'");
+    expect(msg).toContain("FIRST migration in the chain");
+  });
+
+  test("a same-named error WITHOUT the position fields degrades rather than lying", () => {
+    const bare = new Error("something else");
+    bare.name = "MigrationApplyError";
+    const msg = replayRemedy(bare).join(" ");
+    expect(msg).toContain("the committed chain does not apply to an empty database");
+    expect(msg).not.toContain("migration 1 of");
+  });
+
+  test("every command the remedy names is runnable as typed", () => {
+    // `meta migrate baseline --from-db` alone errors asking for --db, which is the same
+    // "remedy you cannot execute" defect this file exists to fix, one scale smaller.
+    const msg = replayRemedy(new Error("x")).join(" ");
+    const baseline = msg.match(/`([^`]*baseline[^`]*)`/)?.[1] ?? "";
+    expect(baseline).toContain("--from-db");
+    expect(baseline).toContain("--db");
+  });
+});

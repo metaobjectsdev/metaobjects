@@ -216,10 +216,10 @@ async function runCapturingStderr(args: string[]): Promise<{ exit: number; out: 
 
 describe("meta verify --docs — a git-ignored page is not drift", () => {
   test("the F27 reproduction: generate all, commit two, gate is clean", async () => {
-    const dir = gitProject("docs/generated/*\n!docs/generated/requirements.md\n!docs/generated/requirements.toon\n");
+    const dir = gitProject(`${DOCS_ROOT}/*\n!${DOCS_ROOT}/requirements.md\n!${DOCS_ROOT}/requirements.toon\n`);
     try {
       await generateDocs(dir);
-      git(dir, "add", "-f", ".gitignore", "docs/generated/requirements.md", "docs/generated/requirements.toon");
+      git(dir, "add", "-f", ".gitignore", `${DOCS_ROOT}/requirements.md`, `${DOCS_ROOT}/requirements.toon`);
       git(dir, "commit", "-qm", "docs");
 
       const { exit, out } = await runCapturingStderr(["verify", "--cwd", dir, "--docs"]);
@@ -232,10 +232,10 @@ describe("meta verify --docs — a git-ignored page is not drift", () => {
 
   test("...and a REAL edit to one of the two committed pages still convicts", async () => {
     // The other half. A rule that exempts everything is not a fix, it is a mute button.
-    const dir = gitProject("docs/generated/*\n!docs/generated/requirements.md\n!docs/generated/requirements.toon\n");
+    const dir = gitProject(`${DOCS_ROOT}/*\n!${DOCS_ROOT}/requirements.md\n!${DOCS_ROOT}/requirements.toon\n`);
     try {
       await generateDocs(dir);
-      git(dir, "add", "-f", ".gitignore", "docs/generated/requirements.md", "docs/generated/requirements.toon");
+      git(dir, "add", "-f", ".gitignore", `${DOCS_ROOT}/requirements.md`, `${DOCS_ROOT}/requirements.toon`);
       git(dir, "commit", "-qm", "docs");
       writeFileSync(join(dir, DOCS_ROOT, "requirements.md"), "hand-edited\n");
 
@@ -252,10 +252,10 @@ describe("meta verify --docs — a git-ignored page is not drift", () => {
   test("a TRACKED page is compared even when a pattern would ignore it", async () => {
     // The property the whole design rests on: git never reports a tracked path as
     // ignored. So this rule can never be used to hide a page the project commits.
-    const dir = gitProject("docs/generated/\n");
+    const dir = gitProject(`${DOCS_ROOT}/\n`);
     try {
       await generateDocs(dir);
-      git(dir, "add", "-f", ".gitignore", "docs/generated/agent/schema.md");
+      git(dir, "add", "-f", ".gitignore", `${DOCS_ROOT}/agent/schema.md`);
       git(dir, "commit", "-qm", "docs");
       writeFileSync(join(dir, DOCS_ROOT, "agent", "schema.md"), "hand-edited\n");
 
@@ -269,7 +269,7 @@ describe("meta verify --docs — a git-ignored page is not drift", () => {
 
   test("ignoring EVERYTHING is refused, not reported clean", async () => {
     // A gate asked to check pages that could check none must not answer "no drift".
-    const dir = gitProject("docs/generated/\n");
+    const dir = gitProject(`${DOCS_ROOT}/\n`);
     try {
       await generateDocs(dir);
       git(dir, "add", "-f", ".gitignore");
@@ -314,7 +314,7 @@ describe("meta verify --docs — a git-ignored page is not drift", () => {
     // Untracked on purpose: git never reports a TRACKED path as ignored (the test
     // above), so the only way to reach this branch is the real-world shape — a leftover
     // generated page on a machine that has run `meta docs`, under an ignored path.
-    const dir = gitProject("docs/generated/agent/stale-page.md\n");
+    const dir = gitProject(`${DOCS_ROOT}/agent/stale-page.md\n`);
     try {
       await generateDocs(dir);
       git(dir, "add", "-f", ".gitignore", "docs");
@@ -344,10 +344,10 @@ describe("meta verify --docs — a git-ignored page is not drift", () => {
     // Stated as a CONTRAST on one fixture, because that is the only form that proves
     // the exemption is what produced the clean run: the same project, the same missing
     // page, exempt when git can answer and convicted when it cannot.
-    const dir = gitProject("docs/generated/*\n!docs/generated/requirements.md\n!docs/generated/requirements.toon\n");
+    const dir = gitProject(`${DOCS_ROOT}/*\n!${DOCS_ROOT}/requirements.md\n!${DOCS_ROOT}/requirements.toon\n`);
     try {
       await generateDocs(dir);
-      git(dir, "add", "-f", ".gitignore", "docs/generated/requirements.md", "docs/generated/requirements.toon");
+      git(dir, "add", "-f", ".gitignore", `${DOCS_ROOT}/requirements.md`, `${DOCS_ROOT}/requirements.toon`);
       git(dir, "commit", "-qm", "docs");
       // An ignored page that is NOT on disk — the fresh-clone shape.
       rmSync(join(dir, DOCS_ROOT, "README.md"));
@@ -375,13 +375,13 @@ describe("meta verify --docs — a git-ignored page is not drift", () => {
     // The exemption is computed over the fresh set BY NAME, on disk or not. Deciding
     // per-file-existence would have made `checked` a property of the machine: a dev box
     // that has run `meta docs` has all 589 pages present and a CI runner has two.
-    const body = "docs/generated/*\n!docs/generated/requirements.md\n!docs/generated/requirements.toon\n";
+    const body = `${DOCS_ROOT}/*\n!${DOCS_ROOT}/requirements.md\n!${DOCS_ROOT}/requirements.toon\n`;
     const withPages = gitProject(body);
     const withoutPages = gitProject(body);
     try {
       for (const dir of [withPages, withoutPages]) {
         await generateDocs(dir);
-        git(dir, "add", "-f", ".gitignore", "docs/generated/requirements.md", "docs/generated/requirements.toon");
+        git(dir, "add", "-f", ".gitignore", `${DOCS_ROOT}/requirements.md`, `${DOCS_ROOT}/requirements.toon`);
         git(dir, "commit", "-qm", "docs");
       }
       // One machine keeps every locally generated page; the other is a fresh clone.

@@ -15,7 +15,7 @@ import { log } from "../lib/log.js";
 import { cliVersion } from "../lib/version.js";
 import { declaredDependencyNames, type PackageManifest } from "../lib/package-manifest.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
-import { readReferenceTemplate, type ReferenceGeneratorName } from "@metaobjectsdev/codegen-ts";
+import { DEFAULT_DOCS_DIR, readReferenceTemplate, type ReferenceGeneratorName } from "@metaobjectsdev/codegen-ts";
 
 // ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
 // the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
@@ -139,7 +139,7 @@ export default defineConfig({
     barrel(),
   ],
   docs: {
-    outDir:   "./docs/generated",  // every surface lands here (run: meta docs).
+    outDir:   "${DEFAULT_DOCS_DIR}",  // every surface lands here (run: meta docs).
                                // A SUB-directory on purpose: these pages are regenerated
                                // and overwritten, and docs/ itself is usually yours.
     layout:   "flat",          // or "package" for multi-package models

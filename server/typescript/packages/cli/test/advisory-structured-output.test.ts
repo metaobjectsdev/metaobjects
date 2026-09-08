@@ -533,3 +533,61 @@ describe("verify.antiPatternIgnore reaches the scan from metaobjects.config.ts",
     }
   });
 });
+
+// The base-URL advisory END TO END. `base-url-advisory.test.ts` covers the scanner in
+// isolation; nothing asserted that `verify` calls it, that the header line prints, that
+// `rule: "missing-base-url"` reaches the structured payload, or that suppression works.
+// A scanner nobody wired is the same as no scanner — and the migration note calls this
+// "the only gate that can see this half", so the wiring is the claim.
+describe("verify wires the base-URL advisory", () => {
+  const PROVIDER = `<EntityFetcherProvider fetcher={fetcher}>\n  <App />\n</EntityFetcherProvider>\n`;
+
+  function withProvider(apiPrefix: string): string {
+    const dir = project(`\n  apiPrefix: ${JSON.stringify(apiPrefix)},`);
+    writeFileSync(join(dir, "src", "main.tsx"), PROVIDER);
+    return dir;
+  }
+
+  test("a non-empty apiPrefix + a provider with no baseUrl reaches the payload", async () => {
+    const dir = withProvider("/api");
+    try {
+      const { exit, out } = await capture(["verify", "--cwd", dir, "--format", "json"]);
+      const payload = JSON.parse(out) as { antiPatterns: AdvisoryBlock };
+      const rows = payload.antiPatterns.rows.filter((r) => r.rule === "missing-base-url");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.file).toBe("src/main.tsx");
+      expect(rows[0]!.message).toContain("/api");
+      // Advisory only: it must never move the exit code. The money-float findings the
+      // shared fixture carries are advisory too, so a clean project here exits 0.
+      expect(exit).toBe(0);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test("the text header names the count and the prefix", async () => {
+    const dir = withProvider("/api");
+    try {
+      const { err } = await capture(["verify", "--cwd", dir]);
+      expect(err).toContain("entity-fetcher provider(s) mounted with no baseUrl");
+      expect(err).toContain(`apiPrefix is "/api"`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test("an empty apiPrefix emits nothing — the meta init scaffold is not nagged", async () => {
+    const dir = withProvider("");
+    try {
+      const { out } = await capture(["verify", "--cwd", dir, "--format", "json"]);
+      const payload = JSON.parse(out) as { antiPatterns: AdvisoryBlock };
+      expect(payload.antiPatterns.rows.filter((r) => r.rule === "missing-base-url")).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test("--no-antipatterns suppresses it, which is why the migration note says so", async () => {
+    const dir = withProvider("/api");
+    try {
+      const { out } = await capture(["verify", "--cwd", dir, "--format", "json", "--no-antipatterns"]);
+      const payload = JSON.parse(out) as { antiPatterns: AdvisoryBlock };
+      expect(payload.antiPatterns.status).not.toBe("ran");
+      expect(payload.antiPatterns.rows).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

@@ -28,8 +28,26 @@ import { MigrationApplyError } from "@metaobjectsdev/migrate-ts";
  * (a checksum guard on databases that already ran the file), not as a blanket ban, because
  * a migration no database has applied yet is edited in place every day.
  */
+/**
+ * Is this the migrate engine's own apply failure?
+ *
+ * By NAME, not `instanceof`. Two physical copies of `@metaobjectsdev/migrate-ts` in one
+ * process — a globally-installed or linked `meta` alongside a project-local dependency —
+ * give the class object and the instance different identities, so `instanceof` returns
+ * false for a real error and the remedy silently degrades to its un-positioned form. That
+ * is the same class-identity defect that split ts-poet's `Code` in 0.21.6 and drove the
+ * exported node guards in `metadata`. Unreachable through today's single import; costs one
+ * line to make unreachable by construction.
+ */
+function isApplyError(err: unknown): err is MigrationApplyError {
+  return err instanceof MigrationApplyError
+    || (err instanceof Error && err.name === "MigrationApplyError"
+        && typeof (err as MigrationApplyError).migration === "string"
+        && typeof (err as MigrationApplyError).index === "number");
+}
+
 export function replayRemedy(err: unknown): string[] {
-  const applyErr = err instanceof MigrationApplyError ? err : undefined;
+  const applyErr = isApplyError(err) ? err : undefined;
   const head = applyErr !== undefined && applyErr.index === 0;
   const which =
     applyErr === undefined
@@ -54,7 +72,7 @@ export function replayRemedy(err: unknown): string[] {
       "for this project, --replay asserts a property this chain does not have — don't wire " +
       "it. Otherwise correct the migration in place if no database has applied it yet " +
       "(the ledger's checksum guard is what stops you once one has), or re-baseline from a " +
-      "live database with `meta migrate baseline --from-db`.",
+      "live database with `meta migrate baseline --from-db --db <url>`.",
   );
   return out;
 }

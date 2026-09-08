@@ -178,8 +178,14 @@ would have stayed green throughout; the positive direction is now gated too. Mig
 [`0.x-to-1.0.md` §13](docs/features/migrations/0.x-to-1.0.md).
 
 *(The report that found this also claimed `_record` replaces the manifest wholesale — 21
-entries becoming 6. Not reproducible from the code: `_record` loads and adds. Only the keying
-was wrong.)*
+entries becoming 6. `_record` loads and adds — **when the load succeeds.** An unreadable or
+corrupt manifest reads as ABSENT (fail-closed, so every file refuses rather than being assumed
+ours), and the next `gen` then writes only its own entries: a 68-entry manifest becomes 5, and
+the 63 lost files are unrecorded and refused forever. So the observation was real and its
+mechanism is the corrupt-read path, not the keying. Reported here as a separate defect rather
+than folded in, because the fix is a decision — a corrupt manifest could refuse to proceed
+instead of being silently rewritten, which is what fail-closed would mean at the FILE level
+rather than the entry level.)*
 
 ### Fixed — a hand-edited `<Entity>Names` read as "in sync with the metadata"
 

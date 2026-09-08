@@ -9,7 +9,7 @@
 // run by hand was the only signal in the building, and it cannot see this half at all.
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanForMissingBaseUrl } from "../src/lib/base-url-advisory.js";
@@ -98,5 +98,63 @@ describe("scanForMissingBaseUrl", () => {
       "src/x.test.tsx": `<EntityFetcherProvider fetcher={f}>`,
     });
     expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+});
+
+// The three cases a bracket count got wrong. Each was reproduced against the module
+// before the tokenizer replaced the count, and each is a way an advisory can be worse
+// than absent: two nag a correct provider, one suppresses a real finding.
+describe("scanForMissingBaseUrl — what is code and what is not", () => {
+  test("a `>` inside a STRING attribute does not end the tag", async () => {
+    const root = await project({
+      "src/main.tsx": `<EntityFetcherProvider title="a > b" fetcher={fetcher} baseUrl="/api">`,
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+
+  test("a `//` comment between attributes does not end the tag", async () => {
+    const root = await project({
+      "src/main.tsx": [
+        `<EntityFetcherProvider`,
+        `  // an arrow => lives here, and a > with it`,
+        `  fetcher={fetcher}`,
+        `  baseUrl="/api"`,
+        `>`,
+      ].join("\n"),
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+
+  test("a block comment between attributes does not end the tag", async () => {
+    const root = await project({
+      "src/main.tsx": `<EntityFetcherProvider /* > */ fetcher={f} baseUrl="/api">`,
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+
+  test("an unbalanced `)` inside a string does not SUPPRESS a real finding", async () => {
+    // The dangerous direction. Counting brackets, the `)` in the string left depth
+    // permanently above zero, so the scan ran to its 4000-char cap and found the
+    // unrelated `baseUrl` below — reporting clean over a provider that has none.
+    const root = await project({
+      "src/main.tsx": [
+        `<EntityFetcherProvider fetcher={mk(")")}>`,
+        `  <App />`,
+        `</EntityFetcherProvider>`,
+        ``,
+        `const elsewhere = { baseUrl: "/api" };`,
+      ].join("\n"),
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toHaveLength(1);
+  });
+
+  test("a symlinked directory is not followed", async () => {
+    // Following them had no visited set: `src/loop -> <root>` produced 41 findings for
+    // ONE file and stopped only at Linux's ELOOP limit. A provider reachable through a
+    // link is reachable through its real path, so the duplicates were pure inflation of
+    // the count `verify` prints — and a link out of the project walked foreign trees.
+    const root = await project({ "src/main.tsx": `<EntityFetcherProvider fetcher={f}>` });
+    await symlink(root, join(root, "src", "loop"), "dir");
+    expect(scanForMissingBaseUrl(root, "/api")).toHaveLength(1);
   });
 });
