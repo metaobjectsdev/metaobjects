@@ -1,6 +1,7 @@
 package com.metaobjects.generator;
 
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +18,41 @@ import static org.junit.Assert.*;
 public class WorkingSchemaValidationTest {
 
     private static final Logger log = LoggerFactory.getLogger(WorkingSchemaValidationTest.class);
+
+    /**
+     * Generate the artifacts this class validates, rather than hoping another test class
+     * already did.
+     *
+     * These tests read `target/working-{metadata-schema,ai-documentation}.json`, which are
+     * written by {@link WorkingSchemaGeneratorTest}. Nothing declared that order, so it was
+     * surefire's `runOrder` — which defaults to `filesystem`, i.e. whatever order the class
+     * files happen to sit in on THAT machine. Reproduced 2026-09-08: green on a developer
+     * box from a clean `target/`, RED in the hosted full-reactor job, and red locally under
+     * `-Dsurefire.runOrder=reversealphabetical` (Validation sorts after Generator, so
+     * reversing puts the consumer first).
+     *
+     * The failure was also mute about its cause. `demonstrateConstraintSystemSuccess`
+     * logs a warning for a missing file, `continue`s, and then asserts on the evidence
+     * count — so an absent PRECONDITION was reported as "Should have substantial constraint
+     * evidence in generated schemas", which reads like a codegen regression. The other two
+     * tests in this class have the opposite failure mode: they `return` early and PASS,
+     * having checked nothing.
+     *
+     * Generating here fixes both. It is the pattern {@code SimpleSchemaValidationTest}
+     * already uses, and it makes the early `return`s below unreachable rather than
+     * load-bearing.
+     */
+    @BeforeClass
+    public static void generateSchemas() throws Exception {
+        File jsonSchemaFile = new File("target/working-metadata-schema.json");
+        File aiDocFile = new File("target/working-ai-documentation.json");
+        if (jsonSchemaFile.exists() && aiDocFile.exists()) return;
+
+        log.info("Schema artifacts absent — generating them before validating.");
+        WorkingSchemaGeneratorTest generator = new WorkingSchemaGeneratorTest();
+        generator.setUp();
+        generator.generateWorkingSchemas();
+    }
 
     @Before
     public void setUp() {
