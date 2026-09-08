@@ -272,8 +272,9 @@ export interface VerifyFlags {
    * A SEPARATE subverb rather than part of `--codegen`, because they check different
    * trees under different ownership rules: `--codegen` regenerates `outDir`/`targets` and
    * must respect the hand edits `meta gen` preserves, while the docs tree has no merge,
-   * no manifest, and lives in a directory (`./docs` by default) full of hand-written
-   * files it does not own. Folding them together would have to pick one of those rules
+   * no manifest, and lives in a directory the adopter chose (`./docs/generated` by
+   * default) that may hold hand-written files it does not own. Folding them together
+   * would have to pick one of those rules
    * for both.
    */
   docs: boolean;

@@ -57,7 +57,11 @@ DOCS FLAGS:
   [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
                         your metadata, NOT the metadata directory. Passing it SCOPES the run
                         (default: cwd)
-  --out <dir>, -o       Output directory for the pages (default: ./docs)
+  --out <dir>, -o       Output directory for THIS run (default: ./docs/generated). It does
+                        NOT survive the run — set 'docs: { outDir }' in metaobjects.config.ts
+                        for a directory that persists, which is what 'meta verify --docs'
+                        measures. The default is a sub-directory on purpose: these pages are
+                        regenerated and overwritten, and 'docs/' itself is usually yours.
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <project-root>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
 

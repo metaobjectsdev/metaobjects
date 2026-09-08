@@ -19,9 +19,11 @@
 //      `.gen-state/.hashes.json` to tell a preserved hand edit from stale output; here
 //      there is no such offer to honour.
 //
-//   2. IT REPORTS A FILE AS EXTRA ONLY WHERE IT OWNS THE DIRECTORY. `docs.outDir`
-//      defaults to `./docs`, which in a real repository is full of hand-written
-//      documentation — this repository's own `docs/` holds a hundred such files. Its
+//   2. IT REPORTS A FILE AS EXTRA ONLY WHERE IT OWNS THE DIRECTORY. `docs.outDir` is a
+//      directory an adopter chooses, and it may well be one full of hand-written
+//      documentation — this repository's own `docs/` holds a hundred such files. (The
+//      default moved to `./docs/generated` for exactly that reason: defaulting into the
+//      most-owned directory name in the ecosystem contradicted this paragraph.) Its
 //      `api/` subtree is not ours either: on a multi-port project those pages are written
 //      by the OTHER port's docs command (`mvn metaobjects:docs`, `metaobjects docs`,
 //      `dotnet meta docs`), which this gate never runs, so a fresh run here legitimately

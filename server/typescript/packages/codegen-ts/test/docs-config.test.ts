@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { resolveDocsConfig } from "../src/metaobjects-config.js";
+import { resolveDocsConfig, DEFAULT_DOCS_DIR } from "../src/metaobjects-config.js";
 
 // `requirements` and `agent` joined the default set deliberately, and BOTH depend on the
 // same guard: each emits ZERO FILES when it has nothing to describe — not an empty page —
@@ -10,7 +10,21 @@ import { resolveDocsConfig } from "../src/metaobjects-config.js";
 // that gate lives in the docs COMMAND, not in this resolver, so it is not visible here.
 test("defaults when no docs block and no overrides", () => {
   const r = resolveDocsConfig(undefined, {}, "package");
-  expect(r).toEqual({ outDir: "./docs", layout: "package", baseUrl: "", surfaces: ["model", "api", "requirements", "agent"], apiSurfaces: [{ lang: "ts", subDir: "api" }] });
+  expect(r).toEqual({ outDir: "./docs/generated", layout: "package", baseUrl: "", surfaces: ["model", "api", "requirements", "agent"], apiSurfaces: [{ lang: "ts", subDir: "api" }] });
+});
+
+// F57 — the default is a SUB-directory, and the literal is asserted rather than compared
+// against the constant, because a test written as `toBe(DEFAULT_DOCS_DIR)` passes whatever
+// the constant becomes. `docs/` is the human documentation folder in most repos: one
+// estate's held a business-strategy .docx, product screenshots and email drafts, and a
+// bare `meta docs` scattered 29 generated pages through it and wanted `docs/README.md`.
+// The docs gate's own rule — "docs.outDir is a directory, not a namespace MetaObjects
+// owns" — is the argument for not defaulting into the most-owned name in the ecosystem.
+test("the default docs dir is a sub-directory MetaObjects can own", () => {
+  expect(DEFAULT_DOCS_DIR).toBe("./docs/generated");
+  expect(resolveDocsConfig(undefined, {}, "flat").outDir).toBe("./docs/generated");
+  // The point of the change: it is not the repo's own documentation root.
+  expect(resolveDocsConfig(undefined, {}, "flat").outDir).not.toBe("./docs");
 });
 
 test("docs block supplies values; fallbackLayout ignored when layout set", () => {

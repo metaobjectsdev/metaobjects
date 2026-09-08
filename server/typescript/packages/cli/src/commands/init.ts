@@ -139,7 +139,9 @@ export default defineConfig({
     barrel(),
   ],
   docs: {
-    outDir:   "./docs",        // every surface lands here (run: meta docs)
+    outDir:   "./docs/generated",  // every surface lands here (run: meta docs).
+                               // A SUB-directory on purpose: these pages are regenerated
+                               // and overwritten, and docs/ itself is usually yours.
     layout:   "flat",          // or "package" for multi-package models
     // surfaces defaults to ["model", "api", "requirements", "agent"] — all four.
     // Deliberately NOT narrowed here: the requirements and agent surfaces emit ZERO

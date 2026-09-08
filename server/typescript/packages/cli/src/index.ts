@@ -75,7 +75,11 @@ DOCS FLAGS:
   [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
                         your metadata, NOT the metadata directory. Passing it SCOPES the run
                         (default: cwd)
-  --out <dir>, -o       Output directory for the pages (default: ./docs)
+  --out <dir>, -o       Output directory for THIS run (default: ./docs/generated). It does
+                        NOT survive the run — set 'docs: { outDir }' in metaobjects.config.ts
+                        for a directory that persists, which is what 'meta verify --docs'
+                        measures. The default is a sub-directory on purpose: these pages are
+                        regenerated and overwritten, and 'docs/' itself is usually yours.
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <project-root>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
 
@@ -272,7 +276,11 @@ FLAGS:
                         it SCOPES the run to that directory's own sources; no ancestor
                         .metaobjects/config.json is consulted. Omitted (default), the project
                         is discovered by walking up.
-  --out <dir>, -o       Output directory for the pages (default: ./docs)
+  --out <dir>, -o       Output directory for THIS run (default: ./docs/generated). It does
+                        NOT survive the run — set 'docs: { outDir }' in metaobjects.config.ts
+                        for a directory that persists, which is what 'meta verify --docs'
+                        measures. The default is a sub-directory on purpose: these pages are
+                        regenerated and overwritten, and 'docs/' itself is usually yours.
   --model               Emit the markdown model surface (entity + template pages)
   --api                 Emit the markdown api surface (generated SDK reference)
   --requirements        Emit the declared requirement ledger (requirements.md + .toon).
@@ -281,7 +289,9 @@ FLAGS:
                         agent/ui.md (the generated forms and grids) and
                         agent/requirements.md (the ledger plus a claimed-node index).
                         Needs metaobjects.config.ts (the dialect and physical names come
-                        from it); each page is skipped when its tier has nothing to describe.
+                        from it); each page is skipped when its tier has nothing to describe
+                        — agent/ui.md needs a UI generator (a form, hook or grid) in the
+                        suite, not merely objects that could have one.
   --metamodel           Document the built-in metamodel vocabulary (no metadata needed)
   --site                Generate the browsable HTML documentation site (<out>/site/)
   --scaffold-site       Copy the site's templates + assets into codegen/docs-site/ to own (theme) them
