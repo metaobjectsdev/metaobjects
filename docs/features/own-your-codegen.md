@@ -69,6 +69,15 @@ meta gen                         # real three-way merge; reports `merged`, exit 
 To **discard** your version instead, `meta gen --baseline=fresh` on its own is the whole
 answer.
 
+`--baseline=adopt` is **not** a third option here, and it is worth saying why, because its
+name invites the mistake. Adopting records what is on disk as the merge base and writes
+nothing — right for a project that has no manifest at all (see
+[the manifest migration guide](migrations/commit-the-gen-state-hash-manifest.md)), where
+there is no other way to produce the file you are asked to commit. But the base it records
+is your *edited* text, so base and working copy are identical and the next `meta gen`
+merges fresh output straight over it. When the edit is the point, use the four-step
+sequence above.
+
 The remedy you will not find here is *"move the edit into a non-generated file"*. It
 works where the edit can live outside the generated file — and does not where the
 artifact is the point of the edit. A `requirementTests()` stub is the standing

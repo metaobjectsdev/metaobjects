@@ -73,9 +73,11 @@ public static class GenCommand
     public static Outcome Run(
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal)
+        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal,
+        string baseline = "default")
         => Run(MetaDataLoader.FromDirectory(metadataDir), outDir, ns, emitAbstractShapes,
-            generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir), columnNaming);
+            generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir), columnNaming,
+            baseline);
 
     /// <summary>
     /// The project a metadata directory belongs to: its PARENT, i.e. the directory
@@ -153,7 +155,8 @@ public static class GenCommand
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
         string? projectRoot = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal)
+        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal,
+        string baseline = "default")
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0)
@@ -194,6 +197,11 @@ public static class GenCommand
             // Literal (EF's property=column convention) — this port's historical
             // behaviour — and is selected per project with `--column-naming`.
             ColumnNamingStrategy = columnNaming,
+            // `--baseline=adopt`: record what is on disk and write nothing. The refusal it
+            // exists for is the pre-manifest one, which is exactly where `gen` runs — so it
+            // is threaded here and nowhere near `verify --codegen`, which regenerates into a
+            // throwaway directory and records nothing at all.
+            Baseline = baseline,
             // C1 — the presence gate: is `names` actually part of THIS resolved suite
             // (`names` above — the default suite, or whatever `--generators` selected)?
             // Computed the one way GeneratorRegistry.IncludesNames defines, so `gen` and

@@ -30,9 +30,15 @@ describe("parseGenArgs", () => {
     expect(parseGenArgs(["--baseline=default"]).baseline).toBe("default");
   });
 
-  test("--baseline=invalid throws", () => {
+  test("--baseline=adopt", () => {
+    expect(parseGenArgs(["--baseline=adopt"]).baseline).toBe("adopt");
+  });
+
+  test("--baseline=invalid names every mode it will accept", () => {
+    // The error is the only place a reader learns `adopt` exists at the moment they
+    // most need it — they have just been refused and are guessing at flag values.
     expect(() => parseGenArgs(["--baseline=nonsense"])).toThrow(
-      /invalid --baseline 'nonsense'; expected 'default' or 'fresh'/,
+      /invalid --baseline 'nonsense'; expected 'default', 'adopt' or 'fresh'/,
     );
   });
 

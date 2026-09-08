@@ -34,13 +34,28 @@ into an excluded directory, so the negation below it can never take effect — t
 would stay ignored and you would get none of this. `.gen-state/*` excludes the directory's
 *contents*, which leaves the negation able to re-include one of them.
 
-Then commit the manifest:
+Then produce the manifest and commit it:
 
 ```bash
-meta gen                                  # writes .gen-state/.hashes.json
+meta gen --baseline=adopt                 # records what you have; writes NOTHING else
 git add .metaobjects/.gitignore .metaobjects/.gen-state/.hashes.json
 git commit -m "chore: commit the codegen hash manifest"
+meta gen                                  # the regeneration, now on its own
 ```
+
+**Why `--baseline=adopt` and not a plain `meta gen`.** A plain run works only if your
+committed output still matches fresh output. If it does not — an engine or formatter moved
+it, which is the usual state of a project that has not regenerated in a few releases — every
+such file is refused, and a run where *everything* refuses writes **no manifest at all**:
+there is then nothing to commit, and the next run refuses identically. `--baseline=adopt`
+is the run that breaks that loop. It records the files you have as the merge base, writes
+not one byte of output, and leaves you with exactly one file to commit.
+
+**What adopting declares.** That the files you have *are* generated output. It protects
+edits you make from that point on — they now have a base to merge against — but an edit
+already inside one of those files becomes part of the base, so the `meta gen` that follows
+will replace it. Commit before you adopt and read that second diff; if it contains
+something you meant to keep, the "Keep the differences" recipe below is the way to keep it.
 
 ## Why the manifest and not the whole snapshot
 
@@ -82,6 +97,12 @@ That means those files differ from fresh output and there is no hash recording t
   snapshot, and the second merges your version back in.
 - **Discard them.** `meta gen --baseline=fresh` overwrites and adopts fresh output as the
   baseline. This throws away hand edits in generated files, so read the refusal list first.
+- **Adopt what you have, then look.** `meta gen --baseline=adopt` writes nothing and only
+  records the current files as the base, so the refusals stop and the regeneration becomes
+  a separate, reviewable diff on the next run. Use it when you do not yet know whether
+  those differences are edits or just older output — it is the one option that changes no
+  file while you find out. It is not a way to keep an edit: see what adopting declares,
+  above.
 
 Run it once, commit the manifest, and the refusals stop: from then on every machine can
 tell your edits from its own output.

@@ -44,7 +44,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "model" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = RunCli(_tmp, "gen", "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
@@ -60,7 +60,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
         // being routed through resolution rather than still failing the old way.
         Directory.CreateDirectory(_tmp);
 
-        var (exitCode, _, stderr) = RunCli(_tmp, "gen", "--out", Path.Combine(_tmp, "generated"), "--namespace", "X");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--out", Path.Combine(_tmp, "generated"), "--namespace", "X");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("ERR_COLLECTION_NOT_FOUND", stderr);
@@ -76,7 +76,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
         // confusing on the common first-run case where both are missing at once.
         Directory.CreateDirectory(_tmp);
 
-        var (exitCode, _, stderr) = RunCli(_tmp, "gen");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("usage: dotnet meta gen", stderr);
@@ -99,7 +99,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "a" }, { "path": "b" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, _, stderr) = RunCli(_tmp, "gen", "--out", outDir, "--namespace", "X");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "X");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("2 metadata sources", stderr);
@@ -123,7 +123,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "vendor/meta.catalog.json" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, _, stderr) = RunCli(_tmp, "gen", "--out", outDir, "--namespace", "X");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "X");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("is a FILE", stderr);
@@ -162,7 +162,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "model" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = RunCli(_tmp, "gen", "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
@@ -181,55 +181,9 @@ public sealed class MetadataDirFallbackTests : IDisposable
         File.WriteAllText(Path.Combine(modelDir, "meta.acme.json"), Metadata);
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = RunCli(_tmp, "gen", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
-    }
-
-    /// <summary>Runs the actual built `dotnet meta` assembly as a subprocess, cwd
-    /// pinned to <paramref name="workingDir"/>, so the test exercises Program.cs's
-    /// real Main/argument-parsing rather than any method reachable in-process.</summary>
-    private static (int ExitCode, string Stdout, string Stderr) RunCli(string workingDir, params string[] args)
-    {
-        var psi = new ProcessStartInfo("dotnet")
-        {
-            WorkingDirectory = workingDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        psi.ArgumentList.Add(ResolveCliDll());
-        foreach (var a in args) psi.ArgumentList.Add(a);
-
-        using var proc = Process.Start(psi) ?? throw new InvalidOperationException("failed to start dotnet");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit();
-        return (proc.ExitCode, stdout, stderr);
-    }
-
-    /// <summary>Locates the MetaObjects.Cli build output next to this test
-    /// assembly's own build output — both projects share the same Configuration
-    /// and TargetFramework (net8.0), and MetaObjects.Cli.Tests already builds
-    /// MetaObjects.Cli as a project reference, so the dll is guaranteed present
-    /// by the time `dotnet test` starts running tests.</summary>
-    private static string ResolveCliDll()
-    {
-        var testsProjectDir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (testsProjectDir is not null &&
-               !File.Exists(Path.Combine(testsProjectDir.FullName, "MetaObjects.Cli.Tests.csproj")))
-            testsProjectDir = testsProjectDir.Parent;
-        if (testsProjectDir is null)
-            throw new InvalidOperationException(
-                "could not locate MetaObjects.Cli.Tests.csproj by walking up from " + AppContext.BaseDirectory);
-
-        var relSuffix = Path.GetRelativePath(testsProjectDir.FullName, AppContext.BaseDirectory);
-        var dll = Path.Combine(testsProjectDir.Parent!.FullName, "MetaObjects.Cli", relSuffix, "MetaObjects.Cli.dll");
-        if (!File.Exists(dll))
-            throw new FileNotFoundException(
-                $"expected the MetaObjects.Cli build output at {dll} (built automatically as a project " +
-                "reference of MetaObjects.Cli.Tests)", dll);
-        return dll;
     }
 }

@@ -51,6 +51,7 @@ static int RunGen(string[] rest)
     string ns = GenCommand.DefaultNamespace;
     bool emitAbstractShapes = false;
     string? columnNamingRaw = null;
+    string baseline = "default";
     bool list = false;
     string? generatorsCsv = null;
     string? templateRoot = null;
@@ -65,6 +66,8 @@ static int RunGen(string[] rest)
         else if (rest[i] == "--template-spec" && i + 1 < rest.Length) templateSpecPath = rest[++i];
         else if (rest[i] == "--emit-abstract-shapes") emitAbstractShapes = true;
         else if (rest[i] == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
+        else if (rest[i] == "--baseline" && i + 1 < rest.Length) baseline = rest[++i];
+        else if (rest[i].StartsWith("--baseline=", StringComparison.Ordinal)) baseline = rest[i]["--baseline=".Length..];
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
     }
 
@@ -87,6 +90,20 @@ static int RunGen(string[] rest)
         return 2;
     }
 
+    // Same rule as --column-naming above: an unknown value is a usage error, never a
+    // silent fallback. `fresh` is deliberately NOT accepted here — TypeScript implements
+    // it and this port does not, and taking the value while refusing files anyway would be
+    // a cross-port lie. The error says so rather than leaving the reader to infer it.
+    if (baseline is not ("default" or "adopt"))
+    {
+        Console.Error.WriteLine(
+            $"error: unknown --baseline \"{baseline}\"; this port implements 'default' and 'adopt'. " +
+            "To discard a refused file's content here, delete the file and re-run — it is then " +
+            "written as new. (TypeScript's '--baseline=fresh' does that in one step; it is not " +
+            "implemented in this port.)");
+        return 2;
+    }
+
     // `--list` — discoverability surface (ADR-0021 D3). Print and exit 0, no codegen.
     if (list)
     {
@@ -103,7 +120,7 @@ static int RunGen(string[] rest)
     // first-run case where BOTH are missing.
     if (outDir is null)
     {
-        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case]");
+        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]");
         Console.Error.WriteLine("       dotnet meta gen --list");
         return 2;
     }
@@ -136,10 +153,10 @@ static int RunGen(string[] rest)
         ? GenCommand.Run(
             MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList()),
             outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
-            columnNaming)
+            columnNaming, baseline)
         : GenCommand.Run(
             resolvedMeta.Directory, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath,
-            columnNaming);
+            columnNaming, baseline);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
@@ -149,6 +166,19 @@ static int RunGen(string[] rest)
     foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");
     foreach (var w in outcome.Result!.Warnings) Console.Error.WriteLine($"  warning: {w}");
     Console.WriteLine($"dotnet meta gen: {outcome.Result!.Files.Count(f => f.Status == "written")} file(s) written");
+
+    // A refusal is a FAILED gate, matching TypeScript's `meta gen` (exit 1). This port and
+    // Python used to warn and exit 0, so an adopter wiring `dotnet meta gen` into CI as a
+    // drift gate was green while codegen refused to write — a gate that did not gate. The
+    // warnings above carry the detail; this line carries the verdict.
+    var refusedCount = outcome.Result!.Files.Count(f => f.Status == "refused");
+    if (refusedCount > 0)
+    {
+        Console.Error.WriteLine(
+            $"dotnet meta gen: FAILED — {refusedCount} file(s) refused (see the warnings above; " +
+            "`--baseline=adopt` records what you have and writes nothing)");
+        return 1;
+    }
     return 0;
 }
 

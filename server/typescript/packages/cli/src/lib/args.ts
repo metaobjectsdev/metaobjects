@@ -100,10 +100,10 @@ export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
 export interface GenFlags {
   dryRun: boolean;
   entities: string[];
-  /** First-time-on-existing-file behavior. Default: write-if-different
-   *  (existing content becomes the canonical baseline). "fresh" → overwrite
-   *  and re-baseline. */
-  baseline: "default" | "fresh";
+  /** First-time-on-existing-file behavior. Default: refuse a file that cannot be
+   *  proved to be ours. "adopt" → record the file as the merge base and write
+   *  nothing. "fresh" → overwrite from fresh output and re-baseline. */
+  baseline: "default" | "fresh" | "adopt";
   /** ADR-0021 D3 — print the stable-name generator registry and exit without
    *  running codegen. */
   list: boolean;
@@ -134,15 +134,20 @@ export function parseGenArgs(argv: string[]): GenFlags {
     allowPositionals: true,
   });
   const baselineRaw = values.baseline as string | undefined;
-  if (baselineRaw !== undefined && baselineRaw !== "default" && baselineRaw !== "fresh") {
+  if (
+    baselineRaw !== undefined &&
+    baselineRaw !== "default" &&
+    baselineRaw !== "fresh" &&
+    baselineRaw !== "adopt"
+  ) {
     throw new Error(
-      `invalid --baseline '${baselineRaw}'; expected 'default' or 'fresh'`,
+      `invalid --baseline '${baselineRaw}'; expected 'default', 'adopt' or 'fresh'`,
     );
   }
   return {
     dryRun: !!values["dry-run"],
     entities: positionals,
-    baseline: (baselineRaw as "default" | "fresh" | undefined) ?? "default",
+    baseline: (baselineRaw as "default" | "fresh" | "adopt" | undefined) ?? "default",
     list: !!values.list,
     noAntipatterns: !!values["no-antipatterns"],
     // Throws on a bad value; the command layer reports it and exits 2, exactly as

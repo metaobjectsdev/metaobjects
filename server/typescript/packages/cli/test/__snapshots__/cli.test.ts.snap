@@ -39,10 +39,12 @@ GEN FLAGS:
   --dry-run             Compute and print, don't write
   --list                Print the generator registry (name, tier, options) and exit —
                         no config or metadata required
-  --baseline <default|fresh>
-                        First-time-on-existing-file behavior. Default: write-if-different,
-                        adopting existing content as the canonical baseline. "fresh"
-                        overwrites and re-baselines.
+  --baseline <default|adopt|fresh>
+                        First-time-on-existing-file behavior. Default: refuse a file that
+                        cannot be proved to be generated output. "adopt" records the files
+                        you have as the merge base and writes NOTHING — the first run a
+                        project with no committed .hashes.json can perform. "fresh"
+                        overwrites them with fresh output and re-baselines (discards edits).
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --limit <n|all>       How many advisory lines TEXT output prints before it truncates
                         (default 20). Never applies to --format toon/json, which

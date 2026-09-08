@@ -53,6 +53,12 @@ class GenConfig:
     # generator emits names a different column than the one a row actually lands
     # in.
     column_naming: str = DEFAULT_COLUMN_NAMING
+    # First-time-on-existing-file behaviour. "default" refuses a file that cannot be
+    # proved to be generated output; "adopt" records what is on disk as the baseline and
+    # writes nothing — the one run a project with no committed manifest can perform (the
+    # refusal used to prescribe committing a manifest nothing had yet produced). A value
+    # this port does not implement is REFUSED in __post_init__ rather than ignored.
+    baseline: str = "default"
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
 
@@ -79,6 +85,17 @@ class GenConfig:
             raise ValueError(
                 f"GenConfig.output_layout={self.output_layout!r}: only 'flat' is "
                 "implemented in this port."
+            )
+        if self.baseline not in ("default", "adopt"):
+            # `fresh` is deliberately absent from this port rather than silently accepted:
+            # TypeScript implements it (overwrite from fresh + re-baseline) and this port
+            # does not, and taking the value while refusing files anyway is the kind of
+            # cross-port lie this whole method exists to prevent.
+            raise ValueError(
+                f"GenConfig.baseline={self.baseline!r}: this port implements 'default' and "
+                "'adopt'. To discard a refused file's content here, delete the file and "
+                "re-run — it is then written as new. (TypeScript's '--baseline=fresh' does "
+                "that in one step; it is not implemented in this port.)"
             )
         if self.emit_abstract_shapes is not True:
             raise ValueError(

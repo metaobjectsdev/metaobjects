@@ -378,6 +378,8 @@ def _run_suite(
     gen_state_dir: str | None = None,
     column_naming: str = DEFAULT_COLUMN_NAMING,
     project_root: str | None = None,
+    baseline: str = "default",
+    refused_out: list[str] | None = None,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -412,11 +414,21 @@ def _run_suite(
         # not. Passed alongside gen_state_dir because the two are one decision: state
         # that lives in the project must be keyed by the project.
         project_root=project_root,
+        # `--baseline=adopt`: record what is on disk and write nothing. The refusal it
+        # exists for is the pre-manifest one, so it reaches every real gen path and no
+        # verify path (those pass gen_state_dir=None and record nothing at all).
+        baseline=baseline,
     )
     suite = generators if generators is not None else _default_generators()
     result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
     for warning in result.warnings:
         print(f"warning: {warning}")
+    # A refusal is a FAILED gate, and the return value carries only what was WRITTEN — so
+    # without this the one fact a CI step reads (the exit code) could not see it. An
+    # out-list rather than a changed return type: five call sites read the written paths,
+    # and only the ones that own an exit code care about the refusals.
+    if refused_out is not None:
+        refused_out.extend(path for path, status in result.files if status == "refused")
     return [path for path, status in result.files if status != "refused"]
 
 
@@ -808,10 +820,12 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     # `--template-spec` artifact and a default-suite artifact land in one key space.
     gen_project_root = str(project_root_for(args.metadata_dir))
     column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
+    baseline = getattr(args, "baseline", None) or "default"
+    refused: list[str] = []
     written = _run_suite(
         root, args.out, generators, entities,
         gen_state_dir=gen_state, column_naming=column_naming,
-        project_root=gen_project_root,
+        project_root=gen_project_root, baseline=baseline, refused_out=refused,
     )
     if spec_gens:
         # The template-spec pass renders user-supplied templates: a bad ref or a
@@ -823,7 +837,7 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             spec_written = _run_suite(
                 root, args.out, spec_gens, entities, emit_package_init=False,
                 gen_state_dir=gen_state, column_naming=column_naming,
-                project_root=gen_project_root,
+                project_root=gen_project_root, baseline=baseline, refused_out=refused,
             )
         except RenderError as exc:
             print(
@@ -836,6 +850,17 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     for path in written:
         print(path)
     print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
+    if refused:
+        # A refusal is a failed gate, matching TypeScript's `meta gen` (exit 1). Python and
+        # C# used to warn and exit 0, so an adopter wiring this into CI as a drift gate was
+        # green while codegen refused to write — a gate that did not gate. The warnings
+        # above carry the detail; this line carries the verdict.
+        print(
+            f"metaobjects gen: FAILED — {len(refused)} file(s) refused (see the warnings "
+            f"above; `--baseline=adopt` records what you have and writes nothing)",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -846,6 +871,8 @@ def _run_gen_targets(
     *,
     gen_state_dir: str | None = None,
     project_root: str | None = None,
+    baseline: str = "default",
+    refused_out: list[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's suite into its ``outDir``. Returns (all_written, errors).
 
@@ -875,7 +902,7 @@ def _run_gen_targets(
         try:
             written = _run_suite(
                 root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
-                project_root=project_root,
+                project_root=project_root, baseline=baseline, refused_out=refused_out,
             )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -942,14 +969,28 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
 
     gen_state = str(root_dir.resolve() / ".metaobjects" / ".gen-state")
     column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
+    refused: list[str] = []
     written = _run_suite(
         root, args.out, generators, entities,
         gen_state_dir=gen_state, column_naming=column_naming,
         project_root=str(root_dir.resolve()),
+        baseline=getattr(args, "baseline", None) or "default",
+        refused_out=refused,
     )
     for path in written:
         print(path)
     print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
+    if refused:
+        # A refusal is a failed gate, matching TypeScript's `meta gen` (exit 1). Python and
+        # C# used to warn and exit 0, so an adopter wiring this into CI as a drift gate was
+        # green while codegen refused to write — a gate that did not gate. The warnings
+        # above carry the detail; this line carries the verdict.
+        print(
+            f"metaobjects gen: FAILED — {len(refused)} file(s) refused (see the warnings "
+            f"above; `--baseline=adopt` records what you have and writes nothing)",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -1006,10 +1047,13 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
             print(f"  {msg}", file=sys.stderr)
         return 1
 
+    refused: list[str] = []
     written, errors = _run_gen_targets(
         config, targets, root,
         gen_state_dir=gen_state_dir_for(config.metadata_dir()),
         project_root=str(project_root_for(config.metadata_dir())),
+        baseline=getattr(args, "baseline", None) or "default",
+        refused_out=refused,
     )
     if errors:
         for msg in errors:
@@ -1020,6 +1064,17 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     print(
         f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
     )
+    if refused:
+        # A refusal is a failed gate, matching TypeScript's `meta gen` (exit 1). Python and
+        # C# used to warn and exit 0, so an adopter wiring this into CI as a drift gate was
+        # green while codegen refused to write — a gate that did not gate. The warnings
+        # above carry the detail; this line carries the verdict.
+        print(
+            f"metaobjects gen: FAILED — {len(refused)} file(s) refused (see the warnings "
+            f"above; `--baseline=adopt` records what you have and writes nothing)",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -1715,6 +1770,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--list",
         action="store_true",
         help="list registered generators (stable name + description) and exit",
+    )
+    gen.add_argument(
+        "--baseline",
+        choices=("default", "adopt"),
+        default="default",
+        help=(
+            "first-time-on-existing-file behaviour. 'default' refuses a file that cannot "
+            "be proved to be generated output; 'adopt' records the files you have as the "
+            "baseline and writes NOTHING — the one run a project with no committed "
+            ".gen-state/.hashes.json can perform, since nothing writes a manifest until a "
+            "gen succeeds. Adopting DECLARES those files to be generated output: the next "
+            "gen regenerates over them, so commit before you run it."
+        ),
     )
     gen.add_argument(
         "--template-spec",

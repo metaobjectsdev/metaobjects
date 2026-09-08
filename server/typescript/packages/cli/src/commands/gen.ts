@@ -36,6 +36,10 @@ export function mapStatus(s: WriteStatus): GenFileStatus {
     case "unchanged":
     case "skipped":   return "unchanged";
     case "refused":   return "refused";
+    // --baseline=adopt — recorded as the merge base, nothing written. Its own word,
+    // for the same reason "overwrite" is not "new": the adopter has to know a manifest
+    // now exists to commit.
+    case "adopted":   return "adopted";
     // FR-038 §8 — a generated file deleted because it is no longer generated.
     // Shown as its own outcome, not folded into "unchanged": a run summary that
     // lists writes but hides deletions is how a silent deletion happens.

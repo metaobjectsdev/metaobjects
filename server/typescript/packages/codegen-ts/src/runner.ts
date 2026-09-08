@@ -735,10 +735,15 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         `no codegen hash manifest — so 'meta gen' cannot tell your edits from its own ` +
         `stale output, and it will not guess. This is the expected first run for a ` +
         `project created before the manifest was committed. ` +
-        `ONE-TIME FIX: commit '.metaobjects/.gen-state/.hashes.json' (un-ignore it in ` +
-        `.metaobjects/.gitignore with '.gen-state/*' + '!.gen-state/.hashes.json'), ` +
-        `then re-run. To adopt fresh output and DISCARD any hand edits in these files ` +
-        `instead, re-run with --baseline=fresh. Files: ${names.join(", ")}${more}.`,
+        `ONE-TIME FIX: re-run with --baseline=adopt — it records the files you have as ` +
+        `the merge base and writes NOTHING — then commit ` +
+        `'.metaobjects/.gen-state/.hashes.json' (un-ignore it in .metaobjects/.gitignore ` +
+        `with '.gen-state/*' + '!.gen-state/.hashes.json') and run 'meta gen' again, where ` +
+        `the regeneration arrives as its own reviewable diff. Adopting DECLARES these files ` +
+        `to be generated output, so an edit already inside one of them is part of the ` +
+        `baseline and that regeneration will replace it — commit before you run it. ` +
+        `To write fresh output NOW and DISCARD any hand edits in these files, ` +
+        `--baseline=fresh does both in one step. Files: ${names.join(", ")}${more}.`,
       );
       return;
     }
@@ -775,6 +780,28 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       `Moving the edit into a non-generated file works only where the edit can live outside ` +
       `the generated one; a requirementTests() stub's body cannot, since the test name is ` +
       `its link to the requirement.`,
+    );
+  };
+
+  // `--baseline=adopt` — the counterpart of the aggregate above, and aggregated for the
+  // same reason: every adopted file has one cause and one next step. Reported even though
+  // nothing failed, because a run that writes nothing and exits 0 is otherwise
+  // indistinguishable from a no-op, and the file it DID produce (`.hashes.json`) is the
+  // one the adopter now has to commit.
+  const reportAdoptions = (): void => {
+    const adopted = writes.filter((w) => w.status === "adopted");
+    if (adopted.length === 0) return;
+    const names = adopted.slice(0, MAX_NAMED).map((w) => relativeForDisplay(w.path));
+    const more = adopted.length > MAX_NAMED ? `, and ${adopted.length - MAX_NAMED} more` : "";
+    warnings.push(
+      `Recorded ${adopted.length} existing file(s) as the codegen baseline and wrote ` +
+      `nothing. NEXT: commit '.metaobjects/.gen-state/.hashes.json' (un-ignore it in ` +
+      `.metaobjects/.gitignore with '.gen-state/*' + '!.gen-state/.hashes.json'), then run ` +
+      `'meta gen' — these files regenerate normally from here, as their own reviewable ` +
+      `diff. Adopting DECLARED them to be generated output: an edit already inside one is ` +
+      `part of the baseline and that regeneration will replace it, so check the diff ` +
+      `against git. Edits you make FROM NOW ON merge, because the base now exists. ` +
+      `Files: ${names.join(", ")}${more}.`,
     );
   };
 
@@ -879,6 +906,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       });
     }
     reportRefusals();
+    reportAdoptions();
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
@@ -912,6 +940,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
 
   reportRefusals();
+  reportAdoptions();
 
   // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
   // first would be unrecoverable if a later write threw. Ordering cannot change

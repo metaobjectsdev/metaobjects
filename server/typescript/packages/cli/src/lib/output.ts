@@ -31,6 +31,10 @@ export type GenFileStatus =
   | "conflict"
   | "unchanged"
   | "refused"
+  /** `--baseline=adopt`: the file's existing content became the merge base and
+   *  nothing was written. Never folded into "unchanged" — the run's product is the
+   *  manifest, and a summary that showed these as unchanged would hide it. */
+  | "adopted"
   | "removed";
 
 export interface GenFileEntry {
@@ -74,6 +78,7 @@ const GEN_GLYPHS: Record<GenFileStatus, string> = {
   conflict: "✗",
   unchanged: "=",
   refused: "⚠",
+  adopted: "⊕",
   removed: "−",
 };
 
@@ -84,6 +89,7 @@ const GEN_WORDS: Record<GenFileStatus, string> = {
   conflict: "CONFLICT",
   unchanged: "UNCHANGED",
   refused: "REFUSED",
+  adopted: "ADOPTED",
   removed: "REMOVED",
 };
 
@@ -114,7 +120,7 @@ export function formatGenResult(result: GenResultShape, opts: FormatOptions): st
       acc[f.status] = (acc[f.status] ?? 0) + 1;
       return acc;
     },
-    { new: 0, overwrite: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0, removed: 0 },
+    { new: 0, overwrite: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0, adopted: 0, removed: 0 },
   );
   const parts: string[] = [];
   // "written" stays the sum of new + overwrite: that number was always correct and
@@ -126,6 +132,10 @@ export function formatGenResult(result: GenResultShape, opts: FormatOptions): st
   if (counts.conflict > 0) parts.push(`${counts.conflict} conflict`);
   if (counts.unchanged > 0) parts.push(`${counts.unchanged} unchanged`);
   if (counts.refused > 0) parts.push(`${counts.refused} refused`);
+  // `--baseline=adopt`: recorded as the merge base, nothing written. Counted separately
+  // from `unchanged` because the run's product is the manifest, and an adopter who cannot
+  // see how many files it now covers has no way to review what they are about to commit.
+  if (counts.adopted > 0) parts.push(`${counts.adopted} adopted`);
   if (counts.removed > 0) parts.push(`${counts.removed} removed`);
   lines.push("", `  ${parts.join(", ")}`, "");
 
@@ -228,7 +238,7 @@ export function genResultToData(result: GenResultShape): {
 } {
   const counts = result.files.reduce<Record<GenFileStatus, number>>(
     (a, f) => ((a[f.status] = (a[f.status] ?? 0) + 1), a),
-    { new: 0, overwrite: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0, removed: 0 },
+    { new: 0, overwrite: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0, adopted: 0, removed: 0 },
   );
   const parts: string[] = [];
   // Same split as the text formatter: `written` is new + overwrite, and the
@@ -239,6 +249,7 @@ export function genResultToData(result: GenResultShape): {
   if (counts.conflict) parts.push(`${counts.conflict} conflict`);
   if (counts.unchanged) parts.push(`${counts.unchanged} unchanged`);
   if (counts.refused) parts.push(`${counts.refused} refused`);
+  if (counts.adopted) parts.push(`${counts.adopted} adopted`);
   if (counts.removed) parts.push(`${counts.removed} removed`);
   // Two ways to emit nothing, and they send the reader to different files. Name the
   // one that is actually true: a config wiring no generators cannot produce output

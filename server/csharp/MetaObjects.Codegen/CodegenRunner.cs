@@ -42,6 +42,7 @@ public static class CodegenRunner
         // instead, mirroring codegen-ts's runGen duplicate-path check.
         var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
         var refused = new List<string>();
+        var adopted = new List<string>();
         // Captured BEFORE any write, because the first write creates the manifest —
         // read it afterwards and every project looks migrated.
         var hadManifest = config.GenStateDir is null || HashManifest.Exists(config.GenStateDir);
@@ -58,10 +59,12 @@ public static class CodegenRunner
                 var status = WriteOne(config, full, file.Path, file.Content, warnings);
                 results.Add(new WriteResult(file.Path, status));
                 if (status == "refused") refused.Add(file.Path);
+                else if (status == "adopted") adopted.Add(file.Path);
             }
         }
 
         ReportRefusals(refused, hadManifest, warnings);
+        ReportAdoptions(adopted, warnings);
         return new RunResult(results, warnings);
     }
 
@@ -125,6 +128,19 @@ public static class CodegenRunner
             return "written";
         }
 
+        // …unless the caller explicitly adopted what is on disk. Placed HERE, at the
+        // refusal, rather than earlier: adopting can then only ever convert a refusal into
+        // a recorded baseline, leaving "unchanged" and the pristine overwrite exactly as
+        // they are, so passing it cannot freeze a project's regeneration.
+        if (config.Baseline == "adopt")
+        {
+            // `current`, never `content`: recording fresh output would claim we wrote a
+            // file we did not, and the next run would read the adopter's file as edited
+            // and refuse all over again — the loop this mode exists to end.
+            HashManifest.Record(config.GenStateDir, relPath, current);
+            return "adopted";
+        }
+
         return "refused";
     }
 
@@ -155,7 +171,13 @@ public static class CodegenRunner
             warnings.Add(
                 $"Refused to overwrite {refused.Count} existing file(s), and this project has no " +
                 $"codegen hash manifest — so codegen cannot tell your edits from its own stale " +
-                $"output, and will not guess. Commit '.gen-state/.hashes.json' and re-run. " +
+                $"output, and will not guess. This is the expected first run for a project " +
+                $"created before the manifest was committed. ONE-TIME FIX: re-run with " +
+                $"--baseline=adopt — it records the files you have as the baseline and writes " +
+                $"NOTHING — then commit '.gen-state/.hashes.json' and run gen again, where the " +
+                $"regeneration arrives as its own reviewable diff. Adopting DECLARES these files " +
+                $"to be generated output, so an edit already inside one of them is part of the " +
+                $"baseline and that regeneration will replace it — commit before you run it. " +
                 $"Files: {shown}{more}.");
             return;
         }
@@ -167,5 +189,26 @@ public static class CodegenRunner
                 $"there is no record of generating it. Move your edits into a non-generated file, " +
                 $"or delete it to accept fresh output.");
         }
+    }
+
+    /// <summary>
+    /// Report a <c>--baseline=adopt</c> run. Aggregated for the same reason the no-manifest
+    /// refusal is — one cause, one next step — and reported even though nothing failed,
+    /// because a run that writes nothing and exits 0 is otherwise indistinguishable from a
+    /// no-op, while the file it DID produce (the manifest) is the one to commit.
+    /// </summary>
+    private static void ReportAdoptions(List<string> adopted, List<string> warnings)
+    {
+        if (adopted.Count == 0) return;
+        const int maxNamed = 5;
+        var shown = string.Join(", ", adopted.Take(maxNamed));
+        var more = adopted.Count > maxNamed ? $", and {adopted.Count - maxNamed} more" : "";
+        warnings.Add(
+            $"Recorded {adopted.Count} existing file(s) as the codegen baseline and wrote " +
+            $"nothing. NEXT: commit '.gen-state/.hashes.json', then run gen again — these " +
+            $"files regenerate normally from here, as their own reviewable diff. Adopting " +
+            $"DECLARED them to be generated output: an edit already inside one is part of the " +
+            $"baseline and that regeneration will replace it, so check the diff against git. " +
+            $"Files: {shown}{more}.");
     }
 }

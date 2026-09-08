@@ -7,6 +7,51 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### `meta gen --baseline=adopt` — the first run a pre-manifest project can actually perform
+
+The no-manifest refusal LED with *"ONE-TIME FIX: commit
+`.metaobjects/.gen-state/.hashes.json`"*, which the population it names cannot do: nothing
+writes a manifest until a `gen` succeeds, and a run where every file refuses writes none.
+So there was nothing to commit, and the next run refused identically. The only escape was
+`--baseline=fresh`, correctly framed as the lossy one — an adopter whose committed output
+was already a byte-identical regen still had to reason past a warning about losing work.
+Found by an adopter estate running the release candidate: 50 files refused, and the leading
+instruction was unfollowable.
+
+`--baseline=adopt` separates the two things `fresh` does at once. It records the files you
+HAVE as the merge base and **writes nothing**, so the manifest exists to commit and the
+regeneration arrives on the next run as its own reviewable diff. Placed at the refusal
+rather than at the top of the decision, so it can only ever convert a refusal into a
+recorded baseline: `unchanged` and the pristine-file overwrite a fresh clone depends on
+behave exactly as they do without the flag.
+
+**What adopting declares, stated because the name invites the other reading:** that the
+files you have *are* generated output. It protects edits made from that point on — they
+finally have a base to merge against — but an edit already inside one of those files
+becomes part of the base, so the next `gen` replaces it. The message says so, and a test
+pins it. Where the edit is the point, the sequence that keeps it is unchanged and still
+needs `--baseline=fresh` (see [own-your-codegen](docs/features/own-your-codegen.md)).
+
+Shipped in **TypeScript, Python and C#** — the three ports with a hash manifest. A new
+`adopted` write status carries it through the reporting layer rather than being folded
+into `unchanged`, because the run's whole product is the manifest and a summary that hid
+it would defeat the point. `fresh` remains TypeScript-only; Python and C# REFUSE that
+value with a message naming what they do implement, rather than accepting it and refusing
+files anyway.
+
+### BREAKING — a refused file now FAILS `gen` on Python and C# (exit 1), as it always has on TypeScript
+
+`metaobjects gen` and `dotnet meta gen` printed the refusal warning and exited **0**. An
+adopter who wired either into CI as a drift gate was therefore green while codegen was
+refusing to write — the gate did not gate, and nothing in the docs said so. TypeScript has
+exited 1 on a refusal since the manifest shipped.
+
+The three ports now agree. A build that starts failing on this was already unprotected,
+and the failure names its own remedy (`--baseline=adopt` above). Found while probing the
+adopt work, not by a gate: no conformance corpus covers CLI exit codes, and the
+divergence had no test on either side.
+
+
 ### BREAKING — the default provider composition registered vocabulary no other port has
 
 `forgeTypesProvider` leaves `defaultLoadMemoryProviders` and `meta types`. A `decision` /

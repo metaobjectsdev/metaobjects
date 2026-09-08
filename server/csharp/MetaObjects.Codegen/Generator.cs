@@ -33,6 +33,20 @@ public sealed record GenConfig
     /// </para>
     /// </summary>
     public string? GenStateDir { get; init; }
+    /// <summary>
+    /// First-time-on-existing-file behaviour: <c>"default"</c> refuses a file that cannot
+    /// be proved to be generated output; <c>"adopt"</c> records the file's CURRENT content
+    /// as the baseline and writes nothing.
+    /// <para>
+    /// <c>adopt</c> exists because the refusal's remedy — commit the manifest — could not
+    /// be performed by the population it named: nothing writes a manifest until a gen
+    /// succeeds, and a run where every file refuses writes none. It is NOT protection for
+    /// an edit already in the file: what it records IS that text, so the next run
+    /// regenerates over it. What it guarantees is that establishing the baseline writes
+    /// nothing, which lets the regeneration land as its own reviewable diff.
+    /// </para>
+    /// </summary>
+    public string Baseline { get; init; } = "default";
     /// <summary>C# namespace for generated types.</summary>
     public required string Namespace { get; init; }
     /// <summary>

@@ -133,6 +133,7 @@ def run_gen(
     had_manifest = tracking_hashes and has_hash_manifest(config.gen_state_dir or "")
 
     refused: list[str] = []
+    adopted: list[str] = []
     for full, (content, _by) in emitted.items():
         # The out-dir-relative name: what the manifest used to be keyed by, and still
         # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
@@ -162,10 +163,13 @@ def run_gen(
             gen_state_dir=config.gen_state_dir,
             rel_path=key,
             legacy_rel_path=rel if key != rel else None,
+            baseline=config.baseline,
         )
         result.files.append((full, status))
         if status == "refused":
             refused.append(rel)
+        elif status == "adopted":
+            adopted.append(rel)
 
     if refused:
         if not tracking_hashes:
@@ -191,8 +195,15 @@ def run_gen(
             result.warnings.append(
                 f"Refused to overwrite {len(refused)} existing file(s), and this project "
                 f"has no codegen hash manifest — so codegen cannot tell your edits from "
-                f"its own stale output, and will not guess. Commit "
-                f"'.metaobjects/.gen-state/.hashes.json' and re-run. Files: {shown}{more}."
+                f"its own stale output, and will not guess. This is the expected first run "
+                f"for a project created before the manifest was committed. ONE-TIME FIX: "
+                f"re-run with --baseline=adopt — it records the files you have as the "
+                f"baseline and writes NOTHING — then commit "
+                f"'.metaobjects/.gen-state/.hashes.json' and run gen again, where the "
+                f"regeneration arrives as its own reviewable diff. Adopting DECLARES these "
+                f"files to be generated output, so an edit already inside one of them is "
+                f"part of the baseline and that regeneration will replace it — commit "
+                f"before you run it. Files: {shown}{more}."
             )
         else:
             for rel in refused:
@@ -201,4 +212,24 @@ def run_gen(
                     f"generated, or there is no record of generating it. Move your edits "
                     f"into a non-generated file, or delete it to accept fresh output."
                 )
+
+    if adopted:
+        # Aggregated for the same reason the no-manifest refusal is: one cause, one next
+        # step. Reported even though nothing failed, because a run that writes nothing and
+        # exits 0 is otherwise indistinguishable from a no-op, while the file it DID
+        # produce (the manifest) is the one that now has to be committed.
+        shown = ", ".join(adopted[:_MAX_NAMED_REFUSALS])
+        more = (
+            f", and {len(adopted) - _MAX_NAMED_REFUSALS} more"
+            if len(adopted) > _MAX_NAMED_REFUSALS
+            else ""
+        )
+        result.warnings.append(
+            f"Recorded {len(adopted)} existing file(s) as the codegen baseline and wrote "
+            f"nothing. NEXT: commit '.metaobjects/.gen-state/.hashes.json', then run gen "
+            f"again — these files regenerate normally from here, as their own reviewable "
+            f"diff. Adopting DECLARED them to be generated output: an edit already inside "
+            f"one is part of the baseline and that regeneration will replace it, so check "
+            f"the diff against git. Files: {shown}{more}."
+        )
     return result

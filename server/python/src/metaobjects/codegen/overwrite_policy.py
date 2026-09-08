@@ -17,6 +17,8 @@ recording what we wrote:
     identical fresh content              -> "unchanged"
     file still hashes to what we wrote   -> "overwrite"   (nothing is lost)
     hash mismatch, or no record at all   -> "refused"     (fail closed)
+                                         -> "adopted"     (baseline="adopt": record
+                                                           what is there, write nothing)
 
 That file is meant to be COMMITTED — it is one hash per generated path, and it is the
 only thing that lets a machine which did not generate the output tell "this is exactly
@@ -35,7 +37,7 @@ import os
 
 from .constants import GENERATED_MARKER
 
-# status: "new" | "unchanged" | "overwrite" | "refused" | "skipped"
+# status: "new" | "unchanged" | "overwrite" | "refused" | "adopted" | "skipped"
 
 HASHES_FILE = ".hashes.json"
 
@@ -157,6 +159,7 @@ def decide_and_write(
     gen_state_dir: str | None = None,
     rel_path: str | None = None,
     legacy_rel_path: str | None = None,
+    baseline: str = "default",
 ) -> str:
     """Decide and perform the write for one generated file.
 
@@ -165,6 +168,14 @@ def decide_and_write(
     flat output directory). ``legacy_rel_path`` is the key the same file may already
     be recorded under from before keys became project-root-relative — read as a
     fallback, and removed once the file is recorded under the new key.
+
+    ``baseline="adopt"`` records the file's CURRENT content as the baseline instead of
+    refusing it, and writes nothing. It exists because the refusal's remedy — commit the
+    manifest — could not be performed by the population it named: nothing writes a
+    manifest until a gen succeeds, and a run where every file refuses writes none. It is
+    NOT protection for an edit already in the file: what it records IS that text, so the
+    next run regenerates over it. What it guarantees is that establishing the baseline
+    writes nothing, which is what lets the regeneration land as its own reviewable diff.
     """
     if not os.path.exists(path):
         _write(path, content)
@@ -204,4 +215,13 @@ def decide_and_write(
     # Edited, or never recorded. Deliberately does NOT record the current content:
     # doing so would make the file look pristine next run and turn this into a silent
     # overwrite one run later.
+    #
+    # …unless the caller explicitly adopted what is on disk. Placed HERE, at the refusal,
+    # rather than earlier in the function: adopting can then only ever convert a refusal
+    # into a recorded baseline, leaving "unchanged" and the pristine overwrite exactly as
+    # they are, so passing it cannot freeze a project's regeneration.
+    if baseline == "adopt":
+        _record(gen_state_dir, key, current, legacy_rel_path)
+        return "adopted"
+
     return "refused"

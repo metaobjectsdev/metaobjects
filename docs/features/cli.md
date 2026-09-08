@@ -120,6 +120,42 @@ at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
 Node-only by the ADR-0015 design — see below.)
 
+## `gen` refuses rather than guesses — and `--baseline` is how you answer it
+
+Every port's `gen` decides per file whether it may overwrite, from a committed hash
+manifest (`.metaobjects/.gen-state/.hashes.json`). A file that still hashes to what the
+generator recorded writing is safe to overwrite; one that was edited, or that no record
+covers, is **refused by name and left exactly as it is**.
+
+**A refusal fails the run — exit 1 — on every port.** TypeScript has always done this;
+Python and C# printed the warning and exited 0 until 1.0, so an adopter who wired `gen`
+into CI as a drift gate was green while codegen was refusing to write. If a build starts
+failing on this at 1.0, it was already not protecting anything; the remedy below is the
+one-time fix.
+
+| flag | ports | what it does |
+|---|---|---|
+| `--baseline=default` | all | the above: refuse what cannot be proved to be generated output |
+| `--baseline=adopt` | TS · Python · C# | record the files you HAVE as the merge base and **write nothing** |
+| `--baseline=fresh` | TS only | overwrite the refused files from fresh output and re-baseline (**discards** hand edits) |
+
+**`adopt` exists because the refusal's own remedy was unreachable.** It told you to commit
+`.hashes.json` — but nothing writes a manifest until a `gen` succeeds, and a run where
+every file refuses writes none, so there was nothing to commit and the next run refused
+identically. `adopt` breaks that loop: it records what is on disk, writes not one byte of
+output, and leaves exactly one file to commit. Then `gen` again, and the regeneration
+arrives as its own reviewable diff.
+
+**What adopting declares** — say this out loud before running it: that the files you have
+*are* generated output. It protects edits made from that point on, because they finally
+have a base to merge against. An edit already inside one of those files becomes part of
+the base, so the next `gen` will replace it. Commit first, then read that second diff.
+Where the edit is the point, the sequence that keeps it is in
+[own-your-codegen](own-your-codegen.md#recovering-a-refused-file-on-a-machine-that-never-generated-it),
+and it needs `--baseline=fresh` (TypeScript). Python and C# implement `default` and
+`adopt` only; there, discard a refused file by deleting it and re-running, which writes it
+as new.
+
 ## `meta docs` surfaces — and the `agent/` one
 
 `meta docs` writes MARKDOWN, from metadata, into `docs.outDir` (default `./docs`). It
