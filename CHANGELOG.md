@@ -72,6 +72,47 @@ integration cases generated with an explicit `--out <dir>/docs` while `verify --
 the config default, and passed only because the two coincided. Sixteen cases failed the moment
 they stopped. They now take the config path, which is what the gate reads.
 
+### Fixed — a cast-bearing `@expr` still drifted, and the differential found two more
+
+The previous entry ("the one `@expr` spelling a human writes was the one that drifted")
+closed ONE shape of this defect. Three more survived it, all of them permanent: `verify --db`
+reports drift on every run and `migrate` proposes DROP + CREATE against an index the database
+already holds, exactly as declared.
+
+1. **The paren-strip's own space.** The comparator turns every paren into a space, so PG's
+   `(x)::integer` reduced to `x ::integer` while an authored `x::integer` stayed tight. `:`
+   is not one of Postgres' operator characters, so the operator-run collapse that fixed the
+   `->>` case never reached it — and the SAME expression, with the SAME type name, drifted
+   forever.
+2. **Cast target aliases.** Postgres re-emits a cast target in its canonical spelling, so an
+   authored `int` / `varchar(50)` / `timestamptz` / `decimal` could never match the
+   `integer` / `character varying(50)` / `timestamp with time zone` / `numeric` it got back.
+3. **Casts Postgres adds or elides on its own.** `->>` is defined to return text, so PG drops
+   an explicit `(payload->>'k')::text` and stores only the key literal's cast; and a numeric
+   column compared against a bare literal comes back cast — `amt > 0` is stored as
+   `amt > (0)::numeric`.
+
+The alias table is MEASURED, not derived from the docs: one CHECK per alias created against
+PostgreSQL 16.15 and read back through `pg_get_constraintdef`. That is how the two entries
+most easily missed by reading — `timestamp` → `timestamp WITHOUT time zone` and `float` →
+`double precision` — got in. Alternation order is computed longest-first rather than trusted
+to the literal order, because JS alternation is first-match-wins and a shorter alias would
+otherwise rewrite the leading word of a longer canonical form.
+
+Item 3 was not in the report. It came from a **differential against a live engine** — author
+an expression, let Postgres store it as an index and as a CHECK, read back what
+`pg_get_expr` / `pg_get_constraintdef` hand over, and assert the comparator sees no drift.
+The suite went from 27/31 to 31/31 on that corpus. Erasing a cast on a LITERAL is the rule
+this file has always applied to STRING literals (`'open'::text` → `'open'`); it now covers
+numeric ones, where the same Postgres behaviour produced the same permanent drift.
+
+Every rewrite stays narrow in the direction that matters. A cast on anything that is not a
+literal or a text-returning operator is a REAL cast and survives — `(qty)::text` still
+differs from `qty` — because a comparator that erases too much lets a genuine change read as
+clean drift, which is this file's failure in the worse direction and the worse of the two.
+All of it runs inside the existing quote-aware walker rather than as another `.replace()`,
+since only a quote-aware pass can tell a real `x::int` from the `::int` inside `'a::int'`.
+
 ### Fixed — `agent/ui.md` described a UI tier the run does not emit
 
 `meta docs --agent`'s own `--help` promises *"each page is skipped when its tier has nothing to

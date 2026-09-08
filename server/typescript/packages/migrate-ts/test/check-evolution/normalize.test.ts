@@ -101,6 +101,83 @@ describe("normalizeCheckExpr", () => {
     expect(checkExprEquals("label <> 'a, b'", "label <> 'a,b'")).toBe(false);
     expect(checkExprEquals("code ~ '^x{1, 3}$'", "code ~ '^x{1,3}$'")).toBe(false);
   });
+  test("a cast survives the paren-strip's inserted space", () => {
+    // The paren-strip turns every `(` / `)` into a SPACE, so `(payload)::integer` becomes
+    // `payload ::integer` while a hand-authored `payload::integer` stays tight. `:` is not
+    // one of PG's operator characters, so the operator-run collapse never reached it and
+    // the space survived — the SAME expression drifted forever, with no alias involved.
+    expect(checkExprEquals("payload::integer", "((payload)::integer)")).toBe(true);
+    expect(normalizeCheckExpr("((payload)::integer)")).toBe("payload::integer");
+  });
+  test("cast-type ALIASES canonicalize to the spelling PG hands back", () => {
+    // Measured against PostgreSQL 16.15 via pg_get_constraintdef: PG re-emits every cast
+    // target in its canonical spelling, so an authored alias drifts permanently.
+    // `verify --db` proposed DROP + CREATE against an index the database already held.
+    expect(checkExprEquals("(x)::int", "((x)::integer)")).toBe(true);
+    expect(checkExprEquals("(x)::int4", "((x)::integer)")).toBe(true);
+    expect(checkExprEquals("(x)::int8", "((x)::bigint)")).toBe(true);
+    expect(checkExprEquals("(x)::int2", "((x)::smallint)")).toBe(true);
+    expect(checkExprEquals("(x)::float8", "((x)::double precision)")).toBe(true);
+    expect(checkExprEquals("(x)::float4", "((x)::real)")).toBe(true);
+    expect(checkExprEquals("(x)::decimal(10,2)", "((x)::numeric(10,2))")).toBe(true);
+    expect(checkExprEquals("(x)::varchar(50)", "((x)::character varying(50))")).toBe(true);
+    expect(checkExprEquals("(x)::bool", "((x)::boolean)")).toBe(true);
+    expect(checkExprEquals("(x)::timestamptz", "((x)::timestamp with time zone)")).toBe(true);
+    expect(checkExprEquals("(x)::timestamp", "((x)::timestamp without time zone)")).toBe(true);
+    expect(checkExprEquals("(x)::timetz", "((x)::time with time zone)")).toBe(true);
+    expect(checkExprEquals("(x)::char(3)", "((x)::character(3))")).toBe(true);
+    expect(checkExprEquals("(x)::bpchar(3)", "((x)::character(3))")).toBe(true);
+  });
+  test("the reported jsonb-cast index expression stops drifting", () => {
+    // The verbatim pair from the field report, reproduced against live PG:
+    // authored `@expr` vs what pg_get_expr hands back for the created index.
+    expect(checkExprEquals(
+      "(((payload->>'k')::int))",
+      "((((payload ->> 'k'::text))::integer))",
+    )).toBe(true);
+  });
+  test("alias canonicalization does NOT rewrite matching identifiers", () => {
+    // Only a cast TARGET is canonicalized. A column, function or literal that happens to
+    // be spelled like an alias must survive untouched, else two distinct predicates
+    // normalize equal and a real change reads as clean drift.
+    expect(normalizeCheckExpr("int > 0")).toBe("int>0");
+    expect(normalizeCheckExpr("bool_flag IS NOT NULL")).toBe("bool_flag is not null");
+    expect(normalizeCheckExpr("note ~ 'cast to int8'")).toBe("note~'cast to int8'");
+    expect(checkExprEquals("note ~ 'int'", "note ~ 'integer'")).toBe(false);
+    // a DIFFERENT target type still differs
+    expect(checkExprEquals("(x)::int", "((x)::bigint)")).toBe(false);
+    // a length modifier is part of the type and still differentiates
+    expect(checkExprEquals("(x)::varchar(50)", "((x)::character varying(60))")).toBe(false);
+  });
+  test("PG elides a redundant `::text` on a `->>` result", () => {
+    // Found by a differential against live PG 16.15, not by reading the report. `->>` is
+    // DEFINED to return text, so PG drops the author's explicit cast and stores only the
+    // key literal's own `::text`. The natural authored spelling drifted forever.
+    expect(checkExprEquals(
+      "(payload->>'device_id')::text",
+      "(payload ->> 'device_id'::text)",
+    )).toBe(true);
+    expect(normalizeCheckExpr("(payload->>'device_id')::text")).toBe("payload->>'device_id'");
+    // `#>>` returns text too.
+    expect(checkExprEquals("(payload#>>'{a,b}')::text", "(payload #>> '{a,b}'::text[])")).toBe(true);
+    // A cast-to-text on something that is NOT a text-returning operator is a REAL cast and
+    // must survive, else a genuine change reads as clean drift.
+    expect(normalizeCheckExpr("(qty)::text")).toBe("qty::text");
+    expect(checkExprEquals("(qty)::text", "qty")).toBe(false);
+  });
+  test("PG adds a type cast to a NUMERIC LITERAL to match the column", () => {
+    // Also found by the live-PG differential: `amt > 0` against a numeric column is stored
+    // as `amt > (0)::numeric`. Erasing a cast on a LITERAL is the rule this file already
+    // applies to string literals (`'open'::text` -> `'open'`); this extends it to numeric
+    // ones, where the same PG behaviour produces the same permanent drift.
+    expect(checkExprEquals("amt > 0", "(amt > (0)::numeric)")).toBe(true);
+    expect(checkExprEquals("amt >= 1.5", "(amt >= (1.5)::numeric)")).toBe(true);
+    expect(normalizeCheckExpr("(amt > (0)::numeric)")).toBe("amt>0");
+    // A cast on a COLUMN is not a literal cast and still survives.
+    expect(normalizeCheckExpr("(qty)::numeric")).toBe("qty::numeric");
+    // and different literals still differ
+    expect(checkExprEquals("amt > 0", "(amt > (1)::numeric)")).toBe(false);
+  });
   test("undefined is never equal", () => {
     expect(checkExprEquals(undefined, "x")).toBe(false);
   });

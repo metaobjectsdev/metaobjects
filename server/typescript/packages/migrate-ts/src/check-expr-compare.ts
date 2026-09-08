@@ -14,13 +14,24 @@
 //   - parenthesizes terms:  `col >= 0 AND col <= 100`  →  `(col >= 0) AND (col <= 100)`
 //   - rewrites IN-lists:     `status IN ('A','B')`      →  `status = ANY (ARRAY['A'::text, 'B'::text])`
 //   - appends type casts:    string literals gain `::text`
-// All three are canonicalized below so an enum/range CHECK introspected from PG
+//   - parenthesizes a cast OPERAND: `x::integer`        →  `(x)::integer`
+//   - respells a cast TARGET canonically: `x::int`      →  `(x)::integer`
+// All five are canonicalized below so an enum/range CHECK introspected from PG
 // compares equal to the one we generate (idempotency on the --from-db / verify paths).
+//
+// The last two are why a cast-bearing `@expr` used to drift FOREVER. The paren-strip
+// turns PG's added parens into a space, so `(x)::integer` reduced to `x ::integer` while
+// the authored `x::integer` stayed tight — and `:` is not one of PG's operator characters,
+// so the operator-run collapse never reached it. On top of that, PG re-emits the target
+// type in its canonical spelling, so an authored `int`/`varchar`/`timestamptz` could not
+// match the `integer`/`character varying`/`timestamp with time zone` it got back. Both
+// are fixed in the quote-aware walker below, which is the only place that can tell a real
+// cast from a `::` inside a regex literal.
 
 /**
  * Canonical form: drop casts/brackets/parens, fold `= ANY (ARRAY[…])` back to `IN`,
- * lower-case, collapse whitespace, and collapse spacing around commas and SYMBOLIC
- * operators (outside single-quoted literals).
+ * lower-case, collapse whitespace, canonicalize cast target types, and collapse spacing
+ * around commas, casts and SYMBOLIC operators (outside single-quoted literals).
  */
 export function normalizeCheckExpr(expr: string): string {
   const stripped = expr
@@ -84,8 +95,107 @@ export function normalizeCheckExpr(expr: string): string {
 const OPERATOR_CHARS = new Set([..."+-*/<>=~!@#%^&|?"]);
 
 /**
- * Collapse whitespace around commas and symbolic-operator runs, OUTSIDE single-quoted
- * literals (see normalizeCheckExpr).
+ * Cast target types PG respells, mapped to the spelling `pg_get_constraintdef` /
+ * `pg_get_expr` hand back. MEASURED against PostgreSQL 16.15 by creating one CHECK per
+ * alias and reading the definition back — not derived from the docs, because the two
+ * that would most easily have been missed (`timestamp` → `timestamp WITHOUT time zone`,
+ * `float` → `double precision`) only show up when you ask the server.
+ *
+ * The four `… time zone` forms map to THEMSELVES on purpose: they are already canonical,
+ * and they exist here to be matched BEFORE the shorter `timestamp` / `time` aliases would
+ * otherwise rewrite their leading word into `timestamp without time zone with time zone`.
+ * No other canonical form needs that guard — `\b` already stops `int` matching inside
+ * `integer`, `char` inside `character`, and `bool` inside `boolean`.
+ */
+const CAST_TYPE_ALIASES: Record<string, string> = {
+  "timestamp with time zone": "timestamp with time zone",
+  "timestamp without time zone": "timestamp without time zone",
+  "time with time zone": "time with time zone",
+  "time without time zone": "time without time zone",
+  timestamptz: "timestamp with time zone",
+  timestamp: "timestamp without time zone",
+  timetz: "time with time zone",
+  time: "time without time zone",
+  varchar: "character varying",
+  varbit: "bit varying",
+  bpchar: "character",
+  char: "character",
+  int8: "bigint",
+  int4: "integer",
+  int2: "smallint",
+  int: "integer",
+  float8: "double precision",
+  float4: "real",
+  float: "double precision",
+  bool: "boolean",
+  decimal: "numeric",
+};
+
+/**
+ * Anchored alternation over the alias keys, LONGEST FIRST — JS alternation is
+ * first-match-wins, not longest-match, so the order is load-bearing and is derived here
+ * rather than trusted to the literal order above.
+ */
+const CAST_TYPE_RE = new RegExp(
+  `^(${Object.keys(CAST_TYPE_ALIASES)
+    .sort((a, b) => b.length - a.length)
+    .join("|")})\\b`,
+);
+
+/** Numeric target types, for the literal-cast rule in isElidableCast. */
+const NUMERIC_CAST_TYPES = new Set([
+  "numeric", "integer", "bigint", "smallint", "real", "double precision",
+]);
+
+/**
+ * Read the target type of a cast at `i`, canonicalized. Returns the canonical spelling and
+ * how many characters it consumed (0 for an unrecognizable target — `::` before something
+ * this walker should just copy through).
+ */
+function readCastTarget(s: string, i: number): { type: string; consumed: number } {
+  const alias = CAST_TYPE_RE.exec(s.slice(i));
+  if (alias) return { type: CAST_TYPE_ALIASES[alias[1]!]!, consumed: alias[1]!.length };
+  // Any other type name — `uuid`, `jsonb`, `text`, `public.mytype`. PG's spelling and ours
+  // already agree for these, so it passes through as written.
+  const plain = /^[a-z_][\w.]*/.exec(s.slice(i));
+  if (plain) return { type: plain[0], consumed: plain[0].length };
+  return { type: "", consumed: 0 };
+}
+
+/**
+ * True when a cast is one Postgres ADDS or ELIDES on its own, so its presence on one side
+ * and absence on the other is not a difference in meaning. Two cases, both found by a
+ * differential against live PG 16.15 rather than by reading the SQL:
+ *
+ *  1. `::text` on a `->>` / `#>>` result. Those operators are DEFINED to return text, so
+ *     PG drops the author's explicit cast; `(payload->>'k')::text` comes back as
+ *     `(payload ->> 'k'::text)`, whose only cast belongs to the KEY literal.
+ *  2. A numeric cast on a NUMERIC LITERAL. PG coerces the literal to the column's type, so
+ *     `amt > 0` on a numeric column comes back as `amt > (0)::numeric`.
+ *
+ * Case 2 is the rule this file has always applied to STRING literals — the post-quote
+ * `'open'::text` strip up in normalizeCheckExpr — extended to the numeric ones, where the
+ * same PG behaviour produces the same permanent drift. Both are deliberately narrow: a
+ * cast on anything that is not a literal or a text-returning operator is a REAL cast and
+ * survives, because erasing it would let a genuine change read as clean drift.
+ */
+function isElidableCast(type: string, lhs: string): boolean {
+  // `->>` / `#>>` yield text; a following `::text` cannot change anything.
+  if (type === "text" && /(?:->>|#>>)\s*(?:'(?:[^']|'')*'|[\w."]+)$/.test(lhs)) return true;
+  // A numeric literal cast to a numeric type.
+  if (NUMERIC_CAST_TYPES.has(type) && /(?:^|[^\w."'])\d+(?:\.\d+)?$/.test(lhs)) return true;
+  return false;
+}
+
+/**
+ * Collapse whitespace around commas, casts and symbolic-operator runs, and canonicalize
+ * cast target types — all OUTSIDE single-quoted literals (see normalizeCheckExpr).
+ *
+ * The cast work lives in this walker rather than in a `.replace()` up in the pipeline
+ * because only a quote-aware pass can tell a real `x::int` cast from the `::int` inside
+ * a regex literal (`slug ~ 'a::int'`). A blind replace would rewrite the pattern, and two
+ * distinct regex CHECKs would compare equal — a real change reading as clean drift, which
+ * is this file's failure in the worse direction.
  */
 function collapseSeparatorSpacingOutsideQuotes(s: string): string {
   let out = "";
@@ -108,20 +218,40 @@ function collapseSeparatorSpacingOutsideQuotes(s: string): string {
       out += s.slice(start, i);
       continue;
     }
+
+    // A separator token: a comma, a `::` cast, or a symbolic-operator run. All three bind
+    // tight to what PRECEDES them, so any whitespace already emitted before them is
+    // dropped. They differ only in whether what FOLLOWS binds tight too.
+    let token: string | undefined;
+    let tightAfter = true;
     if (ch === ",") {
-      out = out.replace(/\s+$/, "");           // drop whitespace already emitted before it
-      out += ",";
+      token = ",";
       i++;
-      while (i < n && /\s/.test(s[i]!)) i++;    // skip whitespace after it
+    } else if (ch === ":" && s[i + 1] === ":") {
+      i += 2;
+      while (i < n && /\s/.test(s[i]!)) i++;   // `:: integer` → `::integer`
+      const target = readCastTarget(s, i);
+      i += target.consumed;
+      const lhs = out.replace(/\s+$/, "");
+      token = isElidableCast(target.type, lhs) ? "" : `::${target.type}`;
+      out = lhs;
+      // Whitespace AFTER the target type is load-bearing — `x::integer is not null` must
+      // not become `x::integeris not null` — so the cast, unlike a comma or an operator,
+      // binds tight on its left only.
+      tightAfter = false;
+    } else if (OPERATOR_CHARS.has(ch)) {
+      const start = i;
+      // Take the WHOLE run, so `->>` stays one token rather than three.
+      while (i < n && OPERATOR_CHARS.has(s[i]!)) i++;
+      token = s.slice(start, i);
+    }
+
+    if (token !== undefined) {
+      out = out.replace(/\s+$/, "") + token;
+      if (tightAfter) while (i < n && /\s/.test(s[i]!)) i++;
       continue;
     }
-    if (OPERATOR_CHARS.has(ch)) {
-      out = out.replace(/\s+$/, "");           // drop whitespace already emitted before it
-      // Copy the WHOLE run, so `->>` stays one token rather than three.
-      while (i < n && OPERATOR_CHARS.has(s[i]!)) { out += s[i]!; i++; }
-      while (i < n && /\s/.test(s[i]!)) i++;    // skip whitespace after it
-      continue;
-    }
+
     out += ch;
     i++;
   }
