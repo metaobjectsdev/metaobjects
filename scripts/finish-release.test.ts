@@ -30,6 +30,10 @@ import { dirname, join, resolve } from "node:path";
 
 const REPO = resolve(import.meta.dirname, "..");
 const SCRIPT = readFileSync(resolve(REPO, "scripts/finish-release.mjs"), "utf8");
+// A real copy, not a stub: the Maven coordinate is derived here, and the whole point of the
+// module is that ONE derivation serves four scripts. Stubbing it would let this suite pass
+// while the shipped derivation was wrong — which is the defect the module exists for.
+const MAVEN_COORD = readFileSync(resolve(REPO, "scripts/maven-coordinate.mjs"), "utf8");
 
 const created: string[] = [];
 afterAll(() => { for (const d of created) rmSync(d, { recursive: true, force: true }); });
@@ -147,7 +151,11 @@ function makeRepo(spec: Spec = {}): Fixture {
 
   // The script under test lives INSIDE the tree it reasons about, so it is committed
   // like any other file — otherwise gate 1 would report the fixture dirty.
-  for (const [rel, body] of Object.entries({ ...files, "scripts/finish-release.mjs": SCRIPT })) {
+  for (const [rel, body] of Object.entries({
+    ...files,
+    "scripts/finish-release.mjs": SCRIPT,
+    "scripts/maven-coordinate.mjs": MAVEN_COORD,
+  })) {
     const full = join(work, rel);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, body);

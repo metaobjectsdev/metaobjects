@@ -22,6 +22,7 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { mavenVersion } from "./maven-coordinate.mjs";
 
 const args = process.argv.slice(2);
 const VERSION = args.find((a) => /^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(a));
@@ -44,7 +45,7 @@ const parts = VERSION?.match(/^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/);
 const IS_RC = Boolean(parts?.[4]);
 const PYPI_VERSION = parts && `${parts[1]}.${parts[2]}.${parts[3]}${IS_RC ? `rc${parts[4]}` : ""}`;
 const MVN = args.find((a) => a.startsWith("--maven="))?.slice("--maven=".length)
-  ?? (parts && `${Number(parts[1]) + 7}.${parts[2]}.${parts[3]}${IS_RC ? `-rc.${parts[4]}` : ""}`);
+  ?? (parts && mavenVersion(`${parts[1]}.${parts[2]}.${parts[3]}${IS_RC ? `-rc.${parts[4]}` : ""}`));
 
 // A pre-release is published to `next` and must NOT move `latest` — checking `latest`
 // against an RC would fail every correct RC cut, and the mistake it is really guarding

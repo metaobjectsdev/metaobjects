@@ -29,6 +29,7 @@ import { join, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
+import { mavenVersion } from "./maven-coordinate.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
@@ -279,7 +280,7 @@ ok(`smoke: clean external install → meta --version = ${v}`);
 console.log(`\n\x1b[32m\x1b[1m✅ ${VERSION} is live on npm latest.\x1b[0m`);
 console.log(`\n\x1b[1mNOT DONE — v${VERSION} is not tagged yet, by design.\x1b[0m`);
 console.log(`   1. Bump PyPI/NuGet/Maven, run \`bun run site:payload\`, commit, push.`);
-console.log(`   2. Tag the ports: python-v${VERSION}, csharp-v${VERSION}, java-v7.${VERSION.split(".").slice(1).join(".")}.`);
+console.log(`   2. Tag the ports: python-v${VERSION}, csharp-v${VERSION}, java-v${mavenVersion(VERSION)}.`);
 console.log(`   3. \`bun scripts/finish-release.mjs ${VERSION}\` — gates the coordinates, then cuts v${VERSION}.`);
 console.log(`   The website pins to v${VERSION}, so tagging before step 1 publishes three stale versions.`);
 console.log(`   Docs version refs are NOT auto-bumped (low-value churn for a patch); batch them when convenient.`);

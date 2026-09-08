@@ -58,6 +58,7 @@
 import { execSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { mavenVersion } from "./maven-coordinate.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (n, d) => { const i = argv.indexOf(`--${n}`); return i === -1 ? d : argv[i + 1]; };
@@ -207,13 +208,15 @@ if (explicitIter && burned.includes(ITER))
                `  Publishing it privately is fine, but that number can never be used for a public RC.\x1b[0m`);
 
 const CANON = `${BASEVER}-rc.${ITER}`;
-const MAVEN_MAJOR = 7;
-// The ONE place per-ecosystem normalization lives.
+// The ONE place per-ecosystem normalization lives. The Maven coordinate is NOT normalized
+// here — it is derived by scripts/maven-coordinate.mjs, because this file used to hardcode
+// major 7 and would have derived `7.0.0-rc.N` from a `1.0.0` base: a version BELOW the last
+// released 7.25.x, which is the same defect release-verify.mjs shipped and had to be fixed for.
 const V = {
   npm:   CANON,
   nuget: CANON,
   pypi:  `${BASEVER}rc${ITER}`,
-  maven: `${MAVEN_MAJOR}.${BASEVER.split(".").slice(1).join(".")}-rc.${ITER}`,
+  maven: mavenVersion(CANON),
 };
 
 const ALL = ["npm", "python", "csharp", "java"];

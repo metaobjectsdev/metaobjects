@@ -145,6 +145,7 @@
     "scripts/site/*.mjs",
     "scripts/finish-release.mjs",
     "scripts/site-inject-ci.mjs",
-    "scripts/check-migration-guides-vs-registry.mjs"
+    "scripts/check-migration-guides-vs-registry.mjs",
+    "scripts/maven-coordinate.mjs"
   ]
 }

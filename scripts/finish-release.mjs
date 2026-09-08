@@ -35,6 +35,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mavenVersion } from "./maven-coordinate.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CHECK_ONLY = process.argv.includes("--check");
@@ -59,10 +60,9 @@ if (VERSION === undefined || !/^\d+\.\d+\.\d+$/.test(VERSION)) {
 // hardcoded 7 would demand `7.0.0` at that release while the manifest and Maven Central
 // both said `8.0.0`, blocking the cut, with the only ways past being to declare Maven
 // (which definitely published) as --sat-out or to write a wrong coordinate into the
-// payload. Both defeat the gate.
-const [npmMajor, ...npmRest] = VERSION.split(".");
-const MAVEN_MAJOR = Number(npmMajor) >= 1 ? 7 + Number(npmMajor) : 7;
-const MAVEN_VERSION = `${MAVEN_MAJOR}.${npmRest.join(".")}`;
+// payload. Both defeat the gate. The derivation lives in ONE module because four scripts
+// had it independently and two were wrong — see scripts/maven-coordinate.mjs.
+const MAVEN_VERSION = mavenVersion(VERSION);
 
 // ── 1. the working tree is the tree that will be tagged ──────────────────────
 // A tag points at a COMMIT, so anything uncommitted is silently excluded. Tagging with
