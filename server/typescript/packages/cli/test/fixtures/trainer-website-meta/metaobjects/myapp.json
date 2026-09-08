@@ -5,9 +5,6 @@
       {
         "object.entity": {
           "name": "User",
-          "@forgeConfidence": 0.95,
-          "@forgeSource": "human",
-          "@forgePrimaryLocation": "src/db/users.schema.ts",
           "children": [
             {
               "source.rdb": {
@@ -68,9 +65,6 @@
       {
         "object.entity": {
           "name": "Post",
-          "@forgeConfidence": 0.95,
-          "@forgeSource": "human",
-          "@forgePrimaryLocation": "src/db/posts.schema.ts",
           "children": [
             {
               "source.rdb": {
@@ -144,8 +138,6 @@
       {
         "object.entity": {
           "name": "Tag",
-          "@forgeConfidence": 0.9,
-          "@forgeSource": "human",
           "children": [
             {
               "source.rdb": {
@@ -187,18 +179,6 @@
                 ]
               }
             }
-          ]
-        }
-      },
-      {
-        "decision.global": {
-          "name": "useTanstackQuery",
-          "@forgeConfidence": 0.9,
-          "@forgeSource": "human",
-          "@forgeRationale": "Real-time invalidation matters for the games dashboard.",
-          "@forgeAlternatives": [
-            "swr",
-            "redux-toolkit-query"
           ]
         }
       }

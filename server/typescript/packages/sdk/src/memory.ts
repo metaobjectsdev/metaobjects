@@ -7,7 +7,6 @@ import {
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { resolveCollection } from "./collection.js";
-import { forgeTypesProvider } from "./forge-types.js";
 
 /**
  * Options for {@link loadMemory}. Consumers can supply additional
@@ -65,11 +64,22 @@ export interface LoadMemoryOptions {
 /** Default provider bundle threaded by {@link loadMemory} when no options
  *  override is supplied. Exposed for tests/inspection; callers shouldn't need
  *  to spread this manually — `loadMemory(root, { providers: [mine] })`
- *  composes `[...defaultLoadMemoryProviders, mine]` automatically. */
-export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [
-  ...coreProviders,
-  forgeTypesProvider,
-];
+ *  composes `[...defaultLoadMemoryProviders, mine]` automatically.
+ *
+ *  `coreProviders` and nothing else. `forgeTypesProvider` used to be here, and that
+ *  made TypeScript the only port that accepted `@forgeConfidence` and the `decision` /
+ *  `principle` / `convention` / `glossary` / `failure` types: no C#, Python, Java or
+ *  Kotlin registry registers any of it, and `expected-registry.json` — the manifest all
+ *  five ports byte-match — carries none of it either, so the cross-port gate never had
+ *  jurisdiction. One document therefore had two verdicts depending on which toolchain
+ *  read it, which is the defect the 0.25.0 line was spent on, and 1.0 would have frozen
+ *  it. It is registered vocabulary in no port now.
+ *
+ *  `forgeTypesProvider` is still EXPORTED. A project that wants the vocabulary opts in
+ *  the chartered way — `loadMemory(root, { providers: [forgeTypesProvider] })` — which
+ *  is ADR-0023's consumer-provider path and carries its own consequences knowingly,
+ *  rather than every TypeScript consumer getting it and no other port agreeing. */
+export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [...coreProviders];
 
 /**
  * Load a project's metadata into a single MetaData tree.

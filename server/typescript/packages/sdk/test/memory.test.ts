@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadMemory } from "../src/memory.js";
+import { forgeTypesProvider } from "../src/forge-types.js";
 import { rejectedCode } from "./support/error-code.js";
 
 function makeMetaRoot(): string {
@@ -102,7 +103,12 @@ describe("loadMemory", () => {
     }
   });
 
-  test("loads decision children when metadata files contain them", async () => {
+  test("decision children need the forge provider OPTED IN — they are not a default", async () => {
+    // The forge vocabulary is registered in no port but TypeScript, and in no
+    // `expected-registry.json`, so having it in the DEFAULT composition gave one document
+    // two verdicts: `@forgeConfidence` loaded here and failed `ERR_UNKNOWN_ATTR` on C#,
+    // Python, Java and Kotlin. It is opt-in now, the chartered ADR-0023 way — asserted in
+    // BOTH directions, because "no longer default" is only half of what was decided.
     const root = makeMetaRoot();
     try {
       writeFileSync(
@@ -123,10 +129,15 @@ describe("loadMemory", () => {
         }),
       );
 
-      const meta = await loadMemory(root);
-      const dec = meta.ownChildren().find((c) => c.type === "decision");
+      // Opted in: the vocabulary works exactly as before.
+      const withForge = await loadMemory(root, { providers: [forgeTypesProvider] });
+      const dec = withForge.ownChildren().find((c) => c.type === "decision");
       expect(dec).toBeDefined();
       expect(dec!.name).toBe("useTanstackQuery");
+
+      // Default: the type is not registered, so this is not silently ignored — it fails
+      // the load, the same way it always has on the other four ports.
+      await expect(loadMemory(root)).rejects.toThrow();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

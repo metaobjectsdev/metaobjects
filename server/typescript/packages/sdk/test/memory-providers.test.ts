@@ -282,9 +282,18 @@ describe("loadMemory — provider extension", () => {
 
   test("defaultLoadMemoryProviders is a stable, public, non-empty bundle", () => {
     expect(defaultLoadMemoryProviders.length).toBeGreaterThanOrEqual(2);
-    // The forge provider is in the bundle; consumers can introspect.
     const ids = defaultLoadMemoryProviders.map((p) => p.id);
     expect(ids).toContain("metaobjects-core-types");
-    expect(ids).toContain("metaobjects-forge");
+  });
+
+  test("the default bundle registers NOTHING the other four ports do not", () => {
+    // `metaobjects-forge` was in this bundle, and it is registered in no other port and
+    // in no `expected-registry.json`, so a document carrying `@forgeConfidence` loaded
+    // here and failed `ERR_UNKNOWN_ATTR` on C#, Python, Java and Kotlin — one document,
+    // two verdicts, decided by which toolchain read it. The default composition is the
+    // cross-port surface; a consumer provider is opt-in and carries its own consequences
+    // knowingly (ADR-0023).
+    const ids = defaultLoadMemoryProviders.map((p) => p.id);
+    expect(ids).not.toContain("metaobjects-forge");
   });
 });

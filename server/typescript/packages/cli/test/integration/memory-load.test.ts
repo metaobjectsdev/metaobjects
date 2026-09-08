@@ -13,14 +13,19 @@ function copyFixture(name: string): string {
 }
 
 describe("loadMemory — trainer-website-meta", () => {
-  test("loads 3 objects + 1 decision", async () => {
+  test("loads 3 objects, and no forge vocabulary — that is opt-in now", async () => {
+    // This fixture used to carry a `decision.global` node and eight `@forge*` attrs, and
+    // they loaded because `forgeTypesProvider` was in the DEFAULT composition. No other
+    // port registers any of it and `expected-registry.json` carries none of it, so the
+    // fixture was quietly exercising vocabulary that only TypeScript accepted — which is
+    // a good part of how the divergence stayed invisible. The vocabulary is opt-in now
+    // (ADR-0023 consumer-provider); the sdk's own suite covers the opt-in path.
     const root = copyFixture("trainer-website-meta");
     try {
       const meta = await loadMemory(root);
       const objects = meta.objects();
-      const decisions = meta.ownChildren().filter((c) => c.type === "decision");
       expect(objects.map((o) => o.name).sort()).toEqual(["Post", "Tag", "User"]);
-      expect(decisions.map((d) => d.name)).toEqual(["useTanstackQuery"]);
+      expect(meta.ownChildren().filter((c) => c.type === "decision")).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -163,6 +163,14 @@ function def(
  * subtypes. Composed AFTER `metaobjects-core-types` so the structural attr
  * type is available for forge child rules.
  *
+ * NOT in any default composition. It was in `defaultLoadMemoryProviders` and in `meta
+ * types`, which made TypeScript the only port that accepts this vocabulary — no C#,
+ * Python, Java or Kotlin registry registers a `@forge*` attribute or any of these five
+ * types, and `expected-registry.json` (the manifest all five ports byte-match) carries
+ * none of it, so the cross-port gate never had jurisdiction. A document with
+ * `@forgeConfidence` loaded on TS and failed `ERR_UNKNOWN_ATTR` everywhere else. It is
+ * opt-in now, the chartered ADR-0023 consumer-provider way.
+ *
  * Use via `composeRegistry([...coreProviders, forgeTypesProvider])` or via
  * `loadMemory()`'s default bundle (forge is included by default).
  */

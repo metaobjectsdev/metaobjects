@@ -21,7 +21,6 @@
 // CLI rejects a bare `--json` before a command ever sees its args (index.ts, `formatAlias`),
 // on purpose — one global spelling for all three formats.
 import { composeRegistry, coreProviders, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
-import { forgeTypesProvider } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 
@@ -226,7 +225,11 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   // @sortable, @dbColumnType), `view.textarea` with none (no @rows), and the eight
   // documentation commonAttrs — @title among them — were absent entirely. This is the same
   // provider set the loader composes, so what this prints is what the loader accepts.
-  const registry = composeRegistry([...coreProviders, forgeTypesProvider], { validate: true });
+  // `coreProviders` and nothing else — the same set `loadMemory` composes, which is what
+  // makes "what this prints is what the loader accepts" true. `forgeTypesProvider` was
+  // here, and printing it as registered vocabulary was part of how a TS-only registration
+  // read as cross-port: `meta types forge --all` listed 20 attrs that no other port has.
+  const registry = composeRegistry([...coreProviders], { validate: true });
   const catalog = buildVocabularyCatalog(registry);
 
   // Flatten the catalog into searchable entries.
