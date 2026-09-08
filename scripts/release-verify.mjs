@@ -4,6 +4,7 @@
 //
 //   node scripts/release-verify.mjs --preflight        # can we publish at all?
 //   node scripts/release-verify.mjs 0.24.0             # is 0.24.0 actually live, everywhere?
+//   node scripts/release-verify.mjs 1.0.0-rc.5         # ...an RC works too (checked on `next`)
 //   node scripts/release-verify.mjs 0.24.0 --smoke     # ...plus a real external install
 //   node scripts/release-verify.mjs 0.24.5 --registries=npm,maven
 //                                                      # ...only the registries this cut published
@@ -23,10 +24,32 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
 const args = process.argv.slice(2);
-const VERSION = args.find((a) => /^\d+\.\d+\.\d+$/.test(a));
+const VERSION = args.find((a) => /^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(a));
 const PREFLIGHT = args.includes("--preflight");
 const SMOKE = args.includes("--smoke");
-const MVN = VERSION && `7.${VERSION.split(".").slice(1).join(".")}`;
+
+// ── one version, four spellings ────────────────────────────────────────────────────────
+// The canonical string is the npm one (`1.0.0`, or `1.0.0-rc.5`). npm and NuGet take it
+// verbatim; PyPI normalizes to PEP 440 (`1.0.0rc5`) and Maven Central sits on its own
+// major. These are the same four mappings `scripts/prerelease.mjs` already applies for the
+// private registry — kept in step, not shared, because that script derives its base from
+// CHANGELOG.md and this one is told the version.
+//
+// The Maven major is `npm major + 7`: the `0.x` line has always been `7.x`, and ADR-0035's
+// decoupled cut moves BOTH forward one major at 1.0 (npm 1.0.0 = Maven 8.0.0). The old
+// hardcoded `7.` silently produced `7.0.0` for the 1.0 line — a version BELOW 7.25.0, so
+// this script would have reported the 1.0 release missing from Maven Central while it was
+// live. Override with `--maven=<version>` if the two lines ever stop moving together.
+const parts = VERSION?.match(/^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/);
+const IS_RC = Boolean(parts?.[4]);
+const PYPI_VERSION = parts && `${parts[1]}.${parts[2]}.${parts[3]}${IS_RC ? `rc${parts[4]}` : ""}`;
+const MVN = args.find((a) => a.startsWith("--maven="))?.slice("--maven=".length)
+  ?? (parts && `${Number(parts[1]) + 7}.${parts[2]}.${parts[3]}${IS_RC ? `-rc.${parts[4]}` : ""}`);
+
+// A pre-release is published to `next` and must NOT move `latest` — checking `latest`
+// against an RC would fail every correct RC cut, and the mistake it is really guarding
+// against (an RC promoted to `latest` by accident) is the opposite condition.
+const EXPECTED_TAG = IS_RC ? "next" : "latest";
 
 // ── which registries this cut actually published ───────────────────────────────────────
 // Since 0.24.5 a registry publishes ONLY when it has a changed product file, and adopts the
@@ -107,18 +130,24 @@ async function verifyNpm() {
   if (ok === NPM_PKGS.length) g(`all ${ok}/${NPM_PKGS.length} packages at ${VERSION}`);
 
   const tags = JSON.parse(out("npm view @metaobjectsdev/cli dist-tags --json"));
-  tags.latest === VERSION ? g(`cli latest = ${VERSION}`) : r(`cli latest = ${tags.latest}`);
+  tags[EXPECTED_TAG] === VERSION
+    ? g(`cli ${EXPECTED_TAG} = ${VERSION}`)
+    : r(`cli ${EXPECTED_TAG} = ${tags[EXPECTED_TAG] ?? "(unset)"}`);
+  if (IS_RC && tags.latest === VERSION) r(`cli latest = ${VERSION} — an RC must not be latest`);
   // Stray tags are release residue: a stale `next` from an RC line, or a leftover probe.
   // Reported, never deleted here — deletion needs interactive 2FA (403 for bypass tokens).
-  const stray = Object.keys(tags).filter((t) => t !== "latest");
+  // `latest` is never residue — during an RC cut it correctly still points at the previous
+  // STABLE release, so flagging it would report the normal state of every RC as a problem.
+  const expected = new Set([EXPECTED_TAG, "latest"]);
+  const stray = Object.keys(tags).filter((t) => !expected.has(t));
   if (stray.length) w(`extra dist-tags on cli: ${stray.map((t) => `${t}=${tags[t]}`).join(", ")}`
     + "  → `npm dist-tag rm` needs an interactive-2FA session");
 }
 
 async function verifyPypi() {
-  console.log(`\n── PyPI @ ${VERSION} ──\n`);
-  const s = await head(`https://pypi.org/pypi/metaobjects/${VERSION}/json`);
-  s === 200 ? g(`metaobjects ${VERSION}`) : r(`metaobjects ${VERSION} → HTTP ${s}`);
+  console.log(`\n── PyPI @ ${PYPI_VERSION} ──\n`);
+  const s = await head(`https://pypi.org/pypi/metaobjects/${PYPI_VERSION}/json`);
+  s === 200 ? g(`metaobjects ${PYPI_VERSION}`) : r(`metaobjects ${PYPI_VERSION} → HTTP ${s}`);
 }
 
 async function verifyNuget() {
