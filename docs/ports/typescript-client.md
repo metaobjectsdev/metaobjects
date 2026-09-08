@@ -56,7 +56,7 @@ a roadmap item: eject the generator and retarget its emit (FR-040).
 |---|---|---|
 | `@metaobjectsdev/runtime-web` | Pure framework-agnostic browser core. Zero React, zero TanStack, zero Node-only deps. | `formatCurrency`, `parseCurrency`, `minorUnitsFor`, `buildFilterQs`, type `EntityFetcher`, type `GridConfig` |
 | `@metaobjectsdev/react` | React-specific runtime (peer-deps on `react`, `react-hook-form`, `@hookform/resolvers`, `zod`). | `useEntityForm`, `<CurrencyInput>`, types `EntityMeta`, `EntityFieldMeta`, `BoundInputProps` |
-| `@metaobjectsdev/tanstack` | TanStack runtime (peer-deps on `@tanstack/react-query`, `@tanstack/react-table`). | `<EntityFetcherProvider>`, `useEntityFetcher`, `<EntityGrid>`, `<CellRendererProvider>`, `defaultCellRenderers` |
+| `@metaobjectsdev/tanstack` | TanStack runtime (peer-deps on `@tanstack/react-query`, `@tanstack/react-table`). | `<EntityFetcherProvider>`, `useEntityPathFetcher`, `<EntityGrid>`, `<CellRendererProvider>`, `defaultCellRenderers` |
 
 ## Codegen packages
 
@@ -111,8 +111,11 @@ below).
 
 ## The `<EntityFetcherProvider>` contract
 
-Every generated hook (React Query) calls `useEntityFetcher()`, which reads
-a single `EntityFetcher` function from React context. The consumer's app
+Every generated hook (React Query) calls `useEntityPathFetcher()`, which reads
+a single `EntityFetcher` function from React context AND returns one that prepends
+the provider's `baseUrl`. The path a generated hook passes it is therefore
+ENTITY-relative, never application-absolute — `useEntityFetcher()` is a deprecated
+alias whose name suggested only the read half. The consumer's app
 supplies the concrete implementation — auth headers, base URL, error
 handling — and the same fetcher serves every entity.
 

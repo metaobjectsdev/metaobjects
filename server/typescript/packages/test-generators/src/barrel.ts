@@ -64,7 +64,7 @@ export const barrel = function barrel(opts?: BarrelOpts): Generator {
         path: "index.ts",
         content: await formatTs(
           renderBarrel(
-            entities.map((e) => ({ name: rc.valueObjectEmittedName(e), package: e.package })),
+            entities.map((e) => ({ name: rc.valueObjectEmittedName(e), package: effectivePackage(e) })),
             rc.extStyle,
             rc.selfTarget,
             rc.entityModuleTarget,

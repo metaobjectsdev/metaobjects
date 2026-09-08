@@ -34,7 +34,8 @@ rejects and poisons every later install in the project with `ERESOLVE`.
 | Export | Purpose |
 |---|---|
 | `<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">` | supplies the single `EntityFetcher` every generated hook reads, plus the base URL it prepends. `baseUrl` is optional (default `""` = same origin at the root); generated hooks emit entity-relative paths. |
-| `useEntityFetcher()` | reads the fetcher from context (generated hooks call this) |
+| `useEntityPathFetcher()` | reads the fetcher from context and returns one that PREPENDS the provider's `baseUrl` — generated hooks call this, and the path they pass is entity-relative. |
+| `useEntityFetcher()` | deprecated alias of the above. The name said "read the fetcher"; it also rewrites every path, so passing an application-absolute path yields `<baseUrl>` + that path and a silent 404. |
 | `<EntityGrid>` | opinionated TanStack Table component |
 | `<CellRendererProvider>` + `defaultCellRenderers` | renderer overrides keyed by the column's `meta.view` |
 

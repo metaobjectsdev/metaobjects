@@ -321,11 +321,20 @@ export abstract class MetaData {
     if (name === RESERVED_KEY_VALUE) {
       return this._ownValueSet ? this._ownValue : undefined;
     }
+    // Guarded for the same reason attr()/hasAttr() are, and it is the SAME rule:
+    // a reserved keyword can never be an attr, so this can only ever answer
+    // undefined — indistinguishable from "not set". Closing the resolving door and
+    // leaving the own-only ones open would be one rule with four doors, three of
+    // them still silent, and `ownAttr` is a documented public accessor an owned
+    // generator can reach for. The RESERVED_KEY_VALUE read above is the one
+    // legitimate reserved-key attr read and is settled before the guard.
+    assertNotStructuralKeyword(name, "ownAttr");
     return this._attrNodes.get(name)?.value;
   }
 
   /** Own (locally declared) MetaAttr instance for `name`, or undefined. */
   ownMetaAttr(name: string): MetaAttr | undefined {
+    assertNotStructuralKeyword(name, "ownMetaAttr");
     return this._attrNodes.get(name);
   }
 
@@ -350,6 +359,7 @@ export abstract class MetaData {
     if (name === RESERVED_KEY_VALUE) {
       return this._ownValueSet;
     }
+    assertNotStructuralKeyword(name, "ownHasAttr");
     return this._attrNodes.has(name);
   }
 

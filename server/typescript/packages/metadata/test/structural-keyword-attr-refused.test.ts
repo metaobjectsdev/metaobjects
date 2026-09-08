@@ -13,7 +13,16 @@
 // fourteen lines above the violation — prose is not a gate.
 //
 // The set is DERIVED from RESERVED_KEYS, so a keyword added later is covered here
-// without anyone remembering this file.
+// without anyone remembering this file. (The runtime guard's own map,
+// STRUCTURAL_KEYWORD_ACCESSORS, is hand-written — a keyword added to RESERVED_KEYS
+// and not to that map gets NO runtime guard, and this derived loop is what goes red
+// and says so.)
+//
+// ALL FOUR name-taking doors are covered, not just the resolving pair. `attr()` and
+// `hasAttr()` were guarded first; `ownAttr()`, `ownHasAttr()` and `ownMetaAttr()` ask
+// the identical forbidden question and answer it just as silently, and `ownAttr` is a
+// documented public accessor an owned generator can reach for. One rule with four
+// doors, three still open, is this repo's most-repeated defect shape.
 
 import { describe, test, expect } from "bun:test";
 import { MetaField } from "../src/core/field/meta-field.js";
@@ -32,6 +41,9 @@ describe("an attr lookup for a reserved structural keyword is refused", () => {
     for (const key of guarded) {
       expect(() => node.attr(key)).toThrow(/reserved structural keyword/);
       expect(() => node.hasAttr(key)).toThrow(/reserved structural keyword/);
+      expect(() => node.ownAttr(key)).toThrow(/reserved structural keyword/);
+      expect(() => node.ownHasAttr(key)).toThrow(/reserved structural keyword/);
+      expect(() => node.ownMetaAttr(key)).toThrow(/reserved structural keyword/);
     }
   });
 
@@ -46,10 +58,18 @@ describe("an attr lookup for a reserved structural keyword is refused", () => {
   test("`value` is NOT refused — an attr node reads its own payload there", () => {
     // The one legitimate reserved-key attr read in the model. Pinned so a tidy-up
     // that folds `value` into the guarded set breaks here rather than in MetaAttr.
+    // ownAttr/ownHasAttr matter most here: MetaAttr reads its payload through
+    // ownAttr(RESERVED_KEY_VALUE), so guarding that door without the exemption
+    // settled FIRST would break every attr node in the model.
     expect(() => node.attr(RESERVED_KEY_VALUE)).not.toThrow();
+    expect(() => node.ownAttr(RESERVED_KEY_VALUE)).not.toThrow();
+    expect(() => node.ownHasAttr(RESERVED_KEY_VALUE)).not.toThrow();
   });
 
   test("an ordinary attribute name is untouched", () => {
     expect(() => node.attr("maxLength")).not.toThrow();
+    expect(() => node.ownAttr("maxLength")).not.toThrow();
+    expect(() => node.ownHasAttr("maxLength")).not.toThrow();
+    expect(() => node.ownMetaAttr("maxLength")).not.toThrow();
   });
 });

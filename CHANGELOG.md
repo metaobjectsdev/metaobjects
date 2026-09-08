@@ -149,6 +149,96 @@ rather than returning null for an absent name, so a name-keyed lookup would turn
 divergence between the allowlist and the map into an aborted build instead of a skipped
 entry.
 
+### Changed — an attr lookup for a reserved structural keyword now THROWS
+
+`attr("isArray")` could only ever answer `undefined`, and `undefined` is
+indistinguishable from "the author did not set that attribute". Reserved structural
+keywords are NATIVE PROPERTIES: `@isArray` is refused at the load with
+`ERR_RESERVED_ATTR`, so an attribute lookup for one asks a question the metamodel
+forbids anyone to answer.
+
+Found in an adopter's own generator — `f.attr("isArray") === true ? base + "[]" : base`
+— whose generated reference document described **all 31 of that model's array fields as
+scalars**. Its sibling module had used the resolving accessor since the day it was
+written, with a comment naming the trap, and nothing compared the two. ADR-0039 is taught
+in three shipped skills and in that file's own header fourteen lines above the violation:
+prose is not a gate.
+
+A throw rather than a warning, because there is no reading under which the call is
+correct and the fix is one line at the call site. The message names the native accessor
+to use (`.resolvedIsArray()`, `.name`, `.isAbstract`, `children()`, …).
+
+**All four name-taking doors are guarded**, not just the resolving pair: `attr()`,
+`hasAttr()`, `ownAttr()`, `ownHasAttr()` and `ownMetaAttr()`. The own-only accessors ask
+the identical forbidden question and answer it just as silently, and `ownAttr` is a
+documented public accessor an owned generator can reach for — one rule with four doors,
+three left open, is this repo's most-repeated defect shape. `value` stays exempt: an
+`attr` node reads its own typed payload through `ownAttr(RESERVED_KEY_VALUE)`, which is
+the one legitimate reserved-key attr read in the model.
+
+Potentially breaking for a consumer that made such a call — but every such call was
+already returning `undefined`, so the behaviour it depended on was a silent wrong answer.
+No metadata changes; `metamodelVersion` is unchanged. TypeScript only: Python's own-only
+`attr()` and the JVM/C# equivalents carry no guard yet, tracked as follow-up.
+
+### Changed — `useEntityFetcher()` is renamed `useEntityPathFetcher()`
+
+The hook did not merely read the fetcher from context — it returned one that **prepends
+the provider's `baseUrl` to every path**. The name described the read half only, so an
+application-absolute path handed to it produced `<baseUrl>` + that path and a silent 404.
+`useEntityFetcher` remains as a deprecated alias (literally the same function), so nothing
+breaks on upgrade; the rename is what makes the rewrite visible at the call site.
+
+Generated hooks emit ENTITY-relative paths and call the new name. Because the reference
+templates compose `renderHooksFile` / `renderGridHookFile`, an ejected copy picks the
+rename up with no edit.
+
+The shipped surfaces that still taught the old name are corrected in the same release —
+including the `metaobjects-runtime-ui` agent-context skill `meta init` installs into every
+project, which described it as "reads the fetcher from context" with no mention of the
+rewrite. That is the third time a shipped skill has taught something the code had already
+changed, so the two `agent-context-conformance` fixtures move with it.
+
+### Fixed — `outputLayout: "package"` was inert for the form the docs teach
+
+A file may declare its package once at the root (`{"metadata.root": {"package":
+"acme::blog", …}}`) or on each object; the loader treats these as equivalent. Codegen did
+not: every path decision read the object's OWN bare `.package`, which is `undefined` for
+the root-declared form, so `packageToPath(undefined)` returned `""` and every file landed
+flat. With `outputLayout: "package"` the emitted tree was **byte-identical to `flat`** —
+not a broken build, a config key that reads as honoured and does nothing.
+
+It mattered because root-level is the form the product TEACHES: the TypeScript quickstart
+uses it, and across this repo's own metadata it is 614 files against 7 using object-level.
+It survived because the single fixture behind the package-layout golden is one of those 7
+— the gate was written on the rare form, so the common form had never been generated in
+package layout by any test.
+
+**The first fix was itself half-applied**, and that half is fixed here too: the built-in
+`barrel` generator moved to `effectivePackage()` while the four reference/owned copies —
+the ones `meta init` actually scaffolds — kept the bare read and merely gained an unused
+import. Their emitted `index.ts` therefore exported `./Widget` for a file at
+`acme/commerce/Widget.ts`: `TS2307` on a project with nothing wrong with it, and a
+REGRESSION, since before the change the entity files landed flat too and the barrel
+agreed with them. The comment that caused the original defect — which instructed the
+reader to pass `obj.package` "for consistency with the emitter" — was still in place
+stating the opposite of the code, and is rewritten to say why consistency with a wrong
+emitter is not a reason.
+
+The path-level gate could not see any of it: it asserts on EMITTED PATHS, and a barrel's
+path is correct whatever it exports. It now also runs the barrel and requires **every
+export specifier to name a file the same run actually wrote**.
+
+### Fixed — an `increment` primary key was spelled `serial` while migrate wrote IDENTITY
+
+Generated Drizzle emitted `serial`/`bigserial` for a `@generation: increment` key while
+`meta migrate` emitted a `GENERATED BY DEFAULT AS IDENTITY` column — two doors answering
+one declaration with two different DDL forms. Codegen now emits `integer`/`bigint` plus
+`.generatedByDefaultAsIdentity()`, matching migrate. Verified against both ends of
+`codegen-ts`'s declared drizzle-orm peer range, and the PK stays insert-optional (compiled
+with the real TypeScript compiler for `field.int` and `field.long`). The three adopter
+docs that showed `bigserial` as generated output are corrected.
+
 ### Changed — `meta eject` says how your copy compares to the reference
 
 An owned generator is the one artifact ADR-0034 hands an adopter and then never speaks

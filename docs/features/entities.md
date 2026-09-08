@@ -148,12 +148,12 @@ export const AuthorNames = {
 
 ```ts
 // generated/acme/blog/Author.ts
-import { pgTable, bigserial, varchar } from "drizzle-orm/pg-core";
+import { pgTable, bigint, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { AuthorNames } from "./Author.names";
 
 export const author = pgTable(AuthorNames.sources.primary.table, {
-  id:   bigserial(AuthorNames.fields.id.column, { mode: "number" }).primaryKey(),
+  id:   bigint(AuthorNames.fields.id.column, { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   name: varchar(AuthorNames.fields.name.column, { length: 200 }).notNull(),
   bio:  varchar(AuthorNames.fields.bio.column,  { length: 2000 }),
 });

@@ -37,7 +37,6 @@ import {
   assertNoDuplicateDocPaths,
   type DocPageNode,
   type DocPagePlacement,
-  effectivePackage,
 } from "../docs-paths.js";
 import { projectProvider } from "../render-engine/framework-provider.js";
 import { buildApiModel } from "./api-model.js";

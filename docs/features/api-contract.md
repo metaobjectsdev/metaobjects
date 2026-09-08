@@ -47,7 +47,10 @@ generated):
 
 The fetcher is supplied once via `<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">`
 at the React tree root; every generated hook reads it via
-`useEntityFetcher()` from `@metaobjectsdev/tanstack`.
+`useEntityPathFetcher()` from `@metaobjectsdev/tanstack`, which prepends `baseUrl`
+to the ENTITY-relative path the hook passes it. (`useEntityFetcher()` is a
+deprecated alias — it rewrites paths too, which its name did not say, so handing it
+an application-absolute path produces `<baseUrl>` + that path and a silent 404.)
 
 ## URL grammar
 

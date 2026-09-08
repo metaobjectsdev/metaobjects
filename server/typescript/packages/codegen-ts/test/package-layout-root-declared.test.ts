@@ -23,9 +23,20 @@
 // This gate therefore asserts on EMITTED PATHS rather than on which accessor a
 // call site uses. A new generator that reaches for `.package` again fails here
 // without anyone having to remember to add it to a list.
+//
+// PATHS ARE NOT ENOUGH, and that gap shipped a regression. The barrel emits one
+// root-level `index.ts` whose CONTENT is import specifiers pointing at the other
+// generators' files. Its path is right whatever it exports, so a barrel still
+// reading the bare `.package` emitted `export * from "./Widget"` for a file at
+// `acme/commerce/Widget.ts` — TS2307 on a project with nothing wrong with it — and
+// this gate could not see it, because it never ran the barrel and compared no
+// specifiers. It happened: the fix landed in the built-in generator and not in the
+// four reference/owned copies, which are the ones `meta init` actually scaffolds.
+// `resolvesAgainstEmittedFiles` below closes that by requiring every specifier the
+// barrel exports to name a file the run actually wrote.
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readdirSync, statSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
@@ -34,6 +45,7 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { namesFile } from "../src/generators/index.js";
+import { barrel } from "../src/generators/barrel.js";
 
 const PKG = "acme::commerce";
 const PKG_DIR = "acme/commerce";
@@ -93,6 +105,79 @@ async function emit(model: unknown, outputLayout: "flat" | "package"): Promise<s
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+/**
+ * Emit WITH the barrel and return every `export * from "<spec>"` specifier in the
+ * generated `index.ts`, paired with the set of files the same run wrote.
+ */
+async function emitWithBarrel(
+  model: unknown,
+  outputLayout: "flat" | "package",
+): Promise<{ specifiers: string[]; files: string[] }> {
+  const { root, errors } = await new MetaDataLoader().load([
+    new InMemoryStringSource(JSON.stringify(model), { id: "meta.json" }),
+  ]);
+  expect(errors.map((e) => e.message)).toEqual([]);
+
+  const dir = mkdtempSync(join(import.meta.dir, "tmp-pkg-barrel-"));
+  try {
+    await runGen({
+      config: defineConfig({
+        outDir: dir,
+        extStyle: "none",
+        dbImport: "~/db",
+        dialect: "sqlite",
+        outputLayout,
+        generators: [entityFile(), queriesFile(), routesFile(), namesFile(), barrel()],
+      }),
+      metadata: root,
+    });
+    const files: string[] = [];
+    const walk = (d: string): void => {
+      for (const n of readdirSync(d)) {
+        const f = join(d, n);
+        if (statSync(f).isDirectory()) walk(f);
+        else files.push(relative(dir, f).split("\\").join("/"));
+      }
+    };
+    walk(dir);
+    const index = readFileSync(join(dir, "index.ts"), "utf8");
+    const specifiers = [...index.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!);
+    return { specifiers, files: files.sort() };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Every barrel specifier must name a file the SAME run emitted. */
+function resolvesAgainstEmittedFiles(specifiers: string[], files: string[]): string[] {
+  const emitted = new Set(files.map((f) => f.replace(/\.tsx?$/, "")));
+  return specifiers
+    .filter((spec) => spec.startsWith("."))
+    .map((spec) => spec.replace(/^\.\//, "").replace(/\.js$/, ""))
+    .filter((spec) => !emitted.has(spec));
+}
+
+describe("the barrel's EXPORT SPECIFIERS point at files that exist", () => {
+  for (const [label, model] of [
+    ["root-declared", ROOT_DECLARED],
+    ["object-declared", OBJECT_DECLARED],
+  ] as const) {
+    test(`${label} package, outputLayout: package`, async () => {
+      const { specifiers, files } = await emitWithBarrel(model, "package");
+      expect(specifiers.length).toBeGreaterThan(0);
+      // Sanity: the run really did fold, so this is the case that can break.
+      expect(files.some((f) => f.startsWith(`${PKG_DIR}/`))).toBe(true);
+      expect(resolvesAgainstEmittedFiles(specifiers, files)).toEqual([]);
+    });
+  }
+
+  test("flat layout still resolves", async () => {
+    const { specifiers, files } = await emitWithBarrel(ROOT_DECLARED, "flat");
+    expect(specifiers.length).toBeGreaterThan(0);
+    expect(resolvesAgainstEmittedFiles(specifiers, files)).toEqual([]);
+  });
+});
 
 describe("outputLayout: package folds by the DECLARED package, however it was declared", () => {
   test("a root-declared package folds — it used to emit flat", async () => {

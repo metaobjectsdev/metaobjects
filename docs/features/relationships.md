@@ -176,7 +176,7 @@ import { AnyPgColumn } from "drizzle-orm/pg-core";
 import { PostNames } from "./Post.names";
 
 export const post = pgTable(PostNames.sources.primary.table, {
-  id:       bigserial(PostNames.fields.id.column, { mode: "number" }).primaryKey(),
+  id:       bigint(PostNames.fields.id.column, { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   title:    varchar(PostNames.fields.title.column, { length: 255 }).notNull(),
   authorId: bigint(PostNames.fields.authorId.column, { mode: "number" })
               .notNull()

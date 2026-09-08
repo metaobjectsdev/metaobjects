@@ -227,7 +227,7 @@ below names no column directly — to read the resolved spelling, open the names
 import { AuthorNames } from "./Author.names";
 
 export const author = pgTable(AuthorNames.sources.primary.table, {
-  id:         bigserial(AuthorNames.fields.id.column, { mode: "number" }).primaryKey(),
+  id:         bigint(AuthorNames.fields.id.column, { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   name:       varchar(AuthorNames.fields.name.column, { length: 200 }).notNull(),
   bio:        varchar(AuthorNames.fields.bio.column, { length: 2000 }),
   priceCents: bigint(AuthorNames.fields.priceCents.column, { mode: "number" }).notNull(),  // currency: minor units

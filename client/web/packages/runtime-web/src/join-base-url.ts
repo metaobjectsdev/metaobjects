@@ -2,7 +2,7 @@
  * Join a client base URL to a generated entity-relative path.
  *
  * ONE implementation, shared by both client tiers on purpose. `@metaobjectsdev/tanstack`
- * wraps `useEntityFetcher()` with it and `@metaobjectsdev/angular` wraps the
+ * wraps `useEntityPathFetcher()` with it and `@metaobjectsdev/angular` wraps the
  * `EntityFetcherToken`; implemented separately they would eventually disagree about a
  * trailing slash, and the disagreement would surface as a 404 in one framework only.
  *

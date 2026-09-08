@@ -213,7 +213,7 @@ describe("parseJson — inline @-attrs", () => {
     expect(child.isAbstract).toBe(true);
     // `abstract` is a reserved structural key — the parser routes it to
     // setIsAbstract(), never setAttr(). The attr map must not contain it.
-    expect(child.ownHasAttr("abstract")).toBe(false);
+    expect(child.ownAttrs().has("abstract")).toBe(false);
   });
 
   it("multiple @-attrs of various types all coerced correctly", () => {
@@ -305,7 +305,7 @@ describe("parseJson — isArray reserved key handling", () => {
     });
     const { root } = parseJson(input, { registry });
     const field = root.ownChildren()[0]!;
-    expect(field.ownHasAttr("isArray")).toBe(false);
+    expect(field.ownAttrs().has("isArray")).toBe(false);
   });
 
   it("isArray: false reserved key sets field.isArray to false", () => {
@@ -363,7 +363,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
     expect(child.name).toBe("myField");
-    expect(child.ownHasAttr("name")).toBe(false);
+    expect(child.ownAttrs().has("name")).toBe(false);
   });
 
   it("package sets model.package, not an attr", () => {
@@ -376,7 +376,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
     expect(child.package).toBe("demo::common");
-    expect(child.ownHasAttr("package")).toBe(false);
+    expect(child.ownAttrs().has("package")).toBe(false);
   });
 
   it("super sets model.superRef and is resolved immediately if target exists in tree", () => {
@@ -421,7 +421,7 @@ describe("parseJson — reserved keys", () => {
     const { root } = parseJson(input, { registry });
     const child = root.ownChildren()[0]!;
     expect(child.isAbstract).toBe(true);
-    expect(child.ownHasAttr("abstract")).toBe(false);
+    expect(child.ownAttrs().has("abstract")).toBe(false);
   });
 
   it("overlay: true at the root is ignored — no error, no warning", () => {

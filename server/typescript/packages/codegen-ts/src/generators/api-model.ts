@@ -163,7 +163,8 @@ export interface ApiSymbol {
    * writes it (so it can't drift): e.g. `Product.queries`, `Product`,
    * `ProductSummary.extractor`, `ProductSummary.render`. Package layout folds
    * entity-derived modules under the package path (`acme/shop/Product.queries`)
-   * iff the emitting generator does (it keys off the entity's OWN package).
+   * iff the emitting generator does (it keys off the entity's EFFECTIVE package
+   * — own, else the one its file declares at the root; see entityModulePath).
    *
    * REST symbols are NOT importable functions — their importPath is the entity's
    * routes MODULE; `registrar` carries the camelCase `<entity>Routes` handler an
@@ -314,11 +315,17 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
 // documented import can never drift from where the code actually lands:
 //
 //   • entity / queries / routes files use
-//       entityOutputPath(layout, entity.package, "<Name>.<suffix>.ts")
-//     (queries-file.ts / entity-file.ts / routes-file.ts) — note they key off
-//     the entity's OWN bare `.package` (often undefined for objects, FR5d), so
-//     in package layout they only fold when the object actually carries a
-//     package. We pass the SAME `obj.package` here, not effectivePackage.
+//       entityOutputPath(layout, effectivePackage(entity), "<Name>.<suffix>.ts")
+//     (queries-file.ts / entity-file.ts / routes-file.ts). `effectivePackage`,
+//     NOT the entity's own bare `.package`: a package declared once at the file
+//     root is the common authoring form the docs teach, and it lives on the
+//     ROOT, not on each object — so a bare `.package` read is `undefined` for
+//     every one of those objects and package layout silently did not fold.
+//     This comment previously said the opposite and instructed the reader to
+//     pass `obj.package` "for consistency with the emitter". That is how the
+//     defect propagated: consistency with a wrong emitter was chosen over
+//     correcting it, and the barrel copies kept the bare read for another
+//     release, emitting import specifiers that pointed at the wrong directory.
 //   • extractor / render-helper files emit a FLAT `<Name>.extractor.ts` /
 //     `<Name>.render.ts` regardless of layout (extractor-file.ts /
 //     render-helper-file.ts: `${t.name}.<suffix>.ts`, no package folding).
