@@ -62,6 +62,25 @@ describe("parseVerifyArgs", () => {
     });
   });
 
+  // The same repeated-flag defect F59 fixed for `migrate`. Both parsers share
+  // `parseAllowTokens`, so the union behaviour depends entirely on `multiple: true` in each
+  // command's own options table — a per-command fact nothing here was asserting. Reverting
+  // `VERIFY_OPTIONS.allow` to `{ type: "string" }` left the whole cli suite green while
+  // `--allow drop-fk --allow drop-view` silently kept only the last one, on the command whose
+  // own remedy line tells you which token to add.
+  test("a REPEATED --allow is the union, not the last one", () => {
+    const f = parseVerifyArgs(["--allow", "drop-fk", "--allow", "drop-view"]);
+    expect([...f.allow].sort()).toEqual(["drop-fk", "drop-view"]);
+  });
+  test("...and mixes with the comma form, collapsing duplicates", () => {
+    const f = parseVerifyArgs(["--allow", "drop-fk,drop-view", "--allow", "drop-fk"]);
+    expect([...f.allow].sort()).toEqual(["drop-fk", "drop-view"]);
+  });
+  test("an invalid token in ANY occurrence is still rejected", () => {
+    expect(() => parseVerifyArgs(["--allow", "drop-fk", "--allow", "drop-everything"]))
+      .toThrow(/invalid --allow token/);
+  });
+
   // ADR-0021 D2 — explicit subverbs.
   test("--templates sets the explicit-subverb flags", () => {
     const f = parseVerifyArgs(["--templates"]);

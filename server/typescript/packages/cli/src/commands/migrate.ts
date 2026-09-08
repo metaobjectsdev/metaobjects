@@ -58,22 +58,13 @@ import {
 } from "../lib/wrangler.js";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
-import { describeLoadError } from "../lib/load-error.js";
+import { reportLoadError } from "../lib/load-error.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
  * code, the file, the json path, and the loader's own next steps — instead of the bare
  * `err.message` five commands used to print. See `lib/load-error.ts`.
  */
-function reportLoadError(
-  log: { error: (msg: string) => void },
-  prefix: string,
-  err: unknown,
-): void {
-  const report = describeLoadError(err);
-  log.error(`${prefix}: ${report.text}`);
-  for (const s of report.suggestions ?? []) log.error(`  ${s}`);
-}
 
 
 export const MIGRATE_HELP_TEXT = `meta migrate — diff metadata vs live DB; emit migration SQL files
@@ -1477,7 +1468,7 @@ async function runD1Migrate(
       ...d1LoadOptions,
     });
   } catch (err) {
-    log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
+    reportLoadError(log, "migrate: failed to load metadata", err);
     return 2;
   }
 

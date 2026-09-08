@@ -49,9 +49,10 @@
 
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, isAbsolute, sep } from "node:path";
+import { join, relative, resolve, isAbsolute } from "node:path";
 import { docsCommand } from "../commands/docs.js";
 import { gitIgnored } from "./git-ignore.js";
+import { toPosix } from "./rel-posix.js";
 
 export interface DocsDriftResult {
   /** True when every page a fresh `meta docs` would write is committed and identical. */
@@ -125,7 +126,7 @@ const GENERATED_MARKER = "@generated";
  * hand-written note inside `agent/` out of it.
  */
 function isOurs(docsDir: string, rel: string): boolean {
-  const normalized = rel.split(sep).join("/");
+  const normalized = toPosix(rel);
   if (!OWNED_PREFIXES.some((p) => normalized.startsWith(p))) return false;
   try {
     return readFileSync(join(docsDir, rel), "utf8")
@@ -239,7 +240,7 @@ export async function computeDocsDrift(args: ComputeDocsDriftArgs): Promise<Docs
       "ignored" in ignoreLookup ? ignoreLookup.ignored : new Set<string>();
     const ignoreReason: string | undefined =
       "unavailable" in ignoreLookup ? ignoreLookup.unavailable : undefined;
-    const isIgnored = (rel: string): boolean => ignored.has(rel.split(sep).join("/"));
+    const isIgnored = (rel: string): boolean => ignored.has(toPosix(rel));
 
     const toCheck = fresh.filter((rel) => !isIgnored(rel));
     const orphans = ownedOrphans.filter((rel) => !isIgnored(rel));

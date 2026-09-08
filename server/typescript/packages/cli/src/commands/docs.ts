@@ -54,22 +54,13 @@ import {
   qualifiedDbName,
 } from "@metaobjectsdev/migrate-ts";
 import type { AgentSchemaInput, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
-import { describeLoadError } from "../lib/load-error.js";
+import { reportLoadError } from "../lib/load-error.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
  * code, the file, the json path, and the loader's own next steps — instead of the bare
  * `err.message` five commands used to print. See `lib/load-error.ts`.
  */
-function reportLoadError(
-  log: { error: (msg: string) => void },
-  prefix: string,
-  err: unknown,
-): void {
-  const report = describeLoadError(err);
-  log.error(`${prefix}: ${report.text}`);
-  for (const s of report.suggestions ?? []) log.error(`  ${s}`);
-}
 
 
 type DocsLayout = "flat" | "package";

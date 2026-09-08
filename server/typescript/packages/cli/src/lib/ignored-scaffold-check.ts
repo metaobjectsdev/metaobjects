@@ -14,9 +14,31 @@
 // Deliberately ADVISORY. Ignoring `.claude/` may be exactly what the project wants — it is a
 // per-repo policy call, and a scaffolder has no standing to fail a build over it.
 
-import { relative } from "node:path";
+import { isAbsolute, relative } from "node:path";
 import { log } from "./log.js";
 import { gitIgnored } from "./git-ignore.js";
+import { toPosix } from "./rel-posix.js";
+
+/**
+ * `meta init` records what it created as paths RELATIVE TO THE PROJECT, and one of them
+ * carries a display decoration ("CLAUDE.md (created with MetaObjects @import)") because the
+ * same array is printed back to the user. Normalize both into a plain project-relative,
+ * POSIX-separated path, and drop anything outside the project.
+ *
+ * The relative case is why this exists at all: `relative(cwd, p)` resolves BOTH arguments
+ * against the ambient `process.cwd()`, so handing it an already-relative path under `--cwd`
+ * produced a "../"-prefixed result for every entry, the filter dropped them all, and the
+ * advisory returned before consulting git. It fired only when the process happened to be
+ * running in the project directory — silent on the path the check exists for.
+ */
+function toProjectRelative(cwd: string, p: string): string | undefined {
+  // Strip a trailing display decoration; handed to git verbatim it is not a path, so a
+  // repository ignoring that file was never told about it.
+  const bare = p.replace(/\s+\(.*\)$/, "");
+  const rel = toPosix(isAbsolute(bare) ? relative(cwd, bare) : bare);
+  if (rel.length === 0 || rel === ".." || rel.startsWith("../")) return undefined;
+  return rel;
+}
 
 /**
  * Warn when some of the scaffolded paths are git-ignored, naming how many and where.
@@ -30,9 +52,8 @@ import { gitIgnored } from "./git-ignore.js";
  */
 export function reportIgnoredScaffold(cwd: string, created: readonly string[]): void {
   const rels = created
-    .map((p) => relative(cwd, p) || p)
-    .map((p) => p.split("\\").join("/"))
-    .filter((p) => p.length > 0 && !p.startsWith(".."));
+    .map((p) => toProjectRelative(cwd, p))
+    .filter((p): p is string => p !== undefined);
   if (rels.length === 0) return;
 
   const res = gitIgnored(cwd, rels, { honourGlobalExcludes: false });

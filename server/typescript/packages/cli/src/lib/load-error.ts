@@ -63,3 +63,27 @@ export function describeLoadError(err: unknown): LoadErrorReport {
     ...(suggestions !== undefined && suggestions.length > 0 ? { suggestions } : {}),
   };
 }
+
+/**
+ * Print a load failure the one way every command prints it: the described line, then the
+ * loader's own `suggestions[]` indented beneath it, verbatim.
+ *
+ * This lived as a byte-identical private copy in `docs.ts`, `gen.ts` and `migrate.ts`. It
+ * belongs beside `describeLoadError` for the same reason that function exists: the rendering
+ * of a load failure is ONE decision, and three copies of it are three places for the next
+ * improvement to reach two of. `verify.ts`'s variant is deliberately NOT this — it chooses
+ * between the loader's suggestions and its own strict-attr hint (ADR-0023), which is a
+ * different decision, not a different spelling of this one.
+ *
+ * `log` is a parameter rather than an import so a test can capture what was printed without
+ * reaching into module state.
+ */
+export function reportLoadError(
+  log: { error: (msg: string) => void },
+  prefix: string,
+  err: unknown,
+): void {
+  const report = describeLoadError(err);
+  log.error(`${prefix}: ${report.text}`);
+  for (const s of report.suggestions ?? []) log.error(`  ${s}`);
+}

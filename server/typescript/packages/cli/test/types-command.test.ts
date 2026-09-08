@@ -116,6 +116,47 @@ describe("#357 the registry is COMPOSED, so attrs are not missing", () => {
   });
 });
 
+describe("meta types reports the composition the loader actually uses", () => {
+  // The tool's whole claim is "what this prints is what the loader accepts". It composed
+  // `[...coreProviders]` — which is what `defaultLoadMemoryProviders` happens to EQUAL
+  // today, so the claim held by coincidence, and the gate that pins the default composition
+  // against the canonical manifest had no jurisdiction here. Add or drop a provider in the
+  // default set and this command would print a vocabulary the loader does not accept, with
+  // nothing failing anywhere.
+  //
+  // Asserted on the ANSWER, like every other test in this file: the set of subtypes the
+  // command reports must be exactly the set the default composition registers.
+  test("its subtype set is exactly the default composition's", async () => {
+    const { composeRegistry, buildVocabularyCatalog } = await import("@metaobjectsdev/metadata");
+    const { defaultLoadMemoryProviders } = await import("@metaobjectsdev/sdk");
+
+    const expected = buildVocabularyCatalog(
+      composeRegistry([...defaultLoadMemoryProviders], { validate: true }),
+    ).types.map((t) => `${t.type}.${t.subType}`).sort();
+
+    const calls: string[] = [];
+    const spy = spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      calls.push(a.map(String).join(" "));
+    });
+    let doc: { matches?: Array<{ kind: string; name: string }> };
+    try {
+      expect(await typesCommand(["--kind", "subtype", "--limit", "0"], "json")).toBe(0);
+      expect(calls).toHaveLength(1);
+      doc = JSON.parse(calls[0] as string);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const reported = (doc.matches ?? [])
+      .filter((m) => m.kind === "subtype")
+      .map((m) => m.name)
+      .sort();
+
+    expect(reported.length).toBeGreaterThan(0);
+    expect(reported).toEqual(expected);
+  });
+});
+
 describe("the help describes flags the CLI actually accepts", () => {
   test("--json is neither advertised nor accepted", async () => {
     // It was advertised twice while the CLI refused it: `--format` is validated once,

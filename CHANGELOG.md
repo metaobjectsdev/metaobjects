@@ -72,6 +72,54 @@ integration cases generated with an explicit `--out <dir>/docs` while `verify --
 the config default, and passed only because the two coincided. Sixteen cases failed the moment
 they stopped. They now take the config path, which is what the gate reads.
 
+### Fixed — four checks that could not fire, and the duplication behind two of them
+
+Each of these was GREEN and each was inert. They came out of the review pass over the RC
+estate work, and they share a shape: a rule written once and asked in a second place, or a
+guarantee with no gate over it.
+
+**The ignored-scaffold advisory was silent under `--cwd`.** `meta init` records what it
+created as paths RELATIVE TO THE PROJECT, and the advisory called `relative(cwd, p)` — which
+resolves BOTH arguments against the ambient `process.cwd()`. Run against any directory other
+than the one the process happens to sit in, every entry came back `../`-prefixed, the filter
+dropped all of them, and the function returned before consulting git. It fired only when the
+project WAS the process cwd. It also handed git a decorated display string
+(`CLAUDE.md (created with MetaObjects @import)`) as if it were a path, so a repository ignoring
+its root memory file was never told. The advisory had no test at all; it now has seven, and
+the "silent" cases among them used to pass VACUOUSLY, which is exactly why nothing noticed.
+
+**`meta types` sat outside the jurisdiction of the gate that governs it.** Its whole claim is
+"what this prints is what the loader accepts", and it composed `[...coreProviders]` — what
+`defaultLoadMemoryProviders` happens to EQUAL today. So the claim was true by coincidence, and
+the gate pinning the default composition against the canonical manifest had no reach here: add
+or drop a provider in the default set and the command would print a vocabulary the loader
+rejects, with nothing failing. It now composes THE default set, and a test asserts its reported
+subtype list equals that composition's — proved by breaking it, which reds on exactly the
+`forgeTypesProvider` divergence that motivated the check.
+
+**`--allow` was gated for `migrate` and not for `verify`.** Both parsers share
+`parseAllowTokens`, so union-on-repeat depends entirely on `multiple: true` in each command's
+own option table — a per-command fact only `migrate`'s tests asserted. Reverting
+`VERIFY_OPTIONS.allow` to `{ type: "string" }` left the whole cli suite green while
+`--allow drop-fk --allow drop-view` silently kept only the last one, on the command whose own
+remedy line tells you which token to add.
+
+**`describeLoadError` had no test, and three sites still threw the envelope away.**
+`migrate.ts`, `prompt-snapshot.ts` and `verify --codegen`'s second load door printed a bare
+`err.message` — no ADR-0009 code for a CI job to key on, no file, no json path, and in
+`verify`'s case a hand-rolled suggestions read beside a report that already had them. All three
+now go through the shared renderer, and `verify` reads its own report rather than interrogating
+the throwable twice. The function's contract is a NEGATIVE one — it reports what the envelope
+carried and invents nothing — so its 13 new tests mostly pin what it must NOT produce.
+
+Two duplications behind the above are gone: `reportLoadError` was byte-identical in `docs.ts`,
+`gen.ts` and `migrate.ts` and now lives beside `describeLoadError` (`verify`'s variant stays
+separate — choosing between the loader's suggestions and its own strict-attr hint is a
+different decision, not a different spelling); and the six inline copies of
+`.split(sep).join("/")` across `lib/` are one `rel-posix.ts`. That second one had ALREADY
+drifted: one of the six read `.split("\\")`, which agrees with `sep` on Windows and on POSIX
+rewrites a filename that legitimately contains a backslash.
+
 ### Fixed — the `<Entity>Names` conviction prescribed the loop it was built to end
 
 `verify --codegen` printed ONE footer for the whole gate — "Run 'meta gen' to regenerate,

@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join } from "node:path";
+import { relPosix } from "./rel-posix.js";
 
 /**
  * F52 — a provider mounted with no `baseUrl` on a project whose `apiPrefix` is not empty.
@@ -154,7 +155,7 @@ function walk(dir: string, root: string, acc: BaseUrlFinding[], apiPrefix: strin
     let src: string;
     try { src = readFileSync(abs, "utf8"); } catch { continue; }
     if (!src.includes("EntityFetcher")) continue;
-    acc.push(...scanFile(relative(root, abs).split(sep).join("/"), src, apiPrefix));
+    acc.push(...scanFile(relPosix(root, abs), src, apiPrefix));
   }
 }
 

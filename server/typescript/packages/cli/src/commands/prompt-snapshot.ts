@@ -14,6 +14,7 @@ import { parsePromptSnapshotArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
+import { reportLoadError } from "../lib/load-error.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
@@ -78,7 +79,7 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
       ...configLoadOptions,
     });
   } catch (err) {
-    log.error(`failed to load metadata: ${(err as Error).message}`);
+    reportLoadError(log, "failed to load metadata", err);
     return 1;
   }
 

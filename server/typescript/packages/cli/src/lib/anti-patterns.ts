@@ -16,7 +16,8 @@
 // nag a legitimate one.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join } from "node:path";
+import { relPosix } from "./rel-posix.js";
 
 export interface AntiPatternFinding {
   file: string; // path relative to the scan root (posix-ish, sep-normalized)
@@ -218,10 +219,6 @@ function findingFor(file: string, lineNo: number, raw: string, isSql: boolean): 
     file, line: lineNo, rule: hit.rule, construct: hit.construct, snippet,
     message: `${file}:${lineNo} — ${ADVICE[hit.rule]}. Run \`meta types ${hit.construct}\`.`,
   };
-}
-
-function relPosix(root: string, abs: string): string {
-  return relative(root, abs).split(sep).join("/");
 }
 
 function walk(dir: string, root: string, ignore: readonly RegExp[], acc: AntiPatternFinding[]): void {

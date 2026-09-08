@@ -16,7 +16,7 @@
 // where those files are present and on a CI runner where they are not.
 
 import { spawnSync } from "node:child_process";
-import { sep } from "node:path";
+import { toPosix } from "./rel-posix.js";
 
 /** Ignored paths, or the reason the question could not be asked. */
 export type GitIgnoreResult =
@@ -69,7 +69,7 @@ export function gitIgnored(
 
   // Forward slashes: git speaks them on every platform, and `listFiles` hands us
   // platform separators.
-  const input = rels.map((r) => r.split(sep).join("/")).join("\0");
+  const input = rels.map(toPosix).join("\0");
 
   let res;
   try {
@@ -111,5 +111,5 @@ export function isGitIgnored(
 ): boolean | undefined {
   const res = gitIgnored(dir, [rel], opts);
   if ("unavailable" in res) return undefined;
-  return res.ignored.has(rel.split(sep).join("/"));
+  return res.ignored.has(toPosix(rel));
 }

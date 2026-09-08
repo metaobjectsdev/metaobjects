@@ -20,7 +20,8 @@
 // The `--json` flag this once advertised in its own --help, twice, is not coming back: the
 // CLI rejects a bare `--json` before a command ever sees its args (index.ts, `formatAlias`),
 // on purpose — one global spelling for all three formats.
-import { composeRegistry, coreProviders, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
+import { composeRegistry, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
+import { defaultLoadMemoryProviders } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 
@@ -225,11 +226,16 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   // @sortable, @dbColumnType), `view.textarea` with none (no @rows), and the eight
   // documentation commonAttrs — @title among them — were absent entirely. This is the same
   // provider set the loader composes, so what this prints is what the loader accepts.
-  // `coreProviders` and nothing else — the same set `loadMemory` composes, which is what
-  // makes "what this prints is what the loader accepts" true. `forgeTypesProvider` was
-  // here, and printing it as registered vocabulary was part of how a TS-only registration
-  // read as cross-port: `meta types forge --all` listed 20 attrs that no other port has.
-  const registry = composeRegistry([...coreProviders], { validate: true });
+  // `defaultLoadMemoryProviders` — THE composition, not a second spelling of it. This read
+  // `[...coreProviders]`, which is what that constant happens to equal today, so the claim
+  // above ("the same provider set the loader composes") was true by coincidence and the gate
+  // that pins the default composition against the canonical manifest had no jurisdiction
+  // here: add or drop a provider in the default set and `meta types` would silently print a
+  // vocabulary the loader does not accept, with nothing failing. `forgeTypesProvider` was
+  // once in this list, and printing it as registered vocabulary was part of how a TS-only
+  // registration read as cross-port: `meta types forge --all` listed 20 attrs no other port
+  // has. One composition, one door.
+  const registry = composeRegistry([...defaultLoadMemoryProviders], { validate: true });
   const catalog = buildVocabularyCatalog(registry);
 
   // Flatten the catalog into searchable entries.

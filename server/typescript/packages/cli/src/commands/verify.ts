@@ -87,7 +87,7 @@ import {
   REQUIREMENT_STATUSES,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
-import { describeLoadError } from "../lib/load-error.js";
+import { describeLoadError, reportLoadError } from "../lib/load-error.js";
 
 const DEFAULT_PROMPTS_DIR = "prompts";
 
@@ -269,8 +269,11 @@ export async function verifyCommand(
     // retired attribute and the author gets a green `meta verify` over a value that now
     // reaches nothing: a correct, loud failure converted into a quiet, wrong pass. That is
     // strictly worse than the error it replaced.
-    const code = (err as { code?: string }).code;
-    const suggestions = (err as { suggestions?: string[] }).suggestions;
+    // Off the REPORT, not the raw error a second time: `describeLoadError` has already
+    // decided what the envelope carried (and filtered empty entries), so re-reading the
+    // throwable would be a second answer to a question already answered above.
+    const code = report.code;
+    const suggestions = report.suggestions;
     const strictHint =
       "meta verify is strict (ADR-0023): every authored @attr must be declared. " +
       "Fix: register the attr on a metadata provider, OR move arbitrary " +
@@ -1230,11 +1233,11 @@ export async function verifyCommand(
           strict: !flags.lax,
         });
       } catch (err) {
-        log.error(`verify --codegen: failed to load this package's metadata: ${(err as Error).message}`);
-        // The second door onto the same strict load. It carried no remedy at all, which
-        // meant a retirement diagnosed here told the author what broke and nothing about
-        // how to fix it — the half-true rule this file's sibling comment warns about.
-        for (const s of (err as { suggestions?: string[] }).suggestions ?? []) log.error(`  ${s}`);
+        // The second door onto the same strict load, and it must carry the same provenance
+        // as the first: the ADR-0009 code, the FILE and json path the message cannot name,
+        // and the loader's own remedies. It printed a bare message plus a hand-rolled
+        // suggestions read — the half-true rule this file's sibling comment warns about.
+        reportLoadError(log, "verify --codegen: failed to load this package's metadata", err);
         return 2;
       }
     }
