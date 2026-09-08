@@ -116,7 +116,7 @@ bypasses branch protection. This hook closes that hole locally: when a push touc
 … typecheck` gate CI runs and **blocks the push when it is red** (~6s on a clean tree;
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
 or `SKIP_TS_TYPECHECK=1 git push`. The Java/C#/Python compile+conformance gates do NOT run on PRs (hosted CI runs
-them on release tags + manual dispatch only, for cost). Instead, every push to
+them on release tags, a nightly schedule, and manual dispatch, for cost). Instead, every push to
 `main` triggers `local-ci.yml` on the maintainer's self-hosted runner: affected
 ports only (via `scripts/ci-affected-ports.sh`), parallel per-port jobs, each
 running `scripts/ci-local.sh --only <port> --strict-toolchains`; a nightly

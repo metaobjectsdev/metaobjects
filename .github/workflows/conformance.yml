@@ -1,17 +1,36 @@
 name: conformance
 
 # COST: the cross-port conformance matrix + full Java reactor + drift/mutation gates
-# are heavy, so they NO LONGER run on every push/PR — release gate (tag `v*`) +
-# on-demand (workflow_dispatch) only. Run them LOCALLY before opening/merging a PR:
+# are heavy, so they do NOT run on every push/PR — release gate (tag `v*`), a NIGHTLY
+# schedule, and on-demand (workflow_dispatch). Run them LOCALLY before opening/merging
+# a PR:
 #   scripts/ci-local.sh            # full parity (this + integration suite + drift)
 #   scripts/ci-local.sh --quick    # everything except the docker integration suite
 # The .githooks/pre-push hook also runs the TS build+typecheck gate locally, and the
 # cheap public-repo SECURITY gate (hygiene / leak-scan) still runs on every PR.
-# Push-to-main coverage now comes from local-ci.yml on the self-hosted runner.
+# Push-to-main coverage comes from local-ci.yml on the self-hosted runner.
+#
+# WHY A SCHEDULE, given local-ci already runs nightly: local-ci's `java-slow` lane runs
+# the same full reactor (`gate_java_reactor`, `mvn clean install`) — so "it does not run
+# the reactor" is NOT the gap. The gap is environmental, and it is measured. Two Java
+# test defects (a test asserting on an NPE message HotSpot's fast-throw is entitled to
+# stop producing once the path is hot; two test classes sharing files with nothing
+# declaring their surefire order) were found by the `v1.0.0-rc.5` tag's run of THIS
+# workflow and fixed in 1c24b8f9d / cd0158073. The 08:17 nightly local-ci run that
+# preceded both fixes reported `java-slow: success` with both defects live on `main`.
+# The two runs differ in environment, not in scope — hosted ubuntu-latest with jacoco ON
+# here, self-hosted with `-Djacoco.skip=true` there — and JIT heat and filesystem
+# ordering are exactly the defect classes one environment cannot see on its own. A
+# tag-only trigger meant the second environment looked only at a cut, which is the most
+# expensive moment to find out. Standard runners are free for a public repo, so the
+# second look costs nothing but wall-clock.
 on:
   push:
     tags:
       - 'v*'
+  # Offset from local-ci's 08:17 so the two full-reactor runs do not overlap.
+  schedule:
+    - cron: '41 4 * * *'
   workflow_dispatch:
 
 jobs:
