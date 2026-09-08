@@ -72,6 +72,27 @@ integration cases generated with an explicit `--out <dir>/docs` while `verify --
 the config default, and passed only because the two coincided. Sixteen cases failed the moment
 they stopped. They now take the config path, which is what the gate reads.
 
+### Fixed — the `<Entity>Names` conviction prescribed the loop it was built to end
+
+`verify --codegen` printed ONE footer for the whole gate — "Run 'meta gen' to regenerate,
+then commit the result" — regardless of which conviction produced the drift. For a
+hand-edited names artifact that command cannot work: `meta gen` MERGES a hand edit and exits
+0, so the file comes back unchanged and the next `verify` fails identically. Verbatim the
+unbreakable loop the 0.24.3 hand-edit exemption exists to end, reintroduced for the one file
+that exemption deliberately excludes.
+
+The remedy is now per conviction KIND. Stale generated output still says to run `meta gen`. A
+names artifact says what actually terminates: revert the edit, or delete the file and re-run
+`meta gen` to re-emit it — and keep constants of your own in a file of your own. A drift set
+holding both kinds prints both lines, because only one of the files needs the edit reverted.
+
+The classification is reported by `computeCodegenDrift` as `handEditedNames` rather than
+re-derived from the path suffix at the printing site: one rule, one door. The gate's test file
+already proved the remedy terminates for an ORDINARY hand edit — the case the exemption
+covers — which is exactly why the names case slipped past it; it now pins both, and pins that
+`meta gen` really does preserve the edit and exit 0, so a future change making `gen` refuse a
+names file fails there rather than leaving a stale remedy in place.
+
 ### Fixed — a cast-bearing `@expr` still drifted, and the differential found two more
 
 The previous entry ("the one `@expr` spelling a human writes was the one that drifted")

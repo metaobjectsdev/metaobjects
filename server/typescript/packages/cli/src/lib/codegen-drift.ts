@@ -60,6 +60,14 @@ export interface CodegenDriftResult {
   driftedFiles: string[];
   /** Human-readable, one-line-per-file drift summary. */
   lines: string[];
+  /**
+   * The subset of `driftedFiles` convicted for being a HAND-EDITED names artifact,
+   * sorted. Reported rather than left to the caller to re-derive, because the remedy
+   * differs in kind: `meta gen` MERGES a hand edit and exits 0, so prescribing it for
+   * one of these is an unbreakable loop — the same loop the hand-edit exemption exists
+   * to end. Two doors asking one question must not answer it twice.
+   */
+  handEditedNames: string[];
   /** Set when the gate could not run (e.g. no outDir to compare against). */
   error?: string;
 }
@@ -129,6 +137,7 @@ export async function computeCodegenDrift(
       clean: false,
       driftedFiles: [],
       lines: [],
+      handEditedNames: [],
       error:
         "verify --codegen: no outDir configured — cannot locate the committed " +
         "generated output to diff against. Set 'outDir' (and/or per-target " +
@@ -197,6 +206,7 @@ export async function computeCodegenDrift(
     // Diff each committed outDir against its temp mirror.
     const driftedFiles = new Set<string>();
     const lines: string[] = [];
+    const handEditedNames = new Set<string>();
 
     // Whether we have any record of what we wrote here. With records, the orphan
     // branch below can scope itself to our own output; with none, it cannot tell
@@ -254,6 +264,7 @@ export async function computeCodegenDrift(
             // file shape it was never told about.
             if (rel.endsWith(NAMES_FILE_SUFFIX)) {
               driftedFiles.add(relKey);
+              handEditedNames.add(relKey);
               lines.push(
                 `~ ${relKey} (hand-edited; a names artifact must match a fresh regen exactly — ` +
                   `put constants of your own in a file of your own)`,
@@ -273,7 +284,12 @@ export async function computeCodegenDrift(
     }
 
     const sorted = [...driftedFiles].sort();
-    return { clean: sorted.length === 0, driftedFiles: sorted, lines };
+    return {
+      clean: sorted.length === 0,
+      driftedFiles: sorted,
+      lines,
+      handEditedNames: [...handEditedNames].sort(),
+    };
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

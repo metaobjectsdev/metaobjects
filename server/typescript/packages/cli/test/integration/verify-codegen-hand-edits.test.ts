@@ -203,6 +203,67 @@ describe("meta verify --codegen — hand-edited generated output", () => {
     }
   });
 
+  test("the names conviction's remedy terminates instead of looping", async () => {
+    // The loop this whole file exists to prevent, reintroduced by the names exemption.
+    // The conviction printed the SAME unconditional footer as every other drift —
+    // "Run 'meta gen' to regenerate" — and `meta gen` MERGES the edit and exits 0, so
+    // the next verify fails identically. Verbatim the unbreakable loop the 0.24.3
+    // exemption was added to end, for the one file the exemption deliberately excludes.
+    const root = setupRepoWithNames();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      const names = join(root, OUT, "User.names.ts");
+      const before = readFileSync(names, "utf8");
+      writeFileSync(names, before.replace(/"([a-z_]+)"/, '"$1_BROKEN"'));
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      const remedy = all();
+
+      // It must not prescribe the one command that cannot work here...
+      expect(remedy).not.toContain("Run 'meta gen' to regenerate");
+      // ...and it must say what does: the edit has to go.
+      expect(remedy.toLowerCase()).toContain("preserves");
+
+      // Prove the prescription it REPLACED was in fact a loop: gen exits 0, keeps the
+      // edit, and verify fails identically. If a future change makes `gen` refuse or
+      // overwrite a names file, this line fails and the remedy should be revisited.
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(readFileSync(names, "utf8")).toContain("_BROKEN");
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+
+      // And prove the remedy actually printed does terminate.
+      writeFileSync(names, before);
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("mixed drift gets BOTH remedies, since only one file needs the edit reverted", async () => {
+    const root = setupRepoWithNames();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      // A names edit (must be reverted) AND stale generated output (meta gen fixes it).
+      const names = join(root, OUT, "User.names.ts");
+      writeFileSync(names, readFileSync(names, "utf8").replace(/"([a-z_]+)"/, '"$1_BROKEN"'));
+      const metaPath = join(root, "metaobjects", "myapp.json");
+      writeFileSync(
+        metaPath,
+        readFileSync(metaPath, "utf8").replace('"@maxLength": 255', '"@maxLength": 128'),
+      );
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      const remedy = all();
+      expect(remedy).toContain("Run 'meta gen' to regenerate");
+      expect(remedy.toLowerCase()).toContain("preserves");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("...and an untouched names artifact beside a preserved hand edit stays clean", async () => {
     // The other half. Failing closed on names files must not fail a project that
     // did the sanctioned thing somewhere else.

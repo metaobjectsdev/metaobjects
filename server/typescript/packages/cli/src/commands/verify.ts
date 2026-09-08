@@ -1265,7 +1265,21 @@ export async function verifyCommand(
       `meta verify — codegen drift (${result.driftedFiles.length} file(s) differ from a fresh regen):`,
     );
     for (const line of result.lines) log.error(`  ${line}`);
-    log.error("Run 'meta gen' to regenerate, then commit the result.");
+    // The remedy is PER CONVICTION KIND, not one line for the whole gate. `meta gen`
+    // fixes stale generated output; it cannot fix a hand-edited names artifact, because
+    // it MERGES the edit and exits 0 — so prescribing it there was the unbreakable loop
+    // the hand-edit exemption exists to end, reintroduced for the one file the exemption
+    // deliberately excludes. Both lines print when the drift set holds both kinds.
+    if (result.driftedFiles.length > result.handEditedNames.length) {
+      log.error("Run 'meta gen' to regenerate, then commit the result.");
+    }
+    if (result.handEditedNames.length > 0) {
+      log.error(
+        "For the names artifact(s) above, 'meta gen' will NOT help — it preserves a hand " +
+          "edit by design. Revert the edit (or delete the file and re-run 'meta gen' to " +
+          "re-emit it), and keep constants of your own in a file of your own.",
+      );
+    }
     return 1;
   }
 
