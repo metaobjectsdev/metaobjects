@@ -684,6 +684,15 @@ if want gates; then step    "script-name hook collisions"      gate_script_name_
 if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
 if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
+# Every gate below this line runs bun over workspace TypeScript, and on a FRESH CI
+# checkout there is no node_modules — so a bare `@metaobjectsdev/*` specifier either
+# fails to resolve (what `owned template copies current` did, red on CI and green on
+# every warm dev box) or, worse, silently binds the PUBLISHED package out of bun's
+# install cache and gates the release against a stale loader. Installing ONCE here
+# makes that class unreachable instead of asking each new gate to remember a
+# `bun_install &&` prefix; the prefixes that already exist stay, so each gate is still
+# runnable on its own. Warm cost is ~6ms.
+if want gates; then step_if bun "dependencies installed"       bun_install;                 fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "owned template copies current" gate_owned_template_copies; fi
 if want gates; then step_if bun "reference templates lint"     gate_reference_templates_lint; fi
