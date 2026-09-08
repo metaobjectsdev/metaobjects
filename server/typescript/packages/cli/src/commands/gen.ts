@@ -172,6 +172,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     dryRun: cliConfig.dryRun,
     warnings: [],
     antiPatterns,
+    generatorCount: forgeConfig.generators?.length ?? 0,
   };
   const output =
     fmt === "toon" ? formatGenResultToon(genResult)

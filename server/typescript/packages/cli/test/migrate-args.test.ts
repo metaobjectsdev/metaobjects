@@ -36,6 +36,25 @@ describe("parseMigrateArgs — --allow tokens", () => {
   test("an unknown token is still rejected", () => {
     expect(() => parseMigrateArgs(["--allow", "drop-everything"])).toThrow(/invalid --allow token/);
   });
+
+  // F59 — repeating the flag is the natural reading (it is what `--server` does), and the
+  // LAST occurrence used to win silently: `--allow drop-fk --allow drop-view` discarded
+  // `drop-fk` and then printed "re-run with --allow drop-fk to apply", seven times, having
+  // been given exactly that.
+  test("a REPEATED --allow is the union, not the last one", () => {
+    const f = parseMigrateArgs(["--allow", "drop-fk", "--allow", "drop-view"]);
+    expect([...f.allow].sort()).toEqual(["drop-fk", "drop-view"]);
+  });
+
+  test("...and mixes with the comma form, collapsing duplicates", () => {
+    const f = parseMigrateArgs(["--allow", "drop-fk,drop-view", "--allow", "drop-fk"]);
+    expect([...f.allow].sort()).toEqual(["drop-fk", "drop-view"]);
+  });
+
+  test("an invalid token in ANY occurrence is still rejected", () => {
+    expect(() => parseMigrateArgs(["--allow", "drop-fk", "--allow", "drop-everything"]))
+      .toThrow(/invalid --allow token/);
+  });
 });
 
 describe("parseMigrateArgs — apply-pending subcommand", () => {

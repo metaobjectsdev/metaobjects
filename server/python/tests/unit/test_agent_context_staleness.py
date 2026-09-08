@@ -100,3 +100,45 @@ def test_unresolved_install_never_asserts_in_sync() -> None:
 
 def test_non_numeric_version_still_nudges() -> None:
     assert agent_context_staleness({"generatedBy": "dev"}, "0.24.4") is not None
+
+
+# One release, two ecosystem spellings — the nudge must not fire (F77).
+#
+# `meta agent-docs` is the canonical scaffolder for EVERY port (ADR-0033), so `generatedBy`
+# is always an npm version: `1.0.0-rc.5`. This port reports PEP 440's `1.0.0rc5`. Those are
+# ONE release written two ways, `==` said otherwise, and the remedy re-runs the scaffolder
+# which re-stamps the same npm string — so the advisory fired on every invocation forever,
+# including when the context was perfectly in sync. Issue #347 with a different pair of
+# ecosystems: that fix reasoned about ORDERING, never about spelling.
+def test_npm_and_pep440_spellings_of_one_prerelease_are_in_sync() -> None:
+    assert agent_context_staleness({"generatedBy": "1.0.0-rc.5"}, "1.0.0rc5") is None
+
+
+def test_the_same_holds_for_a_beta_and_for_an_unnumbered_prerelease() -> None:
+    assert agent_context_staleness({"generatedBy": "1.1.0-beta.2"}, "1.1.0b2") is None
+    assert agent_context_staleness({"generatedBy": "1.0.0-rc"}, "1.0.0rc") is None
+
+
+# ...and the exemption stays narrow: a DIFFERENT prerelease is real drift.
+def test_a_different_prerelease_iteration_still_nudges() -> None:
+    msg = agent_context_staleness({"generatedBy": "1.0.0-rc.4"}, "1.0.0rc5")
+    assert msg is not None
+    assert "1.0.0-rc.4" in msg
+
+
+def test_a_prerelease_context_against_a_FINAL_install_still_nudges() -> None:
+    # The upgrade this advisory exists for: rc → final is exactly when to re-scaffold.
+    assert agent_context_staleness({"generatedBy": "1.0.0-rc.5"}, "1.0.0") is not None
+
+
+def test_a_final_context_against_a_prerelease_install_still_nudges() -> None:
+    assert agent_context_staleness({"generatedBy": "1.0.0"}, "1.0.0rc5") is not None
+
+
+def test_the_unresolved_sentinel_is_never_canonicalized_into_agreement() -> None:
+    # `0.0.0` means "could not resolve". The new spelling-equivalence must not give it a
+    # coordinate that could match a real version — an unknown install never asserts
+    # "in sync". (Sentinel-vs-sentinel is a plain string match and predates this; it is
+    # the one case where both sides genuinely say the same unknown thing.)
+    assert agent_context_staleness({"generatedBy": "0.0.0"}, "1.0.0rc5") is not None
+    assert agent_context_staleness({"generatedBy": "1.0.0-rc.5"}, "0.0.0") is not None

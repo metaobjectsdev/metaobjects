@@ -6,7 +6,7 @@ const result = {
     { path: "src/User.ts", status: "new" as const, info: "" },
     { path: "src/User.routes.ts", status: "unchanged" as const, info: "" },
   ],
-  outDir: "src", dialect: "sqlite" as const, dryRun: false, warnings: [],
+  outDir: "src", dialect: "sqlite" as const, dryRun: false, warnings: [], generatorCount: 1,
 };
 
 describe("gen TOON output (axi)", () => {

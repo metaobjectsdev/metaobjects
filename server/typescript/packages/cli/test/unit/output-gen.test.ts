@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { formatGenResult } from "../../src/lib/output.js";
+import { formatGenResult, genResultToData } from "../../src/lib/output.js";
 
 const sample = {
   files: [
@@ -14,6 +14,7 @@ const sample = {
   dialect: "sqlite" as const,
   dryRun: false,
   warnings: [],
+  generatorCount: 4,
 };
 
 describe("formatGenResult", () => {
@@ -61,4 +62,22 @@ describe("formatGenResult", () => {
     const out = formatGenResult({ ...sample, files: [] }, { isTTY: false });
     expect(out).toContain("No entities to generate");
   });
+});
+
+// Two ways to emit nothing, and they send the reader to different files (F78). A config
+// wiring NO generators cannot produce output however good the metadata is, and the old
+// line told its author to go write entities — a false statement about a project that
+// already had five. The run's own first line (`gen: []`) already knew.
+test("emitting nothing because no generator is wired says THAT, not 'author entities'", () => {
+  const data = genResultToData({ ...sample, files: [], generatorCount: 0 });
+  expect(data.summary).toContain("no generators are wired");
+  expect(data.summary).not.toContain("no entities to generate");
+  expect(data.help.join(" ")).toContain("metaobjects.config.ts");
+  expect(data.help.join(" ")).not.toContain("author entities");
+});
+
+test("...and emitting nothing WITH generators wired still points at the metadata", () => {
+  const data = genResultToData({ ...sample, files: [], generatorCount: 4 });
+  expect(data.summary).toContain("no entities to generate");
+  expect(data.help.join(" ")).toContain("author entities");
 });

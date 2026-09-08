@@ -57,6 +57,14 @@ export interface GenResultShape {
    * structured payload carries every finding.
    */
   antiPatterns?: AdvisorySection<AdvisoryFindingRow>;
+  /**
+   * How many generators the config wired. Required, because the alternative is a
+   * message that GUESSES: with no generators wired, a run over a project with five
+   * entities emitted nothing and reported "no entities to generate … author entities
+   * in this project's metadata sources", sending the reader to edit a file that was
+   * already correct. The output's own first line (`gen: []`) already knew.
+   */
+  generatorCount: number;
 }
 
 const GEN_GLYPHS: Record<GenFileStatus, string> = {
@@ -232,12 +240,21 @@ export function genResultToData(result: GenResultShape): {
   if (counts.unchanged) parts.push(`${counts.unchanged} unchanged`);
   if (counts.refused) parts.push(`${counts.refused} refused`);
   if (counts.removed) parts.push(`${counts.removed} removed`);
-  const summary = result.files.length === 0
-    ? `no entities to generate in ${result.outDir}`
-    : parts.join(", ");
-  const help = result.files.length === 0
-    ? ["author entities in this project's metadata sources then re-run `meta gen`"]
-    : ["typecheck the generated code with `npx tsc`", "create your database tables with `meta migrate --from-db --db <url> --dialect <sqlite|postgres> --slug init --apply`"];
+  // Two ways to emit nothing, and they send the reader to different files. Name the
+  // one that is actually true: a config wiring no generators cannot produce output
+  // however good the metadata is, and telling its author to go write entities is a
+  // false statement about a project that already has them.
+  const noGenerators = result.generatorCount === 0;
+  const summary = result.files.length !== 0
+    ? parts.join(", ")
+    : noGenerators
+      ? "no generators are wired in metaobjects.config.ts, so nothing was generated"
+      : `no entities to generate in ${result.outDir}`;
+  const help = result.files.length !== 0
+    ? ["typecheck the generated code with `npx tsc`", "create your database tables with `meta migrate --from-db --db <url> --dialect <sqlite|postgres> --slug init --apply`"]
+    : noGenerators
+      ? ["add generators to the `generators: []` array in metaobjects.config.ts — `meta eject --list` names every generator you can own, and `meta init` scaffolds the usual set"]
+      : ["author entities in this project's metadata sources then re-run `meta gen`"];
   // An absent section is STATED, never omitted: a reader must be able to tell
   // "the scan found nothing" from "the scan never ran".
   const antiPatterns = result.antiPatterns

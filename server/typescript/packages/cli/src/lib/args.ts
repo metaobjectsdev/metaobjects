@@ -323,7 +323,7 @@ export const VERIFY_OPTIONS = {
   prompts: { type: "string" },
   db: { type: "string" },
   dialect: { type: "string" },
-  allow: { type: "string" },
+  allow: { type: "string", multiple: true },
   "skip-schema": { type: "boolean", default: false },
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
@@ -338,6 +338,33 @@ export const VERIFY_OPTIONS = {
   "limit": { type: "string" },
 } as const;
 
+/**
+ * The `--allow` tokens for one invocation, from EVERY occurrence of the flag.
+ *
+ * `--allow` is comma-separated, and repeating it is the natural reading (it is what
+ * `--server` does). It used to take the LAST occurrence only, so
+ * `--allow drop-fk --allow drop-view` silently discarded `drop-fk` and then printed
+ * "re-run with --allow drop-fk to apply" seven times — an instruction the user had just
+ * followed. Both spellings, and any mixture of them, now mean the union.
+ *
+ * Duplicates collapse: asking for the same permission twice is one permission.
+ */
+function parseAllowTokens(raw: string | string[] | undefined): AllowToken[] {
+  const occurrences = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  const seen = new Set<string>();
+  for (const occurrence of occurrences) {
+    for (const tok of occurrence.split(",").map((t) => t.trim()).filter((t) => t.length > 0)) {
+      if (!ALLOW_TOKENS.includes(tok as AllowToken)) {
+        throw new Error(
+          `invalid --allow token '${tok}'; expected one of: ${ALLOW_TOKENS.join(", ")}`,
+        );
+      }
+      seen.add(tok);
+    }
+  }
+  return [...seen] as AllowToken[];
+}
+
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
   const { values } = parseArgs({
     args: argv,
@@ -351,17 +378,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     throw new Error(`invalid --dialect '${dialect}'; expected: ${DIALECTS.join(", ")}`);
   }
 
-  const allowRaw = (values.allow as string | undefined) ?? "";
-  const allowTokens = allowRaw.length === 0
-    ? []
-    : allowRaw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-  for (const tok of allowTokens) {
-    if (!ALLOW_TOKENS.includes(tok as AllowToken)) {
-      throw new Error(
-        `invalid --allow token '${tok}'; expected one of: ${ALLOW_TOKENS.join(", ")}`,
-      );
-    }
-  }
+  const allowTokens = parseAllowTokens(values.allow as string | string[] | undefined);
 
   const templates = !!values.templates;
   const codegen = !!values.codegen;
@@ -472,7 +489,7 @@ export const MIGRATE_OPTIONS = {
   "migration-format": { type: "string" },
   "out-dir": { type: "string" },
   "slug": { type: "string" },
-  "allow": { type: "string" },
+  "allow": { type: "string", multiple: true },
   "on-ambiguous": { type: "string" },
   "dry-run": { type: "boolean", default: false },
   "from-db": { type: "boolean", default: false },
@@ -518,17 +535,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     throw new Error(`invalid --on-ambiguous '${onAmb}'; expected: ${ON_AMBIGUOUS.join(", ")}`);
   }
 
-  const allowRaw = (values.allow as string | undefined) ?? "";
-  const allowTokens = allowRaw.length === 0
-    ? []
-    : allowRaw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-  for (const tok of allowTokens) {
-    if (!ALLOW_TOKENS.includes(tok as AllowToken)) {
-      throw new Error(
-        `invalid --allow token '${tok}'; expected one of: ${ALLOW_TOKENS.join(", ")}`,
-      );
-    }
-  }
+  const allowTokens = parseAllowTokens(values.allow as string | string[] | undefined);
 
   return {
     db: values.db as string | undefined,

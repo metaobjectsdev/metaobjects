@@ -82,6 +82,79 @@ _UNRESOLVED_VERSION = "0.0.0"
 
 _RELEASE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
+#: A release with an optional PRE-RELEASE segment, in either spelling one ecosystem uses.
+#: npm/NuGet/Maven write ``1.0.0-rc.5``; PEP 440 writes ``1.0.0rc5``. Both are the SAME
+#: release, and comparing their SPELLINGS is what made the nudge unsatisfiable — see
+#: ``_same_release``.
+_PRERELEASE_RE = re.compile(
+    r"^(\d+)\.(\d+)\.(\d+)"       # release
+    r"(?:-?([A-Za-z]+)\.?(\d+)?)?$"  # optional pre-release: -rc.5 | rc5 | -beta | b2
+)
+
+
+#: PEP 440 abbreviates the pre-release labels that npm spells out, and normalizing to ONE
+#: of them is what makes `1.1.0-beta.2` and `1.1.0b2` the same release. Only the spellings
+#: PEP 440 itself defines as equivalent — this is a rename table, not a similarity guess.
+_PEP440_LABEL_ALIASES = {
+    "a": "alpha",
+    "b": "beta",
+    "c": "rc",
+    "pre": "rc",
+    "preview": "rc",
+}
+
+
+def _release_coordinate(version: object) -> tuple[int, int, str, int] | None:
+    """``(minor, patch, pre_label, pre_number)`` for a version in ANY ecosystem spelling.
+
+    The MAJOR is dropped for the same reason ``_release_series`` drops it: it is a
+    per-registry constant, not information (npm/PyPI/NuGet ship ``<M>.<m>.<p>`` and Maven
+    Central the same ``<m>.<p>`` on a major seven higher). ``minor.patch`` plus the
+    pre-release IS the shared release coordinate.
+
+    The pre-release label is lower-cased and its separators dropped, so ``-rc.5``,
+    ``rc5`` and ``-RC5`` all reduce to ``("rc", 5)``. A final release sorts ABOVE every
+    pre-release of the same number, which is what ``("", 0)`` vs ``("rc", 5)`` gives under
+    tuple ordering only because ``""`` < ``"rc"`` — so finals carry a sentinel label that
+    sorts last instead.
+
+    ``None`` means "not orderable, so nudge": the ``0.0.0`` unresolved-install sentinel,
+    build metadata, or anything this cannot parse. Those must never assert "in sync".
+    """
+    if not isinstance(version, str):
+        return None
+    v = version.strip()
+    if v == _UNRESOLVED_VERSION:
+        return None
+    m = _PRERELEASE_RE.match(v)
+    if m is None:
+        return None
+    label = _PEP440_LABEL_ALIASES.get((m.group(4) or "").lower(), (m.group(4) or "").lower())
+    number = int(m.group(5)) if m.group(5) is not None else 0
+    # A FINAL release is newer than every pre-release of the same number. "~" sorts above
+    # every ASCII letter, so the sentinel does that with plain tuple comparison.
+    return (int(m.group(2)), int(m.group(3)), label if label else "~", number)
+
+
+def _same_release(generated_by: object, current_version: str) -> bool:
+    """True when two version strings name the SAME release in different spellings.
+
+    The nudge compared spellings, so on the 1.0 RC line it could never be satisfied: the
+    canonical scaffolder is the Node CLI (ADR-0033), which stamps npm's ``1.0.0-rc.5``,
+    while this port reports PEP 440's ``1.0.0rc5``. Those are one release written two
+    ways, ``==`` says otherwise, and the remedy re-runs the scaffolder, which re-stamps
+    the same npm string — so the advisory fires on every invocation, forever, including
+    when the context is perfectly in sync. That is issue #347 with a different pair of
+    ecosystems; the fix for it reasoned about ORDERING and never about spelling.
+
+    Deliberately narrow. Only two versions that parse as the same release coordinate are
+    equal; anything unparseable (including the ``0.0.0`` sentinel) still nudges, and an
+    ``rc.4`` context against an ``rc.5`` install is a REAL difference and still nudges.
+    """
+    stamped = _release_coordinate(generated_by)
+    installed = _release_coordinate(current_version)
+    return stamped is not None and stamped == installed
+
 
 def _release_series(version: object) -> tuple[int, int] | None:
     """Ordered release coordinate ``(minor, patch)``, or ``None`` when not orderable.
@@ -141,16 +214,19 @@ def agent_context_staleness(
     is in sync — and a one-line advisory message otherwise. Pure + advisory:
     never raises, never blocks, never writes.
 
-    The comparison is **exact equality** first: ANY drift nudges (a re-scaffold is
-    cheap + idempotent), so this is not a semver compare — a prerelease or
-    build-metadata difference is still a reason to refresh. See
-    ``_context_is_ahead_of_install`` for the ONE case that is exempt.
+    ANY REAL drift nudges (a re-scaffold is cheap + idempotent), so this is not a semver
+    compare — an ``rc.4`` context against an ``rc.5`` install is still a reason to
+    refresh. Two exemptions, both for cases where nudging can never be SATISFIED:
+    ``_same_release`` (one release, two ecosystem spellings) and
+    ``_context_is_ahead_of_install`` (a port legitimately behind the npm scaffolder).
     """
     if manifest is None:
         return None  # no agent context here → nothing to nudge
     generated_by = manifest.get("generatedBy")
     if generated_by == current_version:
         return None  # in sync
+    if _same_release(generated_by, current_version):
+        return None  # one release, two ecosystem spellings — see below
     if _context_is_ahead_of_install(generated_by, current_version):
         return None  # scaffolded by a NEWER release than this install — see below
     frm = generated_by if generated_by else "an older MetaObjects"
