@@ -46,15 +46,14 @@ def content_hash(content: str) -> str:
     Same algorithm as every other port, so identical file content hashes identically
     everywhere.
 
-    The KEYS, however, deliberately differ: TypeScript keys by path relative to the
-    PROJECT ROOT (it supports multiple output targets), while this port and C# key
-    relative to their single out dir. A manifest is therefore NOT portable between
-    ports. An earlier version of this docstring claimed a conformance fixture could
-    compare them directly — it cannot, and the claim was never true.
-
-    Because the key here is out-dir-relative, running gen twice with different out dirs
-    against ONE ``gen_state_dir`` collides two distinct files onto one key. Give each
-    out dir its own gen-state dir.
+    The KEYS are relative to the PROJECT ROOT, as TypeScript's are — the manifest is
+    anchored on the project, so a key that means "this name, relative to whichever out
+    dir ran last" made two runs with different ``--out`` share one manifest in which run
+    B's hash claimed ownership of run A's file. (There is no per-out-dir gen-state dir to
+    escape into: ``gen_state_dir`` is derived from the metadata directory, so the advice
+    this docstring used to give could not be followed.) A manifest is still NOT portable
+    between ports — an earlier version of this docstring claimed a conformance fixture
+    could compare them directly, and it never could.
     """
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -100,23 +99,47 @@ def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
         fh.write("\n")
 
 
-def read_generated_hash(gen_state_dir: str, rel_path: str) -> str | None:
-    """The hash recorded when we last wrote ``rel_path``, or None if never."""
-    return _load_hashes(gen_state_dir).get(rel_path)
+def read_generated_hash(
+    gen_state_dir: str, rel_path: str, legacy_rel_path: str | None = None
+) -> str | None:
+    """The hash recorded when we last wrote ``rel_path``, or None if never.
+
+    ``legacy_rel_path`` is the OUT-DIR-relative key the same file was recorded under
+    before keys became project-root-relative. Reading both is what keeps the re-keying
+    from invalidating every existing manifest: without it a previously-recorded file
+    becomes unrecorded, which is fail-closed (``gen`` REFUSES it) but makes every
+    adopter regenerate to get past a change they did not ask for. The legacy entry is
+    dropped the next time the file is recorded, so a manifest converges on one spelling
+    without a migration command.
+    """
+    hashes = _load_hashes(gen_state_dir)
+    recorded = hashes.get(rel_path)
+    if recorded is None and legacy_rel_path is not None:
+        return hashes.get(legacy_rel_path)
+    return recorded
 
 
-def is_pristine_generated(gen_state_dir: str, rel_path: str, current: str) -> bool:
+def is_pristine_generated(
+    gen_state_dir: str, rel_path: str, current: str, legacy_rel_path: str | None = None
+) -> bool:
     """Whether the file is byte-for-byte what we recorded writing.
 
     FAILS CLOSED — False when it cannot be proven.
     """
-    recorded = read_generated_hash(gen_state_dir, rel_path)
+    recorded = read_generated_hash(gen_state_dir, rel_path, legacy_rel_path)
     return recorded is not None and recorded == content_hash(current)
 
 
-def _record(gen_state_dir: str, rel_path: str, content: str) -> None:
+def _record(
+    gen_state_dir: str, rel_path: str, content: str, legacy_rel_path: str | None = None
+) -> None:
     hashes = _load_hashes(gen_state_dir)
     hashes[rel_path] = content_hash(content)
+    # Drop the pre-re-keying spelling in the same write. Leaving it would keep a key
+    # that means "this name, relative to whichever out dir ran last" alive forever —
+    # which is the ambiguity being removed.
+    if legacy_rel_path is not None and legacy_rel_path != rel_path:
+        hashes.pop(legacy_rel_path, None)
     _save_hashes(gen_state_dir, hashes)
 
 
@@ -133,17 +156,22 @@ def decide_and_write(
     *,
     gen_state_dir: str | None = None,
     rel_path: str | None = None,
+    legacy_rel_path: str | None = None,
 ) -> str:
     """Decide and perform the write for one generated file.
 
     ``gen_state_dir`` enables hash-based hand-edit detection; ``rel_path`` is the key
     it is recorded under (defaults to the basename, which is correct for a single
-    flat output directory).
+    flat output directory). ``legacy_rel_path`` is the key the same file may already
+    be recorded under from before keys became project-root-relative — read as a
+    fallback, and removed once the file is recorded under the new key.
     """
     if not os.path.exists(path):
         _write(path, content)
         if gen_state_dir is not None:
-            _record(gen_state_dir, rel_path or os.path.basename(path), content)
+            _record(
+                gen_state_dir, rel_path or os.path.basename(path), content, legacy_rel_path
+            )
         return "new"
 
     if strategy == "skip-existing":
@@ -165,12 +193,12 @@ def decide_and_write(
     if current == content:
         # Nothing to do, but record it: a first run over already-correct output should
         # leave the file recognisable as ours next time.
-        _record(gen_state_dir, key, content)
+        _record(gen_state_dir, key, content, legacy_rel_path)
         return "unchanged"
 
-    if is_pristine_generated(gen_state_dir, key, current):
+    if is_pristine_generated(gen_state_dir, key, current, legacy_rel_path):
         _write(path, content)
-        _record(gen_state_dir, key, content)
+        _record(gen_state_dir, key, content, legacy_rel_path)
         return "overwrite"
 
     # Edited, or never recorded. Deliberately does NOT record the current content:

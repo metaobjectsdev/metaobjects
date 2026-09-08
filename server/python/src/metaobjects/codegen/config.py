@@ -17,6 +17,22 @@ class GenConfig:
     # ``<project>/.metaobjects/.gen-state``. COMMIT the manifest: it is the only thing
     # that makes hand-edit detection work on a machine that did not generate the code.
     gen_state_dir: str | None = None
+    # The project the manifest belongs to — the directory holding ``metaobjects/`` and
+    # ``.metaobjects/``. Manifest keys are relative to THIS, not to ``out_dir``.
+    #
+    # They used to be out-dir-relative while the manifest itself is anchored on the
+    # project, so two runs with different ``--out`` shared one manifest keyed by names
+    # that mean different files: `gen --out /tmp/a` and `gen --out /tmp/b` both record
+    # `alarm_names.py`, and run B's hash then claims ownership of run A's file. The
+    # manifest is the only thing that can tell "this is exactly what I wrote" from
+    # "somebody edited this" on a machine that did not generate the code, so one that can
+    # be populated from an unrelated tree and keyed ambiguously is one that can say yes to
+    # the wrong file. TS keys project-root-relative, which is also what makes multiple
+    # output targets work.
+    #
+    # None keeps the out-dir-relative keys, so a programmatic caller that never had a
+    # project root is unchanged. The CLI always sets it.
+    project_root: str | None = None
     # Only "flat" is implemented; a non-default value is REFUSED below rather than
     # silently ignored (see __post_init__).
     output_layout: str = "flat"

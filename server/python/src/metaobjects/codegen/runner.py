@@ -134,13 +134,21 @@ def run_gen(
 
     refused: list[str] = []
     for full, (content, _by) in emitted.items():
+        # The out-dir-relative name: what the manifest used to be keyed by, and still
+        # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
         rel = os.path.relpath(full, config.out_dir)
+        # The manifest key. Project-root-relative when the caller knows the project, so
+        # two runs with different --out cannot collide on one key inside the single
+        # manifest that is anchored on that project. `rel` rides along as the legacy
+        # spelling so an existing manifest keeps working and converges on the new one.
+        key = os.path.relpath(full, config.project_root) if config.project_root else rel
         status = decide_and_write(
             full,
             content,
             merge_strategy,
             gen_state_dir=config.gen_state_dir,
-            rel_path=rel,
+            rel_path=key,
+            legacy_rel_path=rel if key != rel else None,
         )
         result.files.append((full, status))
         if status == "refused":

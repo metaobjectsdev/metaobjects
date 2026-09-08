@@ -7,6 +7,7 @@ subcommand — schema is owned by the Node `meta` per ADR-0015.
 """
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -344,3 +345,62 @@ def test_no_migrate_subcommand(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["migrate", str(tmp_path), "--out", str(tmp_path / "out")])
     assert exc.value.code != 0
+
+
+# --- F72: the manifest is anchored on the project, so its keys are too ----------------
+
+def test_gen_manifest_keys_are_project_relative(tmp_path: Path) -> None:
+    """The manifest lives at the project root; a key relative to ``--out`` means two runs
+    with different out dirs share ONE manifest keyed by names that mean different files.
+
+    Asserted through the CLI, not the write helper: the keying is decided in three places
+    (the runner builds the key, the CLI supplies the anchor, the verify guard reads it
+    back), and a unit test of any one of them passes while the other two disagree."""
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "build" / "gen"
+    assert main(["gen", meta_dir, "--out", str(out)]) == 0
+
+    manifest = json.loads(
+        (tmp_path / ".metaobjects" / ".gen-state" / ".hashes.json").read_text()
+    )
+    assert manifest, "gen recorded no manifest"
+    # Every key carries the out dir's path from the project root — the thing that makes
+    # two out dirs distinguishable inside one manifest.
+    assert all(k.startswith("build/gen/") for k in manifest), sorted(manifest)[:5]
+    assert "Program.py" not in manifest
+
+
+def test_two_out_dirs_write_disjoint_manifest_entries(tmp_path: Path) -> None:
+    """The collision, reproduced end to end. Both runs write ``Program.py``; before the
+    re-key they were one entry, and whichever ran last decided whether the OTHER run's
+    file still counted as ours."""
+    meta_dir = _meta_dir(tmp_path)
+    assert main(["gen", meta_dir, "--out", str(tmp_path / "a")]) == 0
+    assert main(["gen", meta_dir, "--out", str(tmp_path / "b")]) == 0
+
+    manifest = json.loads(
+        (tmp_path / ".metaobjects" / ".gen-state" / ".hashes.json").read_text()
+    )
+    assert "a/Program.py" in manifest
+    assert "b/Program.py" in manifest
+
+
+def test_verify_codegen_still_convicts_output_it_did_write(tmp_path: Path) -> None:
+    """The jurisdiction guard's POSITIVE direction, which nothing covered.
+
+    `test_verify_codegen_ignores_a_file_it_never_wrote` proves a stranger's file is not
+    convicted — and would keep passing if the manifest lookup found NOTHING, because then
+    every file is "not ours" and `extra` is always empty. So the re-keying could have
+    turned the stale-output check off entirely while every existing test stayed green and
+    the gate kept printing a clean verdict. This is the assertion that can see it."""
+    meta_dir = Path(_meta_dir(tmp_path))
+    out = tmp_path / "build" / "gen"
+    assert main(["gen", str(meta_dir), "--out", str(out)]) == 0
+    assert (out / "Program.py").exists()
+
+    # Remove the metadata: a regen no longer emits Program.py, but it IS committed and it
+    # IS in the manifest — the definition of stale output.
+    (meta_dir / "meta.fitness.json").write_text(
+        '{"metadata.root": {"package": "fitness", "children": []}}'
+    )
+    assert main(["verify", "--codegen", str(meta_dir), "--out", str(out)]) == 1

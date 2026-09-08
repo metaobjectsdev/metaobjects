@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import os
 import re
 import sys
 import tempfile
@@ -376,6 +377,7 @@ def _run_suite(
     emit_package_init: bool = True,
     gen_state_dir: str | None = None,
     column_naming: str = DEFAULT_COLUMN_NAMING,
+    project_root: str | None = None,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -405,6 +407,11 @@ def _run_suite(
         emit_package_init=emit_package_init,
         gen_state_dir=gen_state_dir,
         column_naming=column_naming,
+        # Manifest keys are relative to the PROJECT, which is what the manifest is
+        # anchored on — not to ``--out``, which varies per run while the manifest does
+        # not. Passed alongside gen_state_dir because the two are one decision: state
+        # that lives in the project must be keyed by the project.
+        project_root=project_root,
     )
     suite = generators if generators is not None else _default_generators()
     result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
@@ -792,10 +799,14 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             print(f"  {msg}", file=sys.stderr)
         return 1
     gen_state = gen_state_dir_for(args.metadata_dir)
+    # Same anchor the manifest itself uses. Both passes below key against it, so a
+    # `--template-spec` artifact and a default-suite artifact land in one key space.
+    gen_project_root = str(project_root_for(args.metadata_dir))
     column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
     written = _run_suite(
         root, args.out, generators, entities,
         gen_state_dir=gen_state, column_naming=column_naming,
+        project_root=gen_project_root,
     )
     if spec_gens:
         # The template-spec pass renders user-supplied templates: a bad ref or a
@@ -807,6 +818,7 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             spec_written = _run_suite(
                 root, args.out, spec_gens, entities, emit_package_init=False,
                 gen_state_dir=gen_state, column_naming=column_naming,
+                project_root=gen_project_root,
             )
         except RenderError as exc:
             print(
@@ -828,8 +840,14 @@ def _run_gen_targets(
     root: MetaData,
     *,
     gen_state_dir: str | None = None,
+    project_root: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's suite into its ``outDir``. Returns (all_written, errors).
+
+    This is the path the manifest keying matters most on: every target writes into its
+    OWN ``outDir`` while all of them share ONE ``gen_state_dir``, so out-dir-relative
+    keys meant target B's hash could claim ownership of target A's identically-named
+    file. ``project_root`` is the common anchor that makes the keys distinct.
 
     Cross-target duplicate-output-path guard (#267): ``run_gen``'s collision guard
     is per-pass, so two targets writing the same full path would silently clobber
@@ -851,7 +869,8 @@ def _run_gen_targets(
         out_dir = config.out_dir_for(t)
         try:
             written = _run_suite(
-                root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir
+                root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
+                project_root=project_root,
             )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -921,6 +940,7 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
     written = _run_suite(
         root, args.out, generators, entities,
         gen_state_dir=gen_state, column_naming=column_naming,
+        project_root=str(root_dir.resolve()),
     )
     for path in written:
         print(path)
@@ -982,7 +1002,9 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
 
     written, errors = _run_gen_targets(
-        config, targets, root, gen_state_dir=gen_state_dir_for(config.metadata_dir())
+        config, targets, root,
+        gen_state_dir=gen_state_dir_for(config.metadata_dir()),
+        project_root=str(project_root_for(config.metadata_dir())),
     )
     if errors:
         for msg in errors:
@@ -1033,7 +1055,7 @@ def _relative_set(root: Path) -> dict[str, str]:
     return files
 
 
-def _is_ours_for(gen_state_dir: str | None):
+def _is_ours_for(gen_state_dir: str | None, out_prefix: str = ""):
     """Jurisdiction predicate for the ``extra`` verdict: did WE write this path?
 
     ``out_dir`` is a DIRECTORY, not a namespace this tool owns — the same ruling the
@@ -1041,20 +1063,36 @@ def _is_ours_for(gen_state_dir: str | None):
     beyond ``*.py`` means the gate now sees every stranger's file too, and convicting
     those turns a project with zero drift into a red build.
 
-    The manifest already records what we WROTE, keyed relative to ``out_dir`` — the
-    same key space this diff uses — so it answers the ownership question exactly.
+    The manifest already records what we WROTE, so it answers the ownership question
+    exactly — but it is keyed relative to the PROJECT while this diff is keyed relative
+    to ``out_dir``. ``out_prefix`` (the out dir, relative to the project) is what turns
+    one into the other. Getting this wrong is silent in the direction that matters: a
+    lookup that finds nothing makes ``is_ours`` false for every file, and the gate simply
+    stops reporting stale output while still printing a clean verdict.
+
+    The out-dir-relative name is tried as a fallback, because that is how a manifest
+    written before the re-keying spells it — the same fallback ``decide_and_write``
+    makes, so the write path and the gate cannot disagree about which entry is a record
+    of this file.
+
     FAILS CLOSED, matching :func:`is_pristine_generated`: with no manifest at all
     nothing is proven, so every file stays in scope and the old verdict stands.
     """
     if gen_state_dir is None or not has_hash_manifest(gen_state_dir):
         return lambda _rel: True
-    return lambda rel: read_generated_hash(gen_state_dir, rel) is not None
+
+    def is_ours(rel: str) -> bool:
+        key = os.path.join(out_prefix, rel) if out_prefix else rel
+        return read_generated_hash(gen_state_dir, key, legacy_rel_path=rel) is not None
+
+    return is_ours
 
 
 def _diff_report(
     expected: dict[str, str],
     committed: dict[str, str],
     gen_state_dir: str | None = None,
+    out_prefix: str = "",
 ) -> int:
     """Compare a regenerated file map against the committed one; print the
     standard ``verify --codegen`` drift report. Returns 0 (in sync) or 1.
@@ -1065,8 +1103,11 @@ def _diff_report(
 
     ``gen_state_dir`` scopes the ``extra`` verdict to files we have a record of
     writing — see :func:`_is_ours_for`. Omit it to keep the unscoped verdict.
+    ``out_prefix`` is the committed out dir relative to the project, which is what
+    translates this diff's out-dir-relative keys into the manifest's project-relative
+    ones; omit it only when the two coincide.
     """
-    is_ours = _is_ours_for(gen_state_dir)
+    is_ours = _is_ours_for(gen_state_dir, out_prefix)
     changed = sorted(
         k for k in expected if k in committed and expected[k] != committed[k]
     )
@@ -1179,7 +1220,14 @@ def _verify_codegen(args: argparse.Namespace) -> int:
         expected = _relative_set(Path(tmp))
         committed = _relative_set(Path(args.out))
 
-    return _diff_report(expected, committed, gen_state_dir_for(args.metadata_dir))
+    # The manifest is keyed relative to the project; this diff is keyed relative to
+    # `--out`. Hand over the prefix that translates one into the other, or the
+    # jurisdiction lookup finds nothing and the `extra` verdict silently empties.
+    project_root = project_root_for(args.metadata_dir)
+    return _diff_report(
+        expected, committed, gen_state_dir_for(args.metadata_dir),
+        os.path.relpath(Path(args.out).resolve(), project_root),
+    )
 
 
 def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
@@ -1234,7 +1282,8 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
     # `_cmd_gen_neutral_fallback` writes its manifest to), so the jurisdiction lookup
     # must be built from that, not from args.metadata_dir (None here by definition).
     return _diff_report(
-        expected, committed, str(root_dir.resolve() / ".metaobjects" / ".gen-state")
+        expected, committed, str(root_dir.resolve() / ".metaobjects" / ".gen-state"),
+        os.path.relpath(Path(args.out).resolve(), root_dir.resolve()),
     )
 
 
@@ -1351,7 +1400,16 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             # Same jurisdiction rule as _diff_report — this rung inlines its diff to
             # report per-target, so the guard has to be inlined with it. Without it,
             # broadening the comparison past *.py convicts every stranger's file.
-            is_ours = _is_ours_for(gen_state_dir_for(config.metadata_dir()))
+            #
+            # PER-TARGET prefix, because that is the whole point on this rung: two
+            # targets with different outDirs share one manifest, and the key that tells
+            # their identically-named files apart is the one anchored on the project.
+            is_ours = _is_ours_for(
+                gen_state_dir_for(config.metadata_dir()),
+                os.path.relpath(
+                    Path(real_outdir).resolve(), project_root_for(config.metadata_dir())
+                ),
+            )
             extra = sorted(k for k in committed if k not in expected and is_ours(k))
 
             names = "+".join(
