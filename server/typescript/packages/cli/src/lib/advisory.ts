@@ -22,6 +22,7 @@
 
 import { log } from "./log.js";
 import type { AntiPatternFinding } from "./anti-patterns.js";
+import type { BaseUrlFinding } from "./base-url-advisory.js";
 
 /**
  * How many advisory lines TEXT output prints before it truncates.
@@ -114,6 +115,20 @@ export function antiPatternRows(findings: readonly AntiPatternFinding[]): Adviso
     file: f.file,
     line: f.line,
     rule: f.rule,
+    construct: f.construct,
+    message: f.message,
+  }));
+}
+
+/**
+ * F52 findings in the same row shape, so the structured payload has ONE advisory list
+ * rather than a second one a consumer has to learn about. `rule` is the discriminator.
+ */
+export function missingBaseUrlRows(findings: readonly BaseUrlFinding[]): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: f.line,
+    rule: "missing-base-url",
     construct: f.construct,
     message: f.message,
   }));

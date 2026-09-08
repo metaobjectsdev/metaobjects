@@ -1,0 +1,102 @@
+// F52 — the half of the 1.0 base-URL migration that nothing else can see.
+//
+// `<EntityFetcherProvider value={fetcher}>` no longer typechecks, and the migration note
+// rests its safety argument on that. But `baseUrl` is OPTIONAL, defaulting to "", so an
+// adopter who reads the note, renames `value` → `fetcher` and stops has a tree that
+// compiles clean while every generated hook has quietly lost its `/api` segment. On the
+// estate where this was found, `vite build`, 150 tests and every `meta verify` gate were
+// green over two apps whose entire generated CRUD surface would have 404'd; `tsc --noEmit`
+// run by hand was the only signal in the building, and it cannot see this half at all.
+
+import { describe, test, expect, afterAll } from "bun:test";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { scanForMissingBaseUrl } from "../src/lib/base-url-advisory.js";
+
+const dirs: string[] = [];
+afterAll(async () => { for (const d of dirs) await rm(d, { recursive: true, force: true }); });
+
+async function project(files: Record<string, string>): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "meta-baseurl-"));
+  dirs.push(root);
+  for (const [rel, content] of Object.entries(files)) {
+    await mkdir(join(root, rel, ".."), { recursive: true });
+    await writeFile(join(root, rel), content, "utf8");
+  }
+  return root;
+}
+
+describe("scanForMissingBaseUrl", () => {
+  test("the half that compiles — renamed to fetcher, no baseUrl", async () => {
+    const root = await project({
+      "src/main.tsx": `<EntityFetcherProvider fetcher={fetcher}>\n  <App />\n</EntityFetcherProvider>`,
+    });
+    const found = scanForMissingBaseUrl(root, "/api");
+    expect(found).toHaveLength(1);
+    expect(found[0]!.file).toBe("src/main.tsx");
+    expect(found[0]!.message).toContain("/api");
+  });
+
+  test("silent when the provider passes a base", async () => {
+    const root = await project({
+      "src/main.tsx": `<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">`,
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+
+  test("silent when apiPrefix is empty — what `meta init` scaffolds", async () => {
+    // The trap ships easily precisely because the DEFAULT-configured project is the one
+    // the design was reasoned about. Firing here would nag every scaffolded project.
+    const root = await project({ "src/main.tsx": `<EntityFetcherProvider fetcher={fetcher}>` });
+    expect(scanForMissingBaseUrl(root, "")).toEqual([]);
+  });
+
+  test("multi-line JSX with a `>` inside an attribute is still matched", async () => {
+    // A per-line rule (which is what the anti-pattern scan uses) sees neither the
+    // provider and its props together nor past an arrow function. Real code is written
+    // this way, so a scan that only handled one line would report clean on the estate.
+    const root = await project({
+      "src/main.tsx": [
+        `<EntityFetcherProvider`,
+        `  fetcher={fetcher}`,
+        `  onError={(e) => report(e)}`,
+        `>`,
+      ].join("\n"),
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toHaveLength(1);
+  });
+
+  test("multi-line JSX that DOES pass a base after an arrow attribute is silent", async () => {
+    // The other half of the same mechanism: cutting the tag at the first `>` would end it
+    // inside `onError` and report a false positive on a correct file.
+    const root = await project({
+      "src/main.tsx": [
+        `<EntityFetcherProvider`,
+        `  fetcher={fetcher}`,
+        `  onError={(e) => report(e)}`,
+        `  baseUrl={import.meta.env.VITE_API_BASE}`,
+        `>`,
+      ].join("\n"),
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+
+  test("the Angular provider is covered too", async () => {
+    const bare = await project({ "src/app.config.ts": `provideEntityFetcher({ fetcher })` });
+    expect(scanForMissingBaseUrl(bare, "/api")).toHaveLength(1);
+    const full = await project({
+      "src/app.config.ts": `provideEntityFetcher({ fetcher, baseUrl: "/api" })`,
+    });
+    expect(scanForMissingBaseUrl(full, "/api")).toEqual([]);
+  });
+
+  test("build output and dependencies are not scanned", async () => {
+    const root = await project({
+      "node_modules/pkg/index.js": `<EntityFetcherProvider fetcher={f}>`,
+      "dist/main.js": `<EntityFetcherProvider fetcher={f}>`,
+      "src/x.test.tsx": `<EntityFetcherProvider fetcher={f}>`,
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+});

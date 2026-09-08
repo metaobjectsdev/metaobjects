@@ -47,6 +47,26 @@ The `value` prop is **gone**, not deprecated, so an unmigrated app fails `tsc` r
 than 404ing in a browser. That is deliberate: a missing base is otherwise invisible
 until a request runs.
 
+**Two cautions on that, both found in a real adopter tree.**
+
+*It only protects you if something runs `tsc`.* `vite build` and `next build` transpile;
+they do not typecheck. On an estate whose web app had no `typecheck` script, no turbo
+task and no CI job, the unmigrated tree passed `build`, 150 tests, and every `meta
+verify` gate — `tsc --noEmit`, run by hand, was the only signal in the building.
+
+*And it does not cover the half that compiles.* `baseUrl` is optional and defaults to
+`""`, so renaming `value` → `fetcher` and stopping there is type-correct and silently
+drops the prefix from every generated hook:
+
+| what you do | caught by |
+|---|---|
+| leave `value={fetcher}` | `tsc` (TS2322) — if anything runs it |
+| rename to `fetcher={fetcher}` and stop | **nothing at the type level** |
+
+`meta verify` now emits an advisory for exactly that shape — a non-empty `apiPrefix` and
+a provider mounted with no `baseUrl`. It is a warning, never an exit code, and it is the
+only gate that can see this half.
+
 If your own code read `<Entity>.$apiPrefix`, it no longer compiles. Take the base from
 the same config your provider does.
 

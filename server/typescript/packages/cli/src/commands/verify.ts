@@ -12,12 +12,13 @@ import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
-  antiPatternRows, ranSection, skippedSection, warnCapped,
+  antiPatternRows, missingBaseUrlRows, ranSection, skippedSection, warnCapped,
   type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
+import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
@@ -720,13 +721,33 @@ export async function verifyCommand(
       antiPatternSection = skippedSection(`the scan failed: ${(err as Error).message}`);
       return;
     }
-    antiPatternSection = ranSection(antiPatternRows(findings));
-    if (findings.length === 0) return;
-    log.warn(
-      `meta verify — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
-        `(advisory — does not fail the build):`,
-    );
-    warnCapped(findings.map((f) => `  ${f.message}`), flags.limit, { structured });
+    // F52 — the one gate that can see a provider silently missing its base. Folded into
+    // this pass rather than given its own, because it is the same KIND of finding (a
+    // teachable warning that never touches the exit code) and one --no-antipatterns
+    // should suppress the whole advisory tier, not half of it.
+    let baseUrl: BaseUrlFinding[] = [];
+    try {
+      baseUrl = scanForMissingBaseUrl(projectRoot, forgeConfig?.apiPrefix ?? "");
+    } catch {
+      // Same discipline as above: an advisory scan never breaks verify. The anti-pattern
+      // half already ran, so its rows are still reported rather than lost to this catch.
+    }
+
+    antiPatternSection = ranSection([...antiPatternRows(findings), ...missingBaseUrlRows(baseUrl)]);
+    if (findings.length > 0) {
+      log.warn(
+        `meta verify — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
+          `(advisory — does not fail the build):`,
+      );
+      warnCapped(findings.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (baseUrl.length > 0) {
+      log.warn(
+        `meta verify — ${baseUrl.length} entity-fetcher provider(s) mounted with no baseUrl ` +
+          `while apiPrefix is "${forgeConfig?.apiPrefix ?? ""}" (advisory — does not fail the build):`,
+      );
+      warnCapped(baseUrl.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
   }
 
   // -- template (prompt / output) drift --------------------------------------
