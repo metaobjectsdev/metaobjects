@@ -3,8 +3,11 @@ import { normalizeCheckExpr, checkExprEquals, stripCheckWrapper } from "../../sr
 
 describe("normalizeCheckExpr", () => {
   test("strips parens, collapses whitespace, lowercases", () => {
-    expect(normalizeCheckExpr("(price >= 0) AND (price <= 100)")).toBe("price >= 0 and price <= 100");
-    expect(normalizeCheckExpr("price >= 0 AND price <= 100")).toBe("price >= 0 and price <= 100");
+    expect(normalizeCheckExpr("(price >= 0) AND (price <= 100)")).toBe("price>=0 and price<=100");
+    expect(normalizeCheckExpr("price >= 0 AND price <= 100")).toBe("price>=0 and price<=100");
+    // Spacing around a SYMBOLIC operator is canonicalized away; spacing around an
+    // ALPHABETIC one (`and`) is load-bearing and must survive.
+    expect(normalizeCheckExpr("price>=0 AND price<=100")).toBe("price>=0 and price<=100");
   });
   test("PG-rewritten form equals the generated form", () => {
     expect(checkExprEquals("(col >= 0) AND (col <= 100)", "col >= 0 AND col <= 100")).toBe(true);
@@ -31,7 +34,7 @@ describe("normalizeCheckExpr", () => {
     // the cast-strip must not corrupt a regex literal containing `::`, else two
     // distinct regex CHECKs would compare equal and a pattern change be missed.
     expect(checkExprEquals("slug ~ 'a::foo'", "slug ~ 'a::bar'")).toBe(false);
-    expect(normalizeCheckExpr("slug ~ 'a::foo'")).toBe("slug ~ 'a::foo'");
+    expect(normalizeCheckExpr("slug ~ 'a::foo'")).toBe("slug~'a::foo'");
     // but PG's post-literal `::text` cast (enum form) is still stripped
     expect(normalizeCheckExpr("'open'::text")).toBe("'open'");
   });
@@ -40,7 +43,7 @@ describe("normalizeCheckExpr", () => {
     // produces after bracket-stripping). A quoted literal that merely contains
     // the words must be left intact — a stray quote breaks the `=…any…array`
     // adjacency, so there is no `in` rewrite.
-    expect(normalizeCheckExpr("note = 'pick any array item'")).toBe("note = 'pick any array item'");
+    expect(normalizeCheckExpr("note = 'pick any array item'")).toBe("note='pick any array item'");
     expect(checkExprEquals(
       "note = 'pick any array item'",
       "note in 'pick', 'item'",
@@ -48,6 +51,45 @@ describe("normalizeCheckExpr", () => {
   });
   test("genuinely different expressions are not equal", () => {
     expect(checkExprEquals("col >= 0", "col >= 5")).toBe(false);
+  });
+
+  test("operator spacing is not semantic: the natural `@expr` spelling matches pg_get_expr", () => {
+    // THE defect. An `index.lookup @expr` is AUTHOR-written SQL and a person writes it
+    // tight; `pg_get_expr` hands it back spaced and cast. Casts and redundant parens were
+    // already canonicalized, so the one surviving difference was the spacing — and
+    // `verify --db` proposed DROP + CREATE against an index the database already held
+    // exactly as declared. Measured on a live postgres:16 across five spellings.
+    const introspected = "((request_context ->> 'device_id'::text))";
+    for (const authored of [
+      "(request_context->>'device_id')",
+      "(request_context ->> 'device_id')",
+      "((request_context ->> 'device_id'))",
+      "((request_context ->> 'device_id'::text))",
+      "((request_context->>'device_id'::text))",
+    ]) {
+      expect(checkExprEquals(authored, introspected)).toBe(true);
+    }
+    // A multi-character operator survives as ONE token rather than being split apart.
+    expect(normalizeCheckExpr("a #>> b")).toBe("a#>>b");
+    expect(normalizeCheckExpr("a !~* b")).toBe("a!~*b");
+    // An operator this file has never seen normalizes by the same rule — the set is
+    // PG's operator CHARACTERS, not a list of operators anyone has to maintain.
+    expect(checkExprEquals("tags @> '{a}'", "tags@>'{a}'")).toBe(true);
+  });
+
+  test("...and collapsing spacing does not make different expressions equal", () => {
+    // The dangerous direction. Whitespace around a symbolic operator is never semantic,
+    // so nothing here may compare equal — if it did, a real predicate change would read
+    // as clean drift.
+    expect(checkExprEquals("a ->> 'x'", "a ->> 'y'")).toBe(false);
+    expect(checkExprEquals("a ->> 'x'", "a -> 'x'")).toBe(false);
+    expect(checkExprEquals("a >= b", "a > b")).toBe(false);
+    expect(checkExprEquals("a <> b", "a = b")).toBe(false);
+    // An operator character INSIDE a literal is data, not an operator.
+    expect(checkExprEquals("code ~ '^a >> b$'", "code ~ '^a>>b$'")).toBe(false);
+    // And an ALPHABETIC operator keeps its separators — `a and b` must never become `aandb`.
+    expect(normalizeCheckExpr("a AND b")).toBe("a and b");
+    expect(checkExprEquals("a AND b", "a OR b")).toBe(false);
   });
 
   test("separator commas normalize, but a comma INSIDE a literal stays meaningful", () => {
