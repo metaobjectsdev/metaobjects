@@ -8,6 +8,10 @@ export type { RunGenOpts, RunGenResult } from "./runner.js";
 
 export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
 export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
+// The one aggregation of the UI-tier markers. Exported because `meta docs` is the
+// SECOND door onto `agent/ui.md` and must answer "does this run emit a UI tier?"
+// with the same function the gen runner uses, not a second derivation of it.
+export { runEmitsUiTier, runEmitsHonoRoutes, UI_TIER_GENERATOR_NAMES } from "./ui-tier-gate.js";
 
 // SP-1 declarative Mustache template-codegen — scope walks, neutral data dict,
 // output-pattern, and the JSON template-spec the CLI ports reuse.
@@ -42,7 +46,7 @@ export { defineConfig, normalizeConfig, resolveGenerators, resolveDocsConfig } f
 // The dialect every generator falls back to when a config declares none. Exported because
 // `meta docs` must apply the SAME default `normalizeConfig` does — a command that resolved
 // the dialect differently would document a schema the toolchain does not produce.
-export { DEFAULT_DIALECT } from "./metaobjects-config.js";
+export { DEFAULT_DIALECT, DEFAULT_DOCS_DIR } from "./metaobjects-config.js";
 // The runner's own "does this model need a dialect?" guard. `meta docs` must ask it rather
 // than defaulting, because DEFAULT_DIALECT is inert and a DB project with no dialect is one
 // `meta gen` REFUSES — documenting it as sqlite states an answer the toolchain never gave.

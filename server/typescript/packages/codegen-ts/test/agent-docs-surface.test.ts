@@ -23,12 +23,15 @@ async function load(model: unknown): Promise<MetaRoot> {
   return res.root;
 }
 
-function makeCtx(root: MetaRoot, apiPrefix = ""): GenContext {
+// `includeUiTier` defaults TRUE here because every model below describes a project whose
+// suite emits forms and hooks; the page is gated on the RUN, not on the metadata, so the
+// helper has to state which run it is. The false case is its own test.
+function makeCtx(root: MetaRoot, apiPrefix = "", includeUiTier = true): GenContext {
   return {
     entities: root.objects(),
     loadedRoot: root,
     matches: () => true,
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
+    config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite", includeUiTier } as never,
     renderContext: makeRenderContext({
       dialect: "sqlite",
       loadedRoot: root,
@@ -46,8 +49,9 @@ async function emit(
   root: MetaRoot,
   opts?: Parameters<typeof agentDocsFile>[0],
   apiPrefix = "",
+  includeUiTier = true,
 ): Promise<Map<string, string>> {
-  const files = await agentDocsFile(opts).generate(makeCtx(root, apiPrefix));
+  const files = await agentDocsFile(opts).generate(makeCtx(root, apiPrefix, includeUiTier));
   return new Map(files.map((f) => [f.path, f.content]));
 }
 
@@ -720,4 +724,34 @@ describe("the seven attributes codegen no longer reads", () => {
       expect(res.errors.map(String).join("\n")).toMatch(/Unknown attribute/);
     });
   }
+});
+
+// F75 — `agent/ui.md` is gated on the RUN, not on the metadata.
+//
+// The page's own predicate (`hasUiSurface` = `servesReadApi`) answers "could a UI be
+// generated for this object?" and can never answer "does this run generate one?". An
+// estate with `generators: []`, no `view.*` node and no route anywhere got a confident
+// page: a control/HTML-type/rules table per entity for forms that do not exist, and
+// `Endpoint /wake_events` for an address nothing serves — read by an audience the surface
+// explicitly instructs to trust it BEFORE touching a tier.
+describe("agent/ui.md — gated on the run, not the metadata", () => {
+  test("a model whose objects all serve a read API still emits NO ui.md when no UI generator is in the run", async () => {
+    const root = await load(MODEL);
+    // Same model, same objects, same `hasUiSurface` verdict — only the run differs.
+    expect((await emit(root, undefined, "", true)).has("agent/ui.md")).toBe(true);
+    expect((await emit(root, undefined, "", false)).has("agent/ui.md")).toBe(false);
+  });
+
+  test("ui.md is the ONLY page suppressed — a headless project keeps the artifacts that ARE true for it", async () => {
+    // The finding turns on this: `agent/schema.md` was the single most valuable page the
+    // release offered that estate, which is what made the sibling page's confidence cost
+    // more, not less. Suppressing ui.md must not suppress its siblings, so the difference
+    // between the two runs is asserted as a SET rather than one page at a time.
+    const root = await load(MODEL);
+    const withUi = [...(await emit(root, undefined, "", true)).keys()].sort();
+    const without = [...(await emit(root, undefined, "", false)).keys()].sort();
+    expect(withUi.filter((p) => !without.includes(p))).toEqual(["agent/ui.md"]);
+    expect(without.filter((p) => !withUi.includes(p))).toEqual([]);
+    expect(without.length).toBeGreaterThan(0);
+  });
 });

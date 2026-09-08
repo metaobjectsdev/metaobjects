@@ -43,6 +43,11 @@ const CONFIG_NO_DIALECT = [
   `export default defineConfig({`,
   `  outDir: "out",`,
   `  generators: ["entity"],`,
+  // Declares a UI tier, so the test below can assert that skipping the SCHEMA page did
+  // not suppress the agent surface wholesale. Without it this project has no UI tier and
+  // no requirements, so schema.md is the only agent page it would ever have — and the
+  // control assertion would pass for the wrong reason.
+  `  includeUiTier: true,`,
   `});`,
 ].join("\n");
 

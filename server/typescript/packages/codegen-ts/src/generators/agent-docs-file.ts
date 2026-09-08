@@ -278,12 +278,21 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       }
 
       // ---- ui.md
+      // Gated on the RUN, not on the metadata. `hasUiSurface` answers "could a UI be
+      // generated for this object?"; whether one IS generated is a generator fact that
+      // no metadata predicate can reach. A project with `generators: []` was handed a
+      // page asserting endpoints nothing serves and a control table for forms that do
+      // not exist — to an audience the agent surface explicitly tells to read it BEFORE
+      // touching a tier, which is the audience least able to check.
+      //
       // The apiPrefix is the project's, from the render context the runner built — the
       // same value `routes-file.ts` emits as the SERVER mount prefix. Without it the page
       // names an address nothing serves. (The client descriptor no longer carries it: a
       // browser's base URL is supplied at runtime by the provider's `baseUrl`.)
-      const ui = renderAgentUiPage(ctx.loadedRoot, ctx.renderContext?.apiPrefix ?? "");
-      if (ui !== "") files.push({ path: `${dir}/ui.md`, content: ui });
+      if (ctx.config.includeUiTier === true) {
+        const ui = renderAgentUiPage(ctx.loadedRoot, ctx.renderContext?.apiPrefix ?? "");
+        if (ui !== "") files.push({ path: `${dir}/ui.md`, content: ui });
+      }
 
       // ---- requirements.md
       const requirements = renderAgentRequirementsPage(ctx.loadedRoot);

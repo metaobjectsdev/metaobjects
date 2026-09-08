@@ -29,6 +29,7 @@ import {
 import type {
   GenContext,
   EmittedFile,
+  Generator,
   ResolvedDocsConfig,
   DocsSurface,
   Dialect,
@@ -41,7 +42,7 @@ import {
   DEFAULT_COLUMN_NAMING_STRATEGY,
   renderCoreMetamodelDocs,
 } from "@metaobjectsdev/metadata";
-import { dbEmittingObjects, DEFAULT_DIALECT, missingDialectMessage } from "@metaobjectsdev/codegen-ts";
+import { dbEmittingObjects, DEFAULT_DIALECT, DEFAULT_DOCS_DIR, missingDialectMessage, resolveGenerators, runEmitsHonoRoutes, runEmitsUiTier } from "@metaobjectsdev/codegen-ts";
 import type { MetaDataTypeProvider, MetaRoot } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 // The `agent` schema surface takes the physical schema as an ARGUMENT with its resolvers
@@ -219,9 +220,14 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     // cwd (mirrors how migrate/gen treat the working directory as the root).
     projectRoot: projectRoot ?? cwd,
     projectRootProvided: projectRoot !== undefined,
-    // Default out dir, resolved against the project root below. In --metamodel
-    // mode the renderer writes under <out>/metamodel/, default ./docs/metamodel.
-    out: out ?? (wantMetamodel ? "./docs/metamodel" : "./docs"),
+    // Default out dir, resolved against the project root below. ONE spelling of the
+    // default, shared with resolveDocsConfig — two spellings is how a flag default and
+    // a config default come to disagree about where the pages are.
+    //
+    // --metamodel keeps its own sub-path: the renderer writes under <out>/metamodel/,
+    // and it is a different artifact (the metamodel reference, not this project's
+    // pages), so it is not swept into the generated-docs directory.
+    out: out ?? (wantMetamodel ? "./docs/metamodel" : DEFAULT_DOCS_DIR),
     // Default flat preserves today's single-package output (+ existing goldens).
     layout: layout ?? "flat",
     metamodel: wantMetamodel,
@@ -481,7 +487,7 @@ export async function docsCommand(
 
   // Merge the config `docs:` block with CLI overrides over documented defaults.
   // CLI --out/--layout only override when explicitly passed; surfaces/baseUrl
-  // override whenever present. The resolver supplies defaults (outDir ./docs,
+  // override whenever present. The resolver supplies defaults (outDir ./docs/generated,
   // layout = fallback, surfaces = both) so config-less + flag-less runs are
   // unchanged.
   const cliOverrides: Partial<ResolvedDocsConfig> = {
@@ -544,6 +550,29 @@ export async function docsCommand(
     pkMap: buildPkMap(root),
     relationMap: buildRelationMap(root),
   });
+  // The generator suite, with stable-name STRINGS resolved to the generators they name
+  // (ADR-0021 #1 allows `generators: ["routes-hono"]`). Both aggregations below read a
+  // generator MARKER, and a string carries none — so reading the raw array answered
+  // "no Hono routes / no UI tier" for a project that wires them by name, which is the
+  // same two-doors-one-question defect these flags exist to close. `meta gen` resolves
+  // the identical array through `normalizeConfig`.
+  //
+  // An unknown name throws (the message names it and lists the valid ones). `meta gen`
+  // fails on it; `meta docs` has never had to load the suite at all, so it degrades to
+  // the already-typed entries rather than becoming a new failure — and SAYS it did,
+  // because a page quietly losing a section is exactly what this whole fix is about.
+  let suite: Generator[];
+  try {
+    suite = resolveGenerators(loadedConfig?.generators ?? []);
+  } catch (err) {
+    log.warn(
+      `docs: could not resolve the generator suite (${(err as Error).message}) — the agent ` +
+        `pages fall back to the generators declared as values, so a tier wired by name may ` +
+        `be missing from them.`,
+    );
+    suite = (loadedConfig?.generators ?? []).filter((g): g is Generator => typeof g !== "string");
+  }
+
   const ctx: GenContext = {
     entities: root.objects(),
     loadedRoot: root,
@@ -558,12 +587,14 @@ export async function docsCommand(
       // surface. Aggregate it from the generator set exactly as the gen runner
       // does (a generator opts in via emitsHonoRoutes), so `meta docs` auto-detects
       // routesFileHono() rather than relying on a field users don't normally set.
-      includeHonoRoutes:
-        loadedConfig?.includeHonoRoutes ??
-        (loadedConfig?.generators?.some(
-          (g) => typeof g !== "string" && g.emitsHonoRoutes === true,
-        ) ??
-          false),
+      includeHonoRoutes: loadedConfig?.includeHonoRoutes ?? runEmitsHonoRoutes(suite),
+      // `agent/ui.md` describes forms, grids and the endpoints their hooks call. Whether
+      // any of that is emitted is a GENERATOR fact — the page's own predicate is
+      // metadata-only and answered "could a UI be generated?", so a project with
+      // `generators: []` got a confident page naming endpoints nothing serves. Aggregate
+      // it through the same helper the gen runner uses, so `meta docs` and `meta gen` —
+      // the two doors onto this page — cannot answer it differently.
+      includeUiTier: loadedConfig?.includeUiTier ?? runEmitsUiTier(suite),
     } as never,
     renderContext,
     projectRoot,

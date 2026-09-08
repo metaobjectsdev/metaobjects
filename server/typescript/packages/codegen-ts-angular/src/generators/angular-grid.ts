@@ -38,6 +38,10 @@ export const angularGridFile = function angularGridFile(
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "angular-grid",
+    // Marks this generator as part of the CLIENT UI tier — the runner aggregates it
+    // into ctx.config.includeUiTier so `agent/ui.md` describes a tier that this run
+    // actually emits, rather than one the metadata merely permits.
+    emitsUiTier: true,
     filter: (e: MetaObject) =>
       // A grid renders what a generated READ endpoint returns — no endpoint, no grid
       // (see api-surface.ts).

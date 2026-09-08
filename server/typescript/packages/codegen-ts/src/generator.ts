@@ -68,6 +68,21 @@ export interface Generator {
    *  entity generator reads to decide whether it may reference those constants.
    *  Same mechanism as emitsHonoRoutes/includeHonoRoutes. */
   emitsNames?: boolean;
+  /** Marks a generator that emits a CLIENT UI artifact — a form, a hook, a grid or
+   *  its columns. The runner aggregates it across the suite into
+   *  ResolvedGenConfig.includeUiTier, which `agent/ui.md` reads to decide whether
+   *  there is a UI tier to describe at all.
+   *
+   *  This exists because the page's gate was metadata-only (`servesReadApi`), which
+   *  answers "could a UI be generated for this object?" and never "does this run
+   *  generate one?". A project with `generators: []` got a confident page naming
+   *  endpoints nothing serves and forms nothing emits — to an audience explicitly
+   *  told to read it BEFORE touching a tier. Whether an artifact exists is a
+   *  GENERATOR fact; no metadata predicate can answer it.
+   *
+   *  Run-scoped, like emitsHonoRoutes and unlike emitsNames: the page asks "is this
+   *  surface in the run?", not "does it land in my target?". */
+  emitsUiTier?: boolean;
 }
 
 export type GeneratorFactory<TOpts = void> = TOpts extends void

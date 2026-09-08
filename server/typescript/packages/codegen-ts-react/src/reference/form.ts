@@ -47,6 +47,10 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "form-file",
+    // Marks this generator as part of the CLIENT UI tier — the runner aggregates it
+    // into ctx.config.includeUiTier so `agent/ui.md` describes a tier that this run
+    // actually emits, rather than one the metadata merely permits.
+    emitsUiTier: true,
     // Always set: AND-composes the framework write-artifact guard
     // (skips abstract types — no instance — and read-only projections —
     // instantiable for read, never for write) with the optional user filter.

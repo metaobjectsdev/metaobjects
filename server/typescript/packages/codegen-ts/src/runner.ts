@@ -1,5 +1,6 @@
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
+import { runEmitsHonoRoutes, runEmitsUiTier, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -469,7 +470,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Auto-detect: is the OPT-IN Hono routes generator in the active suite? If so,
   // surface it on every generator's ctx.config so api-docs documents the Hono
   // CRUD surface it actually emits (rather than silently omitting it).
-  const includeHonoRoutes = config.generators.some((g) => g.emitsHonoRoutes === true);
+  const includeHonoRoutes = runEmitsHonoRoutes(config.generators);
+
+  // Same auto-detection for the CLIENT UI tier. `agent/ui.md` describes forms, grids
+  // and the endpoints their hooks call; whether any of that is emitted is a generator
+  // fact, and the page's own gate could only see metadata. Run-scoped like
+  // includeHonoRoutes — the page asks "is this surface in the run?", never "does it
+  // land in my target?".
+  const includeUiTier = runEmitsUiTier(config.generators);
 
   // §A6 — same auto-detection for the OPT-IN names generator. The entity tier may only
   // REFERENCE `<Entity>Names` when something in this run actually emits it; the names
@@ -493,6 +501,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // this, said nothing — while `meta verify` reported the template "clean". See
   // prompt-generator-gate.ts. Self-extinguishing; warning only.
   warnMissingPromptGenerators(root, config.generators, (m) => warnings.push(m));
+  warnUnmarkedUiGenerators(config.generators, (m) => warnings.push(m));
 
   // <Entity>Names is opt-in on TypeScript and an existing project gets no signal that
   // it exists. Fires ONCE, on the first gen after crossing the release that made it the
@@ -598,6 +607,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         outputLayout: selfTarget.outputLayout,
         includeHonoRoutes,
         includeNames: namesTargets.has(selfTarget.name),
+        includeUiTier,
       },
       renderContext,
       ...(projectRoot !== undefined && { projectRoot }),

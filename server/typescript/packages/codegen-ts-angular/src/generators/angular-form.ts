@@ -33,6 +33,10 @@ export const angularFormFile = function angularFormFile(
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "angular-form",
+    // Marks this generator as part of the CLIENT UI tier — the runner aggregates it
+    // into ctx.config.includeUiTier so `agent/ui.md` describes a tier that this run
+    // actually emits, rather than one the metadata merely permits.
+    emitsUiTier: true,
     // A form is a client of generated WRITE endpoints — no writable source, no form
     // (mirrors codegen-ts-react's formFile; see api-surface.ts). `!isProjection`
     // stays explicit: a read-only view has nothing to submit even where write

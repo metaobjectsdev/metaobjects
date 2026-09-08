@@ -63,6 +63,11 @@ export interface ResolvedGenConfig {
    *  Undefined ⇒ false. Templates read the same fact off `RenderContext.includeNames`,
    *  which the runner sets from this same aggregation. */
   includeNames?: boolean;
+  /** Whether any CLIENT UI generator (form, hook, grid, columns) is active in the
+   *  run — aggregated by the runner from the suite's `emitsUiTier` markers.
+   *  `agent/ui.md` reads this to decide whether a UI tier exists to describe;
+   *  a metadata predicate can only say a UI *could* be generated. Undefined ⇒ false. */
+  includeUiTier?: boolean;
   /**
    * FR-019 / ADR-0026: the module specifier from which an externally-PROVIDED
    * shared enum (`@provided: true` on an abstract package-level `field.enum`) is
@@ -289,13 +294,27 @@ export interface ResolvedDocsConfig {
 /** Merge the config `docs:` block with CLI overrides over documented defaults.
  *  `fallbackLayout` is the project's `outputLayout` so docs default to the same
  *  page placement as codegen when `docs.layout` is unset. */
+/**
+ * Where `meta docs` writes when nothing says otherwise. A SUB-directory on purpose: the
+ * generated pages are MetaObjects' to own and overwrite, and `docs/` as a whole is not.
+ */
+export const DEFAULT_DOCS_DIR = "./docs/generated";
+
 export function resolveDocsConfig(
   block: DocsConfig | undefined,
   cli: Partial<ResolvedDocsConfig>,
   fallbackLayout: OutputLayout,
 ): ResolvedDocsConfig {
   return {
-    outDir: cli.outDir ?? block?.outDir ?? "./docs",
+    // F57 — NOT "./docs". `docs/` is the human documentation folder in most repos: one
+    // estate's held a business-strategy .docx, product screenshots, email drafts and an
+    // analytics roadmap, and a bare `meta docs` scattered 29 generated pages through it
+    // and wanted to own `docs/README.md`. The gate's own design language is right —
+    // "docs.outDir is a directory, not a namespace MetaObjects owns" — and that is
+    // precisely the argument for not defaulting into the most-owned directory name in
+    // the ecosystem. `meta init` scaffolds this key explicitly so a new project's choice
+    // is visible rather than implied.
+    outDir: cli.outDir ?? block?.outDir ?? DEFAULT_DOCS_DIR,
     layout: cli.layout ?? block?.layout ?? fallbackLayout,
     baseUrl: cli.baseUrl ?? block?.baseUrl ?? "",
     // `requirements` defaults ON. Safe ONLY because requirementsFile() emits ZERO

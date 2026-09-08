@@ -622,6 +622,12 @@ const PREFIXED_CONFIG = [
   `  dialect: "sqlite",`,
   `  apiPrefix: "/api",`,
   `  generators: ["entity"],`,
+  // agent/ui.md is gated on the RUN emitting a UI tier, and no UI generator has a stable
+  // NAME (they live in codegen-ts-react / codegen-ts-tanstack, which codegen-ts cannot
+  // depend on) — so a string suite cannot declare one. The config override is the
+  // declared way to say it, and it is also the escape hatch for an owned copy whose name
+  // was changed. What this test is about is the PREFIX on the page, not the gate.
+  `  includeUiTier: true,`,
   `});`,
 ].join("\n");
 
@@ -647,5 +653,40 @@ describe("meta docs --agent — the endpoint is the address the routes actually 
     // Stated in the negative too: an assertion that only looked for the prefixed form
     // would pass just as well for a page carrying BOTH addresses.
     expect(ui).not.toMatch(/`\/authors`/);
+  });
+});
+
+// A generator wired by STABLE NAME carries no marker, and `meta docs` was reading the raw
+// config — so `generators: ["routes-hono"]`, legal under ADR-0021 #1, aggregated to "no
+// Hono routes" and `api-docs` documented the Fastify-only surface for a project that had
+// wired the Hono one. `meta gen` resolves the identical array through `normalizeConfig`.
+// Found while gating agent/ui.md on the same kind of marker.
+describe("meta docs — the generator suite is resolved before its markers are read", () => {
+  const honoConfig = (generators: string) => [
+    `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+    `export default defineConfig({`,
+    `  outDir: "gen",`,
+    `  dialect: "sqlite",`,
+    `  generators: ${generators},`,
+    `});`,
+  ].join("\n");
+
+  async function apiDocsFor(generators: string): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), "meta-docs-hono-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(PREFIXED_META), "utf8");
+    await writeFile(join(root, "metaobjects.config.ts"), honoConfig(generators), "utf8");
+    const out = join(root, "out-docs");
+    expect(await docsCommand([root, "--out", out, "--api"], root)).toBe(0);
+    return await readFile(join(out, "api", "Author.md"), "utf8");
+  }
+
+  test("routes-hono wired BY NAME is documented", async () => {
+    expect(await apiDocsFor(`["entity", "routes-hono"]`)).toContain("[Hono]");
+  });
+
+  test("a suite without it still documents Fastify only — the flag is not stuck on", async () => {
+    expect(await apiDocsFor(`["entity", "routes"]`)).not.toContain("[Hono]");
   });
 });
