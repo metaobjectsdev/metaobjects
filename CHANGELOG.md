@@ -7,6 +7,66 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — the 1.0 upgrade path told adopters to destroy records 1.0 keeps
+
+`verified-by-retirement.md` §2 says, in bold, *"Not 'change its status' — **delete the
+node**"*, for every `@status: abandoned` and `@status: superseded` requirement. That was
+right for `0.24.0`: no status could hold the entry, so the record had nowhere to go and
+version control was the honest answer.
+
+**`0.24.2` reversed it, and the reversal shipped somewhere else.** `@status: retired` became
+the home for exactly those nodes, `@supersededBy` was re-registered as a reference the loader
+resolves, and `meta upgrade --apply` performs the whole rewrite in one determinate pass — but
+in a separate guide, while the original kept its instruction. So `0.x-to-1.0.md`, which is
+what a `0.23.x` adopter actually reads, said in §8B *"Retiring a capability is now DELETION of
+its requirement"* and mentioned the restoration only in a parenthetical at the end of §9. Read
+top to bottom, the entries are gone before the reader reaches the sentence that would have
+saved them. **At least one adopting estate followed it as written and lost ledger entries that
+the release it was upgrading TO would have kept** — the deletion is irreversible, which is why
+this is not a documentation nit.
+
+Both places are corrected in the direction of the reader's actual TARGET rather than the
+release each section is named for: §8B leads with "do NOT delete" and names `meta upgrade
+--apply`; the standalone guide carries a supersession banner above the fold and again at §2;
+its retirement table gains a **"still true at 1.0?"** column, because `@supersededBy`'s row was
+simply false; and §9's parenthetical now says what the additive restore gives BACK, not only
+that it breaks nothing.
+
+**The gate is derived, not a list of guides to watch** (`scripts/check-migration-guides-vs-registry.mjs`,
+wired into the `gates` lane): a retirement table row may not claim a name fails to load while
+`expected-registry.json` — the byte-gated manifest all five ports match, i.e. the authority on
+what is registered *today* — registers it. Proven in both directions before wiring: the shipped
+`@supersededBy` row is in the test as the case that must fire, and the first draft's false
+positives (prose whose `ERR_UNKNOWN_ATTR` belonged to a different attribute two clauses
+earlier) are in there as cases that must not. Its one blind spot is stated in the header rather
+than papered over — the manifest is flat on the attribute axis, so a claim scoped to a single
+type (*"a legacy `@unique` on `identity.secondary`"*) is out of reach. It catches the
+whole-name case, which is the one that came back.
+
+### Changed — the cross-port conformance workflow runs nightly, not only at a cut
+
+`conformance.yml` ran on release tags and `workflow_dispatch` only. The stated reason for that
+— push-to-`main` coverage moved to the self-hosted `local-ci` runner — is sound on SCOPE:
+`local-ci`'s `java-slow` lane runs the same full reactor (`gate_java_reactor`, `mvn clean
+install`), so "the reactor is not run between releases" was never true.
+
+**The gap is ENVIRONMENTAL, and it is measured.** Two Java test defects (fixed in `1c24b8f9d`
+and `cd0158073` — test-only, so they carry no entry of their own here: they ship in no
+package) were both found by the `v1.0.0-rc.5` tag's run of this workflow. The nightly `local-ci` run
+that preceded both fixes reported `java-slow: success` with both defects live on `main`. One
+asserts on an NPE message HotSpot's fast-throw is entitled to stop producing once the path is
+hot; the other is two test classes sharing files with nothing declaring their surefire order.
+JIT heat and filesystem ordering are precisely the defect classes a single environment cannot
+see on its own — and the two runs differ in exactly that: hosted `ubuntu-latest` with jacoco ON
+here, self-hosted with `-Djacoco.skip=true` there. So the second environment existed, and a
+tag-only trigger meant it looked only at a cut, which is the most expensive moment to find out.
+
+Nightly at 04:41 UTC, offset from `local-ci`'s 08:17 so the two full-reactor runs do not
+overlap. Standard runners are free for a public repo; the second look costs wall-clock and
+nothing else. Both live statements of the old trigger set — `AGENTS.md`'s CI paragraph and
+`fixtures/validation-conformance/README.md` — are corrected in the same change, so the workflow
+and its documentation cannot disagree about when it runs.
+
 ### Fixed — `@sortableDefaultOrder` names two doors and only one was open, in every port
 
 `0.25.0` finished this attribute's read side at the HTTP boundary: `?sort=field` with no
