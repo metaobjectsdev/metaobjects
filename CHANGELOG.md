@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `verify --docs` skipped a page and said nothing about it
+
+`--docs` tests BOTH halves against `.gitignore` — the pages a fresh `meta docs` emits, and the
+committed orphans a fresh run no longer emits — and drops an ignored page from either. But the
+line reporting how much was skipped, *"N git-ignored page(s) not checked"*, counted only the
+fresh half.
+
+So a stale generated page under an ignored path was skipped and never mentioned — and in the
+shape that actually occurs (no *fresh* page ignored) the count was `0`, and that clause prints
+only when the count is positive, so **the line did not print at all**. The run was clean and
+silent about a file it had decided not to look at. This is the `verify --templates` denominator
+mistake of `0.24.4` in miniature, and the orphan loop ten lines below carries a comment saying
+exactly that: the two halves have to be consistent about the same set.
+
+The test is the real-world shape rather than a contrivance — git never reports a TRACKED path
+as ignored, so the only way to reach this branch is an untracked leftover generated page on a
+machine that has run `meta docs`. It asserts both directions: the run stays clean, because an
+ignored page genuinely is not drift, AND the skip is now reported. Proven by reverting the fix.
+
 ### Fixed — four release scripts derived the Maven coordinate and two were wrong
 
 ADR-0035's decoupled cut fixes the JVM major at **`npm major + 7`**, so `1.0.0` on
