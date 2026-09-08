@@ -10,7 +10,7 @@
 //
 //   node scripts/test-metamodel-version.mjs
 
-import { classify, requiredBump, satisfies, parseVersion } from "./check-metamodel-version.mjs";
+import { classify, requiredBump, satisfies, parseVersion, pickBaselineTag } from "./check-metamodel-version.mjs";
 
 let fails = 0;
 const ok = (m) => console.log(`ok:   ${m}`);
@@ -334,6 +334,37 @@ if (sat("minor", "2.0", "1.9")) bad("2.0 → 1.9 is a REGRESSION across majors a
 else ok("2.0 → 1.9 is a REGRESSION across majors and must not satisfy");
 if (!sat("minor", "1.9", "2.0")) bad("1.9 → 2.0 moves forward across a major and satisfies a minor");
 else ok("1.9 → 2.0 moves forward across a major and satisfies a minor");
+
+// ---------------------------------------------------------------------------
+// Baseline tag selection — the gate diffs against the last STABLE release.
+// ---------------------------------------------------------------------------
+// `git tag --sort=version:refname` has no notion of a semver pre-release unless
+// `versionsort.suffix` is configured, so it sorts `v1.0.0-rc.5` ABOVE `v1.0.0`.
+// Measured, not assumed: with four tags in a scratch repo the descending order is
+// v1.0.1, v1.0.0-rc.5, v1.0.0, v0.25.0. An RC tag left in the candidate set would
+// therefore keep winning the baseline after the release it was a candidate FOR had
+// shipped, and this gate would diff the vocabulary against a candidate instead of
+// against what adopters resolve. These feed pickBaselineTag git's own output order.
+const stable = (label, lines, expect) => {
+  const got = pickBaselineTag(lines);
+  if (got !== expect) bad(`${label}: expected ${expect}, got ${got}`);
+  else ok(label);
+};
+stable(
+  "an RC tag sorted above its own release does NOT become the baseline",
+  // exactly git's descending output once v1.0.0 is cut alongside v1.0.0-rc.5
+  ["v1.0.0-rc.5", "v1.0.0", "v0.25.0"],
+  "v1.0.0",
+);
+stable(
+  "with only an RC above it, the last STABLE tag is the baseline",
+  ["v1.0.0-rc.5", "v0.25.0", "v0.24.5"],
+  "v0.25.0",
+);
+stable("a stable-only list is unchanged", ["v0.25.0", "v0.24.5"], "v0.25.0");
+stable("blank lines from git's trailing newline are ignored", ["", "v0.25.0", ""], "v0.25.0");
+stable("an all-pre-release list yields no baseline", ["v1.0.0-rc.5", "v1.0.0-rc.4"], null);
+stable("an empty list yields no baseline", [], null);
 
 console.log(fails === 0 ? "\nmetamodel-version classifier: all checks passed" : `\n${fails} failure(s)`);
 process.exit(fails === 0 ? 0 : 1);

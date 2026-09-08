@@ -276,14 +276,26 @@ function diffChildren(baseKids, curKids, where, breaking, additive) {
 const git = (...args) =>
   execFileSync("git", args, { cwd: REPO, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
-/** The highest published release tag on the npm/PyPI/NuGet line (`v0.*` / `v1.*` …).
- *  The four registries cut together, so any one line dates the metamodel baseline. */
-function lastReleaseTag() {
-  const tags = git("tag", "--list", "v[0-6].*", "--sort=-version:refname")
-    .split("\n")
+/** The highest published STABLE release tag on the npm/PyPI/NuGet line (`v0.*` / `v1.*` …).
+ *  The four registries cut together, so any one line dates the metamodel baseline.
+ *
+ *  Pre-release tags (`v1.0.0-rc.5`) are excluded, and the exclusion is load-bearing:
+ *  `--sort=version:refname` has no notion of a semver pre-release without
+ *  `versionsort.suffix` configured, so it sorts `v1.0.0-rc.5` ABOVE `v1.0.0` — an RC
+ *  tag would keep winning the baseline after the release it was a candidate for
+ *  shipped, and this gate would then diff the vocabulary against a candidate rather
+ *  than against what adopters actually resolve. Derived from the tag string (a semver
+ *  pre-release is exactly "a `-` after the version core"), never a list of RC names. */
+export function pickBaselineTag(tagLines) {
+  const tags = tagLines
     .map((t) => t.trim())
-    .filter(Boolean);
+    .filter((t) => t && !t.includes("-"));
   return tags[0] ?? null;
+}
+
+function lastReleaseTag() {
+  // git already sorted these descending; pickBaselineTag only drops pre-releases.
+  return pickBaselineTag(git("tag", "--list", "v[0-6].*", "--sort=-version:refname").split("\n"));
 }
 
 /**
