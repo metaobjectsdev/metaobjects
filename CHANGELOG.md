@@ -7,6 +7,93 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### BREAKING — the default provider composition registered vocabulary no other port has
+
+`forgeTypesProvider` leaves `defaultLoadMemoryProviders` and `meta types`. Metadata carrying
+`@forgeConfidence` — or a `decision` / `principle` / `convention` / `glossary` / `failure`
+node — now fails to load unless the project opts the provider in.
+
+That vocabulary was registered in **TypeScript and nowhere else**: no C#, Python, Java or
+Kotlin registry declares a line of it, and `expected-registry.json` — the manifest all five
+ports byte-match — carries none of it, so the cross-port gate never had jurisdiction over
+any of it. One document therefore had **two verdicts depending on which toolchain read it**,
+which is precisely the defect the `0.25.0` breaking slot was spent on, and 1.0 would have
+frozen it into a permanent public surface. Found by an adopter estate running the RC, in a
+project carrying nine such nodes. **`metamodelVersion` does not move** — none of this was
+ever in the manifest, so the covered contract is unchanged; what changed is which door
+agrees with it.
+
+The provider is still exported and unchanged: `loadMemory(root, { providers:
+[forgeTypesProvider] })` is the chartered ADR-0023 opt-in, and a project taking it knows it
+has a surface the other four ports do not. `meta upgrade --apply` strips the attributes.
+Migration: [`0.x-to-1.0.md` §12](docs/features/migrations/0.x-to-1.0.md).
+
+**The gate closes the door, not the instance.** `metadata`'s registry-conformance test pins
+the canonical against `coreProviders` — but the door adopters actually use composed
+something else, so the gate was asserting about a provider list that was not the one in
+force. A new sdk test asks the DEFAULT composition the same question, and is proved
+non-vacuous with the provider that escaped it. The repo's own fixture was part of how this
+stayed invisible: `trainer-website-meta` carried a `decision.global` node and eight
+`@forge*` attrs, so the CLI suite exercised TS-only vocabulary on the default path.
+
+Also removed from `@metaobjectsdev/sdk`: the forge memory record schemas (`RecordCore`,
+`DecisionRecord`, …) and their file storage layer (`readRecord` / `writeRecord` /
+`listRecords` / `promoteRecord` / `supersede` / …). Nothing in the library imported either,
+and a sweep of all seven adopter estates found no use of any of the fifteen names.
+
+### Fixed — a hand-edited `<Entity>Names` read as "in sync with the metadata"
+
+Hand-edit a generated `Subscriber.names.ts` so a column reads `first_name_BROKEN` and
+`meta verify --codegen` exited **0**, saying *"generated output is in sync with the
+metadata"* — over a file contradicting the model, in the one artifact whose entire purpose
+is that a physical name is spelled once per run and referenced everywhere else. Found by an
+adopter estate doing what its brief said: breaking the gate to see whether it convicts.
+
+**RULED: a names artifact must match a fresh regen exactly.** If you want a constant of your
+own, put it in a file of your own. The `0.24.3` hand-edit exemption is otherwise untouched
+and remains right — it exists because `meta gen` MERGES an edit and reports `merged`, so
+convicting it printed a remedy that could not work. A names artifact is not that shape:
+every value is a string, so no compiler sees a wrong one, nothing reads it in a test, and an
+edit inside it silently renames a column for every consumer.
+
+Two smaller claims in the same area were false and are corrected: the success line now says
+what it CHECKED (*"every file's generated contribution is current"*) rather than the stronger
+property it had not verified, and `--codegen`'s `--help` no longer describes the pre-`0.24.3`
+gate it replaced. `.names.ts` is now one exported constant the emitter, the ejectable
+reference template and the gate all spell from — three literals would have been three
+chances for the gate to stop finding the artifact it protects, silently. An adopter who owns
+the generator and renames the artifact opts out; that is stated in the reference template
+rather than hidden.
+
+### Fixed — the one `@expr` spelling a human writes was the one that drifted
+
+`pg_get_expr` re-emits every operator SPACED and appends casts, so an index authored as
+`(request_context->>'device_id')` reads back as `((request_context ->> 'device_id'::text))`.
+The comparator already canonicalized the casts and the redundant parens — measured across
+five spellings against a live engine, three reconciling and two not — so the ONE surviving
+difference was the whitespace around the operator, and it was the one difference a person
+actually produces. `verify --db` reported drift and `migrate` proposed **DROP + CREATE
+against an index the database already held**, declared exactly as it stood. Found by an
+adopter estate running the RC: its own README said to retire a hand-written index adjunct
+"the moment #342 ships", and following that instruction proposed a DROP against a live
+production index.
+
+Whitespace around a symbolic operator run now collapses, outside single-quoted literals, in
+the pass that already did that for commas. Safe on the stronger ground the comparator now
+needs: it is not semantic in ANY valid SQL — where two spellings differ only there, at most
+one parses, because Postgres lexes a maximal run of operator characters as a single token.
+Only SYMBOLIC operators, so `AND` / `OR` / `IN` / `IS NULL` keep their separators. Derived
+from Postgres' operator CHARACTER SET rather than a list of operators, so `->>`, `!~*`,
+`@>`, `?|` and anything user-defined normalize by one rule.
+
+The file's header claimed the canonicalizer was safe because "every check expression we emit
+is machine-derived … there is no arbitrary author SQL to mis-normalize" — which stopped
+being true when `index.lookup`'s `@expr` and `@where` began using it. It now justifies each
+rewrite on the ground it actually needs. Gated against a real engine, per this package's
+doctrine: the test asserts that PG really does re-emit the expression spaced and cast (so a
+future PG rendering it differently fails there rather than making the suite vacuous), diffs
+all five spellings to empty, and proves the gate can still convict a genuinely different key.
+
 ### Fixed — `verify --docs` skipped a page and said nothing about it
 
 `--docs` tests BOTH halves against `.gitignore` — the pages a fresh `meta docs` emits, and the
