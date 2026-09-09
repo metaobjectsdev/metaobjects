@@ -36,7 +36,7 @@ in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 **Where the versions are.** `latest` on every registry is **`0.25.0`** (npm / PyPI / NuGet) ·
 **`7.25.0`** (Maven Central, aligned `minor.patch` on its historical major `7` — the Maven
-major is always **npm major + 7**). The **`1.0.0-rc.5`** release candidate is published on all
+major is always **npm major + 7**). The **`1.0.0-rc.6`** release candidate is published on all
 four, on npm's `next` tag. `metamodelVersion` on `main` reads **`1.0`**: C4's freeze has
 landed. Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does not
 duplicate it.
