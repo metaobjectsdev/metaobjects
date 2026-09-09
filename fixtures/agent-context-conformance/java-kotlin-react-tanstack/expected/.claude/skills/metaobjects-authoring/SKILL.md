@@ -85,10 +85,19 @@ what you're modeling? If yes, you are in adoption mode and these rules apply.
 **Author metadata to match what the code ALREADY IS — not what you'd design fresh.**
 Read the existing code and schema *first*, then model to reproduce them:
 - The **native types the code uses** are the spec — model `field.uuid` when the code
-  uses `UUID`, `field.decimal` when it uses `BigDecimal`, etc. Do **not** pick a
-  metadata shape whose generated type differs from the type already in use (that is the
-  exact mistake that turned a `UUID` column into a `String` and forced coercions across
-  hundreds of fields — see the UUID rule below).
+  uses `UUID`, `field.decimal` when it uses `BigDecimal`, etc. **That rule does not stop
+  at scalars: the signature of the function that WRITES a JSON column is the spec for
+  that column too.** `list[str]` is the element subtype + `isArray`; a dataclass / DTO /
+  record is an `object.value` behind `field.object @storage: jsonb`; `dict[str, X]` with
+  a known `X` is `field.map`; only a `dict[str, Any]` that no reader narrows is the
+  `field.string` + `@dbColumnType: jsonb` bag (ladder under "A JSON column" below).
+  Reproducing the *column* (jsonb) while discarding the *type the code already declares*
+  is the `UUID`-as-`String` mistake in another coat — invisible to `verify --db`, paid on
+  every read as a cast, and it satisfies "change the least existing code" only because
+  the cast is already there. Do **not** pick a metadata shape whose generated type
+  differs from the type already in use (that is the exact mistake that turned a `UUID`
+  column into a `String` and forced coercions across hundreds of fields — see the UUID
+  rule below).
 - The existing **column names, table names, nullability, and field shapes** are the
   spec — carry them over (`@column`, `@table`, `@required`, `@maxLength`) so the
   generated schema matches the live one and `verify --db` is clean.
@@ -228,7 +237,7 @@ name   package   extends   abstract   overlay   isArray   children   value
 | `field.enum` | string member | `@values` required; see Enum below |
 | `field.uuid` | UUID | canonical lowercase hex on the wire |
 | `field.object` | embedded value object | `@objectRef` + `@storage`; see below |
-| `field.map` | open-keyed map | one jsonb column; string keys; `@valueType` (scalar subtype) XOR `@objectRef` (value object); `isArray` does not apply |
+| `field.map` | dynamic keys over a TYPED value | one jsonb column; string keys; exactly one of `@valueType` (scalar) / `@objectRef` (value object); `isArray` does not apply. The typed form of "a dict column" — NOT the open bag (see "A JSON column") |
 
 Common field attributes: `@required`, `@maxLength`, `@column` (physical column
 name), `@default`, `@filterable`, `@sortable`. On temporal fields
@@ -331,7 +340,8 @@ Canonical form for common field needs — reach for these before inventing anyth
 | A list of anything | `isArray: true` | on the base subtype (e.g. `field.string` + `isArray`) — there is **no** array `@dbColumnType` (retired) |
 | Long / unbounded text | bare `field.string` | add `@maxLength` only when you want `varchar(N)` |
 | Nested structured value | `field.object` | `@objectRef` + `@storage` |
-| Open JSON bag (no fixed shape) | `field.string` + `@dbColumnType: jsonb` | logical type stays string; column is jsonb |
+| Dynamic keys over a known value type | `field.map` | `@objectRef` or `@valueType` |
+| Open JSON, no reader narrows it | `field.string` + `@dbColumnType: jsonb` | the LAST rung — see "A JSON column" |
 | URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; strict absolute-URI validation (add `@lenient: true` to store any string) — a real native type + behavior, so a subtype (not a validated string) |
 | IP address | `field.inet` | native IP type; Postgres `inet` column; strict IPv4/IPv6-literal validation (add `@lenient: true` for a plain-string `text` column) |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
@@ -520,15 +530,61 @@ generated Postgres column is typed `.$type<VO[]>()` and the Zod schema is
     "@storage": "jsonb", "isArray": true } }
 ```
 
-**Opaque jsonb (no value object)** — when the payload has no fixed shape (freeform
-config, passthrough metadata, an open-keyed map), do NOT use `field.object` (it
-requires `@objectRef`, and a partial VO would let the generated Zod strip unknown
-keys → data loss). Model it as a `field.string` with the physical-type override
-`@dbColumnType: jsonb` — the logical type stays string-bound, the column is jsonb:
+### A JSON column — choose the rung by the type the WRITER already declares
+
+**"Add a jsonb column and cast on read" is the ORM-tutorial reflex, and it is the one column
+shape this metamodel exists to replace.** Every other subtype binds a native type in five
+languages; `field.string` + `@dbColumnType: jsonb` binds `unknown` / `Any` / `Object` — so every
+reader casts, the keys live in N call sites instead of one declaration, and no gate can see it
+(`verify --db` sees a jsonb column that matches; `--codegen` sees output that is correct for a
+bag). **The cast you write on read is the shape you declined to declare.**
+
+**The test is mechanical and language-agnostic: read the signature of the function that WRITES
+the column.** It already names the type — that is the metadata. Take the first rung that fits:
+
+| The writer's type | Author it as | What comes back |
+|---|---|---|
+| `list[str]` / `string[]` / `List<X>` — plural name, typed elements | the element subtype + `isArray: true` | a native array — **never** a bag holding a list |
+| a dataclass / DTO / record / `@Serializable` class — a fixed key set | an **`object.value`** (no identity, no source), then `field.object` + `@objectRef` + `@storage: jsonb` (`isArray: true` for a list of them) | the VO's own type: `.$type<VO>()` + its Zod schema, the Pydantic model (`<VO>Create` on the wire), a Jackson-coded Exposed column, an EF owned type — gated in all five ports |
+| `dict[str, X]` / `Record<string, X>` / `Map<String, X>` — dynamic keys, KNOWN value type | **`field.map`** + `@objectRef` (a value object) or `@valueType` (a scalar) | `Record<string, X>` + `z.record(...)` (TS), `dict[str, X]` (Python), `Map<String, X>` over a Jackson jsonb codec (Kotlin). **Java and C# do not complete this rung — see below** |
+| `dict[str, Any]` / `JsonNode` / `unknown`, and no reader pins a key | `field.string` + `@dbColumnType: jsonb` | the parsed value, untyped — the deliberate escape hatch |
+
+Only the last row is an open bag, and there it is correct: a pass-through payload, a raw
+third-party or LLM response stored verbatim, a column whose shape genuinely differs per row.
+**The bag is wrong exactly when the code already knows the shape.** A `*Json`-suffixed name
+(`configJson`, `definitionJson`) is admitting there is one. A plural name over a bag (`scopes`,
+`participantEmails`) is a list nobody declared. A writer typed `dict[str, Preference]` whose
+`Preference` is already an `object.value` in the same repo is one line from the typed rung.
 
 ```json
-{ "field.string": { "name": "metadata", "@dbColumnType": "jsonb" } }
+{ "field.string": { "name": "relatedMemoryIds", "isArray": true } }                                // writer: list[str]
+{ "field.object": { "name": "profile", "@objectRef": "InstructorProfile", "@storage": "jsonb" } }  // writer: a dataclass
+{ "field.map":    { "name": "preferences", "@objectRef": "Preference" } }                          // writer: dict[str, Preference]
+{ "field.map":    { "name": "vectorScores", "@valueType": "double" } }                             // writer: dict[str, float]
+{ "field.string": { "name": "rawResponse", "@dbColumnType": "jsonb" } }                            // writer: dict[str, Any], nothing pinned
 ```
+
+Two things that read as reasons to take the bag, and are not:
+
+- **"There is no value object for it."** Declaring one IS the work — an `object.value` carrying
+  the members the writer's class has, a few lines beside the entity. `field.object` *requires*
+  `@objectRef` precisely so a shape cannot be half-declared; the loader's pointer at
+  `@dbColumnType: jsonb` on that error is for the genuinely open case, not the missing-VO case.
+- **"A partial VO would strip unknown keys."** Only if the VO is partial — declare the keys the
+  writer sends. A genuinely unbounded key set over a typed value is the `field.map` row, still
+  not the bag.
+
+**Port coverage, stated plainly.** The `isArray` and `object.value` rungs round-trip on every
+port through the persistence and api-contract corpora. `field.map` emits the typed handle in
+TypeScript, Python and Kotlin; on **Java** the Spring DTO type mapper has no `MapField` arm and
+a mapped field reaches its `unsupported Spring DTO type mapping` throw, and on **C#** the
+property is emitted but the EF model gets no column mapping. **No persistence- or
+api-contract-conformance fixture exercises `field.map` on any port — it is loader-gated only.**
+So on Java/C# a stable-keyed map is better declared as a value object, and a genuinely dynamic
+one stays a bag until the gap closes. Every rung but the first keeps the column jsonb, so moving
+a column up the ladder is a codegen/contract change rather than a migration — read the emitted
+DDL before promising that.
+
 
 ## YAML sigil-free authoring + the coercion footgun
 
