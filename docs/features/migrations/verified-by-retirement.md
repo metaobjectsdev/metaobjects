@@ -25,8 +25,13 @@
 | `@status: superseded` | `ERR_BAD_ATTR_VALUE` | yes — same: it moves to `@status: retired` |
 
 Under the strict, sealed registry (ADR-0023) there is no deprecation shim — metadata still
-carrying any of them fails the **load**, in every language port. `@status` is now a closed set
-of three: **`planned | live | partial`**.
+carrying any of them fails the **load**, in every language port. `@status` became a closed set
+of three here: **`planned | live | partial`**.
+
+> **Superseded in `0.24.2`.** FR-039 gave `@status` a fourth member, `retired`, and registered
+> `@supersededBy` again as a resolved reference — as the table above already records. Read
+> [`retired-status-restore.md`](retired-status-restore.md) for the current enum; this page
+> describes the `0.24.0` step only.
 
 ## The rule behind all four
 
