@@ -275,9 +275,14 @@ subtypes with opposite polarity: `requirement.functional` fails when NOTHING imp
 - **Open JSON bag vs a shape the readers already know (drift signature 12).** `field.string`
   + `@dbColumnType: jsonb` is the SANCTIONED untyped-column escape hatch (emits `unknown`,
   gated by `fixtures/api-contract-conformance/jsonb/`) — never a finding on sight. It is a
-  finding only when the consuming code pins a FIXED KEY SET: raw-SQL `->>'key'` reads, casts
-  to a concrete type, destructuring, a hand validator over the parsed value. Then the shape
-  exists and is declared in N readers instead of once. Remedy: an `object.value` +
+  finding only when the code knows the shape. **Check the WRITER first** — the function writing
+  the column declares the type (`related_memory_ids: list[str]`, `vector_scores: list[float]`, a
+  serialized DTO); a reader-only hunt under-counts badly, because raw-SQL JSON paths are the
+  rarest way to consume jsonb. Reader tells second: fixed-key `->>'key'` reads, casts, typed
+  parsing (`model_validate` / `readValue` / `decodeFromString`), a hand validator. **Commonest
+  sub-case, and mechanical: a writer typed `list[str]` / `string[]` / `List<X>` means the base
+  subtype + `isArray: true`, never an object and never an open bag** — a plural name plus a typed
+  collection is the whole test. A `*Json` suffix is a second free tell. Remedy: an `object.value` +
   `field.object` `@objectRef` `@storage: jsonb` — the column stays jsonb. Not a finding for a
   pass-through bag, a third-party/LLM raw response, or an array of scalars (`isArray`).
 
