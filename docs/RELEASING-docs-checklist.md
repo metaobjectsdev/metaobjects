@@ -6,8 +6,11 @@ live in three repos** and drift independently — a version bump is not "done" u
 this whole list is walked.
 
 Companion to [`RELEASING.md`](RELEASING.md) (npm/TS) and
-[`RELEASING-java.md`](RELEASING-java.md) (Maven Central). Version lines: npm / NuGet /
-PyPI track the `0.x` line; Maven Central (Java + Kotlin) tracks the `7.x` line.
+[`RELEASING-java.md`](RELEASING-java.md) (Maven Central). Two version lines, one release:
+npm / NuGet / PyPI carry the shared number (`1.0.0` at the 1.0 cut) and Maven Central
+carries the same `minor.patch` on **npm major + 7** (`8.0.0`). Do not hardcode either
+major anywhere — the previous `0.x` / `7.x` spelling of this sentence outlived its truth
+by exactly one release.
 
 > **Tip:** the fastest way to not miss anything is to grep the *previous* version
 > across each repo (see [Quick scan](#quick-scan)) — this list is the map, the grep
@@ -46,13 +49,29 @@ PyPI track the `0.x` line; Maven Central (Java + Kotlin) tracks the `7.x` line.
 
 ### `metaobjectsdev/metaobjectsdev.github.io` → **metaobjects.dev** (GitHub Pages, content under `www/`)
 
-- [ ] `www/llms.txt` — **mirror of this repo's `docs/llms/llms.txt`, maintained
-      separately — keep the two in sync.** Same touch-points: "Shipping at …",
-      `## Implementations (…)`, per-port lines, install snippets.
-- [ ] `www/llms-full.txt` — mirror of this repo's `docs/llms/llms-full.txt`.
-- [ ] `www/index.html` — the per-port status badges + descriptions
-      (`npm 0.x · reference`, `Maven Central 7.x`, `NuGet 0.x`, `PyPI 0.x`).
+**Nothing on this list is a version edit any more, and that is the point** — every
+version-bearing byte the site serves is copied or injected at deploy time from THIS repo,
+pinned to the newest npm-line release tag. What the release owes the site is a **push**,
+not an edit. Confirm rather than change:
+
+- [ ] `www/llms.txt` / `www/llms-full.txt` — **gitignored there**, copied from this repo's
+      `docs/llms/` at deploy. Fix them here (§A), never in the site repo.
+- [ ] `www/assess.md` — **gitignored there**, copied from this repo's
+      `agent-context/skills/metaobjects-fit-assessment/SKILL.md` (its body, from the first
+      top-level heading) at deploy. Fix it here.
+- [ ] `www/index.html` and every other page — the four registry coordinates plus
+      `metamodel` are injected into any element carrying `data-registry="…"` from
+      `examples/showcase/site-payload.json`. The numbers in the committed HTML are
+      placeholders; editing them changes nothing that ships.
+- [ ] **The tag pin resolves to the release you just cut.** `deploy.yml` walks the release
+      tags newest-first and takes the one whose `server/typescript/packages/cli/package.json`
+      is versioned as the tag — that is what identifies the npm line, since the legacy
+      JVM-only `v7.x` tags still sort above it. Read the `pinned to metaobjects vX.Y.Z` line
+      in the deploy log; a wrong pin publishes a stale site with every step green.
+- [ ] Preview exactly what a deploy would render, without touching the site checkout:
+      `bun run site:preview --site <site-repo>/www --strict`.
 - Deploys automatically via `.github/workflows/deploy.yml` on push to the default branch.
+  **A push IS a deploy** — there is no staging.
 
 ### `metaobjectsdev/metaobjects.com` → **metaobjects.com** (Eleventy → Cloudflare Pages)
 
@@ -66,12 +85,16 @@ PyPI track the `0.x` line; Maven Central (Java + Kotlin) tracks the `7.x` line.
 From the release branch, grep the *previous* version to catch anything this list misses:
 
 ```bash
-# this repo (metaobjects)
+# this repo (metaobjects) — the only repo where a version is hand-written
 grep -rn "<previous-npm-version>\|<previous-maven-version>" README.md CHANGELOG.md CLAUDE.md docs/
 
-# the metaobjects.dev site repo (sibling checkout)
-grep -rn "<previous-npm-version>\|<previous-maven-version>" www/
+# the coordinates the site will serve — one file, five values
+jq .registries examples/showcase/site-payload.json
 ```
 
 Any hit outside `CHANGELOG.md` / historical `docs/superpowers/**` / `spec/decisions/**`
 (which intentionally preserve old versions) is a doc that still needs revising.
+
+**Do not grep the site repo's `www/`.** Its version numbers are placeholders and its
+mirrors are gitignored build output, so that grep reports hits nobody should fix and
+misses the one thing that can actually be wrong — which release tag the deploy pins to.

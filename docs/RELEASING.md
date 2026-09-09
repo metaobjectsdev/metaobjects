@@ -518,7 +518,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.25.0`):
+Four packages, version-locked at the C# port version (currently `1.0.0`):
 
 | Package | Contents |
 |---|---|
@@ -610,7 +610,7 @@ How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publis
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `0.25.0`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `1.0.0`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: Trusted Publishing (OIDC)
 
@@ -666,8 +666,8 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on its own major line — npm major + 7, so `7.x` while npm is `0.x` and `8.x` from the
-1.0 cut (currently `7.25.0`) — in the parent + module poms. Signed with the maintainer's GPG key.
+versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` and `8.x` from the
+1.0 cut (currently `8.0.0`) — in the parent + module poms. Signed with the maintainer's GPG key.
 
 ## Procedure
 
@@ -709,8 +709,8 @@ versioned on its own major line — npm major + 7, so `7.x` while npm is `0.x` a
 > ≥`0.7.0` to stop the crash on the next release.
 
 **The `minor.patch` is CONVERGENT across languages, not lockstepped** (standing policy since
-0.25.0): npm, PyPI and NuGet use `0.<m>.<p>` and Maven Central the same `minor.patch` on its
-historical major `7` — but a registry only takes a number when it actually publishes. A port with
+0.25.0): npm, PyPI and NuGet share one `major.minor.patch` and Maven Central takes the same
+`minor.patch` on **npm major + 7** — but a registry only takes a number when it actually publishes. A port with
 no changed product file sits the release out and keeps its current version; the next time it ships,
 it adopts whatever `minor.patch` is current and skips the gap.
 
