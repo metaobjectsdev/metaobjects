@@ -367,3 +367,30 @@ describe("scanSourceForAntiPatterns — project-declared ignore globs", () => {
     }
   });
 });
+
+describe("build output is not authored source", () => {
+  const REDUCE = "const avg = ratings.reduce((acc, r) => acc + r.value, 0) / ratings.length;";
+
+  test("a bundle is not scanned, however small", () => {
+    // The existing 512KB gate is about COST — a 300KB minified file passes it and is just
+    // as unfixable, because the fix belongs in the source it was built from. Same rule the
+    // base-URL advisory applies, from the same module. Found on an estate whose build
+    // output is `public/`, a directory name no ignore list guesses.
+    const root = scaffold({ "public/main.js": `var a=1;${"b".repeat(6000)}\n${REDUCE}\n` });
+    try {
+      expect(scanSourceForAntiPatterns(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("…and the same line in real source still IS reported", () => {
+    // Non-vacuous: identical content, minus the bundling.
+    const root = scaffold({ "public/main.js": `var a=1;\n${REDUCE}\n` });
+    try {
+      expect(scanSourceForAntiPatterns(root).length).toBeGreaterThan(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

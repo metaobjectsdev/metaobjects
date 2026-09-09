@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { relPosix } from "./rel-posix.js";
+import { looksBundled } from "./authored-source.js";
 
 /**
  * F52 — a provider mounted with no `baseUrl` on a project whose `apiPrefix` is not empty.
@@ -155,6 +156,10 @@ function walk(dir: string, root: string, acc: BaseUrlFinding[], apiPrefix: strin
     let src: string;
     try { src = readFileSync(abs, "utf8"); } catch { continue; }
     if (!src.includes("EntityFetcher")) continue;
+    // A bundle is not authored source: the fix belongs in the file it was built FROM, and
+    // an estate whose output directory is `public/` proved that no ignore list guesses the
+    // name. See lib/authored-source.ts.
+    if (looksBundled(src)) continue;
     acc.push(...scanFile(relPosix(root, abs), src, apiPrefix));
   }
 }

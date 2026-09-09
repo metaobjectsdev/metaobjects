@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — both advisory scanners reported findings inside BUILD OUTPUT
+
+`meta verify` on an adopter estate reported
+`public/main.js:243 — <EntityFetcherProvider> is mounted with no baseUrl` while the source
+it was built from, `client/src/main.tsx:26`, passes `baseUrl="/api"` correctly. The finding
+named a 711KB bundle: a file nobody edits, pointing away from the fix, on a project that had
+already done the right thing — and it was the FIRST line of the advisory, spending the
+scanner's whole false-positive budget on a project doing nothing wrong.
+
+The ignore lists could not have caught it. They name `dist`, `build`, `out`, `.next`,
+`.output` — and this project builds to `public/`. So the rule is a property of the ARTIFACT
+instead: `looksBundled()` (new, `lib/authored-source.ts`) treats a file with any line of
+5,000+ characters as build output, an order of magnitude above the longest line a human
+writes and an order below what minification produces. Both scanners apply it — the base-URL
+advisory, which had no size guard at all, and the anti-pattern pass, whose existing 512KB
+gate is about scan COST and lets a 300KB minified bundle straight through.
+
+The two scanners keep their own walkers (they diverge deliberately); what they now share is
+the one judgment about what counts as authored source.
+
+
 ### Fixed — `meta upgrade` printed one retirement's rationale once per OCCURRENCE
 
 An adopter estate carrying 24 `@forge*` attributes got ~96 lines of output for one

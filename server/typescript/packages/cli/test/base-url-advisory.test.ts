@@ -158,3 +158,25 @@ describe("scanForMissingBaseUrl — what is code and what is not", () => {
     expect(scanForMissingBaseUrl(root, "/api")).toHaveLength(1);
   });
 });
+
+describe("build output is not authored source", () => {
+  test("a bundle carrying the provider is not reported", async () => {
+    // Found on an estate whose build output is `public/` — a directory no ignore list
+    // guesses. `meta verify` named `public/main.js:243` while the SOURCE,
+    // `client/src/main.tsx`, passes baseUrl correctly: a finding in a file nobody edits,
+    // pointing away from the fix, on a project that had already done the right thing.
+    const root = await project({
+      "client/src/main.tsx": `<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">`,
+      "public/main.js": `var a=1;${"b".repeat(6000)}\n<EntityFetcherProvider fetcher={f}>\n`,
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toEqual([]);
+  });
+
+  test("…and the same provider in real source still IS reported", async () => {
+    // The gate has to stay non-vacuous: it is the same file content, minus the bundling.
+    const root = await project({
+      "public/main.js": `var a=1;\n<EntityFetcherProvider fetcher={f}>\n`,
+    });
+    expect(scanForMissingBaseUrl(root, "/api")).toHaveLength(1);
+  });
+});

@@ -18,6 +18,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { relPosix } from "./rel-posix.js";
+import { looksBundled } from "./authored-source.js";
 
 export interface AntiPatternFinding {
   file: string; // path relative to the scan root (posix-ish, sep-normalized)
@@ -259,6 +260,10 @@ function walk(dir: string, root: string, ignore: readonly RegExp[], acc: AntiPat
     }
     // Skip MetaObjects-generated output — it legitimately contains AVG/CHECK etc.
     if (text.slice(0, 600).includes(GENERATED_MARKER)) continue;
+    // …and skip a BUNDLE, which is nobody's source. The 512KB gate above is about cost, not
+    // authorship: a 300KB minified file passes it while being just as unfixable. Same rule
+    // the base-URL advisory applies, from the same module. See lib/authored-source.ts.
+    if (looksBundled(text)) continue;
     const isSql = e.name.endsWith(".sql");
     const lines = text.split("\n");
     for (let i = 0; i < lines.length; i++) {
