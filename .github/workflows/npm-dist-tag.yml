@@ -1,0 +1,73 @@
+# Retire (or repoint) a dist-tag across the whole lockstep npm set.
+#
+# WHY THIS EXISTS. A dist-tag left pointing at a superseded prerelease is a live install
+# path: `npm i @metaobjectsdev/cli@next` served 1.0.0-rc.8 for as long as `next` outlived
+# the 1.0.0 cut. Removing it by hand is 14 registry calls, and the maintainer's LOCAL
+# granular token cannot make them — it 403s on `dist-tag rm` for every package and on
+# `npm profile get`, and passing `--otp` does not change the error, so the registry is not
+# asking for a second factor: that token simply lacks the right. The CI `NPM_TOKEN` is the
+# one that publishes, so it is the one that can retag. Running it here also means no token
+# ever has to be pasted onto a laptop.
+#
+# The set and its order come from scripts/publish-set.mjs — the single source of truth for
+# WHICH packages a release touches (CLAUDE.md: never hardcode the publish set; a new
+# publish path must read it too). Written to a file first so a non-zero exit fails the step
+# rather than yielding a silently short list.
+name: npm dist-tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'dist-tag to operate on (e.g. next)'
+        required: true
+        default: 'next'
+      action:
+        description: 'rm = remove the tag; ls = report only (no writes)'
+        required: true
+        default: 'ls'
+        type: choice
+        options: [ls, rm]
+
+jobs:
+  dist-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: ${{ inputs.action }} '${{ inputs.tag }}' across the lockstep set
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          trap 'rm -f ~/.npmrc' EXIT
+
+          node scripts/publish-set.mjs > "${RUNNER_TEMP}/set.txt"
+          test -s "${RUNNER_TEMP}/set.txt"
+
+          fail=0
+          while read -r dir; do
+            name=$(node -p "require('./${dir}/package.json').name")
+            if [ "$ACTION" = "ls" ]; then
+              printf '%-42s %s\n' "$name" "$(npm dist-tag ls "$name" | tr '\n' ' ')"
+            else
+              # A tag that is already absent is the desired end state, not a failure.
+              if npm dist-tag ls "$name" | grep -q "^${TAG}:"; then
+                npm dist-tag rm "$name" "$TAG" && echo "  ✓ $name — removed '$TAG'" || { echo "  ✗ $name"; fail=1; }
+              else
+                echo "  · $name — no '$TAG' tag, nothing to do"
+              fi
+            fi
+          done < "${RUNNER_TEMP}/set.txt"
+
+          # Report every failure before exiting, so one run names them all.
+          exit "$fail"
