@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a failed D1 introspection named a WARNING as its cause
+
+`meta verify --db` / `meta migrate` against a live D1 shell out to
+`wrangler d1 execute … --json`, and **`--json` puts wrangler's error on STDOUT** while
+stderr carries only warnings. The runner reported stderr alone, so an estate whose
+`wrangler.toml` uses an `unsafe` field was told its production schema gate failed
+because *"`unsafe` fields are experimental and may change or break at any time"* — a
+warning, printed as the cause of a failure, with the real one (`In a non-interactive
+environment, it's necessary to set a CLOUDFLARE_API_TOKEN…`) discarded unread.
+
+The reason is now chosen by `wranglerFailureReason`: wrangler's structured error
+(`{error:{text}}`, `{error}`, or the `[{success:false,error}]` execute envelope) first,
+then stderr, then raw stdout, then the process's own message. Stderr is still consulted —
+a genuine wrangler failure that never reaches stdout must not be swallowed to fix the
+opposite mistake.
+
+Found by running an adopter estate's own `verify:prod-schema` script against production
+for the first time. It is the one declared gate no estate pass had ever exercised, and it
+was wrong on its first run.
+
+
 ### `meta gen --baseline=adopt` — the first run a pre-manifest project can actually perform
 
 The no-manifest refusal LED with *"ONE-TIME FIX: commit

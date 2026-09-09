@@ -24,8 +24,56 @@ export function buildWranglerExecuteArgs(opts: WranglerExecuteOptions): string[]
 }
 
 /**
- * Run wrangler with the given args; return stdout. Stderr is included in the
- * error message when wrangler exits non-zero. `cwd` is the directory wrangler
+ * The reason to report when wrangler exits non-zero.
+ *
+ * **`--json` puts wrangler's error on STDOUT, and warnings on stderr.** This function
+ * exists because the runner used to report stderr alone, so a live D1 gate failing for
+ * want of a `CLOUDFLARE_API_TOKEN` told the adopter its cause was
+ * `▲ [WARNING] … "unsafe" fields are experimental` — a warning, named as the reason a
+ * schema gate failed, with the real cause discarded. Found by running an estate's own
+ * `verify:prod-schema` against production for the first time.
+ *
+ * Order: the structured error wrangler wrote, then stderr, then raw stdout, then the
+ * process's own message. Stderr is still consulted — a genuine wrangler failure that
+ * never reaches stdout must not be swallowed to fix the opposite mistake.
+ */
+export function wranglerFailureReason(
+  stdout: string,
+  stderr: string,
+  fallback: string,
+): string {
+  const structured = structuredWranglerError(stdout);
+  if (structured !== undefined) return structured;
+  const err = stderr.trim();
+  if (err.length > 0) return err;
+  const out = stdout.trim();
+  if (out.length > 0) return out;
+  return fallback;
+}
+
+/** wrangler's two `--json` error shapes: `{error:{text}}` / `{error}` and the
+ *  `[{success:false,error}]` execute envelope. Anything else reads as absent. */
+function structuredWranglerError(stdout: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  const node = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (node === null || typeof node !== "object") return undefined;
+  const { error } = node as { error?: unknown };
+  if (typeof error === "string" && error.trim().length > 0) return error.trim();
+  if (error !== null && typeof error === "object") {
+    const { text } = error as { text?: unknown };
+    if (typeof text === "string" && text.trim().length > 0) return text.trim();
+  }
+  return undefined;
+}
+
+/**
+ * Run wrangler with the given args; return stdout. The failure REASON is chosen by
+ * `wranglerFailureReason` when wrangler exits non-zero. `cwd` is the directory wrangler
  * runs in (defaults to process.cwd() — caller should pass the project root).
  */
 export type WranglerRunner = (args: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>;
@@ -39,8 +87,8 @@ export const defaultWranglerRunner: WranglerRunner = async (args, cwd) => {
     if (e.code === "ENOENT") {
       throw new Error(`wrangler not found on PATH; install it: 'npm i -D wrangler'`);
     }
-    const stderr = e.stderr ?? "";
-    throw new Error(`wrangler ${args.join(" ")} failed: ${stderr || e.message}`);
+    const reason = wranglerFailureReason(e.stdout ?? "", e.stderr ?? "", e.message);
+    throw new Error(`wrangler ${args.join(" ")} failed: ${reason}`);
   }
 };
 
