@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.metaobjects</groupId>
         <artifactId>metaobjects</artifactId>
-        <version>7.25.0</version>
+        <version>8.0.0</version>
     </parent>
   
     <artifactId>metaobjects-codegen-mustache</artifactId>

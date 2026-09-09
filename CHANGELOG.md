@@ -5,6 +5,28 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [1.0.0] — 2026-09-09
+
+**The stable release.** npm / PyPI / NuGet go to `1.0.0`; Maven Central to `8.0.0` (the
+historical major `7` plus one, per ADR-0035 §2's decouple ruling — Maven cannot move
+backwards). `metamodelVersion` freezes at **`1.0`**.
+
+What that promises, and what it does not, is in
+[`docs/compatibility-policy.md`](docs/compatibility-policy.md): the metamodel spine, the CLI,
+the wire format and the scaffold-and-own contract are covered; generated code is yours and
+disposable, so its internals are not. The two version axes stay separate (ADR-0035
+Amendment 2) — `^1.0.0` accepts `1.1.0`, so a release that moves `metamodelVersion` says so
+here.
+
+Upgrading from `0.x` is [`docs/features/migrations/0.x-to-1.0.md`](docs/features/migrations/0.x-to-1.0.md),
+and `meta upgrade --apply` rewrites what a retirement made illegal.
+
+The last open release gate was **G3d** — an adopter estate must run the RELEASE CANDIDATE
+with the drift gate ENFORCED before promote. It is closed: nine maintainer-owned estates ran
+`1.0.0-rc.7`/`rc.8` with their own gates enforced, across all four ports that have adopters
+(TypeScript, Python, Kotlin/JVM, and the D1/Cloudflare and Postgres deployments). What that
+found is in this entry and the ones below it.
+
 ## [Unreleased]
 
 ### Added — `meta verify` advises when a provider still carries the prop 1.0 renamed away

@@ -34,12 +34,12 @@ because a conformance corpus gates the ports against each other and never agains
 in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
-**Where the versions are.** `latest` on every registry is **`0.25.0`** (npm / PyPI / NuGet) ·
-**`7.25.0`** (Maven Central, aligned `minor.patch` on its historical major `7` — the Maven
-major is always **npm major + 7**). The **`1.0.0-rc.6`** release candidate is published on all
-four, on npm's `next` tag. `metamodelVersion` on `main` reads **`1.0`**: C4's freeze has
-landed. Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does not
-duplicate it.
+**Where the versions are.** `latest` on every registry is **`1.0.0`** (npm / PyPI / NuGet) ·
+**`8.0.0`** (Maven Central, aligned `minor.patch` on its historical major `7` — the Maven
+major is always **npm major + 7**, so 1.0.0 is 8.0.0). **1.0 is CUT**: the `1.0.0-rc.5`
+through `rc.8` candidates are superseded and their npm `next` tag is retired.
+`metamodelVersion` reads **`1.0`**, frozen — C4 landed and G4 shipped it. Per-release detail
+lives in **`CHANGELOG.md`** — it is the log, and this file does not duplicate it.
 
 The npm surface is **14 `@metaobjectsdev/*` packages in full lockstep**; the two `angular`
 packages are on their own `0.6.x` line and are **not published — source-only by decision**
