@@ -141,10 +141,14 @@ function resolveCliPkg(specifier: string): string {
  * the supported home of the generators with no ownable copy), so nothing upstream of here
  * can tell a correct import from a removed one.
  *
- * It reads the config SOURCE rather than catching the throw because the throw happens inside
- * a generator factory call with no reference back to the import that produced it, and only a
- * config declaring one of these in `generators: [...]` throws at all — a stale type-only
- * import would fail silently at typecheck-time instead.
+ * It reads the config SOURCE because that is the arm that can name the FILE and the exact
+ * import. `removedGeneratorRuntimeError` below is the second arm, and an adopter estate is
+ * why there are two: the import does not have to be in the config. This project's config
+ * imported an OWNED generator — `./codegen/generators/entityFileTyped`, the shape `meta
+ * eject` itself produces — and THAT file carried the stale
+ * `import { entityFile } from "@metaobjectsdev/codegen-ts/generators"`. The source scan saw
+ * a clean config and the adopter got exactly the bare TypeError this check exists to
+ * prevent: `(0 , _generators.entityFile) is not a function`, exit 2, no file, no remedy.
  */
 const REMOVED_GENERATOR_EXPORTS = ["entityFile", "queriesFile", "routesFile", "barrel"] as const;
 const GENERATORS_SUBPATH = "@metaobjectsdev/codegen-ts/generators";
@@ -176,6 +180,39 @@ export function removedGeneratorImportError(source: string): string | undefined 
     `import { ${example} } from "./codegen/generators/${templateOf(example)}";\n` +
     `  The subpath itself is fine — promptRender, outputParser, routesFileHono and the rest ` +
     `still live there. Only ${names.length === 1 ? "this one" : `these ${names.length}`} moved.\n` +
+    `  Guide: docs/features/migrations/0.x-to-1.0.md §11`
+  );
+}
+
+/**
+ * The same diagnostic, recovered from the THROW instead of the source — for the case the
+ * source scan structurally cannot see: a removed export imported by a module the config
+ * imports, rather than by the config itself.
+ *
+ * It cannot name the file (the TypeError carries no reference back to the import that
+ * produced it — that limitation is real, it is just not a reason to say nothing), so it
+ * names what it does know: the symbol, the removal, and the one-command remedy. Matching is
+ * on the SYMBOL, not the message shape, because the shape is the transpiler's: Bun says
+ * `(0 , _generators.entityFile) is not a function` and Node ESM says
+ * `entityFile is not a function`.
+ */
+export function removedGeneratorRuntimeError(err: unknown): string | undefined {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (!/is not a function/.test(message)) return undefined;
+  const hit = REMOVED_GENERATOR_EXPORTS.find((n) => new RegExp(`\\b${n}\\b`).test(message));
+  if (hit === undefined) return undefined;
+  const template = hit.replace(/File$/, "");
+  return (
+    `${hit}() is not a function — 1.0 REMOVED it from "${GENERATORS_SUBPATH}" ` +
+    `(ADR-0034 scaffold-and-own): these generators are yours to own, so the package no ` +
+    `longer ships them as an import. Your metaobjects.config.ts does not import it, so ` +
+    `the import is in a module the config imports — most often an OWNED generator under ` +
+    `codegen/generators/, which is exactly what 'meta eject' writes.\n` +
+    `  Fix — copy it into your repo:\n    meta eject ${template}\n` +
+    `  then change that module's import to: ` +
+    `import { ${hit} } from "./codegen/generators/${template}";\n` +
+    `  The subpath itself is fine — promptRender, outputParser, routesFileHono and the ` +
+    `rest still live there.\n` +
     `  Guide: docs/features/migrations/0.x-to-1.0.md §11`
   );
 }
@@ -461,7 +498,18 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
   const prepareStackTraceBefore = Error.prepareStackTrace;
   const stackTraceLimitBefore = Error.stackTraceLimit;
   try {
-    const raw = (await jiti.import(loadPath)) as MetaobjectsGenConfig | { default: MetaobjectsGenConfig };
+    let raw: MetaobjectsGenConfig | { default: MetaobjectsGenConfig };
+    try {
+      raw = (await jiti.import(loadPath)) as MetaobjectsGenConfig | { default: MetaobjectsGenConfig };
+    } catch (err) {
+      // The second arm of the ADR-0034 diagnostic: a removed export imported by a module the
+      // config imports rather than by the config itself. Rethrown as the migration message,
+      // because what reaches the adopter otherwise is `(0 , _generators.entityFile) is not a
+      // function` — the exact unactionable failure the source scan above exists to prevent.
+      const runtime = removedGeneratorRuntimeError(err);
+      if (runtime !== undefined) throw new Error(runtime);
+      throw err;
+    }
     // jiti's interopDefault doesn't always unwrap the default export when accessed
     // across module boundaries — explicitly unwrap if present.
     const cfg = (raw && typeof raw === "object" && "default" in raw && raw.default

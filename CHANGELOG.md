@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — ADR-0034's removal diagnostic had one door, and adopters arrive through two
+
+1.0 removed `entityFile` / `queriesFile` / `routesFile` / `barrel` from
+`@metaobjectsdev/codegen-ts/generators`, and `removedGeneratorImportError` turns that into a
+message naming the export, the `meta eject` command and the guide — **when the config file
+itself carries the import**. A polyglot adopter arrived the other way: its
+`metaobjects.config.ts` imported an OWNED generator (`./codegen/generators/entityFileTyped`,
+the exact shape `meta eject` writes), and THAT file held the stale import. The source scan
+saw a clean config, and what the adopter got was
+`(0 , _generators.entityFile) is not a function`, exit 2 — no file, no symbol origin, no
+remedy. Precisely the failure the first door exists to prevent.
+
+`removedGeneratorRuntimeError` is the second door: the config load now catches the throw and,
+when the message names a removed export, rethrows the migration guidance. It cannot name the
+file — the TypeError carries no reference back to the import — so it names what it does know,
+including where the import usually lives (`codegen/generators/`). Matching is on the SYMBOL,
+not the message shape, because the shape belongs to whichever transpiler ran.
+
+
 ### Fixed — both advisory scanners reported findings inside BUILD OUTPUT
 
 `meta verify` on an adopter estate reported
