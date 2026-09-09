@@ -86,3 +86,68 @@ describe("meta upgrade and the deregistered @forge* vocabulary", () => {
     expect(err).toContain("@forgeRationale");    // on field.long
   });
 });
+
+// ── the wall ──────────────────────────────────────────────────────────────────
+//
+// An adopter estate hit this with 24 `@forge*` occurrences. Every one printed the same
+// three lines — the `why`, the keep-them option, the delete-them option, the guide — so
+// the output was ~96 lines saying one thing four times over, and the instruction was
+// buried in its own repetition. That is exactly the failure `runGen`'s no-manifest
+// refusal aggregates to avoid, in a command that had not learned it.
+//
+// Occurrences are per-line information and stay per line. The RATIONALE is per RULE, and
+// prints once.
+describe("many occurrences of one retirement", () => {
+  const MANY = {
+    "metadata.root": {
+      package: "acme",
+      children: ["A", "B", "C", "D"].map((n) => ({
+        "object.entity": {
+          name: n, "@forgeConfidence": "high", "@forgeSource": "an interview",
+          children: [
+            { "source.rdb": { "@table": n.toLowerCase() } },
+            { "field.long": { name: "id" } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } },
+          ],
+        },
+      })),
+    },
+  };
+
+  async function upgradeMany(): Promise<{ exit: number; err: string }> {
+    const dir = await mkdtemp(join(tmpdir(), "forge-wall-"));
+    dirs.push(dir);
+    await mkdir(join(dir, "metaobjects"), { recursive: true });
+    await writeFile(join(dir, "metaobjects", "meta.json"), JSON.stringify(MANY), "utf8");
+    const lines: string[] = [];
+    const oe = console.error, ol = console.log;
+    console.error = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    try { return { exit: await run(["upgrade", "--cwd", dir]), err: lines.join("\n") }; }
+    finally { console.error = oe; console.log = ol; }
+  }
+
+  test("every occurrence is still named", async () => {
+    const { exit, err } = await upgradeMany();
+    expect(exit).toBe(1);
+    // 4 entities × 2 attributes = 8 occurrence lines.
+    expect(err.split("\n").filter((l) => l.includes("needs a decision"))).toHaveLength(8);
+  });
+
+  test("the reason and the options print ONCE, not once per occurrence", async () => {
+    const { err } = await upgradeMany();
+    const count = (needle: string): number => err.split("\n").filter((l) => l.includes(needle)).length;
+    expect(count("expected-registry.json")).toBe(1);   // the why
+    expect(count("forgeTypesProvider")).toBe(1);       // keep them
+    expect(count("0.x-to-1.0.md")).toBe(1);            // the guide
+  });
+
+  test("the rationale names which attributes it is about", async () => {
+    // Printed away from the occurrence lines, it has to say what it applies to — or the
+    // reader has to guess which of the refusals the paragraph belongs to.
+    const { err } = await upgradeMany();
+    const idx = err.indexOf("expected-registry.json");
+    const paragraph = err.slice(Math.max(0, idx - 400), idx);
+    expect(paragraph).toContain("@forgeConfidence");
+  });
+});

@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `meta upgrade` printed one retirement's rationale once per OCCURRENCE
+
+An adopter estate carrying 24 `@forge*` attributes got ~96 lines of output for one
+retirement: every occurrence repeated the same `why`, the same two options and the same
+guide link. The instruction was buried in its own repetition — the exact failure
+`runGen`'s no-manifest refusal aggregates to avoid, in a command that had not learned it.
+
+Occurrences are per-line information and still print per line (file, line, subject, the
+value found). The rationale is per RULE and now prints once, after the listing, headed by
+the attributes it covers so a reader can connect the paragraph to the lines above it. Two
+rules that render identically collapse; two that differ anywhere do not.
+
+
 ### Fixed — a failed D1 introspection named a WARNING as its cause
 
 `meta verify --db` / `meta migrate` against a live D1 shell out to

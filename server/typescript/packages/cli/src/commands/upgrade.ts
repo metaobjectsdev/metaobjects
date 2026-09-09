@@ -126,6 +126,14 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     ...(flags.maxVersion !== undefined ? { maxVersion: flags.maxVersion } : {}),
   };
 
+  // One retirement RULE, however many occurrences it has. An estate hit this with 24
+  // `@forge*` attributes, and the per-occurrence rationale turned the output into ~96
+  // lines saying one thing four times over — the wall that buries the instruction it is
+  // made of, which is the exact failure `runGen`'s no-manifest refusal aggregates to
+  // avoid. Keyed by the rendered text, so two rules that happen to read identically
+  // collapse and two that differ anywhere do not.
+  const rules = new Map<string, { why: string; suggestions: string[]; subjects: Set<string> }>();
+
   for (const file of files) {
     const rel = relative(projectRoot, file);
     const before = await readFile(file, "utf8");
@@ -148,22 +156,24 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     log.info(`\n${rel}`);
     for (const c of r.changes) log.info(`  ${c.line}: @${c.from} → ${c.to}`);
     for (const f of r.refusals) {
-      // The WHY and the replacement both print, and the guide is not an alternative to
-      // them. This used to read `Retired in <since>. See <guide>` — dropping `why`
-      // whenever a guide existed, which is almost always, and dropping `replacedBy`
-      // unconditionally. For the `@forge*` entries that removed the only actionable
-      // sentence there is ("opt the provider in explicitly"), and for an authored
-      // `<type>.base` it announced a retirement of something that was never authorable —
-      // telling the reader they used to have a working feature. Hence "no longer accepted
-      // as of", which is true of both, with the carefully-written `why` beside it.
+      // The occurrence line is per-line information: file, line, subject, the value found.
+      // The RATIONALE that goes with it is per RULE and prints once, after the listing —
+      // see `rules` below.
       log.warn(
         `  ${f.line}: ${f.subject}${f.value !== undefined ? `: ${f.value}` : ""} — needs a decision ` +
           `(no longer accepted as of ${f.since}).`,
       );
-      log.warn(`      ${f.why}`);
-      // The same suggestion list every OTHER door prints for a retirement, rather than a
-      // second rendering of the same note that can drift from it.
-      for (const line of retirementSuggestions(f)) log.warn(`      ${line}`);
+      const key = `${f.why}\u0000${retirementSuggestions(f).join("\u0000")}`;
+      const rule = rules.get(key);
+      if (rule === undefined) {
+        rules.set(key, {
+          why: f.why,
+          suggestions: retirementSuggestions(f),
+          subjects: new Set([f.subject]),
+        });
+      } else {
+        rule.subjects.add(f.subject);
+      }
     }
 
     totalChanges += r.changes.length;
@@ -175,6 +185,21 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   }
 
   log.info("");
+
+  // The WHY and the options, once per rule. Both print, and the guide is not an
+  // alternative to them: this used to read `Retired in <since>. See <guide>`, dropping
+  // `why` whenever a guide existed — which is almost always — and dropping `replacedBy`
+  // unconditionally. For the `@forge*` entries that removed the only actionable sentence
+  // there is ("opt the provider in explicitly"). The subject list is what lets a reader
+  // connect the paragraph back to the lines above it now that it prints away from them.
+  for (const rule of rules.values()) {
+    const subjects = [...rule.subjects].sort().join(", ");
+    log.warn(`\n  ${subjects} — why, and what to do:`);
+    log.warn(`      ${rule.why}`);
+    for (const line of rule.suggestions) log.warn(`      ${line}`);
+  }
+  if (rules.size > 0) log.info("");
+
   if (notChecked.length > 0) {
     log.warn(
       `${notChecked.length} file(s) could not be parsed and were NOT checked — fix these ` +
