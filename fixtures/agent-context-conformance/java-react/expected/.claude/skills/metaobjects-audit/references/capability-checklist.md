@@ -74,7 +74,9 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   the artifact is emitted at all before scoring the literals: on TypeScript and the JVM the
   generator list in the config IS the complete list, so an existing project emits none and the
   un-wired generator is the finding FIRST** (C# and Python have a real default suite and get it
-  by upgrading).
+  by upgrading). **This entry covers only HALF of signature 11** — the physical-name
+  half. The other half (route paths, wire field keys, labels, enum member symbols, validation
+  limits) lives on the entity-constants surface; see the Cross-cutting entry below.
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored
   read-only source belongs. Apply the **view-necessity test** (SKILL.md, drift signature 8): a
   hand-written `CREATE VIEW` (or read-only SQL mirroring a read model) is a CODEGEN CANDIDATE when
@@ -269,6 +271,19 @@ subtypes with opposite polarity: `requirement.functional` fails when NOTHING imp
   internal-only rationale slot — never emitted to user-facing doc-gen.)
 
 ## Cross-cutting
+
+- **Generated constants vs magic strings beyond SQL (drift signature 11, half ii).** On TypeScript
+  the entity module and its `<Entity>.meta.ts` twin emit `$entity` / `$table` / `$path` (entity-relative)
+  plus a per-field object (`name`, `label`, `view`, `htmlType`, `rules`, enum member symbols) whose own
+  docblock says to use them INSTEAD of magic strings. Hunt hand-written route paths and fetch URLs,
+  sort/filter field names passed as text, enum members compared as bare strings, re-typed labels, and
+  re-typed validation limits or messages — the same signature as a hardcoded table name, and the one
+  most often missed because the search gets scoped to SQL. **Score only what nothing type-checks:** a
+  typed property access, a typed filter object, an ORM handle and a bare enum member (checked by the
+  generated union type) are all already correct and must not be rewritten to string lookups — measured,
+  one estate's 332 enum-member literals yielded 0 real findings. Paths, labels and messages are the
+  unchecked ones. A client-side page route is not an API path and is never this finding. On the other four ports the equivalent is the generated
+  typed handle (Pydantic attribute, EF property, Exposed `Column`), which is the gold standard as-is.
 
 - **`extends`** (any depth, cross-package `::`) — hunt copy-pasted base-entity field blocks
   that should be an abstract base inherited via `extends` (the inheritance mechanism;

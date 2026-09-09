@@ -273,7 +273,7 @@ subtypes with opposite polarity: `requirement.functional` fails when NOTHING imp
 ## Cross-cutting
 
 - **Generated constants vs magic strings beyond SQL (drift signature 11, half ii).** On TypeScript
-  the entity module and its `<Entity>.meta.ts` twin emit `$entity` / `$table` / `$path` / `$apiPrefix`
+  the entity module and its `<Entity>.meta.ts` twin emit `$entity` / `$table` / `$path` (entity-relative)
   plus a per-field object (`name`, `label`, `view`, `htmlType`, `rules`, enum member symbols) whose own
   docblock says to use them INSTEAD of magic strings. Hunt hand-written route paths and fetch URLs,
   sort/filter field names passed as text, enum members compared as bare strings, re-typed labels, and

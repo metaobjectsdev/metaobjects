@@ -55,6 +55,11 @@ value-sets against the constructs that replace them.
 | camelCase↔snake_case mapping tables | generated views handle this; diff field by field |
 | `@generated` file with hand edits | three-way merge preserves them; review at codegen; never delete |
 | a table/column string in a `sql` fragment, a Kysely identifier, or a migration/seed script outside the generated dir | second spelling of a declared physical name — reference `<Entity>.names.ts` (`ProgramNames.fields.<f>.column`): `generators: [...]` is the COMPLETE list and there is no default suite, so a project scaffolded before 1.0 emits NO names artifact and the missing `namesFile()` is the finding first; a Drizzle column object in its place is correct, not a finding |
+| an API resource path typed as a string — `fetch("/api/subscribers")`, `app.get("/subscribers")`, a TanStack `queryKey` path | second spelling of the generated `$path` (entity-relative) on the entity module and its `<Entity>.meta.ts` twin — signature 11 half (ii). Most-missed row in this table, because the names hunt gets scoped to SQL |
+| **NOT a finding:** a client-side page route or link (`<Route path="/programs">`, `<a href="/programs">`) | a navigation URL the app chose, declared nowhere in metadata and free to diverge from the API path it resembles. Measured on one estate: 11 apparent hits, 0 real. Match the fetch or the mount, not the string's shape |
+| a field name passed as TEXT — `sort: "created_at"`, `filter["email"]`, a column-id string in a grid config | the per-field constants object carries `name`; a typed property access is NOT this row and must be left alone |
+| **NOT a finding:** an enum member as a bare string (`status === "archived"`) | the generated `export type <Entity><Field> = "a" \| "b"` union already checks it — renaming the member in metadata breaks the build at every site. Measured on one estate: 332 such literals, 0 real findings. Emitted `options: [...]` on `.meta.ts` is for populating a dropdown, not for replacing checked literals |
+| a form label or a validation limit/message re-typed in hand JSX or a hand validator (`maxLength={255}`, `"Email is required"`) | derived from `@title` and the field's validator children into `label` / `rules`; the hand copy is a second source of truth |
 
 ---
 
