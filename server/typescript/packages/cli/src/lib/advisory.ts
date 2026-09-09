@@ -23,6 +23,7 @@
 import { log } from "./log.js";
 import type { AntiPatternFinding } from "./anti-patterns.js";
 import type { BaseUrlFinding } from "./base-url-advisory.js";
+import type { RemovedPropFinding } from "./removed-prop-advisory.js";
 
 /**
  * How many advisory lines TEXT output prints before it truncates.
@@ -129,6 +130,21 @@ export function missingBaseUrlRows(findings: readonly BaseUrlFinding[]): Advisor
     file: f.file,
     line: f.line,
     rule: "missing-base-url",
+    construct: f.construct,
+    message: f.message,
+  }));
+}
+
+/**
+ * F99 findings in that same row shape, for the same reason. `rule` carries the prop, so a
+ * consumer filtering the advisory list does not have to parse the message to learn WHICH
+ * rename fired — there will eventually be more than one.
+ */
+export function removedPropRows(findings: readonly RemovedPropFinding[]): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: f.line,
+    rule: `removed-prop:${f.prop}`,
     construct: f.construct,
     message: f.message,
   }));

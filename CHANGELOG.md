@@ -7,6 +7,42 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `meta verify` advises when a provider still carries the prop 1.0 renamed away
+
+`<EntityFetcherProvider value={f}>` does not typecheck. The `0.x → 1.0` migration note and
+the F52 base-URL advisory beside this one both rest a safety argument on exactly that — and
+the argument holds only where `tsc` is in the gate chain.
+
+In two of nine adopter estates it was not. `vite build` transpiles without typechecking, and
+a provider with the wrong prop still RENDERS: its children mount, and nothing fails until a
+component actually calls a generated hook and finds no fetcher — at runtime, in a browser.
+One estate lost a round to it, misreading a red render smoke test as the release candidate
+breaking when the real cause was an unfinished migration step. The second shipped the
+identical construct at `src/main.tsx:16` and carried it through a whole upgrade pass, past
+its own drift gates, unit tests and build.
+
+Two of nine, same component, same prop, invisible to every gate either project ran. That is
+a class, not a coincidence, and the rename was ours — so the advisory is ours.
+
+It is a **warning** and never touches the exit code, like the rest of the advisory tier
+(`META_NO_ANTIPATTERNS=1` suppresses all of it): the scan cannot see a re-export or an
+aliased local component, so it must not be the thing that fails a build. Unlike the base-URL
+advisory it fires at **any** `apiPrefix`, because no configuration exists under which the old
+prop reaches the provider.
+
+Attribute detection is depth-aware rather than a substring match, which is the whole
+difficulty. `constructText` returns the opening tag INCLUDING every nested expression, so a
+looser rule convicts `fetcher={mk({ value: 1 })}` (an object key), `fetcher={o.value === 1 ?
+a : b}` (a comparison whose `=` opens `===`), `fetcher={<Inner value={9} />}` (a *different*
+component's prop) and `title="pass value={x} here"` (prose). `topLevelAttrs` reads only depth-0
+identifiers followed by a single `=`, skipping strings and comments — each of those four is a
+committed test.
+
+The tag tokenizer both advisories need is now one copy in `lib/jsx-construct.ts` rather than
+two. The two directory WALKS stay separate, deliberately: they disagree about what to scan
+and have diverged on purpose.
+
+
 ### Fixed — ADR-0034's removal diagnostic had one door, and adopters arrive through two
 
 1.0 removed `entityFile` / `queriesFile` / `routesFile` / `barrel` from

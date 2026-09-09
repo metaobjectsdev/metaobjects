@@ -12,13 +12,14 @@ import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
-  antiPatternRows, missingBaseUrlRows, ranSection, skippedSection, warnCapped,
+  antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
   type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
+import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-prop-advisory.js";
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
@@ -735,8 +736,21 @@ export async function verifyCommand(
       // Same discipline as above: an advisory scan never breaks verify. The anti-pattern
       // half already ran, so its rows are still reported rather than lost to this catch.
     }
+    // F99 — the other half of the same migration: the adopter who never renamed at all.
+    // Its own try/catch for the same reason, so one scanner throwing cannot take the
+    // other's rows with it.
+    let removedProps: RemovedPropFinding[] = [];
+    try {
+      removedProps = scanForRemovedProps(projectRoot);
+    } catch {
+      // advisory only — never breaks verify.
+    }
 
-    antiPatternSection = ranSection([...antiPatternRows(findings), ...missingBaseUrlRows(baseUrl)]);
+    antiPatternSection = ranSection([
+      ...antiPatternRows(findings),
+      ...missingBaseUrlRows(baseUrl),
+      ...removedPropRows(removedProps),
+    ]);
     if (findings.length > 0) {
       log.warn(
         `meta verify — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
@@ -750,6 +764,13 @@ export async function verifyCommand(
           `while apiPrefix is "${forgeConfig?.apiPrefix ?? ""}" (advisory — does not fail the build):`,
       );
       warnCapped(baseUrl.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (removedProps.length > 0) {
+      log.warn(
+        `meta verify — ${removedProps.length} provider(s) still mounted with a prop 1.0 ` +
+          `renamed away (advisory — does not fail the build, but the runtime will):`,
+      );
+      warnCapped(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
   }
 

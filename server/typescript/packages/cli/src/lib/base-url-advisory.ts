@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { relPosix } from "./rel-posix.js";
 import { looksBundled } from "./authored-source.js";
+import { constructText } from "./jsx-construct.js";
 
 /**
  * F52 — a provider mounted with no `baseUrl` on a project whose `apiPrefix` is not empty.
@@ -51,66 +52,6 @@ const PROVIDERS: readonly { construct: string; open: RegExp; kind: "jsx" | "call
   { construct: "<EntityFetcherProvider>", open: /<EntityFetcherProvider\b/g, kind: "jsx" },
   { construct: "provideEntityFetcher()", open: /provideEntityFetcher\s*\(/g, kind: "call" },
 ];
-
-/**
- * The text of the opening construct that begins at `start`.
- *
- * JSX: up to the `>` that closes the opening TAG. Call this a one-file tokenizer rather
- * than a bracket count, because a bracket count is what the first version was and it was
- * wrong in both directions:
- *
- *   <EntityFetcherProvider title="a > b" fetcher={f} baseUrl="/api">
- *       → the `>` inside the STRING ended the tag before `baseUrl`, warning about a
- *         correct provider.
- *   <EntityFetcherProvider fetcher={mk(")")}>
- *       → the unbalanced `)` inside a string meant depth never returned to 0, so the
- *         4000-char cap swallowed an unrelated `baseUrl` later in the file and SUPPRESSED
- *         a real finding.
- *
- * So string literals (all three quote styles, with escapes), line comments and block
- * comments are skipped rather than counted. A regex literal is deliberately NOT handled —
- * telling `/` division from a regex needs real parsing, and a regex inside a JSX opening
- * tag is vanishingly rare next to the cost of getting it wrong.
- *
- * Call: to the `)` balancing the argument list, so a nested object or arrow does not end
- * it early.
- *
- * Both bail after a generous cap rather than scanning a whole minified file when a
- * construct is unterminated.
- */
-function constructText(src: string, start: number, kind: "jsx" | "call"): string {
-  const limit = Math.min(src.length, start + 4000);
-  let depth = 0;
-  for (let i = start; i < limit; i++) {
-    const c = src[i]!;
-
-    // --- skip what is not code -------------------------------------------------
-    if (c === '"' || c === "'" || c === "`") {
-      i++;
-      while (i < limit && src[i] !== c) { if (src[i] === "\\") i++; i++; }
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "/") {
-      while (i < limit && src[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "*") {
-      i += 2;
-      while (i < limit && !(src[i] === "*" && src[i + 1] === "/")) i++;
-      i++;
-      continue;
-    }
-
-    // --- code ------------------------------------------------------------------
-    if (kind === "jsx" && c === ">" && depth === 0) return src.slice(start, i + 1);
-    if (c === "{" || c === "(" || c === "[") depth++;
-    else if (c === "}" || c === ")" || c === "]") {
-      if (kind === "call" && depth === 1 && c === ")") return src.slice(start, i + 1);
-      depth--;
-    }
-  }
-  return src.slice(start, limit);
-}
 
 function scanFile(rel: string, src: string, apiPrefix: string): BaseUrlFinding[] {
   const out: BaseUrlFinding[] = [];
