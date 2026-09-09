@@ -282,7 +282,12 @@ subtypes with opposite polarity: `requirement.functional` fails when NOTHING imp
   parsing (`model_validate` / `readValue` / `decodeFromString`), a hand validator. **Commonest
   sub-case, and mechanical: a writer typed `list[str]` / `string[]` / `List<X>` means the base
   subtype + `isArray: true`, never an object and never an open bag** — a plural name plus a typed
-  collection is the whole test. A `*Json` suffix is a second free tell. Remedy: an `object.value` +
+  collection is the whole test. A `*Json` suffix is a second free tell. Remedy ladder by the writer's
+  type: `list[X]` → base subtype + `isArray`; `dict[str, X]` with a known X → **`field.map` +
+  `@objectRef`** (emits `.$type<Record<string, X>>()` / `z.record`); a serialized DTO → `object.value`
+  + `field.object @objectRef @storage: jsonb`; only `dict[str, Any]` with no key-pinning readers stays
+  open. Every typed rung yields a TYPED HANDLE — Drizzle `.$type<VO>()` + Zod, a Pydantic model, a
+  typed Exposed jsonb codec — never a JSON string the consumer casts. Remedy: an `object.value` +
   `field.object` `@objectRef` `@storage: jsonb` — the column stays jsonb. Not a finding for a
   pass-through bag, a third-party/LLM raw response, or an array of scalars (`isArray`).
 
