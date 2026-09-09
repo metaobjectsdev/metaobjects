@@ -272,6 +272,15 @@ subtypes with opposite polarity: `requirement.functional` fails when NOTHING imp
 
 ## Cross-cutting
 
+- **Open JSON bag vs a shape the readers already know (drift signature 12).** `field.string`
+  + `@dbColumnType: jsonb` is the SANCTIONED untyped-column escape hatch (emits `unknown`,
+  gated by `fixtures/api-contract-conformance/jsonb/`) — never a finding on sight. It is a
+  finding only when the consuming code pins a FIXED KEY SET: raw-SQL `->>'key'` reads, casts
+  to a concrete type, destructuring, a hand validator over the parsed value. Then the shape
+  exists and is declared in N readers instead of once. Remedy: an `object.value` +
+  `field.object` `@objectRef` `@storage: jsonb` — the column stays jsonb. Not a finding for a
+  pass-through bag, a third-party/LLM raw response, or an array of scalars (`isArray`).
+
 - **A metadata-derived value spelled a second time (drift signature 11 — one rule, not two halves).**
   A literal in non-generated code or config that must EQUAL a value the metadata declares or a
   generator derives is a second spelling. The constants to reference: `<Entity>Names` (physical
