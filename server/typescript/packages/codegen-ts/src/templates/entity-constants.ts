@@ -10,7 +10,7 @@
 //
 //     email: {
 //       name:        "email",
-//       label:       "Email Address",      // from @label on the view, falls back to humanized field name
+//       label:       "Email Address",      // @title on the surface's view, else @title on the field, else humanized field name
 //       view:        "text",                // MetaView subtype
 //       htmlType:    "email",               // optional; only when the view maps to a real HTML input type
 //       rules: {                             // optional; derived from validator children
