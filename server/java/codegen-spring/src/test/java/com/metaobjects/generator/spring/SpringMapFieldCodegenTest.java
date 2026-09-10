@@ -81,6 +81,56 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         return gen;
     }
 
+    /**
+     * Run EVERY entity-facing Spring generator over the fixture. The unsupported-type throw
+     * lived in the shared type mapper, so a map could break ANY generator that types a field
+     * -- fixing the DTO path alone would leave the repository / controller / allowlist /
+     * names surfaces failing on the same model. This drives all of them.
+     */
+    private Path generateAll(String label) throws Exception {
+        Path gen = tmp.newFolder("all-" + label).toPath();
+        Path ws = tmp.newFolder("allws-" + label).toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "mapall-" + label, MAP_FIXTURE);
+
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", gen.toString());
+
+        for (com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?> g : List.of(
+                new SpringDtoGenerator(),
+                new SpringValueObjectGenerator(),
+                new SpringNamesGenerator(),
+                new SpringRepositoryGenerator(),
+                new SpringControllerGenerator(),
+                new SpringFilterAllowlistGenerator())) {
+            g.setArgs(args);
+            g.execute(loader);
+        }
+        return gen;
+    }
+
+    @Test
+    public void everyEntityFacingGeneratorHandlesAMapCarryingEntity() throws Exception {
+        // Regression gate for the SHAPE of the original defect: the throw was in the shared
+        // SpringTypeMapper, so every generator that types a field inherited it. If any of
+        // these still refuses a field.map this call raises IllegalArgumentException.
+        Path gen = generateAll("smoke");
+
+        assertTrue("expected the DTO", Files.exists(gen.resolve("acme/crm/CustomerDto.java")));
+        assertTrue("expected the repository", Files.exists(gen.resolve("acme/crm/CustomerRepository.java")));
+        assertTrue("expected the controller", Files.exists(gen.resolve("acme/crm/CustomerController.java")));
+
+        // The filter allowlist must not offer the map as a filterable column: no port can
+        // lower a filter operator over an open-keyed jsonb map, so silently admitting one
+        // would generate a query surface that fails at the engine.
+        Path allowlist = gen.resolve("acme/crm/CustomerFilterAllowlist.java");
+        // Asserted UNCONDITIONALLY: guarding this on Files.exists would let the whole check
+        // evaporate the day the allowlist stops being emitted, gating nothing.
+        assertTrue("expected the filter allowlist at " + allowlist, Files.exists(allowlist));
+        String src = Files.readString(allowlist);
+        assertFalse("a field.map must not be filterable; saw:\n" + src, src.contains("\"labels\""));
+        assertFalse("a field.map must not be filterable; saw:\n" + src, src.contains("\"addresses\""));
+    }
+
     @Test
     public void scalarValuedMapBecomesAMapRecordComponent() throws Exception {
         Path gen = generate("scalar");
