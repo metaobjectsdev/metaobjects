@@ -596,8 +596,7 @@ violating the referenced `object.value`'s constraints is accepted and written, s
 reading the adopter's own source will not reveal it. Scalar-valued maps (`@valueType`) are
 unaffected. Do not recommend this rung for a Java TPH entity — or for C# at all — without
 saying so and pointing at boundary validation of map values before write;
-[issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks the Java TPH half, and the C# scope is wider
-than that issue. Every rung but the first keeps the
+[issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks the gap. Every rung but the first keeps the
 column jsonb, so moving a column up the ladder is a codegen/contract change rather than a
 migration — read the emitted DDL before promising that.
 

@@ -731,7 +731,7 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<");
         sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>> Comparer<TValue>() => new(");
-        sb.AppendLine("                (a, b) => Eq(a, b), v => Hash(v), v => Snap(v));");
+        sb.AppendLine("                (a, b) => Eq(a, b), v => Hash(v), v => Snap(v)!);");
         sb.AppendLine();
         sb.AppendLine("        /// <summary>Order-INDEPENDENT equality: a dictionary rebuilt in a different key");
         sb.AppendLine("        /// order holds the same value, and comparing serialized JSON would call it changed");
@@ -757,8 +757,9 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("        /// <summary>Keys and count only — order-independent (XOR), allocation-free, and");
         sb.AppendLine("        /// stable for a value-object value whose GetHashCode is reference-based. Equal");
         sb.AppendLine("        /// dictionaries always hash equal, which is all EF requires.</summary>");
-        sb.AppendLine("        private static int Hash<TValue>(System.Collections.Generic.Dictionary<string, TValue> v)");
+        sb.AppendLine("        private static int Hash<TValue>(System.Collections.Generic.Dictionary<string, TValue>? v)");
         sb.AppendLine("        {");
+        sb.AppendLine("            if (v is null) return 0;");
         sb.AppendLine("            var h = v.Count;");
         sb.AppendLine("            foreach (var k in v.Keys) h ^= k.GetHashCode();");
         sb.AppendLine("            return h;");
@@ -767,13 +768,15 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("        /// <summary>The change-tracking snapshot. A value-object value needs a DEEP copy or");
         sb.AppendLine("        /// an in-place edit to a nested object mutates the snapshot too and goes undetected;");
         sb.AppendLine("        /// an immutable scalar only needs the dictionary copied.</summary>");
-        sb.AppendLine("        private static System.Collections.Generic.Dictionary<string, TValue> Snap<TValue>(");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue> v) =>");
-        sb.AppendLine("            typeof(TValue).IsValueType || typeof(TValue) == typeof(string)");
-        sb.AppendLine("                ? new System.Collections.Generic.Dictionary<string, TValue>(v)");
-        sb.AppendLine("                : System.Text.Json.JsonSerializer.Deserialize<");
-        sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(");
-        sb.AppendLine("                        System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!;");
+        sb.AppendLine("        private static System.Collections.Generic.Dictionary<string, TValue>? Snap<TValue>(");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>? v) =>");
+        sb.AppendLine("            v is null");
+        sb.AppendLine("                ? null");
+        sb.AppendLine("                : typeof(TValue).IsValueType || typeof(TValue) == typeof(string)");
+        sb.AppendLine("                    ? new System.Collections.Generic.Dictionary<string, TValue>(v)");
+        sb.AppendLine("                    : System.Text.Json.JsonSerializer.Deserialize<");
+        sb.AppendLine("                        System.Collections.Generic.Dictionary<string, TValue>>(");
+        sb.AppendLine("                            System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!;");
         sb.AppendLine("    }");
     }
 

@@ -4,6 +4,8 @@ using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using System.Linq.Expressions;
+using System.Reflection;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
@@ -186,5 +188,99 @@ public class MapFieldCodegenTests
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
         Assert.True(errors.Count == 0, "generated entity + value object should compile, got: " + string.Join("; ", errors));
+    }
+
+    // A NULL jsonb cell materializes as a null Dictionary -- the property's `= new()`
+    // initializer does not survive EF's shaper -- and EF Core 8's TYPED
+    // ValueComparer<T>.GetHashCode/Snapshot invoke the compiled lambdas with no null
+    // guard of their own (only the object?-typed overloads guard), which is why EF's own
+    // built-in comparers null-guard inside the lambdas. So the emitted Hash/Snap must
+    // tolerate null exactly as Eq already does. This EXECUTES the emitted code rather
+    // than matching its text: the generated files are compiled against real EF Core 8,
+    // the assembly is loaded, and the comparer's own compiled lambdas -- the same
+    // delegates EF change tracking calls -- are invoked with a null dictionary.
+    [Fact]
+    public void MapJsonb_comparer_hash_and_snapshot_tolerate_a_null_dictionary()
+    {
+        var ctx = Ctx(Load());
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new DbContextGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx)).ToList();
+        var trees = files.Select(f =>
+            CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
+        var comp = CSharpCompilation.Create("mapnull_" + Guid.NewGuid().ToString("N"),
+            trees, DbContextCompileTests.BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var diagnostics = comp.GetDiagnostics().ToList();
+        Assert.True(diagnostics.All(d => d.Severity != DiagnosticSeverity.Error),
+            "generated output should compile against EF Core 8, got: "
+                + string.Join("; ", diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)
+                    .Select(d => d.GetMessage())));
+        // The generated file stamps #nullable enable, so it must compile nullability-clean
+        // as well -- the comparer's signatures carry nullable annotations.
+        var nullableWarnings = diagnostics
+            .Where(d => d.Severity == DiagnosticSeverity.Warning && d.Id.StartsWith("CS86"))
+            .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
+        Assert.True(nullableWarnings.Count == 0,
+            "generated output should carry no nullable-analysis warnings: "
+                + string.Join("; ", nullableWarnings));
+
+        using var pe = new MemoryStream();
+        var emit = comp.Emit(pe);
+        Assert.True(emit.Success,
+            string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Select(d => d.GetMessage())));
+        var asm = Assembly.Load(pe.ToArray());
+
+        var appDbContext = asm.GetType("Acme.Generated.AppDbContext");
+        Assert.NotNull(appDbContext);
+        var helper = appDbContext.GetNestedType("MapJsonb", BindingFlags.NonPublic);
+        Assert.NotNull(helper);
+        var comparerOf = helper.GetMethod("Comparer", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(comparerOf);
+        var scalar = comparerOf.MakeGenericMethod(typeof(string)).Invoke(null, null)!;
+        var voType = asm.GetType("Acme.Generated.Address");
+        Assert.NotNull(voType);
+        var objectValued = comparerOf.MakeGenericMethod(voType).Invoke(null, null)!;
+
+        // A null map hashes to a stable constant and snapshots as null, on BOTH value-type
+        // arms -- Hash used to dereference v.Count and the scalar Snap arm passed v to the
+        // Dictionary copy constructor, so a null map threw inside EF change tracking.
+        Assert.Equal(0, (int)InvokeLambda(scalar, "HashCodeExpression", (object?)null));
+        Assert.Null(InvokeLambda(scalar, "SnapshotExpression", (object?)null));
+        Assert.Equal(0, (int)InvokeLambda(objectValued, "HashCodeExpression", (object?)null));
+        Assert.Null(InvokeLambda(objectValued, "SnapshotExpression", (object?)null));
+
+        // Semantics beyond null handling are unchanged: entry-wise order-independent
+        // equality and hashing, null-vs-instance inequality, and a snapshot that is a copy
+        // rather than the same instance.
+        var map = new Dictionary<string, string> { ["a"] = "1", ["b"] = "2" };
+        var reordered = new Dictionary<string, string> { ["b"] = "2", ["a"] = "1" };
+        var changed = new Dictionary<string, string> { ["a"] = "1", ["b"] = "9" };
+        Assert.True((bool)InvokeLambda(scalar, "EqualsExpression", map, reordered)!);
+        Assert.False((bool)InvokeLambda(scalar, "EqualsExpression", map, changed)!);
+        Assert.False((bool)InvokeLambda(scalar, "EqualsExpression", (object?)null, map)!);
+        Assert.True((bool)InvokeLambda(scalar, "EqualsExpression", (object?)null, (object?)null)!);
+        Assert.Equal(
+            InvokeLambda(scalar, "HashCodeExpression", map),
+            InvokeLambda(scalar, "HashCodeExpression", reordered));
+        var snap = InvokeLambda(scalar, "SnapshotExpression", map);
+        Assert.IsType<Dictionary<string, string>>(snap);
+        Assert.NotSame(map, snap);
+        Assert.True((bool)InvokeLambda(scalar, "EqualsExpression", map, snap)!);
+    }
+
+    // Compiles one of the comparer's expression properties -- HashCodeExpression /
+    // SnapshotExpression / EqualsExpression, the same expressions EF Core registers and
+    // invokes -- and calls the resulting delegate with the given arguments.
+    private static object? InvokeLambda(object comparer, string expressionProperty, params object?[] arguments)
+    {
+        // DeclaredOnly: ValueComparer<T> re-declares these properties with `new` over the
+        // non-generic base's same-named ones, so a plain GetProperty is ambiguous.
+        var lambda = (LambdaExpression)comparer.GetType()
+            .GetProperty(expressionProperty, BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)!
+            .GetValue(comparer)!;
+        return lambda.Compile().DynamicInvoke(arguments);
     }
 }

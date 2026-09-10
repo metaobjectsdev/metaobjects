@@ -62,7 +62,7 @@ Three rows need a footnote:
   > validate. This is generated code, so **reading your own source will not reveal it** — the
   > failure is silent acceptance, not an error. Validate map values at your own boundary
   > before write. [Issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks
-  > the Java TPH half; the C# surface is wider than that issue's scope.
+  > the gap.
 
   **The RUNTIME tier is not there yet, and no conformance corpus covers it.** No
   persistence- or api-contract-conformance fixture exercises `field.map` on any port; it is
