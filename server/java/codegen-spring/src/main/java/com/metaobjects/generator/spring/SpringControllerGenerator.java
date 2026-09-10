@@ -458,6 +458,29 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /**
+     * The same element-wise {@code validator.validate} loop as
+     * {@link #appendElementValidationLoop}, minus the presence guard — for a body bound as the
+     * union {@code <Base>Dto}, whose accessors are plain (no {@code hasX()} tristate). Used by
+     * the TPH per-subtype CREATE path, where absent and null are already indistinguishable on
+     * the bound DTO, so a null check is the whole guard.
+     *
+     * <p>#362: without this the TPH create validated a {@code field.map @objectRef} with
+     * {@code validateValue}, which applies the property's own constraints and does NOT cascade
+     * {@code @Valid} into the map's values — so a posted
+     * {@code {"labels": {"k": {...invalid...}}}} was accepted and written.
+     */
+    private static void appendMapValueValidationLoop(
+            StringBuilder src, String name, String accessorExpr) {
+        src.append("        if (").append(accessorExpr).append(" != null) {\n");
+        src.append("            for (var __el : ").append(accessorExpr).append(".values()) {\n");
+        src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
+        src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("                }\n");
+        src.append("            }\n");
+        src.append("        }\n");
+    }
+
+    /**
      * FR-017 TPH: emit the discriminator-base controller. ONE {@code @RestController} at
      * {@code /api/<base-plural>} mounting:
      * <ul>
@@ -661,6 +684,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
                 src.append("        }\n");
             }
+            // #362: validateValue above checks each property against the subtype DTO's own
+            // constraints and stops there — it does NOT cascade @Valid into a nested bean. A
+            // field.map @objectRef IS in createValidated (scalarFields skips only ObjectField),
+            // so before this loop its VALUES — which are the beans — were written unvalidated.
+            // The vanilla create cascades via @Valid on the DTO component; this is the TPH
+            // path's equivalent, so the two write surfaces agree.
+            for (MetaField vf : SpringDtoGenerator.valueObjectMapFields(st.entity())) {
+                appendMapValueValidationLoop(src, vf.getName(), "dto." + vf.getName() + "()");
+            }
             // ADR-0045 (#203/#229): honor @autoSet on the TPH per-subtype create — stamp EVERY
             // onCreate AND onUpdate column with now() before persisting (the caller's value is
             // ignored), mirroring the vanilla create handler's createArg above. The stamp helper
@@ -707,6 +739,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
             src.append("            }\n");
             src.append("        }\n");
+            // #362: as on the create path above, validateValue does not cascade into a nested
+            // bean, so a PRESENT field.map @objectRef had its values written unvalidated. The
+            // <Sub>Patch carries the hasX()/x() tristate, so this is the same loop the vanilla
+            // PATCH runs — skipping absent keys, and skipping an explicit null (which clears).
+            for (MetaField vf : SpringDtoGenerator.valueObjectMapFields(st.entity())) {
+                appendElementValidationLoop(
+                    src, vf.getName(), SpringNaming.capitalize(vf.getName()),
+                    "patch." + vf.getName() + "().values()");
+            }
             // ADR-0045 (#203/#229): bump every onUpdate @autoSet column on the per-subtype PATCH,
             // mirroring the vanilla update handler above — injected after present-value
             // validation, before delegating, so the timestamp bumps even when the caller omits

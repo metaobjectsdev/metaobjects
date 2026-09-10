@@ -134,15 +134,19 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
         }
     }
 
-    // Confirms, live, the exact claim docs/features/field-types.md now carries: a
-    // field.map @objectRef's nested value-object values are UNVALIDATED on the C# create
-    // path — an Address missing its @required "street" is silently ACCEPTED (201), not
-    // rejected (400), because RoutesGenerator.ValueObjectFields (the source AppendCreateVoValidation
-    // walks) admits only field.object, so a map never reaches the recursively-validating
-    // VO arms. This is the failure mode the docs warn about — acceptance, not an error —
-    // proven against the real generated create handler rather than inferred from source.
+    // #362 — this test used to PIN the defect: it asserted 201, documenting that a
+    // field.map @objectRef's nested value objects were written unvalidated because
+    // RoutesGenerator.ValueObjectFields (the source AppendCreateVoValidation walked) admits
+    // only field.object, so a map never reached the recursively-validating VO arms. Two
+    // changes closed it — MapValueObjectFields feeds the map columns to the same validation,
+    // and ValueObjectValidator unwraps an IDictionary to its Values (a Dictionary previously
+    // hit the IEnumerable arm, yielded KeyValuePair structs, and validated vacuously).
+    //
+    // The assertion is INVERTED rather than deleted: acceptance-instead-of-error is invisible
+    // by nature, so the case that proved it silent is exactly the one that must now prove it
+    // loud, live, against the real generated handler.
     [Fact]
-    public async Task A_map_valued_address_missing_its_required_street_is_silently_accepted_on_create()
+    public async Task A_map_valued_address_missing_its_required_street_is_rejected_on_create()
     {
         await using var pg = await PostgresContainer.StartAsync();
         await ProvisionAsync(pg.ConnectionString);
@@ -165,8 +169,8 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"));
             var text = await response.Content.ReadAsStringAsync();
 
-            Assert.Equal(System.Net.HttpStatusCode.Created, response.StatusCode);
-            Assert.Contains("acme-invalid", text);
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("validation", text);
         }
     }
 

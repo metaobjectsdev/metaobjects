@@ -52,6 +52,40 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         }
         """;
 
+    /**
+     * #362: a TPH (discriminator-rooted) entity whose subtype carries a {@code field.map
+     * @objectRef}. Before the fix this shape generated a controller that accepted and wrote
+     * invalid nested value objects on both per-subtype write paths — the map reaches the TPH
+     * settable set (scalarFields skips only ObjectField), and the per-field
+     * {@code validateValue} the TPH paths use does not cascade {@code @Valid} into a nested
+     * bean. It was newly reachable: before the MapField arm existed, this model failed Spring
+     * codegen outright at the unsupported-type throw.
+     *
+     * <p>The scalar-valued map is here as the control — it has no nested bean, so it must get
+     * no loop on either path, and a test that passes because EVERY map got a loop would be
+     * indistinguishable from one that passes correctly.</p>
+     */
+    private static final String TPH_MAP_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::auth", "children": [
+            { "object.value": { "name": "Address", "children": [
+                { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } }
+            ] } },
+            { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+                { "source.rdb":   { "@table": "auths" } },
+                { "field.long":   { "name": "id" } },
+                { "field.enum":   { "name": "type", "@values": ["Bridge"] } },
+                { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+                { "field.map": { "name": "addresses", "@objectRef": "Address" } },
+                { "field.map": { "name": "labels", "@valueType": "string" } }
+            ] } }
+          ] }
+        }
+        """;
+
     /** Run {@link SpringDtoGenerator} + {@link SpringValueObjectGenerator} over the fixture. */
     private Path generate(String label) throws Exception {
         Path gen = tmp.newFolder("gen-" + label).toPath();
@@ -359,5 +393,46 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         // what catches a Map<String, int> (illegal type argument) or a DTO naming a value object
         // the reachability walk never emitted.
         SpringTestFixtures.compileGenerated(generate("compile"), tmp.newFolder("classes-map").toPath());
+    }
+
+    @Test
+    public void tphWritePathsValidateTheValuesOfAValueObjectMap() throws Exception {
+        // #362. The TPH per-subtype create and PATCH both validate field-by-field with
+        // validator.validateValue, which applies the property's OWN constraints and stops —
+        // it does not cascade @Valid into a nested bean. A field.map @objectRef is in that
+        // settable set, so its VALUES (the beans) were written unvalidated on both paths,
+        // while the vanilla paths cascade. This asserts the two surfaces agree.
+        Path gen = tmp.newFolder("gen-tphmap").toPath();
+        Path ws = tmp.newFolder("ws-tphmap").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "tphmap", TPH_MAP_FIXTURE);
+
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", gen.toString());
+        for (com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?> g : List.of(
+                new SpringDtoGenerator(),
+                new SpringValueObjectGenerator(),
+                new SpringNamesGenerator(),
+                new SpringRepositoryGenerator(),
+                new SpringControllerGenerator(),
+                new SpringFilterAllowlistGenerator())) {
+            g.setArgs(args);
+            g.execute(loader);
+        }
+
+        String controller = Files.readString(gen.resolve("acme/auth/AuthController.java"));
+
+        // CREATE binds the union <Base>Dto — plain accessors, so the guard is a null check.
+        assertTrue("expected the TPH create to iterate the map's VALUES; saw:\n" + controller,
+                controller.contains("for (var __el : dto.addresses().values())"));
+        // PATCH binds the <Sub>Patch tristate, so it reuses the shared presence-guarded loop.
+        assertTrue("expected the TPH PATCH to iterate the map's VALUES; saw:\n" + controller,
+                controller.contains("for (var __el : patch.addresses().values())"));
+
+        // The control: a scalar-valued map has no nested bean and must get NO loop on either
+        // path. Without this, a change that emitted a loop for every map would pass above.
+        assertFalse("a scalar-valued map needs no nested validation on create; saw:\n" + controller,
+                controller.contains("dto.labels().values()"));
+        assertFalse("a scalar-valued map needs no nested validation on patch; saw:\n" + controller,
+                controller.contains("patch.labels().values()"));
     }
 }

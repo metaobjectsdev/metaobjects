@@ -101,6 +101,10 @@ public class RoutesGenerator : PerEntityGenerator
         // top-level TryValidateObject also does NOT recurse into them. The generator emits
         // typed per-field merge arms + per-field POST validation for each.
         var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+        // #362 — the map analog. Separate from voFields (see MapValueObjectFields): a map is a
+        // plain jsonb-converted property, but its VALUES are value objects and need the same
+        // graph validation on create and on a present PATCH key.
+        var mapVoFields = MapValueObjectFields(entity, ctx.Root);
         // Issue #203 — @autoSet timestamp columns the generated CRUD stamps with now()
         // (insert stamps all; update stamps onUpdate; the merge loop skips them; an
         // InsertPreserving escape hatch is emitted when any exist).
@@ -220,7 +224,7 @@ public class RoutesGenerator : PerEntityGenerator
             // the table, then RE-READS the row through the replica view by PK so the returned
             // body carries the derived (view-computed) fields (read-your-writes).
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
-                "Results.Created(prefix + \"/" + route + "\", input)", voFields, autoSetFields,
+                "Results.Created(prefix + \"/" + route + "\", input)", voFields, mapVoFields, autoSetFields,
                 writeThrough ? (readDbSet, pkProp!, route) : null);
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
@@ -253,7 +257,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                .Value.SerializerOptions;");
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
-            AppendPartialMergeLoop(sb, null, voFields, autoSetNavs, frozenNavs);
+            AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs);
             sb.AppendLine("            await db.SaveChangesAsync();");
             AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
@@ -441,7 +445,7 @@ public class RoutesGenerator : PerEntityGenerator
 
             // --- Per-subtype CRUD sets ---
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp);
+                AppendTphSubtypeRoutes(sb, st, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp);
         }
 
         sb.AppendLine();
@@ -562,6 +566,31 @@ public class RoutesGenerator : PerEntityGenerator
     private sealed record VoField(
         string WireName, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
 
+    // #362 — the `field.map @objectRef` columns, deliberately NOT folded into VoField.
+    // A VoField drives the owned-nav machinery (EF OwnsMany/.ToJson, deserialization as an
+    // owned navigation, the post-save array null-clears); a map is a plain mapped property
+    // with a jsonb converter and none of that applies. What it DOES share is the nested
+    // value-object graph, which the create and PATCH paths must validate — before this the
+    // map reached neither, so its values were written unchecked on every write path.
+    private sealed record MapVoField(string WireName, string Nav, string DeserType);
+
+    private static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root)
+    {
+        var list = new List<MapVoField>();
+        foreach (var f in entity.Fields())
+        {
+            if (f.SubType != FIELD_SUBTYPE_MAP || f.ObjectRef is not { } oref) continue;
+            if (f.IsDerived()) continue;   // #214 — derived columns are view-only, not writable
+            var target = root.FindObject(CSharpNaming.StripPkg(oref));
+            if (target is null || !target.IsValue()) continue;   // scalar-valued maps have no bean
+            list.Add(new MapVoField(
+                WireName: f.Name,
+                Nav: CSharpNaming.Pascal(f.Name),
+                DeserType: $"System.Collections.Generic.Dictionary<string, {CSharpNaming.Pascal(target.Name)}>"));
+        }
+        return list;
+    }
+
     private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames)
     {
         var list = new List<VoField>();
@@ -595,6 +624,7 @@ public class RoutesGenerator : PerEntityGenerator
     private static void AppendCreateHandler(
         StringBuilder sb, string mapPath, string cls, string dbSet,
         IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
+        IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<AutoSetField> autoSetFields,
         (string ReadDbSet, string PkProp, string Route)? reRead = null)
     {
@@ -603,7 +633,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async ({cls} input, AppDbContext db) =>");
             sb.AppendLine("        {");
             AppendCreateValidation(sb);
-            AppendCreateVoValidation(sb, voFields);
+            AppendCreateVoValidation(sb, voFields, mapVoFields);
             AppendCreateAutoSet(sb, autoSetFields);
             AppendCreatePersist(sb, dbSet, createdExpr, reRead);
             sb.AppendLine("        });");
@@ -635,7 +665,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
         sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
         AppendCreateValidation(sb);
-        AppendCreateVoValidation(sb, voFields);
+        AppendCreateVoValidation(sb, voFields, mapVoFields);
         AppendCreateAutoSet(sb, autoSetFields);
         AppendCreatePersist(sb, dbSet, createdExpr, reRead);
         sb.AppendLine("        });");
@@ -743,11 +773,19 @@ public class RoutesGenerator : PerEntityGenerator
     // ValueObjectValidator.Validate runs the VO's own DataAnnotations per element + recurses
     // into nested VO members; a null nav is vacuously valid (a missing required VO column is
     // already caught by the @required-key presence check). Assumes `input` is in scope.
-    private static void AppendCreateVoValidation(StringBuilder sb, IReadOnlyList<VoField> voFields)
+    private static void AppendCreateVoValidation(
+        StringBuilder sb, IReadOnlyList<VoField> voFields, IReadOnlyList<MapVoField> mapVoFields)
     {
         foreach (var vf in voFields)
             sb.AppendLine(
                 $"            if (!ValueObjectValidator.Validate(input.{vf.Nav})) return Results.BadRequest(new {{ error = \"validation\" }});");
+        // #362 — a field.map @objectRef's values are value objects and get the same graph
+        // validation. ValueObjectValidator unwraps an IDictionary to its Values; before that
+        // arm existed a Dictionary hit the IEnumerable arm, yielded KeyValuePair structs, and
+        // validated vacuously — so this line and that arm are one fix, not two.
+        foreach (var mf in mapVoFields)
+            sb.AppendLine(
+                $"            if (!ValueObjectValidator.Validate(input.{mf.Nav})) return Results.BadRequest(new {{ error = \"validation\" }});");
     }
 
     // The configured System.Text.Json options local (`jsonOpts`) — the app's
@@ -784,6 +822,7 @@ public class RoutesGenerator : PerEntityGenerator
     // and `jsonOpts` are in scope.
     private static void AppendPartialMergeLoop(
         StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields,
+        IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<string> autoSetNavs, IReadOnlyList<string> frozenNavs)
     {
         // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
@@ -828,6 +867,27 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                    catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
             sb.AppendLine($"                    if (!ValueObjectValidator.Validate({v})) return Results.BadRequest(new {{ error = \"validation\" }});");
             sb.AppendLine($"                    existing.{vf.Nav} = {v}{(vf.Required ? "!" : "")};");
+            sb.AppendLine("                    continue;");
+            sb.AppendLine("                }");
+        }
+        // #362 — a present field.map @objectRef key, handled BEFORE the generic property path.
+        // The generic path deserializes and assigns without ever running the value-object graph
+        // validation, so a map of invalid VOs was written on PATCH exactly as it was on create.
+        // Mirrors the VO arm above (deserialize -> validate -> assign -> continue); a map needs
+        // none of the owned-nav apparatus, so this arm is deliberately the short version.
+        for (int i = 0; i < mapVoFields.Count; i++)
+        {
+            var mf = mapVoFields[i];
+            var mv = "__map" + i;
+            sb.AppendLine($"                if (string.Equals(prop.Name, \"{mf.WireName}\", System.StringComparison.OrdinalIgnoreCase))");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
+            sb.AppendLine($"                    {{ existing.{mf.Nav} = null; continue; }}");
+            sb.AppendLine($"                    {mf.DeserType}? {mv};");
+            sb.AppendLine($"                    try {{ {mv} = System.Text.Json.JsonSerializer.Deserialize<{mf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
+            sb.AppendLine("                    catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+            sb.AppendLine($"                    if (!ValueObjectValidator.Validate({mv})) return Results.BadRequest(new {{ error = \"validation\" }});");
+            sb.AppendLine($"                    existing.{mf.Nav} = {mv};");
             sb.AppendLine("                    continue;");
             sb.AppendLine("                }");
         }
@@ -876,9 +936,13 @@ public class RoutesGenerator : PerEntityGenerator
     // subtype CLR type (discriminator injected by EF on Add); update is a partial merge
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
-        StringBuilder sb, TphSubtypePlan st, string baseRoute, string baseCls, string dbSet,
+        StringBuilder sb, TphSubtypePlan st, MetaRoot root, string baseRoute, string baseCls, string dbSet,
         string pkType, string pkProp, string discProp)
     {
+        // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
+        // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
+        // both write paths and must be validated on each.
+        var mapVoFields = MapValueObjectFields(st.Entity, root);
         var subCls = CSharpNaming.Pascal(st.Entity.Name);
         var seg = st.RouteSegment;
         var subRoute = baseRoute + "/" + seg;
@@ -939,7 +1003,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
         AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
-            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)", [], autoSetFields);
+            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)", [], mapVoFields, autoSetFields);
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
@@ -958,7 +1022,7 @@ public class RoutesGenerator : PerEntityGenerator
         AppendUpdateAutoSet(sb, autoSetFields);
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
-        AppendPartialMergeLoop(sb, discProp, [], autoSetNavs, frozenNavs);
+        AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs);
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine("            return Results.Ok(existing);");
         sb.AppendLine("        }");

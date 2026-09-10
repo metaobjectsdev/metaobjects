@@ -303,4 +303,27 @@ public class MapFieldCodegenTests
             .GetValue(comparer)!;
         return lambda.Compile().DynamicInvoke(arguments);
     }
+
+    [Fact]
+    public void Both_write_paths_validate_the_values_of_a_value_object_map()
+    {
+        // #362. The create path validated only field.object columns, and the PATCH merge
+        // loop routed a map through the generic property path, which assigns without ever
+        // running the value-object graph validation. So a map of invalid value objects was
+        // written on BOTH write surfaces — silently, as a 201/200, never an error.
+        var routes = new RoutesGenerator().Generate(Ctx(Load()))
+            .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
+
+        // Create: the map column joins the field.object columns in the validation preamble.
+        Assert.Contains("ValueObjectValidator.Validate(input.Addresses)", routes);
+        // PATCH: a typed arm ahead of the generic path, so a present key is validated
+        // before assignment rather than after persistence (or never).
+        Assert.Contains("if (!ValueObjectValidator.Validate(__map0)) return Results.BadRequest", routes);
+
+        // The control: a scalar-valued map has no nested bean and must reach NEITHER path.
+        // Without this, an implementation that validated every map would pass the two
+        // assertions above while doing something quite different.
+        Assert.DoesNotContain("ValueObjectValidator.Validate(input.Labels)", routes);
+        Assert.DoesNotContain("ValueObjectValidator.Validate(input.Channels)", routes);
+    }
 }

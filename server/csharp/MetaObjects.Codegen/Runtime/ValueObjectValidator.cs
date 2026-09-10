@@ -29,7 +29,7 @@ namespace MetaObjects.Codegen.Runtime;
 public static class ValueObjectValidator
 {
     /// <summary>
-    /// Validates a value-object graph — a single VO, a collection of VOs, or null —
+    /// Validates a value-object graph — a single VO, a collection or map of VOs, or null —
     /// against its members' DataAnnotations, recursing into nested-VO members
     /// (<see cref="Validator.TryValidateObject(object, ValidationContext, ICollection{ValidationResult}, bool)"/>
     /// is non-recursive). Returns true when the whole graph is valid; a null / empty
@@ -51,6 +51,15 @@ public static class ValueObjectValidator
             case null:
             case string:
                 return null;
+            // #362 — BEFORE the IEnumerable arm, which every IDictionary also satisfies.
+            // Enumerating a Dictionary<string, VO> yields KeyValuePair<string, VO> structs,
+            // whose assembly is CoreLib, so the generic arm reported "no value objects here"
+            // and the graph validated vacuously. The VOs in a map are its VALUES.
+            case IDictionary dict:
+                foreach (var v in dict.Values)
+                    if (ValueObjectAssembly(v) is { } da)
+                        return da;
+                return null;
             case IEnumerable seq:
                 foreach (var item in seq)
                     if (ValueObjectAssembly(item) is { } a)
@@ -64,6 +73,16 @@ public static class ValueObjectValidator
     private static bool ValidateGraph(object? value, Assembly voAssembly)
     {
         if (value is null || value is string) return true;
+        // #362 — must precede the IEnumerable arm (every IDictionary is one). Without it a
+        // Dictionary<string, VO> validated its KeyValuePair structs, which carry no
+        // DataAnnotations and live in CoreLib, so every value passed unchecked. This arm also
+        // covers a map nested INSIDE a value object, reached by the property walk below.
+        if (value is IDictionary dict)
+        {
+            foreach (var v in dict.Values)
+                if (!ValidateGraph(v, voAssembly)) return false;
+            return true;
+        }
         if (value is IEnumerable seq)
         {
             foreach (var item in seq)
