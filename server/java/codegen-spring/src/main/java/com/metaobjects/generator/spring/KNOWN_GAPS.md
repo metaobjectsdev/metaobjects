@@ -160,8 +160,9 @@ array, distinct from present-null → SQL NULL).
 
 **`field.map` (dict-of-VO) now ships** on the DTO / `<Entity>Patch` / controller / value-object
 walk: the component types as `Map<String, V>`, `@Valid` cascades into the map's values on POST,
-and PATCH validates each value explicitly. That entry used to say a persistence-conformance
-roundtrip column was needed first; the CODEGEN rung did not in fact depend on it, and the gate
+and PATCH validates each value explicitly — vanilla handler; the TPH carve-out is below.
+That entry used to say a persistence-conformance roundtrip column was needed first; the
+CODEGEN rung did not in fact depend on it, and the gate
 it named is still open and still the right one — for the RUNTIME tier, not this one. OMDB does
 not read or write a map (its jsonb path keys off the `@storage` attr a map does not carry), so a
 mapped column is generated-code-only until that lands. See `docs/features/field-types.md`.
@@ -169,7 +170,13 @@ mapped column is generated-code-only until that lands. See `docs/features/field-
 **Still staged out** (tracked follow-ups): the Kotlin `field.string @dbColumnType=jsonb`
 open-bag PATCH (needs a kotlinx `parseToJsonElement` bridge).
 TPH entities with VO columns also remain out of scope (the TPH union skips
-`ObjectField`).
+`ObjectField`). A `field.map` is the one nested-value shape that DOES reach the TPH
+artifacts — the TPH settable set is `scalarFields` MINUS pk/discriminator/auto-set, and
+`scalarFields` skips only `ObjectField` — but the TPH write paths validate per field via
+`validateValue`, which does not cascade, so a map's values are accepted UNVALIDATED on TPH
+create/PATCH (the `@Valid` on the `<Sub>Dto` component is decorative there). Before the
+`MapField` type-mapper arm, a map-bearing TPH entity failed generation outright, so this
+shape is newly reachable and untested by any gate.
 
 ## `SpringPayloadGenerator.resolveObjectByShortOrFqn` has zero in-repo callers
 
