@@ -2919,8 +2919,12 @@ public static class ValidationPasses
     //   Cross-attribute validation for field.object + @storage (ADR-0013):
     //     - A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
     //       A field.object models a typed nested value; without @objectRef it is
-    //       "an oxymoron at the logical layer". Open/untyped JSON uses the physical
-    //       @dbColumnType: jsonb escape hatch on field.string, NOT a bare object.
+    //       "an oxymoron at the logical layer". The MESSAGE states the whole ladder,
+    //       not just the last rung: a known key set is an object.value the field
+    //       @objectRefs; dynamic keys over a known value type are a field.map; only
+    //       a bag no reader pins a key in is @dbColumnType: jsonb on a field.string.
+    //       Naming the escape hatch alone — which this error did until now — is what
+    //       taught adopters to reach for the bag by default.
     //       This rule subsumes the legacy @storage-without-@objectRef check
     //       (@storage is only meaningful on a field.object), so missing-@objectRef
     //       now always reports this single, clearer error — one error per node
@@ -2951,8 +2955,12 @@ public static class ValidationPasses
                 {
                     errors.Add(new MetaError(
                         $"field.object \"{obj.Name}.{field.Name}\" has no @objectRef; " +
-                        "a field.object requires @objectRef. For an open/untyped JSON map " +
-                        "use @dbColumnType: jsonb on a field.string instead of a bare object.",
+                        "a field.object models a typed nested value and requires one. " +
+                        "Take the first of these that fits: a known key set → declare an " +
+                        "object.value and point @objectRef at it; dynamic keys over a known value " +
+                        "type → field.map with @objectRef (a value object) or @valueType (a " +
+                        "scalar); a genuinely open bag no reader pins a key in → " +
+                        "@dbColumnType: jsonb on a field.string.",
                         ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
                         Envelope: field.Source));
                     continue;

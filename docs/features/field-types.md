@@ -14,13 +14,40 @@ across ports — a `field.currency` is integer minor units everywhere; a
 | `field.int` | `number` | `Integer` | `Int` | `int` | `int` | `integer` |
 | `field.long` | `number` (or bigint) | `Long` | `Long` | `long` | `int` | `bigint` |
 | `field.double` | `number` | `Double` | `Double` | `double` | `float` | `double precision` |
+| `field.float` | `number` | `Float` | `Float` | `float` | `float` | `real` |
+| `field.decimal` | `string` | `BigDecimal` | `BigDecimal` | `decimal` | `Decimal` | `numeric(@precision, @scale)` |
 | `field.boolean` | `boolean` | `Boolean` | `Boolean` | `bool` | `bool` | `boolean` |
 | `field.date` | `Date` | `LocalDate` | `LocalDate` | `DateOnly` | `date` | `date` |
+| `field.time` | `string` | `LocalTime` | `LocalTime` | `TimeOnly` | `datetime.time` | `time` |
 | `field.timestamp` | `Date` | `Instant` | `Instant` | `DateTimeOffset` | `datetime` | `timestamp with time zone` |
 | `field.currency` | `number` (minor units) | `Long` (minor units) | `Long` (minor units) | `long` (minor units) | `int` (minor units) | `bigint` |
 | `field.uuid` | `string` | `UUID` | `UUID` | `Guid` | `UUID` | `uuid` |
+| `field.uri` | `string` | `java.net.URI` | `java.net.URI` | `Uri` | `AnyUrl` | `text` |
+| `field.inet` | `string` | `InetAddress` | `InetAddress` | `IPAddress` | `IPvAnyAddress` | `inet` |
 | `field.enum` | union + `z.enum` | `Enum` | `enum class` | `enum` | `Enum` | `varchar` + `CHECK` |
 | `field.object` | nested type | nested class | nested data class | nested record | nested dataclass | per `@storage` |
+| `field.map` | `Record<string, V>` | — (see below) | `Map<String, V>` | `Dictionary<string, V>` | `dict[str, V]` | `jsonb` |
+
+That is the whole registered vocabulary — 17 concrete subtypes. `field.base` is an
+abstract registry anchor, never authored (`ERR_ABSTRACT_SUBTYPE_AUTHORED`).
+
+Three rows need a footnote:
+
+- **`field.uri` / `field.inet`** bind a native URL/IP type on every port but TypeScript,
+  which has none (the same reason `field.uuid` is a `string` there). `@lenient: true`
+  degrades both to a plain string with no validator, and takes the `inet` column down to
+  `text`.
+- **`field.map`** is the typed dict: string keys, and a value type set by exactly one of
+  `@valueType` (a scalar subtype) or `@objectRef` (a value object) — `V` above. It is one
+  jsonb column holding the JSON object; `isArray` does not apply. **Java does not complete
+  this rung:** `SpringTypeMapper.javaTypeName` has no `MapField` arm, so a mapped field on
+  a Spring entity reaches its `unsupported Spring DTO type mapping` throw. On C# the
+  property and its `[Column]` annotation are emitted but `DbContextGenerator` writes no EF
+  storage mapping for the dictionary, so EF does not persist it. **No persistence- or
+  api-contract-conformance fixture exercises `field.map` on any port — it is loader-gated
+  only.** Until that closes, a stable key set is better declared as an `object.value`
+  behind `field.object`; see [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md)
+  for which of the two a shape belongs in.
 
 ## Common field attributes
 

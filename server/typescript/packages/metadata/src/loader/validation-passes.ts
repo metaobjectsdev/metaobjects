@@ -1672,8 +1672,13 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 // Rules (ADR-0013):
 //   1. A field.object ALWAYS requires @objectRef. A field.object models a typed
 //      nested value; without @objectRef it is "an oxymoron at the logical layer".
-//      Genuinely open/untyped JSON uses the physical @dbColumnType: jsonb escape
-//      hatch on field.string, NOT a bare object. → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+//      → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF. The MESSAGE states the whole ladder,
+//      not just the last rung: a known key set is an object.value the field
+//      @objectRefs; dynamic keys over a known value type are a field.map; only a
+//      bag no reader pins a key in is @dbColumnType: jsonb on a field.string.
+//      Naming the escape hatch alone — which this error did until now — is what
+//      taught adopters to reach for the bag by default, and it is the mechanism
+//      behind every untyped-jsonb column an adoption audit finds.
 //      (This rule subsumes the legacy @storage-without-@objectRef check —
 //      @storage is only meaningful on a field.object, so the missing-@objectRef
 //      situation now always reports this single, clearer error. One error per
@@ -1699,7 +1704,7 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
         // further @storage error on the same node would be redundant.
         errors.push(
           new ParseError(
-            `field.object "${obj.name}.${field.name}" has no @objectRef; a field.object requires @objectRef. For an open/untyped JSON map use @dbColumnType: jsonb on a field.string instead of a bare object.`,
+            `field.object "${obj.name}.${field.name}" has no @objectRef; a field.object models a typed nested value and requires one. Take the first of these that fits: a known key set → declare an object.value and point @objectRef at it; dynamic keys over a known value type → field.map with @objectRef (a value object) or @valueType (a scalar); a genuinely open bag no reader pins a key in → @dbColumnType: jsonb on a field.string.`,
             { code: "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF", source: field.source },
           ),
         );

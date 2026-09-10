@@ -48,8 +48,10 @@ const meta = (expr: string): string =>
             children: [
               { "source.rdb": { "@table": "notification" } },
               { "field.long": { name: "id" } },
-              // An open/untyped JSON map: a `field.string` with a jsonb physical type, which
-              // is what the loader's own error message prescribes for a bare object.
+              // A genuinely open bag — the LAST rung of the jsonb ladder, and the right one
+              // here: this fixture exists to exercise expression-index rendering over a jsonb
+              // column, so nothing in it pins a key. (A shape the code knows would be an
+              // object.value or a field.map; the loader's error names all three rungs.)
               { "field.string": { name: "requestContext", "@column": "request_context", "@dbColumnType": "jsonb" } },
               { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
               { "index.lookup": { name: "byDevice", "@expr": expr } },

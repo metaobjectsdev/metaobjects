@@ -63,7 +63,8 @@ const meta = (indexes: ReadonlyArray<{ name: string; expr: string }>): string =>
             children: [
               { "source.rdb": { "@table": "ledger" } },
               { "field.long": { name: "id" } },
-              // An open/untyped JSON map, spelled the way the loader's own error prescribes.
+              // A genuinely open bag — the LAST rung of the jsonb ladder, and the right one
+              // here: the fixture exercises expression-index casts over jsonb, pinning no key.
               { "field.string": { name: "payload", "@column": "payload", "@dbColumnType": "jsonb" } },
               { "field.decimal": { name: "amt", "@column": "amt", "@precision": 10, "@scale": 2 } },
               { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },

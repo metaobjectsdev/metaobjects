@@ -186,9 +186,11 @@ public final class ErrorMessageConstants {
 
     /**
      * Error code emitted when a {@code field.object} declares no {@code @objectRef}
-     * (ADR-0013). A field.object models a typed nested value and REQUIRES @objectRef;
-     * an open/untyped JSON map uses the physical {@code @dbColumnType: jsonb} escape
-     * hatch on a {@code field.string} instead of a bare object.
+     * (ADR-0013). A field.object models a typed nested value and REQUIRES @objectRef.
+     * The message states the whole ladder rather than only the escape hatch: a known
+     * key set is an {@code object.value} the field {@code @objectRef}s; dynamic keys
+     * over a known value type are a {@code field.map}; only a bag no reader pins a key
+     * in is {@code @dbColumnType: jsonb} on a {@code field.string}.
      * Cross-language contract: {@code ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF}.
      */
     public static final String ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF = "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF";
