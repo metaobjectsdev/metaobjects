@@ -139,9 +139,10 @@ public class MapFieldCodegenTests
     {
         // EntityGenerator emits the Dictionary property for a PROJECTION too, but the
         // DbContext's projection loop emits only ToView + enum conversions — so a view
-        // exposing a field.map got a Dictionary property with no mapping at all. That is
-        // exactly the failure this whole mapping exists to prevent: a Dictionary<string,int>
-        // binds to nothing on Npgsql, so AppDbContext fails model building.
+        // exposing a field.map got a Dictionary property with no mapping at all: no column
+        // type and no converter, so only an explicit mapping makes EF agree with the jsonb
+        // column the TS-owned migration creates (ADR-0015). That is exactly the failure this
+        // whole mapping exists to prevent.
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.projection": { "name": "CustomerSummary", "children": [

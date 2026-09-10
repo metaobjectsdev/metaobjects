@@ -110,10 +110,10 @@ public class DbContextGenerator : IGenerator
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.ResolvedIsArray()))
                 modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
             // A field.map column on a view needs its jsonb mapping for the SAME reason:
-            // EntityGenerator emits the Dictionary property for a projection too, and an
-            // unmapped Dictionary<string,int> binds to nothing on Npgsql, so the model fails
-            // to build. This loop and EmitFieldTypeConfig's are the two call sites
-            // NeedsMapJsonbHelper has to cover.
+            // EntityGenerator emits the Dictionary property for a projection too, so without
+            // this loop the property carries no column type and no converter -- only an
+            // explicit mapping makes EF agree with the jsonb column the TS-owned migration
+            // creates (ADR-0015).
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_MAP))
                 modelLines.Add(MapJsonbConfig(name, f, ctx));
         }
@@ -897,9 +897,10 @@ public class DbContextGenerator : IGenerator
         // measured. Not gated by jsonbObjectsOnly --
         // a map's storage is ALWAYS the single jsonb column, so a write-through entity's
         // read model declares it too (same rule as the enum / decimal / timestamp loops).
-        // The C# analog of Kotlin's jsonb(col, encoder, decoder): an explicit (de)serializer,
-        // no reliance on Npgsql's dynamic-JSON opt-in the generated code cannot make for a
-        // consumer. The COMPARER is not optional -- see EmitMapJsonbHelper.
+        // The C# analog of Kotlin's jsonb(col, encoder, decoder): the converter is emitted
+        // explicitly, so the mapping does not depend on any host-side serializer configuration
+        // the generated code cannot make on a consumer's behalf. The COMPARER is not optional --
+        // see EmitMapJsonbHelper.
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_MAP))
             modelLines.Add(MapJsonbConfig(className, f, ctx));
 
