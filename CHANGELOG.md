@@ -2,8 +2,11 @@
 
 All notable changes to `@metaobjectsdev/*` TypeScript packages are documented
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
-this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
-(pre-1.0; MINOR bumps may introduce breaking changes with notice).
+this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Since `1.0.0` the two version axes are separate (ADR-0035 Amendment 2): the package number
+promises the **software** surface, `metamodelVersion` promises the **metadata** contract, and
+`^1.0.0` accepts a MINOR — so **a release that moves `metamodelVersion` says so in its entry
+here.**
 
 ## [1.0.0] — 2026-09-09
 

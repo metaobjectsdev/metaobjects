@@ -139,13 +139,15 @@ async function verifyNpm() {
     : r(`cli ${EXPECTED_TAG} = ${tags[EXPECTED_TAG] ?? "(unset)"}`);
   if (IS_RC && tags.latest === VERSION) r(`cli latest = ${VERSION} — an RC must not be latest`);
   // Stray tags are release residue: a stale `next` from an RC line, or a leftover probe.
-  // Reported, never deleted here — deletion needs interactive 2FA (403 for bypass tokens).
+  // Reported, never changed here. Deletion is not available to us at all: `dist-tag rm` 403s
+  // for the local token AND the CI publish token (npm's bypass-2FA package-access rule), so
+  // the remedy is to REPOINT the tag at the current release, which `dist-tag add` still does.
   // `latest` is never residue — during an RC cut it correctly still points at the previous
   // STABLE release, so flagging it would report the normal state of every RC as a problem.
   const expected = new Set([EXPECTED_TAG, "latest"]);
   const stray = Object.keys(tags).filter((t) => !expected.has(t));
   if (stray.length) w(`extra dist-tags on cli: ${stray.map((t) => `${t}=${tags[t]}`).join(", ")}`
-    + "  → `npm dist-tag rm` needs an interactive-2FA session");
+    + "  → repoint via the `npm dist-tag` workflow (action `add`); `rm` 403s for every token");
 }
 
 async function verifyPypi() {

@@ -151,7 +151,12 @@ Add the `CHANGELOG.md` entry (Keep-a-Changelog format) if not already committed.
 
 ## Phase 9 — Cleanup
 
-`npm dist-tag rm <pkg> next` and `npm deprecate <pkg>@<version>-rc.1 "superseded; use <version>"` for each package.
+`npm deprecate <pkg>@<version>-rc.1 "superseded; use <version>"` for each package.
+
+Retire the RC's `next` tag by **repointing, not deleting**: `npm dist-tag rm` 403s for every
+token we hold (local and CI both — npm's bypass-2FA package-access rule, not a missing OTP).
+Run Actions → **npm dist-tag** → tag `next`, action `add`, version `<version>`, which does the
+whole lockstep set from the publish token. See `docs/RELEASING.md` §4.
 
 ## Phase 10 — Propagate versions (docs + websites)
 
@@ -199,8 +204,10 @@ version FAILS by design — skip what's done, never force.
 npm removes **direct publishing from 2FA-bypass tokens around January 2027**
 ([changelog](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/));
 since 2026-07-31 such tokens already cannot change package access — including
-**deleting a dist-tag**, which breaks Phase 9's `npm dist-tag rm` and needs an
-interactive-2FA session. The replacement is **OIDC Trusted Publishing** via
+**deleting a dist-tag**. Measured 2026-09-10: the local token and the CI `NPM_TOKEN`
+both 403 on `DELETE …/dist-tags/next` and `--otp` changes neither, so this is a grant
+boundary and no OTP session was going to clear it. Phase 9 repoints with `dist-tag add`
+instead, which is not restricted. The replacement is **OIDC Trusted Publishing** via
 `publish-npm.yml` (which exists), the same mechanism `publish-csharp.yml` already
 uses for NuGet; the remaining work is a trusted-publisher registration per package
 on npmjs.com. Caveat: OIDC can't drive `npm dist-tag` yet, so RC→promote still needs

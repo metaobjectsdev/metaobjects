@@ -3,7 +3,8 @@
 > **Who runs releases: the agent (Claude) does — end to end, for every registry.** The
 > credentials are on the maintainer's machine; there is no "hand it to the human to publish"
 > step. Locations:
-> - **npm** → `~/.npmrc` (automation token). Publish with `bun publish`.
+> - **npm** → `~/.npmrc` (granular token, bypass-2FA). Publish with `bun publish`. It can
+>   publish but **cannot change package access**, so `npm dist-tag rm` 403s — see §4 Cleanup.
 > - **PyPI** → token in `~/Work/Keys/pypi.txt`. **Publish manually with `uv publish`** — the
 >   OIDC Trusted Publishing workflow is misconfigured ([#36]), so the keyless path below does
 >   NOT work yet; use the manual procedure.
@@ -498,11 +499,27 @@ and Maven have been bumped, committed and published. See golden rule 7.
 ```bash
 # deprecate any broken/superseded RCs
 npm deprecate '@metaobjectsdev/<pkg>@<bad-version>' "superseded; use <version>"
-# point latest off a bad version if needed, and drop the now-stale next tag
-npm dist-tag rm @metaobjectsdev/<pkg> next
 ```
-Then verify the registry: `npm view @metaobjectsdev/<pkg> dist-tags` (or `curl` the registry to
-bypass npm CLI cache, which lags right after publish).
+
+**Retire the RC's `next` tag by REPOINTING it, not by deleting it.** `npm dist-tag rm`
+returns `403 Forbidden - DELETE …/dist-tags/next` for every credential this project has: the
+maintainer's local granular token AND the CI `NPM_TOKEN` that publishes the set, with `--otp`
+making no difference to either — so the registry is not asking for a second factor. It is npm's
+2026-07-31 restriction: a bypass-2FA token may still publish but may not change package access,
+and deleting a dist-tag is package access. Measured across all 14 packages on 2026-09-10.
+
+`dist-tag add` is not restricted, so point `next` at the version you just promoted. That removes
+the prerelease install path, which is the actual harm; the tag continuing to exist alongside an
+identical `latest` is cosmetic.
+
+Do it for the whole set from CI, where the publish token already lives — Actions →
+**npm dist-tag** → Run workflow → tag `next`, action `add`, version `<version>`
+([`.github/workflows/npm-dist-tag.yml`](../.github/workflows/npm-dist-tag.yml); the set and its
+order come from `scripts/publish-set.mjs`, never a list maintained there). Action `ls` is the
+default, so a dispatch meant to report cannot write.
+
+Then verify: `npm dist-tag ls @metaobjectsdev/<pkg>` — authoritative, where `npm view` is
+CDN-cached and lags right after publish.
 
 ## Isolated patch (one package)
 
@@ -677,10 +694,17 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
    `mvn versions:set`: `versions:set` only walks the reactor and silently leaves the
    excluded modules behind, so their `<parent><version>` lags and the next tag fails
    `release-gate (java|kotlin)` with "Non-resolvable parent POM".
+   **Derive both ends — never type a major.** The offset lives in
+   `scripts/maven-coordinate.mjs` and nowhere else; typing `7.` by hand at the 1.0 cut asks
+   Central for a version BELOW the last release, which is how two scripts were already wrong:
    ```bash
-   grep -rl 7.7.8 --include=pom.xml server/java | xargs sed -i 's/7\.7\.8/7.7.9/g'
+   CUR=$(sed -n 's:.*<version>\([0-9][0-9.]*\)</version>.*:\1:p' server/java/pom.xml | head -1)
+   NEXT=$(node -e 'import("./scripts/maven-coordinate.mjs").then(m=>console.log(m.mavenVersion(process.argv[1])))' <npm-version>)
+   echo "$CUR -> $NEXT"        # eyeball it BEFORE the sed; both are immutable once deployed
+   grep -rl "$CUR" --include=pom.xml server/java | xargs sed -i "s/${CUR//./\\.}/$NEXT/g"
    ```
-   (Verify every `<version>7.4.0</version>` is the project version, not a third-party dep.)
+   (Verify every `<version>` the grep matched is the project version, not a third-party dep
+   that happens to share the number.)
    Then assert the excluded modules are in sync: `scripts/check-pom-versions.sh`
    (also enforced on every push by `.githooks/pre-push` and by `scripts/ci-local.sh`).
 2. **Validate locally:** `cd server/java && mvn -q clean install -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed).
