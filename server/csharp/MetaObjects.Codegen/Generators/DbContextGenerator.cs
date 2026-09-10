@@ -714,6 +714,14 @@ public class DbContextGenerator : IGenerator
     /// <c>EqualityComparer&lt;T&gt;.Default</c> with no serialization at all, while a value-object
     /// value still falls through to a JSON compare because the generated POCO is a class and
     /// compares by reference. The snapshot deep-copies only when the value type needs it.</para>
+    /// <para>The shared <c>Options</c> instance the helper emits carries a
+    /// <c>JsonStringEnumConverter</c> so a <c>field.enum</c> member of the map's value object
+    /// serializes as its member SYMBOL — the rule <see cref="JsonEnumConversions"/> states for
+    /// the owned-<c>field.object</c> jsonb path, for the same reason: System.Text.Json's
+    /// default is the enum's int ORDINAL, which no sibling port writes for the same declared
+    /// field, and <c>@intValueMap</c> is a column-storage concern that reaches nothing inside
+    /// a JSON document. One shared instance serves the converter and the Eq/Snap JSON arms,
+    /// so every arm encodes enums identically.</para>
     /// <para>Fully qualified throughout: the generated file's usings are a fixed set
     /// (<see cref="EmitUsings"/>), and widening it would change byte-identical output for
     /// every model.</para>

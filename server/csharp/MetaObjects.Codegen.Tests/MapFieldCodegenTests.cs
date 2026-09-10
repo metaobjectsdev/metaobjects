@@ -267,9 +267,9 @@ public class MapFieldCodegenTests
         // A null map hashes to a stable constant and snapshots as null, on BOTH value-type
         // arms -- Hash used to dereference v.Count and the scalar Snap arm passed v to the
         // Dictionary copy constructor, so a null map threw inside EF change tracking.
-        Assert.Equal(0, (int)InvokeLambda(scalar, "HashCodeExpression", (object?)null));
+        Assert.Equal(0, (int)InvokeLambda(scalar, "HashCodeExpression", (object?)null)!);
         Assert.Null(InvokeLambda(scalar, "SnapshotExpression", (object?)null));
-        Assert.Equal(0, (int)InvokeLambda(objectValued, "HashCodeExpression", (object?)null));
+        Assert.Equal(0, (int)InvokeLambda(objectValued, "HashCodeExpression", (object?)null)!);
         Assert.Null(InvokeLambda(objectValued, "SnapshotExpression", (object?)null));
 
         // Semantics beyond null handling are unchanged: entry-wise order-independent

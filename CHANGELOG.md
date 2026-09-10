@@ -55,7 +55,16 @@ It now emits an explicit jsonb column type plus a shared converter/comparer pair
 entities, read-only projections and flattened value-object members alike. The comparer is
 load-bearing, not decoration: EF snapshots a value-converted property by reference, so a
 converter alone would leave an in-place `entity.Labels["k"] = v` undetected and the UPDATE
-would never fire.
+would never fire. Two details of the emitted shape: the property's NULLABILITY follows the
+column — a `@required` map is a non-null dictionary with an empty-dictionary initializer,
+any other map a nullable dictionary with no initializer, because the migration's column is
+nullable by default and a non-nullable property over it makes EF Core 8 skip the shaper's
+NULL check (one NULL cell — a row written by another port, or before the field existed —
+would 500 every read arm), and NULL stays distinct from a present `{}`. And the shared
+serializer options carry a `JsonStringEnumConverter`, so a `field.enum` member of the map's
+value object persists as its member SYMBOL — the rule the owned-`field.object` jsonb column
+already follows; System.Text.Json's default int ordinal is a value no sibling port writes
+for the same declared field.
 
 **Scope.** No runtime persistence layer reads or writes a map except Python's
 `ObjectManager`, and no persistence- or api-contract-conformance corpus exercises
