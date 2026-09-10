@@ -133,14 +133,15 @@ URL grammar + wire format the client speaks, and
 the consumer-side wiring (React + TanStack, and the
 [Angular 18 tier](docs/ports/typescript-client.md#angular-18)).
 
-## Four pillars
+## Five pillars
 
-All four ship per-language today — but they are not uniformly deep. See the
+The first four ship per-language today — but they are not uniformly deep. See the
 [capability matrix](#capability-matrix) for per-port coverage; in field
 materialization the ranking is **drift > codegen > prompts > runtime metadata**
-(the youngest pillar). The prompt pillar's library-side building blocks are
+(the youngest of the four). The prompt pillar's library-side building blocks are
 complete in all five ports; MCP exposure of declared prompts/tools is the one
-remaining roadmap item:
+remaining roadmap item. The fifth pillar ships its vocabulary and its `verify`
+checks in every port, and its test scaffolding in TypeScript only:
 
 1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
    Spring REST + DTO + repository for Java, `data class` + Exposed for Kotlin, EF Core
@@ -158,6 +159,15 @@ remaining roadmap item:
    deterministically (snapshot-testable, cache-stable, drift-checked at build
    time, conformance-gated cross-language). See
    [`docs/features/templates-and-payloads.md`](docs/features/templates-and-payloads.md).
+5. **Requirements and testing** *(vocabulary + `verify` checks in all five ports;
+   `requirementTests()` scaffolding is TypeScript-only)* — declare what the software
+   is supposed to *do* in the same model as the entities. The other four pillars keep
+   the code honest about the model; this one asks whether a claimed capability is
+   actually built. `@implementedBy` is **resolved, not trusted** — it names a real
+   member of the real model, so a claim whose implementation was renamed or deleted
+   fails the build rather than going quietly stale, and `meta verify` reports the
+   ledger on every run. A project that declares no `requirement.*` nodes sees no
+   change at all. See [`docs/features/requirements.md`](docs/features/requirements.md).
 
 ## Repo layout
 
