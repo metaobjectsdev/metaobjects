@@ -1,13 +1,20 @@
-# Retire (or repoint) a dist-tag across the whole lockstep npm set.
+# Repoint (or attempt to retire) a dist-tag across the whole lockstep npm set.
 #
 # WHY THIS EXISTS. A dist-tag left pointing at a superseded prerelease is a live install
 # path: `npm i @metaobjectsdev/cli@next` served 1.0.0-rc.8 for as long as `next` outlived
-# the 1.0.0 cut. Removing it by hand is 14 registry calls, and the maintainer's LOCAL
-# granular token cannot make them — it 403s on `dist-tag rm` for every package and on
-# `npm profile get`, and passing `--otp` does not change the error, so the registry is not
-# asking for a second factor: that token simply lacks the right. The CI `NPM_TOKEN` is the
-# one that publishes, so it is the one that can retag. Running it here also means no token
-# ever has to be pasted onto a laptop.
+# the 1.0.0 cut. Correcting that by hand is 14 registry calls; doing it here means no
+# publish-capable token is ever pasted onto a laptop.
+#
+# WHAT A TOKEN CAN AND CANNOT DO — measured, not assumed. `add` (repoint) WORKS: that is
+# how `next` was moved off rc.8 onto 1.0.0. `rm` DOES NOT, from any credential we hold.
+# The maintainer's local granular token 403s on `dist-tag rm`, and so does the CI
+# `NPM_TOKEN` that publishes the set (2026-09-10, run 34424234319: `npm whoami` succeeds,
+# then every package returns `403 Forbidden - DELETE .../dist-tags/next`). Passing `--otp`
+# changes nothing, so the registry is not asking for a second factor. This is npm's
+# 2026-07-31 restriction — a bypass-2FA granular token may still publish but may not change
+# package access, and deleting a dist-tag is package access. So `rm` is kept because the
+# grant may change, but expect it to fail; the working remedy for a stale tag is to REPOINT
+# it at the current release with `add`, which leaves no prerelease install path behind.
 #
 # The set and its order come from scripts/publish-set.mjs — the single source of truth for
 # WHICH packages a release touches (CLAUDE.md: never hardcode the publish set; a new
@@ -23,11 +30,15 @@ on:
         required: true
         default: 'next'
       action:
-        description: 'rm = remove the tag; ls = report only (no writes)'
+        description: 'ls = report only (no writes); add = repoint at `version`; rm = remove (expect 403)'
         required: true
         default: 'ls'
         type: choice
-        options: [ls, rm]
+        options: [ls, add, rm]
+      version:
+        description: 'version to point `tag` at (required for add, e.g. 1.0.0)'
+        required: false
+        default: ''
 
 jobs:
   dist-tag:
@@ -51,6 +62,7 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG: ${{ inputs.tag }}
           ACTION: ${{ inputs.action }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
@@ -61,23 +73,38 @@ jobs:
           # registry-side refusal of the operation.
           npm whoami >/dev/null 2>&1 || { echo "::error::NPM_TOKEN does not authenticate"; exit 1; }
 
+          if [ "$ACTION" = "add" ] && [ -z "$VERSION" ]; then
+            echo "::error::action 'add' needs a version to point '$TAG' at"; exit 1
+          fi
+
           node scripts/publish-set.mjs > "${RUNNER_TEMP}/set.txt"
           test -s "${RUNNER_TEMP}/set.txt"
 
           fail=0
           while read -r dir; do
             name=$(node -p "require('./${dir}/package.json').name")
-            if [ "$ACTION" = "ls" ]; then
-              printf '%-42s %s\n' "$name" "$(npm dist-tag ls "$name" | tr '\n' ' ')"
-            else
-              # A tag that is already absent is the desired end state, not a failure.
-              if npm dist-tag ls "$name" | grep -q "^${TAG}:"; then
-                npm dist-tag rm "$name" "$TAG" && echo "  ✓ $name — removed '$TAG'" || { echo "  ✗ $name"; fail=1; }
-              else
-                echo "  · $name — no '$TAG' tag, nothing to do"
-              fi
-            fi
+            case "$ACTION" in
+              ls)
+                printf '%-42s %s\n' "$name" "$(npm dist-tag ls "$name" | tr '\n' ' ')"
+                ;;
+              add)
+                npm dist-tag add "${name}@${VERSION}" "$TAG" \
+                  && echo "  ✓ $name — '$TAG' -> $VERSION" || { echo "  ✗ $name"; fail=1; }
+                ;;
+              rm)
+                # A tag that is already absent is the desired end state, not a failure.
+                if npm dist-tag ls "$name" | grep -q "^${TAG}:"; then
+                  npm dist-tag rm "$name" "$TAG" && echo "  ✓ $name — removed '$TAG'" || { echo "  ✗ $name"; fail=1; }
+                else
+                  echo "  · $name — no '$TAG' tag, nothing to do"
+                fi
+                ;;
+            esac
           done < "${RUNNER_TEMP}/set.txt"
 
           # Report every failure before exiting, so one run names them all.
+          if [ "$fail" -ne 0 ] && [ "$ACTION" = "rm" ]; then
+            echo "::notice::403 on DELETE is the expected result for a bypass-2FA token." \
+                 "Repoint the tag at the current release with action 'add' instead."
+          fi
           exit "$fail"
