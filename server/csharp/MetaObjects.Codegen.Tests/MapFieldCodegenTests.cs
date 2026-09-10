@@ -28,6 +28,7 @@ public class MapFieldCodegenTests
         { "field.string": { "name": "name", "@required": true } },
         { "field.map":    { "name": "labels", "@valueType": "string" } },
         { "field.map":    { "name": "addresses", "@objectRef": "Address" } },
+        { "field.map":    { "name": "channels", "@valueType": "string", "@required": true } },
         { "identity.primary": { "@fields": "id" } }
       ]}}
     ]}}
@@ -55,9 +56,17 @@ public class MapFieldCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
 
-        // @valueType:string → Dictionary<string, string>, [Column]-mapped, never null.
+        // @valueType:string → Dictionary<string, string>, [Column]-mapped. NULLABILITY
+        // FOLLOWS THE COLUMN (ObjectNavProperty's rule): the migration creates a map
+        // column NULLABLE by default, and a non-nullable property over it made EF Core 8
+        // skip the shaper's IsDBNull check — a 500 on every read of a NULL-map row (the
+        // MapNullColumnGeneratedServerTest lane drives that end-to-end). So a
+        // non-required map is NULLABLE with NO initializer (absent stays null, round-trips
+        // as SQL NULL — never silently rewritten to {}), while a @required map keeps the
+        // non-null empty-dictionary initializer.
         Assert.Contains("[Column(CustomerNames.LabelsColumn)]", customer); // §A6 (task 4)
-        Assert.Contains("public Dictionary<string, string> Labels { get; set; } = new();", customer);
+        Assert.Contains("public Dictionary<string, string>? Labels { get; set; }", customer);
+        Assert.Contains("public Dictionary<string, string> Channels { get; set; } = new();", customer);
     }
 
     [Fact]
@@ -66,9 +75,10 @@ public class MapFieldCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
 
-        // @objectRef:Address → Dictionary<string, Address>; the VO is emitted as a POCO.
+        // @objectRef:Address → Dictionary<string, Address> (nullable — see the scalar test
+        // for the column-following rule); the VO is emitted as a POCO.
         Assert.Contains("[Column(CustomerNames.AddressesColumn)]", customer); // §A6 (task 4)
-        Assert.Contains("public Dictionary<string, Address> Addresses { get; set; } = new();", customer);
+        Assert.Contains("public Dictionary<string, Address>? Addresses { get; set; }", customer);
         Assert.Contains("public class Address", files.Single(f => f.Path == "Address.g.cs").Content);
     }
 
@@ -83,6 +93,13 @@ public class MapFieldCodegenTests
         Assert.Contains(
             "modelBuilder.Entity<Customer>().Property(x => x.Labels).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.Converter<string>(), MapJsonb.Comparer<string>());",
+            dbCtx);
+        // The @required map's property is non-null, so its converter is the non-null
+        // factory — EF Core 8's nullability-aware HasConversion checks the converter's
+        // model type against the property's own annotation (a mismatch is CS8620).
+        Assert.Contains(
+            "modelBuilder.Entity<Customer>().Property(x => x.Channels).HasColumnType(\"jsonb\")"
+                + ".HasConversion(MapJsonb.RequiredConverter<string>(), MapJsonb.Comparer<string>());",
             dbCtx);
     }
 
@@ -108,8 +125,10 @@ public class MapFieldCodegenTests
         // in-place `entity.Labels["k"] = v` is never detected and the UPDATE never fires --
         // the same silent non-persistence this mapping exists to fix.
         Assert.Contains("private static class MapJsonb", withMap);
-        Assert.Contains("Dictionary<string, TValue>, string> Converter<TValue>()", withMap);
-        Assert.Contains("Dictionary<string, TValue>> Comparer<TValue>()", withMap);
+        // The nullable type arguments match the nullable map property (EF Core 8's
+        // nullability-aware HasConversion expects them; see EmitMapJsonbHelper remarks).
+        Assert.Contains("Dictionary<string, TValue>?, string> Converter<TValue>()", withMap);
+        Assert.Contains("Dictionary<string, TValue>?> Comparer<TValue>()", withMap);
 
         // Equality must be ENTRY-WISE, not a comparison of serialized JSON. JSON string
         // equality is key-ORDER sensitive, so a dictionary rebuilt in a different order would
@@ -156,9 +175,10 @@ public class MapFieldCodegenTests
         """;
         var ctx = Ctx(Load(model, "proj.json"));
 
-        // The property is emitted...
+        // The property is emitted... (nullable, no initializer — the view's map column is
+        // nullable like any other, and a NULL cell must read as null, not 500.)
         var entity = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
-        Assert.Contains("public Dictionary<string, int> Tallies { get; set; } = new();", entity);
+        Assert.Contains("public Dictionary<string, int>? Tallies { get; set; }", entity);
 
         // ...so the storage mapping must be too.
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;

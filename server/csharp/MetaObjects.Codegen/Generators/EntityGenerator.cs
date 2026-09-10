@@ -1351,9 +1351,18 @@ public class EntityGenerator : IGenerator
     // Dictionary<string, V> property stored in one json column — the map analog of
     // ObjectNavProperty's single-jsonb-column object field. Keys are always strings;
     // V is a value-object (@objectRef) or a scalar (@valueType, defaulting to string).
-    // isArray does not apply (a map is never wrapped in a collection-of-maps), so the
-    // property is a non-null dictionary with an empty-dictionary initializer (matching
-    // the array/enum-array convention — the dictionary itself is never null in C#).
+    // isArray does not apply (a map is never wrapped in a collection-of-maps).
+    // Nullability follows the COLUMN, exactly as ObjectNavProperty's single/array arms
+    // do: the TS-owned migration creates the map column NULLABLE by default (ADR-0015),
+    // and a NULL cell is ordinary cross-port state (a row written by another port or
+    // raw SQL). A NON-nullable property over that column makes EF Core 8 skip the
+    // shaper's IsDBNull check, so every read arm 500s on a single NULL-map row — the
+    // initializer never runs, and MapJsonb's null-guarded comparer sits after the crash
+    // point. So a @required map is a non-null dictionary with an empty-dictionary
+    // initializer, and a non-required map is a NULLABLE dictionary with NO initializer:
+    // an absent value stays null, reads back as null, and round-trips as SQL NULL
+    // rather than being silently rewritten to an empty object (a present {} stays a
+    // distinct empty map).
     // When @objectRef names a value object, the resolved VO becomes a referenced POCO
     // via the normal ReferencedValueObjects walk. withAttributes adds the EF [Column]
     // mapping; value-object POCOs (no EF mapping) pass false.
@@ -1361,8 +1370,11 @@ public class EntityGenerator : IGenerator
     {
         var valueType = CSharpNaming.MapValueType(field);
         var propName = PropertyName(field);
+        var required = CSharpNaming.IsRequired(owner, field);
         var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)})]\n" : "";
-        return $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ get; set; }} = new();";
+        return required
+            ? $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ get; set; }} = new();"
+            : $"{colAttr}    public Dictionary<string, {valueType}>? {propName} {{ get; set; }}";
     }
 
     // The CLR scalar type for a projection field whose value is a MIN/MAX aggregate:

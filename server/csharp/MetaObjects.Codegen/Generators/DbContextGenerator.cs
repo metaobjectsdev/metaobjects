@@ -115,7 +115,7 @@ public class DbContextGenerator : IGenerator
             // explicit mapping makes EF agree with the jsonb column the TS-owned migration
             // creates (ADR-0015).
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_MAP))
-                modelLines.Add(MapJsonbConfig(name, f, ctx));
+                modelLines.Add(MapJsonbConfig(name, p, f, ctx));
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -641,9 +641,9 @@ public class DbContextGenerator : IGenerator
     /// (<see cref="EmitFieldTypeConfig"/>) and the read-only-projection path, which both emit
     /// a <c>Dictionary&lt;string, V&gt;</c> property and so both need the mapping.
     /// </summary>
-    private static string MapJsonbConfig(string className, MetaField f, GenContext ctx) =>
+    private static string MapJsonbConfig(string className, MetaObject owner, MetaField f, GenContext ctx) =>
         $"        modelBuilder.Entity<{className}>().Property(x => x.{CSharpNaming.Pascal(f.Name)})"
-            + MapJsonbSuffix(f, ctx) + ";";
+            + MapJsonbSuffix(owner, f, ctx) + ";";
 
     /// <summary>
     /// The column-type + converter/comparer suffix every <c>field.map</c> mapping ends in, whatever
@@ -652,11 +652,18 @@ public class DbContextGenerator : IGenerator
     /// a converter change fixed in one tier only is exactly the failure the flattened tier's old
     /// known-gap entry described.
     /// </summary>
-    private static string MapJsonbSuffix(MetaField f, GenContext ctx)
+    private static string MapJsonbSuffix(MetaObject owner, MetaField f, GenContext ctx)
     {
         var valueType = MapValueTypeRef(f, ctx);
+        // The SAME requiredness predicate the property emission uses (MapProperty), so the
+        // converter's nullability annotation always matches the property it converts: EF Core
+        // 8's nullability-aware HasConversion signature checks the converter's model type
+        // against the property's own annotation, and a mismatch is a CS8620 warning.
+        var converter = CSharpNaming.IsRequired(owner, f)
+            ? $"{MapJsonbHelperName}.RequiredConverter<{valueType}>()"
+            : $"{MapJsonbHelperName}.Converter<{valueType}>()";
         return $".HasColumnType(\"jsonb\").HasConversion("
-            + $"{MapJsonbHelperName}.Converter<{valueType}>(), {MapJsonbHelperName}.Comparer<{valueType}>())";
+            + $"{converter}, {MapJsonbHelperName}.Comparer<{valueType}>())";
     }
 
     /// <summary>Name of the generated jsonb (de)serialization helper the field.map configs use.</summary>
@@ -710,6 +717,12 @@ public class DbContextGenerator : IGenerator
     /// <para>Fully qualified throughout: the generated file's usings are a fixed set
     /// (<see cref="EmitUsings"/>), and widening it would change byte-identical output for
     /// every model.</para>
+    /// <para>The converter/comparer type arguments are the NULLABLE dictionary: a
+    /// non-required map's property is nullable (nullability follows the column), and EF
+    /// Core 8's nullability-aware <c>HasConversion</c> signature expects the converter's
+    /// model type to match. Annotation-only — EF passes null through a value converter
+    /// untranslated and never invokes the expressions on it, so the lambdas' bodies are
+    /// unchanged.</para>
     /// </remarks>
     private static void EmitMapJsonbHelper(StringBuilder sb)
     {
@@ -727,14 +740,24 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("        };");
         sb.AppendLine();
         sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>, string> Converter<TValue>() => new(");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>, string> RequiredConverter<TValue>() => new(");
+        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Serialize(v, Options),");
+        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
+        sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);");
+        sb.AppendLine();
+        sb.AppendLine("        /// <summary>Same conversion as RequiredConverter, over the NULLABLE dictionary a");
+        sb.AppendLine("        /// non-required map's property carries — keep the two bodies identical. EF Core's");
+        sb.AppendLine("        /// nullability-aware HasConversion checks the converter's model type against the");
+        sb.AppendLine("        /// property's own annotation, so one factory cannot serve both arms.</summary>");
+        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>?, string> Converter<TValue>() => new(");
         sb.AppendLine("                v => System.Text.Json.JsonSerializer.Serialize(v, Options),");
         sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
         sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);");
         sb.AppendLine();
         sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>> Comparer<TValue>() => new(");
-        sb.AppendLine("                (a, b) => Eq(a, b), v => Hash(v), v => Snap(v)!);");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>?> Comparer<TValue>() => new(");
+        sb.AppendLine("                (a, b) => Eq(a, b), v => Hash(v), v => Snap(v));");
         sb.AppendLine();
         sb.AppendLine("        /// <summary>Order-INDEPENDENT equality: a dictionary rebuilt in a different key");
         sb.AppendLine("        /// order holds the same value, and comparing serialized JSON would call it changed");
@@ -908,7 +931,7 @@ public class DbContextGenerator : IGenerator
         // the generated code cannot make on a consumer's behalf. The COMPARER is not optional --
         // see EmitMapJsonbHelper.
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_MAP))
-            modelLines.Add(MapJsonbConfig(className, f, ctx));
+            modelLines.Add(MapJsonbConfig(className, entity, f, ctx));
 
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
         {
@@ -1114,7 +1137,7 @@ public class DbContextGenerator : IGenerator
             if (nf.SubType == FIELD_SUBTYPE_MAP)
             {
                 sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
-                    + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(nf, ctx) + ";");
+                    + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(vo, nf, ctx) + ";");
                 continue;
             }
 
