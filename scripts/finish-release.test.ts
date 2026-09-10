@@ -71,8 +71,13 @@ type Spec = {
   manifest?: Partial<Coords>;
   /** Whole-file body for both mirrors. Defaults to one consistent with `payload`. */
   llms?: string;
-  /** Extra tags to create locally before the run (gate 6's tag line). */
+  /** Extra tags to create locally before the run (gate 6's tag line). Each is cut on its
+   *  own commit stamping `cli/package.json` at the tag's own version, because that
+   *  agreement is what identifies the npm release line. */
   tags?: string[];
+  /** Per-tag override of the stamped `cli` version, for a tag that must NOT read as the
+   *  npm line (the JVM `v7.20.12` ships cli `0.20.11`). */
+  tagCli?: Record<string, string>;
   /** Files the tree deliberately does NOT carry (gate 4 / gate 5). */
   omit?: string[];
   /** Verbatim overrides, applied last. */
@@ -164,7 +169,32 @@ function makeRepo(spec: Spec = {}): Fixture {
   git(work, "commit", "--quiet", "-m", "fixture");
   git(work, "remote", "add", "origin", origin);
   git(work, "push", "--quiet", "-u", "origin", "main");
-  for (const t of spec.tags ?? []) git(work, "tag", t);
+  // A prior release tag must name a tree that AGREES with it. The site deploy — and the
+  // gate that mirrors it — identifies the npm release line by the intrinsic property that
+  // a tag `vX.Y.Z` ships `cli/package.json` at X.Y.Z, NOT by a version prefix (a prefix
+  // goes stale silently at a major: `v0.*` kept resolving v0.25.0 after the 1.0 cut and
+  // passed green forever). Tagging every version at one commit made every tag disagree
+  // with itself, so the fixture gives each its own commit and returns to the release tree.
+  // `tagCli` overrides the stamped version for a tag that must NOT count as the npm line —
+  // the real `v7.20.12` is the JVM line and ships cli `0.20.11`, which is why it is skipped.
+  const cliRel = "server/typescript/packages/cli/package.json";
+  const cliPath = join(work, cliRel);
+  const releaseCli = readFileSync(cliPath, "utf8");
+  const tags = spec.tags ?? [];
+  for (const t of tags) {
+    const stamped = spec.tagCli?.[t] ?? t.replace(/^v/, "");
+    writeFileSync(cliPath,
+      `${JSON.stringify({ name: "@metaobjectsdev/cli", version: stamped }, null, 2)}\n`);
+    // --allow-empty: a tag naming the version being cut (gate 2's local-only case) stamps
+    // a value the tree already has, and "nothing to commit" is an error, not a no-op.
+    git(work, "commit", "--quiet", "-a", "--allow-empty", "-m", `prior release ${t}`);
+    git(work, "tag", t);
+  }
+  if (tags.length > 0) {
+    writeFileSync(cliPath, releaseCli);
+    git(work, "commit", "--quiet", "-a", "--allow-empty", "-m", "back to the release tree");
+    git(work, "push", "--quiet", "origin", "main");
+  }
   if (spec.breakOrigin === true) rmSync(origin, { recursive: true, force: true });
 
   return {
@@ -458,21 +488,39 @@ describe("finish-release gate 5: the llms mirrors state this release", () => {
 });
 
 describe("finish-release gate 6: the tag the deploy will resolve", () => {
-  // The deploy resolves `git tag -l 'v0.*' | grep -E '^v0\.[0-9]+\.[0-9]+$' | sort -V |
-  // tail -1`. This mirrors that filter, so a change to either is caught here rather than
-  // on a deploy nobody is watching — and the comparison is NUMERIC, which a plain string
-  // sort gets wrong at every ten-fold boundary.
+  // The deploy walks `git tag -l 'v*'` newest-first and takes the first tag whose
+  // `cli/package.json` is versioned AS the tag. This mirrors that selector, so a change to
+  // either is caught here rather than on a deploy nobody is watching — and the comparison
+  // is NUMERIC, which a plain string sort gets wrong at every ten-fold boundary.
+  //
+  // It deliberately does NOT mirror a version prefix. Both sides used to filter `v0.*`,
+  // which was true until the 1.0 cut and then silently resolved v0.25.0 forever: a prefix
+  // match selects a stale answer instead of failing, so the gate would have passed green
+  // at every future release while checking nothing.
   const cases: Array<{ existing: string[]; cutting: string; passes: boolean; why: string }> = [
     { existing: ["v0.9.0"], cutting: "0.10.0", passes: true, why: "0.10.0 is newer than 0.9.0" },
     { existing: ["v0.24.9"], cutting: "0.24.10", passes: true, why: "0.24.10 is newer than 0.24.9" },
     { existing: ["v0.10.0"], cutting: "0.9.0", passes: false, why: "0.9.0 is OLDER than 0.10.0" },
     { existing: ["v0.24.10"], cutting: "0.24.9", passes: false, why: "0.24.9 is OLDER than 0.24.10" },
+    // The two cases that a `v0.*` prefix filter gets WRONG, and the reason this suite could
+    // not catch the bug it shipped with: every case above lives on the 0.x line, where the
+    // prefix and the intrinsic property agree, so both selectors pass all of them. Once a
+    // 1.x tag exists the prefix stops seeing the newest release at all — it resolves the
+    // frozen v0.25.0 and waves through a tag the deploy will never resolve.
+    { existing: ["v0.25.0", "v1.1.0"], cutting: "1.0.1", passes: false,
+      why: "v1.1.0 outranks it — a v0.* filter would resolve v0.25.0 and pass" },
+    { existing: ["v0.25.0", "v1.0.0"], cutting: "1.0.1", passes: true,
+      why: "v1.0.0 is the newest on the npm line and 1.0.1 is newer still" },
   ];
   for (const c of cases) {
     test(`cutting v${c.cutting} over ${c.existing.join(",")} ${c.passes ? "passes" : "is refused"} — ${c.why}`, () => {
+      // The Maven major is npm major + 7, DERIVED — the literal `7.` this line used to
+      // carry is correct only while the npm line sits on 0.x, and the 1.x cases below
+      // would have failed the manifest-agreement gate for a reason that is not gate 6's.
+      const [maj, ...rest] = c.cutting.split(".");
       const coords: Coords = {
         npm: c.cutting, pypi: c.cutting, nuget: c.cutting,
-        maven: `7.${c.cutting.split(".").slice(1).join(".")}`,
+        maven: `${Number(maj) + 7}.${rest.join(".")}`,
       };
       const r = makeRepo({ payload: coords, manifest: coords, llms: llms(coords), tags: c.existing })
         .run(c.cutting, "--check");
@@ -487,9 +535,15 @@ describe("finish-release gate 6: the tag the deploy will resolve", () => {
   }
 
   // The repository carries two tag lines and a bare `v*` sort returns v7.20.12, a tree
-  // with no examples/showcase at all. The grep is what keeps the JVM line out.
+  // with no examples/showcase at all. What keeps the JVM line out is that its tree
+  // DISAGREES with it: the real v7.20.12 ships cli 0.20.11, not 7.20.12. That is a
+  // property of the tag itself, so it needs nothing maintained at the next major — unlike
+  // the prefix filter this replaced, which named the npm line by a digit that expired.
   test("the JVM tag line does not count as the newest tag", () => {
-    const r = makeRepo({ tags: ["v7.20.12", "v0.24.5"] }).run(RELEASE, "--check");
+    const r = makeRepo({
+      tags: ["v7.20.12", "v0.24.5"],
+      tagCli: { "v7.20.12": "0.20.11" },
+    }).run(RELEASE, "--check");
     expect(r.out).toContain(`the site deploy will resolve v${RELEASE}`);
     expect(r.code).toBe(0);
   });

@@ -314,10 +314,24 @@ for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
 ok("the llms mirrors state this release");
 
 // ── 6. the tag the DEPLOY will resolve is the one being cut ──────────────────
-// The repo carries two tag lines and `sort -V` over a bare `v*` returns v7.20.12, which
-// has no examples/showcase at all. This mirrors deploy.yml's own filter, so a change to
-// either is caught here rather than on a deploy nobody is watching.
-const resolved = out(`git tag -l 'v0.*' | grep -E '^v0\\.[0-9]+\\.[0-9]+$' | sort -V | tail -1 || true`);
+// MIRRORS deploy.yml's own selector, so a change to either is caught here rather than on
+// a deploy nobody is watching. The repo carries two tag lines and `sort -V` over a bare
+// `v*` returns v7.20.12 — the JVM-only line, which has no examples/showcase at all.
+//
+// It matches deploy.yml by testing the property that DEFINES the npm line — a release tag
+// ships a `cli/package.json` versioned as the tag (v1.0.0 ships cli 1.0.0; v7.20.12 ships
+// cli 0.20.11) — and NOT a version prefix. This gate used to filter `v0.*`, which was true
+// until it wasn't: a prefix match does not fail when it goes stale, it silently selects the
+// newest tag of a frozen line and passes green forever. After the 1.0 cut it would have
+// resolved v0.25.0 at every future release, so the check could never fire again — the same
+// defect that kept the live site on 0.25.0 with every deploy step green. Nothing here needs
+// maintaining at the next major.
+const resolved = out(`git tag -l 'v*' | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | sort -rV || true`)
+  .split("\n").map((t) => t.trim()).filter(Boolean)
+  .find((t) => {
+    const pkg = out(`git show ${t}:server/typescript/packages/cli/package.json 2>/dev/null || true`);
+    try { return JSON.parse(pkg).version === t.slice(1); } catch { return false; }
+  }) ?? "";
 const wouldResolve = [resolved, tag].filter(Boolean).sort((a, b) =>
   a.localeCompare(b, undefined, { numeric: true })).at(-1);
 if (wouldResolve !== tag) {

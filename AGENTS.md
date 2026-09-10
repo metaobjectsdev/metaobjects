@@ -17,7 +17,7 @@ Equal weight — all four ship per-language today across the five ports (TS / C#
 
 ## Status
 
-_Last refreshed 2026-09-08._
+_Last refreshed 2026-09-09._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
@@ -37,7 +37,8 @@ in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 **Where the versions are.** `latest` on every registry is **`1.0.0`** (npm / PyPI / NuGet) ·
 **`8.0.0`** (Maven Central, aligned `minor.patch` on its historical major `7` — the Maven
 major is always **npm major + 7**, so 1.0.0 is 8.0.0). **1.0 is CUT**: the `1.0.0-rc.5`
-through `rc.8` candidates are superseded and their npm `next` tag is retired.
+through `rc.8` candidates are superseded, and npm's `next` tag was REPOINTED onto `1.0.0` —
+not deleted, because `dist-tag rm` 403s for every token we hold (`docs/RELEASING.md` §4).
 `metamodelVersion` reads **`1.0`**, frozen — C4 landed and G4 shipped it. Per-release detail
 lives in **`CHANGELOG.md`** — it is the log, and this file does not duplicate it.
 

@@ -31,7 +31,10 @@ by exactly one release.
 - [ ] `docs/ports/java.md` — Maven `<version>` + artifact list.
 - [ ] `docs/ports/kotlin.md` — Maven `<version>`.
 - [ ] `docs/ports/python.md` — PyPI version + `pip install`.
-- [ ] `docs/features/extending-with-providers.md` — the "parity status as of `<ver>`" marker.
+- [ ] `docs/features/extending-with-providers.md` — **no version edit any more.** Its
+      "Cross-port parity status" table reads `Shipped` for all five ports with no version
+      scope, so there is no "as of `<ver>`" marker left to refresh (checked at the 1.0 cut).
+      Re-add one here only if parity ever becomes version-scoped again.
 - [ ] `docs/RELEASING.md` / `docs/RELEASING-java.md` — the "currently `<ver>`" notes.
 - [ ] `.github/workflows/publish-*.yml` — **no version edits by design.** All four
       publish workflows read the version from the committed manifest
