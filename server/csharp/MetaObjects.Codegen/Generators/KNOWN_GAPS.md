@@ -37,9 +37,11 @@ Update when a gap closes or a new one surfaces.
 
 **Today.** We emit `{ "error": "not_found" }` for 404 and `{ "error": "validation", "message": "..." }` for the sort-validation 400. **FR-036 wired explicit body validation with the cross-port `{ "error": "validation" }` envelope:** a POST runs `Validator.TryValidateObject(input, ...)` and a PATCH runs `Validator.TryValidateProperty(value, ...)` per present value → 400 `{ "error": "validation" }` (ASP.NET minimal-API never runs DataAnnotations on its own, so the annotations were previously decorative at the wire tier). The `issues` array is still TS-only idiomatic (Tier 2).
 
-### G7 — Object/value-typed columns are non-PATCHable (deliberate, cross-port)
+### G7 — Value-object columns are non-PATCHable (deliberate, cross-port)
 
-**Contract.** A `field.object` column (a value-object mapped to jsonb, single or `@isArray`) is EF-mapped as an owned navigation (`.OwnsOne`/`.OwnsMany(...).ToJson`). A `field.map` column is NOT a navigation — it is a scalar-shaped property carrying a value converter (see G9) — but it is non-PATCHable for the same reason described below, since the merge loop skips it on the same cross-port Day-1 rule Java and Kotlin apply.
+**Contract.** A `field.object` column (a value-object mapped to jsonb, single or `@isArray`) is EF-mapped as an owned navigation (`.OwnsOne`/`.OwnsMany(...).ToJson`).
+
+**`field.map` is not in this gap.** A map column is not a navigation — it is a scalar-shaped property carrying a value converter (G9) — so `FindProperty` resolves it and the generic merge arm writes it on PATCH. Map columns are patch-settable here, as on Java; Kotlin alone stages them out of its patch set (see its `KNOWN_GAPS.md`).
 
 **Today.** The partial-PATCH merge loop keys off `entry.Metadata.FindProperty(prop.Name)`, which returns null for a navigation, so a VO-typed column is skipped on PATCH (present values too). This is a **deliberate cross-port Day-1 simplification**, consistent with Java + Kotlin (both exclude `ObjectField` from the patch set) — NOT a C#-specific bug (FR-036 assessed a C#-only fix and rejected it: it would break the api-contract byte-identical parity). Making VO-typed columns PATCHable (bind the owned nav via `entry.Navigation(...).CurrentValue`, cross-port) is a separately-scoped follow-up FR.
 
