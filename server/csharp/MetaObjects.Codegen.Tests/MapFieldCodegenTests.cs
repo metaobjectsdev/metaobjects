@@ -71,6 +71,69 @@ public class MapFieldCodegenTests
     }
 
     [Fact]
+    public void Scalar_valued_map_gets_a_jsonb_storage_mapping_in_the_DbContext()
+    {
+        var dbCtx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
+
+        // Without an explicit mapping EF does not persist a Dictionary the way the
+        // TS-owned schema DDL declares it: on Npgsql a Dictionary<string, string> binds to
+        // HSTORE by default, and a Dictionary<string, int> binds to nothing at all. The
+        // column the migration creates is jsonb, so the context must say jsonb and supply
+        // the (de)serializer -- the C# analog of Kotlin's jsonb(col, encoder, decoder).
+        Assert.Contains(
+            "modelBuilder.Entity<Customer>().Property(x => x.Labels).HasColumnType(\"jsonb\")"
+                + ".HasConversion(MapJsonb.Converter<string>(), MapJsonb.Comparer<string>());",
+            dbCtx);
+    }
+
+    [Fact]
+    public void Object_valued_map_gets_a_jsonb_storage_mapping_typed_by_the_value_object()
+    {
+        var dbCtx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
+
+        Assert.Contains(
+            "modelBuilder.Entity<Customer>().Property(x => x.Addresses).HasColumnType(\"jsonb\")"
+                + ".HasConversion(MapJsonb.Converter<Acme.Generated.Address>()"
+                + ", MapJsonb.Comparer<Acme.Generated.Address>());",
+            dbCtx);
+    }
+
+    [Fact]
+    public void Map_jsonb_helper_is_emitted_only_when_a_map_is_present()
+    {
+        var withMap = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
+
+        // The shared converter/comparer pair. The COMPARER is the load-bearing half: with a
+        // value converter and no comparer EF snapshots the dictionary by reference, so an
+        // in-place `entity.Labels["k"] = v` is never detected and the UPDATE never fires --
+        // the same silent non-persistence this mapping exists to fix.
+        Assert.Contains("private static class MapJsonb", withMap);
+        Assert.Contains("Dictionary<string, TValue>, string> Converter<TValue>()", withMap);
+        Assert.Contains("Dictionary<string, TValue>> Comparer<TValue>()", withMap);
+
+        // A model with no field.map must stay byte-identical -- the helper is gated, exactly
+        // as the UnmappedEnumValue helper is.
+        const string noMap = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Plain", "children": [
+            { "source.rdb": { "@table": "plains" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(noMap, id: "nomap.json")]);
+        Assert.Empty(r.Errors);
+        var without = Assert.Single(new DbContextGenerator().Generate(new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        })).Content;
+        Assert.DoesNotContain("MapJsonb", without);
+    }
+
+    [Fact]
     public void Generated_entities_and_value_objects_compile_together()
     {
         var ctx = Ctx(Load());

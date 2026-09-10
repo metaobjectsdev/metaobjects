@@ -12,12 +12,23 @@
 //     field.enum, so the FLATTENED owner's per-member `.HasColumnName(...).HasConversion(...)`
 //     chain — on an OwnedNavigationBuilder's PropertyBuilder<TEnum?>, naming the VO-nested
 //     enum type and the UnmappedEnumValue<T> helper — is proven to resolve, not just to read
+//     It ALSO carries a field.map `hints`, so the flattened owner pins that member to its
+//     `<prefix>_<col>` jsonb column through the same MapJsonb converter/comparer pair — on an
+//     OwnedNavigationBuilder's PropertyBuilder<Dictionary<string,string>>, a different receiver
+//     from the entity-level one, which only a compile can prove resolves
 //   - object.entity Order with:
 //       scalar enum "status"             → .HasConversion<string>()
 //       array enum  "statuses" (isArray) → .PrimitiveCollection().ElementType().HasConversion<string>()
 //       array string "tags"   (isArray)  → .PrimitiveCollection()
 //       field.object homeAddress @storage flattened → OwnsOne(...) per-property column names
 //       field.object config (default storage)       → OwnsOne(...).ToJson(...)
+//       field.map    labels/scores (@valueType)      → .HasColumnType("jsonb").HasConversion(
+//                                                       MapJsonb.Converter<T>(), MapJsonb.Comparer<T>())
+//       field.map    sites (@objectRef)              → the same, typed by the value object.
+//         These prove the EF API surface actually RESOLVES: the two-arg
+//         HasConversion(ValueConverter, ValueComparer) overload, and a generic helper
+//         returning ValueConverter<Dictionary<string,T>,string>. A string-contains test
+//         cannot tell a real overload from a plausible-looking one.
 //   - object.projection ProgramSummary (view-kind source, keyless) → .ToView(...).HasNoKey()
 //   - object.entity Invoice — a #214 WRITE-THROUGH entity (table invoices + replica view
 //     v_invoice_with_client + a derived origin.passthrough clientName): the derived-free
@@ -58,7 +69,8 @@ public class DbContextCompileTests
         { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
         { "field.string": { "name": "city",   "@maxLength": 80 } },
         { "field.enum":   { "name": "kind",   "@values": ["HOME", "WORK"] } },
-        { "field.enum":   { "name": "tier",   "@values": ["A", "B"], "@intValueMap": { "A": 1, "B": 2 } } }
+        { "field.enum":   { "name": "tier",   "@values": ["A", "B"], "@intValueMap": { "A": 1, "B": 2 } } },
+        { "field.map":    { "name": "hints",  "@valueType": "string" } }
       ]}},
       { "object.entity": { "name": "Order", "children": [
         { "source.rdb": { "@table": "orders" } },
@@ -70,6 +82,9 @@ public class DbContextCompileTests
         { "field.string": { "name": "tags",     "isArray": true } },
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
         { "field.object": { "name": "config",      "@objectRef": "Address" } },
+        { "field.map":    { "name": "labels",  "@valueType": "string" } },
+        { "field.map":    { "name": "scores",  "@valueType": "int" } },
+        { "field.map":    { "name": "sites",   "@objectRef": "Address" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
       { "object.projection": { "name": "ProgramSummary", "children": [

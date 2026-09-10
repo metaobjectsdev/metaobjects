@@ -224,6 +224,7 @@ public class DbContextGenerator : IGenerator
         EmitDbSetDeclarations(sb, objects, ctx);
         EmitOnModelCreatingBody(sb, modelLines, ctx);
         if (NeedsUnmappedEnumHelper(objects, ctx.Root)) EmitUnmappedEnumHelper(sb);
+        if (NeedsMapJsonbHelper(objects, ctx.Root)) EmitMapJsonbHelper(sb);
         sb.AppendLine("}");
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
@@ -621,6 +622,104 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("            \"@intValueMap — the database holds a value the model does not describe.\");");
     }
 
+    /// <summary>Name of the generated jsonb (de)serialization helper the field.map configs use.</summary>
+    private const string MapJsonbHelperName = "MapJsonb";
+
+    /// <summary>
+    /// The C# type argument naming a <c>field.map</c>'s VALUE — the <c>V</c> in
+    /// <c>Dictionary&lt;string, V&gt;</c>, as written INSIDE the generated DbContext.
+    /// </summary>
+    /// <remarks>
+    /// A scalar <c>@valueType</c> is a C# keyword (<c>string</c>, <c>int</c>, ...) and needs no
+    /// qualification. An <c>@objectRef</c> value object is emitted FULLY QUALIFIED: the
+    /// DbContext's usings are a fixed set (<see cref="EmitUsings"/>) that covers ENTITY
+    /// namespaces only — a value object is neither an entity nor a view, so a bare name would
+    /// not resolve as soon as the VO's package binds to a different namespace. Same rule the
+    /// <c>System.Guid</c> / <c>System.Uri</c> / <c>UnmappedEnumValue</c> emissions already
+    /// follow, and the reason this is the one map site that cannot reuse
+    /// <see cref="CSharpNaming.MapValueType"/> verbatim (the entity file, which CAN use the bare
+    /// name, emits that).
+    /// </remarks>
+    private static string MapValueTypeRef(MetaField f, GenContext ctx)
+    {
+        if (f.ObjectRef is not { } oref || oref.Length == 0) return CSharpNaming.MapValueType(f);
+        var bare = CSharpNaming.Pascal(CSharpNaming.StripPkg(oref));
+        var vo = ctx.Root.FindObject(CSharpNaming.StripPkg(oref));
+        if (vo is null) return bare;
+        var ns = PackageBindingResolver.Resolve(
+            ctx.Config, PackageBindingResolver.EffectivePackage(vo), vo.Name);
+        return string.IsNullOrEmpty(ns) ? bare : ns + "." + bare;
+    }
+
+    /// <summary>
+    /// Emits the shared jsonb converter/comparer pair every <c>field.map</c> column's config
+    /// calls. Emitted only when the model carries at least one map, so a map-free model
+    /// produces byte-identical output — same gating as
+    /// <see cref="EmitUnmappedEnumHelper"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>The COMPARER is the load-bearing half, not decoration. EF snapshots a
+    /// value-converted property by REFERENCE unless told otherwise, so with a converter alone
+    /// an in-place <c>entity.Labels["k"] = v</c> is never detected as a change and the UPDATE
+    /// never fires — the same silent non-persistence this whole mapping exists to fix. The
+    /// snapshot therefore deep-copies (serialize + deserialize), and equality compares the
+    /// serialized JSON: two dictionaries are equal exactly when they would write the same
+    /// jsonb, which is the right notion for a value object as well as a scalar.</para>
+    /// <para>Fully qualified throughout: the generated file's usings are a fixed set
+    /// (<see cref="EmitUsings"/>), and widening it would change byte-identical output for
+    /// every model.</para>
+    /// </remarks>
+    private static void EmitMapJsonbHelper(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Shared jsonb (de)serialization for field.map columns. The comparer is required:");
+        sb.AppendLine("    /// EF snapshots a value-converted property by reference, so without it an in-place");
+        sb.AppendLine("    /// edit to the dictionary is never detected and the row is never updated.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static class {MapJsonbHelperName}");
+        sb.AppendLine("    {");
+        sb.AppendLine("        private static readonly System.Text.Json.JsonSerializerOptions Options = new();");
+        sb.AppendLine();
+        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>, string> Converter<TValue>() => new(");
+        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Serialize(v, Options),");
+        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
+        sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);");
+        sb.AppendLine();
+        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>> Comparer<TValue>() => new(");
+        sb.AppendLine("                (a, b) => System.Text.Json.JsonSerializer.Serialize(a, Options)");
+        sb.AppendLine("                       == System.Text.Json.JsonSerializer.Serialize(b, Options),");
+        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Serialize(v, Options).GetHashCode(),");
+        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
+        sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(");
+        sb.AppendLine("                        System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!);");
+        sb.AppendLine("    }");
+    }
+
+    /// <summary>
+    /// True when any emitted config will reference <see cref="MapJsonbHelperName"/>. Mirrors
+    /// BOTH sites that emit one: the map loop in <see cref="EmitFieldTypeConfig"/> (an emitted
+    /// object's own <c>field.map</c>) AND the flattened-member arm of
+    /// <see cref="OwnedTypeConfig"/> (a map member of a FLATTENED value object, which gets its
+    /// own jsonb column at the prefixed name). A value object is not in
+    /// <paramref name="objects"/>, so scanning only their own fields would emit a config
+    /// naming a helper this file never declares — the same trap
+    /// <see cref="NeedsUnmappedEnumHelper"/> documents.
+    /// </summary>
+    /// <remarks>
+    /// A NON-flattened value object's map member is deliberately absent: it lives inside the
+    /// owning column's JSON document, where System.Text.Json serializes the dictionary and no
+    /// EF column mapping of its own exists.
+    /// </remarks>
+    private static bool NeedsMapJsonbHelper(IEnumerable<MetaObject> objects, MetaRoot root) =>
+        objects.Any(o => o.Fields().Any(f =>
+            f.SubType == FIELD_SUBTYPE_MAP
+            || (f.SubType == FIELD_SUBTYPE_OBJECT && f.Storage == STORAGE_FLATTENED && !f.ResolvedIsArray()
+                && f.ObjectRef is { } oref && root.FindObject(CSharpNaming.StripPkg(oref)) is { } vo
+                && vo.Fields().Any(nf => nf.SubType == FIELD_SUBTYPE_MAP))));
+
     /// <summary>
     /// True when any emitted converter will reference <see cref="UnmappedEnumHelperName"/>
     /// — i.e. the model carries at least one int-backed <c>field.enum</c>. Mirrors the
@@ -730,6 +829,26 @@ public class DbContextGenerator : IGenerator
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_OBJECT
                      && (!jsonbObjectsOnly || f.Storage != STORAGE_FLATTENED)))
             if (OwnedTypeConfig(className, entity, f, ctx) is { } cfg) modelLines.Add(cfg);
+
+        // field.map -> a single jsonb column holding the JSON object. Without this the
+        // property gets NO storage mapping at all and does not persist the way the TS-owned
+        // schema DDL declares it: on Npgsql a Dictionary<string, string> binds to HSTORE by
+        // default and a Dictionary<string, int> binds to nothing, so the column the migration
+        // creates (jsonb) and the column EF writes disagree. Not gated by jsonbObjectsOnly --
+        // a map's storage is ALWAYS the single jsonb column, so a write-through entity's
+        // read model declares it too (same rule as the enum / decimal / timestamp loops).
+        // The C# analog of Kotlin's jsonb(col, encoder, decoder): an explicit (de)serializer,
+        // no reliance on Npgsql's dynamic-JSON opt-in the generated code cannot make for a
+        // consumer. The COMPARER is not optional -- see EmitMapJsonbHelper.
+        foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_MAP))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            var valueType = MapValueTypeRef(f, ctx);
+            modelLines.Add(
+                $"        modelBuilder.Entity<{className}>().Property(x => x.{prop})"
+                + $".HasColumnType(\"jsonb\").HasConversion("
+                + $"{MapJsonbHelperName}.Converter<{valueType}>(), {MapJsonbHelperName}.Comparer<{valueType}>());");
+        }
 
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
         {
@@ -886,7 +1005,8 @@ public class DbContextGenerator : IGenerator
         // ARRAY ENUM and NESTED OBJECT members were skipped by the same `continue` and are
         // handled below: each is one of the three member kinds `EmitValueObjectPoco` emits a
         // property for, so each is a real property EF will map by its own default naming.
-        // `field.map` is the fourth and is deliberately NOT named — see the warning below.
+        // `field.map` is the fourth. It gets the SAME jsonb column config a top-level map gets
+        // (see the map loop in EmitFieldTypeConfig), pinned to its flattened column name.
         foreach (var nf in vo.Fields())
         {
             var nestedColAny = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
@@ -925,17 +1045,27 @@ public class DbContextGenerator : IGenerator
                 continue;
             }
 
+            // A `field.map` member: the migration flattens it to a jsonb column at
+            // `<prefix>_<col>`, so it takes the SAME converter/comparer pair a top-level map
+            // takes, pinned to that name. Previously this fell to a warning whose stated
+            // reason was that the port configured a top-level map nowhere either — that is
+            // no longer true, and an unmapped dictionary here binds EF's `<Nav>_<Prop>`
+            // default: a column the migration never creates (42703 at the engine).
+            if (nf.SubType == FIELD_SUBTYPE_MAP)
+            {
+                sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
+                    + $".HasColumnName(\"{nestedColAny}\").HasColumnType(\"jsonb\").HasConversion("
+                    + $"{MapJsonbHelperName}.Converter<{MapValueTypeRef(nf, ctx)}>(), "
+                    + $"{MapJsonbHelperName}.Comparer<{MapValueTypeRef(nf, ctx)}>());");
+                continue;
+            }
+
             var isScalar = CSharpNaming.ScalarFor(nf.SubType) is not null;
             var isEnum = nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray();
             if (!isScalar && !isEnum)
             {
-                // The remaining kind is `field.map`, which surfaces as Dictionary<string, T>.
-                // It is NOT named here on purpose: this port configures a top-level field.map
-                // nowhere either (DbContextGenerator has no map branch at all), so there is no
-                // proven mapping to mirror, and forcing `b.Property(...)` onto a dictionary can
-                // make EF's model builder throw where it currently ignores the member — trading
-                // a wrong column for a broken build. Warn instead, naming the column the
-                // migration WILL create, so the divergence is loud rather than silent.
+                // Whatever remains is a member kind this loop does not know how to pin. Warn,
+                // naming the column the migration WILL create, so the divergence is loud.
                 ctx.Warn($"{Name}: value object \"{vo.Name}\" member \"{nf.Name}\" (field.{nf.SubType}) is "
                     + $"flattened by the migration into column \"{nestedColAny}\" but gets no EF column "
                     + "mapping here, so EF will bind its own default name instead. See KNOWN_GAPS.md.");
