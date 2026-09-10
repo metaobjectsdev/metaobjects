@@ -181,3 +181,18 @@ insofar as it is correct. If a port disagrees with a generated golden,
 investigate both sides: the port may be right and the TS reference may have a
 bug. Do not auto-conform ports to a generated golden without understanding the
 divergence.
+
+## `CAPABILITIES.json` is DERIVED — regenerate it, never hand-edit it
+
+It is the sorted set of `op.invoke` values across every fixture's `script.json`, written by:
+
+```
+bun server/typescript/packages/conformance/bin/conformance.ts manifest fixtures/conformance
+```
+
+**Nothing reads it at test time** — no port's fixture discovery consults it (Python's skips it by
+name as a non-fixture file), so nothing fails when it goes stale, and it did: it sat listing
+`attr.filter` and `attr.properties`, which no fixture invokes any more, while omitting
+`field.filter-ops`, which several do. A file that describes the corpus and disagrees with it is
+worse than no file, because a reader takes it as the inventory. Regenerate it in the same commit
+as any change to a fixture's `script.json`.

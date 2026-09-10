@@ -447,3 +447,32 @@ def test_gen_exits_non_zero_when_a_file_is_refused(tmp_path: Path) -> None:
 
     # …and the remedy clears it, which is what makes the failure actionable rather than a wall.
     assert main(["gen", meta_dir, "--out", str(out), "--baseline=adopt"]) == 0
+
+
+def test_prompts_and_templates_root_are_the_same_flag(tmp_path: Path) -> None:
+    """F101 — the prompt directory had three spellings across the ports. `--prompts` is the
+    converged one (adopted from the Node reference, which does not overload the subverb's own
+    name); `--templates-root` is the deprecated alias and MUST keep working, because the 1.0
+    CLI surface is frozen and removing a spelling is a major event, not a patch.
+
+    Asserts they are interchangeable on a run that would FAIL if the directory were not
+    resolved, so a parser that silently dropped one would be caught rather than passing on a
+    vacuous success."""
+    root = _spec_project(tmp_path)
+    out = root / "out"
+    assert main(["gen", str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")]) == 0
+
+    for spelling in ("--prompts", "--templates-root"):
+        rc = main(["verify", "--codegen", str(root / "meta"), "--out", str(out),
+                   spelling, str(root / "templates")])
+        assert rc == 0, f"verify rejected output `gen` had just written, via {spelling}"
+
+    # Non-vacuous: --codegen regenerates the template-spec outputs FROM that directory, so
+    # pointing it somewhere empty must report drift. Without this, both assertions above would
+    # also hold for a parser that accepted the flag and ignored its value. (The --templates
+    # gate is the wrong probe here: this fixture declares no template.* nodes, so that gate is
+    # vacuously clean whatever the directory says.)
+    rc = main(["verify", "--codegen", str(root / "meta"), "--out", str(out),
+               "--prompts", str(root / "no-such-dir")])
+    assert rc != 0, "--prompts value was ignored — a missing dir still regenerated the spec files"

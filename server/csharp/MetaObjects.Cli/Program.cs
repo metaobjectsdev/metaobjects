@@ -18,7 +18,7 @@ if (args.Length == 0)
         "        [--generators <a,b,c>] [--template-root <dir>]\n" +
         "                                                     generate EF Core code from metadata\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
-        "    verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]\n" +
+        "    verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]\n" +
         "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
         "                                                       --templates  template/prompt drift (default)\n" +
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
@@ -395,6 +395,15 @@ static int RunVerify(string[] rest)
             // --templates may take an inline root, or fall back to a default below.
             if (i + 1 < rest.Length && !rest[i + 1].StartsWith('-')) templatesRoot = rest[++i];
         }
+        // F101 — the prompt directory is spelled three ways across the ports: `--prompts <dir>`
+        // (Node `meta`, the reference), `--templates-root` (the Python console-script) and
+        // `--templates <root>` here, where it rides inline on the subverb's own flag. `--prompts`
+        // is the converged spelling; it wins because overloading the subverb name is the part
+        // that confuses. Setting it does NOT imply the gate — `--templates` still selects, so
+        // `--prompts` alone is inert exactly as `--out` is without `--codegen`. The inline form
+        // keeps working: the 1.0 CLI surface is frozen, so this is additive, and the old
+        // spelling is deprecated in 1.1 and removed no earlier than a major.
+        else if (a == "--prompts" && i + 1 < rest.Length) templatesRoot = rest[++i];
         else if (a == "--codegen") codegen = true;
         else if (a == "--db") db = true;
         // --lax (#96 / ADR-0023): restore the legacy open-attr load. verify is
@@ -413,7 +422,7 @@ static int RunVerify(string[] rest)
         else if (a.StartsWith('-'))
         {
             Console.Error.WriteLine($"dotnet meta verify: unknown option \"{a}\"");
-            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax]");
+            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax]");
             return 2;
         }
         else if (metadataDir is null) metadataDir = a;

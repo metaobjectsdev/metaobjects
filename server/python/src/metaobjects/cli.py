@@ -1554,7 +1554,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
     template_root = getattr(args, "templates_root", None)
     if not template_root:
         print(
-            "error: verify --templates requires --templates-root (the on-disk "
+            "error: verify --templates requires --prompts (the on-disk "
             "template/prompt dir).",
             file=sys.stderr,
         )
@@ -1927,7 +1927,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "template drift: each template.* node's {{field}} ↔ payload-VO "
-            "field tree (render verify); requires --templates-root"
+            "field tree (render verify); requires --prompts"
         ),
     )
     verify.add_argument(
@@ -1941,11 +1941,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="committed output directory to diff against (for --codegen)",
     )
+    # F101 — the prompt directory is spelled three ways across the ports: `--prompts <dir>`
+    # (Node `meta`, the reference), `--templates <root>` (dotnet meta, inline on the subverb)
+    # and `--templates-root` here. `--prompts` is the converged spelling, adopted from the
+    # reference port because it does not overload the subverb's own name. `--templates-root`
+    # keeps working — the 1.0 CLI surface is frozen, so this is additive; the old spelling is
+    # deprecated in 1.1 and stays until a major. argparse's FIRST option string is the one
+    # help prints, so the converged name leads.
     verify.add_argument(
+        "--prompts",
         "--templates-root",
         dest="templates_root",
         default=None,
-        help="on-disk template/prompt dir the --templates gate resolves refs against",
+        help=(
+            "on-disk template/prompt dir the --templates gate resolves refs against "
+            "(--templates-root is the deprecated alias)"
+        ),
     )
     verify.add_argument(
         "--entities",

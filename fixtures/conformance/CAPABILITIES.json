@@ -1,8 +1,7 @@
 {
   "version": 1,
   "capabilities": [
-    "attr.filter",
-    "attr.properties",
+    "field.filter-ops",
     "object.effective-fields",
     "object.find-field",
     "object.own-fields",

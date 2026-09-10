@@ -47,7 +47,9 @@ Update when a gap closes or a new one surfaces.
 
 **Residual.** TPH only: the per-subtype partial-update path passes an empty VO list (`RoutesGenerator.cs:961`), so VO columns on a TPH-rooted entity are still skipped on PATCH — the same staging-out Java's entry records for TPH.
 
-**Close status.** The vanilla-path behaviour above may mean this entry is already closed for everything except the TPH residual; that ruling is deliberately NOT made here because it needs Program D's intent, which this file does not own. It is filed for exactly that decision as [issue #359](https://github.com/metaobjectsdev/metaobjects/issues/359). Until ruled, the entry stays open against the TPH residual.
+**RULED (1.0.1, [#359](https://github.com/metaobjectsdev/metaobjects/issues/359)): narrowed to the TPH residual, and the residual is a deliberate cross-port stage-out — not a C# divergence.** The question the issue could not answer from C# alone was whether C# now patches VO columns while Java and Kotlin still do not, which would make this an api-contract divergence rather than a gap. It does not: Java stages out the same columns on the same path. `SpringDtoGenerator.scalarFields` is documented as "every MetaField that is not an ObjectField", and the TPH union is built from it, so a `field.object` column never reaches a Java TPH per-subtype write path either — Java's own `KNOWN_GAPS.md` records the carve-out in the same terms. Both ports patch VO columns on the vanilla path and stage them out on TPH, which is exactly the uniform Day-1 simplification this entry was written to describe.
+
+So the entry stays OPEN, scoped to TPH only, and its cross-port framing is intact rather than obsolete. What closed is the part that was stale: the vanilla path, corrected in **Today** above. Reopening the TPH half is a feature decision (extend the TPH union to carry owned navigations), not a bug fix, and it would want to move on Java and C# together.
 
 ### G5 — `EfCoreFilterDispatch` ordered-comparison fallback
 

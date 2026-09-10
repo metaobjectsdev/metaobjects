@@ -95,12 +95,33 @@ Rules of the contract:
   want.
 - **Unknown/invalid flag → exit 2** with usage.
 
+### The prompt directory: `--prompts` everywhere (F101)
+
+`verify --templates` selects the gate; the DIRECTORY it resolves `template.*` refs against is
+**`--prompts <dir>`** on every port. It used to be spelled three ways, which is the kind of
+divergence that costs a polyglot adopter an afternoon:
+
+| Port | Converged (use this) | Still accepted | Notes |
+|---|---|---|---|
+| Node `meta` | `--prompts <dir>` | — | the reference; always spelled this way |
+| `metaobjects` (Python) | `--prompts <dir>` | `--templates-root <dir>` | alias, deprecated in 1.1 |
+| `dotnet meta` (C#) | `--prompts <dir>` | `--templates <root>` (inline value) | alias, deprecated in 1.1 |
+
+The old spellings **keep working**. The 1.0 CLI surface is frozen, so adding a spelling is
+additive and a patch may do it; REMOVING one is a major event. They are deprecated in 1.1 and
+removed no earlier than a major — an adopter's scripts do not break at a patch or a minor.
+
+Why `--prompts` won rather than the majority spelling: `--templates` is already the subverb's
+name on all three ports, and a flag that both selects a gate and carries its argument is the
+part people get wrong. On C# `--prompts` sets the directory only — it does not imply the gate,
+exactly as `--out` does not imply `--codegen`.
+
 **Port status (staged per ADR-0021):** the **TypeScript Node `meta` is the
 reference** and implements all three subverbs today. **Python `metaobjects`
 ships the subverbs**: `verify --codegen` (regen-to-temp + diff vs `--out`, the
 historical default), `verify --templates` (each `template.*` node's `{{field}}`
 ↔ payload-VO field tree via the render `verify()` gate, resolving refs through a
-filesystem provider rooted at `--templates-root`), and `verify --db` which is
+filesystem provider rooted at `--prompts`), and `verify --db` which is
 **cleanly rejected with exit 2** ("schema verify is the migrate engine,
 ADR-0015"). Bare `verify` stays `--codegen` for back-compat. The **C# `dotnet
 meta`** port likewise ships the codegen-side subverbs: `verify --templates` (its
