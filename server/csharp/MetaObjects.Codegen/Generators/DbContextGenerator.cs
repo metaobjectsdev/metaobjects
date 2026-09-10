@@ -231,7 +231,13 @@ public class DbContextGenerator : IGenerator
         EmitDbSetDeclarations(sb, objects, ctx);
         EmitOnModelCreatingBody(sb, modelLines, ctx);
         if (NeedsUnmappedEnumHelper(objects, ctx.Root)) EmitUnmappedEnumHelper(sb);
-        if (NeedsMapJsonbHelper(objects, ctx.Root)) EmitMapJsonbHelper(sb);
+        // Gated on the EMITTED text, not on a second derivation of it. Every site that uses the
+        // helper appends to modelLines (entity, read-only projection, and the flattened-VO member
+        // block, which lands here as one OwnedTypeConfig string), and modelLines is complete by
+        // now — so this is exact by construction. The predicate it replaces had to hand-mirror
+        // three emission sites, and had already been wrong twice: it undercounted them, and it
+        // did not model jsonbObjectsOnly suppressing the flattened arm on a read model.
+        if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
         sb.AppendLine("}");
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
@@ -635,12 +641,22 @@ public class DbContextGenerator : IGenerator
     /// (<see cref="EmitFieldTypeConfig"/>) and the read-only-projection path, which both emit
     /// a <c>Dictionary&lt;string, V&gt;</c> property and so both need the mapping.
     /// </summary>
-    private static string MapJsonbConfig(string className, MetaField f, GenContext ctx)
+    private static string MapJsonbConfig(string className, MetaField f, GenContext ctx) =>
+        $"        modelBuilder.Entity<{className}>().Property(x => x.{CSharpNaming.Pascal(f.Name)})"
+            + MapJsonbSuffix(f, ctx) + ";";
+
+    /// <summary>
+    /// The column-type + converter/comparer suffix every <c>field.map</c> mapping ends in, whatever
+    /// the receiver. Written once so the two tiers — a top-level property and a FLATTENED value
+    /// object's member, which differ only in the receiver and a <c>HasColumnName</c> — cannot drift:
+    /// a converter change fixed in one tier only is exactly the failure the flattened tier's old
+    /// known-gap entry described.
+    /// </summary>
+    private static string MapJsonbSuffix(MetaField f, GenContext ctx)
     {
         var valueType = MapValueTypeRef(f, ctx);
-        return $"        modelBuilder.Entity<{className}>().Property(x => x.{CSharpNaming.Pascal(f.Name)})"
-            + $".HasColumnType(\"jsonb\").HasConversion("
-            + $"{MapJsonbHelperName}.Converter<{valueType}>(), {MapJsonbHelperName}.Comparer<{valueType}>());";
+        return $".HasColumnType(\"jsonb\").HasConversion("
+            + $"{MapJsonbHelperName}.Converter<{valueType}>(), {MapJsonbHelperName}.Comparer<{valueType}>())";
     }
 
     /// <summary>Name of the generated jsonb (de)serialization helper the field.map configs use.</summary>
@@ -664,8 +680,9 @@ public class DbContextGenerator : IGenerator
     private static string MapValueTypeRef(MetaField f, GenContext ctx)
     {
         if (f.ObjectRef is not { } oref || oref.Length == 0) return CSharpNaming.MapValueType(f);
-        var bare = CSharpNaming.Pascal(CSharpNaming.StripPkg(oref));
-        var vo = ctx.Root.FindObject(CSharpNaming.StripPkg(oref));
+        var shortName = CSharpNaming.StripPkg(oref);
+        var bare = CSharpNaming.Pascal(shortName);
+        var vo = ctx.Root.FindObject(shortName);
         if (vo is null) return bare;
         var ns = PackageBindingResolver.Resolve(
             ctx.Config, PackageBindingResolver.EffectivePackage(vo), vo.Name);
@@ -682,10 +699,14 @@ public class DbContextGenerator : IGenerator
     /// <para>The COMPARER is the load-bearing half, not decoration. EF snapshots a
     /// value-converted property by REFERENCE unless told otherwise, so with a converter alone
     /// an in-place <c>entity.Labels["k"] = v</c> is never detected as a change and the UPDATE
-    /// never fires — the same silent non-persistence this whole mapping exists to fix. The
-    /// snapshot therefore deep-copies (serialize + deserialize), and equality compares the
-    /// serialized JSON: two dictionaries are equal exactly when they would write the same
-    /// jsonb, which is the right notion for a value object as well as a scalar.</para>
+    /// never fires — the same silent non-persistence this whole mapping exists to fix.</para>
+    /// <para>It compares ENTRY-WISE rather than by serialized JSON, which matters in both
+    /// directions: JSON string equality is key-ORDER sensitive, so a dictionary rebuilt in a
+    /// different order would read as changed and issue an UPDATE for a row nothing touched;
+    /// and it made every equality check serialize both dictionaries. Scalars now settle on
+    /// <c>EqualityComparer&lt;T&gt;.Default</c> with no serialization at all, while a value-object
+    /// value still falls through to a JSON compare because the generated POCO is a class and
+    /// compares by reference. The snapshot deep-copies only when the value type needs it.</para>
     /// <para>Fully qualified throughout: the generated file's usings are a fixed set
     /// (<see cref="EmitUsings"/>), and widening it would change byte-identical output for
     /// every model.</para>
@@ -710,36 +731,51 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<");
         sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>> Comparer<TValue>() => new(");
-        sb.AppendLine("                (a, b) => System.Text.Json.JsonSerializer.Serialize(a, Options)");
-        sb.AppendLine("                       == System.Text.Json.JsonSerializer.Serialize(b, Options),");
-        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Serialize(v, Options).GetHashCode(),");
-        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
+        sb.AppendLine("                (a, b) => Eq(a, b), v => Hash(v), v => Snap(v));");
+        sb.AppendLine();
+        sb.AppendLine("        /// <summary>Order-INDEPENDENT equality: a dictionary rebuilt in a different key");
+        sb.AppendLine("        /// order holds the same value, and comparing serialized JSON would call it changed");
+        sb.AppendLine("        /// and issue an UPDATE for a row nothing touched. Scalars settle on the default");
+        sb.AppendLine("        /// comparer (no serialization at all); a value-object value falls through to a JSON");
+        sb.AppendLine("        /// compare, since the generated POCO is a class and compares by reference.</summary>");
+        sb.AppendLine("        private static bool Eq<TValue>(");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>? a,");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>? b)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (a is null || b is null) return ReferenceEquals(a, b);");
+        sb.AppendLine("            if (a.Count != b.Count) return false;");
+        sb.AppendLine("            foreach (var kv in a)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                if (!b.TryGetValue(kv.Key, out var other)) return false;");
+        sb.AppendLine("                if (System.Collections.Generic.EqualityComparer<TValue>.Default.Equals(kv.Value, other)) continue;");
+        sb.AppendLine("                if (System.Text.Json.JsonSerializer.Serialize(kv.Value, Options)");
+        sb.AppendLine("                    != System.Text.Json.JsonSerializer.Serialize(other, Options)) return false;");
+        sb.AppendLine("            }");
+        sb.AppendLine("            return true;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        /// <summary>Keys and count only — order-independent (XOR), allocation-free, and");
+        sb.AppendLine("        /// stable for a value-object value whose GetHashCode is reference-based. Equal");
+        sb.AppendLine("        /// dictionaries always hash equal, which is all EF requires.</summary>");
+        sb.AppendLine("        private static int Hash<TValue>(System.Collections.Generic.Dictionary<string, TValue> v)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var h = v.Count;");
+        sb.AppendLine("            foreach (var k in v.Keys) h ^= k.GetHashCode();");
+        sb.AppendLine("            return h;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        /// <summary>The change-tracking snapshot. A value-object value needs a DEEP copy or");
+        sb.AppendLine("        /// an in-place edit to a nested object mutates the snapshot too and goes undetected;");
+        sb.AppendLine("        /// an immutable scalar only needs the dictionary copied.</summary>");
+        sb.AppendLine("        private static System.Collections.Generic.Dictionary<string, TValue> Snap<TValue>(");
+        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue> v) =>");
+        sb.AppendLine("            typeof(TValue).IsValueType || typeof(TValue) == typeof(string)");
+        sb.AppendLine("                ? new System.Collections.Generic.Dictionary<string, TValue>(v)");
+        sb.AppendLine("                : System.Text.Json.JsonSerializer.Deserialize<");
         sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(");
-        sb.AppendLine("                        System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!);");
+        sb.AppendLine("                        System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!;");
         sb.AppendLine("    }");
     }
-
-    /// <summary>
-    /// True when any emitted config will reference <see cref="MapJsonbHelperName"/>. Mirrors
-    /// BOTH sites that emit one: the map loop in <see cref="EmitFieldTypeConfig"/> (an emitted
-    /// object's own <c>field.map</c>) AND the flattened-member arm of
-    /// <see cref="OwnedTypeConfig"/> (a map member of a FLATTENED value object, which gets its
-    /// own jsonb column at the prefixed name). A value object is not in
-    /// <paramref name="objects"/>, so scanning only their own fields would emit a config
-    /// naming a helper this file never declares — the same trap
-    /// <see cref="NeedsUnmappedEnumHelper"/> documents.
-    /// </summary>
-    /// <remarks>
-    /// A NON-flattened value object's map member is deliberately absent: it lives inside the
-    /// owning column's JSON document, where System.Text.Json serializes the dictionary and no
-    /// EF column mapping of its own exists.
-    /// </remarks>
-    private static bool NeedsMapJsonbHelper(IEnumerable<MetaObject> objects, MetaRoot root) =>
-        objects.Any(o => o.Fields().Any(f =>
-            f.SubType == FIELD_SUBTYPE_MAP
-            || (f.SubType == FIELD_SUBTYPE_OBJECT && f.Storage == STORAGE_FLATTENED && !f.ResolvedIsArray()
-                && f.ObjectRef is { } oref && root.FindObject(CSharpNaming.StripPkg(oref)) is { } vo
-                && vo.Fields().Any(nf => nf.SubType == FIELD_SUBTYPE_MAP))));
 
     /// <summary>
     /// True when any emitted converter will reference <see cref="UnmappedEnumHelperName"/>
@@ -1067,11 +1103,8 @@ public class DbContextGenerator : IGenerator
             // default: a column the migration never creates (42703 at the engine).
             if (nf.SubType == FIELD_SUBTYPE_MAP)
             {
-                var mapValue = MapValueTypeRef(nf, ctx);
                 sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
-                    + $".HasColumnName(\"{nestedColAny}\").HasColumnType(\"jsonb\").HasConversion("
-                    + $"{MapJsonbHelperName}.Converter<{mapValue}>(), "
-                    + $"{MapJsonbHelperName}.Comparer<{mapValue}>());");
+                    + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(nf, ctx) + ";");
                 continue;
             }
 

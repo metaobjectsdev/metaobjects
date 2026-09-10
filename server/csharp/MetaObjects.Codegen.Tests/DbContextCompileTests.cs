@@ -22,7 +22,7 @@
 //       array string "tags"   (isArray)  → .PrimitiveCollection()
 //       field.object homeAddress @storage flattened → OwnsOne(...) per-property column names
 //       field.object config (default storage)       → OwnsOne(...).ToJson(...)
-//       field.map    labels/scores (@valueType)      → .HasColumnType("jsonb").HasConversion(
+//       field.map    labels (@valueType)             → .HasColumnType("jsonb").HasConversion(
 //                                                       MapJsonb.Converter<T>(), MapJsonb.Comparer<T>())
 //       field.map    sites (@objectRef)              → the same, typed by the value object.
 //         These prove the EF API surface actually RESOLVES: the two-arg
@@ -85,7 +85,6 @@ public class DbContextCompileTests
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
         { "field.object": { "name": "config",      "@objectRef": "Address" } },
         { "field.map":    { "name": "labels",  "@valueType": "string" } },
-        { "field.map":    { "name": "scores",  "@valueType": "int" } },
         { "field.map":    { "name": "sites",   "@objectRef": "Address" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},

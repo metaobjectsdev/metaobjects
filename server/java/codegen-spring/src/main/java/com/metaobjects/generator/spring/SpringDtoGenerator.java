@@ -723,6 +723,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         return out;
     }
 
+    /** The {@code field.map @objectRef} columns of {@code entity}, in declared order — the map
+     *  analog of {@link #valueObjectJsonbFields}. The controller runs the same nested-VO
+     *  validation over their VALUES on PATCH. */
+    public static List<MetaField> valueObjectMapFields(MetaObject entity) {
+        List<MetaField> out = new ArrayList<>();
+        for (MetaField field : entity.getMetaFields()) {
+            if (mapValueObjectRefOf(field) != null) out.add(field);
+        }
+        return out;
+    }
+
     /**
      * True iff {@code field} is a value-object jsonb column: a {@link ObjectField} whose
      * {@code @objectRef} resolves to an {@code object.value} and whose {@code @storage} is
@@ -796,12 +807,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             return SpringTypeMapper.payloadJavaTypeName(field, owner, "");
         }
         String element = SpringTypeMapper.javaTypeName(field);
-        // A field.map is NEVER wrapped: isArray does not apply to a map, and every other port
-        // emits the map type bare (Kotlin Map<String,V>, TS Record<string,V>, Python
-        // dict[str,V]). Without this guard a declared isArray would silently produce
-        // List<Map<String,V>>, a shape no other port can round-trip.
-        return field.isArrayType() && !(field instanceof MapField)
-            ? "java.util.List<" + element + ">" : element;
+        return SpringTypeMapper.wrapsAsList(field) ? "java.util.List<" + element + ">" : element;
     }
 
     /**

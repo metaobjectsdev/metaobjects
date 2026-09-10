@@ -6,24 +6,15 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import javax.tools.DiagnosticCollector;
-import javax.tools.JavaCompiler;
-import javax.tools.JavaFileObject;
-import javax.tools.ToolProvider;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 /**
  * {@code field.map} — an open-keyed map ({@code Map<String, V>}) stored in a single
@@ -143,7 +134,7 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         String controller = Files.readString(gen.resolve("acme/crm/CustomerController.java"));
 
         int start = controller.indexOf("SORT_ALLOWLIST");
-        org.junit.Assert.assertTrue("expected a SORT_ALLOWLIST in the controller", start >= 0);
+        assertTrue("expected a SORT_ALLOWLIST in the controller", start >= 0);
         String allowlist = controller.substring(start, controller.indexOf(';', start));
         assertFalse("a scalar-valued map must not be sortable; saw:\n" + allowlist,
                 allowlist.contains("\"labels\""));
@@ -166,8 +157,10 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         Path gen = generateAll("patch");
         String controller = Files.readString(gen.resolve("acme/crm/CustomerController.java"));
 
+        // __el, not a map-specific name: the array-of-VO and map-of-VO branches share one
+        // emitter, which is what keeps the 400 envelope in a single place.
         assertTrue("expected PATCH to iterate the map's VALUES; saw:\n" + controller,
-                controller.contains("for (var __e : patch.addresses().values())"));
+                controller.contains("for (var __el : patch.addresses().values())"));
         // A scalar-valued map has no nested bean, so it must NOT get a validation loop.
         assertFalse("a scalar-valued map needs no nested validation; saw:\n" + controller,
                 controller.contains("patch.labels().values()"));
@@ -314,45 +307,9 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
 
     @Test
     public void generatedMapCarryingSourcesCompile() throws Exception {
-        // The strongest proof: the emitted DTO + value-object records compile together.
-        // This is what catches a Map<String, int> (illegal type argument) or a DTO naming
-        // a value object the reachability walk never emitted.
-        Path gen = generate("compile");
-
-        List<File> sources;
-        try (Stream<Path> s = Files.walk(gen)) {
-            sources = s.filter(p -> p.toString().endsWith(".java"))
-                       .map(Path::toFile)
-                       .collect(Collectors.toList());
-        }
-        assertFalse("expected generated .java files under " + gen, sources.isEmpty());
-
-        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        assertNotNull("JDK (not JRE) required — getSystemJavaCompiler() returned null", javac);
-
-        Path classes = tmp.newFolder("classes-map").toPath();
-        DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
-        var fm = javac.getStandardFileManager(diags, null, null);
-        List<String> opts = List.of(
-                "-classpath", System.getProperty("java.class.path"),
-                "-d", classes.toString());
-
-        boolean ok = javac.getTask(null, fm, diags, opts, null,
-                fm.getJavaFileObjectsFromFiles(sources)).call();
-        if (!ok) {
-            StringBuilder sb = new StringBuilder("generated map-carrying sources failed to compile:\n");
-            for (var d : diags.getDiagnostics()) {
-                sb.append("  ").append(d.getKind()).append(": ").append(d.getMessage(null)).append('\n');
-                if (d.getSource() != null) {
-                    sb.append("    at ").append(d.getSource().getName())
-                      .append(':').append(d.getLineNumber()).append('\n');
-                }
-            }
-            for (File f : sources) {
-                sb.append("\n=== ").append(f.getName()).append(" ===\n");
-                sb.append(Files.readString(f.toPath())).append('\n');
-            }
-            fail(sb.toString());
-        }
+        // The strongest proof: the emitted DTO + value-object records compile together. This is
+        // what catches a Map<String, int> (illegal type argument) or a DTO naming a value object
+        // the reachability walk never emitted.
+        SpringTestFixtures.compileGenerated(generate("compile"), tmp.newFolder("classes-map").toPath());
     }
 }

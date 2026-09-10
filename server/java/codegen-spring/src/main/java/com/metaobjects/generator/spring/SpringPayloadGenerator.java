@@ -3,6 +3,7 @@ package com.metaobjects.generator.spring;
 import com.metaobjects.MetaData;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.MapField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
@@ -484,7 +485,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         // Falling through to javaTypeName would type the component as the SOURCE value
         // object's FQN — a type the payload path never emits — so the generated
         // <Name>Payload would name a record that does not exist.
-        if (field instanceof com.metaobjects.field.MapField mf) {
+        if (field instanceof MapField mf) {
             return resolveMapFieldType(mf, loader, nestedPkg, outRoot, emittedNestedFqns, nameMap);
         }
         // Scalar array (`isArray: true` on a non-object, non-enum field): the declared
@@ -493,10 +494,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         // type_map list[...] wrap. Without this, javaTypeName returns the bare element
         // type and the declared array-ness is silently dropped (#270 fix round 2).
         String scalarType = SpringTypeMapper.javaTypeName(field);
-        // ADR-0039: resolving array-ness (isArrayType() is the effective flag; isArray()
-        // is the own-only native flag). A field.map is exempt: isArray does not apply to a
-        // map, and every port emits Map/Record/dict un-wrapped (see SpringTypeMapper's map arm).
-        if (field.isArrayType() && !(field instanceof com.metaobjects.field.MapField)) {
+        if (SpringTypeMapper.wrapsAsList(field)) {
             return "java.util.List<" + scalarType + ">";
         }
         return scalarType;
@@ -539,7 +537,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * through to the plain type mapper ({@code Map<String, Scalar>}). {@code isArray} does not
      * apply to a map, so there is no list-wrapping arm here.</p>
      */
-    protected String resolveMapFieldType(com.metaobjects.field.MapField field,
+    protected String resolveMapFieldType(MapField field,
                                          MetaDataLoader loader,
                                          String nestedPkg,
                                          Path outRoot,

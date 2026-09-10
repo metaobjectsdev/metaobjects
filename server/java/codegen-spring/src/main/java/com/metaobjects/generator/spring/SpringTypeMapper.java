@@ -135,10 +135,7 @@ public final class SpringTypeMapper {
         // SpringDtoGenerator.isValueObjectJsonbField; a non-VO ObjectField never lands here.
         if (field instanceof ObjectField of && of.hasMetaAttr(ObjectField.ATTR_OBJECTREF)) {
             MetaObject ref = of.getObjectRef();
-            if (ref != null) {
-                String[] split = SpringNaming.splitFqn(ref.getName());
-                return split[0].isEmpty() ? split[1] : split[0] + "." + split[1];
-            }
+            if (ref != null) return fqJavaTypeName(ref);
         }
         // field.map -> java.util.Map<String, V>: an open-keyed map stored in a SINGLE jsonb
         // column (the map analog of the field.object arm above). Keys are always String (the
@@ -178,25 +175,17 @@ public final class SpringTypeMapper {
      * throw rather than guessing a value type, exactly as a bare {@link ObjectField} does.</p>
      */
     private static String mapValueJavaType(MapField field) {
-        // ADR-0039: @objectRef / @valueType are EFFECTIVE properties -- hasMetaAttr/getMetaAttr
-        // (the one-arg, RESOLVING forms) so a value inherited via `extends` is not dropped.
+        // ONE predicate answers "which value object does this map carry" — the same one the
+        // @Valid cascade and the value-object emission walk use. Answering it a second time here
+        // is what let the two disagree: this arm accepted ANY @objectRef target while
+        // mapValueObjectRefOf requires object.value, so an @objectRef naming an ENTITY typed the
+        // component as that entity while nothing ever emitted a record for it.
         if (field.hasMetaAttr(MapField.ATTR_OBJECTREF)) {
-            MetaObject ref;
-            try {
-                ref = field.getObjectRef();
-            } catch (RuntimeException unresolved) {
-                // MetaDataUtil.getObjectRef THROWS MetaDataNotFoundException on a dangling ref
-                // rather than returning null. Caught so this method actually keeps the contract
-                // its javadoc states, and so it agrees with its sibling
-                // SpringDtoGenerator.mapValueObjectRefOf — otherwise one dangling ref produces
-                // a not-found from the type mapper and a silent skip from the @Valid /
-                // value-object-reachability path.
-                return null;
-            }
-            if (ref == null) return null;
-            String[] split = SpringNaming.splitFqn(ref.getName());
-            return split[0].isEmpty() ? split[1] : split[0] + "." + split[1];
+            MetaObject ref = SpringDtoGenerator.mapValueObjectRefOf(field);
+            return ref == null ? null : fqJavaTypeName(ref);
         }
+        // ADR-0039: @valueType is an EFFECTIVE property — getMetaAttr's one-arg RESOLVING form,
+        // so a value inherited via `extends` is not dropped.
         if (!field.hasMetaAttr(MapField.ATTR_VALUE_TYPE)) return null;
         String valueType = field.getMetaAttr(MapField.ATTR_VALUE_TYPE).getValueAsString();
         if (valueType == null) return null;
@@ -371,6 +360,29 @@ public final class SpringTypeMapper {
         if (!field.hasMetaAttr(EnumField.ATTR_VALUES)) return List.of();
         Object raw = field.getMetaAttr(EnumField.ATTR_VALUES).getValue();
         return (raw instanceof List) ? (List<String>) raw : List.of();
+    }
+
+    /**
+     * The fully-qualified Java type name of a resolved {@link MetaObject} — {@code acme.crm.Address}
+     * for {@code acme::crm::Address}, or the bare short name at the root package. Fully qualified so
+     * a consuming DTO / {@code <Entity>Patch} / value-object record needs no import.
+     */
+    static String fqJavaTypeName(MetaObject ref) {
+        String[] split = SpringNaming.splitFqn(ref.getName());
+        return split[0].isEmpty() ? split[1] : split[0] + "." + split[1];
+    }
+
+    /**
+     * True iff a declared {@code isArray} on {@code field} means the emitted component is wrapped
+     * in {@code java.util.List<...>}. THE home of that rule: a {@code field.map} is never wrapped —
+     * isArray does not apply to a map, and every other port emits the map type bare (Kotlin
+     * {@code Map<String,V>}, TS {@code Record<string,V>}, Python {@code dict[str,V]}), so wrapping
+     * would produce a {@code List<Map<String,V>>} no other port can round-trip. Stating it here
+     * rather than at each call site means a third caller cannot miss it.
+     */
+    public static boolean wrapsAsList(MetaField<?> field) {
+        // ADR-0039: isArrayType() is the effective flag; isArray() is the own-only native one.
+        return field.isArrayType() && !(field instanceof MapField);
     }
 
     /** Uppercase the first character of {@code s}; pass through unchanged when empty/already upper. */

@@ -31,9 +31,9 @@ public class MapFieldCodegenTests
     ]}}
     """;
 
-    private static MetaRoot Load()
+    private static MetaRoot Load(string model = Model, string id = "map.json")
     {
-        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "map.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: id)]);
         Assert.Empty(r.Errors);
         return r.Root;
     }
@@ -75,11 +75,9 @@ public class MapFieldCodegenTests
     {
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
 
-        // Without an explicit mapping EF does not persist a Dictionary the way the
-        // TS-owned schema DDL declares it: on Npgsql a Dictionary<string, string> binds to
-        // HSTORE by default, and a Dictionary<string, int> binds to nothing at all. The
-        // column the migration creates is jsonb, so the context must say jsonb and supply
-        // the (de)serializer -- the C# analog of Kotlin's jsonb(col, encoder, decoder).
+        // WHY an explicit mapping is needed at all is stated once, at the emission site
+        // (the map loop in DbContextGenerator.EmitFieldTypeConfig): an unmapped Dictionary
+        // does not land on the jsonb column the migration creates.
         Assert.Contains(
             "modelBuilder.Entity<Customer>().Property(x => x.Labels).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.Converter<string>(), MapJsonb.Comparer<string>());",
@@ -111,6 +109,14 @@ public class MapFieldCodegenTests
         Assert.Contains("Dictionary<string, TValue>, string> Converter<TValue>()", withMap);
         Assert.Contains("Dictionary<string, TValue>> Comparer<TValue>()", withMap);
 
+        // Equality must be ENTRY-WISE, not a comparison of serialized JSON. JSON string
+        // equality is key-ORDER sensitive, so a dictionary rebuilt in a different order would
+        // read as changed and issue an UPDATE for a row nothing touched — and it would
+        // serialize both dictionaries on every check. Scalars take the default comparer and
+        // never serialize; only a value-object value falls through to JSON.
+        Assert.Contains("if (!b.TryGetValue(kv.Key, out var other)) return false;", withMap);
+        Assert.Contains("EqualityComparer<TValue>.Default.Equals(kv.Value, other)) continue;", withMap);
+
         // A model with no field.map must stay byte-identical -- the helper is gated, exactly
         // as the UnmappedEnumValue helper is.
         const string noMap = """
@@ -123,13 +129,8 @@ public class MapFieldCodegenTests
           ]}}
         ]}}
         """;
-        var r = new MetaDataLoader().Load([new InMemoryStringSource(noMap, id: "nomap.json")]);
-        Assert.Empty(r.Errors);
-        var without = Assert.Single(new DbContextGenerator().Generate(new GenContext
-        {
-            Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
-        })).Content;
+        var without = Assert.Single(
+            new DbContextGenerator().Generate(Ctx(Load(noMap, "nomap.json")))).Content;
         Assert.DoesNotContain("MapJsonb", without);
     }
 
@@ -150,13 +151,7 @@ public class MapFieldCodegenTests
           ]}}
         ]}}
         """;
-        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "proj.json")]);
-        Assert.Empty(r.Errors);
-        var ctx = new GenContext
-        {
-            Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
-        };
+        var ctx = Ctx(Load(model, "proj.json"));
 
         // The property is emitted...
         var entity = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
