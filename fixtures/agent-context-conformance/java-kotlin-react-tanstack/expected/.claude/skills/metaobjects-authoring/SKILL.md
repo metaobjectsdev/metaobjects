@@ -546,7 +546,7 @@ the column.** It already names the type — that is the metadata. Take the first
 |---|---|---|
 | `list[str]` / `string[]` / `List<X>` — plural name, typed elements | the element subtype + `isArray: true` | a native array — **never** a bag holding a list |
 | a dataclass / DTO / record / `@Serializable` class — a fixed key set | an **`object.value`** (no identity, no source), then `field.object` + `@objectRef` + `@storage: jsonb` (`isArray: true` for a list of them) | the VO's own type: `.$type<VO>()` + its Zod schema, the Pydantic model (`<VO>Create` on the wire), a Jackson-coded Exposed column, an EF owned type — gated in all five ports |
-| `dict[str, X]` / `Record<string, X>` / `Map<String, X>` — dynamic keys, KNOWN value type | **`field.map`** + `@objectRef` (a value object) or `@valueType` (a scalar) | `Record<string, X>` + `z.record(...)` (TS), `dict[str, X]` (Python), `Map<String, X>` over a Jackson jsonb codec (Kotlin). **Java and C# do not complete this rung — see below** |
+| `dict[str, X]` / `Record<string, X>` / `Map<String, X>` — dynamic keys, KNOWN value type | **`field.map`** + `@objectRef` (a value object) or `@valueType` (a scalar) | `Record<string, X>` + `z.record(...)` (TS), `dict[str, X]` (Python), `Map<String, X>` over a Jackson jsonb codec (Kotlin), `java.util.Map<String, V>` (Java), `Dictionary<string, V>` over an EF jsonb converter (C#). **Codegen completes on all five ports; the runtime persistence tier does not — see below** |
 | `dict[str, Any]` / `JsonNode` / `unknown`, and no reader pins a key | `field.string` + `@dbColumnType: jsonb` | the parsed value, untyped — the deliberate escape hatch |
 
 Only the last row is an open bag, and there it is correct: a pass-through payload, a raw
