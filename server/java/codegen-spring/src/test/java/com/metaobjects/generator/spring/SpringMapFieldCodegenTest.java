@@ -167,9 +167,11 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void aValueObjectNestingAMapOfValueObjectsCascadesValidation() throws Exception {
-        // The entity DTO cascades into a map of value objects; a VALUE OBJECT nesting the same
-        // shape must too, or the nested constraints go unenforced exactly one level down.
+    public void aValueObjectNestingAMapOfValueObjectsIsAnnotatedValid() throws Exception {
+        // The entity DTO gets @Valid on a map of value objects; a VALUE OBJECT nesting the same
+        // shape must too, or the nested constraints go unenforced exactly one level down. This
+        // asserts the annotation is EMITTED on the right component, not that it cascades —
+        // validAnnotationActuallyCascadesIntoMapValues() is the test that proves the cascade.
         final String nested = """
             {
               "metadata.root": { "package": "acme::crm", "children": [
@@ -334,14 +336,16 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void objectValuedMapComponentCascadesValidation() throws Exception {
+    public void objectValuedMapComponentIsAnnotatedValid() throws Exception {
         Path gen = generate("valid");
         String dto = Files.readString(gen.resolve("acme/crm/CustomerDto.java"));
 
         // Parity with the TS zod emit, which types an @objectRef map as
         // z.record(z.string(), <VO>InsertSchema) — i.e. the map VALUES are validated.
-        // @Valid on a Map component cascades to its values under Bean Validation, so the
-        // nested VO's own constraints (Address.street @NotNull/@Size) are enforced on POST.
+        // This asserts the generator EMITS @Valid on the value-object map component, so the
+        // nested VO's own constraints (Address.street @NotNull/@Size) are wired for enforcement
+        // on POST — validAnnotationActuallyCascadesIntoMapValues() is the test that proves Bean
+        // Validation actually cascades through that annotation.
         assertTrue("expected @Valid on the value-object map component; saw:\n" + dto,
                 dto.contains("@Valid java.util.Map<String, acme.crm.Address> addresses"));
         // A SCALAR-valued map has no nested bean to cascade into — it must NOT get @Valid.
