@@ -32,6 +32,49 @@ found is in this entry and the ones below it.
 
 ## [Unreleased]
 
+### Fixed — `field.map` codegen completes: Java generates it, C# persists it
+
+The subtype is registered in all five ports and TypeScript, Kotlin and Python already
+generated it. Java and C# were the two halves left, failing in opposite directions — and
+**this entry is CODEGEN only**, a bound the last paragraph states because the headline
+invites the wider reading.
+
+**Java (`codegen-spring`) failed the build outright.** A `field.map` on an entity flowed
+into the DTO record and reached `SpringTypeMapper`'s unsupported-type throw, so any entity
+carrying one failed Java codegen. It now emits `java.util.Map<String, V>` — `V` the scalar
+named by `@valueType` or the value object named by `@objectRef` — and the value-object
+emission walk now spans a map's `@objectRef`, so a record reached only through a map is
+actually generated rather than merely named by a DTO. `isArray` does not apply to a map, so
+the type is never wrapped in `List<>`; every other port emits the map bare.
+
+**C# (`MetaObjects.Codegen`) emitted the property but not the storage.**
+`EntityGenerator`'s `Dictionary<string, V>` property was already there;
+`DbContextGenerator` had no map branch, so EF got no column type and no converter — the
+property did not persist onto the `jsonb` column the TS-owned migration creates (ADR-0015).
+It now emits an explicit jsonb column type plus a shared converter/comparer pair, on
+entities, read-only projections and flattened value-object members alike. The comparer is
+load-bearing, not decoration: EF snapshots a value-converted property by reference, so a
+converter alone would leave an in-place `entity.Labels["k"] = v` undetected and the UPDATE
+would never fire. Two details of the emitted shape: the property's NULLABILITY follows the
+column — a `@required` map is a non-null dictionary with an empty-dictionary initializer,
+any other map a nullable dictionary with no initializer, because the migration's column is
+nullable by default and a non-nullable property over it makes EF Core 8 skip the shaper's
+NULL check (one NULL cell — a row written by another port, or before the field existed —
+would 500 every read arm), and NULL stays distinct from a present `{}`. And the shared
+serializer options carry a `JsonStringEnumConverter`, so a `field.enum` member of the map's
+value object persists as its member SYMBOL — the rule the owned-`field.object` jsonb column
+already follows; System.Text.Json's default int ordinal is a value no sibling port writes
+for the same declared field.
+
+**Scope.** No runtime persistence layer reads or writes a map except Python's
+`ObjectManager`, and no persistence- or api-contract-conformance corpus exercises
+`field.map` on any port — the subtype remains loader- and codegen-gated only, and
+[field-types.md](docs/features/field-types.md) carries the full runtime picture. An
+adopter who read "field.map now works" out of this entry would be over-reading it.
+**`metamodelVersion` does not move**: no registered vocabulary changed, and
+`expected-registry.json` is untouched.
+
+
 ### Added — `meta verify` advises when a provider still carries the prop 1.0 renamed away
 
 `<EntityFetcherProvider value={f}>` does not typecheck. The `0.x → 1.0` migration note and

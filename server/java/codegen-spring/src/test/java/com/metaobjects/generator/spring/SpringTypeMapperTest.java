@@ -7,6 +7,7 @@ import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
+import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
@@ -193,6 +194,122 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         com.metaobjects.field.UuidField f = new com.metaobjects.field.UuidField("refs");
         f.setArray(true);
         assertEquals("java.util.List<java.util.UUID>", SpringDtoGenerator.componentType(f, null));
+    }
+
+    // === field.map (open-keyed map) ==========================================
+
+    /**
+     * Build a {@code field.map} carrying {@code @valueType=<subType>}. The loader
+     * requires EXACTLY ONE of {@code @valueType} / {@code @objectRef}
+     * ({@code ValidationPhase.validateFieldMap}); these unit tests pin the mapper arm,
+     * so the attr is set directly rather than through a load.
+     */
+    private static com.metaobjects.field.MapField scalarMap(String name, String valueSubType) {
+        com.metaobjects.field.MapField f = new com.metaobjects.field.MapField(name);
+        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create(
+            com.metaobjects.field.MapField.ATTR_VALUE_TYPE, valueSubType));
+        return f;
+    }
+
+    @Test
+    public void mapValueTypeCoversEveryScalarSubtypeTheLoaderAllows() {
+        // The 11 scalar @valueType subtypes ValidationPhase.MAP_SCALAR_VALUE_SUBTYPES admits,
+        // each mapped to the SAME Java type the corresponding field.<subtype> maps to above
+        // (wrapped primitives, so a missing JSON entry deserialises to null). Mirrors
+        // KotlinTypeMapper.mapValueScalarTypeName arm for arm.
+        assertEquals("java.util.Map<String, String>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", StringField.SUBTYPE_STRING)));
+        assertEquals("java.util.Map<String, Integer>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", IntegerField.SUBTYPE_INT)));
+        assertEquals("java.util.Map<String, Long>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", LongField.SUBTYPE_LONG)));
+        assertEquals("java.util.Map<String, Double>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", DoubleField.SUBTYPE_DOUBLE)));
+        assertEquals("java.util.Map<String, Float>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", com.metaobjects.field.FloatField.SUBTYPE_FLOAT)));
+        assertEquals("java.util.Map<String, java.math.BigDecimal>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", com.metaobjects.field.DecimalField.SUBTYPE_DECIMAL)));
+        assertEquals("java.util.Map<String, Boolean>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", BooleanField.SUBTYPE_BOOLEAN)));
+        assertEquals("java.util.Map<String, java.time.LocalDate>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", DateField.SUBTYPE_DATE)));
+        assertEquals("java.util.Map<String, java.time.LocalTime>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", TimeField.SUBTYPE_TIME)));
+        assertEquals("java.util.Map<String, java.time.Instant>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", TimestampField.SUBTYPE_TIMESTAMP)));
+        assertEquals("java.util.Map<String, java.util.UUID>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", com.metaobjects.field.UuidField.SUBTYPE_UUID)));
+    }
+
+    @Test
+    public void everyMapValueTypeAgreesWithTheSameFieldSubtypesOwnMapping() {
+        // The map's @valueType table and javaTypeName's per-subtype arms are two hand-written
+        // copies of one rule, so adding a scalar subtype means editing both — and only one of
+        // them is covered by the unsupported-type throw. This pins them together: for every
+        // @valueType the loader admits, Map<String, V> must carry EXACTLY the type the same
+        // field subtype maps to on its own. A new subtype added to one table and not the other
+        // fails here rather than shipping a silently divergent map.
+        java.util.Map<String, MetaField<?>> byValueType = new java.util.LinkedHashMap<>();
+        byValueType.put(StringField.SUBTYPE_STRING, new StringField("f"));
+        byValueType.put(IntegerField.SUBTYPE_INT, new IntegerField("f"));
+        byValueType.put(LongField.SUBTYPE_LONG, new LongField("f"));
+        byValueType.put(DoubleField.SUBTYPE_DOUBLE, new DoubleField("f"));
+        byValueType.put(com.metaobjects.field.FloatField.SUBTYPE_FLOAT, new com.metaobjects.field.FloatField("f"));
+        byValueType.put(com.metaobjects.field.DecimalField.SUBTYPE_DECIMAL, new com.metaobjects.field.DecimalField("f"));
+        byValueType.put(BooleanField.SUBTYPE_BOOLEAN, new BooleanField("f"));
+        byValueType.put(DateField.SUBTYPE_DATE, new DateField("f"));
+        byValueType.put(TimeField.SUBTYPE_TIME, new TimeField("f"));
+        byValueType.put(TimestampField.SUBTYPE_TIMESTAMP, new TimestampField("f"));
+        byValueType.put(com.metaobjects.field.UuidField.SUBTYPE_UUID, new com.metaobjects.field.UuidField("f"));
+
+        for (java.util.Map.Entry<String, MetaField<?>> e : byValueType.entrySet()) {
+            assertEquals(
+                "field.map @valueType:" + e.getKey() + " must carry the same Java type as field." + e.getKey(),
+                "java.util.Map<String, " + SpringTypeMapper.javaTypeName(e.getValue()) + ">",
+                SpringTypeMapper.javaTypeName(scalarMap("m", e.getKey())));
+        }
+    }
+
+    @Test
+    public void mapValueTypeTimestampIgnoresLocalTimeAndStaysInstant() {
+        // A map VALUE has no column of its own to be "timestamp without time zone", so
+        // @localTime has no place on one: a @valueType:timestamp is the absolute-instant
+        // DEFAULT unconditionally. Mirrors KotlinTypeMapper's map arm (which reads only
+        // @valueType, never @localTime).
+        com.metaobjects.field.MapField f = scalarMap("seenAt", TimestampField.SUBTYPE_TIMESTAMP);
+        f.addMetaAttr(com.metaobjects.attr.BooleanAttribute.create("localTime", true));
+        assertEquals("java.util.Map<String, java.time.Instant>", SpringTypeMapper.javaTypeName(f));
+    }
+
+    @Test
+    public void scalarValuedMapIsNeverWrappedInList() {
+        // isArray does NOT apply to a map — every port emits the map type un-wrapped
+        // (Kotlin Map<String,V>, TS Record<string,V>, Python dict[str,V] all skip the
+        // array wrap). Without the MapField guard in componentType a declared isArray
+        // would silently produce List<Map<String,String>>, which no other port emits.
+        com.metaobjects.field.MapField f = scalarMap("labels", StringField.SUBTYPE_STRING);
+        f.setArray(true);
+        assertEquals("java.util.Map<String, String>", SpringDtoGenerator.componentType(f, null));
+    }
+
+    @Test
+    public void mapFieldWithoutValueTypeOrObjectRefThrows() {
+        // The loader requires EXACTLY ONE of @valueType / @objectRef, so a bare field.map
+        // cannot reach codegen from a validly-loaded model. The mapper still refuses it
+        // loudly rather than guessing a value type — same contract as a bare ObjectField.
+        com.metaobjects.field.MapField bare = new com.metaobjects.field.MapField("attrs");
+        try {
+            SpringTypeMapper.javaTypeName(bare);
+            fail("expected IllegalArgumentException for a field.map with no value type");
+        } catch (IllegalArgumentException e) {
+            String msg = e.getMessage();
+            org.junit.Assert.assertTrue(
+                "expected message to mention MapField; got: " + msg,
+                msg != null && msg.contains("MapField"));
+            org.junit.Assert.assertTrue(
+                "expected message to mention field name 'attrs'; got: " + msg,
+                msg != null && msg.contains("attrs"));
+        }
     }
 
     @Test

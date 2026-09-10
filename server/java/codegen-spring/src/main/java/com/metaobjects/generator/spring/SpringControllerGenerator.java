@@ -2,6 +2,7 @@ package com.metaobjects.generator.spring;
 
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
+import com.metaobjects.query.FilterOps;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
@@ -167,11 +168,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // a hard-coded Long made Spring 400 every uuid-keyed by-id request.
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
-        // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
-        // surface today; @storage controls a separate column shape).
+        // Sort allowlist: FilterOps.supportsFiltering is the CANONICAL, cross-port answer to
+        // "can this subtype be ordered" — the same band `@sortable` borrows, and the same one
+        // the loader checks in ValidationPhase.validateSortableHasSupportedSubtype. Asking it
+        // here instead of hand-listing the exclusions means the generated allowlist cannot
+        // drift from what the loader accepts, and a new band-less subtype needs no edit.
+        // (object and map are the band-less subtypes today: a map is one jsonb column holding
+        // a JSON object, so ORDER BY over it sorts by jsonb collation — meaningless as an
+        // ordering, and a 400 on the ports that reject it.)
         List<String> sortFields = new ArrayList<>();
         for (MetaField field : entity.getMetaFields()) {
-            if (field instanceof ObjectField) continue;
+            if (!FilterOps.supportsFiltering(field.getSubType())) continue;
             sortFields.add(field.getName());
         }
 
@@ -410,14 +417,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             String name = vf.getName();
             String cap = SpringNaming.capitalize(name);
             if (vf.isArrayType()) {
-                src.append("        if (patch.has").append(cap).append("() && patch.")
-                   .append(name).append("() != null) {\n");
-                src.append("            for (var __el : patch.").append(name).append("()) {\n");
-                src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
-                src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-                src.append("                }\n");
-                src.append("            }\n");
-                src.append("        }\n");
+                appendElementValidationLoop(src, name, cap, "patch." + name + "()");
             } else {
                 src.append("        if (patch.has").append(cap).append("() && patch.")
                    .append(name).append("() != null && !validator.validate(patch.")
@@ -426,6 +426,35 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("        }\n");
             }
         }
+        // A field.map @objectRef carries the same nested value objects, and the POST path
+        // cascades into them via @Valid on the DTO component. PATCH validates field-by-field
+        // with validateValue, which does NOT cascade — so without this the two write paths
+        // disagree for maps where they agree for field.object, and a PATCH could write a
+        // nested value object POST rejects. The map's VALUES are the beans (keys are strings).
+        for (MetaField vf : SpringDtoGenerator.valueObjectMapFields(entity)) {
+            String name = vf.getName();
+            appendElementValidationLoop(
+                src, name, SpringNaming.capitalize(name), "patch." + name + "().values()");
+        }
+    }
+
+    /**
+     * Emit the present-and-non-null guard plus an element-wise {@code validator.validate} loop
+     * over {@code iterableExpr}. Shared by the array-of-value-object branch and the
+     * map-of-value-object branch: they differ ONLY in the iterable expression, and writing the
+     * body twice meant the 400 envelope existed in three places, so adding an error code (as
+     * other ports have) would have missed one.
+     */
+    private static void appendElementValidationLoop(
+            StringBuilder src, String name, String cap, String iterableExpr) {
+        src.append("        if (patch.has").append(cap).append("() && patch.")
+           .append(name).append("() != null) {\n");
+        src.append("            for (var __el : ").append(iterableExpr).append(") {\n");
+        src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
+        src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("                }\n");
+        src.append("            }\n");
+        src.append("        }\n");
     }
 
     /**
@@ -462,10 +491,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String pkType = SpringTypeMapper.primaryKeyJavaType(base);
 
         // Sort allowlist: the base's own scalar columns (the polymorphic sort surface). Subtype
-        // columns are not sortable across the polymorphic collection.
+        // columns are not sortable across the polymorphic collection. Same canonical band as the
+        // vanilla allowlist above — hand-listing the exclusions here had already drifted from it.
         List<String> sortFields = new ArrayList<>();
         for (MetaField field : base.getMetaFields()) {
-            if (field instanceof ObjectField) continue;
+            if (!FilterOps.supportsFiltering(field.getSubType())) continue;
             sortFields.add(field.getName());
         }
 

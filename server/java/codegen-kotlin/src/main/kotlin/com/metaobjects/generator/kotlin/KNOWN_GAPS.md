@@ -64,14 +64,39 @@ value → set). Notes:
   PATCH's present-null-on-`@required` is still rejected (explicit guard), but a
   present-VALUE subtype constraint is not enforced (Java, using per-subtype `<Sub>Dto`,
   does enforce it). Minor pre-existing divergence, untested by any gate.
-- **Object/value-typed columns are non-PATCHable (deliberate, cross-port).** A
-  `field.object`/`field.map` column (VO → jsonb, single or `@isArray`) — and a
-  `field.string @dbColumnType=jsonb` open-bag — are EXCLUDED from the patch settable
-  set (`patchSettableFields` skips `ObjectField`/`MapField`/`isJsonbOpenBag`), so a
-  `PATCH` leaves them untouched. This is a **deliberate cross-port Day-1 simplification**
-  (Java + Kotlin exclude `ObjectField`; C# skips the owned-nav) — NOT a per-port bug.
-  Making VO/open-bag columns PATCHable is a separately-scoped cross-port follow-up FR;
-  a single-port fix would break the api-contract byte-identical parity.
+- **Object/map-typed columns: PATCHability is per shape (split by Program D).** The
+  blanket rule this bullet used to carry — a `field.object`/`field.map` column is
+  EXCLUDED from the patch settable set, so a `PATCH` leaves it untouched — is stale
+  for one shape. What the vanilla path's `patchSettableFields` does today, shape by
+  shape:
+  - `field.object @storage jsonb` (the storage default, single or `@isArray`) —
+    SETTABLE: a present value binds via Jackson `treeToValue` into the VO record /
+    `List<VO>` and is validated in full; a present `null` clears a nullable column
+    or 400s a `@required` one; absent → untouched (the FR-035 tristate). The
+    sibling `codegen-spring` module's `KNOWN_GAPS.md` records the shipment as
+    cross-port (TS / Python / Java / Kotlin / C#), gated by
+    `fixtures/api-contract-conformance/jsonb/scenarios/jsonb-value-object-patch.yaml`.
+  - `field.object @storage flattened` — EXCLUDED: the Exposed table materialises it
+    as per-subfield columns; there is no single `Table.<field>` to bind.
+  - `field.map` — EXCLUDED (`it !is MapField`): dict-of-VO, staged out.
+  - `field.string @dbColumnType=jsonb` open-bag — EXCLUDED (`isJsonbOpenBag`):
+    create-only (next bullet); its PATCH is the tracked Kotlin follow-up (the
+    kotlinx `parseToJsonElement` bridge) the sibling `codegen-spring`
+    `KNOWN_GAPS.md` lists under "Still staged out".
+  The remaining exclusions are deliberate staging (each for the substrate reason
+  above), not per-port bugs — save the map one, which is a live divergence from
+  Java and C# (both patch map columns; C#'s G7 records the split). Closing any of
+  them is separately-scoped follow-up work, not a piecemeal port fix.
+  **TPH residual.** The per-subtype path has its own SSOT —
+  `KotlinTphPlan.subtypeSettableFields` still filters `ObjectField` out outright —
+  so a VO column on a TPH-rooted entity is skipped on PATCH, the same TPH
+  staging-out Java's and C#'s entries record.
+  **Close status.** With the jsonb-VO shape settable, what remains here may mean
+  the gap this bullet tracked is already closed; that ruling is deliberately NOT
+  made here because it needs Program D's intent, which this file does not own. It
+  is filed for exactly that decision as
+  [issue #359](https://github.com/metaobjectsdev/metaobjects/issues/359). Until
+  ruled, the entry stays open against the residuals above.
 - **`field.string @dbColumnType=jsonb` open-bag** is a **create-only** column on the
   generated CRUD. The generated `create` writes it (bound from the `@Valid` DTO's
   kotlinx `JsonElement` property — exercised by the `jsonb-open-bag-roundtrip` corpus),

@@ -546,7 +546,7 @@ the column.** It already names the type — that is the metadata. Take the first
 |---|---|---|
 | `list[str]` / `string[]` / `List<X>` — plural name, typed elements | the element subtype + `isArray: true` | a native array — **never** a bag holding a list |
 | a dataclass / DTO / record / `@Serializable` class — a fixed key set | an **`object.value`** (no identity, no source), then `field.object` + `@objectRef` + `@storage: jsonb` (`isArray: true` for a list of them) | the VO's own type: `.$type<VO>()` + its Zod schema, the Pydantic model (`<VO>Create` on the wire), a Jackson-coded Exposed column, an EF owned type — gated in all five ports |
-| `dict[str, X]` / `Record<string, X>` / `Map<String, X>` — dynamic keys, KNOWN value type | **`field.map`** + `@objectRef` (a value object) or `@valueType` (a scalar) | `Record<string, X>` + `z.record(...)` (TS), `dict[str, X]` (Python), `Map<String, X>` over a Jackson jsonb codec (Kotlin). **Java and C# do not complete this rung — see below** |
+| `dict[str, X]` / `Record<string, X>` / `Map<String, X>` — dynamic keys, KNOWN value type | **`field.map`** + `@objectRef` (a value object) or `@valueType` (a scalar) | `Record<string, X>` + `z.record(...)` (TS), `dict[str, X]` (Python), `Map<String, X>` over a Jackson jsonb codec (Kotlin), `java.util.Map<String, V>` (Java), `Dictionary<string, V>` over an EF jsonb converter (C#). **Codegen completes on all five ports; the runtime persistence tier does not — see below** |
 | `dict[str, Any]` / `JsonNode` / `unknown`, and no reader pins a key | `field.string` + `@dbColumnType: jsonb` | the parsed value, untyped — the deliberate escape hatch |
 
 Only the last row is an open bag, and there it is correct: a pass-through payload, a raw
@@ -575,15 +575,30 @@ Two things that read as reasons to take the bag, and are not:
   not the bag.
 
 **Port coverage, stated plainly.** The `isArray` and `object.value` rungs round-trip on every
-port through the persistence and api-contract corpora. `field.map` emits the typed handle in
-TypeScript, Python and Kotlin; on **Java** the Spring DTO type mapper has no `MapField` arm and
-a mapped field reaches its `unsupported Spring DTO type mapping` throw, and on **C#** the
-property is emitted but the EF model gets no column mapping. **No persistence- or
-api-contract-conformance fixture exercises `field.map` on any port — it is loader-gated only.**
-So on Java/C# a stable-keyed map is better declared as a value object, and a genuinely dynamic
-one stays a bag until the gap closes. Every rung but the first keeps the column jsonb, so moving
-a column up the ladder is a codegen/contract change rather than a migration — read the emitted
-DDL before promising that.
+port through the persistence and api-contract corpora. `field.map` now emits the typed handle on
+**all five ports** — Java types it `java.util.Map<String, V>` and reaches a map's `@objectRef`
+value object in the emission walk; C# emits the `Dictionary<string, V>` property *and* the EF
+jsonb storage mapping. **But that is CODEGEN only: no persistence- or api-contract-conformance
+fixture exercises `field.map` on any port, and the runtime persistence tier is uneven** — only
+Python's `ObjectManager` encodes a map today; `runtime-ts`, Java's OMDB and the Kotlin Exposed
+lane carry no map handling at all. So a map you intend to read back through a PORT RUNTIME is
+still better declared as a value object, and a genuinely dynamic key set stays a bag.
+
+**One sharp edge where generated code IS the consumer: nested map values can be written
+UNVALIDATED, per port.** TypeScript (`z.record` over the VO's insert schema) and Python
+(`dict[str, VO]` Pydantic) validate map values, and Kotlin writes no map column. **Java**
+validates them on its vanilla create/PATCH handlers but NOT on TPH (discriminator-rooted) write
+paths — those validate field-by-field with `validateValue`, which does not cascade `@Valid`.
+**C# validates them on NO write path** — vanilla create, vanilla PATCH, and TPH alike: the map
+never reaches the recursively-validating value-object arms (they admit `field.object` only),
+and the generic arms check the dictionary property itself, never its values. A posted value
+violating the referenced `object.value`'s constraints is accepted and written, silently, and
+reading the adopter's own source will not reveal it. Scalar-valued maps (`@valueType`) are
+unaffected. Do not recommend this rung for a Java TPH entity — or for C# at all — without
+saying so and pointing at boundary validation of map values before write;
+[issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks the gap. Every rung but the first keeps the
+column jsonb, so moving a column up the ladder is a codegen/contract change rather than a
+migration — read the emitted DDL before promising that.
 
 
 ## YAML sigil-free authoring + the coercion footgun

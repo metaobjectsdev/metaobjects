@@ -104,7 +104,11 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         boolean usesValid = false;
         for (MetaField field : fields) {
             String a = SpringDtoGenerator.validationAnnotations(field);
-            if (SpringDtoGenerator.isValueObjectJsonbField(field)) {
+            // valueObjectRefOf, not isValueObjectJsonbField: it spans BOTH shapes that carry a
+            // value object (field.object @objectRef and field.map @objectRef). The entity DTO
+            // cascades into a map of value objects; a VO nesting the same shape must too, or
+            // the nested constraints go unenforced one level down.
+            if (SpringDtoGenerator.valueObjectRefOf(field) != null) {
                 a = a.isEmpty() ? "@Valid" : "@Valid " + a;
                 usesValid = true;
             }
