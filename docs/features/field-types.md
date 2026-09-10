@@ -44,8 +44,8 @@ Three rows need a footnote:
   `java.util.Map<String, V>` (and reaches a map's `@objectRef` value object in the
   value-object emission walk, so the referenced record is actually generated); C# emits the
   `Dictionary<string, V>` property AND the EF jsonb storage mapping — a column type plus an
-  explicit converter/comparer pair, because a `Dictionary<string,string>` left unmapped
-  binds to `hstore` on Npgsql rather than to the `jsonb` column the migration creates.
+  explicit converter/comparer pair, so the property lands on the `jsonb` column the TS-owned
+  migration creates instead of on whatever an unmapped dictionary would resolve to.
 
   **The RUNTIME tier is not there yet, and no conformance corpus covers it.** No
   persistence- or api-contract-conformance fixture exercises `field.map` on any port; it is

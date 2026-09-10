@@ -887,11 +887,14 @@ public class DbContextGenerator : IGenerator
                      && (!jsonbObjectsOnly || f.Storage != STORAGE_FLATTENED)))
             if (OwnedTypeConfig(className, entity, f, ctx) is { } cfg) modelLines.Add(cfg);
 
-        // field.map -> a single jsonb column holding the JSON object. Without this the
-        // property gets NO storage mapping at all and does not persist the way the TS-owned
-        // schema DDL declares it: on Npgsql a Dictionary<string, string> binds to HSTORE by
-        // default and a Dictionary<string, int> binds to nothing, so the column the migration
-        // creates (jsonb) and the column EF writes disagree. Not gated by jsonbObjectsOnly --
+        // field.map -> a single jsonb column holding the JSON object. Without this the property
+        // gets NO storage mapping at all: nothing tells EF the column type, and nothing tells it
+        // how to turn the dictionary into the column's value. What a given provider does with an
+        // unmapped Dictionary is then the PROVIDER's business, not this model's -- which is the
+        // problem, because the column the TS-owned migration creates is jsonb (ADR-0015) and only
+        // an explicit mapping makes EF agree with it. Stated as a property of the mapping rather
+        // than of any provider's defaults: those were asserted here from memory and never
+        // measured. Not gated by jsonbObjectsOnly --
         // a map's storage is ALWAYS the single jsonb column, so a write-through entity's
         // read model declares it too (same rule as the enum / decimal / timestamp loops).
         // The C# analog of Kotlin's jsonb(col, encoder, decoder): an explicit (de)serializer,

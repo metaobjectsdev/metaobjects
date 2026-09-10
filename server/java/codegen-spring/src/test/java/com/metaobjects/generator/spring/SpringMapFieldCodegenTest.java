@@ -206,6 +206,50 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
                 Files.exists(gen.resolve("acme/crm/Badge.java")));
     }
 
+    /** A nested bean for {@link #validAnnotationActuallyCascadesIntoMapValues()}. */
+    public record CascadeNested(@jakarta.validation.constraints.NotNull String street) {}
+
+    /** A holder whose map component carries the same {@code @Valid} the generator emits. */
+    public record CascadeHolder(
+        @jakarta.validation.Valid java.util.Map<String, CascadeNested> addresses) {}
+
+    @Test
+    public void validAnnotationActuallyCascadesIntoMapValues() {
+        // The generator emits `@Valid` on a value-object map component on the strength of one
+        // claim: that Bean Validation descends into a MAP's VALUES. Asserting that the
+        // annotation appears in the emitted source does NOT test that claim — it tests that a
+        // string is present. If the cascade did not happen, every one of those assertions would
+        // still pass while nested constraints went unenforced on POST.
+        //
+        // So run a real validator (Hibernate Validator is on this module's test classpath) over
+        // the exact shape the generator emits: @Valid on a Map<String, Bean> whose value type
+        // carries @NotNull. A violation for the nested member is the proof.
+        try (jakarta.validation.ValidatorFactory factory =
+                 jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            jakarta.validation.Validator validator = factory.getValidator();
+
+            java.util.Map<String, CascadeNested> bad = new java.util.HashMap<>();
+            bad.put("home", new CascadeNested(null));   // violates @NotNull one level down
+            java.util.Set<jakarta.validation.ConstraintViolation<CascadeHolder>> violations =
+                validator.validate(new CascadeHolder(bad));
+
+            assertTrue("@Valid on a Map component must cascade into its VALUES; got no violation"
+                    + " for a nested @NotNull breach — the generator's cascade assumption is wrong",
+                !violations.isEmpty());
+            // ...and it is the NESTED member that is reported, not the map itself.
+            String path = violations.iterator().next().getPropertyPath().toString();
+            assertTrue("expected the violation path to name the nested member; saw: " + path,
+                    path.contains("street"));
+
+            // A well-formed value produces no violation, so the assertion above is not passing
+            // for some unrelated reason.
+            java.util.Map<String, CascadeNested> good = new java.util.HashMap<>();
+            good.put("home", new CascadeNested("1 Main St"));
+            assertTrue("a valid nested value must produce no violation",
+                    validator.validate(new CascadeHolder(good)).isEmpty());
+        }
+    }
+
     @Test
     public void aPayloadMapNamesThePayloadRecordNotTheSourceValueObject() throws Exception {
         // A payload component must name a PAYLOAD record. Typing it as the source value
