@@ -12,13 +12,26 @@
 //     field.enum, so the FLATTENED owner's per-member `.HasColumnName(...).HasConversion(...)`
 //     chain — on an OwnedNavigationBuilder's PropertyBuilder<TEnum?>, naming the VO-nested
 //     enum type and the UnmappedEnumValue<T> helper — is proven to resolve, not just to read
+//     It ALSO carries a field.map `hints`, so the flattened owner pins that member to its
+//     `<prefix>_<col>` jsonb column through the same MapJsonb converter/comparer pair — on an
+//     OwnedNavigationBuilder's PropertyBuilder<Dictionary<string,string>>, a different receiver
+//     from the entity-level one, which only a compile can prove resolves
 //   - object.entity Order with:
 //       scalar enum "status"             → .HasConversion<string>()
 //       array enum  "statuses" (isArray) → .PrimitiveCollection().ElementType().HasConversion<string>()
 //       array string "tags"   (isArray)  → .PrimitiveCollection()
 //       field.object homeAddress @storage flattened → OwnsOne(...) per-property column names
 //       field.object config (default storage)       → OwnsOne(...).ToJson(...)
-//   - object.projection ProgramSummary (view-kind source, keyless) → .ToView(...).HasNoKey()
+//       field.map    labels (@valueType)             → .HasColumnType("jsonb").HasConversion(
+//                                                       MapJsonb.Converter<T>(), MapJsonb.Comparer<T>())
+//       field.map    sites (@objectRef)              → the same, typed by the value object.
+//         These prove the EF API surface actually RESOLVES: the two-arg
+//         HasConversion(ValueConverter, ValueComparer) overload, and a generic helper
+//         returning ValueConverter<Dictionary<string,T>,string>. A string-contains test
+//         cannot tell a real overload from a plausible-looking one.
+//   - object.projection ProgramSummary (view-kind source, keyless) → .ToView(...).HasNoKey(),
+//     carrying a field.map so the PROJECTION arm of the map config compiles too — its emitter
+//     is a separate call site from the entity one, and the property is emitted either way
 //   - object.entity Invoice — a #214 WRITE-THROUGH entity (table invoices + replica view
 //     v_invoice_with_client + a derived origin.passthrough clientName): the derived-free
 //     write entity, the view-mapped InvoiceView read model (.ToView), the InvoiceView DbSet,
@@ -41,6 +54,7 @@ using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using System.Reflection;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
@@ -58,7 +72,8 @@ public class DbContextCompileTests
         { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
         { "field.string": { "name": "city",   "@maxLength": 80 } },
         { "field.enum":   { "name": "kind",   "@values": ["HOME", "WORK"] } },
-        { "field.enum":   { "name": "tier",   "@values": ["A", "B"], "@intValueMap": { "A": 1, "B": 2 } } }
+        { "field.enum":   { "name": "tier",   "@values": ["A", "B"], "@intValueMap": { "A": 1, "B": 2 } } },
+        { "field.map":    { "name": "hints",  "@valueType": "string" } }
       ]}},
       { "object.entity": { "name": "Order", "children": [
         { "source.rdb": { "@table": "orders" } },
@@ -70,12 +85,15 @@ public class DbContextCompileTests
         { "field.string": { "name": "tags",     "isArray": true } },
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
         { "field.object": { "name": "config",      "@objectRef": "Address" } },
+        { "field.map":    { "name": "labels",  "@valueType": "string" } },
+        { "field.map":    { "name": "sites",   "@objectRef": "Address" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
       { "object.projection": { "name": "ProgramSummary", "children": [
         { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
         { "field.long": { "name": "id" } },
-        { "field.int":  { "name": "weekCount" } }
+        { "field.int":  { "name": "weekCount" } },
+        { "field.map":  { "name": "tallies", "@valueType": "int" } }
       ]}},
       { "object.entity": { "name": "Client", "children": [
         { "source.rdb": { "@kind": "table", "@table": "clients" } },
@@ -199,6 +217,105 @@ public class DbContextCompileTests
         var orderSrc = entityFiles.Single(f => f.Path == "Order.g.cs").Content;
         Assert.Contains("[Table(OrderNames.SourcePrimaryTable)]", orderSrc);
         Assert.Contains("[Column(OrderNames.StatusColumn)]", orderSrc);
+    }
+
+    // The map's value object is serialized by the MapJsonb helper's shared JsonSerializerOptions,
+    // and System.Text.Json writes enums as NUMBERS by default — so a field.enum member of the
+    // map's @objectRef value object persisted as its ORDINAL, while the same member of the same
+    // value object reached through a field.object ToJson column persisted as its SYMBOL
+    // (JsonEnumConversions: inside a JSON document there is no column, so the symbol is written
+    // unconditionally and @intValueMap is deliberately not consulted). TypeScript, Java, Kotlin
+    // and Python all write the symbol, so the ordinal form was a silent cross-port wire break.
+    // This EXECUTES the emitted code: the generated files are compiled against real EF Core 8,
+    // the assembly is loaded, and the emitted Converter<Address>'s own delegates are invoked
+    // over a map value carrying BOTH a string-backed enum member (kind) and an int-backed one
+    // (tier) — Address here carries exactly those two.
+    [Fact]
+    public void MapJsonb_converter_persists_enum_members_as_their_symbol()
+    {
+        var ctx = Ctx(Load());
+        var entityFiles = new EntityGenerator().Generate(ctx).ToList();
+        var dbContextFiles = new DbContextGenerator().Generate(ctx).ToList();
+        var namesFiles = new NamesGenerator().Generate(ctx).ToList();
+
+        var dbctx = Assert.Single(dbContextFiles).Content;
+        Assert.Contains("new System.Text.Json.Serialization.JsonStringEnumConverter()", dbctx);
+
+        var allSources = entityFiles.Concat(dbContextFiles).Concat(namesFiles).ToList();
+        var trees = allSources.Select(f => CSharpSyntaxTree.ParseText(
+            f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
+        var comp = CSharpCompilation.Create(
+            "mapjsonenum_" + Guid.NewGuid().ToString("N"),
+            trees, BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var errors = comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Id}: {d.GetMessage()}")
+            .ToList();
+        Assert.True(
+            errors.Count == 0,
+            "Generated entity + AppDbContext should compile against EF Core 8, but got errors:\n"
+                + string.Join("\n", errors));
+
+        using var pe = new MemoryStream();
+        var emit = comp.Emit(pe);
+        Assert.True(
+            emit.Success,
+            string.Join("; ", emit.Diagnostics
+                .Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.GetMessage())));
+        var asm = Assembly.Load(pe.ToArray());
+
+        var appDbContext = asm.GetType("Acme.Generated.AppDbContext");
+        Assert.NotNull(appDbContext);
+        var helper = appDbContext.GetNestedType("MapJsonb", BindingFlags.NonPublic);
+        Assert.NotNull(helper);
+        var converterOf = helper.GetMethod("Converter", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(converterOf);
+
+        var addressType = asm.GetType("Acme.Generated.Address");
+        Assert.NotNull(addressType);
+        // A non-required VO enum emits as Nullable<TEnum> — unwrap to the underlying enum
+        // before parsing. The stored jsonb keys are the metadata field names, pinned by the
+        // POCO's [JsonPropertyName] to the cross-port wire contract (Program D).
+        var kind = addressType.GetProperty("Kind");
+        Assert.NotNull(kind);
+        var tier = addressType.GetProperty("Tier");
+        Assert.NotNull(tier);
+        var kindEnum = Nullable.GetUnderlyingType(kind.PropertyType) ?? kind.PropertyType;
+        var tierEnum = Nullable.GetUnderlyingType(tier.PropertyType) ?? tier.PropertyType;
+        Assert.True(kindEnum.IsEnum);
+        Assert.True(tierEnum.IsEnum);
+
+        var address = Activator.CreateInstance(addressType)!;
+        var homeKind = Enum.Parse(kindEnum, "HOME");
+        var tierA = Enum.Parse(tierEnum, "A");
+        kind.SetValue(address, homeKind);
+        tier.SetValue(address, tierA);
+        var map = (System.Collections.IDictionary)Activator.CreateInstance(
+            typeof(Dictionary<,>).MakeGenericType(typeof(string), addressType))!;
+        map["hq"] = address;
+
+        var converter = converterOf.MakeGenericMethod(addressType).Invoke(null, null)!;
+        // DeclaredOnly: ValueConverter<TModel, TProvider> re-declares these properties with
+        // `new` over the non-generic base's same-named ones, so a plain GetProperty is ambiguous.
+        var toProvider = (Delegate)converter.GetType()
+            .GetProperty("ConvertToProvider", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)!
+            .GetValue(converter)!;
+        var json = (string)toProvider.DynamicInvoke(map)!;
+
+        Assert.Contains("\"kind\":\"HOME\"", json);
+        Assert.Contains("\"tier\":\"A\"", json);
+        Assert.DoesNotContain("\"kind\":0", json);
+        Assert.DoesNotContain("\"tier\":0", json);
+
+        var fromProvider = (Delegate)converter.GetType()
+            .GetProperty("ConvertFromProvider", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)!
+            .GetValue(converter)!;
+        var roundTripped = (System.Collections.IDictionary)fromProvider.DynamicInvoke(json)!;
+        var back = roundTripped["hq"]!;
+        Assert.Equal(homeKind, kind.GetValue(back));
+        Assert.Equal(tierA, tier.GetValue(back));
     }
 
     // #214 review defects [0] + [1] — the write-through read model (<Entity>View) must carry

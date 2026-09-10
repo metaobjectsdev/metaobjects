@@ -8,6 +8,14 @@ import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
 import com.metaobjects.template.TemplateConstants;
 
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.ToolProvider;
+
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -253,6 +261,58 @@ public final class SpringTestFixtures {
         loader.setSourceURIs(List.of(uri));
         loader.init();
         return loader;
+    }
+
+    /**
+     * Compile every {@code .java} under {@code genRoot} in-process against the test classpath,
+     * failing with the diagnostics AND a full source dump when it does not succeed.
+     *
+     * <p>Compiling is the only check that distinguishes generated code that READS right from
+     * generated code that IS right — a wrong type argument, or a reference to a record no
+     * generator emitted, is invisible to a string assertion. Sixteen test classes in this
+     * package had each hand-rolled this block; new tests should call this instead.</p>
+     *
+     * @param genRoot    directory the generators wrote into
+     * @param classesDir a fresh directory for {@code javac} output
+     */
+    static void compileGenerated(Path genRoot, Path classesDir) throws IOException {
+        List<File> sources;
+        try (java.util.stream.Stream<Path> walk = Files.walk(genRoot)) {
+            sources = walk.filter(f -> f.toString().endsWith(".java"))
+                          .map(Path::toFile)
+                          .collect(java.util.stream.Collectors.toList());
+        }
+        if (sources.isEmpty()) {
+            throw new AssertionError("expected generated .java files under " + genRoot);
+        }
+
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        if (javac == null) {
+            throw new AssertionError("JDK (not JRE) required — getSystemJavaCompiler() returned null");
+        }
+        DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
+        StandardJavaFileManager fm = javac.getStandardFileManager(diags, null, null);
+        List<String> opts = List.of(
+            "-classpath", System.getProperty("java.class.path"),
+            "-d", classesDir.toString());
+
+        if (javac.getTask(null, fm, diags, opts, null,
+                fm.getJavaFileObjectsFromFiles(sources)).call()) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder("generated sources failed to compile:\n");
+        for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
+            sb.append("  ").append(d.getKind()).append(": ").append(d.getMessage(null)).append('\n');
+            if (d.getSource() != null) {
+                sb.append("    at ").append(d.getSource().getName())
+                  .append(':').append(d.getLineNumber()).append('\n');
+            }
+        }
+        for (File f : sources) {
+            sb.append("\n=== ").append(f.getName()).append(" ===\n")
+              .append(Files.readString(f.toPath())).append('\n');
+        }
+        throw new AssertionError(sb.toString());
     }
 
     /**

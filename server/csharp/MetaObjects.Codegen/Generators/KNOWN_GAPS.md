@@ -37,11 +37,17 @@ Update when a gap closes or a new one surfaces.
 
 **Today.** We emit `{ "error": "not_found" }` for 404 and `{ "error": "validation", "message": "..." }` for the sort-validation 400. **FR-036 wired explicit body validation with the cross-port `{ "error": "validation" }` envelope:** a POST runs `Validator.TryValidateObject(input, ...)` and a PATCH runs `Validator.TryValidateProperty(value, ...)` per present value → 400 `{ "error": "validation" }` (ASP.NET minimal-API never runs DataAnnotations on its own, so the annotations were previously decorative at the wire tier). The `issues` array is still TS-only idiomatic (Tier 2).
 
-### G7 — Object/value-typed columns are non-PATCHable (deliberate, cross-port)
+### G7 — Value-object columns on TPH entities are still skipped on PATCH
 
-**Contract.** A `field.object`/`field.map` column (a value-object mapped to jsonb, single or `@isArray`) is EF-mapped as an owned navigation (`.OwnsOne`/`.OwnsMany(...).ToJson`).
+**Contract.** A `field.object` column (a value-object mapped to jsonb, single or `@isArray`) is EF-mapped as an owned navigation (`.OwnsOne`/`.OwnsMany(...).ToJson`).
 
-**Today.** The partial-PATCH merge loop keys off `entry.Metadata.FindProperty(prop.Name)`, which returns null for a navigation, so a VO-typed column is skipped on PATCH (present values too). This is a **deliberate cross-port Day-1 simplification**, consistent with Java + Kotlin (both exclude `ObjectField` from the patch set) — NOT a C#-specific bug (FR-036 assessed a C#-only fix and rejected it: it would break the api-contract byte-identical parity). Making VO-typed columns PATCHable (bind the owned nav via `entry.Navigation(...).CurrentValue`, cross-port) is a separately-scoped follow-up FR.
+**`field.map` is not in this gap.** A map column is not a navigation — it is a scalar-shaped property carrying a value converter (G9) — so `FindProperty` resolves it and the generic merge arm writes it on PATCH. Map columns are patch-settable here, as on Java; Kotlin alone stages them out of its patch set (see its `KNOWN_GAPS.md`).
+
+**Today.** On the vanilla (non-TPH) PATCH/PUT handler a VO-typed column IS patch-settable. The handler passes the entity's VO fields into `AppendPartialMergeLoop` (`RoutesGenerator.cs:256`), which emits a Program D typed value-object arm for each one AHEAD of the generic `entry.Metadata.FindProperty(prop.Name)` arm — an owned navigation is invisible to `FindProperty`, so the generic scalar path alone would silently drop the column. Per arm: a present value is deserialized, recursively validated (`ValueObjectValidator.Validate`), and assigned to the CLR navigation property; a present `null` clears a nullable VO column — a nullable array-of-VO additionally takes a post-save raw UPDATE, since EF's `OwnsMany(...).ToJson` writes `[]` for a null collection nav rather than SQL NULL — or 400s a `@required` one; an absent key leaves the column untouched. This is the same Program D shipment Java's `KNOWN_GAPS.md` records as cross-port (TS / Python / Java / Kotlin / C#), gated by `fixtures/api-contract-conformance/jsonb/scenarios/jsonb-value-object-patch.yaml` in both lanes.
+
+**Residual.** TPH only: the per-subtype partial-update path passes an empty VO list (`RoutesGenerator.cs:961`), so VO columns on a TPH-rooted entity are still skipped on PATCH — the same staging-out Java's entry records for TPH.
+
+**Close status.** The vanilla-path behaviour above may mean this entry is already closed for everything except the TPH residual; that ruling is deliberately NOT made here because it needs Program D's intent, which this file does not own. It is filed for exactly that decision as [issue #359](https://github.com/metaobjectsdev/metaobjects/issues/359). Until ruled, the entry stays open against the TPH residual.
 
 ### G5 — `EfCoreFilterDispatch` ordered-comparison fallback
 
@@ -69,38 +75,26 @@ Update when a gap closes or a new one surfaces.
 
 - **`<Entity>View` / `<Entity>Views` is a RESERVED name.** `CSharpNaming.ViewModelClassName` / `ViewDbSetName` mint the read model as `<Entity>View` (class + file) and `<Entity>Views` (DbSet) unconditionally from the write-through entity's name. A user object literally named `<Entity>View` (e.g. a write-through `Order` alongside a separate object named `OrderView`) collides — codegen would emit two `OrderView.g.cs` files / two `OrderView` types / two `OrderViews` DbSets. No code guard is added: the codegen runner already hard-errors on the duplicate output path, a clear, immediate failure (not silent corruption). Treat `<Entity>View` / `<Entity>Views` as reserved for a write-through entity's generated read model.
 
-### G9 — a `field.map` member of a FLATTENED value object gets no EF column mapping
+### G9 — a `field.map` member of a FLATTENED value object gets no EF column mapping — **CLOSED**
 
-**Contract.** `@storage: flattened` spreads a value object's members onto the owning table as
-`<parent field's column>_<member column>`. That prefix rule is migrate-ts's
-(`expected-schema.ts` `flattenObjectField`) and TS owns the schema (ADR-0015), so the EF
-configuration must name exactly the columns the migration creates. `flattenObjectField`
-iterates the value object's fields **unconditionally** — every member gets a column.
+**Was.** `@storage: flattened` spreads a value object's members onto the owning table as
+`<parent field's column>_<member column>`, and migrate-ts's `flattenObjectField` emits a column
+for **every** member. `field.map` was the one member kind `DbContextGenerator` did not name, so
+the migration created `<prefix>_<map member column>` while EF bound its own `<Nav>_<Prop>`
+default — reads and writes touching that member failed at the engine (Postgres `42703`). The
+stated reason was that this port configured a top-level `field.map` nowhere either, so there was
+no proven mapping to mirror.
 
-**Today.** Four member kinds reach a flattened value object, and three are named:
-scalars, enums (scalar and array), and nested `field.object` members (a nested owned type
-pinned to its own `<prefix>_<col>` json column). **`field.map` is not.** It surfaces as
-`Dictionary<string, T>`, and this port configures a top-level `field.map` nowhere either —
-`DbContextGenerator` has no map branch at all — so there is no proven mapping to mirror.
-Emitting `b.Property(...)` onto a dictionary risks making EF's model builder throw where it
-currently ignores the member, which trades a wrong column for a broken build.
+**Now.** There is one. A top-level `field.map` gets `.HasColumnType("jsonb")` plus the shared
+`MapJsonb` converter/comparer pair, and the flattened member takes the SAME suffix pinned to its
+prefixed column name via `HasColumnName` — one `MapJsonbSuffix`, so the two tiers cannot drift.
+Pinned by `ObjectFieldCodegenTests.A_flattened_map_member_binds_its_prefixed_jsonb_column` and
+compile-proven against real EF Core 8 by `DbContextCompileTests` (whose fixture carries a map on
+an entity, on a value object flattened into one, and on a read-only projection — three distinct
+receivers).
 
-**Consequence.** The migration creates `<prefix>_<map member column>`; EF binds its own
-`<Nav>_<Prop>` default. Reads and writes touching that member fail at the engine (Postgres
-`42703: column ... does not exist`).
-
-**Workaround.** Do not use `field.map` inside a flattened value object. Either store the
-owning value object as jsonb (the default; the whole document is one column, so the member
-needs no column of its own) or hoist the map to a top-level `field.map` on the entity.
-
-**Loud, not silent.** `DbContextGenerator` emits a `meta gen` warning naming the member and
-the exact column the migration will create, so the divergence is visible at generate time
-rather than at the first query. Pinned by
-`ObjectFieldCodegenTests.A_flattened_map_member_warns_instead_of_binding_a_wrong_column`.
-
-**Closure.** Needs a decided EF mapping for `field.map` at BOTH tiers (top-level field and
-flattened member) — it is one question, not two, and answering it only for the nested case
-would leave the two tiers disagreeing.
+**Residual.** The generator still warns for any member kind it cannot pin; `field.map` is no
+longer one of them.
 
 ## How to add a new gap
 

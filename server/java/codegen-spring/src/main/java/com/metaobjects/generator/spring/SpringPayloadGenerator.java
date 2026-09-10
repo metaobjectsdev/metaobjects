@@ -3,6 +3,7 @@ package com.metaobjects.generator.spring;
 import com.metaobjects.MetaData;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.MapField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
@@ -267,7 +268,10 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             if (target == null || !MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) return null;
             return target;
         }
-        return null;
+        // A field.map @objectRef carries a nested payload target exactly as field.object does
+        // (see resolveMapFieldType). This walk and the emission walk MUST agree on the target
+        // set — a target the closure misses is a record the name map never names.
+        return SpringDtoGenerator.mapValueObjectRefOf(field);
     }
 
     /**
@@ -477,15 +481,20 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         if (field instanceof ObjectField of) {
             return resolveObjectFieldType(of, loader, nestedPkg, outRoot, emittedNestedFqns, nameMap);
         }
+        // A field.map @objectRef must take the SAME nested-payload path a field.object does.
+        // Falling through to javaTypeName would type the component as the SOURCE value
+        // object's FQN — a type the payload path never emits — so the generated
+        // <Name>Payload would name a record that does not exist.
+        if (field instanceof MapField mf) {
+            return resolveMapFieldType(mf, loader, nestedPkg, outRoot, emittedNestedFqns, nameMap);
+        }
         // Scalar array (`isArray: true` on a non-object, non-enum field): the declared
         // contract is field.<subType> + @isArray, so wrap the element type as
         // java.util.List<ElementType> — matching Kotlin's scalar-array arm and Python's
         // type_map list[...] wrap. Without this, javaTypeName returns the bare element
         // type and the declared array-ness is silently dropped (#270 fix round 2).
         String scalarType = SpringTypeMapper.javaTypeName(field);
-        // ADR-0039: resolving array-ness (isArrayType() is the effective flag; isArray()
-        // is the own-only native flag).
-        if (field.isArrayType()) {
+        if (SpringTypeMapper.wrapsAsList(field)) {
             return "java.util.List<" + scalarType + ">";
         }
         return scalarType;
@@ -514,6 +523,32 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         }
         // ADR-0039: resolving array-ness (isArray() is the own-only native flag).
         return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, field.isArrayType(), nameMap);
+    }
+
+    /**
+     * Declared {@code field.map @objectRef}: recursively emit
+     * {@code <CapitalizedTargetShortName>Payload} for the referenced value object and return
+     * {@code java.util.Map<String, TargetPayload>}. The map analog of
+     * {@link #resolveObjectFieldType} — a payload component must name a PAYLOAD record, never
+     * the source value object, and the target has to enter the emission closure or nothing
+     * generates it.
+     *
+     * <p>A scalar-valued map ({@code @valueType}) references no value object, so it falls
+     * through to the plain type mapper ({@code Map<String, Scalar>}). {@code isArray} does not
+     * apply to a map, so there is no list-wrapping arm here.</p>
+     */
+    protected String resolveMapFieldType(MapField field,
+                                         MetaDataLoader loader,
+                                         String nestedPkg,
+                                         Path outRoot,
+                                         Set<String> emittedNestedFqns,
+                                         Map<String, String> nameMap) {
+        MetaObject target = SpringDtoGenerator.mapValueObjectRefOf(field);
+        if (target == null) return SpringTypeMapper.javaTypeName(field);
+        // asList:false — the bare nested record name, which we wrap as the map VALUE.
+        String nested = emitNestedAndReturnType(
+            target, loader, nestedPkg, outRoot, emittedNestedFqns, false, nameMap);
+        return "java.util.Map<String, " + nested + ">";
     }
 
     /**

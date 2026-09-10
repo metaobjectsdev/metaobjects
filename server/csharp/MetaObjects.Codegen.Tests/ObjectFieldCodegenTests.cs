@@ -217,13 +217,15 @@ public class ObjectFieldCodegenTests
             dbContext);
     }
 
-    // The one member kind deliberately NOT named. This port configures a top-level field.map
-    // nowhere either, so there is no proven mapping to mirror, and forcing b.Property onto a
-    // Dictionary<string,T> can make EF's model builder throw where it currently ignores the
-    // member — trading a wrong column for a broken build. The requirement is that it be LOUD:
-    // a silent skip here is exactly the defect class this whole test exists for.
+    // A field.map member USED to be the one member kind deliberately not named: the port
+    // configured a top-level field.map nowhere either, so there was no proven mapping to
+    // mirror and the generator warned rather than risk binding a wrong column. Now that the
+    // top-level map branch exists, the same converter/comparer pair pins this member to the
+    // `<prefix>_<col>` jsonb column the migration creates — which is what the warning was
+    // standing in for. The requirement never was "warn"; it was "do not bind silently to a
+    // column the migration does not create".
     [Fact]
-    public void A_flattened_map_member_warns_instead_of_binding_a_wrong_column()
+    public void A_flattened_map_member_binds_its_prefixed_jsonb_column()
     {
         var warnings = new List<string>();
         var root = Load();
@@ -235,9 +237,19 @@ public class ObjectFieldCodegenTests
         };
         var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
 
-        Assert.Contains(warnings, w => w.Contains("\"prefs\"") && w.Contains("profile_prefs"));
-        // ...and it must not have quietly emitted a mapping for it either.
-        Assert.DoesNotContain("p.Prefs", dbContext);
+        // Pinned to the migration's flattened column name, typed jsonb, and converted through
+        // the shared helper. The VO value type is FULLY QUALIFIED — the DbContext's usings
+        // cover entity namespaces only, and a value object is not an entity.
+        Assert.Contains(
+            "b.Property(p => p.Prefs).HasColumnName(\"profile_prefs\").HasColumnType(\"jsonb\")"
+                + ".HasConversion(MapJsonb.Converter<Acme.Generated.Badge>()"
+                + ", MapJsonb.Comparer<Acme.Generated.Badge>());",
+            dbContext);
+        // EF's own `<Nav>_<Prop>` default would name a column the migration never creates, so
+        // the explicit HasColumnName above is the load-bearing half.
+        Assert.DoesNotContain("Profile_Prefs", dbContext);
+        // Nothing left to warn about for this member.
+        Assert.DoesNotContain(warnings, w => w.Contains("\"prefs\""));
     }
 
     [Fact]
