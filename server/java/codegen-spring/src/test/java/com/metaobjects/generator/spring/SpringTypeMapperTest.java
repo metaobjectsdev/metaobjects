@@ -195,6 +195,102 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         assertEquals("java.util.List<java.util.UUID>", SpringDtoGenerator.componentType(f, null));
     }
 
+    // === field.map (open-keyed map) ==========================================
+
+    /**
+     * Build a {@code field.map} carrying {@code @valueType=<subType>}. The loader
+     * requires EXACTLY ONE of {@code @valueType} / {@code @objectRef}
+     * ({@code ValidationPhase.validateFieldMap}); these unit tests pin the mapper arm,
+     * so the attr is set directly rather than through a load.
+     */
+    private static com.metaobjects.field.MapField scalarMap(String name, String valueSubType) {
+        com.metaobjects.field.MapField f = new com.metaobjects.field.MapField(name);
+        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create(
+            com.metaobjects.field.MapField.ATTR_VALUE_TYPE, valueSubType));
+        return f;
+    }
+
+    @Test
+    public void scalarValuedMapFieldMapsToMapOfString() {
+        // field.map @valueType:string -> java.util.Map<String, String>. Keys are ALWAYS
+        // String (the JSON-object constraint); the value is the named scalar. Cross-port:
+        // Kotlin Map<String, String>, TS Record<string, string>, Python dict[str, str].
+        assertEquals("java.util.Map<String, String>",
+            SpringTypeMapper.javaTypeName(scalarMap("labels", StringField.SUBTYPE_STRING)));
+    }
+
+    @Test
+    public void mapValueTypeCoversEveryScalarSubtypeTheLoaderAllows() {
+        // The 11 scalar @valueType subtypes ValidationPhase.MAP_SCALAR_VALUE_SUBTYPES admits,
+        // each mapped to the SAME Java type the corresponding field.<subtype> maps to above
+        // (wrapped primitives, so a missing JSON entry deserialises to null). Mirrors
+        // KotlinTypeMapper.mapValueScalarTypeName arm for arm.
+        assertEquals("java.util.Map<String, String>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", StringField.SUBTYPE_STRING)));
+        assertEquals("java.util.Map<String, Integer>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", IntegerField.SUBTYPE_INT)));
+        assertEquals("java.util.Map<String, Long>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", LongField.SUBTYPE_LONG)));
+        assertEquals("java.util.Map<String, Double>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", DoubleField.SUBTYPE_DOUBLE)));
+        assertEquals("java.util.Map<String, Float>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", com.metaobjects.field.FloatField.SUBTYPE_FLOAT)));
+        assertEquals("java.util.Map<String, java.math.BigDecimal>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", com.metaobjects.field.DecimalField.SUBTYPE_DECIMAL)));
+        assertEquals("java.util.Map<String, Boolean>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", BooleanField.SUBTYPE_BOOLEAN)));
+        assertEquals("java.util.Map<String, java.time.LocalDate>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", DateField.SUBTYPE_DATE)));
+        assertEquals("java.util.Map<String, java.time.LocalTime>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", TimeField.SUBTYPE_TIME)));
+        assertEquals("java.util.Map<String, java.time.Instant>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", TimestampField.SUBTYPE_TIMESTAMP)));
+        assertEquals("java.util.Map<String, java.util.UUID>",
+            SpringTypeMapper.javaTypeName(scalarMap("m", com.metaobjects.field.UuidField.SUBTYPE_UUID)));
+    }
+
+    @Test
+    public void mapValueTypeTimestampIgnoresLocalTimeAndStaysInstant() {
+        // A map VALUE has no column of its own to be "timestamp without time zone", so
+        // @localTime has no place on one: a @valueType:timestamp is the absolute-instant
+        // DEFAULT unconditionally. Mirrors KotlinTypeMapper's map arm (which reads only
+        // @valueType, never @localTime).
+        com.metaobjects.field.MapField f = scalarMap("seenAt", TimestampField.SUBTYPE_TIMESTAMP);
+        f.addMetaAttr(com.metaobjects.attr.BooleanAttribute.create("localTime", true));
+        assertEquals("java.util.Map<String, java.time.Instant>", SpringTypeMapper.javaTypeName(f));
+    }
+
+    @Test
+    public void scalarValuedMapIsNeverWrappedInList() {
+        // isArray does NOT apply to a map — every port emits the map type un-wrapped
+        // (Kotlin Map<String,V>, TS Record<string,V>, Python dict[str,V] all skip the
+        // array wrap). Without the MapField guard in componentType a declared isArray
+        // would silently produce List<Map<String,String>>, which no other port emits.
+        com.metaobjects.field.MapField f = scalarMap("labels", StringField.SUBTYPE_STRING);
+        f.setArray(true);
+        assertEquals("java.util.Map<String, String>", SpringDtoGenerator.componentType(f, null));
+    }
+
+    @Test
+    public void mapFieldWithoutValueTypeOrObjectRefThrows() {
+        // The loader requires EXACTLY ONE of @valueType / @objectRef, so a bare field.map
+        // cannot reach codegen from a validly-loaded model. The mapper still refuses it
+        // loudly rather than guessing a value type — same contract as a bare ObjectField.
+        com.metaobjects.field.MapField bare = new com.metaobjects.field.MapField("attrs");
+        try {
+            SpringTypeMapper.javaTypeName(bare);
+            fail("expected IllegalArgumentException for a field.map with no value type");
+        } catch (IllegalArgumentException e) {
+            String msg = e.getMessage();
+            org.junit.Assert.assertTrue(
+                "expected message to mention MapField; got: " + msg,
+                msg != null && msg.contains("MapField"));
+            org.junit.Assert.assertTrue(
+                "expected message to mention field name 'attrs'; got: " + msg,
+                msg != null && msg.contains("attrs"));
+        }
+    }
+
     @Test
     public void unsupportedFieldThrowsIllegalArgumentException() {
         // ObjectField is intentionally not in the mapper (deferred — see SpringDtoGenerator

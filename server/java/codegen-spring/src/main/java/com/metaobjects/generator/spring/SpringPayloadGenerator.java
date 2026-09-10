@@ -484,8 +484,9 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         // type and the declared array-ness is silently dropped (#270 fix round 2).
         String scalarType = SpringTypeMapper.javaTypeName(field);
         // ADR-0039: resolving array-ness (isArrayType() is the effective flag; isArray()
-        // is the own-only native flag).
-        if (field.isArrayType()) {
+        // is the own-only native flag). A field.map is exempt: isArray does not apply to a
+        // map, and every port emits Map/Record/dict un-wrapped (see SpringTypeMapper's map arm).
+        if (field.isArrayType() && !(field instanceof com.metaobjects.field.MapField)) {
             return "java.util.List<" + scalarType + ">";
         }
         return scalarType;

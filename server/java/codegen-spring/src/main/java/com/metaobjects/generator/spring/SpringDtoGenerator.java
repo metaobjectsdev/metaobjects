@@ -4,6 +4,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.InetField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.MapField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.UriField;
@@ -155,7 +156,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         List<String> annotationsPerField = new ArrayList<>(fields.size());
         for (MetaField field : fields) {
             String a = validationAnnotations(field);
-            if (isValueObjectJsonbField(field)) a = a.isEmpty() ? "@Valid" : "@Valid " + a;
+            // @Valid also cascades on a Map component -- Bean Validation descends into a map's
+            // VALUES -- so a field.map @objectRef gets it too. Parity with the TS zod emit,
+            // which types such a map as z.record(z.string(), <VO>InsertSchema): the map's
+            // values ARE validated there, so the JVM port must validate them as well.
+            if (valueObjectRefOf(field) != null) a = a.isEmpty() ? "@Valid" : "@Valid " + a;
             // #234: a STRICT field.uri / field.inet component binds through the codegen-owned
             // literal deserializer (absolute-scheme URI / IPv4-or-IPv6 literal, no DNS) so a
             // malformed value is rejected at the wire tier (HTTP 400), aligning the JVM DTO with
@@ -739,10 +744,40 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         return STORAGE_JSONB.equalsIgnoreCase(String.valueOf(storage).trim());
     }
 
-    /** The referenced {@code object.value} when {@code field} is a value-object jsonb column,
-     *  else {@code null}. Used by {@link SpringValueObjectGenerator}'s reachability walk. */
+    /**
+     * The {@code object.value} that {@code field} carries by reference, else {@code null}.
+     * TWO field shapes carry one, and both must be reached:
+     * <ul>
+     *   <li>a {@code field.object @objectRef} jsonb column ({@link #isValueObjectJsonbField});</li>
+     *   <li>a {@code field.map @objectRef} -- a {@code Map<String, VO>}. A map's storage is
+     *       ALWAYS the single jsonb column, so unlike {@code field.object} it has no
+     *       {@code @storage} axis to gate on.</li>
+     * </ul>
+     * Mirrors the C# {@code EntityGenerator.ReferencesValueObject} predicate, which already
+     * spans both. Drives {@link SpringValueObjectGenerator}'s reachability walk (a VO reached
+     * only through a map would otherwise never be EMITTED, leaving the DTO naming a record
+     * that does not exist) and the {@code @Valid} cascade on the DTO component.
+     */
     static MetaObject valueObjectRefOf(MetaField<?> field) {
-        return isValueObjectJsonbField(field) ? ((ObjectField) field).getObjectRef() : null;
+        if (isValueObjectJsonbField(field)) return ((ObjectField) field).getObjectRef();
+        return mapValueObjectRefOf(field);
+    }
+
+    /**
+     * The {@code object.value} a {@code field.map @objectRef} maps its values to, else
+     * {@code null} (a scalar-valued {@code @valueType} map, a non-map field, or a
+     * {@code @objectRef} that does not resolve to an {@code object.value}).
+     */
+    static MetaObject mapValueObjectRefOf(MetaField<?> field) {
+        if (!(field instanceof MapField mf)) return null;
+        if (!mf.hasMetaAttr(MapField.ATTR_OBJECTREF)) return null;
+        MetaObject ref;
+        try {
+            ref = mf.getObjectRef();
+        } catch (RuntimeException unresolved) {
+            return null;
+        }
+        return (ref != null && MetaObject.SUBTYPE_VALUE.equals(ref.getSubType())) ? ref : null;
     }
 
     // === validation (SP-C validator parity) =================================
@@ -761,7 +796,12 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             return SpringTypeMapper.payloadJavaTypeName(field, owner, "");
         }
         String element = SpringTypeMapper.javaTypeName(field);
-        return field.isArrayType() ? "java.util.List<" + element + ">" : element;
+        // A field.map is NEVER wrapped: isArray does not apply to a map, and every other port
+        // emits the map type bare (Kotlin Map<String,V>, TS Record<string,V>, Python
+        // dict[str,V]). Without this guard a declared isArray would silently produce
+        // List<Map<String,V>>, a shape no other port can round-trip.
+        return field.isArrayType() && !(field instanceof MapField)
+            ? "java.util.List<" + element + ">" : element;
     }
 
     /**
