@@ -26,7 +26,7 @@ across ports — a `field.currency` is integer minor units everywhere; a
 | `field.inet` | `string` | `InetAddress` | `InetAddress` | `IPAddress` | `IPvAnyAddress` | `inet` |
 | `field.enum` | union + `z.enum` | `Enum` | `enum class` | `enum` | `Enum` | `varchar` + `CHECK` |
 | `field.object` | nested type | nested class | nested data class | nested record | nested dataclass | per `@storage` |
-| `field.map` | `Record<string, V>` | — (see below) | `Map<String, V>` | `Dictionary<string, V>` | `dict[str, V]` | `jsonb` |
+| `field.map` | `Record<string, V>` | `Map<String, V>` | `Map<String, V>` | `Dictionary<string, V>` | `dict[str, V]` | `jsonb` |
 
 That is the whole registered vocabulary — 17 concrete subtypes. `field.base` is an
 abstract registry anchor, never authored (`ERR_ABSTRACT_SUBTYPE_AUTHORED`).
@@ -39,14 +39,29 @@ Three rows need a footnote:
   `text`.
 - **`field.map`** is the typed dict: string keys, and a value type set by exactly one of
   `@valueType` (a scalar subtype) or `@objectRef` (a value object) — `V` above. It is one
-  jsonb column holding the JSON object; `isArray` does not apply. **Java does not complete
-  this rung:** `SpringTypeMapper.javaTypeName` has no `MapField` arm, so a mapped field on
-  a Spring entity reaches its `unsupported Spring DTO type mapping` throw. On C# the
-  property and its `[Column]` annotation are emitted but `DbContextGenerator` writes no EF
-  storage mapping for the dictionary, so EF does not persist it. **No persistence- or
-  api-contract-conformance fixture exercises `field.map` on any port — it is loader-gated
-  only.** Until that closes, a stable key set is better declared as an `object.value`
-  behind `field.object`; see [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md)
+  jsonb column holding the JSON object; `isArray` does not apply, so no port wraps the map
+  type in a list. **Codegen is now complete on all five ports.** Java emits
+  `java.util.Map<String, V>` (and reaches a map's `@objectRef` value object in the
+  value-object emission walk, so the referenced record is actually generated); C# emits the
+  `Dictionary<string, V>` property AND the EF jsonb storage mapping — a column type plus an
+  explicit converter/comparer pair, because a `Dictionary<string,string>` left unmapped
+  binds to `hstore` on Npgsql rather than to the `jsonb` column the migration creates.
+
+  **The RUNTIME tier is not there yet, and no conformance corpus covers it.** No
+  persistence- or api-contract-conformance fixture exercises `field.map` on any port; it is
+  loader- and codegen-gated only. Of the runtime persistence layers, only Python's
+  `ObjectManager` encodes a map (its jsonb write codec names `FIELD_SUBTYPE_MAP`
+  alongside `FIELD_SUBTYPE_OBJECT`). TypeScript's `runtime-ts`, Java's OMDB and the Kotlin
+  Exposed persistence lane carry no map handling at all — OMDB's jsonb path in particular
+  is gated on the `@storage` attr, which a map does not have, and serializes through a
+  per-`MetaObject` Gson adapter that has no map-of-value-object binding. Closing that is a
+  cross-port runtime workstream, not a codegen change, and it is the prerequisite for the
+  shared `op: roundtrip` persistence scenario that would gate this subtype the way every
+  other persistable subtype is gated.
+
+  So: for data you intend to READ BACK THROUGH A PORT RUNTIME today, a stable key set is
+  still better declared as an `object.value` behind `field.object`, which every runtime
+  does round-trip. See [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md)
   for which of the two a shape belongs in.
 
 ## Common field attributes

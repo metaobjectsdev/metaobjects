@@ -575,15 +575,17 @@ Two things that read as reasons to take the bag, and are not:
   not the bag.
 
 **Port coverage, stated plainly.** The `isArray` and `object.value` rungs round-trip on every
-port through the persistence and api-contract corpora. `field.map` emits the typed handle in
-TypeScript, Python and Kotlin; on **Java** the Spring DTO type mapper has no `MapField` arm and
-a mapped field reaches its `unsupported Spring DTO type mapping` throw, and on **C#** the
-property is emitted but the EF model gets no column mapping. **No persistence- or
-api-contract-conformance fixture exercises `field.map` on any port — it is loader-gated only.**
-So on Java/C# a stable-keyed map is better declared as a value object, and a genuinely dynamic
-one stays a bag until the gap closes. Every rung but the first keeps the column jsonb, so moving
-a column up the ladder is a codegen/contract change rather than a migration — read the emitted
-DDL before promising that.
+port through the persistence and api-contract corpora. `field.map` now emits the typed handle on
+**all five ports** — Java types it `java.util.Map<String, V>` and reaches a map's `@objectRef`
+value object in the emission walk; C# emits the `Dictionary<string, V>` property *and* the EF
+jsonb storage mapping. **But that is CODEGEN only: no persistence- or api-contract-conformance
+fixture exercises `field.map` on any port, and the runtime persistence tier is uneven** — only
+Python's `ObjectManager` encodes a map today; `runtime-ts`, Java's OMDB and the Kotlin Exposed
+lane carry no map handling at all. So a map you intend to read back through a PORT RUNTIME is
+still better declared as a value object; the `field.map` rung is safe where generated code is
+the consumer, and a genuinely dynamic key set stays a bag. Every rung but the first keeps the
+column jsonb, so moving a column up the ladder is a codegen/contract change rather than a
+migration — read the emitted DDL before promising that.
 
 
 ## YAML sigil-free authoring + the coercion footgun
