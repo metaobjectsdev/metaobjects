@@ -8,6 +8,7 @@ namespace Generated;
 
 public sealed record SubscriberBlurbPayload
 {
-    public string? subscriberName { get; init; }
-    public string? status { get; init; }
+    public enum Status { active, paused, cancelled }
+    public string? name { get; init; }
+    public required Status status { get; init; }
 }

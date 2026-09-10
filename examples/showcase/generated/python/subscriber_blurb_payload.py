@@ -4,7 +4,11 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
+
+Status = Literal["active", "paused", "cancelled"]
 
 
 class subscriberBlurbPayload(BaseModel):
@@ -13,8 +17,8 @@ class subscriberBlurbPayload(BaseModel):
     Field shape derived from the ``SubscriberBlurbPayload`` object.value."""
 
     model_config = ConfigDict(extra="forbid")
-    subscriberName: str | None = None
-    status: str | None = None
+    name: str | None = None
+    status: Status
 
 
 __all__ = ["subscriberBlurbPayload"]

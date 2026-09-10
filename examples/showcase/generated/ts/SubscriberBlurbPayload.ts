@@ -4,10 +4,12 @@
 import { z } from "zod";
 
 export interface SubscriberBlurbPayload {
-  subscriberName?: string;
-  status?: string;
+  name?: string;
+  status: Status;
 }
+export type Status = "active" | "paused" | "cancelled";
+export const StatusEnum = z.enum(["active", "paused", "cancelled"]);
 export const SubscriberBlurbPayloadInsertSchema = z.object({
-  subscriberName: z.string().optional(),
-  status: z.string().optional(),
+  name: z.string().optional(),
+  status: z.enum(["active", "paused", "cancelled"]),
 });

@@ -1,9 +1,20 @@
 # THIS FIXTURE EXISTS TO FAIL.
 #
-# It is examples/showcase/ with exactly one change: the payload member
-# `subscriberName` is renamed to `displayName`, while the mustache still writes
-# {{subscriberName}}. `meta verify --templates` therefore reports
-# ERR_VAR_NOT_ON_PAYLOAD, and THAT OUTPUT IS PAGE CONTENT — the transcript block on
+# It is examples/showcase/ with one change, made where the article says it is made:
+# in the DOMAIN MODEL. `Subscriber.name` is renamed to `displayName`, and the blurb
+# payload — whose members bind to Subscriber's fields — follows it, because leaving
+# it behind would not compile: `extends: Subscriber.name` no longer resolves. The
+# mustache still writes {{name}}, and nothing forced anyone to look at it.
+#
+# That is the whole point, and the reason this fixture is shaped the way it is. It
+# used to rename a payload MEMBER, which made the page's claim — "the field got
+# renamed in the domain model, the prompt was just the surface nobody checked" —
+# a demo of something else. The rename now starts on the entity, propagates to the
+# payload because the binding makes it, and stops at the template because nothing
+# but `verify` was watching.
+#
+# `meta verify --templates` therefore reports ERR_VAR_NOT_ON_PAYLOAD, and THAT
+# OUTPUT IS PAGE CONTENT — the transcript block on
 # metaobjects.dev/articles/prompts-are-code.html is captured from this directory,
 # not typed by hand. If this fixture ever goes green, the page is showing a stale
 # error and the payload build fails (see scripts/site/payload.ts).
@@ -30,12 +41,12 @@ metadata:
           - source.rdb:      { table: subscribers }
           - field.long:      { name: id }
           - field.string:    { name: email, maxLength: 320, required: true }
-          - field.string:    { name: name }
+          - field.string:    { name: displayName }
           - field.enum:
               name: status
               values: [active, paused, cancelled]
               required: true
-          - field.timestamp: { name: createdAt, autoSet: onCreate }
+          - field.timestamp: { name: createdAt, column: created_at, autoSet: onCreate }
           - identity.primary: { name: primary, fields: [id], generation: increment }
     # <<<
 
@@ -59,8 +70,8 @@ metadata:
     - object.value:
         name: SubscriberBlurbPayload
         children:
-          - field.string: { name: displayName }
-          - field.string: { name: status }
+          - field.string: { name: displayName, extends: Subscriber.displayName }
+          - field.enum:   { name: status, extends: Subscriber.status }
 
     - template.prompt:
         name: subscriberBlurb

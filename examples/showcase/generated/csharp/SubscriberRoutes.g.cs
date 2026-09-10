@@ -20,6 +20,10 @@ public static class SubscriberRoutes
         "CreatedAt",
     };
 
+    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
+    {
+    };
+
     public static IEndpointRouteBuilder MapSubscriberRoutes(this IEndpointRouteBuilder app, string prefix = "/api")
     {
         app.MapGet(prefix + "/subscribers", async (HttpContext http, AppDbContext db) =>
@@ -38,9 +42,11 @@ public static class SubscriberRoutes
             {
                 var parts = sortRaw.ToString().Split(':', 2);
                 var field = parts[0];
-                var desc = parts.Length > 1 && string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase);
                 if (!SortAllowlist.TryGetValue(field, out var resolved))
                     return Results.BadRequest(new { error = "invalid_sort" });
+                var desc = parts.Length > 1
+                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
+                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = ApplySortSubscriber(q, resolved, desc);
             }
 

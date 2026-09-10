@@ -61,12 +61,26 @@ metadata:
         implementedBy: [acme::Subscriber.status]
     # <<<
 
+    # The payload members BIND to Subscriber's fields rather than restating them,
+    # and that binding is the whole demonstration. `status` inherits the enum's
+    # values and its requiredness, so the generated payload VO carries
+    # `active | paused | cancelled` rather than a bare string — TS, C#, Python and
+    # Kotlin alike (this showcase's JVM run emits Java DTOs only). Renaming
+    # `Subscriber.name` then cannot leave this file quietly behind: `extends:
+    # Subscriber.name` stops resolving and the load fails with ERR_UNRESOLVED_SUPER
+    # (measured, not assumed). Propagating the rename here is therefore forced —
+    # and THAT is what leaves a template still writing `{{name}}` as the one
+    # surface nobody was made to look at, which `verify --templates` catches.
+    # examples/showcase/drift/ is that sequence, and its output is page content.
+    #
+    # Only the line below travels to the website; this block is for readers here.
     # >>> snippet: showcase-prompt
+    # Bound to Subscriber's fields — a projection, not a copy.
     - object.value:
         name: SubscriberBlurbPayload
         children:
-          - field.string: { name: subscriberName }
-          - field.string: { name: status }
+          - field.string: { name: name, extends: Subscriber.name }
+          - field.enum:   { name: status, extends: Subscriber.status }
 
     - template.prompt:
         name: subscriberBlurb

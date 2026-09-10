@@ -2,9 +2,10 @@
 
 import { render, type Provider } from "@metaobjectsdev/render";
 
+export type Status = "active" | "paused" | "cancelled";
 export interface SubscriberBlurbPayload {
-  subscriberName?: string | null;
-  status?: string | null;
+  name?: string | null;
+  status: Status;
 }
 
 export function renderSubscriberBlurb(payload: SubscriberBlurbPayload, provider: Provider): string {

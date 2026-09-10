@@ -41,6 +41,9 @@ _SORT_ALLOWLIST: set[str] = {
 }
 
 
+_SORT_DEFAULT_ORDER: dict[str, str] = {}
+
+
 _REQUIRED_FIELDS: frozenset[str] = frozenset(
     {
         "email",
@@ -57,7 +60,11 @@ def _parse_sort(raw: str) -> _SortClause | None:
     parts = raw.split(":", 1)
     if not parts or parts[0] not in _SORT_ALLOWLIST:
         return None
-    direction = parts[1].lower() if len(parts) == 2 else "asc"
+    direction = (
+        parts[1].lower()
+        if len(parts) == 2
+        else _SORT_DEFAULT_ORDER.get(parts[0], "asc")
+    )
     if direction not in ("asc", "desc"):
         return None
     return _SortClause(field=parts[0], direction=direction)

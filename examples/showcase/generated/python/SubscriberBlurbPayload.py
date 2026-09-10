@@ -4,16 +4,18 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class SubscriberBlurbPayload(BaseModel):
-    subscriberName: str | None = None
-    status: str | None = None
+    name: str | None = None
+    status: Literal["active", "paused", "cancelled"]
 
 
 class SubscriberBlurbPayloadCreate(BaseModel):
     """GENERATED — CREATE input: auto-gen PK / @mutability readOnly omitted (writeOnce is settable here, once); @default/@autoSet optional; present values validated (FR-036)."""
 
-    subscriberName: str | None = None
-    status: str | None = None
+    name: str | None = None
+    status: Literal["active", "paused", "cancelled"]

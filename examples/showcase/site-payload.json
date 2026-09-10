@@ -63,13 +63,13 @@
     },
     "showcase-prompt": {
       "lang": "yaml",
-      "inline": "- <span class=\"keyword\">object.value</span>:\n    <span class=\"key\">name</span>: SubscriberBlurbPayload\n    <span class=\"key\">children</span>:\n      - <span class=\"keyword\">field.string</span>: { <span class=\"key\">name</span>: subscriberName }\n      - <span class=\"keyword\">field.string</span>: { <span class=\"key\">name</span>: status }\n\n- <span class=\"keyword\">template.prompt</span>:\n    <span class=\"key\">name</span>: subscriberBlurb\n    <span class=\"key\">payloadRef</span>: SubscriberBlurbPayload\n    <span class=\"key\">textRef</span>: subscriber/blurb",
+      "inline": "<span class=\"comment\"># Bound to Subscriber's fields — a projection, not a copy.</span>\n- <span class=\"keyword\">object.value</span>:\n    <span class=\"key\">name</span>: SubscriberBlurbPayload\n    <span class=\"key\">children</span>:\n      - <span class=\"keyword\">field.string</span>: { <span class=\"key\">name</span>: name, <span class=\"key\">extends</span>: Subscriber.name }\n      - <span class=\"keyword\">field.enum</span>:   { <span class=\"key\">name</span>: status, <span class=\"key\">extends</span>: Subscriber.status }\n\n- <span class=\"keyword\">template.prompt</span>:\n    <span class=\"key\">name</span>: subscriberBlurb\n    <span class=\"key\">payloadRef</span>: SubscriberBlurbPayload\n    <span class=\"key\">textRef</span>: subscriber/blurb",
       "full": null,
       "lineCount": null
     },
     "verify-transcript": {
       "lang": "console",
-      "inline": "meta verify — requirements: 1 entries (1 functional, 0 architectural) — 1 live; 1/1 entities claimed, counted over 1 metadata file(s).\n<span class=\"err\">meta: [subscriberBlurb] (prompt) ERR_VAR_NOT_ON_PAYLOAD: subscriberName</span>\nmeta: meta verify — 1 drift error(s) across 1 template(s).",
+      "inline": "meta verify — requirements: 1 entries (1 functional, 0 architectural) — 1 live; 1/1 entities claimed, counted over 1 metadata file(s).\n<span class=\"err\">meta: [subscriberBlurb] (prompt) ERR_VAR_NOT_ON_PAYLOAD: name</span>\nmeta: meta verify — 1 drift error(s) across 1 template(s).",
       "full": null,
       "lineCount": null
     },
