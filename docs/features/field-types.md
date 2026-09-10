@@ -47,6 +47,17 @@ Three rows need a footnote:
   explicit converter/comparer pair, so the property lands on the `jsonb` column the TS-owned
   migration creates instead of on whatever an unmapped dictionary would resolve to.
 
+  > ⚠️ **On a TPH (discriminator-rooted) entity, a `field.map @objectRef` writes nested
+  > value-object values UNVALIDATED.** The generated TPH create/PATCH handlers validate
+  > field-by-field with `validateValue`, which does not cascade `@Valid` into a nested bean,
+  > and the explicit cascade the vanilla handler runs is not invoked on the TPH path — so a
+  > posted map value that violates the referenced `object.value`'s own constraints is
+  > accepted and written. Scalar-valued maps (`@valueType`) are unaffected: there is no
+  > nested bean to validate. This is generated code, so **reading your own source will not
+  > reveal it** — the failure is silent acceptance, not an error. Validate map values at your
+  > own boundary on TPH entities until this closes, or keep the map on a non-TPH entity.
+  > Tracked as [issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362).
+
   **The RUNTIME tier is not there yet, and no conformance corpus covers it.** No
   persistence- or api-contract-conformance fixture exercises `field.map` on any port; it is
   loader- and codegen-gated only. Of the runtime persistence layers, only Python's

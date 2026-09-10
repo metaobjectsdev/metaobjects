@@ -582,8 +582,16 @@ jsonb storage mapping. **But that is CODEGEN only: no persistence- or api-contra
 fixture exercises `field.map` on any port, and the runtime persistence tier is uneven** — only
 Python's `ObjectManager` encodes a map today; `runtime-ts`, Java's OMDB and the Kotlin Exposed
 lane carry no map handling at all. So a map you intend to read back through a PORT RUNTIME is
-still better declared as a value object; the `field.map` rung is safe where generated code is
-the consumer, and a genuinely dynamic key set stays a bag. Every rung but the first keeps the
+still better declared as a value object, and a genuinely dynamic key set stays a bag.
+
+**One sharp edge where generated code IS the consumer.** On a TPH (discriminator-rooted)
+entity, a `field.map @objectRef` writes its nested value-object values **unvalidated** — the
+generated TPH create/PATCH handlers validate field-by-field with `validateValue`, which does
+not cascade `@Valid`, and the explicit cascade the vanilla handler runs is not invoked there.
+A posted value violating the referenced `object.value`'s constraints is accepted and written,
+silently, and reading the adopter's own source will not reveal it. Scalar-valued maps
+(`@valueType`) are unaffected. Do not recommend this rung on a TPH entity without saying so;
+[issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks the fix. Every rung but the first keeps the
 column jsonb, so moving a column up the ladder is a codegen/contract change rather than a
 migration — read the emitted DDL before promising that.
 
