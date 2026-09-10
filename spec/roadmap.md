@@ -1,6 +1,7 @@
 # MetaObjects Roadmap
 
-_Last refreshed 2026-08-24._
+_Last refreshed 2026-09-09 — the 1.0 / 8.0 cut shipped; the 1.0-promotion and
+website-self-updating-codegen programs moved from Active to Shipped._
 
 > **This file is the single source of truth for the roadmap.** GitHub Milestones + Issues +
 > the Project board mirror it. Keeping them in sync: `docs/ROADMAP-PROCESS.md`.
@@ -55,6 +56,82 @@ _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tra
 _(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_
 
 ## Shipped
+
+### 1.0 / 8.0 — the stable release (2026-09-09)
+
+- **The cut.** npm / PyPI / NuGet to `1.0.0`, Maven Central to `8.0.0` — the decoupled-major
+  scheme of ADR-0035 §2 (the JVM major is permanently npm major + 7; Maven cannot move
+  backwards). `metamodelVersion` is **frozen at `1.0`**. The two axes stay separate
+  (ADR-0035 Amendment 2): the package number promises the SOFTWARE surface, `metamodelVersion`
+  the METADATA contract, and since `^1.0.0` accepts a MINOR, **a release that moves
+  `metamodelVersion` must say so in the CHANGELOG.** Per-release detail is `CHANGELOG.md`;
+  what 1.0 does and does not promise is [`docs/compatibility-policy.md`](../docs/compatibility-policy.md);
+  upgrading is [`docs/features/migrations/0.x-to-1.0.md`](../docs/features/migrations/0.x-to-1.0.md).
+
+- **How it was gated, and what that cost.** The quiet-period criterion was **RETIRED**
+  (2026-09-06) because it measured a variable the maintainer sets, and it had already
+  converged — `metamodelVersion` held at `0.13` across four consecutive releases before
+  `0.25.0` spent the breaking slot by decision. It was replaced by G3a (scope declared),
+  G3b (the compat policy's correction bar), G3c (guide + policy current at the cut) and
+  **G3d — an adopter estate must run the RELEASE CANDIDATE with its drift gate ENFORCED
+  before promote.** G3d is the one that paid: nine estates ran `1.0.0-rc.7`/`rc.8` under
+  their own CI gates and **found five real defects**, including — twice, independently —
+  `<EntityFetcherProvider value={…}>`, the prop 1.0 renamed away, shipped past both
+  projects' drift gates, unit tests and builds because neither had `tsc` in its gate chain.
+  That became a new `meta verify` advisory before the cut. **Do not reintroduce a waiting
+  gate in any form** (ADR-0035 Amendment 3) — not a release count, not a calendar window,
+  not "one more quiet cut." The checklist that tracked all of this is CLOSED:
+  [`docs/1.0-readiness.md`](../docs/1.0-readiness.md), kept as history rather than a live list.
+
+- **What the major absorbed.** G2 removed the deprecated `entityFile`/`queriesFile`/
+  `routesFile`/`barrel` exports from `@metaobjectsdev/codegen-ts/generators` — scoped by
+  NAME, not by path, because that subpath carries ~20 exports and only those four were
+  deprecated; the owned copies written by `meta init` / `meta eject` are the path now
+  (ADR-0034). FR-024's declared-API surface was ratified as DEFERRED rather than rushed in,
+  which is what removed the last candidate for a breaking round.
+
+- **Standing caveat on the evidence.** All nine estates are maintainer-owned, which the G3d
+  ruling recorded plainly as "closer to self-validation than to independent evidence." The
+  conformance corpora gate the five ports **against each other, never against use** — every
+  port can agree perfectly on a contract that is wrong in practice. Independent adoption is
+  the untested axis, and it is tracked below as work outside this repo.
+
+### Website self-updating codegen — the site publishes generated output, gated (2026-08-29 → 2026-09-09)
+
+- **Complete and deployed** — metaobjects.dev serves 1.0.0 / 8.0.0 with no hand-maintained
+  version byte. (Verified from the site repo's history and the live deploy, not from the
+  plan's checkboxes: those were never maintained past task 2, so this roadmap entry is the
+  record of what landed.) Every code block on the site was once hand-transcribed HTML
+  that nothing checked, while the page claimed the blocks were "real `meta gen` output,
+  conformance-gated". Three jobs, one transport: **B** example snippets (the one that had
+  actually been wrong), **A** the version payload (31 refs hand-edited every release), **C**
+  the `llms` mirrors (a manual copy). Design + plan:
+  [`2026-08-29-website-self-updating-codegen-design.md`](../docs/superpowers/specs/2026-08-29-website-self-updating-codegen-design.md),
+  [`…-codegen.md`](../docs/superpowers/plans/2026-08-29-website-self-updating-codegen.md).
+
+- **What the release owes the site is now a PUSH, not an edit.** A showcase corpus generated
+  by all five ports plus SQL; marker extraction and a committed-excerpt subsequence gate;
+  live CLI transcript capture; the payload builder with four build gates (subsequence,
+  drift-fixture-still-fails, requirements-resolve, no-home-path); `gate_site_payload` in the
+  `gates` lane plus a release preflight; `data-snippet` placeholders and deploy-time
+  injection; `data-registry` coordinate injection; the `llms`/`assess` mirrors copied at
+  deploy rather than maintained twice; and the `/reference` restructure. Fix them in THIS
+  repo — the site's copies are gitignored there.
+
+- **The cross-repo check is deliberately ASYMMETRIC.** A placeholder with no payload entry
+  hard-fails the deploy (it would ship a visibly empty block); a payload entry no page
+  references only warns, because a bidirectional check at deploy would fail every unrelated
+  site edit from the moment a placeholder lands until the next release. The bijection belongs
+  in this repo's release preflight, which may reach the network; `ci-local.sh`'s gates lane
+  stays offline-safe.
+
+- **The deploy pin is selected by an intrinsic property, never a version prefix.** It walks
+  the release tags newest-first and takes the one whose `cli/package.json` version EQUALS the
+  tag — because the legacy JVM-only `v7.x` tags outrank everything under `sort -V`, and
+  because the `v0.*` filter that used to encode "the npm line" silently kept serving `0.25.0`
+  after the 1.0 cut with every step green. A prefix match does not fail when it goes stale;
+  it selects a stale answer. The same defect was later found and fixed in
+  `scripts/finish-release.mjs`, the gate that mirrors this selector.
 
 ### Capability requirements (2026-08-12, unreleased)
 
@@ -193,10 +270,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 
 ## Active
 
-- **1.0 promotion.** The published line is npm `0.21.0` · PyPI `0.21.0` · NuGet `0.21.0` · Maven Central `7.21.0`, all on the metamodel-1.0 vocabulary. Since the `0.20.11` re-baseline the four registries **share one `minor.patch` and stay locked in lockstep** — only the major differs (Maven keeps its historical `7`), and every coordinated cut advances all four to the same patch. The promotion itself therefore stays on the decoupled-major scheme (npm/PyPI/NuGet -> `1.0.0`, Java/Kotlin -> `8.0.0`, one shared "Metamodel 1.0"); the lockstep policy governs the `minor.patch` beneath it, not the major. GA mechanics (a coordinated all-four-registries re-cut + an external-install smoke) are **satisfied** as of `0.20.14`, so what remains is the renumbering — deliberately a later, feedback-informed move rather than a 1.0-by-inertia one. Procedure + per-registry gotchas: `docs/RELEASING.md`.
 - **AI LLM-call trace persistence — cross-port rollout.** A metaobjects-native typed-trace store: each LLM call is persisted in the adopter's own DB with request/response as **typed value objects** (the same payload projection the prompt pillar declares + drift-checks), the one thing blob-only observability tools (Langfuse/Helicone/OTel) structurally can't do. **Scope locked by [ADR-0024](decisions/ADR-0024-ai-trace-scope-and-llm-caller-boundary.md):** MetaObjects owns the typed trace + recorder seam + the vendor-NEUTRAL call glue; the provider call + pricing are **bring-your-own** (plug the stack's LLM library — Vercel AI SDK / LiteLLM / Spring AI — behind the one-method `LlmClient`). **Shipped in TypeScript** (the reference port): shipped `library/ai/llm-call.yaml` (`LlmCallBase`) + opt-in `libraries` loader; the recorder (`recordLlmCall`, never-throws, redaction seam) + `buildLlmCallRow` whose key set is gated == `LlmCallBase`'s fields; `deriveTraceFields` (typed `voRequest`/`voResponse` jsonb columns derived from a nested `template.prompt`'s `@payloadRef`/`@responseRef`); generated `record<Entity>`/`call<Entity>` (extract + persist base + typed in one row); `@metaobjectsdev/ai-runtime` (`LlmClient` seam, `runLlmCall`, `callLlm`, `CompositeRecorder` + optional `LangfuseRecorder`/`OtelRecorder` exporters); shared-table STI (`@discriminator`/`@discriminatorValue`, reuses FR-017 TPH). **Cross-port (P3) in progress, JVM first:** the Java metamodel slice shipped (`@responseRef` on `template.prompt` + `template.*` admitted as `object.entity` children + a `TS_PILOT_VOCAB` registry-manifest exclusion; `ai-trace-prompt-nested` + `ai-trace-sti` un-ledgered in Java). Remaining: the Java recording half (OMDB recorder + the `deriveTraceFields` loader pre-pass + `record<Entity>` Spring codegen + a persistence round-trip), then Python → C# → Kotlin, then the **atomic carve-out close** (register `@responseRef` in every port + remove `TsPilotVocab` from all ports + add it to `expected-registry.json`). Phased plan: `docs/superpowers/plans/2026-06-06-ai-trace-descope-and-cross-port.md`.
-
-- **Website self-updating codegen — the site publishes generated output, gated.** Every code block on `metaobjects.dev` was hand-transcribed HTML and nothing checked any of it, while the page claimed the blocks were "real `meta gen` output, conformance-gated". Three jobs, one transport: **B** example snippets (the one that had actually been wrong), **A** the version payload (31 refs hand-edited every release), **C** the `llms` mirrors (a manual copy). Design: [`docs/superpowers/specs/2026-08-29-website-self-updating-codegen-design.md`](../docs/superpowers/specs/2026-08-29-website-self-updating-codegen-design.md); 18-task plan: [`docs/superpowers/plans/2026-08-29-website-self-updating-codegen.md`](../docs/superpowers/plans/2026-08-29-website-self-updating-codegen.md). **Tasks 1–11 SHIPPED** (2026-08-29/30): a showcase corpus generated by all five ports plus SQL, marker extraction, the committed-excerpt subsequence gate, registry-driven metadata + code highlighters, live CLI transcript capture, the payload builder with four build gates (subsequence, drift-fixture-still-fails, requirements-resolve, no-home-path), `gate_site_payload` in the `gates` lane plus a release-preflight check, and the injector + local preview. Nothing renders the payload yet — **task 12** gives the site's pages their `data-snippet` placeholders and **task 13** wires deploy-time injection; 14–15 are jobs A and C; 16–18 restructure `/reference`. **The cross-repo gating question is settled** (task 13, verified 2026-08-30): the site's `deploy.yml` already clones a public repo at deploy time with no secrets, so the pattern works, and the check is deliberately ASYMMETRIC — a placeholder with no payload entry hard-fails the deploy (it would ship a visibly empty block), while a payload entry no page references only warns there, because the bidirectional check at deploy would fail every unrelated site edit from the moment a placeholder lands until the next release. The bidirectional bijection belongs in this repo's **release preflight**, which may reach the network; `ci-local.sh`'s gates lane stays offline-safe, which is why the cross-repo test is deliberately filed outside `scripts/site/` (`gate_site_payload` globs that directory). Recorded here because eleven tasks shipped before the roadmap named the program at all.
 
 ## Planned
 
@@ -244,10 +318,17 @@ These are exercised in adopter projects on top of the shipped per-port primitive
 
 ## Release plan (1.0 → 1.x)
 
-Grouping of the Planned work into releases. Multiple items per release is fine. Before 1.0
-we keep it **lean** — consistency fixes + cheap, broadly-leveraged foundations; the big new
-themes (serializers, downloads, runtime-driven UI) land post-GA where they can be built
-properly without holding the GA.
+Grouping of the Planned work into releases. Multiple items per release is fine.
+
+**1.0 shipped 2026-09-09, so the constraint this section was written under is discharged.**
+It read: before 1.0 keep it lean — consistency fixes + cheap, broadly-leveraged foundations
+— and let the big themes (serializers, downloads, runtime-driven UI) land post-GA where they
+can be built properly rather than holding the GA. That is now simply the 1.1+ plan below.
+What replaces the old constraint is the compatibility promise: the covered surface is
+[`docs/compatibility-policy.md`](../docs/compatibility-policy.md), breaking it costs a major,
+and a change to the metadata contract moves `metamodelVersion` and must say so in the
+CHANGELOG (ADR-0035 Amendment 2). The `### Before 1.0` heading below is kept as the dated
+adjudication record it was, not as pending work.
 
 ### Before 1.0 — adjudicated 2026-08-05: nothing here blocks the promotion
 
