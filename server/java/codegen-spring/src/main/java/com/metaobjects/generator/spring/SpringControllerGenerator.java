@@ -168,10 +168,14 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
-        // surface today; @storage controls a separate column shape).
+        // surface today; @storage controls a separate column shape) and MapField: a map is one
+        // jsonb column holding a JSON object, so ORDER BY over it sorts by Postgres' jsonb
+        // collation — meaningless as an ordering, and a 400 on the ports that reject it, which
+        // makes the api-contract diverge. The filter side already excludes maps by having no
+        // operator band for them.
         List<String> sortFields = new ArrayList<>();
         for (MetaField field : entity.getMetaFields()) {
-            if (field instanceof ObjectField) continue;
+            if (field instanceof ObjectField || field instanceof com.metaobjects.field.MapField) continue;
             sortFields.add(field.getName());
         }
 
@@ -425,6 +429,24 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
                 src.append("        }\n");
             }
+        }
+        // A field.map @objectRef carries the same nested value objects, and the POST path now
+        // cascades into them via @Valid on the DTO component. PATCH validates field-by-field
+        // with validateValue, which does NOT cascade — so without this the two write paths
+        // disagree for maps where they agree for field.object, and a PATCH could write a
+        // nested VO that POST rejects. Validate each map VALUE (keys are plain strings).
+        for (MetaField vf : entity.getMetaFields()) {
+            if (SpringDtoGenerator.mapValueObjectRefOf(vf) == null) continue;
+            String name = vf.getName();
+            String cap = SpringNaming.capitalize(name);
+            src.append("        if (patch.has").append(cap).append("() && patch.")
+               .append(name).append("() != null) {\n");
+            src.append("            for (var __e : patch.").append(name).append("().values()) {\n");
+            src.append("                if (__e != null && !validator.validate(__e).isEmpty()) {\n");
+            src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+            src.append("                }\n");
+            src.append("            }\n");
+            src.append("        }\n");
         }
     }
 

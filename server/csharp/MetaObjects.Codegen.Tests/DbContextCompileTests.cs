@@ -29,7 +29,9 @@
 //         HasConversion(ValueConverter, ValueComparer) overload, and a generic helper
 //         returning ValueConverter<Dictionary<string,T>,string>. A string-contains test
 //         cannot tell a real overload from a plausible-looking one.
-//   - object.projection ProgramSummary (view-kind source, keyless) → .ToView(...).HasNoKey()
+//   - object.projection ProgramSummary (view-kind source, keyless) → .ToView(...).HasNoKey(),
+//     carrying a field.map so the PROJECTION arm of the map config compiles too — its emitter
+//     is a separate call site from the entity one, and the property is emitted either way
 //   - object.entity Invoice — a #214 WRITE-THROUGH entity (table invoices + replica view
 //     v_invoice_with_client + a derived origin.passthrough clientName): the derived-free
 //     write entity, the view-mapped InvoiceView read model (.ToView), the InvoiceView DbSet,
@@ -90,7 +92,8 @@ public class DbContextCompileTests
       { "object.projection": { "name": "ProgramSummary", "children": [
         { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
         { "field.long": { "name": "id" } },
-        { "field.int":  { "name": "weekCount" } }
+        { "field.int":  { "name": "weekCount" } },
+        { "field.map":  { "name": "tallies", "@valueType": "int" } }
       ]}},
       { "object.entity": { "name": "Client", "children": [
         { "source.rdb": { "@kind": "table", "@table": "clients" } },

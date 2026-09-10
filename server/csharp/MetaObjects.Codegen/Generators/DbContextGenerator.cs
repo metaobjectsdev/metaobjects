@@ -109,6 +109,13 @@ public class DbContextGenerator : IGenerator
             // a string would fail materialization exactly as the ordinal default does here.
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.ResolvedIsArray()))
                 modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
+            // A field.map column on a view needs its jsonb mapping for the SAME reason:
+            // EntityGenerator emits the Dictionary property for a projection too, and an
+            // unmapped Dictionary<string,int> binds to nothing on Npgsql, so the model fails
+            // to build. This loop and EmitFieldTypeConfig's are the two call sites
+            // NeedsMapJsonbHelper has to cover.
+            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_MAP))
+                modelLines.Add(MapJsonbConfig(name, f, ctx));
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -622,6 +629,20 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("            \"@intValueMap — the database holds a value the model does not describe.\");");
     }
 
+    /// <summary>
+    /// The EF config line pinning one <c>field.map</c> to its jsonb column: the column type
+    /// plus the shared converter/comparer pair. Shared by the entity/write-through path
+    /// (<see cref="EmitFieldTypeConfig"/>) and the read-only-projection path, which both emit
+    /// a <c>Dictionary&lt;string, V&gt;</c> property and so both need the mapping.
+    /// </summary>
+    private static string MapJsonbConfig(string className, MetaField f, GenContext ctx)
+    {
+        var valueType = MapValueTypeRef(f, ctx);
+        return $"        modelBuilder.Entity<{className}>().Property(x => x.{CSharpNaming.Pascal(f.Name)})"
+            + $".HasColumnType(\"jsonb\").HasConversion("
+            + $"{MapJsonbHelperName}.Converter<{valueType}>(), {MapJsonbHelperName}.Comparer<{valueType}>());";
+    }
+
     /// <summary>Name of the generated jsonb (de)serialization helper the field.map configs use.</summary>
     private const string MapJsonbHelperName = "MapJsonb";
 
@@ -841,14 +862,7 @@ public class DbContextGenerator : IGenerator
         // no reliance on Npgsql's dynamic-JSON opt-in the generated code cannot make for a
         // consumer. The COMPARER is not optional -- see EmitMapJsonbHelper.
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_MAP))
-        {
-            var prop = CSharpNaming.Pascal(f.Name);
-            var valueType = MapValueTypeRef(f, ctx);
-            modelLines.Add(
-                $"        modelBuilder.Entity<{className}>().Property(x => x.{prop})"
-                + $".HasColumnType(\"jsonb\").HasConversion("
-                + $"{MapJsonbHelperName}.Converter<{valueType}>(), {MapJsonbHelperName}.Comparer<{valueType}>());");
-        }
+            modelLines.Add(MapJsonbConfig(className, f, ctx));
 
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
         {
@@ -1053,10 +1067,11 @@ public class DbContextGenerator : IGenerator
             // default: a column the migration never creates (42703 at the engine).
             if (nf.SubType == FIELD_SUBTYPE_MAP)
             {
+                var mapValue = MapValueTypeRef(nf, ctx);
                 sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
                     + $".HasColumnName(\"{nestedColAny}\").HasColumnType(\"jsonb\").HasConversion("
-                    + $"{MapJsonbHelperName}.Converter<{MapValueTypeRef(nf, ctx)}>(), "
-                    + $"{MapJsonbHelperName}.Comparer<{MapValueTypeRef(nf, ctx)}>());");
+                    + $"{MapJsonbHelperName}.Converter<{mapValue}>(), "
+                    + $"{MapJsonbHelperName}.Comparer<{mapValue}>());");
                 continue;
             }
 

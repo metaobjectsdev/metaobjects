@@ -134,6 +134,45 @@ public class MapFieldCodegenTests
     }
 
     [Fact]
+    public void A_read_only_projection_map_column_also_gets_its_jsonb_mapping()
+    {
+        // EntityGenerator emits the Dictionary property for a PROJECTION too, but the
+        // DbContext's projection loop emits only ToView + enum conversions — so a view
+        // exposing a field.map got a Dictionary property with no mapping at all. That is
+        // exactly the failure this whole mapping exists to prevent: a Dictionary<string,int>
+        // binds to nothing on Npgsql, so AppDbContext fails model building.
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.projection": { "name": "CustomerSummary", "children": [
+            { "source.rdb": { "@kind": "view", "@table": "v_customer_summary" } },
+            { "field.long":   { "name": "id" } },
+            { "field.map":    { "name": "tallies", "@valueType": "int" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "proj.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+
+        // The property is emitted...
+        var entity = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+        Assert.Contains("public Dictionary<string, int> Tallies { get; set; } = new();", entity);
+
+        // ...so the storage mapping must be too.
+        var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
+        Assert.Contains(
+            "modelBuilder.Entity<CustomerSummary>().Property(x => x.Tallies).HasColumnType(\"jsonb\")"
+                + ".HasConversion(MapJsonb.Converter<int>(), MapJsonb.Comparer<int>());",
+            dbCtx);
+        // ...and the helper it names must be declared, or the generated file will not compile.
+        Assert.Contains("private static class MapJsonb", dbCtx);
+    }
+
+    [Fact]
     public void Generated_entities_and_value_objects_compile_together()
     {
         var ctx = Ctx(Load());

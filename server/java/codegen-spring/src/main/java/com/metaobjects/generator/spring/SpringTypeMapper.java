@@ -181,7 +181,18 @@ public final class SpringTypeMapper {
         // ADR-0039: @objectRef / @valueType are EFFECTIVE properties -- hasMetaAttr/getMetaAttr
         // (the one-arg, RESOLVING forms) so a value inherited via `extends` is not dropped.
         if (field.hasMetaAttr(MapField.ATTR_OBJECTREF)) {
-            MetaObject ref = field.getObjectRef();
+            MetaObject ref;
+            try {
+                ref = field.getObjectRef();
+            } catch (RuntimeException unresolved) {
+                // MetaDataUtil.getObjectRef THROWS MetaDataNotFoundException on a dangling ref
+                // rather than returning null. Caught so this method actually keeps the contract
+                // its javadoc states, and so it agrees with its sibling
+                // SpringDtoGenerator.mapValueObjectRefOf — otherwise one dangling ref produces
+                // a not-found from the type mapper and a silent skip from the @Valid /
+                // value-object-reachability path.
+                return null;
+            }
             if (ref == null) return null;
             String[] split = SpringNaming.splitFqn(ref.getName());
             return split[0].isEmpty() ? split[1] : split[0] + "." + split[1];
