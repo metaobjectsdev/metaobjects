@@ -47,16 +47,22 @@ Three rows need a footnote:
   explicit converter/comparer pair, so the property lands on the `jsonb` column the TS-owned
   migration creates instead of on whatever an unmapped dictionary would resolve to.
 
-  > ⚠️ **On a TPH (discriminator-rooted) entity, a `field.map @objectRef` writes nested
-  > value-object values UNVALIDATED.** The generated TPH create/PATCH handlers validate
-  > field-by-field with `validateValue`, which does not cascade `@Valid` into a nested bean,
-  > and the explicit cascade the vanilla handler runs is not invoked on the TPH path — so a
-  > posted map value that violates the referenced `object.value`'s own constraints is
-  > accepted and written. Scalar-valued maps (`@valueType`) are unaffected: there is no
-  > nested bean to validate. This is generated code, so **reading your own source will not
-  > reveal it** — the failure is silent acceptance, not an error. Validate map values at your
-  > own boundary on TPH entities until this closes, or keep the map on a non-TPH entity.
-  > Tracked as [issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362).
+  > ⚠️ **A `field.map @objectRef` can write its nested value-object values UNVALIDATED — and
+  > the scope is per port.** TypeScript (`z.record` over the VO's insert schema) and Python
+  > (`dict[str, VO]` Pydantic) validate map values, and Kotlin writes no map column at all. The
+  > hole is in the other two: **Java** validates nested map values on its vanilla
+  > create/PATCH handlers but NOT on TPH (discriminator-rooted) write paths, which validate
+  > field-by-field with `validateValue` — that does not cascade `@Valid` into a nested bean,
+  > and the explicit cascade the vanilla handler runs is not invoked there. **C# validates
+  > them on NO write path — not TPH, not vanilla create, not vanilla PATCH**: the map property
+  > never reaches the recursively-validating value-object arms (they admit `field.object` only),
+  > and the generic arms check the dictionary property itself, never its values. A posted map
+  > value that violates the referenced `object.value`'s own constraints is accepted and
+  > written. Scalar-valued maps (`@valueType`) are unaffected: there is no nested bean to
+  > validate. This is generated code, so **reading your own source will not reveal it** — the
+  > failure is silent acceptance, not an error. Validate map values at your own boundary
+  > before write. [Issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks
+  > the Java TPH half; the C# surface is wider than that issue's scope.
 
   **The RUNTIME tier is not there yet, and no conformance corpus covers it.** No
   persistence- or api-contract-conformance fixture exercises `field.map` on any port; it is

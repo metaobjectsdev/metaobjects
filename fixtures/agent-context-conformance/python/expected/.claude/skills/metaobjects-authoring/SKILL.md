@@ -584,14 +584,20 @@ Python's `ObjectManager` encodes a map today; `runtime-ts`, Java's OMDB and the 
 lane carry no map handling at all. So a map you intend to read back through a PORT RUNTIME is
 still better declared as a value object, and a genuinely dynamic key set stays a bag.
 
-**One sharp edge where generated code IS the consumer.** On a TPH (discriminator-rooted)
-entity, a `field.map @objectRef` writes its nested value-object values **unvalidated** — the
-generated TPH create/PATCH handlers validate field-by-field with `validateValue`, which does
-not cascade `@Valid`, and the explicit cascade the vanilla handler runs is not invoked there.
-A posted value violating the referenced `object.value`'s constraints is accepted and written,
-silently, and reading the adopter's own source will not reveal it. Scalar-valued maps
-(`@valueType`) are unaffected. Do not recommend this rung on a TPH entity without saying so;
-[issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks the fix. Every rung but the first keeps the
+**One sharp edge where generated code IS the consumer: nested map values can be written
+UNVALIDATED, per port.** TypeScript (`z.record` over the VO's insert schema) and Python
+(`dict[str, VO]` Pydantic) validate map values, and Kotlin writes no map column. **Java**
+validates them on its vanilla create/PATCH handlers but NOT on TPH (discriminator-rooted) write
+paths — those validate field-by-field with `validateValue`, which does not cascade `@Valid`.
+**C# validates them on NO write path** — vanilla create, vanilla PATCH, and TPH alike: the map
+never reaches the recursively-validating value-object arms (they admit `field.object` only),
+and the generic arms check the dictionary property itself, never its values. A posted value
+violating the referenced `object.value`'s constraints is accepted and written, silently, and
+reading the adopter's own source will not reveal it. Scalar-valued maps (`@valueType`) are
+unaffected. Do not recommend this rung for a Java TPH entity — or for C# at all — without
+saying so and pointing at boundary validation of map values before write;
+[issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks the Java TPH half, and the C# scope is wider
+than that issue. Every rung but the first keeps the
 column jsonb, so moving a column up the ladder is a codegen/contract change rather than a
 migration — read the emitted DDL before promising that.
 
