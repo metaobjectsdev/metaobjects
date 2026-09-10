@@ -721,7 +721,10 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("    /// </summary>");
         sb.AppendLine($"    private static class {MapJsonbHelperName}");
         sb.AppendLine("    {");
-        sb.AppendLine("        private static readonly System.Text.Json.JsonSerializerOptions Options = new();");
+        sb.AppendLine("        private static readonly System.Text.Json.JsonSerializerOptions Options = new()");
+        sb.AppendLine("        {");
+        sb.AppendLine("            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }");
+        sb.AppendLine("        };");
         sb.AppendLine();
         sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<");
         sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>, string> Converter<TValue>() => new(");
