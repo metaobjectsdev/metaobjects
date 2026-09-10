@@ -35,11 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # NO `registry-url:` here. It makes setup-node write its own .npmrc and export
+      # NPM_CONFIG_USERCONFIG at it, which SHADOWS the ~/.npmrc the step below writes —
+      # npm then authenticates with setup-node's literal `${NODE_AUTH_TOKEN}` placeholder
+      # and returns E401 "token seems to be invalid" for every package, which reads as a
+      # dead secret rather than a shadowed config. Authenticate exactly the way
+      # publish-npm.yml does, so the token that publishes the set is the token that retags it.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: ${{ inputs.action }} '${{ inputs.tag }}' across the lockstep set
         env:
@@ -50,6 +55,11 @@ jobs:
           set -euo pipefail
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           trap 'rm -f ~/.npmrc' EXIT
+
+          # Fail on the credential, once, before touching 14 packages. Without this an
+          # auth problem arrives as fourteen identical per-package errors and looks like a
+          # registry-side refusal of the operation.
+          npm whoami >/dev/null 2>&1 || { echo "::error::NPM_TOKEN does not authenticate"; exit 1; }
 
           node scripts/publish-set.mjs > "${RUNNER_TEMP}/set.txt"
           test -s "${RUNNER_TEMP}/set.txt"
