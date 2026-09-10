@@ -682,7 +682,7 @@ subsequent releases keyless.)
 
 # Releasing the Java/Kotlin modules to Maven Central
 
-The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
+The 14 `com.metaobjects:*` modules (15 artifacts, counting the parent POM) ship to **Maven Central via the Sonatype Central Portal**,
 versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` and `8.x` from the
 1.0 cut (currently `8.0.0`) — in the parent + module poms. Signed with the maintainer's GPG key.
 

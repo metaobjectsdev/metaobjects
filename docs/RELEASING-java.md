@@ -16,7 +16,8 @@ references must be refreshed.
 
 ## What gets published
 
-The reactor (`server/java/pom.xml`) lists 13 publishable modules. As of
+The reactor (`server/java/pom.xml`) lists 14 publishable modules; with the parent
+POM (`com.metaobjects:metaobjects`) that is 15 artifacts on Central. As of
 7.0.0 the reactor explicitly **excludes** `archetype` and `examples` — they
 were aggregator entries but not consumer-facing dependencies, and keeping
 them in the reactor required `-pl` exclusions that didn't transitively
@@ -174,7 +175,7 @@ git push origin main
 cd server/java && mvn clean install
 ```
 
-All 13 publishable modules should reach SUCCESS with the full test suite green. The build also installs
+All 14 publishable modules should reach SUCCESS with the full test suite green. The build also installs
 locally into `~/.m2/repository/com/metaobjects/*/7.X.Y/`.
 
 ### 4. Tag the release

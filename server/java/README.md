@@ -1,12 +1,12 @@
 # MetaObjects — Java
 
-The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.11.3` under `com.metaobjects:*` across 14 modules. Apache 2.0.
+The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `8.0.0` under `com.metaobjects:*` across 14 modules. Apache 2.0.
 
 For the standard itself (metamodel, conformance corpora, ADRs) see the [repository-level docs](../../spec/) and the parent [README](../../README.md). This document is scoped to the Java implementation.
 
 ## What ships
 
-All four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python. Java's contributions:
+The first four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python; the fifth (requirements and testing) ships its vocabulary and `verify` checks in every port and its test scaffolding in TypeScript only. Java's contributions:
 
 - **Codegen** — Spring REST + DTO + repository-interface emit (you supply the impl) (`codegen-spring`), Mustache template engine (`codegen-mustache`), PlantUML diagrams (`codegen-plantuml`), and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`). Output is hand-edit-preserving via three-way merge.
 - **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`); the `metaobjects:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
@@ -21,7 +21,7 @@ so they are maintained in one place rather than restated per port.
 
 ## Modules
 
-All published to Maven Central under `com.metaobjects:*` at `7.11.3`:
+All published to Maven Central under `com.metaobjects:*` at `8.0.0`:
 
 | Module | Purpose |
 |---|---|
@@ -48,7 +48,7 @@ The `archetype` and `examples` directories were removed in 7.1.0 (they had been 
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata</artifactId>
-    <version>7.11.3</version>
+    <version>8.0.0</version>
 </dependency>
 ```
 
@@ -58,12 +58,12 @@ Spring REST stack (repository interface is consumer-implemented):
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-spring</artifactId>
-    <version>7.11.3</version>
+    <version>8.0.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-core-spring</artifactId>
-    <version>7.11.3</version>
+    <version>8.0.0</version>
 </dependency>
 ```
 
@@ -73,7 +73,7 @@ Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:ed
 <plugin>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-maven-plugin</artifactId>
-    <version>7.11.3</version>
+    <version>8.0.0</version>
     <executions>
         <execution>
             <goals><goal>generate</goal></goals>
@@ -90,12 +90,12 @@ Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipelin
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata-ktx</artifactId>
-    <version>7.11.3</version>
+    <version>8.0.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-kotlin</artifactId>
-    <version>7.11.3</version>
+    <version>8.0.0</version>
 </dependency>
 ```
 
