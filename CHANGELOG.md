@@ -8,6 +8,64 @@ promises the **software** surface, `metamodelVersion` promises the **metadata** 
 `^1.0.0` accepts a MINOR — so **a release that moves `metamodelVersion` says so in its entry
 here.**
 
+## [1.0.1] — 2026-09-10
+
+**Why this is a PATCH and not a MINOR.** `docs/RELEASING.md`'s table says an additive CLI
+flag and a new opt-in codegen capability are each a MINOR post-1.0, and this release carries
+both. It is cut as a PATCH by explicit decision: everything here **completes 1.0 rather than
+extending it**. `--prompts` closes **D2**, a 1.0-readiness gate that was still 🔶 at the cut,
+and `field.map` codegen on Java and C# makes 1.0's own claim — that `field.map` is registered
+cross-port vocabulary — true on the two ports where a map-bearing model previously failed
+codegen outright. No adopter on 1.0.0 sees a behaviour change they did not already need.
+
+### Fixed
+
+- **`field.map @objectRef` wrote its nested value objects UNVALIDATED** — Java on TPH
+  (discriminator-rooted) write paths, C# on *every* write path ([#362]). The failure mode was
+  silent acceptance: a POST or PATCH carrying an invalid nested value returned 201/200 and the
+  row was written, with nothing in a log and nothing an adopter could find by reading their own
+  source, because the defect lived in generated code. Java's TPH paths validate field-by-field
+  with `validateValue`, which does not cascade `@Valid` into a nested bean; C# had two
+  independent causes — the map never reached the validating arms, *and*
+  `ValueObjectValidator` treated a `Dictionary` as a plain `IEnumerable`, validating
+  `KeyValuePair` structs instead of the values (which also left a map nested *inside* a value
+  object unchecked). TypeScript, Python and Kotlin were never affected; scalar-valued maps
+  (`@valueType`) carry no bean and are unchanged.
+- **`field.map` codegen completes on Java and C#** ([#360]). Before this a map-bearing entity
+  failed Spring/EF codegen at the unsupported-type throw, so no model could use it there.
+
+### Changed
+
+- **One spelling for the prompt directory: `--prompts <dir>`, on every port** ([F101], closing
+  **D2**). It had been spelled three ways — `--prompts` (Node, the reference),
+  `--templates-root` (Python) and `--templates <root>` inline on the subverb (C#). **Both old
+  spellings keep working**; they are deprecated in 1.1 and removed no earlier than a major, so
+  no script breaks at a patch or a minor. `--prompts` sets the directory only — it does not
+  imply the gate, exactly as `--out` does not imply `--codegen`.
+
+### Documentation
+
+- `codegen-kotlin`'s two `KNOWN_GAPS.md` files are merged ([#361]). They were not copies: each
+  documented gaps the other did not, so all 11 sections now live in the canonical file beside
+  the generators and the module root carries a pointer.
+- C# `KNOWN_GAPS` **G7 ruled** ([#359]): narrowed to the TPH residual, and that residual is a
+  deliberate cross-port stage-out, not a C# divergence — Java stages out the same columns on
+  the same path.
+- Corpus and module counts corrected across README, AGENTS.md, `docs/CONFORMANCE.md` and the
+  `llms` mirrors: the metamodel corpus is **313** fixtures (variously recorded as 270/286/253),
+  there are **21** shared corpora (recorded as 19), and Maven publishes **14** modules plus the
+  parent POM. `server/java/README.md` had pinned `7.11.3` in eight copy-pasteable blocks.
+- `fixtures/conformance/CAPABILITIES.json` regenerated — it is derived from every fixture's
+  `script.json` and **nothing reads it at test time**, which is why it had gone stale unnoticed.
+
+`metamodelVersion` is unchanged at **1.0** — no registered vocabulary moved.
+
+[#362]: https://github.com/metaobjectsdev/metaobjects/issues/362
+[#361]: https://github.com/metaobjectsdev/metaobjects/issues/361
+[#360]: https://github.com/metaobjectsdev/metaobjects/pull/360
+[#359]: https://github.com/metaobjectsdev/metaobjects/issues/359
+[F101]: https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/cli.md#the-prompt-directory-prompts-everywhere-f101
+
 ## [1.0.0] — 2026-09-09
 
 **The stable release.** npm / PyPI / NuGet go to `1.0.0`; Maven Central to `8.0.0` (the
