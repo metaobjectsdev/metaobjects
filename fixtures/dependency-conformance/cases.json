@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {
+      "name": "no-dependencies-resolves-exactly-as-before",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "config": { "schema_version": 1, "sources": [] },
+      "expectFiles": ["metaobjects/meta.app.json"],
+      "expectForeign": [],
+      "expectGoverned": ["app::Order"]
+    }
+  ]
+}
