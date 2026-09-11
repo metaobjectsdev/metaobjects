@@ -591,9 +591,9 @@ Java only the full N-arg constructor and a no-arg one yielding an all-null insta
 immutable class — a caller setting 3 of 14 members had to pass 14 arguments with 11 nulls. A
 generated VO replacing a hand-written builder therefore made its Java call sites *worse*.
 Generated entities and value objects now emit a nested `Builder` plus a `@JvmStatic builder()`
-(`Money.builder().currency("USD").build()`), so partial construction from Java works — but that
-is **UNRELEASED at the time of writing: it is on `main`, shipping in the next JVM cut.** Check
-the adopter's pinned version. Reading is unaffected on every version (Kotlin `val` emits Java
+(`Money.builder().currency("USD").build()`), so partial construction from Java works — **from
+8.0.2** on Maven Central (the npm line's 1.0.2). Check the adopter's pinned version: 8.0.1 and
+earlier have no builder. Reading is unaffected on every version (Kotlin `val` emits Java
 getters), so a bag that is only READ converts safely today; it is construction that was blocked.
 `object.projection` deliberately gets no builder — it is derived and read-only, and nothing
 constructs one.
@@ -620,8 +620,7 @@ migration — read the emitted DDL before promising that.
 array is a lossy type change to `meta migrate`, so it is refused until you pass
 `--allow type-change`. The emitted migration converts the rows in place: a `USING` clause unpacks
 each jsonb array, keeps element order, maps a JSON `null` to NULL, and FAILS on a row that is not
-an array rather than nulling it. That conversion is **UNRELEASED at the time of writing: it is on
-`main`, shipping in the next cut.** On 1.0.1 and earlier the emitted `ALTER … TYPE TEXT[]` carries
+an array rather than nulling it. That conversion ships in **1.0.2**. On 1.0.1 and earlier the emitted `ALTER … TYPE TEXT[]` carries
 no `USING`, and Postgres refuses it ("cannot be cast automatically"), so add the conversion by hand
 before applying. On every version the WRITER changes in the same deploy: a writer that sent
 `json.dumps(xs)` or a JSON-encoded string must now send the list itself.
