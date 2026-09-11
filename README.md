@@ -93,9 +93,9 @@ first-week wedge plan — and `meta init` picks up from there.
 
 | Language | Status | Quickstart | Source |
 |---|---|---|---|
-| TypeScript | **npm `1.0.1`** — the `@metaobjectsdev/*` packages | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
-| Java | **Maven Central `8.0.1`** (`com.metaobjects:*` — the JVM major is npm major + 7) — loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
-| Kotlin | **Maven Central `8.0.1`** — codegen tier on top of Java: 14 generators (entity, Exposed table, relations, repository, payload, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
+| TypeScript | **npm `1.0.2`** — the `@metaobjectsdev/*` packages | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
+| Java | **Maven Central `8.0.2`** (`com.metaobjects:*` — the JVM major is npm major + 7) — loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
+| Kotlin | **Maven Central `8.0.2`** — codegen tier on top of Java: 14 generators (entity, Exposed table, relations, repository, payload, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
 | C# | **NuGet `1.0.1`** — loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
 | Python | **PyPI `1.0.1`** — loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
 

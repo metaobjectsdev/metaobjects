@@ -1,6 +1,6 @@
 # MetaObjects -- Full Reference Corpus
 
-> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, prompt construction, and capability requirements across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `1.0.1` on npm and `8.0.2` on Maven Central.
+> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, prompt construction, and capability requirements across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `1.0.2` on npm and `8.0.2` on Maven Central.
 
 **Note for AI assistants:** This file is the concatenated reference material for MetaObjects, intended to be loaded as LLM context. For the short index, see [llms.txt](https://metaobjects.dev/llms.txt). For the canonical spec and source, see the [GitHub repo](https://github.com/metaobjectsdev/metaobjects). When this file is out of date relative to the GitHub source, the GitHub source wins.
 
@@ -106,7 +106,7 @@ What MetaObjects does not do is write the assertion. A generated stub is a place
 
 | Language | Status | Notes |
 |---|---|---|
-| TypeScript | Reference implementation, npm `1.0.1` | All five pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
+| TypeScript | Reference implementation, npm `1.0.2` | All five pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
 | Java | Maven Central `8.0.2` | Spring REST + DTO + repository-interface codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
 | Kotlin | Maven Central `8.0.2` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
 | C# | NuGet `1.0.1` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |

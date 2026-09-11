@@ -18,7 +18,7 @@ The first four ship per-language today across the five ports (TS / C# / Java / P
 
 ## Status
 
-_Last refreshed 2026-09-10._
+_Last refreshed 2026-09-11._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
@@ -35,14 +35,13 @@ because a conformance corpus gates the ports against each other and never agains
 in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
-**Where the versions are.** `latest` on every registry is **`1.0.1`** (npm / PyPI / NuGet) ·
-**`8.0.1`** (Maven Central, aligned `minor.patch` on its historical major `7` — the Maven
-major is always **npm major + 7**, so 1.0.1 is 8.0.1). All four moved together at 1.0.1
-because all four had a changed product file. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8`
+**Where the versions are.** `latest` is **`1.0.2`** on npm and **`8.0.2`** on Maven Central
+(the Maven major is always **npm major + 7**, so 1.0.2 is 8.0.2). PyPI and NuGet are at
+**`1.0.1`**: neither had a changed product file at 1.0.2, so both sat that cut out. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8`
 candidates are superseded, and npm's `next` tag was REPOINTED onto the release — not deleted,
 because `dist-tag rm` 403s for every token we hold (`docs/RELEASING.md` §4).
-`metamodelVersion` reads **`1.0`**, frozen — C4 landed and G4 shipped it, and 1.0.1 did not
-move it. Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
+`metamodelVersion` reads **`1.0`**, frozen — C4 landed and G4 shipped it, and neither 1.0.1 nor
+1.0.2 moved it. Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
 not duplicate it.
 
 The npm surface is **14 `@metaobjectsdev/*` packages in full lockstep**; the two `angular`
@@ -75,7 +74,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + the nine filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
 
-**Latest release: 1.0.1** (2026-09-10) — npm / PyPI / NuGet `1.0.1`, Maven Central `8.0.1`. It completes 1.0 rather than extending it: `field.map` codegen finished on Java and C#, the nested-value-object validation hole that opened with it (#362) is closed on every write path, and `--prompts` converged the prompt-directory flag across the ports, closing the last open gate (D2) in `docs/1.0-readiness.md`.
+**Latest release: 1.0.2** (2026-09-11) — npm `1.0.2`, Maven Central `8.0.2`; PyPI and NuGet stay `1.0.1`. `meta migrate` now emits a column type change Postgres can apply (jsonb ↔ array, scalar ↔ array, cross-kind casts, a DEFAULT in the way), and generated JVM types (Kotlin entities and value objects, `codegen-spring`'s Java records) carry a builder, so a Java caller can set a subset of members.
 
 See `spec/roadmap.md` for the active + planned work picture.
 
