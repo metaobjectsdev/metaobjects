@@ -36,6 +36,11 @@ by exactly one release.
       scope, so there is no "as of `<ver>`" marker left to refresh (checked at the 1.0 cut).
       Re-add one here only if parity ever becomes version-scoped again.
 - [ ] `docs/RELEASING.md` / `docs/RELEASING-java.md` — the "currently `<ver>`" notes.
+- [ ] **Grep the docs for "UNRELEASED" / "on `main`, shipping in the next".** A capability
+      documented before it ships carries that hedge on purpose, and it becomes a lie the moment
+      the cut lands. `agent-context/skills/metaobjects-authoring/SKILL.md` carries one today for
+      the Kotlin builder (#365) — flip it to the shipped version and regenerate
+      `fixtures/agent-context-conformance/` in the same commit.
 - [ ] `.github/workflows/publish-*.yml` — **no version edits by design.** All four
       publish workflows read the version from the committed manifest
       (`package.json` / pom / `Directory.Build.props` / `pyproject.toml`), so none

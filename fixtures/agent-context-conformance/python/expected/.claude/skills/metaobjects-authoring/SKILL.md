@@ -585,6 +585,19 @@ Python's `ObjectManager` encodes a map today; `runtime-ts`, Java's OMDB and the 
 lane carry no map handling at all. So a map you intend to read back through a PORT RUNTIME is
 still better declared as a value object, and a genuinely dynamic key set stays a bag.
 
+**One more version question, if a JAVA caller CONSTRUCTS the value object.** Kotlin's default
+arguments are a compiler feature, not a bytecode one, so a generated data class used to offer
+Java only the full N-arg constructor and a no-arg one yielding an all-null instance of an
+immutable class — a caller setting 3 of 14 members had to pass 14 arguments with 11 nulls. A
+generated VO replacing a hand-written builder therefore made its Java call sites *worse*.
+Generated entities and value objects now emit a nested `Builder` plus a `@JvmStatic builder()`
+(`Money.builder().currency("USD").build()`), so partial construction from Java works — but that
+is **UNRELEASED at the time of writing: it is on `main`, shipping in the next JVM cut.** Check
+the adopter's pinned version. Reading is unaffected on every version (Kotlin `val` emits Java
+getters), so a bag that is only READ converts safely today; it is construction that was blocked.
+`object.projection` deliberately gets no builder — it is derived and read-only, and nothing
+constructs one.
+
 **One sharp edge where generated code IS the consumer, and it is now a VERSION question rather
 than a port question: nested map values.** As of **1.0.1** every port validates them on every
 write path ([#362](https://github.com/metaobjectsdev/metaobjects/issues/362)). On **1.0.0 the

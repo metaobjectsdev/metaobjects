@@ -10,6 +10,24 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **A generated Kotlin entity / value object is now constructible from Java** — a nested
+  `Builder` plus a `@JvmStatic builder()` ([#365]). Kotlin default arguments are a compiler
+  feature, not a bytecode one, so the generated data class previously offered Java only the full
+  N-arg constructor and a no-arg one yielding an all-null instance of an immutable class: a
+  caller setting 3 of 14 members had to pass 14 arguments with 11 nulls. Found when an adopter
+  converting an untyped jsonb bag to an `object.value` discovered the generated VO replacing a
+  hand-written Lombok `@Builder` made its Java call sites strictly worse. A builder rather than
+  `@JvmOverloads` because overloads are positional and only help trailing omissions; a plain
+  nested class rather than Lombok because generated code must not force an annotation processor
+  on an adopter. `object.projection` gets none — it is derived and read-only. Kotlin callers are
+  unaffected (named arguments already covered it), which is why every test in that module, all
+  Kotlin-side, missed this; the new test compiles real Java against the generated class.
+  `codegen-spring`'s Java `record`s have the same all-args shape and are tracked in #365 as a
+  follow-on. No vocabulary change, so `metamodelVersion` does not move.
+
+
 ## [1.0.1] — 2026-09-10
 
 **Why this is a PATCH and not a MINOR.** `docs/RELEASING.md`'s table says an additive CLI
@@ -103,6 +121,7 @@ adopter who read "field.map now works" out of this entry would be over-reading i
 `metamodelVersion` is unchanged at **1.0** — no registered vocabulary moved.
 
 [#362]: https://github.com/metaobjectsdev/metaobjects/issues/362
+[#365]: https://github.com/metaobjectsdev/metaobjects/issues/365
 [#361]: https://github.com/metaobjectsdev/metaobjects/issues/361
 [#360]: https://github.com/metaobjectsdev/metaobjects/pull/360
 [#359]: https://github.com/metaobjectsdev/metaobjects/issues/359
