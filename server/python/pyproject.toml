@@ -62,27 +62,21 @@ integration = ["pg8000>=1.31", "fastapi>=0.110", "httpx>=0.27"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/metaobjects"]
-exclude = ["**/KNOWN_GAPS.md"]
-
-# Bundle the repo-root agent-context/ content tree into the package so the installed
-# `metaobjects agent-docs` command can resolve it offline (no Node, no monorepo).
-# A custom build hook (hatch_build.py) copies ../../agent-context into
-# src/metaobjects/agent_context/_content at build time, and `artifacts` below forces
-# that (gitignored) tree into BOTH the sdist and the wheel — so `uv build`
-# (sdist -> wheel) works, not just a direct wheel build. In dev/test the resolver
-# falls back to walking up to the monorepo agent-context/.
-[tool.hatch.build.hooks.custom]
-
-# FR-033 — the 15 shared spec/metamodel/*.json files are COMMITTED copies under
+# FR-033 — the shared spec/metamodel/*.json files are COMMITTED copies under
 # src/metaobjects/spec_metamodel/ (not build-time-generated), so hatchling's default
 # package inclusion ships them in both the sdist and the wheel (read via
 # importlib.resources, AOT-safe). A byte-identity gate
 # (tests/conformance/test_spec_metamodel_embed.py) keeps the copies from drifting
 # from the repo-root spec/metamodel/ source.
-[tool.hatch.build]
-artifacts = ["src/metaobjects/agent_context/_content/**"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/metaobjects"]
+exclude = ["**/KNOWN_GAPS.md"]
+
+# No agent-context ships in this package. `metaobjects agent-docs` redirects to the Node
+# scaffolder (`npx meta agent-docs --server python`), which owns that content, so the wheel
+# and sdist carry none of it and an agent-context/ edit never makes PyPI publish.
+# hatch_build.py is a deliberate no-op, kept only so tooling that names the hook does not break.
+[tool.hatch.build.hooks.custom]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
