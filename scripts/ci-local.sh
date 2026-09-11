@@ -104,6 +104,17 @@ want_any() { # want_any <section...> — true when ANY listed section should run
 PASS=(); FAIL=(); SKIP=()
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Every Maven call a gate makes — here and in the scripts it spawns (integration-test.sh,
+# fatjar-smoke.sh) — resolves and INSTALLS into a CI-owned local repository, never the
+# developer's ~/.m2. The Java lanes `mvn install` the tree at the CURRENT version, and on the
+# shared ~/.m2 that silently replaced what Maven Central published under that number: an
+# estate pinned to the current release, or a showcase regen resolving the plugin by version,
+# then built against unreleased main (found cutting 1.0.2 — the "8.0.1" codegen-kotlin jar held
+# a builder 8.0.1 never shipped). MAVEN_ARGS (Maven 3.9+) reaches every `mvn`, spawned
+# scripts included, without touching a call site. The repository persists between runs, so
+# only the first run downloads. Override with METAOBJECTS_CI_M2_REPO.
+export MAVEN_ARGS="${MAVEN_ARGS:+$MAVEN_ARGS }-Dmaven.repo.local=${METAOBJECTS_CI_M2_REPO:-$HOME/.m2-ci/repository}"
+
 # bun exits 1 when an OPTIONAL native dep fails its install script (the
 # ssh2/cpu-features chain needs node-gyp on the machine — `npm i -g node-gyp`
 # fixes it for good). Retry once as defense-in-depth for transient installer
