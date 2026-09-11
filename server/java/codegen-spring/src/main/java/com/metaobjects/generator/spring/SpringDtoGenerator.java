@@ -486,7 +486,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
     /** Shared record emitter: write {@code <Entity>Dto} record from a field + per-field annotation
      *  list, plus {@code extraBodyMembers} (static methods / declarations) appended after the
-     *  nested-enum declarations in the record body — e.g. the issue #203 @autoSet stamping helpers. */
+     *  nested-enum declarations in the record body — e.g. the issue #203 @autoSet stamping helpers.
+     *  Every DTO but a projection's carries the Java builder (#365): a projection's read DTO arrives
+     *  from a query and nothing should construct it, the line the Kotlin port draws too. An entity
+     *  cannot have a read-only primary source, so "not a projection" is exactly "constructable". */
     private void emitRecord(MetaObject entity, Path outRoot, List<MetaField> fields,
             List<String> annotationsPerField, List<String> extraBodyMembers) {
         String[] split = SpringNaming.splitFqn(entity.getName());
@@ -530,14 +533,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
         // Filter ObjectField — see class javadoc. Same reason as the Kotlin port's
         // KotlinExposedTableGenerator scalar-only filter.
+        List<String[]> components = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) {
             MetaField field = fields.get(i);
             String annotations = annotationsPerField.get(i);
+            String type = componentTypeFr019(field, entity);
             src.append("    ");
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
-            src.append(componentTypeFr019(field, entity)).append(' ').append(field.getName());
+            src.append(type).append(' ').append(field.getName());
             if (i < fields.size() - 1) src.append(',');
             src.append('\n');
+            components.add(new String[] { type, field.getName() });
         }
 
         // Nested `public enum <Name> { <members> }` declarations for this record's INLINE enum
@@ -545,12 +551,15 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // enum is NOT nested here — its type is materialized standalone (or @provided externally)
         // and merely referenced. Inline enums stay nested (cross-port parity, byte-identical default).
         List<String> enumDecls = collectEnumDecls(entity, fields);
-        if (enumDecls.isEmpty() && extraBodyMembers.isEmpty()) {
+        String builder = MetaObject.SUBTYPE_PROJECTION.equals(entity.getSubType())
+            ? "" : SpringRecordBuilder.members(recordName, components);
+        if (enumDecls.isEmpty() && extraBodyMembers.isEmpty() && builder.isEmpty()) {
             src.append(") {}\n");
         } else {
             src.append(") {\n");
             for (String decl : enumDecls) src.append("    ").append(decl).append('\n');
             for (String member : extraBodyMembers) src.append(member);
+            src.append(builder);
             src.append("}\n");
         }
 

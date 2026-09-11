@@ -132,21 +132,27 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         src.append("/** GENERATED — value object ").append(recordName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
         src.append("public record ").append(recordName).append("(\n");
+        List<String[]> components = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) {
             MetaField field = fields.get(i);
             String a = annotations.get(i);
+            String type = SpringDtoGenerator.componentType(field, vo);
             src.append("    ");
             if (!a.isEmpty()) src.append(a).append(' ');
-            src.append(SpringDtoGenerator.componentType(field, vo)).append(' ').append(field.getName());
+            src.append(type).append(' ').append(field.getName());
             if (i < fields.size() - 1) src.append(',');
             src.append('\n');
+            components.add(new String[] { type, field.getName() });
         }
         List<String> enumDecls = collectEnumDecls(vo, fields);
-        if (enumDecls.isEmpty()) {
+        // A value object is constructed by its caller, so it carries the Java builder (#365).
+        String builder = SpringRecordBuilder.members(recordName, components);
+        if (enumDecls.isEmpty() && builder.isEmpty()) {
             src.append(") {}\n");
         } else {
             src.append(") {\n");
             for (String decl : enumDecls) src.append("    ").append(decl).append('\n');
+            src.append(builder);
             src.append("}\n");
         }
 

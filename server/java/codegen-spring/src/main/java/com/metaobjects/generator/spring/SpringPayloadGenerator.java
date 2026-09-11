@@ -423,7 +423,10 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                 helpers.add(new String[] { name, helperBody });
             }
         }
-        if (helpers.isEmpty() && enumDecls.isEmpty()) {
+        // A payload is built by the caller that renders the prompt, so it carries the Java
+        // builder (#365) after the hasFoo() helpers.
+        String builder = SpringRecordBuilder.members(recordName, components);
+        if (helpers.isEmpty() && enumDecls.isEmpty() && builder.isEmpty()) {
             src.append(") {}\n");
         } else {
             src.append(") {\n");
@@ -440,6 +443,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                 src.append("    public boolean ").append(methodName).append("() { ")
                    .append(h[1]).append(" }\n");
             }
+            src.append(builder);
             src.append("}\n");
         }
 

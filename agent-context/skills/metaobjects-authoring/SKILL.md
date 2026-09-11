@@ -593,7 +593,9 @@ generated VO replacing a hand-written builder therefore made its Java call sites
 Generated entities and value objects now emit a nested `Builder` plus a `@JvmStatic builder()`
 (`Money.builder().currency("USD").build()`), so partial construction from Java works — **from
 8.0.2** on Maven Central (the npm line's 1.0.2). Check the adopter's pinned version: 8.0.1 and
-earlier have no builder. Reading is unaffected on every version (Kotlin `val` emits Java
+earlier have no builder. The Java port's own generated records (`codegen-spring`: an entity's
+`<Name>Dto`, a value object, a prompt payload) gain a builder in the same release. Its `build()`
+passes nulls through, because `@NotNull` on a record component is enforced at validation. Reading is unaffected on every version (Kotlin `val` emits Java
 getters), so a bag that is only READ converts safely today; it is construction that was blocked.
 `object.projection` deliberately gets no builder — it is derived and read-only, and nothing
 constructs one.

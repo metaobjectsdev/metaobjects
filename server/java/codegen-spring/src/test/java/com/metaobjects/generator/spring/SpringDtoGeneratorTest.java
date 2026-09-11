@@ -59,9 +59,9 @@ public class SpringDtoGeneratorTest extends SharedRegistryTestBase {
         // Java record declaration shape.
         assertTrue("expected record declaration; saw:\n" + src,
             src.contains("public record AuthorDto("));
-        // Java 21 records — closing parens + empty body.
-        assertTrue("expected record body `{}` closing; saw:\n" + src,
-            src.contains(") {}"));
+        // Java 21 records — the component list closes into a body that holds the builder (#365).
+        assertTrue("expected the component list to close into a record body; saw:\n" + src,
+            src.contains("\n) {\n"));
         // Package declaration matches the metadata package, with `::` → `.`.
         assertTrue("expected `package acme.blog;`; saw:\n" + src,
             src.contains("package acme.blog;"));
@@ -128,8 +128,10 @@ public class SpringDtoGeneratorTest extends SharedRegistryTestBase {
         // Must NOT be a `public class` — record only.
         assertFalse("expected record, not class; saw:\n" + src,
             src.contains("public class AuthorDto"));
-        // Empty body — no constructor block, no methods.
-        assertTrue("expected empty record body `) {}`; saw:\n" + src,
-            src.contains(") {}"));
+        // No constructor block of its own — the body holds only the builder (#365).
+        assertFalse("records should not declare an explicit constructor; saw:\n" + src,
+            src.contains("public AuthorDto("));
+        assertTrue("the record body carries the builder; saw:\n" + src,
+            src.contains("public static Builder builder()"));
     }
 }

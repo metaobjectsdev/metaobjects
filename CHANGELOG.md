@@ -10,6 +10,13 @@ here.**
 
 ## [Unreleased]
 
+Coordinated PATCH. **Changed product code: npm and Maven.** npm `1.0.2` carries the `migrate-ts`
+fix below and the authoring-skill corrections the `sdk` bundles; Maven Central `8.0.2` carries
+the Kotlin builder and the Java record builder. **PyPI and NuGet sit this one out at `1.0.1`:** no Python or C# product
+file changed. The skill edits do not reach either (neither the wheel nor the .NET tool vendors
+`agent-context`), and the only Python change is `uv.lock`, which does not ship.
+`metamodelVersion` stays `1.0`.
+
 ### Added
 
 - **A generated Kotlin entity / value object is now constructible from Java** — a nested
@@ -24,9 +31,23 @@ here.**
   on an adopter. `object.projection` gets none — it is derived and read-only. Kotlin callers are
   unaffected (named arguments already covered it), which is why every test in that module, all
   Kotlin-side, missed this; the new test compiles real Java against the generated class.
-  `codegen-spring`'s Java `record`s have the same all-args shape and are tracked in #365 as a
-  follow-on. No vocabulary change, so `metamodelVersion` does not move.
+  `codegen-spring`'s Java `record`s had the same all-args shape, and no defaults at all; they
+  get the same builder in this release (below). No vocabulary change, so `metamodelVersion` does not move.
 
+- **A generated Java record can now be built one component at a time.** `codegen-spring` emits a
+  static `builder()` and a nested `Builder` on an entity's `<Name>Dto`, on an `object.value`
+  record, and on a prompt's payload, response and nested payload records ([#365], the
+  Java-record half). A record's only
+  constructor takes every component in order. A caller setting 2 of 14 passed 12 nulls, and the
+  call broke whenever a component was added.
+  - `build()` calls the canonical constructor and checks nothing itself. A record component
+    accepts null and `@NotNull` is enforced at validation, so the builder admits exactly what
+    the constructor admits.
+  - A projection's read DTO gets no builder: it arrives from a query, and nothing should
+    construct it.
+  - Where the builder would not compile (a component named `builder`, or a record or component
+    type named `Builder`), it is left out.
+  - The new test compiles a real Java caller against the generated records and runs it.
 
 ### Fixed
 
@@ -64,6 +85,18 @@ here.**
   `applyPending` and `rollbackTo`, and fail on the old emitter; the remaining casts are pinned as SQL.
   Found converting an adopter's jsonb string list. No vocabulary change, so `metamodelVersion`
   does not move.
+
+### Changed
+
+- **The authoring skill's jsonb ladder** (bundled by `@metaobjectsdev/sdk`, scaffolded by
+  `meta agent-docs`) had three errors and one missing step:
+  - It still described the #362 nested-map validation gap as open, though 1.0.1 closed it.
+  - Its `vectorScores` example sat on the `field.map` rung, but the writer is
+    `list[float]`, which belongs on `field.double` + `isArray`.
+  - It could not recommend a value object to a Java consumer while generated Kotlin VOs were
+    unconstructible from Java. They are constructible now, as noted above.
+  - It never said that the `isArray` rung is a migration, needs `--allow type-change`, and
+    must change the writer in the same deploy.
 
 ## [1.0.1] — 2026-09-10
 
