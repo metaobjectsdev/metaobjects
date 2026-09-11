@@ -173,6 +173,12 @@ gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-p
 # checks names. Offline; one manifest.
 gate_script_name_hooks() { node scripts/check-script-name-hooks.mjs; }
 
+# ── release hygiene: uv.lock must agree with pyproject.toml ──────────────────
+# Every lane runs plain `uv run`, which REWRITES a disagreeing lockfile in place, so a
+# release that bumps pyproject and forgets the lock stays green forever. Twice now: the
+# 1.0.0 cut needed a follow-up commit, and 1.0.1 skipped the step again.
+gate_uv_lock_version() { scripts/check-uv-lock-version.sh; }
+
 # ── the lane selector decides what CI runs, so nothing may run it untested ────
 # Both selector tests existed-but-unwired at some point: test-ci-affected-ports.sh was
 # referenced by no lane at all, so the mapping that decides which ports get tested was
@@ -709,6 +715,7 @@ fi
 if want gates; then step    "leak-scan (security)"             gate_leak_scan;             fi
 if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
 if want gates; then step    "bun-version parity"               gate_bun_version;            fi
+if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
 if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
 if want gates; then step    "publish-set parity"               gate_publish_set;            fi
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
