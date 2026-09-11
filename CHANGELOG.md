@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-09-11
+
+_npm `1.0.2` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 Coordinated PATCH. **Changed product code: npm and Maven.** npm `1.0.2` carries the `migrate-ts`
 fix below and the authoring-skill corrections the `sdk` bundles; Maven Central `8.0.2` carries
 the Kotlin builder and the Java record builder. **PyPI and NuGet sit this one out at `1.0.1`:** no Python or C# product
