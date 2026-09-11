@@ -278,6 +278,12 @@ export type {
 } from "./source.js";
 export { codeSource } from "./source.js";
 
+// FR-023 §4.3 — scope-pattern grammar (moved from sdk; sdk re-exports these
+// for compatibility, and codegen-ts's publisher generator depends on this
+// package directly rather than on sdk).
+export { compileScope, matchesScope } from "./scope.js";
+export type { Scope, CompiledScope } from "./scope.js";
+
 // Attribute-schema validation pass (Phase A3)
 export { validateAttrSchema } from "./attr-schema-validate.js";
 export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
