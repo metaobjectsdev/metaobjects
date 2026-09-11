@@ -19,6 +19,24 @@
 export { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, AllowTokenEnum } from "./config.js";
 export type { Config } from "./config.js";
 
+// Metadata dependencies (FR-023) — the `dependencies` config key's schema
+// and constants. Resolution, the manifest, the lock and sync land in later
+// tasks.
+export {
+  DEPS_DIR,
+  LOCK_FILE,
+  LOCAL_OVERRIDE_FILE,
+  MANIFEST_FILE,
+  ARTIFACT_SUFFIX,
+  DEPENDENCY_SOURCE_ID_PREFIX,
+  INTEGRITY_PREFIX,
+  DEPENDENCY_MODES,
+  DEFAULT_DEPENDENCY_MODE,
+  DependencySpecSchema,
+  dependencyName,
+} from "./dependencies.js";
+export type { DependencyMode, DependencySpec } from "./dependencies.js";
+
 // Meta Forge metadata types + attribute name constants (registered into a
 // TypeRegistry to let Loader parse decision/principle/etc. children + the
 // @forge* attribute namespace).

@@ -101,3 +101,40 @@ def test_non_string_source_value_raises(tmp_path: Path) -> None:
     _write_config(tmp_path, {"schema_version": 1, "sources": [{"path": 123}]})
     with pytest.raises(ParseError):
         read_neutral_config(tmp_path)
+
+
+# FR-023 — `dependencies` (DESIGN §3.1). Read as part of the neutral subset,
+# same as `sources`: every port reads it at every rung of the source ladder.
+
+
+def test_dependencies_parse_with_mode_default(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "dependencies": [{"name": "acme-common", "path": "../lib"}]})
+    cfg = read_neutral_config(tmp_path)
+    assert cfg is not None
+    assert cfg.dependencies == [{"name": "acme-common", "path": "../lib", "mode": "reference"}]
+
+
+def test_dependencies_absent_is_empty(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": []})
+    cfg = read_neutral_config(tmp_path)
+    assert cfg is not None
+    assert cfg.dependencies == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        [{"name": "a", "path": "x", "npm": "y"}],
+        [{"name": "a"}],
+        [{"name": "Bad Name", "path": "x"}],
+        [{"name": "a", "path": "x", "mode": "shared"}],
+        [{"name": "a", "path": "x"}, {"name": "a", "npm": "y"}],
+        [{"name": "a", "path": "x", "dir": "y"}],
+        [{"name": "a", "path": "x", "pathh": "t"}],
+    ],
+)
+def test_dependencies_shape_errors(tmp_path: Path, bad: object) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "dependencies": bad})
+    with pytest.raises(ParseError) as e:
+        read_neutral_config(tmp_path)
+    assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
