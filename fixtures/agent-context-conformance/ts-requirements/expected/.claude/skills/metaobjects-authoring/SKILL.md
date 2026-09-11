@@ -584,19 +584,21 @@ Python's `ObjectManager` encodes a map today; `runtime-ts`, Java's OMDB and the 
 lane carry no map handling at all. So a map you intend to read back through a PORT RUNTIME is
 still better declared as a value object, and a genuinely dynamic key set stays a bag.
 
-**One sharp edge where generated code IS the consumer: nested map values can be written
-UNVALIDATED, per port.** TypeScript (`z.record` over the VO's insert schema) and Python
-(`dict[str, VO]` Pydantic) validate map values, and Kotlin writes no map column. **Java**
-validates them on its vanilla create/PATCH handlers but NOT on TPH (discriminator-rooted) write
-paths — those validate field-by-field with `validateValue`, which does not cascade `@Valid`.
-**C# validates them on NO write path** — vanilla create, vanilla PATCH, and TPH alike: the map
-never reaches the recursively-validating value-object arms (they admit `field.object` only),
-and the generic arms check the dictionary property itself, never its values. A posted value
-violating the referenced `object.value`'s constraints is accepted and written, silently, and
-reading the adopter's own source will not reveal it. Scalar-valued maps (`@valueType`) are
-unaffected. Do not recommend this rung for a Java TPH entity — or for C# at all — without
-saying so and pointing at boundary validation of map values before write;
-[issue #362](https://github.com/metaobjectsdev/metaobjects/issues/362) tracks the gap. Every rung but the first keeps the
+**One sharp edge where generated code IS the consumer, and it is now a VERSION question rather
+than a port question: nested map values.** As of **1.0.1** every port validates them on every
+write path ([#362](https://github.com/metaobjectsdev/metaobjects/issues/362)). On **1.0.0 the
+hole is open**, so check the adopter's pinned version before recommending this rung to a Java
+or C# consumer: Java validated nested map values on its vanilla create/PATCH handlers but not
+on TPH (discriminator-rooted) write paths, which validate field-by-field with `validateValue`
+and do not cascade `@Valid`; C# validated them on no write path at all — the map never reached
+the recursively-validating value-object arms (they admit `field.object` only), and
+`ValueObjectValidator` treated a `Dictionary` as a plain `IEnumerable`, validating
+`KeyValuePair` structs instead of the values. TypeScript and Python were never affected, and
+Kotlin writes no map column. Scalar-valued maps (`@valueType`) carry no nested bean and were
+never affected on any version. **The failure mode was silent acceptance, not an error** — a
+POST or PATCH carrying an invalid nested value returned 201/200 and wrote the row — so an
+adopter still on 1.0.0 needs their own boundary check, and one written while this was open is
+now redundant rather than load-bearing. Every rung but the first keeps the
 column jsonb, so moving a column up the ladder is a codegen/contract change rather than a
 migration — read the emitted DDL before promising that.
 
