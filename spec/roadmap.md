@@ -35,7 +35,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-020 | `@inheritance` joined strategy | 📋 | 1.x | [#6](https://github.com/metaobjectsdev/metaobjects/issues/6) |
 | FR-021 | api metadata + contract projections | 📋 | 1.3 | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) |
 | FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 📋 | 1.3 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
-| FR-023 | Metadata packages (cross-project sharing) | 📋 | 1.x | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
+| FR-023 | Metadata dependencies (cross-repo sharing: generated shared-model artifact, `meta deps sync`, committed snapshot + lock, consumer extend/overlay with usage-aware breaking-change gate) | 🔵 designed (v2, 2026-09-11); Phase 1a (TS + Python) active | 1.1 | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
 | FR-024 | Entity surfaces (projection/value + declared API) | 🟢 taxonomy + B3/B4a/B4b/B5/B6 validation parity + projection codegen **shipped 5 ports (1.0)**; declared-API surface (`api.operational`/`operation`/`binding.rest`) **deferred to 1.1** (foundation for FR-034) | 1.0 · 1.1 | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
 | FR-025 | Cross-port package-binding codegen config | 📋 | 1.1 | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) |
 | FR-026 | Forms completeness (edit forms + view parity) | 🟢 edit forms + view-kind control dispatch **shipped**; renderer parity / validator wiring / `layout.form` **deferred to 1.1** | 1.1 | [#12](https://github.com/metaobjectsdev/metaobjects/issues/12) |
