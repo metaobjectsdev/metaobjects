@@ -16,4 +16,11 @@ describe("FileSource id", () => {
     const v = root.objects()[0]!;
     expect("files" in v.source ? v.source.files : []).toEqual(["dep:acme-common/acme-common.metaobjects.json"]);
   });
+
+  test("an explicit empty-string id is honoured, not treated as absent", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fs-id-empty-"));
+    const p = join(dir, "meta.a.json");
+    await writeFile(p, JSON.stringify({ "metadata.root": { package: "p", children: [] } }));
+    expect(new FileSource(p, { id: "" }).id).toBe("");
+  });
 });

@@ -15,3 +15,9 @@ def test_file_source_id_defaults_to_basename_and_accepts_override(tmp_path):
     node = next(c for c in res.root.own_children())  # ADR-0039 sanctioned own: root-level scan
     # source.files is a tuple (existing Python convention — see test_source_on_node.py).
     assert node.source.files == ("dep:acme-common/acme-common.metaobjects.json",)
+
+
+def test_file_source_empty_string_id_is_honoured_not_treated_as_absent(tmp_path):
+    p = tmp_path / "meta.a.json"
+    p.write_text(json.dumps({"metadata.root": {"package": "p", "children": []}}))
+    assert FileSource(p, id="").id == ""

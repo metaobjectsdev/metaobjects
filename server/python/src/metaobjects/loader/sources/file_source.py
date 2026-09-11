@@ -39,7 +39,7 @@ class FileSource(MetaDataSource):
 
     @property
     def id(self) -> str:
-        return self._id or self._path.name
+        return self._id if self._id is not None else self._path.name
 
     @property
     def format(self) -> MetaDataFormat:
