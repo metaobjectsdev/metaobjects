@@ -167,6 +167,14 @@ const satOutIsPlausible = (k) => {
   return m !== undefined && m === r[k] && m !== want;
 };
 
+/**
+ * Registries that sat this release out, and the coordinate each still ships. Filled only
+ * once the `--sat-out` declaration has survived the manifest check below, and read by
+ * gate 5: a mirror stating a sat-out registry's unmoved number is telling the truth.
+ * @type {Map<string, string>}
+ */
+const satOut = new Map();
+
 if (wrong.length > 0) {
   const idx = process.argv.indexOf("--sat-out");
   const raw = idx === -1 ? "" : (process.argv[idx + 1] ?? "");
@@ -212,6 +220,10 @@ if (wrong.length > 0) {
         ? `\n  Or, if these genuinely sat this release out (publish-what-changed):\n` +
           `    bun scripts/finish-release.mjs ${VERSION} --sat-out ${offerable.join(",")}`
         : ``));
+  }
+  for (const k of skipped) {
+    const v = r[k];
+    if (v !== undefined) satOut.set(k, v);
   }
   ok(`payload coordinates match (${skipped.join(", ")} sat this release out, manifests agree)`);
 } else {
@@ -289,6 +301,8 @@ for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
   // historical ("retired in `0.24.0`"), which is the false-failure this deliberately
   // avoids — an earlier blanket rule tripped on exactly that sentence.
   const CLAIM = /\b(npm|PyPI|NuGet|Maven Central)\b/;
+  /** The name each registry key goes by on a claim line — the four names `CLAIM` matches. */
+  const REGISTRY_LABEL = new Map([["npm", "npm"], ["pypi", "PyPI"], ["nuget", "NuGet"], ["maven", "Maven Central"]]);
   // ANY three-part version, checked against the two coordinates this release shipped.
   //
   // This deliberately does not scan for the `0.x.y` and `7.x.y` FAMILIES the pre-1.0
@@ -300,9 +314,25 @@ for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
   // are MetaObjects' own coordinates, and a claim line may only name what shipped.
   const VER = /\b\d+\.\d+\.\d+\b/g;
   const SHIPPED = new Set([VERSION, MAVEN_VERSION]);
+  // ...plus a registry that SAT OUT, which still ships its previous coordinate: the mirror
+  // saying PyPI `1.0.1` at the 1.0.2 cut is right, and refusing it left no way through but
+  // making the mirror lie. The excuse is scoped to where the line ATTRIBUTES the number to
+  // that registry — the version directly after its name. The same number elsewhere on the
+  // line is still stale: a heading naming npm and PyPI must not let `npm 1.0.1` through
+  // because PyPI legitimately reads `1.0.1`.
   const bad = [];
   for (const line of [summary, ...text.split("\n").filter((l) => l !== summary && CLAIM.test(l))]) {
-    const stale = [...line.matchAll(VER)].map((m) => m[0]).filter((v) => !SHIPPED.has(v));
+    /** @type {Set<number>} offsets of versions a sat-out registry's name claims */
+    const excused = new Set();
+    for (const [k, v] of satOut) {
+      const label = REGISTRY_LABEL.get(k);
+      if (label === undefined) continue;
+      const re = new RegExp(`\\b${label}\\b[^0-9\\n]{0,4}(${v.replaceAll(".", "\\.")})\\b`, "g");
+      for (const m of line.matchAll(re)) excused.add((m.index ?? 0) + m[0].length - (m[1] ?? "").length);
+    }
+    const stale = [...line.matchAll(VER)]
+      .filter((m) => !SHIPPED.has(m[0]) && !excused.has(m.index ?? -1))
+      .map((m) => m[0]);
     if (stale.length > 0) bad.push(`${stale.join(", ")}  in: ${line.trim().slice(0, 100)}`);
   }
   if (bad.length > 0) {

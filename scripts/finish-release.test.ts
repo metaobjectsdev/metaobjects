@@ -454,6 +454,29 @@ describe("finish-release gate 5: the llms mirrors state this release", () => {
     expect(r.out).toContain("0.24.5");
   });
 
+  // A registry that SAT OUT still ships its previous coordinate, so a mirror stating it is
+  // RIGHT. 1.0.2 was the first sit-out release after the scan widened to "any version
+  // but the two shipped ones", and the gate refused mirrors that correctly read PyPI
+  // `1.0.1` / NuGet `1.0.1` — the only way through was to make them lie.
+  test("a sat-out registry's unmoved coordinate passes on its own claim line", () => {
+    const payload: Coords = { ...SHIPPED, pypi: "0.24.5" };
+    const r = makeRepo({ payload, manifest: { pypi: "0.24.5" }, llms: llms(payload) })
+      .run(RELEASE, "--sat-out", "pypi", "--check");
+    expect(r.out).toContain("the llms mirrors state this release");
+    expect(r.code).toBe(0);
+  });
+
+  // The excuse is scoped to the registry that sat out: the same number beside npm on the
+  // same line is still a stale claim, and the line naming both must not launder it.
+  test("a sat-out coordinate excuses only the registry that sat out", () => {
+    const payload: Coords = { ...SHIPPED, pypi: "0.24.5" };
+    const body = llms(payload).replace("## Implementations (npm `0.24.6`", "## Implementations (npm `0.24.5`");
+    const r = makeRepo({ payload, manifest: { pypi: "0.24.5" }, llms: body })
+      .run(RELEASE, "--sat-out", "pypi", "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("names a version this release did not ship");
+  });
+
   // The stale-version scan used to look for the `0.x.y` and `7.x.y` FAMILIES rather than
   // for "not one of the two coordinates". Both literals stop matching at 1.0.0 / 8.0.0,
   // so the gate went silently blind on the one release whose mirrors have the most to get
