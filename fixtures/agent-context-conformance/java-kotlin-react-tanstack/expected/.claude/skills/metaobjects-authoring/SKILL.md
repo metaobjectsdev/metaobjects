@@ -558,9 +558,10 @@ third-party or LLM response stored verbatim, a column whose shape genuinely diff
 
 ```json
 { "field.string": { "name": "relatedMemoryIds", "isArray": true } }                                // writer: list[str]
+{ "field.double": { "name": "vectorScores", "isArray": true } }                                    // writer: list[float]
 { "field.object": { "name": "profile", "@objectRef": "InstructorProfile", "@storage": "jsonb" } }  // writer: a dataclass
 { "field.map":    { "name": "preferences", "@objectRef": "Preference" } }                          // writer: dict[str, Preference]
-{ "field.map":    { "name": "vectorScores", "@valueType": "double" } }                             // writer: dict[str, float]
+{ "field.map":    { "name": "sitePages", "@valueType": "string" } }                                // writer: Record<string, string>
 { "field.string": { "name": "rawResponse", "@dbColumnType": "jsonb" } }                            // writer: dict[str, Any], nothing pinned
 ```
 
