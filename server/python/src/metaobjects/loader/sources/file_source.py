@@ -21,9 +21,17 @@ def _infer_format(path: Path) -> MetaDataFormat:
 class FileSource(MetaDataSource):
     """A single on-disk file, decoded eagerly via ``utf-8-sig``."""
 
-    def __init__(self, path: Path | str, format: MetaDataFormat | None = None) -> None:
+    def __init__(
+        self,
+        path: Path | str,
+        format: MetaDataFormat | None = None,
+        id: str | None = None,
+    ) -> None:
         self._path = Path(path)
         self._format = format if format is not None else _infer_format(self._path)
+        # Explicit id (FR-023: dependency snapshots load with `dep:<name>/<artifact>`)
+        # overrides the default basename.
+        self._id = id
 
     @property
     def path(self) -> Path:
@@ -31,7 +39,7 @@ class FileSource(MetaDataSource):
 
     @property
     def id(self) -> str:
-        return self._path.name
+        return self._id or self._path.name
 
     @property
     def format(self) -> MetaDataFormat:

@@ -27,16 +27,24 @@ async function getReadText(): Promise<(path: string) => Promise<string>> {
   return _readText;
 }
 
+/** Options for {@link FileSource}. */
+export interface FileSourceOptions {
+  /** Explicit source id (e.g. `dep:<name>/<artifact>` for a dependency snapshot).
+   *  Defaults to `basename(path)` when omitted. */
+  id?: string;
+}
+
 /** A metadata source backed by a file on disk. */
 export class FileSource implements MetaDataSource {
   readonly id: string;
   readonly format: MetaDataFormat;
   private readonly _path: string;
 
-  constructor(path: string) {
+  constructor(path: string, opts?: FileSourceOptions) {
     this._path = path;
     // basename() for readable error messages; cross-platform (handles both / and \). Full path retained for read().
-    this.id = basename(path);
+    // An explicit id (FR-023: dependency snapshots load with `dep:<name>/<artifact>`) overrides the default.
+    this.id = opts?.id ?? basename(path);
     this.format = inferFormat(path);
   }
 
