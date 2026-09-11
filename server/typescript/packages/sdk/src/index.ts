@@ -94,15 +94,13 @@ export type { DiscoveredRoot } from "./discovery.js";
 export { resolveCollection } from "./collection.js";
 export type { Collection } from "./collection.js";
 
-// Workspace discovery — finds peer metadata packages in a monorepo
+// DEPRECATED (removed in 2.0) — workspace discovery over the v0.3 package.meta.json
+// prototype. Nothing in the toolchain calls it; cross-repo sharing is FR-023.
 export { discoverWorkspace, resolveExtendsOrder, packageLabel } from "./workspace.js";
 export type { Workspace, WorkspacePackage } from "./workspace.js";
 
-// Package manifest — the v0.3 package.meta.json model. Three-field manifest
-// (name, version, extends) that defines a metadata package's identity and
-// upstream dependencies. The package's metadata tree IS its public API;
-// there is no exports field. See docs/strategy/2026-05-12-v0.3-ai-first-
-// metadata-loading.md.
+// DEPRECATED (removed in 2.0) — the v0.3 package.meta.json prototype. Never wired into
+// loading; superseded by FR-023 (metadata dependencies).
 export {
   PackageManifestSchema,
   readPackageManifest,

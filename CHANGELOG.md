@@ -10,6 +10,15 @@ here.**
 
 ## [Unreleased]
 
+### Deprecated
+
+- **`@metaobjectsdev/sdk`: the v0.3 `package.meta.json` prototype and workspace discovery** —
+  `PackageManifestSchema`, `PackageManifest`, `PACKAGE_MANIFEST_FILE`, `readPackageManifest`,
+  `resolveMetaobjectsPackage`, `discoverWorkspace`, `resolveExtendsOrder`, `packageLabel`,
+  `Workspace`, `WorkspacePackage`. Nothing in the toolchain reads a `package.meta.json`;
+  cross-repo metadata sharing is being built as FR-023 (metadata dependencies). They still work
+  and are removed in 2.0.
+
 ## [1.0.2] — 2026-09-11
 
 _npm `1.0.2` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

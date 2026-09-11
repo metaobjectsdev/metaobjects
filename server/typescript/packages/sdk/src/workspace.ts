@@ -30,6 +30,7 @@ const PACKAGE_JSON = "package.json";
 // Public types
 // ---------------------------------------------------------------------------
 
+/** @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0. */
 export interface WorkspacePackage {
   /** Absolute path to the .meta/ directory. */
   metaDir: string;
@@ -39,6 +40,7 @@ export interface WorkspacePackage {
   metaobjectsPackage: string;
 }
 
+/** @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0. */
 export interface Workspace {
   /** Absolute path to the workspace root (where pnpm-workspace.yaml or package.json lives). */
   root: string;
@@ -213,6 +215,8 @@ function matchGlobSegment(pattern: string): (value: string) => boolean {
  *
  * The returned Workspace has every package's manifest pre-loaded; callers
  * can look up peers by name or canonical metaobjects ref.
+ *
+ * @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0.
  */
 export async function discoverWorkspace(cwd: string): Promise<Workspace | undefined> {
   const config = await findWorkspaceConfig(cwd);
@@ -290,6 +294,8 @@ export async function discoverWorkspace(cwd: string): Promise<Workspace | undefi
  * Throws on:
  *   - Missing package referenced by extends:
  *   - Cycles in the extends graph
+ *
+ * @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0.
  */
 export function resolveExtendsOrder(
   workspace: Workspace,
@@ -336,7 +342,11 @@ export function resolveExtendsOrder(
 // Diagnostic helpers
 // ---------------------------------------------------------------------------
 
-/** Human-readable label for a workspace package — useful for error messages. */
+/**
+ * Human-readable label for a workspace package — useful for error messages.
+ *
+ * @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0.
+ */
 export function packageLabel(pkg: WorkspacePackage): string {
   return `${pkg.manifest.name} (${pkg.metaobjectsPackage}) at ${basename(dirname(pkg.metaDir))}`;
 }

@@ -39,6 +39,8 @@ const MetaobjectsPackageSchema = z.string().regex(
 /**
  * The package.meta.json schema. Authoring this is the one-time cost of
  * defining a metadata package; subsequent edits should be rare.
+ *
+ * @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0.
  */
 export const PackageManifestSchema = z.object({
   /**
@@ -72,8 +74,10 @@ export const PackageManifestSchema = z.object({
   extends: z.array(ExtendsEntrySchema).default([]),
 });
 
+/** @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0. */
 export type PackageManifest = z.infer<typeof PackageManifestSchema>;
 
+/** @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0. */
 export const PACKAGE_MANIFEST_FILE = "package.meta.json";
 
 /**
@@ -81,6 +85,8 @@ export const PACKAGE_MANIFEST_FILE = "package.meta.json";
  * Returns undefined when the file isn't there — packages are optional in
  * v0.3 v0.1 (loadMemory still works for single-package usage without one,
  * and forge init scaffolds one but doesn't enforce its presence).
+ *
+ * @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0.
  */
 export async function readPackageManifest(metaDir: string): Promise<PackageManifest | undefined> {
   const path = join(metaDir, PACKAGE_MANIFEST_FILE);
@@ -104,6 +110,8 @@ export async function readPackageManifest(metaDir: string): Promise<PackageManif
  * Returns undefined if `name` itself isn't a valid bare name (e.g. has
  * uppercase chars) and no explicit ref is set — the caller should treat
  * this as an authoring error.
+ *
+ * @deprecated The v0.3 `package.meta.json` prototype: nothing in the toolchain reads it. Cross-repo metadata sharing is FR-023 (metadata dependencies). Removed in 2.0.
  */
 export function resolveMetaobjectsPackage(manifest: PackageManifest): string | undefined {
   if (manifest.metaobjectsPackage !== undefined) return manifest.metaobjectsPackage;
