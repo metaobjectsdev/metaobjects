@@ -25,7 +25,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 313 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 314 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 15 | 15 / 15 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -118,7 +118,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (313)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (314)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -238,7 +238,7 @@ grammar rather than four.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the eight corpora mapped above (metamodel 313 + yaml 15 + verify 31
+The fixtures in the eight corpora mapped above (metamodel 314 + yaml 15 + verify 31
 + render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10) each
 map to a feature doc. None are orphaned today. The remaining corpora in the totals table gate tooling
 contracts (registry manifests, provider composition, agent context, docs emit)

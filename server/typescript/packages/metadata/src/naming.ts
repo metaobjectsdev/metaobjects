@@ -30,6 +30,17 @@ export function stripPackage(name: string | undefined): string {
   return idx === -1 ? name : name.slice(idx + PACKAGE_SEPARATOR.length);
 }
 
+/**
+ * The package half of a resolution key — the complement of `stripPackage`
+ * (`"a::b::C"` → `"a::b"`; a root-level `"C"` → `""`). A resolution key is
+ * `package::name` for a packaged node and the bare name otherwise, so the text
+ * before the LAST separator is exactly the node's package.
+ */
+export function packageOfResolutionKey(fqn: string): string {
+  const idx = fqn.lastIndexOf(PACKAGE_SEPARATOR);
+  return idx === -1 ? "" : fqn.slice(0, idx);
+}
+
 export function toSnakeCase(s: string): string {
   return s
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")

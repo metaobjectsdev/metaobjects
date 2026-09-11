@@ -235,7 +235,7 @@ export type { ParseOptions, ParseResult } from "./parser-core.js";
 export { parseJson } from "./parser-json.js";
 
 // Serializer
-export { serializeJson, canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
+export { serializeJson, canonicalSerialize, serializeSharedDocument, inferAttrSubType } from "./serializer-json.js";
 export type { SerializeOptions } from "./serializer-json.js";
 
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)
@@ -290,7 +290,7 @@ export {
   resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
   primaryRdbSource, sourceAddressKey,
   buildNameMap,
-  stripPackage,
+  stripPackage, packageOfResolutionKey,
 } from "./naming.js";
 export type { EntityNameMap, ColumnNamingStrategy } from "./naming.js";
 
