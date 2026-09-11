@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **21 shared conformance corpora** under
+The MetaObjects standard ships **22 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -44,6 +44,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | — |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 1 case (FR-023 Phase 1a, in progress — cases land with the implementation) | runner in place (`sdk/test/dependency-conformance.test.ts`), red by design until the resolver lands | — (Phase 2) | — (Phase 2) | — (Phase 2) | — (no runner yet) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 
