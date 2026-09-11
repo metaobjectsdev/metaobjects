@@ -94,22 +94,33 @@ export function injectSnippets(html, payload) {
 }
 
 /**
- * A version coordinate placeholder: any element carrying `data-registry="<key>"`.
+ * A SCALAR placeholder: any element carrying `<attr>="<key>"`.
+ *
+ * Two attributes use this shape — `data-registry` for the release's version coordinates
+ * and `data-count` for the counts the repo derives (fixtures, corpora, base types). They
+ * are one mechanism because they are one kind of thing: a number this repo owns, stamped
+ * into a page so nobody retypes it. They stay two ATTRIBUTES so a key can never be
+ * ambiguous between a version and a tally.
  *
  * The closer is a BACKREFERENCE to the opening tag name, not a fixed `</code>`. A fixed
  * closer would let a `<span data-registry>` be ended by the next `</code>` anywhere in
  * the document, swallowing everything between — and the page would still look plausible.
  *
- * The content is `[^<]*`, so a coordinate placeholder holds TEXT and nothing else. That
- * is a deliberate constraint rather than a limitation: a version is a bare string, and
- * refusing to match across nested markup means this can never eat a block it was pointed
- * at by mistake.
+ * The content is `[^<]*`, so a scalar placeholder holds TEXT and nothing else. That is a
+ * deliberate constraint rather than a limitation: a version and a count are both bare
+ * strings, and refusing to match across nested markup means this can never eat a block
+ * it was pointed at by mistake.
  */
-/** @type {(key: string) => RegExp} */
-const COORD = (key) => new RegExp(
-  `(<([a-zA-Z][\\w-]*)[^>]*\\sdata-registry="${escapeRe(key)}"[^>]*>)[^<]*(</\\2>)`, "g");
+/** @type {(attr: string, key: string) => RegExp} */
+const SCALAR = (attr, key) => new RegExp(
+  `(<([a-zA-Z][\\w-]*)[^>]*\\s${attr}="${escapeRe(key)}"[^>]*>)[^<]*(</\\2>)`, "g");
 
-const COORD_KEY = /<[a-zA-Z][\w-]*[^>]*\sdata-registry="([^"]+)"/g;
+/** @type {(attr: string) => RegExp} */
+const SCALAR_KEY = (attr) => new RegExp(`<[a-zA-Z][\\w-]*[^>]*\\s${attr}="([^"]+)"`, "g");
+
+/** @type {(html: string, attr: string) => string[]} */
+const collectScalarKeys = (html, attr) =>
+  [...html.matchAll(SCALAR_KEY(attr))].map((m) => m[1]).filter((k) => k !== undefined);
 
 /** Every coordinate key the page references, in document order, repeats included. */
 /**
@@ -117,21 +128,77 @@ const COORD_KEY = /<[a-zA-Z][\w-]*[^>]*\sdata-registry="([^"]+)"/g;
  * @returns {string[]}
  */
 export function collectRegistryKeys(html) {
-  return [...html.matchAll(COORD_KEY)]
-    .map((m) => m[1])
-    .filter((k) => k !== undefined);
+  return collectScalarKeys(html, "data-registry");
+}
+
+/** Every count key the page references, in document order, repeats included. */
+/**
+ * @param {string} html
+ * @returns {string[]}
+ */
+export function collectCountKeys(html) {
+  return collectScalarKeys(html, "data-count");
 }
 
 /**
- * Fill every `data-registry` placeholder from the payload's five coordinates.
+ * Fill every `<attr>="<key>"` placeholder from a payload section.
  *
  * The direction enforced here is page -> payload only, and that asymmetry is on purpose.
  * A key the payload cannot fill is a hard failure, because the alternative is publishing
- * a blank or stale number that reads exactly like a real one. But a coordinate NO page
- * shows is fine: the payload always carries all five because they are one fact about the
- * release, and which of them a page chooses to display is editorial. That is the
- * opposite of a snippet, which is BUILT for a page — an unreferenced snippet is build
- * work nobody asked for, and `assertBijection` reports it.
+ * a blank or stale number that reads exactly like a real one. But a value NO page shows
+ * is fine: the payload always carries every coordinate and every count because each is
+ * one fact about the release, and which of them a page chooses to display is editorial.
+ * That is the opposite of a snippet, which is BUILT for a page — an unreferenced snippet
+ * is build work nobody asked for, and `assertBijection` reports it.
+ *
+ * @param {string} html
+ * @param {string} attr        the placeholder attribute, e.g. "data-registry"
+ * @param {Map<string, string|number>} values
+ * @param {string} label       what a value IS, for the error text
+ * @returns {string}
+ */
+function injectScalars(html, attr, values, label) {
+  let out = html;
+  for (const key of new Set(collectScalarKeys(html, attr))) {
+    const v = values.get(key);
+    if (v === undefined) {
+      throw new Error(
+        `site inject: no payload ${label} for ${attr}="${key}". ` +
+        `Known: ${[...values.keys()].join(", ")}.`);
+    }
+    // A function replacer for the same reason injectSnippets uses one: a version is
+    // tame today, but `$&` in a replacement string is a trap that only fires on the
+    // one value that contains it. It also COUNTS, which is the point below.
+    let hits = 0;
+    out = out.replace(SCALAR(attr, key), (/** @type {string} */ _m, /** @type {string} */ open, /** @type {string} */ _tag, /** @type {string} */ close) => {
+      hits += 1;
+      return `${open}${String(v)}${close}`;
+    });
+
+    // A key can be COLLECTED and yet not REPLACED, because the two patterns disagree.
+    // `SCALAR_KEY` reads the opening tag alone; `SCALAR` additionally demands `[^<]*`
+    // content and a backreferenced closer. So `<span data-registry="npm"><code>0.24.5
+    // </code></span>` and `<span data-registry="npm"/>` both collect and neither fills —
+    // and the page keeps its hand-typed value while the caller, which counts KEYS
+    // rather than replacements, prints a tick. A stale value that reports as injected
+    // is worse than one that was never wired up, because nothing will look at it again.
+    if (hits === 0) {
+      throw new Error(
+        `site inject: ${attr}="${key}" was found but could not be filled. A ` +
+        `placeholder must wrap TEXT and close with its own tag — ` +
+        `<span ${attr}="${key}">${String(v)}</span>, not nested markup or a self-closing tag.`);
+    }
+  }
+  return out;
+}
+
+/**
+ * Fill every `data-registry` placeholder from the payload's version coordinates.
+ *
+ * A Map rather than an index cast: `Registries` is a closed shape with no index
+ * signature, and casting it to Record<string, string> to look up an UNTRUSTED key read
+ * out of a page is exactly the kind of assertion that turns a typo into `undefined`
+ * flowing onward instead of a named error.
  */
 /**
  * @param {string} html
@@ -139,43 +206,24 @@ export function collectRegistryKeys(html) {
  * @returns {string}
  */
 export function injectRegistries(html, payload) {
-  let out = html;
-  // A Map rather than an index cast: `Registries` is a closed shape with no index
-  // signature, and casting it to Record<string, string> to look up an UNTRUSTED key
-  // read out of a page is exactly the kind of assertion that turns a typo into
-  // `undefined` flowing onward instead of the error below.
-  const coords = new Map(Object.entries(payload.registries));
-  for (const key of new Set(collectRegistryKeys(html))) {
-    const v = coords.get(key);
-    if (v === undefined) {
-      throw new Error(
-        `site inject: no payload coordinate for data-registry="${key}". ` +
-        `Known coordinates: ${[...coords.keys()].join(", ")}.`);
-    }
-    // A function replacer for the same reason injectSnippets uses one: a version is
-    // tame today, but `$&` in a replacement string is a trap that only fires on the
-    // one value that contains it. It also COUNTS, which is the point below.
-    let hits = 0;
-    out = out.replace(COORD(key), (/** @type {string} */ _m, /** @type {string} */ open, /** @type {string} */ _tag, /** @type {string} */ close) => {
-      hits += 1;
-      return `${open}${v}${close}`;
-    });
+  return injectScalars(html, "data-registry", new Map(Object.entries(payload.registries)), "coordinate");
+}
 
-    // A key can be COLLECTED and yet not REPLACED, because the two patterns disagree.
-    // `COORD_KEY` reads the opening tag alone; `COORD` additionally demands `[^<]*`
-    // content and a backreferenced closer. So `<span data-registry="npm"><code>0.24.5
-    // </code></span>` and `<span data-registry="npm"/>` both collect and neither fills —
-    // and the page keeps its hand-typed version while the caller, which counts KEYS
-    // rather than replacements, prints a tick. A stale version that reports as injected
-    // is worse than one that was never wired up, because nothing will look at it again.
-    if (hits === 0) {
-      throw new Error(
-        `site inject: data-registry="${key}" was found but could not be filled. A ` +
-        `coordinate placeholder must wrap TEXT and close with its own tag — ` +
-        `<span data-registry="${key}">${v}</span>, not nested markup or a self-closing tag.`);
-    }
-  }
-  return out;
+/**
+ * Fill every `data-count` placeholder from the payload's derived counts.
+ *
+ * `payload.counts` is absent from any payload built before counts existed. That is the
+ * ONE tolerated shape difference, and it is tolerated in this direction only: an older
+ * payload simply has no counts to offer, so a page that asks for one gets the same named
+ * error as any other unknown key rather than a `TypeError` on `undefined`.
+ */
+/**
+ * @param {string} html
+ * @param {SitePayload} payload
+ * @returns {string}
+ */
+export function injectCounts(html, payload) {
+  return injectScalars(html, "data-count", new Map(Object.entries(payload.counts ?? {})), "count");
 }
 
 /**

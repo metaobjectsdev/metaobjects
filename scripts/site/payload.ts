@@ -30,6 +30,7 @@ import { splitLines, matchSubsequence, renderWithElisions } from "./subsequence.
 import { loadVocabulary, highlightMetadata, type Vocabulary } from "./highlight-metadata.js";
 import { highlightCode } from "./highlight-code.js";
 import { captureTranscript, normalizeTranscript, HOME_PATH } from "./transcript.js";
+import { deriveCounts, type Counts } from "./counts.js";
 
 export interface Snippet {
   lang: string;
@@ -47,6 +48,16 @@ export interface Registries {
 
 export interface SitePayload {
   registries: Registries;
+  /**
+   * Counts the repo can settle by counting — fixtures, corpora, base types.
+   *
+   * A SEPARATE section rather than three more `registries` entries: a registry
+   * coordinate is a version this release published, and folding a fixture tally in
+   * beside it would make that sentence false for three of eight keys. They fill
+   * `data-count="<key>"` placeholders, versions fill `data-registry="<key>"`, and the
+   * two namespaces cannot collide.
+   */
+  counts: Counts;
   snippets: Record<string, Snippet>;
 }
 
@@ -280,7 +291,11 @@ export function buildPayload(repoRoot: string): SitePayload {
 
   assertRequirementsResolve(repoRoot);
 
-  const payload: SitePayload = { registries: readRegistries(repoRoot), snippets };
+  const payload: SitePayload = {
+    registries: readRegistries(repoRoot),
+    counts: deriveCounts(repoRoot),
+    snippets,
+  };
 
   assertNoHomePath(payload);
   return payload;

@@ -1,9 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { injectSnippets, collectPlaceholderIds, assertBijection, injectRegistries, collectRegistryKeys } from "./inject.mjs";
+import { injectSnippets, collectPlaceholderIds, assertBijection, injectRegistries, collectRegistryKeys, injectCounts, collectCountKeys } from "./inject.mjs";
 import type { SitePayload } from "./payload.js";
 
 const payload = {
   registries: { npm: "0.24.5", pypi: "0.24.5", nuget: "0.24.5", maven: "7.24.5", metamodel: "0.13" },
+  counts: { fixtures: 313, corpora: 21, baseTypes: 14 },
   snippets: {
     "ts-entity": { lang: "ts", inline: "<span>a</span>", full: "<span>a</span>\n<span>b</span>", lineCount: 2 },
     "showcase-model": { lang: "yaml", inline: "<span>m</span>", full: null, lineCount: null },
@@ -63,6 +64,7 @@ describe("injectSnippets", () => {
   test("an id carrying regex metacharacters is matched literally", () => {
     const p = {
       registries: payload.registries,
+      counts: payload.counts,
       snippets: { "ts.Sub(x)[1]": { lang: "ts", inline: "<span>q</span>", full: null, lineCount: null } },
     } satisfies SitePayload;
     const out = injectSnippets(`<pre data-snippet="ts.Sub(x)[1]"></pre>`, p);
@@ -184,5 +186,51 @@ describe("injectRegistries", () => {
   test("a self-closing coordinate is a hard failure too", () => {
     expect(() => injectRegistries(`<span data-registry="npm"/>`, payload))
       .toThrow(/could not be filled/);
+  });
+});
+
+describe("injectCounts", () => {
+  test("fills a count placeholder with the derived number", () => {
+    expect(injectCounts(`<span data-count="fixtures">270</span>`, payload))
+      .toBe(`<span data-count="fixtures">313</span>`);
+  });
+
+  test("is idempotent — a second run over injected output changes nothing", () => {
+    const once = injectCounts(`<span data-count="corpora">19</span>`, payload);
+    expect(injectCounts(once, payload)).toBe(once);
+  });
+
+  // The two namespaces are separate on purpose: a key means a version under one
+  // attribute and a tally under the other, and neither injector may reach across.
+  test("counts and coordinates do not see each other's placeholders", () => {
+    const src = `<span data-count="fixtures">x</span><span data-registry="npm">y</span>`;
+    expect(injectCounts(src, payload)).toBe(
+      `<span data-count="fixtures">313</span><span data-registry="npm">y</span>`);
+    expect(injectRegistries(src, payload)).toBe(
+      `<span data-count="fixtures">x</span><span data-registry="npm">0.24.5</span>`);
+  });
+
+  test("an unknown count is a hard failure, never a blank number", () => {
+    expect(() => injectCounts(`<span data-count="ports">x</span>`, payload))
+      .toThrow(/no payload count/);
+  });
+
+  // The real cross-release case: the .dev pages deploy on push while the payload
+  // comes from the pinned RELEASE TAG, so a page can ask for a key that a payload
+  // built before counts existed has never heard of. It must be the named error, not
+  // a TypeError on `undefined`.
+  test("a payload predating counts gives the named error, not a crash", () => {
+    const old = { registries: payload.registries, snippets: payload.snippets } as unknown as typeof payload;
+    expect(() => injectCounts(`<span data-count="fixtures">x</span>`, old))
+      .toThrow(/no payload count for data-count="fixtures"/);
+  });
+
+  test("a count the page never shows is NOT an error", () => {
+    expect(injectCounts(`<p>no placeholders here</p>`, payload)).toBe(`<p>no placeholders here</p>`);
+  });
+
+  test("collectCountKeys reads only data-count", () => {
+    expect(collectCountKeys(`<span data-count="corpora">1</span><b data-registry="npm">2</b>`))
+      .toEqual(["corpora"]);
   });
 });

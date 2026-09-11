@@ -63,9 +63,17 @@ not an edit. Confirm rather than change:
       `agent-context/skills/metaobjects-fit-assessment/SKILL.md` (its body, from the first
       top-level heading) at deploy. Fix it here.
 - [ ] `www/index.html` and every other page — the four registry coordinates plus
-      `metamodel` are injected into any element carrying `data-registry="…"` from
-      `examples/showcase/site-payload.json`. The numbers in the committed HTML are
-      placeholders; editing them changes nothing that ships.
+      `metamodel` are injected into any element carrying `data-registry="…"`, and the
+      derived counts (`fixtures`, `corpora`, `baseTypes`) into any element carrying
+      `data-count="…"`, both from `examples/showcase/site-payload.json`. The numbers in
+      the committed HTML are placeholders; editing them changes nothing that ships.
+- [ ] **A NEW placeholder key must reach a release tag BEFORE the page that uses it.**
+      The pages deploy on push from the site repo; the payload and the injector come from
+      the pinned release tag. So a page carrying a `data-registry`/`data-count` key that
+      the pinned tag's payload has never heard of makes the injector throw — and that step
+      sits before "Upload artifact", so it takes down the whole site deploy, unrelated
+      prose edits included. Order: land the key in this repo → cut a release → then add
+      the placeholder to the page. Never the reverse.
 - [ ] **The tag pin resolves to the release you just cut.** `deploy.yml` walks the release
       tags newest-first and takes the one whose `server/typescript/packages/cli/package.json`
       is versioned as the tag — that is what identifies the npm line, since the legacy

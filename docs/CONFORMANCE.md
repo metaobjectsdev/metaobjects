@@ -238,7 +238,7 @@ grammar rather than four.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the eight corpora mapped above (metamodel 255 + yaml 15 + verify 31
+The fixtures in the eight corpora mapped above (metamodel 313 + yaml 15 + verify 31
 + render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10) each
 map to a feature doc. None are orphaned today. The remaining corpora in the totals table gate tooling
 contracts (registry manifests, provider composition, agent context, docs emit)

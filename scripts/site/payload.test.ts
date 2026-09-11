@@ -49,7 +49,21 @@ describe("buildPayload", () => {
     // `version` field, so the compiler already forbids that one, and a test the types
     // make unfailable proves nothing. Pinning the whole set catches ANY stray top-level
     // key — a single version string being the one that would misstate four registries.
-    expect(Object.keys(payload).sort()).toEqual(["registries", "snippets"]);
+    expect(Object.keys(payload).sort()).toEqual(["counts", "registries", "snippets"]);
+  });
+
+  test("carries the derived counts, and keeps them out of the coordinates", () => {
+    expect(Object.keys(payload.counts).sort()).toEqual(["baseTypes", "corpora", "fixtures"]);
+    // Counts are their own section for a reason: `registries` means "a version this
+    // release published", and a fixture tally sitting in there would make that false
+    // for three of eight keys. The two namespaces must stay disjoint.
+    for (const k of Object.keys(payload.counts)) {
+      expect(Object.keys(payload.registries)).not.toContain(k);
+    }
+    for (const v of Object.values(payload.counts)) {
+      expect(Number.isInteger(v)).toBe(true);
+      expect(v).toBeGreaterThan(0);
+    }
   });
 
   test("is deterministic — no timestamp, byte-identical across builds", () => {

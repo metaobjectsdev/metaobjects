@@ -6,6 +6,11 @@
     "maven": "8.0.1",
     "metamodel": "1.0"
   },
+  "counts": {
+    "fixtures": 313,
+    "corpora": 21,
+    "baseTypes": 14
+  },
   "snippets": {
     "showcase-model": {
       "lang": "yaml",
