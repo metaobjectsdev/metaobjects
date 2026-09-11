@@ -1,6 +1,6 @@
-import type { Change, AllowOptions } from "../types.js";
+import type { Change, AllowOptions, ColumnDefault } from "../types.js";
 import { isWidening } from "../sql-type.js";
-import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
+import { dropsAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 /**
@@ -101,9 +101,14 @@ function blockedReasonFor(
       }
       return null;
 
-    case "change-column-type":
+    case "change-column-type": {
+      // A type change carries its column's default change (types.ts), so the one gated
+      // default shape (see change-column-default below) is gated here as well.
+      const refusal = autoSequenceDropRefusal(c.table, c.column, c.fromDefault, c.toDefault, allow);
+      if (refusal !== null) return refusal;
       if (isWidening(c.from, c.to)) return null;     // widening always allowed
       return allow.typeChange ? null : "lossy type change (pass allow.typeChange)";
+    }
 
     case "change-column-nullable":
       // from = actual.nullable, to = expected.nullable
@@ -129,18 +134,7 @@ function blockedReasonFor(
       // than guess. Anything else about change-column-default — including
       // dropping a plain literal default — falls through to the unconditional
       // `return null` below.
-      const droppingAutoSequence =
-        c.to === undefined && c.from?.kind === "expr" && isPgAutoSequenceDefault(c.from.value);
-      if (droppingAutoSequence && !allow.dropIdentityDefault) {
-        return `column "${c.table}"."${c.column}" has a live Postgres auto-increment default `
-          + `(${c.from!.value}) but its metadata declares no @generation — this is ambiguous: it `
-          + `could mean @generation was never declared, or that auto-increment is being removed on `
-          + `purpose. Dropping the default is destructive (every insert that omits the column starts `
-          + `failing), so this refuses rather than guessing. Declare @generation: increment on the `
-          + `identity to keep the sequence, or pass --allow drop-identity-default if removing it is `
-          + `intentional`;
-      }
-      return null;
+      return autoSequenceDropRefusal(c.table, c.column, c.from, c.to, allow);
     }
 
     // Always-allowed kinds
@@ -154,4 +148,23 @@ function blockedReasonFor(
     case "create-view":
       return null;
   }
+}
+
+/**
+ * Dropping a live Postgres auto-sequence default (`nextval(...)`) while the metadata declares
+ * no identity is ambiguous, so it is refused unless allowed. Shared by `change-column-default`
+ * and `change-column-type`, which carries its column's default change.
+ */
+function autoSequenceDropRefusal(
+  table: string, column: string, from: ColumnDefault | undefined, to: ColumnDefault | undefined,
+  allow: { dropIdentityDefault?: boolean },
+): string | null {
+  if (!dropsAutoSequenceDefault(from, to) || allow.dropIdentityDefault) return null;
+  return `column "${table}"."${column}" has a live Postgres auto-increment default `
+    + `(${from!.value}) but its metadata declares no @generation — this is ambiguous: it `
+    + `could mean @generation was never declared, or that auto-increment is being removed on `
+    + `purpose. Dropping the default is destructive (every insert that omits the column starts `
+    + `failing), so this refuses rather than guessing. Declare @generation: increment on the `
+    + `identity to keep the sequence, or pass --allow drop-identity-default if removing it is `
+    + `intentional`;
 }

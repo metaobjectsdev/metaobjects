@@ -266,3 +266,37 @@ describe("diff — Postgres adopt-view legality (#239)", () => {
     expect(up).toMatch(/COMMENT ON VIEW .* IS 'metaobjects:/i);
   });
 });
+
+// A type change carries its column's default change. Beside a separate
+// change-column-default, the down ran FIRST and set the old default on a column
+// still holding the new type.
+describe("diff — a type change carries its column's default", () => {
+  const TABLE = { indexes: [], foreignKeys: [], primaryKey: [], checks: [] };
+
+  test("the default change rides on the type change, not beside it", async () => {
+    const e = { name: "users", ...TABLE, columns: [{ ...col("status"), sqlType: { kind: "integer" as const, bits: 32 as const }, default: { kind: "literal" as const, value: "5" } }] };
+    const a = { name: "users", ...TABLE, columns: [{ ...col("status", "text"), default: { kind: "literal" as const, value: "PUBLISHED" } }] };
+    const r = await diff(snapshot([e]), snapshot([a]));
+    expect(r.changes.find((x) => x.kind === "change-column-default")).toBeUndefined();
+    expect(r.changes.find((x) => x.kind === "change-column-type")).toMatchObject({
+      fromDefault: { kind: "literal", value: "PUBLISHED" }, toDefault: { kind: "literal", value: "5" },
+    });
+  });
+
+  test("a uuid identity's default, which the diff never compares, is KEPT through a type change", async () => {
+    const live = { kind: "expr" as const, value: "gen_random_uuid()" };
+    const e = { name: "users", ...TABLE, columns: [{ ...col("id"), sqlType: { kind: "uuid" as const }, identity: "uuid" as const }] };
+    const a = { name: "users", ...TABLE, columns: [{ ...col("id", "text"), default: live }] };
+    const r = await diff(snapshot([e]), snapshot([a]));
+    expect(r.changes.find((x) => x.kind === "change-column-type")).toMatchObject({ fromDefault: live, toDefault: live });
+  });
+
+  test("dropping a live auto-sequence default is still refused when it rides on a type change", async () => {
+    const e = { name: "users", ...TABLE, columns: [{ ...col("id"), sqlType: { kind: "integer" as const, bits: 64 as const } }] };
+    const a = { name: "users", ...TABLE, columns: [{ ...col("id"), sqlType: { kind: "integer" as const, bits: 32 as const }, default: { kind: "expr" as const, value: "nextval('users_id_seq'::regclass)" } }] };
+    const blocked = await diff(snapshot([e]), snapshot([a]));
+    expect(blocked.changes.find((x) => x.kind === "change-column-type")?.status.state).toBe("blocked");
+    const allowed = await diff(snapshot([e]), snapshot([a]), { allow: { dropIdentityDefault: true } });
+    expect(allowed.changes.find((x) => x.kind === "change-column-type")?.status.state).toBe("allowed");
+  });
+});

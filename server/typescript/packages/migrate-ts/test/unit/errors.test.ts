@@ -47,3 +47,26 @@ test("BlockedChangesError handles change-column-type", () => {
     "change-column-type on orders.amount: pass allow.typeChange",
   ]);
 });
+
+// The flag is chosen by what BLOCKED the change. A type change carries its column's
+// default change, so one that would drop a live auto-sequence default is blocked by
+// that, and allow.typeChange would leave the user looping on the hint.
+test("BlockedChangesError names allow.dropIdentityDefault for a type change blocked by its folded default", () => {
+  const blocked: Change[] = [{
+    kind: "change-column-type", table: "users", column: "id",
+    from: { kind: "integer", bits: 32 }, to: { kind: "integer", bits: 64 },
+    fromDefault: { kind: "expr", value: "nextval('users_id_seq'::regclass)" },
+    status: { state: "blocked", blockedReason: "auto-increment default" },
+  }];
+  expect(new BlockedChangesError(blocked).enableHints)
+    .toEqual(["change-column-type on users.id: pass allow.dropIdentityDefault"]);
+});
+
+test("BlockedChangesError names allow.dropCheck for a blocked drop-check", () => {
+  const blocked: Change[] = [{
+    kind: "drop-check", table: "orders", check: "orders_status_chk",
+    status: { state: "blocked", blockedReason: "destructive: drop-check not allowed (pass allow.dropCheck)" },
+  }];
+  expect(new BlockedChangesError(blocked).enableHints)
+    .toEqual(["drop-check on orders.orders_status_chk: pass allow.dropCheck"]);
+});

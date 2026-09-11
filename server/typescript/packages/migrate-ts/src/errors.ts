@@ -1,4 +1,5 @@
-import type { Change, ChangeKind } from "./types.js";
+import type { AllowOptions, Change, ChangeKind } from "./types.js";
+import { dropsAutoSequenceDefault } from "./pg-identity-default.js";
 
 // ---------------------------------------------------------------------------
 // SetNullNotNullableError — surfaced by buildExpectedSchema
@@ -33,18 +34,32 @@ export class SetNullNotNullableError extends Error {
   }
 }
 
-const ENABLE_FLAG_BY_KIND: Partial<Record<ChangeKind, string>> = {
-  "drop-column": "allow.dropColumn",
-  "drop-table": "allow.dropTable",
-  "change-column-type": "allow.typeChange",
-  "change-column-nullable": "allow.nullableToNotNull",
-  "drop-index": "allow.dropIndex",
-  "drop-fk": "allow.dropFk",
+const ALLOW_OPTION_BY_KIND: Partial<Record<ChangeKind, keyof AllowOptions>> = {
+  "drop-column": "dropColumn",
+  "drop-table": "dropTable",
+  "change-column-type": "typeChange",
+  "change-column-nullable": "nullableToNotNull",
+  "drop-index": "dropIndex",
+  "drop-fk": "dropFk",
+  "drop-check": "dropCheck",
   // change-column-default is blocked in exactly one shape — dropping a live
   // Postgres auto-sequence default with no declared @generation (see
   // diff/status.ts) — and allow.dropIdentityDefault is the flag that enables it.
-  "change-column-default": "allow.dropIdentityDefault",
+  "change-column-default": "dropIdentityDefault",
 };
+
+/**
+ * The `AllowOptions` field that unblocks `c`, chosen by what BLOCKED it rather than by its kind
+ * alone. A type change carries its column's default change, so one that would drop a live
+ * auto-sequence default is blocked by THAT, and `typeChange` would not unblock it. The single
+ * source for this error's hints and the CLI's `--allow` token.
+ */
+export function allowOptionFor(c: Change): keyof AllowOptions | undefined {
+  if (c.kind === "change-column-type" && dropsAutoSequenceDefault(c.fromDefault, c.toDefault)) {
+    return "dropIdentityDefault";
+  }
+  return ALLOW_OPTION_BY_KIND[c.kind];
+}
 
 function changeLocator(c: Change): string {
   switch (c.kind) {
@@ -88,7 +103,8 @@ export class BlockedChangesError extends Error {
 
   constructor(blocked: Change[]) {
     const hints = blocked.map((c) => {
-      const flag = ENABLE_FLAG_BY_KIND[c.kind] ?? "(no flag enables this)";
+      const option = allowOptionFor(c);
+      const flag = option === undefined ? "(no flag enables this)" : `allow.${option}`;
       return `${c.kind} on ${changeLocator(c)}: pass ${flag}`;
     });
     const msg = `${blocked.length} blocked change(s):\n  - ${hints.join("\n  - ")}`;

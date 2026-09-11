@@ -616,6 +616,16 @@ now redundant rather than load-bearing. Every rung but the first keeps the
 column jsonb, so moving a column up the ladder is a codegen/contract change rather than a
 migration — read the emitted DDL before promising that.
 
+**The first rung IS a migration, and it has a version question of its own.** jsonb → a native
+array is a lossy type change to `meta migrate`, so it is refused until you pass
+`--allow type-change`. The emitted migration converts the rows in place: a `USING` clause unpacks
+each jsonb array, keeps element order, maps a JSON `null` to NULL, and FAILS on a row that is not
+an array rather than nulling it. That conversion is **UNRELEASED at the time of writing: it is on
+`main`, shipping in the next cut.** On 1.0.1 and earlier the emitted `ALTER … TYPE TEXT[]` carries
+no `USING`, and Postgres refuses it ("cannot be cast automatically"), so add the conversion by hand
+before applying. On every version the WRITER changes in the same deploy: a writer that sent
+`json.dumps(xs)` or a JSON-encoded string must now send the list itself.
+
 
 ## YAML sigil-free authoring + the coercion footgun
 

@@ -380,11 +380,15 @@ function diffTableColumns(
     // dialect-aware: SQLite/D1 cannot physically represent a VARCHAR length or a
     // native json type, so those distinctions must not read as drift (see
     // canonTypeForDialect). Postgres stays exact.
+    // A type change CARRIES the column's default change (fromDefault/toDefault, types.ts),
+    // filled in below once the identity rule has decided what the default should be.
+    let typeChange: Extract<Change, { kind: "change-column-type" }> | undefined;
     if (!sqlTypeEqualsForDialect(ec.sqlType, ac.sqlType, dialect)) {
-      changes.push({
+      typeChange = {
         kind: "change-column-type", table, ...sx, column: name,
         from: ac.sqlType, to: ec.sqlType, status: ALLOWED,
-      });
+      };
+      changes.push(typeChange);
     }
     if (ec.nullable !== ac.nullable) {
       changes.push({
@@ -420,7 +424,14 @@ function diffTableColumns(
       ac.default !== undefined && ac.default.kind === "expr" && isPgAutoSequenceDefault(ac.default.value);
     const skipIdentityDefaultDiff =
       ec.identity === "uuid" || (ec.identity === "increment" && liveIsAutoSequenceDefault);
-    if (!skipIdentityDefaultDiff && !columnDefaultsEqual(ec.default, ac.default)) {
+    if (typeChange) {
+      // An identity default the diff deliberately never compares is KEPT: the emitter drops
+      // and re-sets a default around a converting type change, so leaving `toDefault` unset
+      // here would drop it for good.
+      const toDefault = skipIdentityDefaultDiff ? ac.default : ec.default;
+      if (ac.default !== undefined) typeChange.fromDefault = ac.default;
+      if (toDefault !== undefined) typeChange.toDefault = toDefault;
+    } else if (!skipIdentityDefaultDiff && !columnDefaultsEqual(ec.default, ac.default)) {
       const change: Change = {
         kind: "change-column-default", table, ...sx, column: name,
         status: ALLOWED,
@@ -830,7 +841,7 @@ function recreateViewsDependingOnChangedTables(
   }
 }
 
-function columnDefaultsEqual(a: ColumnDescriptor["default"], b: ColumnDescriptor["default"]): boolean {
+export function columnDefaultsEqual(a: ColumnDescriptor["default"], b: ColumnDescriptor["default"]): boolean {
   if (a === undefined && b === undefined) return true;
   if (a === undefined || b === undefined) return false;
   return a.kind === b.kind && a.value === b.value;

@@ -6,6 +6,7 @@ import type { SqlType } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { renderFingerprintMarker, viewFingerprint } from "../view-fingerprint.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
+import { columnDefaultsEqual } from "../diff/index.js";
 
 // Stages run low → high. drop-view runs BEFORE drop-table so a view that
 // depends on a soon-to-be-dropped table is removed first. create-view runs
@@ -53,9 +54,17 @@ export function renderPostgres(changes: Change[]): EmitResult {
     downStmts.push(renderDown(c));
   }
   // Down runs in reverse order (so creates undo correctly w.r.t. FKs).
+  const upHelpers = conversionHelpers(sorted, "up");
+  const downHelpers = conversionHelpers(sorted, "down");
   return {
-    up: [...createSchemaStmts(sorted), ...upStmts].join("\n\n"),
-    down: [...downStmts].reverse().join("\n\n"),
+    up: [
+      ...createSchemaStmts(sorted), ...upHelpers.map(createHelper),
+      ...upStmts, ...upHelpers.map(dropHelper),
+    ].join("\n\n"),
+    down: [
+      ...downHelpers.map(createHelper),
+      ...[...downStmts].reverse(), ...downHelpers.map(dropHelper),
+    ].join("\n\n"),
     recreatedTables: new Set(), // postgres alters in place; no recreate-and-copy
   };
 }
@@ -109,7 +118,7 @@ function renderUp(c: Change): string {
     }
     case "drop-column":            return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
-    case "change-column-type":     return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.to)};`;
+    case "change-column-type":     return renderAlterColumnType(c, c.from, c.to, c.fromDefault, c.toDefault);
     case "change-column-nullable":
       return c.to
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP NOT NULL;`
@@ -191,7 +200,7 @@ function renderDown(c: Change): string {
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.restore)};\n-- NOTE: column data is not restored by this down migration.`
         : `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually with original type/nullable/default`;
     case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
-    case "change-column-type":     return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} TYPE ${pgType(c.from)};`;
+    case "change-column-type":     return renderAlterColumnType(c, c.to, c.from, c.toDefault, c.fromDefault);
     case "change-column-nullable":
       return c.from
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP NOT NULL;`
@@ -354,6 +363,151 @@ function fkActionSql(a: FkAction): string {
     case "restrict":  return "RESTRICT";
     case "no-action": return "NO ACTION";
   }
+}
+
+type ColumnTypeChange = Extract<Change, { kind: "change-column-type" }>;
+
+/**
+ * `ALTER COLUMN … TYPE`, with the `USING` clause the conversion needs.
+ *
+ * Postgres changes a column's type in place only along an ASSIGNMENT cast. Many cross-kind
+ * changes have none (jsonb → text[], text[] → jsonb, text → text[], boolean → integer), and the
+ * bare ALTER is refused ("cannot be cast automatically"), so a migration `meta migrate` wrote
+ * could not be applied by anything. {@link conversion} names each one.
+ *
+ * A DEFAULT is converted by an assignment cast too, and never through USING, so a default in
+ * the way of a converting change is dropped first and set again after. The change carries both
+ * defaults for exactly this (types.ts).
+ */
+function renderAlterColumnType(
+  c: ColumnTypeChange, from: SqlType, to: SqlType,
+  fromDefault: ColumnDefault | undefined, toDefault: ColumnDefault | undefined,
+): string {
+  const col = quote(c.column);
+  const alterColumn = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${col}`;
+  const { using } = conversion(col, from, to, c.schema);
+  const alterType = `${alterColumn} TYPE ${pgType(to)}${using};`;
+  if (using === "" && columnDefaultsEqual(fromDefault, toDefault)) return alterType;
+  return [
+    ...(fromDefault !== undefined ? [`${alterColumn} DROP DEFAULT;`] : []),
+    alterType,
+    ...(toDefault !== undefined ? [`${alterColumn} SET DEFAULT ${renderDefault(toDefault)};`] : []),
+  ].join("\n");
+}
+
+/**
+ * The `USING` clause for a change (`""` when the assignment cast a bare ALTER uses is right),
+ * and the helper function it calls, if any.
+ *
+ * - jsonb → T[]: a subquery is not allowed in USING, so the rows are unpacked by a helper. It
+ *   keeps element order, maps a JSON `null` to NULL, and RAISES on a scalar or an object.
+ * - T[] → jsonb: `to_jsonb`, since no cast from an array to jsonb exists.
+ * - scalar → T[]: the value becomes the array's one element. An explicit `::T[]` would PARSE the
+ *   text as an array literal instead ('{a,b}' → two elements, 'hello' → an error).
+ * - T[] → scalar: the one element a row holds, through a helper that RAISES on a row holding
+ *   more. Neither alternative is safe: `c[1]` silently keeps the first element, and the bare
+ *   assignment cast to text stores the array literal '{a,b}' as the value.
+ * - anything else cross-kind: an explicit cast, which is the assignment cast where one exists
+ *   and the only cast where it does not.
+ */
+function conversion(
+  col: string, from: SqlType, to: SqlType, schema: string | undefined,
+): { using: string; helper?: ConversionHelper } {
+  if (from.kind === "json" && to.kind === "array") {
+    const helper = JSONB_ARRAY_TO_TEXT_ARRAY;
+    return { using: ` USING ${helperCall(helper, col, schema)}${castIfNeeded(TEXT_ARRAY, to)}`, helper };
+  }
+  if (from.kind === "array" && to.kind === "json") return { using: ` USING to_jsonb(${col})` };
+  if (from.kind !== "array" && to.kind === "array") {
+    return {
+      using: ` USING (CASE WHEN ${col} IS NULL THEN NULL ELSE ARRAY[${col}] END)`
+        + castIfNeeded({ kind: "array", element: from }, to),
+    };
+  }
+  if (from.kind === "array" && to.kind !== "array") {
+    const helper = ARRAY_TO_SCALAR;
+    return { using: ` USING ${helperCall(helper, col, schema)}${castIfNeeded(from.element, to)}`, helper };
+  }
+  const cast = castIfNeeded(from, to);
+  return { using: cast === "" ? "" : ` USING ${col}${cast}` };
+}
+
+/**
+ * `::T` when a value of `from` has no assignment cast to `to`. A change TO text never needs one,
+ * since every type has an assignment cast to text, and must not get one: an explicit cast to
+ * VARCHAR(n) TRUNCATES an over-length value that the assignment cast refuses.
+ */
+function castIfNeeded(from: SqlType, to: SqlType): string {
+  return needsExplicitCast(from, to) ? `::${pgType(to)}` : "";
+}
+
+function needsExplicitCast(from: SqlType, to: SqlType): boolean {
+  if (to.kind === "text") return false;
+  if (from.kind !== to.kind) return true;
+  if (from.kind === "array" && to.kind === "array") return needsExplicitCast(from.element, to.element);
+  return false;
+}
+
+const TEXT_ARRAY: SqlType = { kind: "array", element: { kind: "text" } };
+
+/**
+ * A function a conversion calls. It is an ordinary function created in the table's schema
+ * before the ALTERs and dropped at the end of the same file, not a `pg_temp` one: a database
+ * that revokes TEMP from PUBLIC (a common hardening step) refuses pg_temp, while CREATE on the
+ * schema is a privilege the migration already needs for its tables.
+ */
+interface ConversionHelper {
+  readonly name: string;
+  /** Parameter list, return type and language, as written after the function name. */
+  readonly signature: string;
+  /** Argument types, as `DROP FUNCTION` needs them. */
+  readonly argTypes: string;
+  readonly body: string;
+}
+
+const JSONB_ARRAY_TO_TEXT_ARRAY: ConversionHelper = {
+  name: "metaobjects_jsonb_array_to_text_array",
+  signature: "(j jsonb) RETURNS text[] LANGUAGE sql IMMUTABLE",
+  argTypes: "jsonb",
+  body: "SELECT CASE WHEN j IS NULL OR jsonb_typeof(j) = 'null' THEN NULL "
+    + "ELSE ARRAY(SELECT e FROM jsonb_array_elements_text(j) WITH ORDINALITY AS x(e, i) ORDER BY i) END",
+};
+
+const ARRAY_TO_SCALAR: ConversionHelper = {
+  name: "metaobjects_array_to_scalar",
+  signature: "(a anyarray) RETURNS anyelement LANGUAGE plpgsql IMMUTABLE",
+  argTypes: "anyarray",
+  body: "BEGIN IF cardinality(a) > 1 THEN RAISE EXCEPTION "
+    + "'metaobjects: cannot narrow an array of % elements to one value', cardinality(a); "
+    + "END IF; RETURN a[1]; END",
+};
+
+function helperCall(helper: ConversionHelper, col: string, schema: string | undefined): string {
+  return `${quoteQualified(helper.name, schema)}(${col})`;
+}
+
+/** The helpers one direction of the migration calls: each once per schema, in a stable order. */
+function conversionHelpers(
+  changes: readonly Change[], direction: "up" | "down",
+): { helper: ConversionHelper; schema: string | undefined }[] {
+  const needed = new Map<string, { helper: ConversionHelper; schema: string | undefined }>();
+  for (const c of changes) {
+    if (c.kind !== "change-column-type") continue;
+    const [from, to] = direction === "up" ? [c.from, c.to] : [c.to, c.from];
+    const { helper } = conversion("", from, to, c.schema);
+    if (helper === undefined) continue;
+    const schema = c.schema === DEFAULT_DB_SCHEMA_POSTGRES ? undefined : c.schema;
+    needed.set(`${schema ?? ""}.${helper.name}`, { helper, schema });
+  }
+  return [...needed.keys()].sort().flatMap((k) => needed.get(k) ?? []);
+}
+
+function createHelper({ helper, schema }: { helper: ConversionHelper; schema: string | undefined }): string {
+  return `CREATE OR REPLACE FUNCTION ${quoteQualified(helper.name, schema)}${helper.signature} AS $$ ${helper.body} $$;`;
+}
+
+function dropHelper({ helper, schema }: { helper: ConversionHelper; schema: string | undefined }): string {
+  return `DROP FUNCTION IF EXISTS ${quoteQualified(helper.name, schema)}(${helper.argTypes});`;
 }
 
 function quote(ident: string): string {

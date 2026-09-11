@@ -15,6 +15,7 @@ import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
+  allowOptionFor,
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
   scopedDiffInputs,
@@ -57,7 +58,7 @@ import {
   type WranglerRunner,
 } from "../lib/wrangler.js";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
-import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
+import { ALLOW_TOKEN_MAP, tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import { reportLoadError } from "../lib/load-error.js";
 
 /**
@@ -376,24 +377,20 @@ async function snapshotAbsentDrops(changes: Change[], snapPath: string): Promise
   return absent;
 }
 
-function allowFlagFor(kind: string): string {
-  switch (kind) {
-    case "drop-column": return "drop-column";
-    case "drop-table": return "drop-table";
-    case "drop-index": return "drop-index";
-    case "drop-fk": return "drop-fk";
-    case "change-column-type": return "type-change";
-    case "change-column-nullable": return "nullable-to-not-null";
-    case "change-column-default": return "drop-identity-default";
-    default: return kind;
-  }
+/** The `--allow` token that unblocks `c`. migrate-ts picks the permission by what blocked the
+ *  change (a type change can be blocked by the auto-sequence default it carries), so this only
+ *  maps that permission back to its CLI token. */
+function allowFlagFor(c: Change): string {
+  const option = allowOptionFor(c);
+  const token = Object.keys(ALLOW_TOKEN_MAP).find((t) => ALLOW_TOKEN_MAP[t] === option);
+  return token ?? c.kind;
 }
 
 function blockedToEntries(err: BlockedChangesError): BlockedEntry[] {
   return err.blocked.map((c) => ({
     kind: c.kind,
     description: describeChange(c),
-    allowFlag: allowFlagFor(c.kind),
+    allowFlag: allowFlagFor(c),
   }));
 }
 

@@ -1,3 +1,5 @@
+import type { ColumnDefault } from "./types.js";
+
 // src/pg-identity-default.ts
 //
 // Postgres "auto-sequence" column DEFAULT — the `nextval('<seq>'::regclass)`
@@ -16,4 +18,12 @@
 // `serial` PK with no replacement generation mechanism).
 export function isPgAutoSequenceDefault(raw: string | null | undefined): boolean {
   return raw !== null && raw !== undefined && /^nextval\(/i.test(raw);
+}
+
+/**
+ * A default change that DROPS a live auto-sequence default: the one default shape the diff
+ * gates (diff/status.ts), whether it arrives as its own change or folded into a type change.
+ */
+export function dropsAutoSequenceDefault(from: ColumnDefault | undefined, to: ColumnDefault | undefined): boolean {
+  return to === undefined && from?.kind === "expr" && isPgAutoSequenceDefault(from.value);
 }

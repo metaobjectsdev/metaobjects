@@ -64,7 +64,13 @@ export function describeChange(c: Change): string {
     case "add-column": return `${c.table}.${c.column.name}`;
     case "drop-column": return `${c.table}.${c.column}`;
     case "rename-column": return `${c.table}.${c.from} → ${c.table}.${c.to}`;
-    case "change-column-type": return `${c.table}.${c.column} (${c.from.kind} → ${c.to.kind})`;
+    case "change-column-type": {
+      // A type change carries its column's default change, so the default is reported here.
+      const from = c.fromDefault?.value ?? "none";
+      const to = c.toDefault?.value ?? "none";
+      const dflt = from === to && c.fromDefault?.kind === c.toDefault?.kind ? "" : `, default ${from} → ${to}`;
+      return `${c.table}.${c.column} (${c.from.kind} → ${c.to.kind}${dflt})`;
+    }
     case "change-column-nullable": return `${c.table}.${c.column} (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
     case "change-column-default": return `${c.table}.${c.column}`;
     case "add-index": return `${c.table} idx ${c.index.name}`;

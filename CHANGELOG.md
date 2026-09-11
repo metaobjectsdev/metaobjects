@@ -28,6 +28,43 @@ here.**
   follow-on. No vocabulary change, so `metamodelVersion` does not move.
 
 
+### Fixed
+
+- **`meta migrate` now writes a column type change Postgres can apply.** A change between two
+  kinds with no assignment cast between them — jsonb → `text[]` and back, a plain string moved to
+  `isArray`, boolean → integer, text → jsonb — was emitted as a bare `ALTER COLUMN … TYPE`, which
+  Postgres refuses ("cannot be cast automatically"), in the up and the down alike. A column
+  carrying a DEFAULT was refused even where the data could convert, because Postgres converts a
+  default by assignment cast and never through `USING`. The most exposed path is the one the
+  authoring skill's jsonb ladder names as the only rung that migrates a column: a `field.string` +
+  `@dbColumnType: jsonb` moved to `isArray: true`. The migration was written, and nothing could
+  apply it. The emitted change now carries its conversion:
+  - **jsonb → array** unpacks through a helper function the migration creates in the table's
+    schema and drops at the end. A subquery is not allowed in `USING`, and a `pg_temp` function
+    fails where TEMP is revoked. It keeps element order and fails on a row that is not an array
+    rather than nulling it. A top-level JSON `null` becomes SQL NULL, and the down does not
+    restore it as JSON `null`. A nested object or array inside the array lands as its JSON text.
+  - **array → jsonb** goes through `to_jsonb`.
+  - **A scalar moved to an array** becomes the array's one element. An explicit `::text[]` would
+    have parsed the value as an array literal. The reverse, removing `isArray` (and the down of
+    the change above), takes the one element a row holds and fails on a row holding more, rather
+    than silently keeping the first.
+  - **Any other cross-kind change** casts explicitly. A change *to* text stays bare, because an
+    explicit cast to `VARCHAR(n)` would truncate a value the bare form refuses.
+  - **A default in the way** is dropped before the conversion and set after. The type change now
+    carries its column's default change. Before, a separate change's down ran first and set the
+    old default on a column still holding the new type. The auto-sequence default gate still
+    applies, and a change blocked by it now names `--allow drop-identity-default` rather than
+    `type-change`. The plan and the `verify --db` drift summary report the folded default.
+
+  Switching a POPULATED enum column to `@intValueMap` storage is still the documented manual
+  recast: the emitted `status::INTEGER` fails loudly on a member symbol, just as the bare form did.
+  Every existing test asserted the SQL string, and none applied it. The new live-Postgres tests
+  run jsonb → array, a DEFAULT in the way, and both directions of scalar ↔ array through
+  `applyPending` and `rollbackTo`, and fail on the old emitter; the remaining casts are pinned as SQL.
+  Found converting an adopter's jsonb string list. No vocabulary change, so `metamodelVersion`
+  does not move.
+
 ## [1.0.1] — 2026-09-10
 
 **Why this is a PATCH and not a MINOR.** `docs/RELEASING.md`'s table says an additive CLI

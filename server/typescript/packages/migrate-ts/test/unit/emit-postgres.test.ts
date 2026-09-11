@@ -378,3 +378,131 @@ describe("renderPostgres — down statements", () => {
     expect(downB).toBeLessThan(downA);
   });
 });
+
+// A column changes type IN PLACE only along an assignment cast. jsonb → text[],
+// text[] → jsonb, text → text[] and boolean → integer have none, so the bare
+// `ALTER … TYPE` was refused by Postgres on every one of them ("cannot be cast
+// automatically") — a migration `meta migrate` wrote and nothing could apply.
+describe("change-column-type — the USING clause a cross-kind change needs", () => {
+  type TypeChange = Extract<Change, { kind: "change-column-type" }>;
+  const HELPER = `"metaobjects_jsonb_array_to_text_array"`;
+  const NARROW = `"metaobjects_array_to_scalar"`;
+  const typeChange = (
+    from: TypeChange["from"], to: TypeChange["to"],
+    extra: Partial<Pick<TypeChange, "schema" | "column" | "fromDefault" | "toDefault">> = {},
+  ): TypeChange => ({ kind: "change-column-type", table: "t", column: "c", from, to, status: ALLOWED, ...extra });
+  const JSON_T = { kind: "json" } as const;
+  const TEXT = { kind: "text" } as const;
+  const INT = { kind: "integer", bits: 32 } as const;
+  const arrayOf = (element: TypeChange["from"]): TypeChange["from"] => ({ kind: "array", element });
+  const count = (s: string, needle: string): number => s.split(needle).length - 1;
+
+  test("jsonb → text[] unpacks through a helper created before and dropped after; the down is to_jsonb", () => {
+    const { up, down } = emit([typeChange(JSON_T, arrayOf(TEXT))], { dialect: "postgres" });
+    expect(up.split("\n\n")).toEqual([
+      `CREATE OR REPLACE FUNCTION ${HELPER}(j jsonb) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$ `
+        + "SELECT CASE WHEN j IS NULL OR jsonb_typeof(j) = 'null' THEN NULL "
+        + "ELSE ARRAY(SELECT e FROM jsonb_array_elements_text(j) WITH ORDINALITY AS x(e, i) ORDER BY i) END $$;",
+      `ALTER TABLE "t" ALTER COLUMN "c" TYPE TEXT[] USING ${HELPER}("c");`,
+      `DROP FUNCTION IF EXISTS ${HELPER}(jsonb);`,
+    ]);
+    expect(down).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE JSONB USING to_jsonb("c");`);
+  });
+
+  test("jsonb → double precision[] casts the helper's text[] to the element type", () => {
+    const { up } = emit([typeChange(JSON_T, arrayOf({ kind: "real" }))], { dialect: "postgres" });
+    expect(up).toContain(`TYPE DOUBLE PRECISION[] USING ${HELPER}("c")::DOUBLE PRECISION[];`);
+  });
+
+  // Not pg_temp: a database that revokes TEMP from PUBLIC refuses a temporary function,
+  // while CREATE on the table's schema is a privilege the migration already needs.
+  test("the helper lives in the table's schema, once per schema however many columns convert", () => {
+    const { up } = emit([
+      typeChange(JSON_T, arrayOf(TEXT), { column: "a", schema: "s" }),
+      typeChange(JSON_T, arrayOf(TEXT), { column: "b", schema: "s" }),
+      typeChange(JSON_T, arrayOf(TEXT), { column: "c" }),
+    ], { dialect: "postgres" });
+    expect(count(up, `CREATE OR REPLACE FUNCTION "s".${HELPER}(`)).toBe(1);
+    expect(count(up, `CREATE OR REPLACE FUNCTION ${HELPER}(`)).toBe(1);
+    expect(up).toContain(`ALTER TABLE "s"."t" ALTER COLUMN "a" TYPE TEXT[] USING "s".${HELPER}("a");`);
+    expect(count(up, "DROP FUNCTION IF EXISTS")).toBe(2);
+  });
+
+  test("the down of array → jsonb needs the helper, so the DOWN creates and drops it", () => {
+    const { up, down } = emit([typeChange(arrayOf(TEXT), JSON_T)], { dialect: "postgres" });
+    expect(up).not.toContain("FUNCTION");
+    expect(down).toContain(`CREATE OR REPLACE FUNCTION ${HELPER}(`);
+    expect(down).toContain(`TYPE TEXT[] USING ${HELPER}("c");`);
+  });
+
+  test("text → integer casts explicitly; the down to text stays bare", () => {
+    const { up, down } = emit([typeChange(TEXT, INT)], { dialect: "postgres" });
+    expect(up).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE INTEGER USING "c"::INTEGER;`);
+    expect(down).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE TEXT;`);
+  });
+
+  test("boolean → integer casts explicitly", () => {
+    const { up } = emit([typeChange({ kind: "boolean" }, INT)], { dialect: "postgres" });
+    expect(up).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE INTEGER USING "c"::INTEGER;`);
+  });
+
+  test("text[] → integer[] casts the array explicitly", () => {
+    const { up } = emit([typeChange(arrayOf(TEXT), arrayOf(INT))], { dialect: "postgres" });
+    expect(up).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE INTEGER[] USING "c"::INTEGER[];`);
+  });
+
+  // An explicit `::TEXT[]` PARSES the value as an array literal: '{a,b}' silently becomes
+  // two elements and 'hello' fails as a malformed literal.
+  test("scalar → array makes the value the array's one element; the down narrows it back", () => {
+    const { up, down } = emit([typeChange(TEXT, arrayOf(TEXT))], { dialect: "postgres" });
+    expect(up).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE TEXT[] USING (CASE WHEN "c" IS NULL THEN NULL ELSE ARRAY["c"] END);`);
+    expect(down.split("\n\n")).toEqual([
+      `CREATE OR REPLACE FUNCTION ${NARROW}(a anyarray) RETURNS anyelement LANGUAGE plpgsql IMMUTABLE AS $$ `
+        + "BEGIN IF cardinality(a) > 1 THEN RAISE EXCEPTION "
+        + "'metaobjects: cannot narrow an array of % elements to one value', cardinality(a); "
+        + "END IF; RETURN a[1]; END $$;",
+      `ALTER TABLE "t" ALTER COLUMN "c" TYPE TEXT USING ${NARROW}("c");`,
+      `DROP FUNCTION IF EXISTS ${NARROW}(anyarray);`,
+    ]);
+  });
+
+  // `"c"[1]` would silently keep the first element of a longer row, and the bare
+  // assignment cast to text would store the literal '{a,b}' as the value.
+  test("removing isArray narrows through the refusing helper, casting where the element needs it", () => {
+    const { up } = emit([typeChange(arrayOf(TEXT), INT)], { dialect: "postgres" });
+    expect(up).toContain(`ALTER TABLE "t" ALTER COLUMN "c" TYPE INTEGER USING ${NARROW}("c")::INTEGER;`);
+    expect(up).toContain(`DROP FUNCTION IF EXISTS ${NARROW}(anyarray);`);
+  });
+
+  // An explicit cast to VARCHAR(n) TRUNCATES an over-length value silently, where the
+  // assignment cast a bare ALTER uses refuses it.
+  test("to a bounded VARCHAR stays bare, so an over-length value is refused, not truncated", () => {
+    const { up } = emit([typeChange(INT, { kind: "text", maxLength: 5 })], { dialect: "postgres" });
+    expect(up).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE VARCHAR(5);`);
+  });
+
+  // Postgres converts a DEFAULT by assignment cast and never through USING, so
+  // `varchar DEFAULT 'DRAFT'` → `INTEGER USING …` failed even on an empty table.
+  test("a default in the way of a converting change is dropped first and set again after", () => {
+    const { up, down } = emit([typeChange(TEXT, INT, {
+      fromDefault: { kind: "literal", value: "DRAFT" }, toDefault: { kind: "expr", value: "5" },
+    })], { dialect: "postgres" });
+    expect(up.split("\n")).toEqual([
+      `ALTER TABLE "t" ALTER COLUMN "c" DROP DEFAULT;`,
+      `ALTER TABLE "t" ALTER COLUMN "c" TYPE INTEGER USING "c"::INTEGER;`,
+      `ALTER TABLE "t" ALTER COLUMN "c" SET DEFAULT 5;`,
+    ]);
+    expect(down.split("\n")).toEqual([
+      `ALTER TABLE "t" ALTER COLUMN "c" DROP DEFAULT;`,
+      `ALTER TABLE "t" ALTER COLUMN "c" TYPE TEXT;`,
+      `ALTER TABLE "t" ALTER COLUMN "c" SET DEFAULT 'DRAFT';`,
+    ]);
+  });
+
+  test("an unchanged default on a change Postgres converts itself stays one statement", () => {
+    const zero = { kind: "expr", value: "0" } as const;
+    const { up } = emit([typeChange(INT, { kind: "integer", bits: 64 }, { fromDefault: zero, toDefault: zero })],
+      { dialect: "postgres" });
+    expect(up).toBe(`ALTER TABLE "t" ALTER COLUMN "c" TYPE BIGINT;`);
+  });
+});

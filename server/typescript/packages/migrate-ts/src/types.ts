@@ -233,7 +233,15 @@ export type Change =
   | { kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus }
   | { kind: "rename-column"; table: string; schema?: string; from: string; to: string; status: ChangeStatus }
   | { kind: "change-column-type"; table: string; schema?: string; column: string;
-      from: SqlType; to: SqlType; status: ChangeStatus }
+      from: SqlType; to: SqlType;
+      /** The column's live default and the default it should end with, when either exists.
+       *  Postgres converts a default with an ASSIGNMENT cast, never through USING, so a type
+       *  change that needs USING must drop the default first and set it after, which the
+       *  emitter can only do knowing both. A type change CARRIES its column's default change
+       *  rather than sitting beside a separate `change-column-default`, whose down would run
+       *  first and set the old default on a column still holding the new type. */
+      fromDefault?: ColumnDefault; toDefault?: ColumnDefault;
+      status: ChangeStatus }
   | { kind: "change-column-nullable"; table: string; schema?: string; column: string;
       from: boolean; to: boolean; status: ChangeStatus }
   | { kind: "change-column-default"; table: string; schema?: string; column: string;
