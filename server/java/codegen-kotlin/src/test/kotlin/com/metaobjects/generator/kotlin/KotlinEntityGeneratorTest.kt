@@ -313,4 +313,98 @@ class KotlinEntityGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    @Test fun `emits a Java-callable builder for partial construction`() {
+        // Kotlin default arguments are a COMPILER feature, not a bytecode one: a data class
+        // whose properties are all defaulted exposes only a no-arg constructor and the full
+        // N-arg one to Java, plus a synthetic bitmask ctor Java cannot call. The class is
+        // immutable, so there are no setters to fill in afterwards either — a Java caller
+        // setting 3 of 14 fields had to pass 14 arguments with 11 nulls (#365, found when a
+        // generated value object replaced a hand-written Lombok @Builder and made four Java
+        // call sites strictly worse). The builder restores partial construction WITHOUT
+        // adding a dependency: a plain nested class, no Lombok.
+        val outDir = Files.createTempDirectory("kgen-builder-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test", fixture))
+
+            val src = Files.readString(outDir.resolve("acme/demo/Author.kt"))
+
+            assertTrue("public class Builder" in src, "expected a nested Builder in:\n$src")
+            // @JvmStatic so Java writes Author.builder(), not Author.Companion.builder().
+            assertTrue("@JvmStatic" in src, "expected @JvmStatic on builder() in:\n$src")
+            assertTrue("public fun builder(): Builder" in src, "expected a builder() factory in:\n$src")
+            // One fluent setter per property, returning Builder so calls chain.
+            for (prop in listOf("id", "name", "bio")) {
+                assertTrue("public fun $prop(" in src, "expected a fluent `$prop(...)` setter in:\n$src")
+            }
+            assertTrue("public fun build(): Author" in src, "expected build() in:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `the builder covers value objects, not just entities`() {
+        // Same emit path serves object.entity and object.value, and the reported case was a
+        // VALUE object — so assert the VO explicitly rather than relying on the shared path.
+        val voFixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "Money", "children": [
+                { "field.string": { "name": "currency" } },
+                { "field.int":    { "name": "amountMinor" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("kgen-vo-builder-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test", voFixture))
+
+            val src = Files.readString(outDir.resolve("acme/demo/Money.kt"))
+            assertTrue("public class Builder" in src, "expected a Builder on the value object in:\n$src")
+            assertTrue("public fun build(): Money" in src, "expected build(): Money in:\n$src")
+            assertTrue("public fun currency(" in src, "expected a fluent currency(...) setter in:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+
+    @Test fun `the builder restores the non-null guarantee it cannot hold`() {
+        // A builder is filled incrementally, so its backing field must be nullable even where
+        // the property is not. build() puts the guarantee back with requireNotNull, naming the
+        // property — the data-class constructor stays the real enforcement point.
+        val requiredFixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Ticket", "children": [
+                { "field.string": { "name": "code", "@required": true } },
+                { "field.string": { "name": "note" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("kgen-required-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test", requiredFixture))
+
+            val src = Files.readString(outDir.resolve("acme/demo/Ticket.kt"))
+            // the property itself is non-null...
+            assertTrue("public val code: String," in src || "public val code: String\n" in src,
+                "expected a NON-null `code` property in:\n$src")
+            // ...its builder backing field is nullable, and build() re-asserts it
+            assertTrue("private var code: String? = null" in src,
+                "expected a nullable builder field for `code` in:\n$src")
+            assertTrue("requireNotNull(code)" in src,
+                "expected build() to requireNotNull(code) in:\n$src")
+            // a nullable sibling passes straight through, unguarded
+            assertFalse("requireNotNull(note)" in src,
+                "a nullable property must NOT be guarded in:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
 }

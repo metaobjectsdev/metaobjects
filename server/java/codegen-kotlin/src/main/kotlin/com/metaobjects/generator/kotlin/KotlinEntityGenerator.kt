@@ -238,8 +238,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             typeBuilder.addProperty(PropertySpec.builder(propName, propType).initializer(propName).build())
         }
 
+        val primaryCtor = ctorBuilder.build()
+        typeBuilder.primaryConstructor(primaryCtor)
+        addJavaBuilder(obj, typeBuilder, ClassName(pkg, shortName), primaryCtor.parameters)
+
         val fileSpec = FileSpec.builder(pkg, shortName)
-            .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
+            .addType(typeBuilder.build())
             .build()
 
         // Guarded: `<Entity>.kt` is the file an adopter is most likely to want to own, and a
@@ -726,4 +730,90 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
         PackageMapping.splitFqn(md.name).second + ".kt"
+
+    /**
+     * Emit a nested `Builder` plus a `@JvmStatic builder()` factory.
+     *
+     * Kotlin default arguments are a COMPILER feature, not a bytecode one. A data class whose
+     * properties are all defaulted exposes only three constructors to Java — the full N-arg one,
+     * a synthetic bitmask one Java cannot call, and (when every parameter is defaulted) a no-arg
+     * one that yields an all-null instance of an IMMUTABLE class. So a Java caller setting 3 of
+     * 14 fields had to pass 14 arguments with 11 nulls, and a generated value object replacing a
+     * hand-written Lombok `@Builder` made its Java call sites strictly worse (#365). Kotlin
+     * callers were never affected — named arguments cover it — which is why every existing test
+     * here, all Kotlin-side, missed it.
+     *
+     * A nested builder rather than `@JvmOverloads`: overloads are positional, so they only help a
+     * caller whose omissions are all TRAILING, and a 14-member class would emit 15 constructors
+     * to say so. A builder needs no dependency (deliberately NOT Lombok — generated code must not
+     * force a third-party annotation processor on an adopter) and reads the same from both
+     * languages.
+     *
+     * Every backing field is nullable even where the property is not: a builder is filled
+     * incrementally, so it cannot hold the constructor's non-null guarantee. `build()` restores it
+     * with `requireNotNull`, naming the property — the same trade every builder makes, and the
+     * data-class constructor remains the real enforcement point.
+     */
+    private fun addJavaBuilder(
+        obj: MetaObject,
+        typeBuilder: TypeSpec.Builder,
+        className: ClassName,
+        params: List<ParameterSpec>,
+    ) {
+        if (params.isEmpty()) return
+        // NOT on an object.projection. A projection is a DERIVED read-only representation —
+        // it arrives from a view query and nothing constructs one, so a builder would be an
+        // affordance for something callers must not do. It would also put `var` backing fields
+        // into a type KotlinProjectionCompileTest requires to be immutable, which is how this
+        // exclusion was found rather than reasoned about.
+        if (obj.subType == MetaObject.SUBTYPE_PROJECTION) return
+
+        val builderClass = ClassName(className.packageName, className.simpleName, "Builder")
+        val builder = TypeSpec.classBuilder("Builder")
+            .addKdoc("Fluent builder — lets a JAVA caller set a subset of properties.\n")
+
+        for (param in params) {
+            val backingType = param.type.copy(nullable = true)
+            builder.addProperty(
+                PropertySpec.builder(param.name, backingType)
+                    .addModifiers(KModifier.PRIVATE)
+                    .mutable(true)
+                    .initializer("null")
+                    .build()
+            )
+            builder.addFunction(
+                FunSpec.builder(param.name)
+                    .addParameter("v", backingType)
+                    .returns(builderClass)
+                    .addStatement("this.%N = v", param.name)
+                    .addStatement("return this")
+                    .build()
+            )
+        }
+
+        val args = params.joinToString(",\n  ") { p ->
+            if (p.type.isNullable) "%1N = %1N".replace("%1N", p.name)
+            else "${p.name} = requireNotNull(${p.name}) { \"${p.name} is required\" }"
+        }
+        builder.addFunction(
+            FunSpec.builder("build")
+                .returns(className)
+                .addStatement("return %T(\n  $args\n)", className)
+                .build()
+        )
+
+        typeBuilder.addType(builder.build())
+        typeBuilder.addType(
+            TypeSpec.companionObjectBuilder()
+                .addFunction(
+                    FunSpec.builder("builder")
+                        .addAnnotation(JvmStatic::class)
+                        .returns(builderClass)
+                        .addStatement("return Builder()")
+                        .build()
+                )
+                .build()
+        )
+    }
+
 }
