@@ -5,8 +5,16 @@
 # write access, so fork-submitted code cannot reach the runner. Keep it that way.
 #
 # Tiers:
-#   push to main        -> affected ports only (scripts/ci-affected-ports.sh)
+#   push to main        -> ports not known-green (scripts/ci-ports-to-run.sh)
 #   nightly + dispatch  -> full matrix
+#
+# "Not known-green" rather than "affected", because affected-alone has a hole that
+# bit during the 1.0.1 cut: five lanes failed on c59bb31c0, the next commit was
+# docs-only, its run skipped every code lane and reported GREEN, and the red sat
+# unverified under a green tip until the full matrix was dispatched by hand. So the
+# selection is affected(push) UNION the ports whose newest verdict on main is not a
+# success — which RE-RUNS the stale lane instead of merely reporting it stale.
+# That needs `actions: read` below to see its own history.
 #
 # The ts and java ports are each split into parallel jobs — a FAST lane (the
 # quick pure-code correctness signal: ts-fast = build+typecheck/conformance/
@@ -42,6 +50,14 @@ on:
         options: [full, affected]
         default: full
 
+# Least privilege, and `actions: read` is load-bearing: `detect` reads this
+# workflow's own past runs to find each lane's newest verdict. Declaring the block
+# also pins the token down from whatever the repo default happens to be — this is a
+# public repo whose jobs run on a self-hosted runner, and none of them writes.
+permissions:
+  contents: read
+  actions: read
+
 concurrency:
   group: local-ci-${{ github.ref }}
   cancel-in-progress: true
@@ -59,11 +75,12 @@ jobs:
       - id: sel
         env:
           BASE: ${{ github.event.before }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            ports="$(scripts/ci-affected-ports.sh "$BASE" "$GITHUB_SHA")"
+            ports="$(scripts/ci-ports-to-run.sh "$BASE" "$GITHUB_SHA")"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.tier }}" = "affected" ]; then
-            ports="$(scripts/ci-affected-ports.sh "$GITHUB_SHA~1" "$GITHUB_SHA")"
+            ports="$(scripts/ci-ports-to-run.sh "$GITHUB_SHA~1" "$GITHUB_SHA")"
           else
             ports="ts java python csharp"
           fi

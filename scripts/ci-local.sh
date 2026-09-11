@@ -173,6 +173,15 @@ gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-p
 # checks names. Offline; one manifest.
 gate_script_name_hooks() { node scripts/check-script-name-hooks.mjs; }
 
+# ── the lane selector decides what CI runs, so nothing may run it untested ────
+# Both selector tests existed-but-unwired at some point: test-ci-affected-ports.sh was
+# referenced by no lane at all, so the mapping that decides which ports get tested was
+# itself the one thing nothing tested. That is the worst place in the tree for an unrun
+# test — a wrong answer here does not fail, it silently stops testing a port.
+gate_ci_port_selection() {
+  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh
+}
+
 # ── the no-magic-physical-names gate is wired in all five ports ───────────────
 # Each port carries a de-blinded gate proving its generated code REFERENCES the
 # <Entity>Names constants instead of respelling a physical database name. A cross-port
@@ -704,6 +713,7 @@ if want gates; then step    "publish-intent parity"            gate_publish_inte
 if want gates; then step    "publish-set parity"               gate_publish_set;            fi
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
 if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
+if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi
 if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
 if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi

@@ -8,6 +8,11 @@
 # Fail-open policy: an unknown base (force-push zeros), an unresolvable
 # range, or ANY path not matched by a rule selects ALL ports — this script
 # may only ever shrink coverage when it is certain.
+#
+# NOT the whole selection. local-ci calls `ci-ports-to-run.sh`, which unions this
+# answer with the ports that are not known-green on main. "What changed" alone
+# cannot see a lane that failed under an EARLIER commit and was skipped by this
+# one — read that file before changing selection behaviour here.
 set -uo pipefail
 
 ALL="ts java python csharp"

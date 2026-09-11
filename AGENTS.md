@@ -105,11 +105,22 @@ bypasses branch protection. This hook closes that hole locally: when a push touc
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
 or `SKIP_TS_TYPECHECK=1 git push`. The Java/C#/Python compile+conformance gates do NOT run on PRs (hosted CI runs
 them on release tags, a nightly schedule, and manual dispatch, for cost). Instead, every push to
-`main` triggers `local-ci.yml` on the maintainer's self-hosted runner: affected
-ports only (via `scripts/ci-affected-ports.sh`), parallel per-port jobs, each
-running `scripts/ci-local.sh --only <port> --strict-toolchains`; a nightly
-dispatch runs the full matrix. PRs get the leak-scan only — run
+`main` triggers `local-ci.yml` on the maintainer's self-hosted runner: parallel
+per-port jobs, each running `scripts/ci-local.sh --only <port> --strict-toolchains`;
+a nightly dispatch runs the full matrix. PRs get the leak-scan only — run
 `scripts/ci-local.sh --quick` locally before opening one.
+
+**Lane selection is "not known-green", not "affected"** (`scripts/ci-ports-to-run.sh`).
+The selector unions the ports this push touched (`scripts/ci-affected-ports.sh`) with
+the ports whose *newest* verdict on `main` is not a success, read from the workflow's
+own run history — so a stale red lane gets **re-run**, not merely reported. Affected
+alone has a hole that bit during the 1.0.1 cut: five lanes failed, the next commit was
+docs-only, its run skipped every code lane and reported green, and the red sat
+unverified under a green tip. `skipped` is walked past (it describes the selection, not
+the code); anything that is not `success` — `cancelled` included — and any lane with no
+verdict in the window counts as not-green, because the selector may only ever widen.
+Both selector scripts are tested by the `ci lane selection` gate in the `gates` lane,
+which also asserts the lane→port map against the workflow's real job list.
 
 ## Monorepo layout
 
