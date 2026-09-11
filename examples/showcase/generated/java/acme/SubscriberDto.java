@@ -37,4 +37,26 @@ public record SubscriberDto(
 
     /** Issue #203 @autoSet escape hatch: the DTO written VERBATIM (import/restore/replication). */
     public static SubscriberDto insertPreserving(SubscriberDto dto) { return dto; }
+
+    /** A fluent builder, so a caller can set a subset of the components. */
+    public static Builder builder() { return new Builder(); }
+
+    /** Builds a {@link SubscriberDto}; an unset component stays null. */
+    public static final class Builder {
+        private Long id;
+        private String email;
+        private String name;
+        private SubscriberStatus status;
+        private java.time.Instant createdAt;
+
+        private Builder() {}
+
+        public Builder id(Long v) { this.id = v; return this; }
+        public Builder email(String v) { this.email = v; return this; }
+        public Builder name(String v) { this.name = v; return this; }
+        public Builder status(SubscriberStatus v) { this.status = v; return this; }
+        public Builder createdAt(java.time.Instant v) { this.createdAt = v; return this; }
+
+        public SubscriberDto build() { return new SubscriberDto(id, email, name, status, createdAt); }
+    }
 }
