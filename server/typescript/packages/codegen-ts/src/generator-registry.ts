@@ -39,6 +39,7 @@ import {
   docsFile,
   templateGenerator,
   traceHelperFile,
+  sharedModelFile,
 } from "./generators/index.js";
 
 export type GeneratorTier = "native" | "neutral";
@@ -179,6 +180,16 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => traceHelperFile(),
     options: "outDir?, target?",
+  },
+  "shared-model": {
+    name: "shared-model",
+    description: "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`.",
+    tier: "native",
+    // `name`/`include` are required at run time (an empty include matches
+    // everything, so a placeholder here constructs without throwing — real use
+    // always supplies both, same as `template`'s templatePrimitive() above).
+    factory: () => sharedModelFile({ name: "shared-model", include: [] }),
+    options: "name, include, exclude?, files?, version?, target?",
   },
 
   // ----- Tier-2 neutral (owned by the `meta docs` engine — D1 / ADR-0020) ---

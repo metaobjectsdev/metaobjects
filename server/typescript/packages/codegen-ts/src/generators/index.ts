@@ -35,6 +35,8 @@ export {
   type TemplateFormat,
 } from "./template-generator.js";
 export { traceHelperFile, type TraceHelperOpts } from "./trace-helper-file.js";
+// FR-023 §4.3 — the publisher's flattened shared-model artifact + manifest generator.
+export { sharedModelFile, type SharedModelFileOpts } from "./shared-model-file.js";
 export type {
   EntityDocData,
   StorageFieldDoc,

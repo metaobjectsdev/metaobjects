@@ -162,6 +162,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // passed: an unconfigured project's predicate admits everything, so this
       // is a no-op for the common case, not a behavior change.
       scope: genCollection.inScope,
+      // FR-023 §4.3 — the collection's own source files (never a dependency's
+      // snapshot artifact), so sharedModelFile() defaults its `files` selection
+      // to exactly what this project itself declares.
+      sourceFiles: genCollection.ownFiles,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

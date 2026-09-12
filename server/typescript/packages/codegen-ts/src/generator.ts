@@ -1,4 +1,4 @@
-import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
+import type { MetaObject, MetaRoot, TypeRegistry } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "./render-context.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
 import type { OrphanPolicy } from "./reconcile-orphans.js";
@@ -45,6 +45,26 @@ export interface GenContext {
    *  in a sub-directory. Undefined only when the runner was driven
    *  programmatically without an explicit projectRoot. */
   projectRoot?: string;
+  /**
+   * FR-023 §4.3 — the run's composed registry (core providers plus whatever this
+   * project's `metaobjects.config.ts` `providers` adds), filled by the runner. The
+   * SAME vocabulary `opts.metadata` was loaded with. `sharedModelFile()`'s
+   * standalone re-loads of a `files` subset use this so a publisher project's own
+   * consumer-supplied vocabulary is honoured identically to the main load. Optional
+   * on the type so tests and custom callers don't need a placeholder; always
+   * present at run time when invoked via `runGen()`.
+   */
+  registry?: TypeRegistry;
+  /**
+   * FR-023 §4.3 — the collection's own source files (never a dependency's
+   * artifact), filled by the runner from `RunGenOpts.sourceFiles`. Distinct from
+   * `loadedRoot`, which is already fully loaded and merged: `sharedModelFile()`
+   * needs the raw file LIST so it can re-load a `files:`-narrowed subset of it
+   * standalone. Undefined when the caller never supplied `RunGenOpts.sourceFiles`
+   * (a generator relying on it should default sensibly, as `sharedModelFile()`'s
+   * own `files` option does).
+   */
+  sourceFiles?: readonly string[];
   warn: (msg: string) => void;
 }
 

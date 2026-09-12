@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
-import { isMetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE } from "@metaobjectsdev/metadata";
+import {
+  isMetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE,
+  composeRegistry, coreProviders,
+} from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
@@ -106,6 +109,15 @@ export interface RunGenOpts {
    * they pass straight through.
    */
   scope?: (fqn: string) => boolean;
+  /**
+   * FR-023 §4.3 — the collection's own source files (`Collection.ownFiles`; never
+   * a dependency's snapshot artifact), threaded onto `GenContext.sourceFiles` for
+   * `sharedModelFile()`'s default `files` selection. The CLI's `gen` command
+   * always passes `genCollection.ownFiles`; a programmatic caller that never
+   * wires `sharedModelFile()` (or always passes that generator's own `files`
+   * option explicitly) can omit this with no behavior change elsewhere.
+   */
+  sourceFiles?: readonly string[];
 }
 
 export interface RunGenResult {
@@ -374,6 +386,13 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 2. Resolve targets + entity-module target.
   const config = normalizeConfig(opts.config);
 
+  // FR-023 §4.3 — the run's composed registry, threaded onto every GenContext.
+  // Mirrors sdk's `loadMemory` exactly (`defaultLoadMemoryProviders` = core
+  // providers, then the project's own `config.providers` appended) so
+  // `sharedModelFile()`'s standalone re-load of a `files` subset sees the SAME
+  // vocabulary `opts.metadata` was originally loaded with.
+  const registry = composeRegistry([...coreProviders, ...(config.providers ?? [])]);
+
   // The compile break (`value` → `fetcher` on the provider) sends an adopter to the right
   // line; this names the value to put there, once, for the projects that had one.
   if (shouldNoteBaseUrlMove(config.apiPrefix, recordedEngine)) {
@@ -623,6 +642,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       },
       renderContext,
       ...(projectRoot !== undefined && { projectRoot }),
+      registry,
+      ...(opts.sourceFiles !== undefined && { sourceFiles: opts.sourceFiles }),
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
 
