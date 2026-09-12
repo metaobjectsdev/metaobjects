@@ -11,7 +11,7 @@
 // output is therefore guaranteed — it is byte-for-byte the same generator the
 // `meta gen` pipeline runs (gated by the docs conformance fixture).
 
-import { resolve as resolvePath, basename } from "node:path";
+import { resolve as resolvePath, basename, dirname } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
@@ -861,7 +861,22 @@ async function emitSite(
   // files: a declared source directory holding no metadata yet would otherwise
   // vanish from the site's group list entirely, and `sourceDirs` could come back
   // empty where the pre-branch code always passed `<root>/metaobjects`.
-  const sourceDirs = [...collection.sourceRoots];
+  // `collection.sourceRoots` deliberately EXCLUDES dependency artifacts (sdk's
+  // collection.ts: "a dependency's artifact is not a source root"). But
+  // `generateSite` below does NOT reuse the already-loaded `collection` root —
+  // it runs its own independent `loadModel` over exactly the dirs handed to
+  // it. Without the resolved snapshot dirs appended here, a consumer that
+  // `extends` an imported abstract or `overlay: true`s an imported node — the
+  // two constructs entities.md and abstracts-and-inheritance.md recommend for
+  // this exact boundary — hits `ERR_UNRESOLVED_SUPER` / `ERR_OVERLAY_NO_TARGET`
+  // in THIS loader even though the same metadata resolves fine through
+  // `loadMemory` above. `loadModel` handles a dependency's snapshot dir
+  // natively: each holds exactly the one artifact file, which its own
+  // `.(json|ya?ml)$` file walk picks up like any other source dir.
+  const sourceDirs = [
+    ...collection.sourceRoots,
+    ...new Set(collection.dependencies.map((d) => dirname(d.artifactPath))),
+  ];
   const seenDirs = new Set(sourceDirs);
   if (promptsDir !== undefined && !existsSync(promptsDir)) {
     log.warn(`docs: --prompts dir does not exist: ${promptsDir}`);
