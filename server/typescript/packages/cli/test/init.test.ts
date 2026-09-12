@@ -116,14 +116,45 @@ describe("init() — happy path", () => {
     expect(existsSync(join(cwd, ".metaobjects", ".gen-state"))).toBe(true);
   });
 
-  test("scaffolds package.meta.json under .metaobjects/ with three-field manifest", async () => {
-    await init({ cwd });
+  // FR-023 — the v0.3 package.meta.json prototype is deprecated (nothing reads
+  // it); `meta init` must no longer scaffold it. Fails if the removed scaffold
+  // block (writing a { name, version, extends } manifest when absent) is restored.
+  test("does NOT scaffold .metaobjects/package.meta.json (FR-023 — deprecated v0.3 manifest)", async () => {
+    const result = await init({ cwd });
     const manifestPath = join(cwd, ".metaobjects", "package.meta.json");
-    expect(existsSync(manifestPath)).toBe(true);
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    expect(manifest.name).toBeDefined();
-    expect(manifest.version).toBe("0.1.0");
-    expect(manifest.extends).toEqual([]);
+    expect(existsSync(manifestPath)).toBe(false);
+    expect(result.created).not.toContain(".metaobjects/package.meta.json");
+  });
+
+  // A pre-existing package.meta.json (from a project scaffolded before FR-023)
+  // must be left exactly as it was — neither overwritten nor deleted — with its
+  // deprecation surfaced as a warning. Fails if init overwrites or deletes the
+  // file, or if the deprecation note regresses in wording or is dropped.
+  test("leaves a pre-existing .metaobjects/package.meta.json untouched and warns it is deprecated", async () => {
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    const manifestPath = join(cwd, ".metaobjects", "package.meta.json");
+    const existingManifest = JSON.stringify({ name: "legacy-pkg", version: "0.1.0", extends: [] }, null, 2) + "\n";
+    writeFileSync(manifestPath, existingManifest, "utf8");
+
+    const result = await init({ cwd, force: true });
+
+    expect(readFileSync(manifestPath, "utf8")).toBe(existingManifest);
+    expect(result.created).not.toContain(".metaobjects/package.meta.json");
+    expect(result.warnings).toContain(
+      "note: .metaobjects/package.meta.json is deprecated (nothing reads it; removed in 2.0) — see docs/features/metadata-dependencies.md",
+    );
+  });
+
+  // The two new dependency-tooling files (deps.lock.json + the deps/ snapshot
+  // directory, both written only by `meta deps sync`, never by init) must be
+  // tracked rather than swept up by the per-target-shadow ignore pattern. Fails
+  // if either negation is missing, or if the old package.meta.json negation lingers.
+  test("scaffolded .metaobjects/.gitignore tracks deps/ and deps.lock.json, not package.meta.json", async () => {
+    await init({ cwd });
+    const ignore = readFileSync(join(cwd, ".metaobjects", ".gitignore"), "utf8");
+    expect(ignore).toContain("!deps/");
+    expect(ignore).toContain("!deps.lock.json");
+    expect(ignore).not.toContain("!package.meta.json");
   });
 
   test("writes a valid default config.json under .metaobjects/", async () => {

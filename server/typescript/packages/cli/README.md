@@ -86,7 +86,7 @@ Running `meta` with no arguments prints a concise status line (whether a `metaob
 
 ### `meta init`
 
-Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `package.meta.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), the **owned codegen generators** at `codegen/generators/{entity,queries,routes,barrel}.ts`, and `metaobjects.config.ts` at the repo root.
+Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), the **owned codegen generators** at `codegen/generators/{entity,queries,routes,barrel}.ts`, and `metaobjects.config.ts` at the repo root.
 
 The generators are copied from the codegen reference templates and are **yours to edit** (ADR-0034 scaffold-and-own); the scaffolded `metaobjects.config.ts` imports them locally, and `meta gen` runs from those local copies — not from the package. Each generator file is written only if absent, so re-running with `--force` never clobbers a hand-edited generator.
 
