@@ -165,7 +165,7 @@ emitted for:
 // this reaches through the generated handler's own register(..., { prefix }).
 app.register(async (s) => {
   s.addHook("preHandler", requireAuth);
-  await registerOrderRoutes(s);
+  await orderRoutes(s);
 });
 
 // Hono — the trailing wildcard also matches the collection path itself, so one
@@ -173,6 +173,10 @@ app.register(async (s) => {
 app.use(`${Order.$path}/*`, requireAuth);
 registerOrderRoutes(app, { db });
 ```
+
+(The handler is named `orderRoutes` on Fastify and `registerOrderRoutes` on Hono — the
+two emitters have always spelled it differently. Read the name off the generated file
+rather than off this page; its own JSDoc carries the recipe with the right one.)
 
 Both are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather than
 asserted in prose. For mounting *fewer* endpoints, narrow the generator:

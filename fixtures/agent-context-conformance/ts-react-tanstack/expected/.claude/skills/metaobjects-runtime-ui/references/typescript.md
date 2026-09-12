@@ -229,7 +229,7 @@ feature involved, and no edit to the generated file:
 // registered outside the scope stay open.
 app.register(async (s) => {
   s.addHook("preHandler", requireAuth);
-  await registerRecipeRoutes(s);
+  await recipeRoutes(s);   // Fastify spells it `recipeRoutes`; Hono, `registerRecipeRoutes`
 });
 
 // Hono — the trailing wildcard matches the collection path itself, so one middleware
