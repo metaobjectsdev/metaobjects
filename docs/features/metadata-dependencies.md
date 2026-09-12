@@ -217,12 +217,25 @@ The mechanism is one predicate, built from the lock:
   asymmetry is deliberate: a project that writes `scope.include: ["**"]` to mean "all
   of my own model" must not thereby start generating and migrating someone else's.
 
-Codegen, `meta gen`, `verify --codegen`, and the requirements ledger's denominator all
-compose the same predicate:
+**TypeScript's** `Collection.inScope` — read by codegen, `meta gen`, `verify
+--codegen`, and the requirements ledger's denominator — composes both conjuncts:
 
 ```
 inScope(fqn) = matchesScope(fqn, scope) && (!imported(fqn) || explicitlyIncluded(packageOf(fqn), scope.include))
 ```
+
+**Python's** `in_scope` — read by `run_gen`'s `select` and `verify --codegen` — is
+**only the second conjunct**. It never applies `matches_scope` to the project's own
+objects (the Python CLI has never scoped its own generated output); only the
+import-exclusion half is new behaviour there:
+
+```
+inScope(fqn) = !imported(fqn) || explicitlyIncluded(packageOf(fqn), scope.include)
+```
+
+So `scope.include` narrows a Python project's *own* codegen output not at all — it
+only ever widens which imported package is let back in. Do not read the TypeScript
+formula above as describing both ports.
 
 `migrate`, `verify --db`, and offline generate compose the schema-side twin, which
 also removes an excluded import from the *expected* schema before drift is computed

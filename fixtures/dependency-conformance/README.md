@@ -67,7 +67,18 @@ with `expectFiles`.
 - **`expectSelected`** — OPTIONAL, alongside `expectFiles`: the EXHAUSTIVE set, over every
   loaded top-level object, for which `collection.inScope(fqn)` is true — the codegen/CLI
   selection predicate, composed from the declared scope and the default exclusion of
-  imported metadata (DESIGN §11.1 item 2).
+  imported metadata (DESIGN §11.1 item 2). **Cross-port caveat:** TypeScript's `inScope`
+  also applies `matchesScope(fqn, scope)` to the project's OWN objects; Python's
+  `in_scope` does not (only the import-exclusion half is Python's — see
+  `docs/features/metadata-dependencies.md`'s "What's excluded by default" section for
+  both formulas). The two `expectSelected` cases that declare `scope.include`
+  (`a-scope-include-naming-the-package-selects-its-nodes`,
+  `a-wildcard-include-does-not-name-a-package`) both use includes under which every one
+  of the project's own objects already matches (`app::**` / `**` against `app::Order`),
+  so they cannot distinguish "applies `matchesScope` to own objects" from "does not" —
+  Python passes either way. Do not add an `expectSelected` case relying on
+  `scope.include` narrowing a project's own objects until Python implements the first
+  conjunct; the corpus cannot currently catch that divergence.
 - **`expectMigrateGoverned`** — OPTIONAL, alongside `expectFiles`: the EXHAUSTIVE set, over
   every loaded top-level object, for which `collection.inMigrateScope` admits it — an
   `undefined` predicate (no `migrate.scope` declared and no dependencies) admits every
