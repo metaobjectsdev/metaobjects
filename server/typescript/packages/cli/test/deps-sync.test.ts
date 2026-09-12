@@ -509,4 +509,57 @@ describe("meta deps sync <name> — the name filter (FR-023 Phase 1a Task 14, fi
     // completely untouched by the failed attempt.
     expect(JSON.parse(readFileSync(lockPath, "utf8"))).toEqual(afterFiltered);
   });
+
+  // Fix round 2 — the test above exercises real code but does not
+  // DISCRIMINATE: a mutant that deletes filtering (`targets = [...specs]`
+  // unconditionally, ignoring `filterNames`) passes every assertion in it,
+  // because the untargeted dependency's publisher is untouched either way, so
+  // "carried forward" and "re-resolved fresh" produce byte-identical results.
+  //
+  // This test makes the untargeted dependency IMPOSSIBLE to process
+  // successfully (its publisher directory is deleted outright), then proves a
+  // name-filtered sync succeeds anyway. Under correct filtering, the deleted
+  // dependency is never touched, so its absence is irrelevant. Under the
+  // mutant above, BOTH dependencies are processed every run, so
+  // `resolveDependencyDir` throws `ERR_DEPENDENCY_UNRESOLVED` for the deleted
+  // one and the whole sync fails — the one asymmetry the test above lacked.
+  test("a filtered sync never re-resolves the untargeted dependency, even when its publisher is gone", async () => {
+    const { consumerRoot, extraPublisherDir } = setupTwoDependencyProject();
+
+    // Baseline: sync everything declared.
+    expect(await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+
+    const lockPath = join(consumerRoot, ".metaobjects", "deps.lock.json");
+    const baseline = JSON.parse(readFileSync(lockPath, "utf8"));
+    expect(baseline.dependencies[SECOND_NAME]).toBeDefined();
+    expect(baseline.dependencies[DEP_NAME]).toBeDefined();
+
+    // acme-extra can no longer be resolved by ANY path — its whole publisher
+    // directory is gone. It is still DECLARED in the consumer's config, so a
+    // correctly-filtered `sync acme-common` must carry its lock entry forward
+    // untouched rather than attempt to re-resolve it.
+    rmSync(extraPublisherDir, { recursive: true, force: true });
+
+    out = [];
+    err = [];
+    const exit = await run([
+      "deps",
+      "sync",
+      DEP_NAME, // acme-extra is never named
+      "--format",
+      "text",
+      "--cwd",
+      consumerRoot,
+    ]);
+
+    expect(exit).toBe(0);
+
+    const after = JSON.parse(readFileSync(lockPath, "utf8"));
+    // acme-common's own manifest never changed since the baseline sync — this
+    // filtered run reports it "unchanged." The load-bearing assertion is
+    // below: acme-extra's entry survives BYTE-IDENTICAL despite its publisher
+    // directory not existing on disk at all.
+    expect(after.dependencies[DEP_NAME]).toEqual(baseline.dependencies[DEP_NAME]);
+    expect(after.dependencies[SECOND_NAME]).toEqual(baseline.dependencies[SECOND_NAME]);
+  });
 });
