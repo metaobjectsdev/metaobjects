@@ -36,7 +36,16 @@ export {
 } from "./template-generator.js";
 export { traceHelperFile, type TraceHelperOpts } from "./trace-helper-file.js";
 // FR-023 §4.3 — the publisher's flattened shared-model artifact + manifest generator.
-export { sharedModelFile, type SharedModelFileOpts } from "./shared-model-file.js";
+// The three tool-file constants are re-exported alongside it purely so a `cli`
+// test can assert they stay byte-equal to sdk's canonical copies (see that
+// module's own comment for why codegen-ts can't just import sdk directly).
+export {
+  sharedModelFile,
+  type SharedModelFileOpts,
+  MANIFEST_FILE as SHARED_MODEL_MANIFEST_FILE,
+  ARTIFACT_SUFFIX as SHARED_MODEL_ARTIFACT_SUFFIX,
+  INTEGRITY_PREFIX as SHARED_MODEL_INTEGRITY_PREFIX,
+} from "./shared-model-file.js";
 export type {
   EntityDocData,
   StorageFieldDoc,

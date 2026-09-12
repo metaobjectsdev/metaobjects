@@ -50,10 +50,13 @@ import { effectivePackage } from "../docs-paths.js";
 // format"). Their single canonical source is `sdk/src/dependencies.ts`
 // (`MANIFEST_FILE`, `ARTIFACT_SUFFIX`, `INTEGRITY_PREFIX`) — codegen-ts cannot
 // import sdk (the dependency runs the other way: `cli` depends on both, design
-// §4.3's closing note), so these mirror those values locally. Keep in sync.
-const MANIFEST_FILE = "metaobjects.pkg.json";
-const ARTIFACT_SUFFIX = ".metaobjects.json";
-const INTEGRITY_PREFIX = "sha256-";
+// §4.3's closing note), so these mirror those values locally. Keep in sync —
+// exported (not merely local) so `cli`, which depends on both packages, can
+// assert equality against `sdk`'s exports in a test; see
+// `cli/test/shared-model-constants-parity.test.ts`.
+export const MANIFEST_FILE = "metaobjects.pkg.json";
+export const ARTIFACT_SUFFIX = ".metaobjects.json";
+export const INTEGRITY_PREFIX = "sha256-";
 /** design §3.2 — the manifest schema's own version, distinct from `metamodelVersion`. */
 const MANIFEST_SCHEMA_VERSION = 1;
 
