@@ -10,6 +10,21 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-09-12
+
+_npm `1.0.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+_All four registries publish: npm `1.0.3` (full lockstep across the 14 `@metaobjectsdev/*`
+publish candidates), Maven Central `8.0.3`, PyPI `1.0.3`, NuGet `1.0.3`. PyPI and NuGet were
+last cut at `1.0.1` and adopt the shared `minor.patch` now current, skipping the number they
+sat out (ADR-0035 Amendment 1)._
+
+Coordinated PATCH. **Every port has changed product code**: npm carries FR-023 and the
+ADR-0055 reference implementation, Maven / NuGet / PyPI each carry their ADR-0055 port, and
+PyPI additionally carries FR-023 Phase 1a. `metamodelVersion` stays **`1.0`** —
+`expected-registry.json` is byte-unchanged since `v1.0.2`, so no registered vocabulary,
+canonical format or wire contract moved.
+
 ### Added
 
 - **Metadata dependencies (FR-023, Phase 1a — TypeScript + Python).** A project can
