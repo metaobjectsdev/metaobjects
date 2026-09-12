@@ -674,7 +674,6 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       "metaobjects/meta.common.json",
       ".metaobjects/config.json",
       ".metaobjects/.gitignore",
-      `.metaobjects/${PACKAGE_MANIFEST_FILE}`,
     );
     result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
     for (const name of SCAFFOLDED_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);

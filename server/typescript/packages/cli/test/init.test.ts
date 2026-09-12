@@ -157,6 +157,16 @@ describe("init() — happy path", () => {
     expect(ignore).not.toContain("!package.meta.json");
   });
 
+  // FR-023 fix round 1 — `--print-only` previews what a real run will create; the
+  // scaffold-removal above left an orphaned forecast entry at the printOnly branch
+  // (a second, separate site from the removed scaffold block) that still named
+  // .metaobjects/package.meta.json even though the real path never writes it. Fails
+  // if that push is restored, since a real init run never produces this file.
+  test("--print-only does not forecast .metaobjects/package.meta.json", async () => {
+    const result = await init({ cwd, printOnly: true });
+    expect(result.created).not.toContain(".metaobjects/package.meta.json");
+  });
+
   test("writes a valid default config.json under .metaobjects/", async () => {
     await init({ cwd });
     const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
