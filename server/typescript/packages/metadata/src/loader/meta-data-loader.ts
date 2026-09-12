@@ -42,6 +42,7 @@ import { validateAttrSchema } from "../attr-schema-validate.js";
 import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
 import { InMemoryStringSource } from "./meta-data-source.js";
 import type { ParseOptions, ParseResult } from "../parser-core.js";
+import { expandPackageForPath } from "../parser-core.js";
 
 // Local mirror of DirectorySource's options shape. Deliberately inlined here
 // (instead of `import type`'d from ./sources/directory-source.js) so the
@@ -116,11 +117,16 @@ export interface DeclaredTopLevelKey {
    *  registry for a default subType, because it never needs the subType. */
   type: string;
   /** The resolution key the declaration would carry once parsed: the child's
-   *  own `package` if set, else the root's `package`, then `::`, then its
-   *  `name`. Mirrors `rootChildResolutionKey` (parser-core.ts) minus relative
-   *  (`::`-prefixed) package-path expansion, which no root-level declaration
-   *  in this walk's callers (the overlay-only partition, the overlay lint)
-   *  needs — both compare whole declared packages, never relative ones. */
+   *  own `package` if set (expanded against the root's `package` via
+   *  `expandPackageForPath` when it's a relative, `::`-prefixed path — e.g.
+   *  root `acme` + own `::garage` → `acme::garage`), else the root's
+   *  `package` verbatim, then `::`, then its `name`. Exactly
+   *  `rootChildResolutionKey` (parser-core.ts) — including the relative-path
+   *  expansion, reusing `expandPackageForPath` rather than reimplementing it,
+   *  because a second copy is exactly how this walk and the real parser
+   *  silently disagreed on a relative package (task 17 fix-round-1: this
+   *  function used to return `::garage::Garage` for a fixture the real
+   *  loader resolves to `acme::garage::Garage`). */
   key: string;
   /** Whether the declaration's body carries `overlay: true`. */
   overlay: boolean;
@@ -194,7 +200,10 @@ function declaredTopLevelKeysFromParsedRoot(parsed: unknown): ReadonlyArray<Decl
       const dotIdx = wrapperKey.indexOf(TYPE_SUBTYPE_SEPARATOR);
       const type = dotIdx < 0 ? wrapperKey : wrapperKey.slice(0, dotIdx);
       const rawOwnPkg = bodyRecord[RESERVED_KEY_PACKAGE];
-      const pkg = typeof rawOwnPkg === "string" && rawOwnPkg !== "" ? rawOwnPkg : rootPkg;
+      const pkg =
+        typeof rawOwnPkg === "string" && rawOwnPkg !== ""
+          ? expandPackageForPath(rootPkg, rawOwnPkg)
+          : rootPkg;
       const key = pkg !== "" ? `${pkg}${PACKAGE_SEPARATOR}${name}` : name;
       declared.push({ type, key, overlay: bodyRecord[RESERVED_KEY_OVERLAY] === true });
     }

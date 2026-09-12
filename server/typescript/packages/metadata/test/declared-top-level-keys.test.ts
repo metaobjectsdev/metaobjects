@@ -10,9 +10,18 @@
 // FR-023 §11 (overlay authoring lint) task 17.
 
 import { describe, test, expect } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   declaredTopLevelKeys, MetaDataLoader, InMemoryStringSource, TYPE_OBJECT, TYPE_FIELD,
 } from "../src/index.js";
+import { FileSource } from "../src/loader/sources/file-source.js";
+import { PACKAGE_SEPARATOR } from "../src/shared/structural.js";
+
+const FIXTURES_DIR = new URL("./fixtures/", import.meta.url).pathname;
+function fixturePath(name: string): string {
+  return join(FIXTURES_DIR, name);
+}
 
 describe("declaredTopLevelKeys — JSON", () => {
   test("reports type, resolution key and overlay flag for each top-level child", async () => {
@@ -156,5 +165,48 @@ describe("declaredTopLevelKeys — order-independence of the overlay-only partit
     expect(widget).toBeDefined();
     expect(widget!.ownChildByTypeAndName(TYPE_FIELD, "sku")).toBeDefined();
     expect(widget!.ownChildByTypeAndName(TYPE_FIELD, "warranty")).toBeDefined();
+  });
+});
+
+describe("declaredTopLevelKeys — key agrees with the real loader on a relative package", () => {
+  // fix-round-1: this walk used to return "::garage::Garage" for this exact
+  // fixture (root package "acme", Garage's own "package": "::garage") — the
+  // relative-package expansion `rootChildResolutionKey` (parser-core.ts)
+  // performs via `expandPackageForPath` was missing here. The real loader
+  // resolves the same declaration to "acme::garage::Garage". Both sides of
+  // that comparison were wrong the same way before the fix, which is why
+  // nothing in the existing suite caught it — this test computes the
+  // expected value from the REAL loader rather than a hand-typed literal, so
+  // it cannot pass by both sides encoding the same mistake.
+  test("Garage's key (own package '::garage', root package 'acme') matches root.resolutionKey()", async () => {
+    const path = fixturePath("acme-vehicle-metadata.json");
+
+    // acme-vehicle-metadata.json's fields extend acme::common bases, so
+    // acme-common-metadata.json must load first — same two-file order
+    // round-trip.test.ts uses for this fixture pair.
+    const loader = new MetaDataLoader({ freeze: false });
+    const { root, errors } = await loader.load([
+      new FileSource(fixturePath("acme-common-metadata.json")),
+      new FileSource(path),
+    ]);
+    expect(errors).toEqual([]);
+    const garage = root.ownChildByTypeAndName(TYPE_OBJECT, "Garage");
+    expect(garage).toBeDefined();
+    const expectedKey = garage!.resolutionKey();
+    // The fixture's relative spelling means a bug here still lands "some
+    // string" that ends in "::Garage" — assert the real loader actually
+    // performed the expansion too (i.e. this isn't vacuously comparing two
+    // wrong-but-equal strings), then compare declaredTopLevelKeys against it.
+    expect(expectedKey).toBe(`acme${PACKAGE_SEPARATOR}garage${PACKAGE_SEPARATOR}Garage`);
+
+    const content = await readFile(path, "utf-8");
+    const declared = await declaredTopLevelKeys(content, "json");
+    // Located by the AUTHORED name (independent of the key-computation this
+    // test exists to check), not by re-deriving the expected key.
+    const garageDecl = declared.find(
+      (d) => d.type === TYPE_OBJECT && d.key.endsWith(`${PACKAGE_SEPARATOR}Garage`),
+    );
+    expect(garageDecl).toBeDefined();
+    expect(garageDecl!.key).toBe(expectedKey);
   });
 });
