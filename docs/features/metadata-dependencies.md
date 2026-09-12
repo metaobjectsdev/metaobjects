@@ -450,12 +450,12 @@ but **not** built in Phase 1a — do not assume any of the following exists:
   resolution-time error above, run by TypeScript (the reference implementation) and
   Python. Three artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
-  Python's runner asserts all 23 cases; two of them incidentally use `view.text` (a
-  TS-web-presentation-only view subtype this port does not register) purely as
-  overlay content unrelated to what the case is testing, so those two assert the
-  documented `ERR_UNKNOWN_SUBTYPE` load failure instead of the full
-  imported/selected/governed assertions the corpus defines for them — see the
-  runner's own comment for the exemption and its removal condition.
+  Python's runner asserts all 23 cases identically to TypeScript's, with no
+  exemptions — the two overlay cases that need a view child as incidental content
+  use `view.currency` (the one concrete `view.*` subtype registered cross-port,
+  per `fixtures/registry-conformance/expected-registry.json`), not `view.text`,
+  so they exercise the full imported/selected/governed assertions like every
+  other case.
 
 ## See also
 

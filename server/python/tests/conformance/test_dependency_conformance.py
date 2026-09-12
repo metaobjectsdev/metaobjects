@@ -28,26 +28,6 @@ _CORPUS_DIR = (
 _CORPUS = _CORPUS_DIR / "cases.json"
 _CASES = json.loads(_CORPUS.read_text())["cases"]
 
-# These two corpus cases use `view.text` purely as incidental content on an
-# overlaid field (to exercise the overlay/dependency machinery, not the view
-# subtype itself). `view.text` is one of the 11 TS-web-presentation-only view
-# subtypes DEREGISTERED in this port — "no backend/codegen/render consumer in
-# Python, so they are dead vocab here" (`meta/presentation/view/view_constants.py`)
-# — a decision that predates FR-023. Loading either fixture fails with
-# `ERR_UNKNOWN_SUBTYPE` before the overlay-merge pass this case is actually
-# testing ever runs. Not a collection-resolver defect: `expectFiles` (pure
-# resolution, untouched by the load) is still asserted normally below; only the
-# LOAD-dependent assertions are replaced with the documented, known failure
-# mode — asserted precisely, so a future registration of `view.text` fails this
-# loudly and flags the exemption (and the corpus case, for Python) for review.
-_VIEW_TEXT_NOT_REGISTERED_IN_PYTHON = frozenset(
-    {
-        "an-overlay-of-a-dependency-node-is-not-refused",
-        "an-overlay-whose-target-was-removed-fails",
-    }
-)
-
-
 def test_corpus_is_non_empty() -> None:
     """A silent zero-case run is a failed gate, not a pass.
 
@@ -124,14 +104,6 @@ def test_dependency_conformance_case(case: dict, tmp_path: Path) -> None:
     # A set comparison alone cannot see a duplicate emission — assert the RAW
     # list length too, before it is thrown away by the set conversion.
     assert len(collection.files) == len(case["expectFiles"])
-
-    if case["name"] in _VIEW_TEXT_NOT_REGISTERED_IN_PYTHON:
-        result = _load_collection_result(collection)
-        assert result.errors and result.errors[0].code == "ERR_UNKNOWN_SUBTYPE", (
-            "view.text started resolving in Python — remove this case from "
-            "_VIEW_TEXT_NOT_REGISTERED_IN_PYTHON and exercise it normally"
-        )
-        return
 
     needs_load = (
         "expectImported" in case or "expectSelected" in case or "expectMigrateGoverned" in case

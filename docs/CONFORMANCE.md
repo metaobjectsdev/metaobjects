@@ -248,14 +248,13 @@ exclusion of imported metadata, overlay/extends across the boundary, and every l
 and resolution-time failure). File-shaped like `scope-conformance/` above: one
 committed `cases.json`, no per-port fixture, no ledger.
 
-**TypeScript (the reference implementation) and Python both run all 23 cases.**
-Python's runner asserts every case's `expectFiles` (pure resolution) normally; for
-the 2 cases that incidentally use `view.text` (a TS-web-presentation-only view
-subtype this port does not register) as overlay content unrelated to what the case
-tests, it asserts the documented `ERR_UNKNOWN_SUBTYPE` load failure in place of the
-full `expectImported`/`expectSelected`/`expectMigrateGoverned` assertions the corpus
-defines for them — see `test_dependency_conformance.py`'s own comment for the
-exemption and the condition that retires it. Java, Kotlin and C# have no runner —
+**TypeScript (the reference implementation) and Python both run all 23 cases,
+identically** — every case's `expectFiles`/`expectImported`/`expectSelected`/
+`expectMigrateGoverned`/`expectLoadError` assertions apply to both runners with no
+exemption. The two overlay cases that need a view child as incidental content use
+`view.currency` (the one concrete `view.*` subtype registered cross-port), not
+`view.text` — a prior revision used `view.text`, which Python doesn't register, and
+carried a since-discharged allowlist for it. Java, Kotlin and C# have no runner —
 Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
 ## Orphaned fixtures (tested but not yet documented)
