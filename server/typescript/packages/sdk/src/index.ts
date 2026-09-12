@@ -33,7 +33,7 @@ export {
   DependencySpecSchema,
   dependencyName,
   IntegritySchema,
-  ManifestSchema,
+  DependencyManifestSchema,
   LockEntrySchema,
   LockSchema,
   sha256Integrity,
@@ -45,7 +45,9 @@ export {
   importedNodesOf,
   explicitlyIncludes,
 } from "./dependencies.js";
-export type { DependencySpec, Manifest, LockEntry, Lock, ResolvedDependency } from "./dependencies.js";
+// `DependencyManifest`, not `Manifest`: the agent-context re-export below already
+// publishes that name, and an explicit export shadows a star one.
+export type { DependencySpec, DependencyManifest, LockEntry, Lock, ResolvedDependency } from "./dependencies.js";
 
 // Meta Forge metadata types + attribute name constants (registered into a
 // TypeRegistry to let Loader parse decision/principle/etc. children + the

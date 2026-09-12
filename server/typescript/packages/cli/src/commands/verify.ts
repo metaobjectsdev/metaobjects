@@ -618,8 +618,14 @@ export async function verifyCommand(
         `meta verify — requirements: ${s.total} entries (${s.functional} functional, ` +
         `${s.architectural} architectural) — ${parts.join(", ")}; ` +
         `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed, ` +
-        `counted over ${collection.files.length} metadata file(s), ` +
-        `${collection.dependencies.length} from dependencies.`,
+        `counted over ${collection.files.length} metadata file(s)` +
+        // FR-023 — only when there ARE dependencies. A project that declares none
+        // must print the sentence it printed before dependencies existed, to the
+        // byte: "0 from dependencies" is noise on every existing project, and this
+        // line is a SURFACE the no-dependency guarantee covers like any other.
+        (collection.dependencies.length > 0
+          ? `, ${collection.dependencies.length} from dependencies.`
+          : `.`),
       );
       if (s.undecided > 0) {
         say(

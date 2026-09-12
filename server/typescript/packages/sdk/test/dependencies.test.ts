@@ -13,7 +13,7 @@ import {
   explicitlyIncludes,
   LOCK_FILE,
   LockSchema,
-  ManifestSchema,
+  DependencyManifestSchema,
   readLock,
   sha256Integrity,
   writeLock,
@@ -40,9 +40,9 @@ test("manifest and lock schemas: sorted arrays, sorted keys, one transport", () 
     packages: ["acme::common"],
     nodes: ["acme::common::Address", "acme::common::Audited", "acme::common::Customer"],
   };
-  expect(() => ManifestSchema.parse(manifest)).not.toThrow();
-  expect(() => ManifestSchema.parse({ ...manifest, nodes: ["b", "a"] })).toThrow(/sorted/);
-  expect(() => ManifestSchema.parse({ ...manifest, mode: "reference" })).toThrow();
+  expect(() => DependencyManifestSchema.parse(manifest)).not.toThrow();
+  expect(() => DependencyManifestSchema.parse({ ...manifest, nodes: ["b", "a"] })).toThrow(/sorted/);
+  expect(() => DependencyManifestSchema.parse({ ...manifest, mode: "reference" })).toThrow();
 
   const { schema_version: _s, name: _n, ...rest } = manifest;
   const entry = { ...rest, resolvedFrom: { path: "x" } };

@@ -111,7 +111,13 @@ describe("meta verify — requirements exit-code contract", () => {
     // an estate reports the covered half as fully claimed. No check can see a tree it
     // was never pointed at; publishing the count it was taken over is what makes a
     // wrong denominator noticeable. Two files here: the entities and the requirements.
-    expect(summary).toContain("counted over 2 metadata file(s)");
+    // The trailing PERIOD is part of the assertion (FR-023): a project that
+    // declares no dependencies prints the sentence it printed before metadata
+    // dependencies existed, ending here. Without the period this passes just as
+    // happily on "… file(s), 0 from dependencies.", which is the one thing the
+    // no-dependency guarantee forbids on this surface. The dependency count is
+    // appended only when there IS one (asserted where that case is built).
+    expect(summary).toContain("counted over 2 metadata file(s).");
   }, TIMEOUT_MS);
 
   test("a model with NO requirements exits 0 — opt-in by declaration", async () => {
