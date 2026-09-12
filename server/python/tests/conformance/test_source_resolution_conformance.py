@@ -110,8 +110,11 @@ def test_cli_falls_back_to_neutral_config(tmp_path: Path, monkeypatch) -> None:
     from metaobjects.cli import resolve_metadata_location
 
     monkeypatch.chdir(tmp_path)
-    got = resolve_metadata_location(config=None, root=tmp_path)
-    assert {Path(p).relative_to(tmp_path.resolve()).as_posix() for p in got} == {
+    # FR-023: resolve_metadata_location now returns the full `Collection` at
+    # every rung — `.files` is the resolved file list a no-dependencies project
+    # still gets byte-identically (own files only, nothing led by an artifact).
+    collection = resolve_metadata_location(config=None, root=tmp_path)
+    assert {Path(p).relative_to(tmp_path.resolve()).as_posix() for p in collection.files} == {
         "model/meta.a.json"
     }
 
@@ -147,9 +150,10 @@ def test_docs_with_metaobjects_config_yaml_honors_declared_libraries(
 ) -> None:
     """`docs`'s no-positional branch loads `metaobjects.config.yaml` (rung 2 of
     the ladder) purely to read its `metadata` key, then reloads via
-    `_load_root_from_paths` — which dropped both `config.providers` and
-    `config.libraries`, even though `config` was already sitting right there.
-    A project declaring `libraries: ["ai"]` and `extends:
+    `_load_root_from_collection` (formerly `_load_root_from_paths`) — which
+    used to drop both `config.providers` and `config.libraries`, even though
+    `config` was already sitting right there. A project declaring
+    `libraries: ["ai"]` and `extends:
     metaobjects::ai::LlmCallBase` must resolve through `docs` exactly as it
     already does through `gen` / `verify --codegen` (see
     `test_shipped_library_ai.py::TestTheCliCanLoadTheLibrary`).

@@ -12,9 +12,13 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Sequence
 
 from metaobjects.errors import ErrorCode, ParseError
+from metaobjects.meta.meta_data import MetaData
+from metaobjects.naming import package_of_resolution_key
+from metaobjects.registry_manifest import METAMODEL_VERSION
+from metaobjects.shared.base_types import TYPE_OBJECT
 
 #: Directory (under `.metaobjects/`) holding the synced snapshot artifacts,
 #: one subdirectory per dependency name: `.metaobjects/deps/<name>/`.
@@ -311,3 +315,269 @@ class ResolvedDependency:
     nodes: tuple[str, ...]
     artifact_path: str
     source_id: str
+
+
+def _metamodel_major(version: str) -> str:
+    """The MAJOR half of a `major.minor` metamodel version. The metadata
+    contract is promised on the major alone (ADR-0035 Amendment 2)."""
+    return version.split(".")[0]
+
+
+def _stale(detail: str) -> ParseError:
+    """Every stale-snapshot refusal, in one place so every one of them ends
+    with the command that fixes it. Returns rather than raises (unlike the TS
+    `never`-typed sibling) — Python has no control-flow narrowing on `raise
+    fn()`, so the call site still writes `raise _stale(...)`."""
+    return ParseError(f"{detail}; run `meta deps sync`", code=ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE)
+
+
+def verify_snapshot(
+    config_dir: Path,
+    specs: list[dict[str, Any]],
+    lock: dict[str, Any] | None,
+) -> list[ResolvedDependency]:
+    """Verify a project's committed snapshot against its lock, and resolve the
+    dependencies the collection will load FIRST (DESIGN §4.2 step 2-3). Mirrors
+    the TS `verifySnapshot` (`sdk/src/dependencies.ts`) exactly.
+
+    ``lock`` is the ALREADY-VALIDATED dict :func:`read_lock` / :func:`validate_lock`
+    return (``dependencies`` a plain dict keyed by name), never raw JSON.
+
+    Two failures are NOT staleness and get their own codes: a dependency published
+    against a different metamodel MAJOR (``ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE``)
+    and two dependencies exporting the same fully-qualified node
+    (``ERR_DEPENDENCY_NODE_COLLISION``).
+
+    Result order is dependency NAME order, never the config's declaration order —
+    the artifacts lead the loaded file list, so declaration order must not decide
+    what the loader sees first.
+
+    A project with no dependencies and no lock resolves to ``[]`` without touching
+    the filesystem — the byte-identical path.
+    """
+    declared = [d["name"] for d in specs]
+
+    if lock is None:
+        # No dependencies AND no lock is the untouched project, not a stale one.
+        if not declared:
+            return []
+        raise _stale(
+            f"{len(declared)} dependenc{'y is' if len(declared) == 1 else 'ies are'} declared "
+            f"({', '.join(declared)}) but there is no {_METAOBJECTS_DIR}/{LOCK_FILE}"
+        )
+
+    entries: dict[str, Any] = lock["dependencies"]
+    declared_names = set(declared)
+    for name in entries:
+        if name not in declared_names:
+            raise _stale(
+                f'{_METAOBJECTS_DIR}/{LOCK_FILE} locks dependency "{name}", which '
+                f"{_METAOBJECTS_DIR}/config.json no longer declares"
+            )
+
+    resolved: list[ResolvedDependency] = []
+    for name in sorted(declared_names):
+        entry = entries.get(name)
+        if entry is None:
+            raise _stale(
+                f'dependency "{name}" is declared but {_METAOBJECTS_DIR}/{LOCK_FILE} has no '
+                "entry for it"
+            )
+
+        artifact_path = config_dir / _METAOBJECTS_DIR / DEPS_DIR / name / entry["artifact"]
+        try:
+            data = artifact_path.read_bytes()
+        except OSError:
+            raise _stale(
+                f'the committed snapshot for "{name}" is missing (expected {artifact_path})'
+            ) from None
+
+        actual = sha256_integrity(data)
+        if actual != entry["integrity"]:
+            raise _stale(
+                f'the committed snapshot for "{name}" does not match the lock — {artifact_path} '
+                f'hashes to {actual}, the lock records {entry["integrity"]}'
+            )
+
+        if _metamodel_major(entry["metamodelVersion"]) != _metamodel_major(METAMODEL_VERSION):
+            raise ParseError(
+                f'dependency "{name}" was published against metamodel {entry["metamodelVersion"]}; '
+                f"this toolchain speaks {METAMODEL_VERSION}. A different metamodel MAJOR is a "
+                f'different metadata contract — upgrade the toolchain, or use a release of "{name}" '
+                "built against it.",
+                code=ErrorCode.ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE,
+            )
+
+        resolved.append(
+            ResolvedDependency(
+                name=name,
+                version=entry["version"],
+                packages=tuple(entry["packages"]),
+                nodes=tuple(entry["nodes"]),
+                artifact_path=str(artifact_path),
+                source_id=dependency_source_id(name, entry["artifact"]),
+            )
+        )
+
+    # Collision is checked across the WHOLE resolved set, so the error names the
+    # two dependencies in name order however the config declared them.
+    owner: dict[str, str] = {}
+    for dep in resolved:
+        for node in dep.nodes:
+            prior = owner.get(node)
+            if prior is not None:
+                raise ParseError(
+                    f'dependencies "{prior}" and "{dep.name}" both export "{node}" — one '
+                    "fully-qualified node cannot come from two places, and whichever loaded "
+                    "second would silently win",
+                    code=ErrorCode.ERR_DEPENDENCY_NODE_COLLISION,
+                )
+            owner[node] = dep.name
+
+    return resolved
+
+
+def explicitly_includes(patterns: Sequence[str] | None, pkg: str) -> bool:
+    """Does some pattern in `patterns` name `pkg` LITERALLY (DESIGN §11.1 item 2)?
+
+    Drop the pattern's final segment — which names the node — and what remains
+    must be wildcard-free and equal to `pkg`. So `acme::common::**` and
+    `acme::common::Address` both name `acme::common`; `acme::**` and `**` reach
+    its nodes but name nothing, and an absent or empty list names nothing.
+
+    Matching is therefore NOT `matches_scope` — a pattern that MATCHES a
+    package's nodes is a weaker statement than one that NAMES the package.
+    Mirrors the TS `explicitlyIncludes` (`sdk/src/dependencies.ts`) exactly.
+    """
+    if not patterns or pkg == "":
+        return False
+    for pattern in patterns:
+        named = package_of_resolution_key(pattern)
+        if named and "*" not in named and named == pkg:
+            return True
+    return False
+
+
+def imported_from(pkg: str, dependencies: Sequence[ResolvedDependency]) -> str | None:
+    """The name of the dependency that owns package `pkg`, or `None` when no
+    resolved dependency exports it. Used by the CLI's `meta gen <Name>`-style
+    refusal message (FR-023 §11.1 item 2) to name the offending dependency."""
+    for dep in dependencies:
+        if pkg in dep.packages:
+            return dep.name
+    return None
+
+
+def refuse_unowned_packages(
+    root: MetaData,
+    imported_packages: frozenset[str] | None,
+    imported_nodes: frozenset[str] | None,
+) -> None:
+    """FR-023 §11.5 — a consumer may not declare a NEW top-level node into a
+    package one of its dependencies owns.
+
+    This is what keeps the package-keyed exclusion rule from failing silently.
+    Imported-ness is decided by PACKAGE, so such a node would be excluded from
+    this project's own codegen, migrate and ledger — producing no output and no
+    error. An overlay of the dependency's own node is untouched: its resolution
+    key is in `imported_nodes`, because the node it merged into came from the
+    artifact. Mirrors the TS `refuseUnownedPackages` (`sdk/src/memory.ts`) —
+    called AFTER the loader's own errors, never before (an unflagged overlay
+    whose target the upstream removed fails first, with its own coded error).
+
+    No-op when nothing is imported, which is every project that declares no
+    dependencies.
+    """
+    if not imported_packages:
+        return
+    nodes = imported_nodes or frozenset()
+
+    # ADR-0039 SANCTIONED own-accessor case: a root-level scan. `MetaRoot` has
+    # no super, so own and effective children are the same set here, and the
+    # question asked is precisely "what did this tree declare at the top
+    # level", which is the own layer by definition.
+    for node in root.own_children():
+        if node.type != TYPE_OBJECT:
+            continue
+        key = node.resolution_key()
+        pkg = package_of_resolution_key(key)
+        if pkg not in imported_packages or key in nodes:
+            continue
+        raise ParseError(
+            f'"{key}" is declared here, but the package "{pkg}" belongs to a metadata '
+            f'dependency this project imports, and "{key}" is not one of the nodes that '
+            "dependency exports. Declare it in a package this project owns and 'extends' "
+            "the dependency's node if it needs its shape; if it was meant to AMEND the "
+            "dependency's node, give it that node's name and 'overlay: true'; if this "
+            f'project really does own "{pkg}", name it in \'scope.include\' and stop '
+            "importing it.",
+            code=ErrorCode.ERR_DEPENDENCY_PACKAGE_NOT_OWNED,
+        )
+
+
+@dataclass(frozen=True)
+class Collection:
+    """Everything the FR-023-aware source ladder resolved for one project:
+    its own metadata files, its dependencies' snapshot artifacts (leading the
+    file list — see `files`), and the predicates every action surface reads to
+    decide whether an imported object should be excluded (DESIGN §11.1 item 2).
+    Mirrors the TS `Collection` interface (`sdk/src/collection.ts`), the
+    Python-relevant subset.
+    """
+
+    #: Canonically-ordered absolute file paths: dependency artifacts (in
+    #: dependency-NAME order) followed by this project's own files, in
+    #: `resolve_sources`'s canonical (content) order. Identical to `own_files`
+    #: when nothing is imported.
+    files: tuple[Path, ...]
+
+    #: `files` minus the dependency artifacts — this project's own metadata.
+    own_files: tuple[Path, ...]
+
+    #: The `FileSource` id each dependency artifact loads under
+    #: (`dep:<name>/<artifact>`), keyed by its path in `files`. Own files are
+    #: absent from this map and keep the default `basename(path)`.
+    file_ids: dict[Path, str]
+
+    #: The resolved dependencies, in dependency-NAME order. Empty for a
+    #: project that declares none.
+    dependencies: tuple[ResolvedDependency, ...]
+
+    #: THE exclusion key (DESIGN §11.5): the union of every dependency's
+    #: `packages`. A `frozenset`, not a sorted sequence — nothing here reads it
+    #: in order.
+    imported_packages: frozenset[str]
+
+    #: The union of every dependency's `nodes` — read only by
+    #: `refuse_unowned_packages`, to tell an overlay of an imported node from a
+    #: genuinely new local declaration in the dependency's package. NOT the
+    #: exclusion key.
+    imported_nodes: frozenset[str]
+
+    #: The user's declared `scope.include` patterns, for `in_scope`'s
+    #: explicit-include rule.
+    scope_include: tuple[str, ...]
+
+    #: `migrate.scope`-governed predicate, or `None` when the project declares
+    #: no `migrate.scope` AND resolves no dependencies (mirrors TS's
+    #: `inMigrateScope`; nothing in the Python CLI consumes this today — schema
+    #: is TS-owned, ADR-0015).
+    in_migrate_scope: Callable[[str], bool] | None
+
+    def imported(self, fqn: str) -> bool:
+        """Is `fqn` in a package one of this project's dependencies owns?"""
+        return package_of_resolution_key(fqn) in self.imported_packages
+
+    def in_scope(self, fqn: str) -> bool:
+        """Output filter for codegen (`run_gen`'s `select`) and `verify --codegen`.
+
+        `(not imported(fqn)) or explicitly_includes(scope_include, packageOf(fqn))`
+        — UNLIKE TypeScript this does NOT also apply `matches_scope` to the
+        project's OWN objects: the Python CLI has never applied `scope` to its
+        own generated output (T18 ruling, 2026-09-11) — only the import-
+        exclusion rule is new behaviour here.
+        """
+        pkg = package_of_resolution_key(fqn)
+        if pkg not in self.imported_packages:
+            return True
+        return explicitly_includes(self.scope_include, pkg)

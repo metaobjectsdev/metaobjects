@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Callable
 
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.loader.sources import DirectorySource
+from metaobjects.naming import package_of_resolution_key
+from metaobjects.scope import compile_scope, matches_scope
 
-from .neutral_config import DEFAULT_METADATA_DIR, read_neutral_config
+from .dependencies import (
+    Collection,
+    ResolvedDependency,
+    explicitly_includes,
+    read_lock,
+    verify_snapshot,
+)
+from .neutral_config import DEFAULT_METADATA_DIR, NeutralConfig, read_neutral_config
 
 
 def _list_metadata_files(directory: Path) -> list[Path]:
@@ -101,11 +111,99 @@ def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]
     return list(seen)
 
 
-def resolve_collection(root: Path) -> list[Path]:
-    """The full ladder: declared `sources`, else the default directory.
+def _make_in_migrate_scope(
+    migrate_scope: list[str] | None,
+    imported_packages: frozenset[str],
+    has_dependencies: bool,
+) -> Callable[[str], bool] | None:
+    """Build `Collection.in_migrate_scope` — mirrors the TS `inMigrateScope`
+    for completeness (T18 ruling: nothing in the Python CLI's own `gen`/
+    `verify --codegen` path consumes this; schema is TS-owned, ADR-0015).
 
-    Only the DEFAULT may be absent — a declared source that does not resolve is
-    `ERR_SOURCE_UNRESOLVED`, a louder failure.
+    `None` iff the project declares no `migrate.scope` AND resolves no
+    dependencies — the byte-identical path a caller reads as "admits
+    everything" (`collection.in_migrate_scope(fqn) if ... else True`).
+    """
+    if migrate_scope is None and not has_dependencies:
+        return None
+    compiled = compile_scope(include=migrate_scope)
+
+    def predicate(fqn: str) -> bool:
+        if not matches_scope(fqn, compiled):
+            return False
+        pkg = package_of_resolution_key(fqn)
+        if pkg not in imported_packages:
+            return True
+        return explicitly_includes(migrate_scope, pkg)
+
+    return predicate
+
+
+def _collection_from_own_files(
+    root: Path, own_files: list[Path], cfg: NeutralConfig | None
+) -> Collection:
+    """The tail shared by `resolve_collection_full` (own files via the source
+    ladder) and `build_collection` (own files from an external surface, e.g.
+    a native `metaobjects.config.yaml` `metadata:` key) — dependencies, scope
+    and migrate.scope come from `root`'s neutral `.metaobjects/config.json`
+    regardless of where `own_files` came from (DESIGN §2.3: dependencies are
+    read at EVERY rung of the source ladder).
+    """
+    dependency_specs: list[dict[str, str]] = cfg.dependencies if cfg is not None else []
+    scope_include: list[str] = cfg.scope_include if cfg is not None else []
+    migrate_scope: list[str] | None = cfg.migrate_scope if cfg is not None else None
+
+    lock = read_lock(root)
+    dependencies: list[ResolvedDependency] = (
+        [] if not dependency_specs and lock is None else verify_snapshot(root, dependency_specs, lock)
+    )
+
+    imported_packages: frozenset[str] = frozenset(
+        pkg for dep in dependencies for pkg in dep.packages
+    )
+    imported_nodes: frozenset[str] = frozenset(node for dep in dependencies for node in dep.nodes)
+
+    # The artifacts LEAD the file list, in dependency-NAME order (verify_snapshot's
+    # own return order) — see `Collection.files`.
+    dep_paths = [Path(dep.artifact_path) for dep in dependencies]
+    file_ids: dict[Path, str] = {p: dep.source_id for p, dep in zip(dep_paths, dependencies)}
+    own_files_t = tuple(own_files)
+
+    return Collection(
+        files=tuple(dep_paths) + own_files_t,
+        own_files=own_files_t,
+        file_ids=file_ids,
+        dependencies=tuple(dependencies),
+        imported_packages=imported_packages,
+        imported_nodes=imported_nodes,
+        scope_include=tuple(scope_include),
+        in_migrate_scope=_make_in_migrate_scope(
+            migrate_scope, imported_packages, has_dependencies=bool(dependencies)
+        ),
+    )
+
+
+def build_collection(root: Path, own_files: list[Path]) -> Collection:
+    """Build a full `Collection` for an EXTERNALLY-determined own-files set —
+    e.g. rung 2 of the CLI's source-resolution ladder (`metadata:` in a native
+    `metaobjects.config.yaml`) — while dependencies/scope/migrate.scope still
+    come from `root`'s neutral `.metaobjects/config.json` (DESIGN §2.3:
+    dependencies are read by every port at EVERY rung of the source ladder,
+    not just the declared-`sources`/default-directory rungs `resolve_collection_full`
+    covers on its own).
+    """
+    root = root.resolve()
+    return _collection_from_own_files(root, own_files, read_neutral_config(root))
+
+
+def resolve_collection_full(root: Path) -> Collection:
+    """The full ladder, FR-023-aware: declared `sources` (else the default
+    directory) for this project's OWN files, plus its resolved dependencies
+    (DESIGN §4.2) leading the file list, plus the `scope`/`migrate.scope`
+    predicates every action surface reads (DESIGN §11.1 item 2).
+
+    Only the DEFAULT source directory may be absent — a declared source that
+    does not resolve is `ERR_SOURCE_UNRESOLVED`, a louder failure.
     """
     root = root.resolve()
     cfg = read_neutral_config(root)
@@ -122,4 +220,15 @@ def resolve_collection(root: Path) -> list[Path]:
             )
         specs = [{"path": DEFAULT_METADATA_DIR}]
 
-    return resolve_sources(root, specs)
+    own_files = resolve_sources(root, specs)
+    return _collection_from_own_files(root, own_files, cfg)
+
+
+def resolve_collection(root: Path) -> list[Path]:
+    """The full ladder: declared `sources`, else the default directory.
+
+    A thin projection of `resolve_collection_full` (T18 ruling) — this
+    project's OWN files only, never a dependency's snapshot artifact, so its
+    public shape (and every pre-FR-023 caller) is unchanged.
+    """
+    return list(resolve_collection_full(root).own_files)

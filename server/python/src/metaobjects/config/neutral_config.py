@@ -34,6 +34,24 @@ class NeutralConfig:
     #: `dir` only beside `npm`/`python`.
     dependencies: list[dict[str, str]]
 
+    #: FR-023 §11.1 item 2 — the user's declared `scope.include` patterns, READ
+    #: ONLY for the explicit-include rule (`explicitly_includes`): a dependency's
+    #: package survives selection only when one of these patterns NAMES it
+    #: literally. Unlike TypeScript, the Python CLI has never applied `scope` to
+    #: its OWN objects (no caller of `matches_scope`/`compile_scope` exists in
+    #: `server/python/src` before this) — `scope.exclude` is therefore not read
+    #: at all, and adding that would be new behaviour, not parity (T18 ruling).
+    #: Empty when `scope` / `scope.include` is absent.
+    scope_include: list[str]
+
+    #: FR-023 §11.1 item 2 — the user's declared `migrate.scope` patterns
+    #: (include-only, same grammar as `scope.include`), or `None` when the key
+    #: is absent. Mirrors TS `migrate.scope` for completeness — nothing in the
+    #: Python CLI's own `gen`/`verify --codegen` path consumes it (schema is
+    #: TS-owned, ADR-0015); it exists so `Collection.in_migrate_scope` can be
+    #: built with full TS parity.
+    migrate_scope: list[str] | None
+
 
 def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     """Read the neutral subset from ``config_dir/.metaobjects/config.json``.
@@ -110,8 +128,60 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
 
+    scope_include = _read_scope_include(raw, path)
+    migrate_scope = _read_migrate_scope(raw, path)
+
     # Unknown top-level keys are IGNORED by design — see the module docstring.
-    return NeutralConfig(sources=[dict(s) for s in sources], dependencies=dependencies)
+    return NeutralConfig(
+        sources=[dict(s) for s in sources],
+        dependencies=dependencies,
+        scope_include=scope_include,
+        migrate_scope=migrate_scope,
+    )
+
+
+def _string_array_or_raise(value: object, field: str, path: Path) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+        raise ParseError(
+            f"{path}: '{field}' must be an array of non-empty strings",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    return list(value)
+
+
+def _read_scope_include(raw: dict[str, object], path: Path) -> list[str]:
+    """FR-023 §11.1 item 2 — `scope.include`, read only for the explicit-include
+    rule. `scope.exclude` and every other key inside `scope` are ignored, same
+    tolerance the module docstring already grants unknown TOP-level keys: this
+    port models the neutral subset it actually consumes, not the whole
+    TypeScript-owned `scope` vocabulary.
+    """
+    scope = raw.get("scope")
+    if scope is None:
+        return []
+    if not isinstance(scope, dict):
+        raise ParseError(f"{path}: 'scope' must be an object", code=ErrorCode.ERR_COLLECTION_NOT_FOUND)
+    include = scope.get("include")
+    if include is None:
+        return []
+    return _string_array_or_raise(include, "scope.include", path)
+
+
+def _read_migrate_scope(raw: dict[str, object], path: Path) -> list[str] | None:
+    """FR-023 §11.1 item 2 — `migrate.scope`, read for completeness
+    (`Collection.in_migrate_scope`). Every other key inside `migrate`
+    (`dialect`, `outDir`, ...) is TypeScript-owned and ignored — see
+    `test_unknown_top_level_keys_are_ignored`.
+    """
+    migrate = raw.get("migrate")
+    if migrate is None:
+        return None
+    if not isinstance(migrate, dict):
+        raise ParseError(f"{path}: 'migrate' must be an object", code=ErrorCode.ERR_COLLECTION_NOT_FOUND)
+    scope = migrate.get("scope")
+    if scope is None:
+        return None
+    return _string_array_or_raise(scope, "migrate.scope", path)
 
 
 def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:

@@ -60,8 +60,22 @@ def run_gen(
     *,
     generators: list[Generator],
     entity_filter: list[str] | None = None,
+    select: Callable[[str], bool] | None = None,
     merge_strategy: str = "overwrite",
 ) -> RunGenResult:
+    """Mirrors ``codegen-ts``'s ``runner.ts``.
+
+    ``select`` (FR-023 §11.1 item 2) — applied AFTER ``entity_filter``, over each
+    object's ``resolution_key()`` (never the bare name — two packages may declare
+    the same short name). Normally a resolved ``Collection``'s ``in_scope``: the
+    output filter that excludes an imported dependency's objects from codegen
+    unless the project's own ``scope.include`` names their package. ``None`` (the
+    default) admits everything, byte-identical to a project with no dependencies.
+    A generator that renders once over the WHOLE selected set (the shared-enums
+    module, so far the only one) reads it off ``ctx.entities`` like any other
+    generator — no separate wiring needed, since that list is already the
+    post-``select`` set (parity with the TS ``codegen-ts`` runner's ``select``).
+    """
     result = RunGenResult()
     if not isinstance(metadata, MetaRoot):
         raise ValueError("run_gen: metadata must be a loaded MetaRoot.")
@@ -69,13 +83,16 @@ def run_gen(
     objs = _objects(metadata)
     if entity_filter is not None:
         objs = [o for o in objs if o.name in entity_filter]
+    if select is not None:
+        objs = [o for o in objs if select(o.resolution_key())]
 
     if not objs:
-        reason = (
-            "no object children match the provided entity_filter"
-            if entity_filter is not None
-            else "root has no object children"
-        )
+        if entity_filter is not None:
+            reason = "no object children match the provided entity_filter"
+        elif select is not None:
+            reason = "no object children survived the collection's scope"
+        else:
+            reason = "root has no object children"
         result.warnings.append(f"No entities to generate — {reason}.")
         return result
 
