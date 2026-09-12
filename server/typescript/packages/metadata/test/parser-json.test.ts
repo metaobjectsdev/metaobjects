@@ -1283,7 +1283,12 @@ describe("parseJson — per-node overlay: true", () => {
     expect(store.isMerge).toBe(true);
   });
 
-  it("throws ParseError when no existing same-(type,name) child is found", () => {
+  // ADR-0055 — a missing overlay target is COLLECTED, not thrown. Overlays are
+  // queued during the walk and applied afterwards (here, by buildTree's own drain,
+  // since this standalone door passes no `deferOverlays`), so the failure is
+  // reported per overlay and the rest of the document survives. The old eager
+  // throw abandoned the whole source, losing every sibling declaration in it.
+  it("collects ERR_OVERLAY_NO_TARGET when no existing same-(type,name) child is found", () => {
     const registry = makeRegistry();
     const baseJson = JSON.stringify({
       "metadata.root": {
@@ -1292,11 +1297,22 @@ describe("parseJson — per-node overlay: true", () => {
     });
     const overlayJson = JSON.stringify({
       "metadata.root": {
-        children: [{ "object.entity": { name: "Missing", overlay: true } }],
+        children: [
+          { "object.entity": { name: "Missing", overlay: true } },
+          // A sibling in the SAME document, to prove the source is not discarded.
+          { "object.entity": { name: "Survivor" } },
+        ],
       },
     });
     const { root: base } = parseJson(baseJson, { registry });
-    expect(() => parseJson(overlayJson, { registry, intoRoot: base })).toThrow(ParseError);
+    const { root, errors } = parseJson(overlayJson, { registry, intoRoot: base });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(ParseError);
+    expect(errors[0]!.code).toBe("ERR_OVERLAY_NO_TARGET");
+    expect(errors[0]!.source.format).toBe("resolved");
+    expect(root.ownChildByTypeAndName("object", "Missing")).toBeUndefined();
+    expect(root.ownChildByTypeAndName("object", "Survivor")).toBeDefined();
   });
 });
 

@@ -41,8 +41,8 @@ import { validateIdentityPassthrough } from "../core/identity/validate-identity-
 import { validateAttrSchema } from "../attr-schema-validate.js";
 import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
 import { InMemoryStringSource } from "./meta-data-source.js";
-import type { ParseOptions, ParseResult } from "../parser-core.js";
-import { expandPackageForPath } from "../parser-core.js";
+import type { ParseOptions, ParseResult, PendingOverlay } from "../parser-core.js";
+import { expandPackageForPath, applyPendingOverlays } from "../parser-core.js";
 
 // Local mirror of DirectorySource's options shape. Deliberately inlined here
 // (instead of `import type`'d from ./sources/directory-source.js) so the
@@ -147,10 +147,11 @@ export interface DeclaredTopLevelKey {
  * genuine structural error surfaces; this walk must never crash a caller
  * that is only trying to answer "what does this file declare".
  *
- * Generalizes what `_rootIsOverlayOnly` used to do just for the overlay-only
- * partition (#160): `_isOverlayOnlySource` is now expressed in terms of this
- * function, and the overlay authoring lint (`meta verify`) is its second
- * caller.
+ * Written for the #160 overlay-only source partition, which ADR-0055 retired —
+ * overlays are now applied in a post-parse pass, so no ordering decision needs
+ * this walk. Its remaining caller is the `meta verify` overlay authoring lint,
+ * which needs per-file declaration provenance precisely because the MERGED tree
+ * has already lost which file contributed which declaration.
  */
 export async function declaredTopLevelKeys(
   content: string,
@@ -445,54 +446,6 @@ export class MetaDataLoader {
   }
 
   // ---------------------------------------------------------------------------
-  // #160 — overlay-only source partition (stable, overlay-only sources last)
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Stable-partition `sources` so that "overlay-only" sources — every top-level
-   * object declaration carries `overlay: true`, i.e. the source declares no base
-   * objects of its own and only re-opens objects declared elsewhere — are parsed
-   * LAST. Preserves original order within each group.
-   *
-   * A source whose content can't be read or structurally scanned stays in the
-   * base group (never overlay-only) — this partition must never crash the loader;
-   * any genuine read/parse failure surfaces later, in the real parse loop.
-   */
-  private static async _partitionOverlayLast(
-    sources: MetaDataSource[],
-  ): Promise<MetaDataSource[]> {
-    const base: MetaDataSource[] = [];
-    const overlayOnly: MetaDataSource[] = [];
-    for (const source of sources) {
-      let isOverlayOnly = false;
-      try {
-        const content = await source.read();
-        isOverlayOnly = await MetaDataLoader._isOverlayOnlySource(
-          content,
-          source.format,
-        );
-      } catch {
-        isOverlayOnly = false;
-      }
-      (isOverlayOnly ? overlayOnly : base).push(source);
-    }
-    return [...base, ...overlayOnly];
-  }
-
-  /**
-   * Whether every top-level declaration in a source's raw content carries
-   * `overlay: true` (and there is at least one) — re-expressed over the
-   * generalized structural walk, {@link declaredTopLevelKeys}.
-   */
-  private static async _isOverlayOnlySource(
-    content: string,
-    format: MetaDataFormat,
-  ): Promise<boolean> {
-    const declared = await declaredTopLevelKeys(content, format);
-    return declared.length > 0 && declared.every((d) => d.overlay);
-  }
-
-  // ---------------------------------------------------------------------------
   // load — async pipeline over MetaDataSource[]
   // ---------------------------------------------------------------------------
 
@@ -533,20 +486,17 @@ export class MetaDataLoader {
       await MetaDataLoader._ensureYamlParser();
     }
 
-    // #160 — this loader merges DURING parse (each source is streamed into the
-    // accumulating `root` via parseOpts.intoRoot). A source that ONLY re-opens
-    // objects declared elsewhere (every top-level object carries `overlay: true`)
-    // must therefore be parsed AFTER the sources that declare those base objects,
-    // or the overlaid node lands ahead of its base entities — leaving a projection
-    // before its base so order-dependent super-resolution can't resolve its
-    // `extends`/`@via`, and the streaming merge errors ERR_OVERLAY_NO_TARGET.
-    // Directory discovery order is not guaranteed to present base files first
-    // (basename sort can put an overlay-only file first), so stable-partition
-    // overlay-only sources to the END here, making the merge order-independent.
-    // Stable within each group preserves last-writer-wins overlay semantics.
-    sources = await MetaDataLoader._partitionOverlayLast(sources);
-
+    // ADR-0055 — sources are parsed in the order given. Overlays are not applied
+    // during the walk: each parse QUEUES its `overlay: true` declarations and the
+    // loader applies them below, once every base exists. That retired the #160
+    // overlay-only source partition, whose file-level predicate could not rescue a
+    // MIXED file (plain + overlay declarations together) and therefore left the
+    // load order-dependent — and divergent across ports, since every port's
+    // directory walk orders files differently.
     let root: MetaRoot | undefined;
+    // ADR-0055 — every source's queue, concatenated in parse order, which is
+    // already "source order, then declaration order within a source" (G2).
+    const pendingOverlays: PendingOverlay[] = [];
 
     // Parse all sources with super resolution DEFERRED so cross-file super
     // refs work — one source may declare a super target that's defined in a
@@ -571,6 +521,10 @@ export class MetaDataLoader {
         registry: this._registry,
         strict: this._strict,
         deferSuperResolution: true,
+        // ADR-0055 — queue overlays; this loader drains them after every source
+        // is parsed. Without it each document would drain its own queue and an
+        // overlay could still not reach a base declared in a later source.
+        deferOverlays: true,
         sourceName: source.id,
       };
       if (root !== undefined) parseOpts.intoRoot = root;
@@ -583,6 +537,7 @@ export class MetaDataLoader {
         // source). The legacy `warnings` channel still flows into the
         // WARN_LEGACY-wrapping path below for unchanged behavior.
         envelopeWarnings.push(...parseResult.envelopeWarnings);
+        pendingOverlays.push(...parseResult.pendingOverlays);
         root = parseResult.root;
       } catch (err) {
         errors.push(
@@ -591,6 +546,21 @@ export class MetaDataLoader {
             : new Error(`Parse error in "${source.id}": ${String(err)}`),
         );
       }
+    }
+
+    // ADR-0055 — apply every queued overlay now: all plain declarations from all
+    // sources are in the tree (G1), so a base/overlay relation no longer depends
+    // on file order (G4). This runs BEFORE super resolution so a node an overlay
+    // contributes is visible to every `extends` (G5) — the ordering #160's
+    // partition was reaching for, now guaranteed rather than approximated.
+    if (root !== undefined && pendingOverlays.length > 0) {
+      const applied = applyPendingOverlays(pendingOverlays, {
+        registry: this._registry,
+        strict: this._strict,
+      });
+      warnings.push(...applied.warnings);
+      errors.push(...applied.errors);
+      envelopeWarnings.push(...applied.envelopeWarnings);
     }
 
     // Second pass: resolve every deferred super ref against the full tree.

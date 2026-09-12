@@ -1,13 +1,14 @@
-// declaredTopLevelKeys — the structural pre-parse walk `_isOverlayOnlySource`
-// used to perform privately (#160), generalized to report every top-level
-// declaration's (type, resolutionKey, overlay) rather than just a single
-// "is this source overlay-only" boolean.
+// declaredTopLevelKeys — the structural pre-parse walk that reports every
+// top-level declaration's (type, resolutionKey, overlay).
 //
-// Two callers exist post-generalization: the loader's own overlay-only-source
-// partition (re-expressed over this function — see meta-data-loader.ts) and
-// the `meta verify` overlay authoring lint (cli package, Task 17).
+// It began as the private predicate behind the #160 overlay-only source
+// partition. ADR-0055 retired that partition — overlays are applied in a
+// post-parse pass, so the loader makes no ordering decision that needs this —
+// leaving ONE caller: the `meta verify` overlay authoring lint, which needs
+// per-file declaration provenance exactly because the merged tree has already
+// lost which file contributed which declaration.
 //
-// FR-023 §11 (overlay authoring lint) task 17.
+// FR-023 §11 (overlay authoring lint) task 17; ADR-0055.
 
 import { describe, test, expect } from "bun:test";
 import { readFile } from "node:fs/promises";

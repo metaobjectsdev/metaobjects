@@ -11,7 +11,7 @@
 
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-type Segment =
+export type Segment =
   | { kind: "key"; value: string }
   | { kind: "index"; value: number };
 
@@ -28,6 +28,21 @@ export class JsonPathBuilder {
 
   pop(): void {
     this.segments.pop();
+  }
+
+  /** ADR-0055 — the current stack, captured so a declaration deferred out of
+   *  the walk can be re-seeded when it is applied. By then the walk that built
+   *  this path has unwound, so an error raised at application time would
+   *  otherwise carry the wrong jsonPath (or none). */
+  snapshot(): readonly Segment[] {
+    return [...this.segments];
+  }
+
+  /** ADR-0055 — rebuild a builder from a {@link snapshot}. */
+  static fromSegments(segments: readonly Segment[]): JsonPathBuilder {
+    const b = new JsonPathBuilder();
+    b.segments.push(...segments);
+    return b;
   }
 
   toString(): string {

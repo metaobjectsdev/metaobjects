@@ -85,5 +85,9 @@ export function parseYaml(content: string, opts: ParseOptions): ParseResult {
     warnings: result.warnings,
     errors: [...desugarParseErrors, ...result.errors],
     envelopeWarnings: result.envelopeWarnings,
+    // ADR-0055 — pass the deferred-overlay queue through untouched. This door
+    // rebuilds the result to prepend desugar errors, so it has to forward every
+    // member; dropping it left the loader spreading `undefined`.
+    pendingOverlays: result.pendingOverlays,
   };
 }

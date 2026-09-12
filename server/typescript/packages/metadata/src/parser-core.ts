@@ -39,7 +39,7 @@ import {
   extendsTargetCompatible,
   EXTENDS_TARGET_MISMATCH_RULE,
 } from "./super-resolve.js";
-import { JsonPathBuilder } from "./json-path.js";
+import { JsonPathBuilder, type Segment as JsonPathSegment } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
 import {
   TYPE_ATTR,
@@ -100,6 +100,64 @@ export interface ParseOptions {
    * desugar attached one, the optional `yamlPosition`.
    */
   sourceFormat?: "json" | "yaml";
+  /**
+   * ADR-0055 — if true, `overlay: true` declarations are QUEUED as they are met
+   * rather than applied during the walk, and handed back as
+   * {@link ParseResult.pendingOverlays} for the loader to apply once every
+   * source has been parsed. Exactly the shape `deferSuperResolution` uses for
+   * `extends`, and for the same reason: the target may be declared in a source
+   * parsed later, or later in this same document.
+   *
+   * When absent, `buildTree` drains its own queue before returning — so a
+   * standalone `parseJson`/`parseYaml` call is order-independent within its one
+   * document. There is no eager path: queue-then-drain is the only door.
+   */
+  deferOverlays?: boolean;
+}
+
+/**
+ * ADR-0055 — one `overlay: true` declaration met during the walk and deferred.
+ *
+ * A deferred super hangs on its node as `model.superRef`; a deferred overlay has
+ * NO node — nothing was created — so everything the parser would have used has
+ * to travel out with it, including the module-level walk state needed to report
+ * an error against the declaration's own location long after the walk unwound.
+ */
+export interface PendingOverlay {
+  /** Wrapper-key type and subType. The lookup is by (type, name); subType is
+   *  carried for diagnostics only — it is never consulted when matching. */
+  readonly type: string;
+  readonly subType: string;
+  readonly name: string;
+  /** The declaration body, untouched. `parseNodeInto` consumes it at
+   *  application time; for YAML input it still carries the desugar's
+   *  position-by-key map, so nested children keep correct positions. */
+  readonly nodeData: Record<string, unknown>;
+  /** The node the target is sought under — the accumulating root for a
+   *  top-level overlay, the enclosing PLAIN node for a nested one. A live
+   *  reference: the tree is mutated in place and nodes are never replaced. */
+  readonly parent: MetaData;
+  /** Accumulating root, for super resolution of anything the overlay adds. */
+  readonly accumRoot: MetaData;
+  /** Effective context package at the declaration site — needed for the
+   *  package-qualified root lookup and for package inheritance of new children. */
+  readonly inheritedContextPkg: string;
+  /** `opts.sourceName` as passed to buildTree (may be undefined). */
+  readonly sourceName: string | undefined;
+  /** The resolved source id used in envelopes (`sourceName ?? "<unknown>"`). */
+  readonly sourceId: string;
+  /** The `path` string parseNodeInto receives for diagnostics. */
+  readonly path: string;
+  /** ADR-0009 parse-time envelope of the declaration itself — the `files` and
+   *  `jsonPath` the eventual resolved error carries. */
+  readonly errorSource: ErrorSource;
+  /** JSONPath stack at queue time, so the module-level builder can be
+   *  re-seeded before re-entering the walk. */
+  readonly pathSegments: readonly JsonPathSegment[];
+  /** FR5b — source format discriminant at queue time. */
+  readonly format: "json" | "yaml";
+  /** FR5b — the declaration's own YAML position, when the desugar had one. */
+  readonly yamlPosition?: YamlPosition;
 }
 
 export interface ParseResult {
@@ -114,6 +172,15 @@ export interface ParseResult {
    * `code` + `source` and are surfaced unchanged. Defaults to `[]`.
    */
   envelopeWarnings: LoaderWarning[];
+  /**
+   * ADR-0055 — `overlay: true` declarations queued during this parse, in
+   * encounter order. Empty unless {@link ParseOptions.deferOverlays} was set;
+   * when it was not, buildTree already drained them. Because sources are parsed
+   * sequentially and the walk is pre-order, encounter order IS "source order,
+   * then declaration order within a source" — no sort is needed and stability
+   * is by construction.
+   */
+  pendingOverlays: PendingOverlay[];
 }
 
 // ---------------------------------------------------------------------------
@@ -421,6 +488,10 @@ let _currentSourceId: string | undefined;
 let _currentFormat: "json" | "yaml" = "json";
 let _currentYamlPosition: YamlPosition | undefined;
 
+// ADR-0055 — sink for overlay declarations deferred out of the walk. Set at
+// buildTree entry; same synchronous-buildTree reentrancy argument as the others.
+let _pendingOverlays: PendingOverlay[] | undefined;
+
 /** FR5a/FR5b — stamp the source-provenance envelope on a freshly-created
  *  node. No-op when invoked outside buildTree's setup (defensive — the
  *  module-level state will always be populated during a normal parse).
@@ -463,6 +534,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   const warnings: string[] = [];
   const errors: ParseError[] = [];
   const envelopeWarnings: LoaderWarning[] = [];
+  const pendingOverlays: PendingOverlay[] = [];
   const strict = opts.strict ?? false;
   const source = opts.sourceName;
   _deferSuperResolution = opts.deferSuperResolution === true;
@@ -471,6 +543,25 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
   // emit envelope warnings without threading another parameter through the
   // entire walk. Safe because buildTree is fully synchronous.
   _currentEnvelopeWarnings = envelopeWarnings;
+  // ADR-0055 — overlay declarations are queued here as the walk meets them.
+  _pendingOverlays = pendingOverlays;
+
+  /** ADR-0055 — a caller that is not deferring gets its own queue drained here,
+   *  so "queue, then apply" is the only path through the parser and a single
+   *  document is order-independent on its own. */
+  const finishParse = (r: MetaRoot): ParseResult => {
+    if (opts.deferOverlays !== true && pendingOverlays.length > 0) {
+      const drained = applyPendingOverlays(pendingOverlays, {
+        registry: opts.registry,
+        strict,
+      });
+      errors.push(...drained.errors);
+      warnings.push(...drained.warnings);
+      envelopeWarnings.push(...drained.envelopeWarnings);
+      pendingOverlays.length = 0;
+    }
+    return { root: r, warnings, errors, envelopeWarnings, pendingOverlays };
+  };
   // FR5a — start a fresh JSONPath stack rooted at "$"; sourceId is the
   // source's id (from FileSource / InMemoryStringSource via opts.sourceName).
   // Falls back to "<unknown>" when no name was supplied (e.g. ad-hoc parseJson
@@ -602,7 +693,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
         rootKey,
       );
       _currentPath!.pop();
-      return { root: opts.intoRoot, warnings, errors, envelopeWarnings };
+      return finishParse(opts.intoRoot);
     }
 
     // --- Fresh root mode: create a new root from the JSON ---
@@ -627,7 +718,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       rootKey,
     ) as MetaRoot;
     _currentPath!.pop();
-    return { root, warnings, errors, envelopeWarnings };
+    return finishParse(root);
   } finally {
     _deferSuperResolution = false;
     _currentErrors = undefined;
@@ -636,6 +727,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     _currentSourceId = undefined;
     _currentFormat = "json";
     _currentYamlPosition = undefined;
+    _pendingOverlays = undefined;
   }
 }
 
@@ -1076,6 +1168,100 @@ function createOrFindMetaData(
   // merge pair (mirrors the Java parser, which searches root children by
   // "pkg::name"). Nested children stay bare-name matched — they are scoped
   // by their parent, and packages don't disambiguate siblings inside a node.
+  if (isOverlayNode) {
+    // ADR-0055 — an overlay is ALWAYS queued, never applied during the walk, and
+    // deliberately not conditioned on whether its target happens to exist yet.
+    //
+    // Applying it when the base is already present and queueing only on a miss is
+    // the "retry-on-miss" variant the ADR rejected: it would leave output
+    // dependent on whether a base had been parsed yet, which is the fragility
+    // being removed. G1 — every plain declaration, from every source, precedes
+    // every overlay — only holds if the queue is unconditional.
+    //
+    // This node is the OUTERMOST overlay on this branch and we do NOT descend
+    // into it, so its whole subtree — nested overlays included — rides along and
+    // is applied as one unit (G3). Returning undefined is what keeps the caller
+    // from addChild-ing a node that was never created; the overlay contributes
+    // nothing until the drain.
+    {
+      if (_pendingOverlays !== undefined) {
+        _pendingOverlays.push({
+          type,
+          subType,
+          name,
+          nodeData,
+          parent,
+          accumRoot,
+          inheritedContextPkg,
+          sourceName: source,
+          sourceId: _currentSourceId ?? "<unknown>",
+          path,
+          errorSource: errSource(),
+          pathSegments: _currentPath?.snapshot() ?? [],
+          format: _currentFormat,
+          ...(_currentYamlPosition !== undefined ? { yamlPosition: _currentYamlPosition } : {}),
+        });
+        return undefined;
+      }
+      // No queue means we are already INSIDE applyPendingOverlays, applying a
+      // queued unit. A nested overlay within that unit resolves find-or-fail
+      // right here (§2.2): by now its parent is complete, and there is no later
+      // pass left to defer to. This is also the door a caller outside any
+      // buildTree run would take.
+      const nested = findOverlayTarget(parent, type, name, nodeData, inheritedContextPkg);
+      if (nested === undefined) {
+        errors.push(
+          new ParseError(overlayNoTargetMessage(type, name), {
+            code: "ERR_OVERLAY_NO_TARGET",
+            source: errSource(),
+          }),
+        );
+        return undefined;
+      }
+      nested.setIsMerge(true);
+      parseNodeInto(nodeData, nested, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path);
+      return nested;
+    }
+  }
+
+  // Only the non-overlay path needs the target here; a queued overlay resolves
+  // its own target at application time, against the completed tree.
+  const existing = findOverlayTarget(parent, type, name, nodeData, inheritedContextPkg);
+
+  // Default: no operator → silently reuse existing or create new.
+  if (existing !== undefined) {
+    parseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path);
+    return existing;
+  }
+
+  // Not found (or unnamed) → create new
+  return parseNodeFresh(type, subType, nodeData, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path, parent.type, parent);
+}
+
+// ---------------------------------------------------------------------------
+// ADR-0055 — deferred overlay application.
+// ---------------------------------------------------------------------------
+
+/** The node an `overlay: true` declaration re-opens, or undefined.
+ *
+ *  ADR-0039 sanctioned own read: an overlay targets the AUTHORED declaration
+ *  layer (an own child), never the resolved/inherited view.
+ *
+ *  ROOT-LEVEL lookups are PACKAGE-QUALIFIED: two files declaring the same
+ *  (type, name) under different packages are DISTINCT root nodes, never a merge
+ *  pair (mirrors the Java parser, which searches root children by "pkg::name").
+ *  Nested children stay bare-name matched — they are scoped by their parent, and
+ *  packages do not disambiguate siblings inside a node.
+ *
+ *  One implementation, shared by the walk and by {@link applyPendingOverlays},
+ *  so "what does this overlay target" cannot drift between the two. */
+function findOverlayTarget(
+  parent: MetaData,
+  type: string,
+  name: string,
+  nodeData: Record<string, unknown>,
+  inheritedContextPkg: string,
+): MetaData | undefined {
   let existing = name !== "" ? parent.ownChildByTypeAndName(type, name) : undefined;
   if (existing !== undefined && parent instanceof MetaRoot) {
     const candidateKey = rootChildResolutionKey(nodeData, inheritedContextPkg, name);
@@ -1087,27 +1273,119 @@ function createOrFindMetaData(
         .find((c) => c.type === type && c.name === name && c.resolutionKey() === candidateKey);
     }
   }
+  return existing;
+}
 
-  if (isOverlayNode) {
-    if (existing === undefined) {
-      throw new ParseError(
-        `Overlay operation requested for [${type}:${name}] but no existing metadata found to merge into`,
-        { code: "ERR_OVERLAY_NO_TARGET", source: errSource() },
+/** The one wording for a missing overlay target, shared by the defensive
+ *  in-walk path and the deferred pass, so the two cannot drift. */
+function overlayNoTargetMessage(type: string, name: string): string {
+  return `Overlay operation requested for [${type}:${name}] but no existing metadata found to merge into`;
+}
+
+/** The declaration's own address, for the resolved envelope's `referrer`. */
+function overlayReferrer(item: PendingOverlay): string {
+  if (item.parent instanceof MetaRoot) {
+    return rootChildResolutionKey(item.nodeData, item.inheritedContextPkg, item.name);
+  }
+  // ADR-0029 addressing — a nested overlay is named relative to its parent.
+  return `${item.parent.name}.${item.name}`;
+}
+
+/**
+ * ADR-0055 — apply queued `overlay: true` declarations against the complete tree.
+ *
+ * Called once, after every source has been parsed and BEFORE deferred super
+ * resolution (G5), with every source's queue concatenated in parse order — which
+ * is already "source order, then declaration order within a source" (G2).
+ *
+ * Each element is applied independently: a missing target is recorded and the
+ * element skipped, so one bad overlay no longer takes its whole source down with
+ * it (the eager throw aborted the entire document, losing every sibling
+ * declaration and cascading into ERR_UNRESOLVED_SUPER).
+ */
+export function applyPendingOverlays(
+  pending: readonly PendingOverlay[],
+  opts: { registry: TypeRegistry; strict?: boolean },
+): { errors: ParseError[]; warnings: string[]; envelopeWarnings: LoaderWarning[] } {
+  const errors: ParseError[] = [];
+  const warnings: string[] = [];
+  const envelopeWarnings: LoaderWarning[] = [];
+  const strict = opts.strict ?? false;
+
+  for (const item of pending) {
+    try {
+      // Re-enter the walk state this declaration was queued under. The walk that
+      // built it has unwound, so without this anything constructed now would be
+      // stamped with the wrong provenance and an error would name the wrong
+      // location (or none at all).
+      _currentPath = JsonPathBuilder.fromSegments(item.pathSegments);
+      _currentSourceId = item.sourceId;
+      _currentFormat = item.format;
+      _currentYamlPosition = item.yamlPosition;
+      _currentErrors = errors;
+      _currentEnvelopeWarnings = envelopeWarnings;
+      // Anything the overlay contributes may `extends` a node in any source; the
+      // loader resolves every ref after this pass.
+      _deferSuperResolution = true;
+
+      const target = findOverlayTarget(
+        item.parent,
+        item.type,
+        item.name,
+        item.nodeData,
+        item.inheritedContextPkg,
       );
+      if (target === undefined) {
+        errors.push(
+          new ParseError(overlayNoTargetMessage(item.type, item.name), {
+            code: "ERR_OVERLAY_NO_TARGET",
+            // ADR-0009 FR5d — a reference that did not resolve, reported with the
+            // declaration's own files/jsonPath.
+            source: resolvedSource(
+              item.errorSource,
+              overlayReferrer(item),
+              `${item.type}:${item.name}`,
+            ),
+          }),
+        );
+        continue; // parseNodeInto was never entered — no partial state to unwind
+      }
+      target.setIsMerge(true);
+      parseNodeInto(
+        item.nodeData,
+        target,
+        item.accumRoot,
+        item.inheritedContextPkg,
+        opts.registry,
+        warnings,
+        errors,
+        strict,
+        item.sourceName,
+        item.path,
+      );
+    } catch (err) {
+      // Per-element, as the loader already does per-source: a strict-mode
+      // reportProblem or a registry error must not abandon the remaining queue.
+      errors.push(
+        err instanceof ParseError
+          ? err
+          : new ParseError(
+              `Failed to apply overlay for [${item.type}:${item.name}]: ${String(err)}`,
+              { code: "ERR_UNKNOWN", source: item.errorSource },
+            ),
+      );
+    } finally {
+      _currentPath = undefined;
+      _currentSourceId = undefined;
+      _currentFormat = "json";
+      _currentYamlPosition = undefined;
+      _currentErrors = undefined;
+      _currentEnvelopeWarnings = undefined;
+      _deferSuperResolution = false;
     }
-    existing.setIsMerge(true);
-    parseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path);
-    return existing;
   }
 
-  // Default: no operator → silently reuse existing or create new.
-  if (existing !== undefined) {
-    parseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path);
-    return existing;
-  }
-
-  // Not found (or unnamed) → create new
-  return parseNodeFresh(type, subType, nodeData, accumRoot, inheritedContextPkg, registry, warnings, errors, strict, source, path, parent.type, parent);
+  return { errors, warnings, envelopeWarnings };
 }
 
 // ---------------------------------------------------------------------------
