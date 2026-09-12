@@ -172,9 +172,11 @@ generator — but **it is deliberately not offered by `meta eject --list`** (unl
 the four ADR-0034 scaffold-and-own generators). The artifact is a contract whose
 bytes a cross-port corpus pins and whose hash consumers verify; a user-owned,
 editable copy would invite an artifact that silently stops matching what
-consumers expect. Only TypeScript can run it in Phase 1a — every port can
-*consume* a dependency, but only the TypeScript toolchain can publish one. Full
-detail: `docs/features/metadata-dependencies.md`.
+consumers expect. Only TypeScript can run it in Phase 1a. **Phase 1a is TypeScript and Python
+only, full stop** — TypeScript and Python are the only two ports that can
+*consume* a dependency at all today, and only the TypeScript toolchain can
+*publish* one; Java, Kotlin, and C# do not read `dependencies` yet (Phase 2).
+Full detail: `docs/features/metadata-dependencies.md`.
 
 ## You don't have to generate everything — pick your layers
 

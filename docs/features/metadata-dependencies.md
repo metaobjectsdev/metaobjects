@@ -366,11 +366,15 @@ cross-port corpus pins and whose hash consumers verify — a user-owned, editabl
 of the generator would invite an artifact that silently stops matching what
 consumers expect.
 
-**Only TypeScript publishes in Phase 1a.** Every port can *consume* a dependency
-(load its snapshot, extend it, overlay it); only the TypeScript toolchain can
-generate the artifact a publisher ships. A Python, C#, Java, or Kotlin project that
-wants to publish a shared model runs a TypeScript `sharedModelFile()` generator
-against its own metadata the same way any TypeScript consumer would.
+**Only TypeScript publishes in Phase 1a — and only TypeScript and Python consume.**
+TypeScript and Python are the only two ports that can *consume* a dependency at all
+today (load its snapshot, extend it, overlay it) — Java, Kotlin, and C# don't read
+`dependencies` yet (Phase 2). Of those two, only the TypeScript toolchain can
+*publish*: it alone can generate the artifact a publisher ships. A Python project
+that wants to publish a shared model runs a TypeScript `sharedModelFile()`
+generator against its own metadata the same way any TypeScript consumer would; a
+Java, C#, or Kotlin project cannot yet participate as either a publisher or a
+consumer.
 
 ## Vendoring vs. depending
 

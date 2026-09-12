@@ -302,8 +302,10 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   generator emits one flattened canonical-JSON artifact + manifest
   (`metaobjects.pkg.json`), a consumer declares `dependencies: [{ name, path }]` in
   `.metaobjects/config.json`, `meta deps sync` copies the artifact into a committed
-  snapshot + `.metaobjects/deps.lock.json`, and every port loads the snapshot at
-  every rung of the source ladder. Imported metadata is load-only by default —
+  snapshot + `.metaobjects/deps.lock.json`, and TypeScript's and Python's collection
+  resolvers — the two ports that consume dependencies in Phase 1a — load the
+  snapshot at every rung of their own source ladder (Java, Kotlin, and C# don't
+  read `dependencies` yet). Imported metadata is load-only by default —
   excluded from codegen, schema, and the requirements ledger unless the consumer's
   own `scope.include` / `migrate.scope` names the package — with a loud refusal
   (`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`) rather than a silent drop when a consumer

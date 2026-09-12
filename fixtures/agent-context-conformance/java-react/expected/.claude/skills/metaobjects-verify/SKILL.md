@@ -148,10 +148,15 @@ with `ERR_DEPENDENCY_SNAPSHOT_STALE` naming the fix: run `meta deps sync`.
   if any reference isn't on the payload VO. This is the build-time gate for the
   prompt-construction pillar.
 
-- **`--deps`** — dependency drift (FR-023, **Node `meta` only**, TS + Python
-  consumers). Re-resolves each declared dependency's `path` right now and compares
-  its installed artifact's hash against `.metaobjects/deps.lock.json` — the same
-  comparison `meta deps check` runs. Never part of the bare-`verify` default: it
+- **`--deps`** — dependency drift (FR-023, **Node `meta` only** — but **any
+  backend**, like `--db`: the check reads only `.metaobjects/config.json` and has
+  no backend dependency of its own). Re-resolves each declared dependency's `path`
+  right now and compares its installed artifact's hash against
+  `.metaobjects/deps.lock.json` — the same comparison `meta deps check` runs. Only
+  TypeScript and Python additionally LOAD the resulting snapshot and honour the
+  default-exclusion it implies — a Java/Kotlin/C# project can run this gate today
+  even though its own codegen can't yet consume a dependency. Never part of the
+  bare-`verify` default: it
   needs the publisher's `path` reachable, which CI checking out only your own repo
   may not have. Reports `current` / `drifted` / `unresolved` per dependency;
   `drifted` or `unresolved` fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`, fix is
