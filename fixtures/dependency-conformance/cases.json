@@ -7,8 +7,9 @@
       },
       "config": { "schema_version": 1, "sources": [] },
       "expectFiles": ["metaobjects/meta.app.json"],
-      "expectForeign": [],
-      "expectGoverned": ["app::Order"]
+      "expectImported": [],
+      "expectSelected": ["app::Order"],
+      "expectMigrateGoverned": ["app::Order"]
     }
   ]
 }

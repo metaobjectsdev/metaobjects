@@ -89,14 +89,12 @@
     "ERR_ENUM_INT_VALUE_MAP_ARRAY": "A field.enum carries @intValueMap together with isArray=true. Int-backing is a persistence-layer codec and no port implements it element-wise over an array column, so the combination would silently persist member SYMBOLS into an integer array. An array-of-enum stays string-backed: drop @intValueMap, or make the field scalar.",
     "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS": "A requirement.* with @status: retired declares @implementedBy. Refused rather than exempted (FR-039): a retired capability has no implementation by definition, so forbidding the attribute makes the dangling-reference class unreachable instead of silently tolerated.",
     "ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED": "@supersededBy on a requirement whose @status is not `retired`. The attribute names what REPLACED a withdrawn capability; on a live one there is nothing to have replaced it.",
-    "ERR_DEPENDENCY_UNRESOLVED": "FR-023: a declared dependency's transport or local override could not locate a directory holding metaobjects.pkg.json, or an override names an undeclared dependency.",
+    "ERR_DEPENDENCY_UNRESOLVED": "FR-023: a declared dependency's transport could not locate a directory holding metaobjects.pkg.json.",
     "ERR_DEPENDENCY_MANIFEST_INVALID": "FR-023: a dependency's metaobjects.pkg.json fails its schema, names a different dependency, points at a missing or hash-mismatched artifact, or its artifact does not load standalone / does not declare exactly the listed packages and nodes.",
     "ERR_DEPENDENCY_SNAPSHOT_STALE": "FR-023: the committed snapshot does not match .metaobjects/deps.lock.json (lock missing, entry missing or extra, artifact missing, or hash mismatch) — run `meta deps sync`.",
     "ERR_DEPENDENCY_NODE_COLLISION": "FR-023: two dependencies export the same fully-qualified node.",
-    "ERR_DEPENDENCY_OVERLAY_IMPLICIT": "FR-023: a local top-level node redeclares a dependency's node without `overlay: true`.",
-    "ERR_DEPENDENCY_SCHEMA_NOT_OWNED": "FR-023: a local contribution changes the physical shape of a reference-mode dependency's node (a field/identity/index/relationship/source child, a physical attribute, or a TPH subtype of a foreign base).",
+    "ERR_DEPENDENCY_PACKAGE_NOT_OWNED": "FR-023: a local top-level node is declared into a package owned by a dependency.",
     "ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE": "FR-023: a dependency's metamodelVersion major differs from this toolchain's.",
-    "ERR_DEPENDENCY_UPSTREAM_DRIFT": "FR-023: `meta deps check` / `verify --deps` found the installed dependency differs from the committed snapshot.",
-    "ERR_DEPENDENCY_BREAKING_CHANGE": "FR-023: `meta deps sync` refused an upstream change classified BREAKING for this consumer's footprint (override with --accept-breaking)."
+    "ERR_DEPENDENCY_UPSTREAM_DRIFT": "FR-023: `meta deps check` / `verify --deps` found the installed dependency differs from the committed snapshot."
   }
 }

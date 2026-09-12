@@ -260,8 +260,8 @@ export const ERROR_CODES = [
   // Phase-1 metadata-source-resolution — no metadata collection was discovered:
   // no config declaring sources, and no default metaobjects/ directory.
   "ERR_COLLECTION_NOT_FOUND",
-  // FR-023 — a declared dependency's transport or local override could not locate a
-  // directory holding metaobjects.pkg.json, or an override names an undeclared dependency.
+  // FR-023 — a declared dependency's transport could not locate a directory holding
+  // metaobjects.pkg.json.
   "ERR_DEPENDENCY_UNRESOLVED",
   // FR-023 — a dependency's metaobjects.pkg.json fails its schema, names a different
   // dependency, points at a missing/hash-mismatched artifact, or the artifact does not
@@ -272,20 +272,15 @@ export const ERROR_CODES = [
   "ERR_DEPENDENCY_SNAPSHOT_STALE",
   // FR-023 — two dependencies export the same fully-qualified node.
   "ERR_DEPENDENCY_NODE_COLLISION",
-  // FR-023 — a local top-level node redeclares a dependency's node without `overlay: true`.
-  "ERR_DEPENDENCY_OVERLAY_IMPLICIT",
-  // FR-023 — a local contribution changes the physical shape of a reference-mode
-  // dependency's node (a field/identity/index/relationship/source child, a physical
-  // attribute, or a TPH subtype of a foreign base).
-  "ERR_DEPENDENCY_SCHEMA_NOT_OWNED",
+  // FR-023 — a local top-level node is declared into a package owned by a dependency
+  // (§11.5 — imported-ness is package-keyed; a genuinely new object in a dependency's
+  // package would otherwise silently never generate).
+  "ERR_DEPENDENCY_PACKAGE_NOT_OWNED",
   // FR-023 — a dependency's metamodelVersion major differs from this toolchain's.
   "ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE",
   // FR-023 — `meta deps check` / `verify --deps` found the installed dependency differs
   // from the committed snapshot.
   "ERR_DEPENDENCY_UPSTREAM_DRIFT",
-  // FR-023 — `meta deps sync` refused an upstream change classified BREAKING for this
-  // consumer's footprint (override with --accept-breaking).
-  "ERR_DEPENDENCY_BREAKING_CHANGE",
   "ERR_UNKNOWN",
 ] as const;
 

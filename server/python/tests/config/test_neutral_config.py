@@ -107,11 +107,11 @@ def test_non_string_source_value_raises(tmp_path: Path) -> None:
 # same as `sources`: every port reads it at every rung of the source ladder.
 
 
-def test_dependencies_parse_with_mode_default(tmp_path: Path) -> None:
+def test_dependencies_parse(tmp_path: Path) -> None:
     _write_config(tmp_path, {"schema_version": 1, "sources": [], "dependencies": [{"name": "acme-common", "path": "../lib"}]})
     cfg = read_neutral_config(tmp_path)
     assert cfg is not None
-    assert cfg.dependencies == [{"name": "acme-common", "path": "../lib", "mode": "reference"}]
+    assert cfg.dependencies == [{"name": "acme-common", "path": "../lib"}]
 
 
 def test_dependencies_absent_is_empty(tmp_path: Path) -> None:
@@ -128,6 +128,7 @@ def test_dependencies_absent_is_empty(tmp_path: Path) -> None:
         [{"name": "a"}],
         [{"name": "Bad Name", "path": "x"}],
         [{"name": "a", "path": "x", "mode": "shared"}],
+        [{"name": "a", "path": "x", "mode": "reference"}],
         [{"name": "a", "path": "x"}, {"name": "a", "npm": "y"}],
         [{"name": "a", "path": "x", "dir": "y"}],
         [{"name": "a", "path": "x", "pathh": "t"}],

@@ -14,9 +14,6 @@ export const DEPS_DIR = "deps";
 /** `meta deps sync`'s output — the only writer (DESIGN §3.3). */
 export const LOCK_FILE = "deps.lock.json";
 
-/** D10 co-development override — never committed (DESIGN §10 D10). */
-export const LOCAL_OVERRIDE_FILE = "deps.local.json";
-
 /** The publisher-generated manifest sitting beside a dependency's artifact
  *  (DESIGN §3.2). */
 export const MANIFEST_FILE = "metaobjects.pkg.json";
@@ -33,25 +30,17 @@ export const DEPENDENCY_SOURCE_ID_PREFIX = "dep:";
  *  of the artifact bytes` (DESIGN §3, "Hash format"). */
 export const INTEGRITY_PREFIX = "sha256-";
 
-/** The two modes a declared dependency may run in (DESIGN §2.4, §2.7). */
-export const DEPENDENCY_MODES = ["reference", "own"] as const;
-
-/** `mode`'s default when a dependency spec omits it. */
-export const DEFAULT_DEPENDENCY_MODE: (typeof DEPENDENCY_MODES)[number] = "reference";
-
-export type DependencyMode = (typeof DEPENDENCY_MODES)[number];
-
 /**
- * A declared dependency: a `name`, exactly one transport (`path` | `npm` |
- * `python`), and a `mode`. `npm`/`python` optionally carry `dir` — the
- * subdirectory under the resolved package holding `metaobjects.pkg.json`;
- * `path` never does, since the path itself already names that directory.
+ * A declared dependency: a `name` and exactly one transport (`path` | `npm` |
+ * `python`). `npm`/`python` optionally carry `dir` — the subdirectory under
+ * the resolved package holding `metaobjects.pkg.json`; `path` never does,
+ * since the path itself already names that directory.
  *
  * Mirrors the hand-written union below in `DependencySpecSchema` — the same
  * two-direction parity guard `SourceSpec`/`SourceSpecSchema` carries (see
  * `config.ts`), so the schema and this type cannot silently drift.
  */
-export type DependencySpec = { readonly name: string; readonly mode: DependencyMode } & (
+export type DependencySpec = { readonly name: string } & (
   | { readonly path: string }
   | { readonly npm: string; readonly dir?: string | undefined }
   | { readonly python: string; readonly dir?: string | undefined }
@@ -64,8 +53,6 @@ export type DependencySpec = { readonly name: string; readonly mode: DependencyM
  *  transport's own package name. */
 const DependencyName = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/);
 
-const Mode = z.enum(DEPENDENCY_MODES).default(DEFAULT_DEPENDENCY_MODE);
-
 /**
  * `.strict()` on every arm, same rationale as `SourceSpecSchema` in
  * `config.ts`: a config schema that silently strips an unknown key would let
@@ -75,11 +62,12 @@ const Mode = z.enum(DEPENDENCY_MODES).default(DEFAULT_DEPENDENCY_MODE);
  * itself (`path`/`npm`/`python`) is what distinguishes them, and that is
  * exactly what the "two transports in one spec" / "no transport" refusals
  * below exercise: neither shape matches any arm, so the union fails closed.
+ * `mode` is REMOVED (FR-023 §11.3 — superseded by explicit `scope.include`).
  */
 export const DependencySpecSchema = z.union([
-  z.object({ name: DependencyName, path: z.string().min(1), mode: Mode }).strict(),
-  z.object({ name: DependencyName, npm: z.string().min(1), dir: z.string().min(1).optional(), mode: Mode }).strict(),
-  z.object({ name: DependencyName, python: z.string().min(1), dir: z.string().min(1).optional(), mode: Mode }).strict(),
+  z.object({ name: DependencyName, path: z.string().min(1) }).strict(),
+  z.object({ name: DependencyName, npm: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
+  z.object({ name: DependencyName, python: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
 ]);
 
 /** The declared name of a dependency spec — `name` is common to all three

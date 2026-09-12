@@ -7,8 +7,6 @@ from pathlib import Path
 
 from metaobjects.errors import ErrorCode, ParseError
 
-from .dependencies import DEFAULT_DEPENDENCY_MODE, DEPENDENCY_MODES
-
 #: The DEFAULT value of `sources` when the key is absent or empty — never a
 #: requirement, and never assumed to exist by any other code path.
 DEFAULT_METADATA_DIR = "metaobjects"
@@ -32,8 +30,8 @@ class NeutralConfig:
     sources: list[dict[str, str]]
 
     #: Declared metadata dependencies (FR-023) — each dict already validated:
-    #: `name`, exactly one transport key (`path` / `npm` / `python`), `mode`
-    #: defaulted to `"reference"`, optional `dir` only beside `npm`/`python`.
+    #: `name`, exactly one transport key (`path` / `npm` / `python`), optional
+    #: `dir` only beside `npm`/`python`.
     dependencies: list[dict[str, str]]
 
 
@@ -117,12 +115,13 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
 
 
 def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:
-    """Validate one entry of `dependencies` (DESIGN §3.1) and return it in
-    normalized form (`mode` always present). Mirrors the TS
-    `DependencySpecSchema` union in `sdk/src/dependencies.ts` exactly: a
-    `name`, exactly one transport key (`path` | `npm` | `python`), an
-    optional `dir` that is legal only beside `npm`/`python`, an optional
-    `mode` defaulting to `"reference"`, and no other keys.
+    """Validate one entry of `dependencies` (DESIGN §3.1) and return it
+    normalized. Mirrors the TS `DependencySpecSchema` union in
+    `sdk/src/dependencies.ts` exactly: a `name`, exactly one transport key
+    (`path` | `npm` | `python`), an optional `dir` that is legal only beside
+    `npm`/`python`, and no other keys. `mode` is REMOVED (FR-023 §11.3 —
+    superseded by explicit `scope.include`); any `mode` key is now an
+    unknown-key error like any other unrecognized key.
     """
 
     def fail(reason: str) -> ParseError:
@@ -147,7 +146,7 @@ def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:
     if not isinstance(transport_value, str) or not transport_value.strip():
         raise fail(f"'{transport}' must be a non-empty string")
 
-    allowed_keys = {"name", transport, "mode"}
+    allowed_keys = {"name", transport}
     if transport in ("npm", "python"):
         allowed_keys.add("dir")
     extra_keys = set(dep.keys()) - allowed_keys
@@ -161,17 +160,5 @@ def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:
         if not isinstance(dir_value, str) or not dir_value.strip():
             raise fail("'dir' must be a non-empty string")
         result["dir"] = dir_value
-
-    mode = dep.get("mode", DEFAULT_DEPENDENCY_MODE)
-    # `isinstance(mode, bool)` must be checked separately (same reason as
-    # `schema_version` above): `True`/`False` are `int` subclasses in
-    # Python, and `mode not in DEPENDENCY_MODES` alone would let a boolean
-    # through if either mode string ever coincided with `1`/`0` — it never
-    # does today, but the explicit check keeps this in lockstep with the
-    # `schema_version` guard's reasoning rather than relying on that
-    # coincidence.
-    if isinstance(mode, bool) or mode not in DEPENDENCY_MODES:
-        raise fail(f"'mode' must be one of {DEPENDENCY_MODES}")
-    result["mode"] = mode
 
     return result

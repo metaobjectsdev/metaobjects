@@ -57,3 +57,19 @@ def test_scope_conformance_case(case: dict) -> None:
             f"case {case['name']!r}: matches_scope({fqn!r}, ...) expected "
             f"{entry['matches']!r}"
         )
+
+
+def test_scope_pattern_does_not_match_a_trailing_newline() -> None:
+    """Carried minor (Task 4 review): Python's `re.match` lets a compiled
+    `^...$` pattern match a string with a trailing newline, because bare `$`
+    matches just before it — a divergence from JS, where `$` never does that.
+    `matches_scope` must use `re.fullmatch` so the two ports agree.
+
+    A wildcarded pattern (`acme::*`) does not exercise this: its trailing
+    `[^:]*` legitimately consumes a literal `\\n` as content, so `match` and
+    `fullmatch` agree. Only a literal, non-wildcarded pattern isolates the
+    `$`-before-trailing-newline behavior this fixes.
+    """
+    compiled = compile_scope(include=["acme::Order"])
+    assert matches_scope("acme::Order", compiled)
+    assert not matches_scope("acme::Order\n", compiled)

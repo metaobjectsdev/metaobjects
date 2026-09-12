@@ -7,12 +7,9 @@ TS-only key never becomes a four-port change. See
 """
 from .dependencies import (
     ARTIFACT_SUFFIX,
-    DEFAULT_DEPENDENCY_MODE,
-    DEPENDENCY_MODES,
     DEPENDENCY_SOURCE_ID_PREFIX,
     DEPS_DIR,
     INTEGRITY_PREFIX,
-    LOCAL_OVERRIDE_FILE,
     LOCK_FILE,
     MANIFEST_FILE,
 )
@@ -21,13 +18,10 @@ from .source_resolver import resolve_collection, resolve_sources
 
 __all__ = [
     "ARTIFACT_SUFFIX",
-    "DEFAULT_DEPENDENCY_MODE",
     "DEFAULT_METADATA_DIR",
-    "DEPENDENCY_MODES",
     "DEPENDENCY_SOURCE_ID_PREFIX",
     "DEPS_DIR",
     "INTEGRITY_PREFIX",
-    "LOCAL_OVERRIDE_FILE",
     "LOCK_FILE",
     "MANIFEST_FILE",
     "NeutralConfig",

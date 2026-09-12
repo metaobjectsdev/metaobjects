@@ -25,17 +25,14 @@ export type { Config } from "./config.js";
 export {
   DEPS_DIR,
   LOCK_FILE,
-  LOCAL_OVERRIDE_FILE,
   MANIFEST_FILE,
   ARTIFACT_SUFFIX,
   DEPENDENCY_SOURCE_ID_PREFIX,
   INTEGRITY_PREFIX,
-  DEPENDENCY_MODES,
-  DEFAULT_DEPENDENCY_MODE,
   DependencySpecSchema,
   dependencyName,
 } from "./dependencies.js";
-export type { DependencyMode, DependencySpec } from "./dependencies.js";
+export type { DependencySpec } from "./dependencies.js";
 
 // Meta Forge metadata types + attribute name constants (registered into a
 // TypeRegistry to let Loader parse decision/principle/etc. children + the

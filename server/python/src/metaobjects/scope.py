@@ -88,8 +88,17 @@ def compile_scope(
 
 
 def matches_scope(fqn: str, compiled: CompiledScope) -> bool:
-    """True when ``fqn`` is inside the scope. An empty ``include`` means everything."""
-    included = len(compiled.include) == 0 or any(p.match(fqn) for p in compiled.include)
+    """True when ``fqn`` is inside the scope. An empty ``include`` means everything.
+
+    Uses ``fullmatch``, not ``match``: every compiled pattern already anchors
+    with ``^...$`` (`compile_pattern`), but Python's bare ``$`` matches just
+    before a trailing newline even so — so ``re.match`` would let
+    ``"acme::Order\\n"`` match a pattern meant only for ``"acme::Order"``. JS
+    `$` never does that, so `match` here would be a genuine cross-port
+    semantic divergence; `fullmatch` requires the newline to be consumed too,
+    closing it.
+    """
+    included = len(compiled.include) == 0 or any(p.fullmatch(fqn) for p in compiled.include)
     if not included:
         return False
-    return not any(p.match(fqn) for p in compiled.exclude)
+    return not any(p.fullmatch(fqn) for p in compiled.exclude)

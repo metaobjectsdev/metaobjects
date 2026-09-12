@@ -186,19 +186,20 @@ describe("ConfigSchema — phase-1 source resolution", () => {
 });
 
 describe("ConfigSchema — dependencies (FR-023)", () => {
-  test("dependencies: a valid spec parses with mode defaulted", () => {
+  test("dependencies: a valid spec parses with no mode", () => {
     const cfg = ConfigSchema.parse({ schema_version: 1, dependencies: [{ name: "acme-common", path: "../lib/metaobjects" }] });
-    expect(cfg.dependencies).toEqual([{ name: "acme-common", path: "../lib/metaobjects", mode: "reference" }]);
+    expect(cfg.dependencies).toEqual([{ name: "acme-common", path: "../lib/metaobjects" }]);
   });
   test("dependencies: npm and python accept dir; path does not", () => {
     expect(() => ConfigSchema.parse({ schema_version: 1, dependencies: [{ name: "a", npm: "@acme/model", dir: "metaobjects" }] })).not.toThrow();
-    expect(() => ConfigSchema.parse({ schema_version: 1, dependencies: [{ name: "a", python: "acme_model", dir: "metaobjects", mode: "own" }] })).not.toThrow();
+    expect(() => ConfigSchema.parse({ schema_version: 1, dependencies: [{ name: "a", python: "acme_model", dir: "metaobjects" }] })).not.toThrow();
     expect(() => ConfigSchema.parse({ schema_version: 1, dependencies: [{ name: "a", path: "x", dir: "y" }] })).toThrow();
   });
-  test("dependencies: two transports, no transport, a bad name, a bad mode, a duplicate name, an unknown key are all refused", () => {
+  test("dependencies: two transports, no transport, a bad name, a mode key, a duplicate name, an unknown key are all refused", () => {
     for (const bad of [
       [{ name: "a", path: "x", npm: "y" }], [{ name: "a" }], [{ name: "Bad Name", path: "x" }],
-      [{ name: "a", path: "x", mode: "shared" }], [{ name: "a", path: "x" }, { name: "a", npm: "y" }], [{ name: "a", path: "x", pathh: "typo" }],
+      [{ name: "a", path: "x", mode: "shared" }], [{ name: "a", path: "x", mode: "reference" }],
+      [{ name: "a", path: "x" }, { name: "a", npm: "y" }], [{ name: "a", path: "x", pathh: "typo" }],
     ]) expect(() => ConfigSchema.parse({ schema_version: 1, dependencies: bad })).toThrow();
   });
   test("dependencies: absent means []", () => { expect(ConfigSchema.parse({ schema_version: 1 }).dependencies).toEqual([]); });

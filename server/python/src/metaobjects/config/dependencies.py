@@ -13,9 +13,6 @@ DEPS_DIR = "deps"
 #: `meta deps sync`'s output — the only writer (DESIGN §3.3).
 LOCK_FILE = "deps.lock.json"
 
-#: D10 co-development override — never committed (DESIGN §10 D10).
-LOCAL_OVERRIDE_FILE = "deps.local.json"
-
 #: The publisher-generated manifest sitting beside a dependency's artifact
 #: (DESIGN §3.2).
 MANIFEST_FILE = "metaobjects.pkg.json"
@@ -31,9 +28,3 @@ DEPENDENCY_SOURCE_ID_PREFIX = "dep:"
 #: Prefix of the `integrity` field's value: `"sha256-" + lowercase hex sha256
 #: of the artifact bytes` (DESIGN §3, "Hash format").
 INTEGRITY_PREFIX = "sha256-"
-
-#: The two modes a declared dependency may run in (DESIGN §2.4, §2.7).
-DEPENDENCY_MODES = ("reference", "own")
-
-#: `mode`'s default when a dependency spec omits it.
-DEFAULT_DEPENDENCY_MODE = "reference"

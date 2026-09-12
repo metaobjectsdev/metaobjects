@@ -2,28 +2,45 @@
 // implementation. Every port ships an equivalent runner reading this same file
 // (fixtures/dependency-conformance/, see its README for the case schema).
 //
-// This runner is written AHEAD of the implementation (TDD): the `classify` arm
-// is skipped until the classifier lands (Task 14), and the `expectFiles` arm
-// already calls `collection.foreignOwner` / `collection.governs` /
-// `collection.overrides`, none of which exist on `Collection` yet — those
-// calls are expected to fail with a TypeError until later tasks add them.
+// This runner is written AHEAD of the implementation (TDD): `collection.imported`
+// does not exist on `Collection` yet (a later task adds the exclusion-key
+// composition, DESIGN §11.1 item 2), so any case carrying `expectImported` /
+// `expectSelected` / `expectMigrateGoverned` is expected to fail until then.
 import { describe, expect, test } from "bun:test";
 import { copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { TYPE_OBJECT } from "@metaobjectsdev/metadata";
-import { resolveCollection } from "../src/collection.js";
-import { loadMemory } from "../src/memory.js";
+import { resolveCollection, type Collection } from "../src/collection.js";
+import { LOCK_FILE } from "../src/dependencies.js";
+import { loadMemory, type LoadMemoryOptions } from "../src/memory.js";
 
-interface ClassifyCase {
-  readonly old: unknown;
-  readonly new: unknown;
-  readonly footprint: Record<string, "whole" | "key" | "existence">;
-  readonly expectChanges: ReadonlyArray<{
-    readonly fqn: string;
-    readonly path: string;
-    readonly kind: "breaking" | "compatible" | "info";
-  }>;
+/**
+ * `imported` lands on `Collection` in a later task (DESIGN §11.1 item 2's
+ * exclusion-key composition) — this narrow extension lets the corpus runner
+ * reference it ahead of the implementation without an `any` escape hatch.
+ * Until that task, the runtime object has no such member, so the cast below
+ * compiles clean but the call throws (`collection.imported is not a
+ * function`) — exactly the failure DESIGN decision #3 (Task 6) expects for
+ * the one case that exercises it.
+ */
+interface CollectionWithImported extends Collection {
+  readonly imported: (fqn: string) => boolean;
+}
+
+/**
+ * `fileIds` (path -> `FileSource` id, carried on `Collection` and threaded
+ * through to `loadMemory`) lands ahead of Task 6 in the FR-023 sequence, same
+ * ahead-of-implementation situation as `imported` above. Optional here
+ * (unlike `imported`) because this corpus's `expectLoadError` arm only wants
+ * provenance to flow through WHEN it exists — it does not need the absence to
+ * throw.
+ */
+interface CollectionWithFileIds extends Collection {
+  readonly fileIds?: ReadonlyMap<string, string> | undefined;
+}
+interface LoadMemoryOptionsWithFileIds extends LoadMemoryOptions {
+  readonly fileIds?: ReadonlyMap<string, string> | undefined;
 }
 
 interface Case {
@@ -35,25 +52,28 @@ interface Case {
   readonly config: unknown | null;
   /** OPTIONAL: written to `<resolveFrom>/.metaobjects/deps.lock.json`. */
   readonly lock?: unknown;
-  /** OPTIONAL: written to `<resolveFrom>/.metaobjects/deps.local.json` (D10). */
-  readonly localOverrides?: unknown;
   readonly resolveFrom?: string;
   readonly expectFiles?: readonly string[];
-  readonly expectForeign?: readonly string[];
-  readonly expectGoverned?: readonly string[];
-  readonly expectOverrides?: readonly string[];
+  /** OPTIONAL, exhaustive over every loaded top-level object: the FQNs for
+   *  which `collection.imported(fqn)` is true. */
+  readonly expectImported?: readonly string[];
+  /** OPTIONAL, exhaustive over every loaded top-level object: the FQNs for
+   *  which `collection.inScope(fqn)` is true. */
+  readonly expectSelected?: readonly string[];
+  /** OPTIONAL, exhaustive over every loaded top-level object: the FQNs
+   *  `collection.inMigrateScope` admits (undefined admits everything). */
+  readonly expectMigrateGoverned?: readonly string[];
   readonly expectLoadError?: string;
   readonly expectErrorFiles?: readonly string[];
   readonly expectError?: string;
-  readonly classify?: ClassifyCase;
 }
 
 const CORPUS_DIR = resolve(import.meta.dir, "../../../../../fixtures/dependency-conformance");
 const CORPUS = join(CORPUS_DIR, "cases.json");
 
 /** Materializes `c.tree` (and `c.treeFiles`, copied byte-for-byte) under a
- *  fresh temp root, then writes `config` / `lock` / `localOverrides` (each
- *  when non-null/present) under `<resolveFrom>/.metaobjects/`. Mirrors
+ *  fresh temp root, then writes `config` / `lock` (each when non-null/present)
+ *  under `<resolveFrom>/.metaobjects/`. Mirrors
  *  `source-resolution-conformance.test.ts`'s `materialize`, extended for the
  *  dependency-corpus-only fields. */
 async function materialize(c: Case): Promise<{ root: string; resolveDir: string }> {
@@ -76,11 +96,7 @@ async function materialize(c: Case): Promise<{ root: string; resolveDir: string 
   }
   if (c.lock !== undefined) {
     await mkdir(metaobjectsDir, { recursive: true });
-    await writeFile(join(metaobjectsDir, "deps.lock.json"), JSON.stringify(c.lock, null, 2));
-  }
-  if (c.localOverrides !== undefined) {
-    await mkdir(metaobjectsDir, { recursive: true });
-    await writeFile(join(metaobjectsDir, "deps.local.json"), JSON.stringify(c.localOverrides, null, 2));
+    await writeFile(join(metaobjectsDir, LOCK_FILE), JSON.stringify(c.lock, null, 2));
   }
   return { root, resolveDir };
 }
@@ -93,14 +109,6 @@ describe("dependency conformance", () => {
   });
 
   for (const c of cases) {
-    // The classifier arm has no runner machinery yet (Task 14 fills it in) —
-    // skipped rather than failed, so the corpus can carry classify cases
-    // ahead of the classifier existing.
-    if (c.classify !== undefined) {
-      test.skip(c.name, () => {});
-      continue;
-    }
-
     test(c.name, async () => {
       const { root, resolveDir } = await materialize(c);
 
@@ -111,39 +119,48 @@ describe("dependency conformance", () => {
         return;
       }
 
-      // A case with neither expectFiles, expectError, nor classify is a malformed
-      // corpus entry, not "expect zero files" — fail loudly rather than silently
+      // A case with neither expectFiles nor expectError is a malformed corpus
+      // entry, not "expect zero files" — fail loudly rather than silently
       // passing it (same discipline as source-resolution-conformance).
       if (c.expectFiles === undefined) {
-        throw new Error(`corpus case "${c.name}" has neither expectFiles, expectError, nor classify`);
+        throw new Error(`corpus case "${c.name}" has neither expectFiles nor expectError`);
       }
 
       const collection = await resolveCollection(resolveDir, { explicitDir: resolveDir });
       const got = collection.files.map((f) => relative(root, f).split(sep).join("/")).sort();
       expect(got).toEqual([...c.expectFiles].sort());
 
-      if (c.expectForeign !== undefined) {
-        for (const fqn of c.expectForeign) {
-          expect(collection.foreignOwner(fqn)).not.toBeUndefined();
+      if (
+        c.expectImported !== undefined ||
+        c.expectSelected !== undefined ||
+        c.expectMigrateGoverned !== undefined
+      ) {
+        const loaded = await loadMemory(resolveDir, { files: collection.files });
+        const topLevel = loaded.childrenOfType(TYPE_OBJECT).map((n) => n.resolutionKey());
+
+        if (c.expectImported !== undefined) {
+          const withImported = collection as CollectionWithImported;
+          const imported = topLevel.filter((fqn) => withImported.imported(fqn)).sort();
+          expect(imported).toEqual([...c.expectImported].sort());
+        }
+        if (c.expectSelected !== undefined) {
+          const selected = topLevel.filter((fqn) => collection.inScope(fqn)).sort();
+          expect(selected).toEqual([...c.expectSelected].sort());
+        }
+        if (c.expectMigrateGoverned !== undefined) {
+          const migrateGoverned = topLevel
+            .filter((fqn) => collection.inMigrateScope?.(fqn) ?? true)
+            .sort();
+          expect(migrateGoverned).toEqual([...c.expectMigrateGoverned].sort());
         }
       }
 
-      if (c.expectGoverned !== undefined) {
-        const loaded = await loadMemory(resolveDir, { files: collection.files });
-        const governed = loaded
-          .childrenOfType(TYPE_OBJECT)
-          .map((n) => n.resolutionKey())
-          .filter((fqn) => collection.governs(fqn))
-          .sort();
-        expect(governed).toEqual([...c.expectGoverned].sort());
-      }
-
-      if (c.expectOverrides !== undefined) {
-        expect([...collection.overrides].sort()).toEqual([...c.expectOverrides].sort());
-      }
-
       if (c.expectLoadError !== undefined) {
-        const attempt = loadMemory(resolveDir, { files: collection.files, fileIds: collection.fileIds });
+        const options: LoadMemoryOptionsWithFileIds = {
+          files: collection.files,
+          fileIds: (collection as CollectionWithFileIds).fileIds,
+        };
+        const attempt = loadMemory(resolveDir, options);
         await expect(attempt).rejects.toMatchObject({ code: c.expectLoadError });
         if (c.expectErrorFiles !== undefined) {
           let thrown: unknown;
