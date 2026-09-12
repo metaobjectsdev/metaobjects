@@ -210,23 +210,34 @@ def test_verify_snapshot_resolves_the_pinned_artifact(tmp_path: Path) -> None:
 def test_verify_snapshot_orders_results_by_dependency_name_not_declaration_order(
     tmp_path: Path,
 ) -> None:
+    # BOTH dependencies must resolve successfully — a fabricated/absent second
+    # artifact can only ever fail, so whichever position it's visited in it is
+    # "the one that failed," and a `"name" in str(error)` assertion would pass
+    # under EITHER declaration-order or name-order iteration (this is exactly
+    # what fix-round-1 caught: the prior version of this test proved nothing).
     _write_snapshot(tmp_path, "acme-common", "acme-common.metaobjects.json", CORPUS / "acme-common-v1.json")
-    entry_b = {**_entry(), "packages": ["b::pkg"], "nodes": ["b::pkg::Thing"]}
+    b_dep_bytes = (
+        b'{"metadata.root":{"children":[{"object.value":{"name":"Thing",'
+        b'"package":"b::pkg","children":[]}}]}}'
+    )
+    b_dep_dir = tmp_path / ".metaobjects" / "deps" / "b-dep"
+    b_dep_dir.mkdir(parents=True)
+    (b_dep_dir / "b-dep.metaobjects.json").write_bytes(b_dep_bytes)
+    entry_b = {
+        **_entry(),
+        "artifact": "b-dep.metaobjects.json",
+        "integrity": sha256_integrity(b_dep_bytes),
+        "packages": ["b::pkg"],
+        "nodes": ["b::pkg::Thing"],
+    }
     lock = validate_lock(
         {"schema_version": 1, "dependencies": {"acme-common": _entry(), "b-dep": entry_b}}
     )
-    # `b-dep`'s artifact is never read (its packages/nodes are fabricated) because
-    # dependency name order is "acme-common" < "b-dep" and — for THIS assertion —
-    # only the ORDER of the resolved list matters, not that b-dep resolves too.
-    # Declare in the OPPOSITE order to prove result order is name-sorted, not
-    # declaration-sorted; b-dep would fail on its (fabricated) artifact if this
-    # test's dependency list actually needed it to resolve, so keep it absent
-    # and assert failure lands on it specifically, past acme-common.
+    # Declared in the OPPOSITE of name order — resolution must still come back
+    # NAME-ordered ("acme-common" before "b-dep"), never declaration-ordered.
     specs = [{"name": "b-dep", "path": "y"}, {"name": "acme-common", "path": "x"}]
-    with pytest.raises(ParseError) as e:
-        verify_snapshot(tmp_path, specs, lock)
-    assert e.value.code == ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE
-    assert "b-dep" in str(e.value)
+    resolved = verify_snapshot(tmp_path, specs, lock)
+    assert [d.name for d in resolved] == ["acme-common", "b-dep"]
 
 
 def test_verify_snapshot_missing_artifact_is_stale(tmp_path: Path) -> None:

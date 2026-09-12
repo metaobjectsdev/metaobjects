@@ -148,3 +148,28 @@ def test_verify_codegen_shares_the_selection_after_scope_widens(tmp_path: Path) 
     cfg = _consumer(tmp_path, scope_include=["acme::common::**"])
     assert main(["gen", "--config", str(cfg)]) == 0
     assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
+
+
+def test_gen_a_stale_snapshot_is_refused_before_generation(tmp_path: Path, capsys) -> None:
+    """Step 2's fifth scenario: editing one byte of the committed snapshot must
+    make `resolve_metadata_location` -> `build_collection` -> `verify_snapshot`
+    raise `ERR_DEPENDENCY_SNAPSHOT_STALE` BEFORE anything is loaded or
+    generated — never a partial/stale `gen/` directory."""
+    cfg = _consumer(tmp_path)
+    artifact = tmp_path / ".metaobjects" / "deps" / "acme-common" / "acme-common.metaobjects.json"
+    data = bytearray(artifact.read_bytes())
+    data[0] ^= 0xFF  # one bit-flipped byte -> the lock's pinned sha256 no longer matches
+    artifact.write_bytes(bytes(data))
+
+    rc = main(["gen", "--config", str(cfg)])
+    assert rc != 0
+    err = capsys.readouterr().err
+    # `_resolve_metadata_location_or_print_error` prints `str(exc)` — a
+    # ParseError's message, not its `.code` — so the STALE code itself is not
+    # a substring; the message text IS the coded diagnostic here.
+    assert "does not match the lock" in err
+    assert "run `meta deps sync`" in err
+    # The "before generation" half: no gen/ directory at all, not even a
+    # partial one — the failure must happen in resolution, before run_gen ever
+    # gets a root to generate from.
+    assert not (tmp_path / "gen").exists()
