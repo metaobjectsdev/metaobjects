@@ -12,9 +12,7 @@ here.**
 
 ## [1.0.3] — 2026-09-12
 
-_npm `1.0.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
-
-_All four registries publish: npm `1.0.3` (full lockstep across the 14 `@metaobjectsdev/*`
+_All four registries publish: npm `1.0.3` (full lockstep across all 14 `@metaobjectsdev/*`
 publish candidates), Maven Central `8.0.3`, PyPI `1.0.3`, NuGet `1.0.3`. PyPI and NuGet were
 last cut at `1.0.1` and adopt the shared `minor.patch` now current, skipping the number they
 sat out (ADR-0035 Amendment 1)._
