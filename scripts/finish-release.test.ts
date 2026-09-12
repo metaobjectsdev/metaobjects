@@ -45,16 +45,22 @@ const RELEASE = "0.24.6";
 const SHIPPED: Coords = { npm: "0.24.6", pypi: "0.24.6", nuget: "0.24.6", maven: "7.24.6" };
 
 /**
- * The two llms mirrors, shaped like the real ones: a `> A cross-language …` summary
- * line, some prose that names no registry, and an `## Implementations` heading that
- * repeats every coordinate. Gate 5 reads the summary and the claim lines separately, and
- * the whole point is that they can disagree.
+ * The two llms mirrors, shaped like the real ones: a leading `> …` summary blockquote,
+ * some prose that names no registry, and an `## Implementations` heading that repeats
+ * every coordinate. Gate 5 reads the summary and the claim lines separately, and the
+ * whole point is that they can disagree.
+ *
+ * The summary's WORDS are deliberately not the real ones. Gate 5 used to find the line
+ * by the prefix `"> A cross-language"`, which quietly tied a release gate to the opening
+ * sentence of the pitch — and FR-042 rewrote that sentence. It is found by POSITION now
+ * (the first blockquote, where llms.txt convention puts the summary), so this fixture
+ * proves the lookup survives a rewrite instead of pinning the old prose.
  */
 function llms(c: Coords, extra = ""): string {
   return [
     "# MetaObjects",
     "",
-    `> A cross-language metadata standard for declaring typed entity models across five languages. Apache 2.0. Shipping at \`${c.npm}\` on npm and \`${c.maven}\` on Maven Central.`,
+    `> One typed model of your app, in five languages. Apache 2.0. Shipping at \`${c.npm}\` on npm and \`${c.maven}\` on Maven Central.`,
     "",
     "The metamodel is the durable spine; generated code is the disposable artifact.",
     extra,
@@ -439,7 +445,7 @@ describe("finish-release gate 5: the llms mirrors state this release", () => {
   test("a mirror with no summary line at all is refused", () => {
     const r = makeRepo({ llms: "# MetaObjects\n\nno summary here\n" }).run(RELEASE, "--check");
     expect(r.code).not.toBe(0);
-    expect(r.out).toContain(`has no "> A cross-language …" summary line`);
+    expect(r.out).toContain(`has no "> …" summary blockquote`);
   });
 
   // The worse half, and the one a summary-only check leaves open: a refreshed headline

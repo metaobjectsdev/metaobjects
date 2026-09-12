@@ -5,16 +5,40 @@
 [![PyPI](https://img.shields.io/pypi/v/metaobjects?label=pypi)](https://pypi.org/project/metaobjects/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-A **cross-language metadata standard** for declaring typed entity models that
-drive code generation, runtime metadata access, drift detection, and prompt
-construction — across TypeScript, Java, Kotlin, C#, and Python.
+Coding agents get context — rules files, memories, MCP servers — and context is
+**advisory**: nothing fails when the code stops matching it. MetaObjects gives your
+agent one typed model of your application — data, API, UI, prompt payloads, and what
+the software is supposed to do — generates each layer's code from it in TypeScript,
+Java, Kotlin, C# and Python with **no proprietary runtime** in the output, and fails
+your build when generated code, a prompt, or a claimed capability drifts from that
+model. Your hand-written logic stays yours.
+
+**One typed model of your app** — data, API, UI, prompt payloads, and what it's
+supposed to do — that your agent reads and writes. Two things happen to it:
+
+- **Generate.** The boring parts are derived from it, in TypeScript, Java, Kotlin, C#
+  and Python — at build time as code you own, or at runtime from the live model.
+  Nothing proprietary in the output.
+- **Verify.** The build fails when generated code drifts from the model, when a
+  prompt's payload no longer matches what it's told, and when a feature someone marked
+  done has nothing implementing it.
+
+That last one has no equivalent in a test suite: a test exercises code that exists, so
+nothing fails when a claimed capability was never built.
+
+> **Scope.** It protects what the model declares; your hand-written logic is still
+> yours.
 
 The metamodel is the **durable spine**; generated code is the **disposable
-artifact**. Substrate is local-first: typed metadata lives in your repo, and the
-generated code is idiomatic per-language output with **no proprietary runtime** —
-the entity/model tier is dependency-free, and the optional client, prompt-render,
-and runtime tiers are ordinary Apache-2.0 packages you could vendor or fork. If
-the package ecosystem disappears tomorrow, you keep working code.
+artifact**. Substrate is local-first: typed metadata lives in your repo as YAML or
+JSON you own. The entity/model tier of the output is dependency-free, and the optional
+client, prompt-render, and runtime tiers are ordinary Apache-2.0 packages you could
+vendor or fork. If the package ecosystem disappears tomorrow, you keep working code.
+
+Ships today for **TypeScript, Java, Kotlin, C# and Python** — the same gate in each,
+byte-checked against the others. Per-port depth is in the
+[capability matrix](#capability-matrix); the [five pillars](#five-pillars) are what is
+underneath.
 
 > **Maintainer note.** MetaObjects is primarily a one-person, part-time project.
 > Issues and PRs are very welcome — expect responses on the order of days, not

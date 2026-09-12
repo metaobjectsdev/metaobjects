@@ -55,9 +55,16 @@ describe("llms mirrors", () => {
     // agent reads before anything else. Pinned separately from the containment check above
     // because "the file mentions 0.24.5 somewhere" and "the summary says we ship 0.24.5"
     // are different claims, and only the second is what a reader acts on.
+    //
+    // The summary is located by POSITION — the first blockquote line, which is where the
+    // llms.txt convention puts it — not by its opening words. This used to match
+    // `"> A cross-language"`, which quietly made the gate depend on the prose of the pitch:
+    // FR-042 rewrote that sentence (it was the inventory opener the positioning work exists
+    // to remove) and a prose-keyed lookup would have gone red on a correct file. Keep it
+    // structural; `scripts/finish-release.mjs` gate 5 finds it the same way.
     const { npm, maven } = buildPayload(REPO).registries;
     for (const f of MIRRORS) {
-      const summary = read(f).split("\n").find((l) => l.startsWith("> A cross-language"));
+      const summary = read(f).split("\n").find((l) => l.startsWith("> "));
       expect(summary).toBeDefined();
       expect(summary).toContain(npm);
       expect(summary).toContain(maven);

@@ -276,9 +276,16 @@ for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
   // page whose headline says the new release and whose copy-paste block installs the old
   // one. `scripts/site/llms.test.ts` already draws exactly this distinction: "the file
   // mentions 0.24.5 somewhere" and "the summary says we ship 0.24.5" are different claims.
-  const summary = text.split("\n").find((l) => l.startsWith("> A cross-language"));
+  //
+  // Found STRUCTURALLY — the first blockquote line, which is where the llms.txt convention
+  // puts the one-line summary — not by a prose prefix. It used to match `"> A cross-language"`,
+  // which made the gate depend on the opening WORDS of the pitch; FR-042 rewrote that
+  // sentence (it was the inventory opener the positioning work exists to remove) and a
+  // prose-keyed gate would have failed on a correct file. The blockquote position is the
+  // stable fact; the words in it are not.
+  const summary = text.split("\n").find((l) => l.startsWith("> "));
   if (summary === undefined) {
-    die(`${rel} has no "> A cross-language …" summary line — the shape this gate reads changed`);
+    die(`${rel} has no "> …" summary blockquote — the shape this gate reads changed`);
   }
   const missing = [
     ...(summary.includes(VERSION) ? [] : [`npm ${VERSION}`]),
