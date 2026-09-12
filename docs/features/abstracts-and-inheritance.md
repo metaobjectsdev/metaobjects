@@ -283,6 +283,24 @@ the same entity's declaration is split across files (e.g., domain code in
 one file, persistence overlay in another). See
 [`loaders.md`](loaders.md) for the overlay merge semantics.
 
+### The same rule, across a repository boundary
+
+Nothing above changes when the base you `extends` or the node you `overlay` lives in
+a [metadata dependency](metadata-dependencies.md) rather than your own tree —
+dependency files load before yours in the same `loader.load(...)`, so a foreign
+abstract resolves and a foreign node re-opens exactly like a local one. **One rule
+is stricter across that boundary, though: say `overlay: true` on every amendment to
+a node you do not own.** Within one project the parser merges a same-`(type,
+package::name)` redeclaration whether or not it carries the flag; only the flagged
+form fails loudly (`ERR_OVERLAY_NO_TARGET`) when the target disappears. Skip the flag
+on a dependency's node and an upstream removal turns your amendment into a silent
+new local object under the same name instead of a build failure — the flag is what
+makes that loud. Declaring a brand-new top-level node into a dependency's package
+(rather than amending one it already exports) is refused outright
+(`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`); see
+[`metadata-dependencies.md`](metadata-dependencies.md) for the full rule and what
+fails when the base you extended, or the node you overlaid, changes upstream.
+
 ## When to use abstracts vs. new subtypes vs. attr extensions
 
 This is the same decision as

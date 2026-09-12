@@ -10,6 +10,94 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Metadata dependencies (FR-023, Phase 1a — TypeScript + Python).** A project can
+  now build on a metadata model published by another repository or package instead
+  of copy-pasting it:
+  - **`dependencies`** in `.metaobjects/config.json` — `[{ name, path }]` today (the
+    `npm`/`python` transport keys are reserved in the schema and refused by `sync`
+    with `ERR_DEPENDENCY_UNRESOLVED`, "not supported by this toolchain yet").
+  - **`meta deps sync [<name>…] [--dry-run]` / `meta deps check` / `meta deps
+    list`** — `sync` resolves each dependency's `path`, validates its manifest and
+    artifact hash, re-loads the artifact standalone with core providers, and writes
+    the committed snapshot (`.metaobjects/deps/<name>/`) + lock
+    (`.metaobjects/deps.lock.json`); `check` compares the currently-installed
+    artifact's hash against the lock, read-only; `list` prints the lock.
+  - **`verify --deps`** — the same drift comparison as `meta deps check`, as a
+    gated `verify` subverb (needs the publisher's `path` reachable, so it is never
+    part of the bare-`verify` default). `drifted` or `unresolved` fails with the new
+    `ERR_DEPENDENCY_UPSTREAM_DRIFT`.
+  - **`sharedModelFile()`** (`@metaobjectsdev/codegen-ts`) — the publisher-side
+    generator: selects a subset of a project's own metadata by the `scope`
+    pattern grammar, closure-checks it, and emits one canonical-JSON artifact +
+    `metaobjects.pkg.json` manifest. Registered and discoverable (`meta gen
+    --list`), but deliberately **not** offered by `meta eject --list` — the
+    artifact is a contract whose bytes a cross-port corpus pins and whose hash
+    consumers verify, so a user-owned editable copy would invite a silent break.
+  - **An overlay authoring lint** in `meta verify` — advisory, runs on every
+    invocation (no subverb): a top-level `(type, resolutionKey)` declared in two or
+    more collection files (dependency artifacts included) where more than one
+    declaration lacks `overlay: true`. Never fails the build; mute with
+    `--no-overlay-lint` / `META_NO_OVERLAY_LINT=1`.
+  - **`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`** — a project may `extends` or `overlay:
+    true` a dependency's node freely, but declaring a *brand-new* top-level node
+    into a package a dependency owns is refused by name, naming the fix.
+  - New error codes altogether: `ERR_DEPENDENCY_UNRESOLVED`,
+    `ERR_DEPENDENCY_MANIFEST_INVALID`, `ERR_DEPENDENCY_SNAPSHOT_STALE`,
+    `ERR_DEPENDENCY_NODE_COLLISION`, `ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE`,
+    `ERR_DEPENDENCY_UPSTREAM_DRIFT`, `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`.
+  - New exports: `declaredTopLevelKeys` (`@metaobjectsdev/metadata` — the raw,
+    pre-parse walk the overlay lint and the loader's own overlay-only partition
+    share) and `serializeSharedDocument` (the canonical shared-artifact
+    serializer `sharedModelFile()` targets; Python's `serialize_shared_document`
+    is byte-identical, though Python has no publisher CLI wired to it yet —
+    `sharedModelFile()` itself is TypeScript-only in Phase 1a). `FileSource`'s
+    constructor takes an optional `{ id }`, so a dependency's synced snapshot
+    loads with `dep:<name>/<artifact>` provenance instead of reading like a
+    local file.
+  - Deliberately **not** built in Phase 1a — see `docs/features/metadata-dependencies.md`
+    ("Deferred"): the `npm`/`python`/`maven`/`nuget` transports, a local
+    co-development override, a usage-aware breaking-change classifier, cross-boundary
+    codegen imports (`packageBindings`), a runtime `ObjectManager` scope predicate,
+    and Java/Kotlin/C# as dependency consumers or publishers (Phase 2).
+  - No registered vocabulary changed — `metamodelVersion` stays `1.0`.
+    Docs: `docs/features/metadata-dependencies.md`. Corpus:
+    `fixtures/dependency-conformance/` (23 cases, TS + Python).
+
+### Changed
+
+- **A project that declares `scope.include` now sees its requirements-ledger
+  denominator narrow to that scope — even with zero dependencies.** The ledger's
+  ["coverable" object count](docs/features/requirements.md) is computed by
+  `Collection.inScope`, which is `matchesScope(fqn, scope) && …` regardless of
+  whether the project has any `dependencies` at all. Previously the ledger counted
+  every non-abstract entity in the loaded model; a project that scopes its own
+  codegen with `scope.include` now has its ledger coverage counted only over that
+  declared scope too. This is a real behavior change for an existing project that
+  already declares `scope.include` and reads its `meta verify` coverage numbers —
+  they may drop even though nothing was deleted.
+- **`Collection`** (`@metaobjectsdev/sdk`) gains `dependencies`, `ownFiles`,
+  `fileIds`, `importedPackages`, `importedNodes`, `imported(fqn)`,
+  `declaredMigrateScope`; `inScope` and `inMigrateScope` are now the COMPOSED
+  predicates described above (default-exclusion of imported metadata) — byte-for-byte
+  identical to their prior behavior for a project with no `dependencies` and no
+  declared `scope`/`migrate.scope`.
+- **The scope-pattern grammar (`compileScope`/`matchesScope`/`compilePattern`)
+  moved from `@metaobjectsdev/sdk` to `@metaobjectsdev/metadata`** — pure,
+  browser-safe string code, so `@metaobjectsdev/codegen-ts` (the `sharedModelFile()`
+  publisher side) can use it without a `sdk` dependency. `sdk` re-exports it
+  unchanged; existing importers of `compileScope`/`matchesScope` from `sdk` are
+  unaffected.
+- **`scopeExpectedSchema`** (`@metaobjectsdev/migrate-ts`) takes a third, optional
+  `{ imported }` argument: an imported object the scope does not admit is removed
+  from the *expected* schema before `declaredSchemas` is computed — so importing a
+  table-backed entity can never turn the publisher's other tables into `DROP`
+  candidates, and never proposes creating the imported table.
+- **`scanRequirements`** (`@metaobjectsdev/cli`) takes an optional second argument,
+  `{ coverable }` — the predicate the ledger denominator change above threads
+  through.
+
 ### Deprecated
 
 - **`@metaobjectsdev/sdk`: the v0.3 `package.meta.json` prototype and workspace discovery** —

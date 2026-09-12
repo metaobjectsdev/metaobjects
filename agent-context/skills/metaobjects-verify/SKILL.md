@@ -105,9 +105,29 @@ If this project declares `requirement.functional` / `requirement.architectural` 
 `meta verify` — there is no subverb — and the severity of a broken link depends on the
 requirement's `@status`, which is the part that surprises people reading a failure.
 
+## The overlay authoring lint runs on every run too
+
+If this project declares `dependencies` in `.metaobjects/config.json`
+(`docs/features/metadata-dependencies.md`), `meta verify` also runs an ADVISORY
+overlay lint on every invocation, no subverb needed: a top-level `(type,
+resolutionKey)` declared in two or more collection files — dependency artifacts
+included, since they are the base a consumer's own files amend — where MORE THAN
+ONE declaration lacks `overlay: true`. Exactly one unflagged declaration is the
+base and is fine; every additional one is a finding naming its file, because it is
+exactly the state that turns loud (`ERR_OVERLAY_NO_TARGET`) the day the target is
+renamed or removed, instead of quietly forking into a second, disconnected object.
+Never fails the build; mute it with `--no-overlay-lint` or
+`META_NO_OVERLAY_LINT=1` the same way the anti-pattern pass is muted.
+
+**A stale dependency snapshot is a load-time failure, not a `verify` finding.**
+If `.metaobjects/deps/<name>/` disagrees with `.metaobjects/deps.lock.json` — a
+missing snapshot, a hand-edited one, or a lock entry with no matching config
+declaration — every command (not just `verify`) fails to even LOAD the metadata,
+with `ERR_DEPENDENCY_SNAPSHOT_STALE` naming the fix: run `meta deps sync`.
+
 ## The `verify` subverbs
 
-`verify` has three drift checks. Run them in CI.
+`verify` has four drift checks. Run the ones your project uses in CI.
 
 - **`--db`** — schema drift. Introspects the live database and fails if it has
   diverged from metadata. This is a **schema concern, so it is the Node toolchain's
@@ -127,6 +147,15 @@ requirement's `@status`, which is the part that surprises people reading a failu
   `template.output`, resolves the text, parses each `{{...}}` reference, and fails
   if any reference isn't on the payload VO. This is the build-time gate for the
   prompt-construction pillar.
+
+- **`--deps`** — dependency drift (FR-023, **Node `meta` only**, TS + Python
+  consumers). Re-resolves each declared dependency's `path` right now and compares
+  its installed artifact's hash against `.metaobjects/deps.lock.json` — the same
+  comparison `meta deps check` runs. Never part of the bare-`verify` default: it
+  needs the publisher's `path` reachable, which CI checking out only your own repo
+  may not have. Reports `current` / `drifted` / `unresolved` per dependency;
+  `drifted` or `unresolved` fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`, fix is
+  "review the artifact diff, then `meta deps sync`."
 
 **Only `--db` is Node-universal.** `--codegen` / `--templates` run through each
 port's own build tool, not the Node `meta`:

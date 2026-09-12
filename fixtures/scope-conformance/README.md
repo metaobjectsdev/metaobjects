@@ -47,8 +47,22 @@ booleans — single-source, byte-identical expectations.
 
 ## Reference implementation
 
-`server/typescript/packages/sdk/src/scope.ts` (`compileScope` / `matchesScope`
-/ `compilePattern`) is the TypeScript reference this corpus was authored
-against; other ports are free to implement the same semantics however is
-idiomatic (e.g. a native regex engine, or a hand-rolled segment matcher) as
-long as every case in this file passes.
+`server/typescript/packages/metadata/src/scope.ts` (`compileScope` /
+`matchesScope` / `compilePattern`) is the TypeScript reference this corpus was
+authored against — moved there from `sdk` under FR-023 so `codegen-ts` could use
+it without a `sdk` dependency; `@metaobjectsdev/sdk` re-exports it unchanged, so
+existing importers are unaffected. Other ports are free to implement the same
+semantics however is idiomatic (e.g. a native regex engine, or a hand-rolled
+segment matcher) as long as every case in this file passes.
+
+## Runners
+
+- TypeScript: `server/typescript/packages/sdk/test/scope-conformance.test.ts`
+  (against the reference implementation above).
+- Python: `server/python/tests/conformance/test_scope_conformance.py` (against
+  `server/python/src/metaobjects/scope.py`, whose `matches_scope` uses
+  `re.fullmatch` — every compiled pattern is already anchored, but a `.match`
+  would still let a trailing-newline-in-the-name case through, which
+  `fullmatch` correctly refuses).
+- Java, Kotlin and C# have no runner yet — `scope` stays Node-CLI-only (see
+  [`docs/features/metadata-sources.md`](../../docs/features/metadata-sources.md)).

@@ -43,8 +43,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | — |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 1 case (FR-023 Phase 1a, in progress — cases land with the implementation) | runner in place (`sdk/test/dependency-conformance.test.ts`), red by design until the resolver lands | — (Phase 2) | — (Phase 2) | — (Phase 2) | — (no runner yet) |
+| [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | ✓ |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 23 cases | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (2 of 23 assert a documented Python-only vocabulary gap instead of the corpus's full contract — see below) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 
@@ -230,20 +230,42 @@ matching is case-sensitive.** These are exactly the rules four independent
 implementations would otherwise each get slightly wrong — the failure mode that
 produced the cross-port `LIKE`/`ILIKE` divergence fixed in 0.21.6.
 
-**TypeScript is the only port with a runner today.** The reference implementation is
-[`server/typescript/packages/sdk/src/scope.ts`](../server/typescript/packages/sdk/src/scope.ts)
-(`compilePattern` / `compileScope` / `matchesScope`), and the corpus was authored
-against it. Java, Kotlin, C# and Python have no runner yet; when each gains one, this corpus is
-what it implements against — it exists now precisely so those four land on one
-grammar rather than four.
+**TypeScript and Python run it today.** The reference implementation is
+[`server/typescript/packages/metadata/src/scope.ts`](../server/typescript/packages/metadata/src/scope.ts)
+(`compilePattern` / `compileScope` / `matchesScope`; `@metaobjectsdev/sdk` re-exports
+it unchanged, since it moved there from `sdk` when FR-023 needed it from
+`codegen-ts` without a `sdk` dependency), and the corpus was authored against it.
+Python's port (`server/python/src/metaobjects/scope.py`, `matches_scope` using
+`re.fullmatch`) runs the same corpus. Java, Kotlin and C# have no runner yet; when
+each gains one, this corpus is what it implements against — it exists now precisely
+so those three land on one grammar rather than three.
+
+### `fixtures/dependency-conformance/` (23 cases)
+
+All 23 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
+(declaring a dependency, `meta deps sync`, the committed snapshot + lock, default
+exclusion of imported metadata, overlay/extends across the boundary, and every load-
+and resolution-time failure). File-shaped like `scope-conformance/` above: one
+committed `cases.json`, no per-port fixture, no ledger.
+
+**TypeScript (the reference implementation) and Python both run all 23 cases.**
+Python's runner asserts every case's `expectFiles` (pure resolution) normally; for
+the 2 cases that incidentally use `view.text` (a TS-web-presentation-only view
+subtype this port does not register) as overlay content unrelated to what the case
+tests, it asserts the documented `ERR_UNKNOWN_SUBTYPE` load failure in place of the
+full `expectImported`/`expectSelected`/`expectMigrateGoverned` assertions the corpus
+defines for them — see `test_dependency_conformance.py`'s own comment for the
+exemption and the condition that retires it. Java, Kotlin and C# have no runner —
+Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the eight corpora mapped above (metamodel 314 + yaml 15 + verify 31
-+ render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10) each
-map to a feature doc. None are orphaned today. The remaining corpora in the totals table gate tooling
-contracts (registry manifests, provider composition, agent context, docs emit)
-rather than user-facing metamodel behaviour, so they have no feature-doc row.
+The fixtures in the nine corpora mapped above (metamodel 314 + yaml 15 + verify 31
++ render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10 +
+dependency 23) each map to a feature doc. None are orphaned today. The remaining
+corpora in the totals table gate tooling contracts (registry manifests, provider
+composition, agent context, docs emit) rather than user-facing metamodel behaviour,
+so they have no feature-doc row.
 
 If you add a new fixture and don't see a clear home for it, either:
 

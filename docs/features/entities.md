@@ -115,6 +115,14 @@ the base can live in any file in the corpus.
 }
 ```
 
+**`BaseEntity` need not live in this project.** The same `extends:` resolves a base
+published by a [metadata dependency](metadata-dependencies.md) exactly as it
+resolves one declared locally — dependency files load first, in the same
+`loader.load(...)`. The one rule that changes across that boundary: amending a node
+you don't own (rather than extending it) must say `overlay: true`, so its removal
+upstream fails loudly instead of silently becoming a new, disconnected object — see
+[`abstracts-and-inheritance.md`](abstracts-and-inheritance.md#the-same-rule-across-a-repository-boundary).
+
 ## What each port generates
 
 ### TypeScript

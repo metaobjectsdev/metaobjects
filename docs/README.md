@@ -38,6 +38,7 @@ docs/
 │   ├── generated-mutations.md       # generated POST/PATCH mutation surface
 │   ├── image-upload.md              # view.image form control (TS-web)
 │   ├── metadata-sources.md          # where metadata comes from: sources, scope, discovery
+│   ├── metadata-dependencies.md     # building on a metadata model published elsewhere (FR-023)
 │   └── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
 └── ports/                       # one file per language/framework port
     ├── typescript.md
@@ -60,6 +61,7 @@ this tree is documentation, not the source of truth.
 | Compare what TS vs Java vs Kotlin vs C# vs Python emit for the same metadata | any [`features/*.md`](features/) — every feature shows all five ports side-by-side |
 | Author metadata in YAML instead of JSON | [`features/yaml-authoring.md`](features/yaml-authoring.md) |
 | Point the toolchain at metadata that lives somewhere other than `metaobjects/`, or scope what a project generates and migrates | [`features/metadata-sources.md`](features/metadata-sources.md) |
+| Build on a metadata model another repository publishes (`dependencies`, `meta deps sync`, overlay/extend across the boundary) | [`features/metadata-dependencies.md`](features/metadata-dependencies.md) |
 | Record what the system is supposed to do, and stop agents reviving retired features | [`features/requirements.md`](features/requirements.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |
