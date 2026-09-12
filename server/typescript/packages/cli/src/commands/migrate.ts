@@ -13,6 +13,7 @@ import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
   allowOptionFor,
@@ -629,7 +630,7 @@ export async function migrateCommand(
   let metadata;
   try {
     metadata = await loadMemory(collection.configDir, {
-      files: collection.files,
+      ...collectionLoadOptions(collection),
       ...postgresLoadOptions,
     });
   } catch (err) {
@@ -1057,7 +1058,7 @@ export async function runBaseline(
     try {
       const collection = await resolveCollection(metaRoot);
       metadata = await loadMemory(collection.configDir, {
-        files: collection.files,
+        ...collectionLoadOptions(collection),
         ...baselineLoadOptions,
       });
     } catch (err) {
@@ -1196,7 +1197,7 @@ export async function runOfflineGenerate(
   try {
     collection = await resolveCollection(metaRoot);
     metadata = await loadMemory(collection.configDir, {
-      files: collection.files,
+      ...collectionLoadOptions(collection),
       ...offlineLoadOptions,
     });
   } catch (err) {
@@ -1461,7 +1462,7 @@ async function runD1Migrate(
   let metadata;
   try {
     metadata = await loadMemory(collection.configDir, {
-      files: collection.files,
+      ...collectionLoadOptions(collection),
       ...d1LoadOptions,
     });
   } catch (err) {

@@ -45,10 +45,12 @@
 //      the amended test inventing a bar the design never set, not a real
 //      defect.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { resolveSources, type SourceSpec } from "../src/sources.js";
+import { resolveCollection } from "../src/collection.js";
+import { sha256Integrity } from "../src/dependencies.js";
 
 let root: string;
 const write = (rel: string, body: object) => {
@@ -188,5 +190,84 @@ describe("order independence", () => {
         `permutation ${i} (${label(perms[i]!)}) resolved different CONTENT than permutation 0 (${label(perms[0]!)})`,
       ).toEqual(expected);
     }
+  });
+});
+
+// FR-023 — the same premise, one rung out: a project's DEPENDENCIES are a
+// declared SET too, so permuting the `dependencies` array in
+// `.metaobjects/config.json` must not change a single thing the resolver
+// produces. It matters more here than for `sources`, because the dependency
+// artifacts are loaded FIRST and their order is therefore the order the loader
+// sees the bases in — if declaration order leaked through, two developers with
+// the same lock would generate from differently-ordered trees.
+describe("order independence — declared dependencies (FR-023)", () => {
+  const ARTIFACTS = resolve(import.meta.dir, "../../../../../fixtures/dependency-conformance/artifacts");
+  const COMMON = readFileSync(join(ARTIFACTS, "acme-common-v1.json"), "utf8");
+  // A second, distinct publisher: the same bytes in another package, so the two
+  // dependencies export no FQN in common (which would be a collision, not an
+  // ordering question).
+  const EXTRA = COMMON.replaceAll("acme::common", "acme::extra");
+
+  const writeText = (rel: string, body: string): void => {
+    mkdirSync(join(root, rel, ".."), { recursive: true });
+    writeFileSync(join(root, rel), body, "utf8");
+  };
+
+  const lockEntry = (name: string, text: string, pkg: string) => ({
+    version: "1.0.0",
+    metamodelVersion: "1.0",
+    resolvedFrom: { path: `../${name}/metaobjects` },
+    artifact: `${name}.metaobjects.json`,
+    // Hashed from the very bytes written below — a hand-pinned hash here would
+    // make this test a snapshot of the corpus rather than a test of ordering.
+    integrity: sha256Integrity(text),
+    packages: [pkg],
+    nodes: [`${pkg}::Address`, `${pkg}::Audited`, `${pkg}::Customer`],
+  });
+
+  /** A consumer of both dependencies, declaring them in `order`. */
+  function consumer(sub: string, order: readonly string[]): string {
+    write(`${sub}/metaobjects/meta.app.json`, {
+      "metadata.root": { package: "app", children: [
+        { "object.entity": { name: "Order", children: [{ "field.string": { name: "id" } }] } }] },
+    });
+    writeText(`${sub}/.metaobjects/deps/acme-common/acme-common.metaobjects.json`, COMMON);
+    writeText(`${sub}/.metaobjects/deps/acme-extra/acme-extra.metaobjects.json`, EXTRA);
+    writeText(`${sub}/.metaobjects/config.json`, JSON.stringify({
+      schema_version: 1,
+      sources: [],
+      dependencies: order.map((name) => ({ name, path: `../${name}/metaobjects` })),
+    }));
+    writeText(`${sub}/.metaobjects/deps.lock.json`, JSON.stringify({
+      schema_version: 1,
+      // Lock keys are sorted by contract, so the lock cannot carry the ordering
+      // under test — only the config's `dependencies` array can.
+      dependencies: {
+        "acme-common": lockEntry("acme-common", COMMON, "acme::common"),
+        "acme-extra": lockEntry("acme-extra", EXTRA, "acme::extra"),
+      },
+    }));
+    return join(root, sub);
+  }
+
+  test("permuting the declared dependencies leaves files and fileIds identical", async () => {
+    const commonFirst = consumer("common-first", ["acme-common", "acme-extra"]);
+    const extraFirst = consumer("extra-first", ["acme-extra", "acme-common"]);
+
+    const a = await resolveCollection(commonFirst, { explicitDir: commonFirst });
+    const b = await resolveCollection(extraFirst, { explicitDir: extraFirst });
+
+    const rel = (c: { configDir: string }, p: string): string => p.slice(c.configDir.length + 1);
+    expect(b.files.map((f) => rel(b, f))).toEqual(a.files.map((f) => rel(a, f)));
+    expect([...b.fileIds].map(([p, id]) => [rel(b, p), id])).toEqual(
+      [...a.fileIds].map(([p, id]) => [rel(a, p), id]),
+    );
+    // Not a vacuous comparison: both artifacts and the own file are in there, and
+    // the artifacts lead (the bases load first).
+    expect(a.files.map((f) => rel(a, f))).toEqual([
+      ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+      ".metaobjects/deps/acme-extra/acme-extra.metaobjects.json",
+      "metaobjects/meta.app.json",
+    ]);
   });
 });

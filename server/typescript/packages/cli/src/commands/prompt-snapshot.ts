@@ -16,6 +16,7 @@ import { FileProvider } from "../lib/file-provider.js";
 import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
 import { reportLoadError } from "../lib/load-error.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import { render, ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
@@ -75,7 +76,7 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   let root;
   try {
     root = await loadMemory(collection.configDir, {
-      files: collection.files,
+      ...collectionLoadOptions(collection),
       ...configLoadOptions,
     });
   } catch (err) {

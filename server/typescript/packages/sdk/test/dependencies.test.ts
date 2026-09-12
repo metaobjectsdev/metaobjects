@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import {
   dependencySourceId,
+  explicitlyIncludes,
   LOCK_FILE,
   LockSchema,
   ManifestSchema,
@@ -169,4 +170,28 @@ test("writeLock: exact on-disk bytes — sorted keys, 2-space indent, trailing n
   const reloaded = await readLock(projectRoot);
   expect(reloaded).toEqual(lock);
   expect(reloaded && Object.keys(reloaded.dependencies)).toEqual(["a-dep", "b-dep"]);
+});
+
+// FR-023 Task 8 — `explicitlyIncludes` is the "names a package LITERALLY" half of
+// the default-exclusion rule (DESIGN §11.1 item 2): a dependency's package is
+// admitted to a surface only when the consumer's own pattern list names that
+// package outright. Pure and exported because two predicates compose it
+// (`inScope` over `scope.include`, `inMigrateScope` over `migrate.scope`) and a
+// wildcard must NOT be able to opt a consumer into generating someone else's
+// model by accident.
+test("explicitlyIncludes: a pattern names a package only when its literal segments ARE that package", () => {
+  // Drop the final (name) segment; what remains must be wildcard-free and join
+  // to exactly the package.
+  expect(explicitlyIncludes(["acme::common::**"], "acme::common")).toBe(true);
+  expect(explicitlyIncludes(["acme::common::Address"], "acme::common")).toBe(true);
+  // A wildcard standing where a package segment would be names nothing: `acme::**`
+  // reaches acme::common's nodes but never NAMES acme::common.
+  expect(explicitlyIncludes(["acme::**"], "acme::common")).toBe(false);
+  expect(explicitlyIncludes(["**"], "acme::common")).toBe(false);
+  // No list at all, and an empty list, admit nothing — an undeclared scope means
+  // "everything the project OWNS", never "everything it imported too".
+  expect(explicitlyIncludes(undefined, "acme::common")).toBe(false);
+  expect(explicitlyIncludes([], "acme::common")).toBe(false);
+  // A DEEPER package is a different package, not a match.
+  expect(explicitlyIncludes(["acme::common::sub::**"], "acme::common")).toBe(false);
 });

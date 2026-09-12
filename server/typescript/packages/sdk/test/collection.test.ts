@@ -210,3 +210,41 @@ describe("resolveCollection — pointed at a metadata directory (#344)", () => {
     expect(msg).toContain('{ "path"');
   });
 });
+
+// FR-023 Task 8 — the guarantee the whole dependency feature is built around: a
+// project that declares NO dependencies must resolve byte-identically to the way
+// it did before dependencies existed. The composed predicates (DESIGN §11.1 item
+// 2) collapse to their pre-FR-023 selves when there is nothing imported, and
+// `inMigrateScope` in particular stays UNDEFINED — migrate-ts reads that undefined
+// as "govern everything loaded", so producing a predicate here would quietly
+// change what every existing project's `meta migrate` compares.
+describe("resolveCollection — a project with no dependencies (FR-023)", () => {
+  test("inMigrateScope stays UNDEFINED when no migrate.scope is declared", async () => {
+    write("metaobjects/meta.a.json", "{}");
+    config(".", { dependencies: [] });
+    const c = await resolveCollection(root);
+    expect(c.inMigrateScope).toBeUndefined();
+    expect(c.migrateScopePatterns).toBeUndefined();
+  });
+
+  test("inScope is the declared scope alone, unchanged", async () => {
+    write("metaobjects/meta.a.json", "{}");
+    config(".", { scope: { include: ["acme::**"], exclude: ["acme::internal::**"] } });
+    const c = await resolveCollection(root);
+    expect(c.inScope("acme::Order")).toBe(true);
+    expect(c.inScope("acme::internal::Secret")).toBe(false);
+    expect(c.inScope("other::Order")).toBe(false);
+  });
+
+  test("the dependency-derived members are empty, and files are the own files", async () => {
+    write("metaobjects/meta.a.json", "{}");
+    config(".", {});
+    const c = await resolveCollection(root);
+    expect(c.dependencies).toEqual([]);
+    expect(c.importedPackages).toEqual([]);
+    expect([...c.importedNodes]).toEqual([]);
+    expect([...c.fileIds]).toEqual([]);
+    expect(c.imported("anything::at::All")).toBe(false);
+    expect(c.files).toEqual(c.ownFiles);
+  });
+});

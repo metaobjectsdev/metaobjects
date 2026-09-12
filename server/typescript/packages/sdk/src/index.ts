@@ -20,8 +20,9 @@ export { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, AllowTokenEnum } 
 export type { Config } from "./config.js";
 
 // Metadata dependencies (FR-023) — the `dependencies` config key's schema,
-// constants, and the manifest/lock schemas + integrity hashing (Task 7).
-// The collection resolver that actually consumes them lands in a later task.
+// constants, the manifest/lock schemas + integrity hashing, and the snapshot
+// verification + exclusion-key helpers `resolveCollection` composes into
+// `imported` / `inScope` / `inMigrateScope` (DESIGN §4.2, §11.1 item 2).
 export {
   DEPS_DIR,
   LOCK_FILE,
@@ -39,6 +40,10 @@ export {
   dependencySourceId,
   readLock,
   writeLock,
+  verifySnapshot,
+  importedPackagesOf,
+  importedNodesOf,
+  explicitlyIncludes,
 } from "./dependencies.js";
 export type { DependencySpec, Manifest, LockEntry, Lock, ResolvedDependency } from "./dependencies.js";
 

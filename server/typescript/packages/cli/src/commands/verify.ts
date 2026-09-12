@@ -24,6 +24,7 @@ import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { computeDocsDrift } from "../lib/docs-drift.js";
 import {
@@ -248,7 +249,7 @@ export async function verifyCommand(
   let root: Awaited<ReturnType<typeof loadMemory>>;
   try {
     root = await loadMemory(collection.configDir, {
-      files: collection.files,
+      ...collectionLoadOptions(collection),
       ...configLoadOptions,
       strict: !flags.lax,
     });
@@ -617,7 +618,8 @@ export async function verifyCommand(
         `meta verify — requirements: ${s.total} entries (${s.functional} functional, ` +
         `${s.architectural} architectural) — ${parts.join(", ")}; ` +
         `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed, ` +
-        `counted over ${collection.files.length} metadata file(s).`,
+        `counted over ${collection.files.length} metadata file(s), ` +
+        `${collection.dependencies.length} from dependencies.`,
       );
       if (s.undecided > 0) {
         say(
@@ -1249,7 +1251,7 @@ export async function verifyCommand(
     if (genCollection !== collection) {
       try {
         codegenRoot = await loadMemory(genCollection.configDir, {
-          files: genCollection.files,
+          ...collectionLoadOptions(genCollection),
           ...configLoadOptions,
           strict: !flags.lax,
         });

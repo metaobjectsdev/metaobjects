@@ -1,8 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { loadMemory } from "../src/memory.js";
+import { sha256Integrity } from "../src/dependencies.js";
 import { forgeTypesProvider } from "../src/forge-types.js";
 import { rejectedCode } from "./support/error-code.js";
 
@@ -435,6 +436,138 @@ describe("loadMemory with an explicit file set", () => {
       expect(names).toEqual(["Order"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// FR-023 Task 8 — `fileIds` is how a dependency's artifact keeps its identity
+// through the load: the snapshot is a file on the consumer's disk, so its default
+// source id would be the artifact's basename and every diagnostic about it would
+// read like a local file. The collection maps its path to `dep:<name>/<artifact>`
+// and `loadMemory` builds the FileSource with that id, so the provenance stamped
+// on every node the artifact contributed (ADR-0009) names the DEPENDENCY.
+describe("loadMemory with fileIds (FR-023)", () => {
+  const nodeSourceFile = (node: { source: unknown }): string | undefined => {
+    const src = node.source;
+    if (typeof src !== "object" || src === null || !("files" in src)) return undefined;
+    const files = (src as { files: readonly string[] }).files;
+    return files[0];
+  };
+
+  test("a mapped path loads under that id; an unmapped one keeps the basename", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "metaobjects-memory-fileids-"));
+    try {
+      mkdirSync(join(dir, "model"), { recursive: true });
+      const file = join(dir, "model/acme-common.metaobjects.json");
+      writeFileSync(file, JSON.stringify({
+        "metadata.root": { children: [
+          { "object.entity": { name: "Customer", package: "acme::common", children: [
+            { "field.string": { name: "email" } }] } }] },
+      }), "utf8");
+
+      const id = "dep:acme-common/acme-common.metaobjects.json";
+      const withIds = await loadMemory(dir, { files: [file], fileIds: new Map([[file, id]]) });
+      const customer = withIds.children().find((c) => c.name === "Customer");
+      expect(customer).toBeDefined();
+      expect(nodeSourceFile(customer!)).toBe(id);
+
+      // Same file, no map — the default basename, exactly as before FR-023.
+      const plain = await loadMemory(dir, { files: [file] });
+      expect(nodeSourceFile(plain.children().find((c) => c.name === "Customer")!)).toBe(
+        "acme-common.metaobjects.json",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// FR-023 — `loadMemory` has TWO arms, and the ownership refusal has to fire on
+// BOTH. The routed CLI commands take the first (they hold a collection already
+// and pass it through `collectionLoadOptions`); an embedder that calls
+// `loadMemory(repoRoot)` with no `files` takes the second, where this function
+// resolves the collection itself. Wired into the first arm only, the refusal
+// would be silently absent for every such embedder — and the shared corpus
+// cannot catch that, because its runner always passes a file list.
+describe("loadMemory — the self-resolving arm reads dependencies too (FR-023)", () => {
+  const ARTIFACTS = resolve(import.meta.dir, "../../../../../fixtures/dependency-conformance/artifacts");
+  const ARTIFACT = "acme-common.metaobjects.json";
+
+  /** A consumer of `acme-common`, optionally with a local file of its own. */
+  function consumer(local?: { readonly name: string; readonly body: string }): string {
+    const dir = mkdtempSync(join(tmpdir(), "metaobjects-memory-deps-"));
+    const text = readFileSync(join(ARTIFACTS, "acme-common-v1.json"), "utf8");
+    mkdirSync(join(dir, ".metaobjects/deps/acme-common"), { recursive: true });
+    writeFileSync(join(dir, ".metaobjects/deps/acme-common", ARTIFACT), text, "utf8");
+    mkdirSync(join(dir, "metaobjects"), { recursive: true });
+    writeFileSync(join(dir, ".metaobjects/config.json"), JSON.stringify({
+      schema_version: 1,
+      sources: [],
+      dependencies: [{ name: "acme-common", path: "../acme-common/metaobjects" }],
+    }), "utf8");
+    writeFileSync(join(dir, ".metaobjects/deps.lock.json"), JSON.stringify({
+      schema_version: 1,
+      dependencies: { "acme-common": {
+        version: "1.0.0",
+        metamodelVersion: "1.0",
+        resolvedFrom: { path: "../acme-common/metaobjects" },
+        artifact: ARTIFACT,
+        integrity: sha256Integrity(text),
+        packages: ["acme::common"],
+        nodes: ["acme::common::Address", "acme::common::Audited", "acme::common::Customer"],
+      } },
+    }), "utf8");
+    if (local !== undefined) writeFileSync(join(dir, "metaobjects", local.name), local.body, "utf8");
+    return dir;
+  }
+
+  test("the artifact loads under its dep: id with no `files` option", async () => {
+    const dir = consumer({ name: "meta.app.json", body: JSON.stringify({
+      "metadata.root": { package: "app", children: [
+        { "object.entity": { name: "Order", children: [{ "field.string": { name: "id" } }] } }] },
+    }) });
+    try {
+      const root = await loadMemory(dir);
+      const customer = root.children().find((c) => c.name === "Customer");
+      expect(customer).toBeDefined();
+      const src = customer!.source;
+      expect("files" in src ? (src as { files: readonly string[] }).files[0] : undefined).toBe(
+        `dep:acme-common/${ARTIFACT}`,
+      );
+      // The project's own file still loads, and keeps its own basename.
+      expect(root.children().map((c) => c.name)).toContain("Order");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a local node in the dependency's package is refused on this arm too", async () => {
+    const dir = consumer({ name: "meta.ext.json", body: JSON.stringify({
+      "metadata.root": { package: "acme::common", children: [
+        { "object.value": { name: "Note", children: [{ "field.string": { name: "text" } }] } }] },
+    }) });
+    try {
+      expect(await rejectedCode(loadMemory(dir))).toBe("ERR_DEPENDENCY_PACKAGE_NOT_OWNED");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an OVERLAY of the dependency's own node is not refused", async () => {
+    // The distinction the refusal turns on: this node's resolution key IS in the
+    // lock's `nodes`, so it merged into the imported Customer rather than
+    // declaring a new one.
+    const dir = consumer({ name: "meta.ov.json", body: JSON.stringify({
+      "metadata.root": { package: "acme::common", children: [
+        { "object.entity": { name: "Customer", overlay: true, children: [
+          { "field.string": { name: "nickname" } }] } }] },
+    }) });
+    try {
+      const root = await loadMemory(dir);
+      const customer = root.children().find((c) => c.name === "Customer");
+      expect(customer?.children().map((c) => c.name)).toContain("nickname");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

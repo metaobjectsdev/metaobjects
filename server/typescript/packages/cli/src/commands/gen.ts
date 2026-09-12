@@ -2,6 +2,7 @@ import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
@@ -122,7 +123,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   let metadata;
   try {
     metadata = await loadMemory(genCollection.configDir, {
-      files: genCollection.files,
+      ...collectionLoadOptions(genCollection),
       ...loadMemoryOptionsFrom(forgeConfig),
     });
   } catch (err) {

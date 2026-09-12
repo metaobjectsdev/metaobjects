@@ -36,8 +36,18 @@ export type SourceSpec =
 export interface ResolvedSource {
   /** Absolute path of one metadata file. */
   readonly file: string;
-  /** The spec that contributed it — provenance for diagnostics. */
+  /** The spec that contributed it — provenance for diagnostics. For a
+   *  dependency's snapshot artifact (below) this is the artifact's own path:
+   *  nobody DECLARED it as a source, so `dependency` is what identifies it. */
   readonly spec: SourceSpec;
+  /** FR-023 — set only on a dependency's committed snapshot artifact: the
+   *  dependency NAME it was resolved from. Absent on every file a declared
+   *  `sources` spec contributed, which is what tells the two apart. */
+  readonly dependency?: string;
+  /** FR-023 — the `FileSource` id this file loads under (`dep:<name>/<artifact>`),
+   *  set alongside `dependency`. Absent for own files, which keep the default
+   *  `basename(path)`. */
+  readonly id?: string;
 }
 
 /** Used when `sources` is absent or empty in `.metaobjects/config.json`. A

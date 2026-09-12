@@ -15,6 +15,7 @@ import { resolve as resolvePath, basename } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -515,7 +516,7 @@ export async function docsCommand(
   let root;
   try {
     root = await loadMemory(collection.configDir, {
-      files: collection.files,
+      ...collectionLoadOptions(collection),
       ...configLoadOptions,
     });
   } catch (err) {

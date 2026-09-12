@@ -2,10 +2,10 @@
 // implementation. Every port ships an equivalent runner reading this same file
 // (fixtures/dependency-conformance/, see its README for the case schema).
 //
-// This runner is written AHEAD of the implementation (TDD): `collection.imported`
-// does not exist on `Collection` yet (a later task adds the exclusion-key
-// composition, DESIGN §11.1 item 2), so any case carrying `expectImported` /
-// `expectSelected` / `expectMigrateGoverned` is expected to fail until then.
+// The predicates under test are the COMPOSED ones (DESIGN §11.1 item 2):
+// `collection.imported` keys on the lock's `packages`, and `inScope` /
+// `inMigrateScope` exclude what a dependency owns unless the project's own scope
+// NAMES that package.
 import { describe, expect, test } from "bun:test";
 import { copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,31 +16,23 @@ import { LOCK_FILE } from "../src/dependencies.js";
 import { loadMemory, type LoadMemoryOptions } from "../src/memory.js";
 
 /**
- * `imported` lands on `Collection` in a later task (DESIGN §11.1 item 2's
- * exclusion-key composition) — this narrow extension lets the corpus runner
- * reference it ahead of the implementation without an `any` escape hatch.
- * Until that task, the runtime object has no such member, so the cast below
- * compiles clean but the call throws (`collection.imported is not a
- * function`) — exactly the failure DESIGN decision #3 (Task 6) expects for
- * the one case that exercises it.
+ * Everything a resolved collection contributes to a LOAD — the file list, the
+ * `dep:<name>/<artifact>` source ids, and the two imported sets the ownership
+ * refusal reads.
+ *
+ * All four, at every load this runner performs, because that is what the ported
+ * runners and the CLI's own `collectionLoadOptions` do: a runner that passed
+ * `files` alone would load a corpus case differently from the way production
+ * loads the same project, and the `expectLoadError` arm would see no refusal to
+ * assert.
  */
-interface CollectionWithImported extends Collection {
-  readonly imported: (fqn: string) => boolean;
-}
-
-/**
- * `fileIds` (path -> `FileSource` id, carried on `Collection` and threaded
- * through to `loadMemory`) lands ahead of Task 6 in the FR-023 sequence, same
- * ahead-of-implementation situation as `imported` above. Optional here
- * (unlike `imported`) because this corpus's `expectLoadError` arm only wants
- * provenance to flow through WHEN it exists — it does not need the absence to
- * throw.
- */
-interface CollectionWithFileIds extends Collection {
-  readonly fileIds?: ReadonlyMap<string, string> | undefined;
-}
-interface LoadMemoryOptionsWithFileIds extends LoadMemoryOptions {
-  readonly fileIds?: ReadonlyMap<string, string> | undefined;
+function loadOptions(collection: Collection): LoadMemoryOptions {
+  return {
+    files: collection.files,
+    fileIds: collection.fileIds,
+    importedPackages: collection.importedPackages,
+    importedNodes: collection.importedNodes,
+  };
 }
 
 interface Case {
@@ -135,12 +127,11 @@ describe("dependency conformance", () => {
         c.expectSelected !== undefined ||
         c.expectMigrateGoverned !== undefined
       ) {
-        const loaded = await loadMemory(resolveDir, { files: collection.files });
+        const loaded = await loadMemory(resolveDir, loadOptions(collection));
         const topLevel = loaded.childrenOfType(TYPE_OBJECT).map((n) => n.resolutionKey());
 
         if (c.expectImported !== undefined) {
-          const withImported = collection as CollectionWithImported;
-          const imported = topLevel.filter((fqn) => withImported.imported(fqn)).sort();
+          const imported = topLevel.filter((fqn) => collection.imported(fqn)).sort();
           expect(imported).toEqual([...c.expectImported].sort());
         }
         if (c.expectSelected !== undefined) {
@@ -156,11 +147,7 @@ describe("dependency conformance", () => {
       }
 
       if (c.expectLoadError !== undefined) {
-        const options: LoadMemoryOptionsWithFileIds = {
-          files: collection.files,
-          fileIds: (collection as CollectionWithFileIds).fileIds,
-        };
-        const attempt = loadMemory(resolveDir, options);
+        const attempt = loadMemory(resolveDir, loadOptions(collection));
         await expect(attempt).rejects.toMatchObject({ code: c.expectLoadError });
         if (c.expectErrorFiles !== undefined) {
           let thrown: unknown;

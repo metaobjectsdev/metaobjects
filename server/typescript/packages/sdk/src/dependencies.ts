@@ -3,14 +3,15 @@
 // FR-023 — metadata dependencies: the `dependencies` key of
 // `.metaobjects/config.json` (DESIGN §3.1), the manifest/lock schemas and
 // integrity hashing (DESIGN §3.2, §3.3, minus `mode` — DESIGN §11.1/§11.3),
-// and the constants every later task shares. This module carries the
-// schemas and helpers only — the collection resolver that actually folds a
-// dependency's artifact into the loaded tree (`verifySnapshot`, exclusion by
-// `packages`) lands in a later task.
+// the constants every port shares, and the snapshot verification +
+// exclusion-key helpers `resolveCollection` composes into its predicates
+// (`verifySnapshot`, `importedPackagesOf`, `importedNodesOf`,
+// `explicitlyIncludes` — DESIGN §4.2, §11.1 item 2).
 import { createHash } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { codeSource, METAMODEL_VERSION, packageOfResolutionKey, ParseError } from "@metaobjectsdev/metadata";
 import { DEFAULT_METAOBJECTS_DIR } from "./metadata-files.js";
 
 /** Directory (under `.metaobjects/`) holding the synced snapshot artifacts,
@@ -261,4 +262,200 @@ export async function writeLock(configDir: string, lock: Lock): Promise<void> {
   LockSchema.parse(sorted); // validate before writing, mirrors saveConfig (config.ts)
   const path = join(configDir, DEFAULT_METAOBJECTS_DIR, LOCK_FILE);
   await writeFile(path, JSON.stringify(sorted, null, 2) + "\n", "utf8");
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot verification + the exclusion key (DESIGN §4.2, §11.1 item 2)
+// ---------------------------------------------------------------------------
+
+/** The MAJOR half of a `major.minor` metamodel version. The metadata contract
+ *  is promised on the major alone (ADR-0035 Amendment 2): a dependency
+ *  published against `1.3` loads fine here at `1.0`, one published against
+ *  `2.0` does not. */
+function metamodelMajor(version: string): string {
+  return version.split(".")[0] ?? version;
+}
+
+/**
+ * Every stale-snapshot refusal, in one place so every one of them ends with the
+ * command that fixes it. `never` (a function DECLARATION, so control-flow
+ * narrowing applies at the call sites) — a caller writes the check and the
+ * message, never the throw.
+ */
+function staleSnapshot(detail: string): never {
+  throw new ParseError(`${detail}; run \`meta deps sync\``, {
+    code: "ERR_DEPENDENCY_SNAPSHOT_STALE",
+    source: codeSource("verifySnapshot"),
+  });
+}
+
+/**
+ * Verify a project's committed snapshot against its lock, and resolve the
+ * dependencies the collection will load FIRST (DESIGN §4.2 step 2-3).
+ *
+ * The lock is the contract and the snapshot is the payload, so every way they
+ * can disagree is one refusal with one remedy — a missing lock, a lock entry
+ * with no spec, a spec with no lock entry, a missing artifact, an artifact whose
+ * bytes hash to something else. Two failures are NOT staleness and get their own
+ * codes, because `meta deps sync` would not fix either: a dependency published
+ * against a different metamodel MAJOR (`ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE`)
+ * and two dependencies exporting the same fully-qualified node
+ * (`ERR_DEPENDENCY_NODE_COLLISION` — whichever loaded second would silently win).
+ *
+ * Result order is dependency NAME order, never the config's declaration order:
+ * the artifacts lead the file list, so declaration order would otherwise decide
+ * what the loader sees first (see `test/order-independence.test.ts`).
+ *
+ * A project with no dependencies and no lock resolves to `[]` without touching
+ * the filesystem — the byte-identical path.
+ *
+ * @param configDir absolute directory of the declaring config (the parent of
+ *   `.metaobjects/`), which is where both the lock and the snapshot live.
+ */
+export async function verifySnapshot(
+  configDir: string,
+  specs: readonly DependencySpec[],
+  lock: Lock | undefined,
+): Promise<ResolvedDependency[]> {
+  const declared = specs.map(dependencyName);
+
+  if (lock === undefined) {
+    // No dependencies AND no lock is the untouched project, not a stale one.
+    if (declared.length === 0) return [];
+    staleSnapshot(
+      `${declared.length} dependenc${declared.length === 1 ? "y is" : "ies are"} declared ` +
+        `(${declared.join(", ")}) but there is no ${DEFAULT_METAOBJECTS_DIR}/${LOCK_FILE}`,
+    );
+  }
+
+  const entries = lock.dependencies;
+  const declaredNames = new Set(declared);
+  for (const name of Object.keys(entries)) {
+    if (!declaredNames.has(name)) {
+      staleSnapshot(
+        `${DEFAULT_METAOBJECTS_DIR}/${LOCK_FILE} locks dependency "${name}", which ` +
+          `${DEFAULT_METAOBJECTS_DIR}/config.json no longer declares`,
+      );
+    }
+  }
+
+  const resolved: ResolvedDependency[] = [];
+  for (const name of [...declaredNames].sort()) {
+    const entry = entries[name];
+    if (entry === undefined) {
+      staleSnapshot(
+        `dependency "${name}" is declared but ${DEFAULT_METAOBJECTS_DIR}/${LOCK_FILE} has no entry for it`,
+      );
+    }
+
+    const artifactPath = join(configDir, DEFAULT_METAOBJECTS_DIR, DEPS_DIR, name, entry.artifact);
+    const bytes = await readFile(artifactPath).catch(() => undefined);
+    if (bytes === undefined) {
+      staleSnapshot(`the committed snapshot for "${name}" is missing (expected ${artifactPath})`);
+    }
+    const actual = sha256Integrity(bytes);
+    if (actual !== entry.integrity) {
+      staleSnapshot(
+        `the committed snapshot for "${name}" does not match the lock — ${artifactPath} hashes ` +
+          `to ${actual}, the lock records ${entry.integrity}`,
+      );
+    }
+
+    if (metamodelMajor(entry.metamodelVersion) !== metamodelMajor(METAMODEL_VERSION)) {
+      throw new ParseError(
+        `dependency "${name}" was published against metamodel ${entry.metamodelVersion}; ` +
+          `this toolchain speaks ${METAMODEL_VERSION}. A different metamodel MAJOR is a different ` +
+          `metadata contract — upgrade the toolchain, or use a release of "${name}" built against it.`,
+        { code: "ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE", source: codeSource("verifySnapshot") },
+      );
+    }
+
+    resolved.push({
+      name,
+      version: entry.version,
+      packages: entry.packages,
+      nodes: entry.nodes,
+      artifactPath,
+      sourceId: dependencySourceId(name, entry.artifact),
+    });
+  }
+
+  // Collision is checked across the WHOLE resolved set rather than pairwise as
+  // each is read, so the error names the two dependencies in name order however
+  // the config declared them.
+  const owner = new Map<string, string>();
+  for (const dep of resolved) {
+    for (const node of dep.nodes) {
+      const prior = owner.get(node);
+      if (prior !== undefined) {
+        throw new ParseError(
+          `dependencies "${prior}" and "${dep.name}" both export "${node}" — one fully-qualified ` +
+            `node cannot come from two places, and whichever loaded second would silently win`,
+          { code: "ERR_DEPENDENCY_NODE_COLLISION", source: codeSource("verifySnapshot") },
+        );
+      }
+      owner.set(node, dep.name);
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * THE exclusion key (DESIGN §11.5, ruled 2026-09-11): every PACKAGE the
+ * resolved dependencies own. A loaded node whose package is in here is
+ * imported — load-only unless the consumer's own scope names that package.
+ *
+ * Package-keyed, not node-keyed: it is one concept rather than two, and it
+ * matches the maintainer's own model ("everything loads into one tree, then you
+ * include and exclude packages"). The one hole that opens — a local node
+ * declared into a dependency's package silently never generating — is closed by
+ * the refusal in `memory.ts`, which is the only reader of `importedNodesOf`.
+ */
+export function importedPackagesOf(deps: readonly ResolvedDependency[]): Set<string> {
+  return new Set(deps.flatMap((d) => [...d.packages]));
+}
+
+/**
+ * Every fully-qualified node the resolved dependencies export.
+ *
+ * Read by ONE caller: the `ERR_DEPENDENCY_PACKAGE_NOT_OWNED` refusal, which
+ * needs it to tell a local OVERLAY of a dependency's node (its key is in here,
+ * so it merges and passes) from a genuinely new local declaration in the
+ * dependency's package (not in here, and refused). It is NOT the exclusion key
+ * — see {@link importedPackagesOf}.
+ */
+export function importedNodesOf(deps: readonly ResolvedDependency[]): Set<string> {
+  return new Set(deps.flatMap((d) => [...d.nodes]));
+}
+
+/**
+ * Does some pattern in `patterns` name `pkg` LITERALLY (DESIGN §11.1 item 2)?
+ *
+ * Drop the pattern's final segment — which names the node — and what remains
+ * must be wildcard-free and equal to `pkg`. So `acme::common::**` and
+ * `acme::common::Address` both name `acme::common`; `acme::**` and `**` reach
+ * its nodes but name nothing, and an absent or empty list names nothing.
+ *
+ * That asymmetry is the point. Imported metadata is load-only by default, and
+ * the opt-in has to be an act of naming: a project that writes `scope.include:
+ * ["**"]` to mean "all of MY model" must not thereby start generating, and
+ * migrating, someone else's. Matching is therefore NOT `matchesScope` — a
+ * pattern that MATCHES a package's nodes is a weaker statement than one that
+ * NAMES the package.
+ *
+ * `packageOfResolutionKey` does the segment drop, so this and the resolution-key
+ * grammar can never disagree about where a package ends. A `pkg` of `""` (a
+ * root-level node, which a dependency artifact cannot contain — every top-level
+ * node in one carries an explicit package) is never named: fail-closed.
+ */
+export function explicitlyIncludes(
+  patterns: readonly string[] | undefined,
+  pkg: string,
+): boolean {
+  if (patterns === undefined || pkg === "") return false;
+  return patterns.some((pattern) => {
+    const named = packageOfResolutionKey(pattern);
+    return named !== "" && !named.includes("*") && named === pkg;
+  });
 }
