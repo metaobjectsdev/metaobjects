@@ -43,6 +43,7 @@ from ..source import (
     MergedSource,
     WARN_DUPLICATE_DECLARATION,
     YamlSource,
+    resolved_source,
 )
 from ..source.semantic_diff import semantic_diff
 
@@ -67,31 +68,174 @@ def merge_roots(
         warnings = []
     if envelope_warnings is None:
         envelope_warnings = []
-    # #160 — an overlay-ONLY root (every object child is `overlay: true`) re-opens
-    # objects declared in OTHER files; it must not become the merge accumulator
-    # (`roots[0]`) or the base declarations get appended AFTER the overlaid nodes,
-    # leaving a projection ahead of its base entities so the order-dependent super-
-    # resolution can't resolve its `extends`/`@via`. Directory discovery order is
-    # not guaranteed to present base files first (Python `rglob` can yield a top-
-    # level overlay file before a subdir base file), so stable-partition base roots
-    # ahead of overlay-only roots here — making the merge order-independent and
-    # matching the TS loader's result. Stable within each group preserves the
-    # existing last-writer-wins overlay semantics.
-    roots = [r for r in roots if not _is_overlay_only_root(r)] + [
-        r for r in roots if _is_overlay_only_root(r)
-    ]
+    # ADR-0055 — a TWO-PASS fold. Pass 1 folds every root's children through the
+    # (type, key) matcher, QUEUEING any `overlay: true` node rather than merging it;
+    # pass 2 applies the queue once every plain declaration is in the tree. That
+    # retires the #160 overlay-only ROOT partition, whose whole-file predicate could
+    # not help a MIXED root (plain + overlay children together).
+    #
+    # Unlike the streaming ports, Python's partition was not papering over eager
+    # application — it chose which node ABSORBED which. With an overlay root as the
+    # accumulator the base was merged INTO the overlay node, so Python silently
+    # produced `[ov, id]` where every other port produces `[id, ov]`; children order
+    # is part of the byte-gated canonical contract, so that was a cross-port
+    # divergence no fixture exercised.
+    #
+    # roots[0]'s own children are re-folded through the SAME matcher rather than
+    # being left in place. That is what merges same-name siblings declared in ONE
+    # file: the Python parser builds every node fresh and only records `is_overlay`,
+    # so two declarations of one name previously stayed two disconnected siblings.
+    # The accumulator stays roots[0] itself, so the merged root keeps its package,
+    # attrs and source envelope — the canonical root must match TS, whose merged
+    # root IS the first file's root.
     target = roots[0]
-    for src in roots[1:]:
-        _merge_into(target, src, errors, warnings, envelope_warnings)
+    contributions = [list(r.own_children()) for r in roots]
+    target._children = []
+    pending: list[tuple[MetaData, MetaData]] = []
+
+    for index, children in enumerate(contributions):
+        if index > 0:
+            # Root-level attrs still merge last-writer-wins, as the per-root
+            # `_merge_into` call used to do before the fold was split out.
+            for attr in roots[index].own_meta_attrs():
+                target.set_attr(
+                    attr.name, getattr(attr, "value", None), sub_type=attr.sub_type
+                )
+        for sc in children:
+            _merge_child_into(
+                target, sc, errors, warnings, envelope_warnings, pending
+            )
+
+    # Pass 2 — every base is present now, so an overlay's target either exists or
+    # genuinely does not. Encounter order is root order then declaration order.
+    for parent, node in pending:
+        _apply_overlay(parent, node, errors, warnings, envelope_warnings)
+
     return target
 
 
-def _is_overlay_only_root(root: MetaData) -> bool:
-    """True when every object child of *root* is an `overlay: true` re-open (and
-    there is at least one) — i.e. the root declares no base objects of its own, so
-    it must merge after the base-declaring roots (#160)."""
-    kids = list(root.own_children())
-    return bool(kids) and all(getattr(c, "is_overlay", False) for c in kids)
+def _find_merge_match(target: MetaData, sc: MetaData) -> Optional[MetaData]:
+    """The child of *target* that *sc* merges into, or None.
+
+    ROOT-LEVEL matches are PACKAGE-QUALIFIED: two files declaring the same
+    (type, name) under different packages are DISTINCT root nodes, never a merge
+    pair (mirrors the Java parser, which searches root children by "pkg::name").
+    Nested children stay bare-name matched — they are scoped by their parent, and
+    packages don't disambiguate siblings inside a node.
+    """
+    is_root = target.parent is None
+    return next(
+        (
+            c
+            for c in target.own_children()
+            if c.type == sc.type
+            and c.name == sc.name
+            and (not is_root or _root_child_key(c) == _root_child_key(sc))
+        ),
+        None,
+    )
+
+
+def _merge_child_into(
+    target: MetaData,
+    sc: MetaData,
+    errors: list[MetaError],
+    warnings: list[str],
+    envelope_warnings: list[LoaderWarning],
+    pending: Optional[list[tuple[MetaData, MetaData]]],
+) -> None:
+    """Fold one child *sc* into *target*.
+
+    ADR-0055 — when *pending* is not None we are in pass 1: an `overlay: true`
+    child is QUEUED with the parent it will be sought under, unconditionally,
+    whether or not its target happens to be present already. Deferring only on a
+    miss is the retry-on-miss variant the ADR rejects: it leaves output dependent
+    on which file was folded first.
+
+    When *pending* is None we are inside pass 2, applying a queued unit. A nested
+    overlay there resolves find-or-fail immediately: its parent is complete by
+    then and there is no later pass to defer to.
+    """
+    if getattr(sc, "is_overlay", False):
+        if pending is not None:
+            pending.append((target, sc))
+            return
+        _apply_overlay(target, sc, errors, warnings, envelope_warnings)
+        return
+
+    tc = _find_merge_match(target, sc)
+    if tc is not None:
+        _merge_into(tc, sc, errors, warnings, envelope_warnings, pending)
+    else:
+        sc.parent = target
+        target.add_child(sc)
+        # ADR-0055 — an unmatched PLAIN node is attached whole, so nothing walks
+        # inside it. Any `overlay: true` DESCENDANT would ride along attached but
+        # never resolved against a base — which is how a nested overlay with no
+        # target got silently kept, and how one whose base arrived in a later file
+        # landed ahead of it. Hand them to the same queue the walked path uses.
+        _defer_nested_overlays(sc, errors, warnings, envelope_warnings, pending)
+
+
+def _defer_nested_overlays(
+    node: MetaData,
+    errors: list[MetaError],
+    warnings: list[str],
+    envelope_warnings: list[LoaderWarning],
+    pending: Optional[list[tuple[MetaData, MetaData]]],
+) -> None:
+    """Detach every `overlay: true` descendant of *node* and defer it.
+
+    The OUTERMOST overlay is the unit (G3), so this never descends into one: its
+    own nested overlays are applied as part of it. In pass 1 each is queued; in
+    pass 2 (*pending* is None) each resolves find-or-fail immediately, because the
+    parent it was just attached under is already complete.
+    """
+    for child in list(node.own_children()):
+        if getattr(child, "is_overlay", False):
+            node._children.remove(child)
+            if pending is not None:
+                pending.append((node, child))
+            else:
+                _apply_overlay(node, child, errors, warnings, envelope_warnings)
+        else:
+            _defer_nested_overlays(child, errors, warnings, envelope_warnings, pending)
+
+
+def _apply_overlay(
+    parent: MetaData,
+    node: MetaData,
+    errors: list[MetaError],
+    warnings: list[str],
+    envelope_warnings: list[LoaderWarning],
+) -> None:
+    """Apply one queued `overlay: true` node against a now-complete *parent*."""
+    tc = _find_merge_match(parent, node)
+    if tc is None:
+        # ADR-0009 FR5d — a reference that did not resolve. The stray node is NOT
+        # attached: an overlay whose target is absent contributes nothing.
+        #
+        # `referrer` is the declaration's own ADDRESS, not its fqn: package-qualified
+        # at the root, and parent-relative when nested (ADR-0029 addressing), which is
+        # what the cross-port envelope pins. `fqn()` returns a bare name for a nested
+        # node, so using it here diverged from the other ports.
+        referrer = (
+            _root_child_key(node)
+            if parent.parent is None
+            else f"{parent.name}.{node.name}"
+        )
+        errors.append(
+            MetaError(
+                f"overlay node '{node.fqn()}' has no merge target",
+                ErrorCode.ERR_OVERLAY_NO_TARGET,
+                path=node.fqn(),
+                envelope=resolved_source(
+                    node.source, referrer, f"{node.type}:{node.name}"
+                ),
+            )
+        )
+        return
+    _merge_into(tc, node, errors, warnings, envelope_warnings, None)
 
 
 def _source_files(env: ErrorSource) -> tuple[str, ...]:
@@ -233,6 +377,7 @@ def _merge_into(
     errors: list[MetaError],
     warnings: list[str],
     envelope_warnings: list[LoaderWarning],
+    pending: Optional[list[tuple[MetaData, MetaData]]] = None,
 ) -> None:
     """Merge *src*'s own attrs/children into *target* in place.
 
@@ -268,29 +413,7 @@ def _merge_into(
     # "pkg::name"). Nested children stay bare-name matched — they are scoped
     # by their parent, and packages don't disambiguate siblings inside a node.
     for sc in src.own_children():
-        tc = next(
-            (
-                c
-                for c in target.own_children()
-                if c.type == sc.type
-                and c.name == sc.name
-                and (not is_root or _root_child_key(c) == _root_child_key(sc))
-            ),
-            None,
-        )
-        if tc is not None:
-            _merge_into(tc, sc, errors, warnings, envelope_warnings)
-        else:
-            if getattr(sc, "is_overlay", False):
-                errors.append(
-                    MetaError(
-                        f"overlay node '{sc.fqn()}' has no merge target",
-                        ErrorCode.ERR_OVERLAY_NO_TARGET,
-                        path=sc.fqn(),
-                    )
-                )
-            sc.parent = target
-            target.add_child(sc)
+        _merge_child_into(target, sc, errors, warnings, envelope_warnings, pending)
 
     if not fr5c_active or pre_canonical is None:
         return
