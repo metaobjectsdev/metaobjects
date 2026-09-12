@@ -6,11 +6,19 @@ docs/superpowers/specs/2026-09-11-fr-023-metadata-dependencies-design.md
 """
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
 
-from metaobjects.config.dependencies import sha256_integrity, validate_lock, validate_manifest
+from metaobjects.config.dependencies import (
+    LOCK_FILE,
+    dependency_source_id,
+    read_lock,
+    sha256_integrity,
+    validate_lock,
+    validate_manifest,
+)
 from metaobjects.errors import ErrorCode, ParseError
 
 CORPUS = Path(__file__).resolve().parents[4] / "fixtures" / "dependency-conformance" / "artifacts"
@@ -86,4 +94,49 @@ def test_validate_lock_rejects_a_mode_key() -> None:
     entry["mode"] = "own"
     with pytest.raises(ParseError) as e:
         validate_lock({"schema_version": 1, "dependencies": {"a": entry}})
+    assert e.value.code == ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE
+
+
+def test_dependency_source_id_is_dep_name_slash_artifact() -> None:
+    assert (
+        dependency_source_id("acme-common", "acme-common.metaobjects.json")
+        == "dep:acme-common/acme-common.metaobjects.json"
+    )
+
+
+def test_read_lock_returns_none_when_the_file_does_not_exist(tmp_path: Path) -> None:
+    # No `.metaobjects/` directory at all — a project declaring no
+    # dependencies has no lock file, and that is not an error.
+    assert read_lock(tmp_path) is None
+
+
+def test_read_lock_reads_and_validates_a_present_lock(tmp_path: Path) -> None:
+    entry = _entry()
+    lock = {"schema_version": 1, "dependencies": {"acme-common": entry}}
+    d = tmp_path / ".metaobjects"
+    d.mkdir(parents=True)
+    (d / LOCK_FILE).write_text(json.dumps(lock))
+
+    assert read_lock(tmp_path) == validate_lock(lock)
+
+
+def test_read_lock_raises_on_malformed_json(tmp_path: Path) -> None:
+    d = tmp_path / ".metaobjects"
+    d.mkdir(parents=True)
+    (d / LOCK_FILE).write_text("{ not json")
+    with pytest.raises(ParseError) as e:
+        read_lock(tmp_path)
+    assert e.value.code == ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE
+
+
+def test_read_lock_raises_on_a_shape_violation(tmp_path: Path) -> None:
+    entry = _entry()
+    entry["mode"] = "own"  # unknown key — same violation validate_lock rejects
+    lock = {"schema_version": 1, "dependencies": {"acme-common": entry}}
+    d = tmp_path / ".metaobjects"
+    d.mkdir(parents=True)
+    (d / LOCK_FILE).write_text(json.dumps(lock))
+
+    with pytest.raises(ParseError) as e:
+        read_lock(tmp_path)
     assert e.value.code == ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE
