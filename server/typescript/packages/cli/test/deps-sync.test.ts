@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { METAMODEL_VERSION } from "@metaobjectsdev/metadata";
-import { sha256Integrity } from "@metaobjectsdev/sdk";
+import { INTEGRITY_PREFIX, sha256Integrity } from "@metaobjectsdev/sdk";
 import { run } from "../src/index.js";
 
 const DEP_NAME = "acme-common";
@@ -38,9 +38,12 @@ const WIDENED_BYTES = readFileSync(join(CORPUS_ARTIFACTS, "acme-common-v1-widene
 const V1_HASH = sha256Integrity(V1_BYTES);
 const WIDENED_HASH = sha256Integrity(WIDENED_BYTES);
 
-/** First 8 hex chars after the "sha256-" prefix — `meta deps sync`'s report format. */
+/** First 8 hex chars after the `INTEGRITY_PREFIX` — `meta deps sync`'s report
+ *  format. Mirrors (deliberately not imports — this is a CLI test, not a
+ *  caller of `dependency-sync.ts`'s internals) the shared `hash8` helper
+ *  exported from `src/lib/dependency-sync.ts`. */
 function hash8(integrity: string): string {
-  return integrity.slice("sha256-".length, "sha256-".length + 8);
+  return integrity.slice(INTEGRITY_PREFIX.length, INTEGRITY_PREFIX.length + 8);
 }
 
 /** The consumer's own model: one entity it owns. Mirrors the shape
@@ -300,5 +303,210 @@ describe("meta deps sync — path transport (FR-023 Phase 1a Task 14)", () => {
     expect([...out, ...err].join("\n")).toContain(
       `acme-common 1.0.0 ${hash8(V1_HASH)} 3 node(s) acme::common`,
     );
+  });
+});
+
+// Fix round 1, FIX 4 — `meta deps sync <name>` (the positional name filter)
+// had zero automated coverage: nothing proved that syncing ONE declared
+// dependency by name (a) leaves every OTHER dependency's lock entry
+// byte-identical, untouched, and (b) still seeds node-ownership from those
+// untouched entries, so a newly-resolved target can still collide against a
+// dependency the run never targeted. Task 15's `check` is specified to
+// resolve "exactly as sync steps 1-2 do", so this carry-forward/collision
+// seeding is machinery a later task builds on.
+describe("meta deps sync <name> — the name filter (FR-023 Phase 1a Task 14, fix round 1)", () => {
+  const SECOND_NAME = "acme-extra";
+  const SECOND_ARTIFACT_BASENAME = "acme-extra.metaobjects.json";
+  const SECOND_PACKAGES = ["acme::extra"];
+  const SECOND_NODES = ["acme::extra::Widget"];
+
+  // A second, independent publisher — one object.value with a single field,
+  // small enough to hand-write rather than borrow from the shared corpus
+  // (which has no second, unrelated dependency fixture; this test needs two).
+  const SECOND_ARTIFACT_CONTENT =
+    JSON.stringify(
+      {
+        "metadata.root": {
+          children: [
+            {
+              "object.value": {
+                name: "Widget",
+                package: "acme::extra",
+                children: [{ "field.string": { name: "label" } }],
+              },
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+  const SECOND_HASH = sha256Integrity(SECOND_ARTIFACT_CONTENT);
+
+  /** A manifest with fully overridable `name`/`artifact`/`packages`/`nodes` —
+   *  unlike the top-level `manifestJson`, which is hardcoded to `acme-common`
+   *  in package `acme::common`. Scoped to this describe block only: the
+   *  colliding-manifest scenario below needs `acme-common`'s OWN manifest to
+   *  (incorrectly) declare `acme::extra`'s package/node, which the shared
+   *  helper cannot express. */
+  function genericManifest(opts: {
+    name: string;
+    artifact: string;
+    version: string;
+    integrity: string;
+    nodes: string[];
+    packages: string[];
+  }): string {
+    return JSON.stringify(
+      {
+        schema_version: 1,
+        name: opts.name,
+        version: opts.version,
+        metamodelVersion: METAMODEL_VERSION,
+        artifact: opts.artifact,
+        integrity: opts.integrity,
+        packages: opts.packages,
+        nodes: opts.nodes,
+      },
+      null,
+      2,
+    );
+  }
+
+  function setupTwoDependencyProject(): {
+    consumerRoot: string;
+    commonPublisherDir: string;
+    extraPublisherDir: string;
+  } {
+    const root = mkdtempSync(join(tmpdir(), "deps-sync-filter-"));
+    dirs.push(root);
+
+    const consumerRoot = join(root, "consumer");
+    mkdirSync(join(consumerRoot, "metaobjects"), { recursive: true });
+    writeFileSync(join(consumerRoot, "metaobjects", "meta.app.json"), APP, "utf8");
+    mkdirSync(join(consumerRoot, ".metaobjects"), { recursive: true });
+    writeFileSync(
+      join(consumerRoot, ".metaobjects", "config.json"),
+      JSON.stringify({
+        schema_version: 1,
+        sources: [],
+        dependencies: [
+          { name: DEP_NAME, path: "../acme-common/metaobjects" },
+          { name: SECOND_NAME, path: "../acme-extra/metaobjects" },
+        ],
+      }),
+      "utf8",
+    );
+
+    const commonPublisherDir = join(root, "acme-common", "metaobjects");
+    mkdirSync(commonPublisherDir, { recursive: true });
+    writeFileSync(join(commonPublisherDir, ARTIFACT_BASENAME), V1_BYTES);
+    writeFileSync(
+      join(commonPublisherDir, MANIFEST_BASENAME),
+      manifestJson({ version: "1.0.0", integrity: V1_HASH, nodes: NODES }),
+      "utf8",
+    );
+
+    const extraPublisherDir = join(root, "acme-extra", "metaobjects");
+    mkdirSync(extraPublisherDir, { recursive: true });
+    writeFileSync(join(extraPublisherDir, SECOND_ARTIFACT_BASENAME), SECOND_ARTIFACT_CONTENT, "utf8");
+    writeFileSync(
+      join(extraPublisherDir, MANIFEST_BASENAME),
+      genericManifest({
+        name: SECOND_NAME,
+        artifact: SECOND_ARTIFACT_BASENAME,
+        version: "1.0.0",
+        integrity: SECOND_HASH,
+        nodes: SECOND_NODES,
+        packages: SECOND_PACKAGES,
+      }),
+      "utf8",
+    );
+
+    return { consumerRoot, commonPublisherDir, extraPublisherDir };
+  }
+
+  test("syncing one dependency by name leaves the other's lock entry byte-identical, and still guards against collision", async () => {
+    const { consumerRoot, commonPublisherDir } = setupTwoDependencyProject();
+
+    // Baseline: sync everything declared.
+    expect(await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+
+    const lockPath = join(consumerRoot, ".metaobjects", "deps.lock.json");
+    const afterInitial = JSON.parse(readFileSync(lockPath, "utf8"));
+    const extraEntryBefore = afterInitial.dependencies[SECOND_NAME];
+    expect(extraEntryBefore).toBeDefined();
+
+    // Widen acme-common ONLY — acme-extra's publisher is never touched again
+    // in this test.
+    writeFileSync(join(commonPublisherDir, ARTIFACT_BASENAME), WIDENED_BYTES);
+    writeFileSync(
+      join(commonPublisherDir, MANIFEST_BASENAME),
+      manifestJson({ version: "1.1.0", integrity: WIDENED_HASH, nodes: NODES }),
+      "utf8",
+    );
+
+    out = [];
+    err = [];
+    const filteredExit = await run([
+      "deps",
+      "sync",
+      DEP_NAME,
+      "--format",
+      "text",
+      "--cwd",
+      consumerRoot,
+    ]);
+    expect(filteredExit).toBe(0);
+    expect([...out, ...err].join("\n")).toContain("synced acme-common");
+
+    const afterFiltered = JSON.parse(readFileSync(lockPath, "utf8"));
+    expect(afterFiltered.dependencies[DEP_NAME].integrity).toBe(WIDENED_HASH);
+    // The untargeted dependency's entry is BYTE-IDENTICAL to what it was
+    // before this run — the carry-forward path, not a silent re-validation
+    // or re-copy of something nobody asked to sync.
+    expect(afterFiltered.dependencies[SECOND_NAME]).toEqual(extraEntryBefore);
+
+    // Now replace acme-common's publisher with an artifact that (incorrectly)
+    // exports the EXACT fully-qualified node acme-extra already owns
+    // ("acme::extra::Widget"). A name-filtered `sync acme-common` must still
+    // catch this against acme-extra's UNTOUCHED lock entry — proving
+    // `planSync` seeds node ownership from carried-forward entries, not only
+    // from the targets this run resolves.
+    const collidingHash = sha256Integrity(SECOND_ARTIFACT_CONTENT);
+    writeFileSync(join(commonPublisherDir, ARTIFACT_BASENAME), SECOND_ARTIFACT_CONTENT, "utf8");
+    writeFileSync(
+      join(commonPublisherDir, MANIFEST_BASENAME),
+      genericManifest({
+        name: DEP_NAME,
+        artifact: ARTIFACT_BASENAME,
+        version: "1.2.0",
+        integrity: collidingHash,
+        nodes: SECOND_NODES,
+        packages: SECOND_PACKAGES,
+      }),
+      "utf8",
+    );
+
+    out = [];
+    err = [];
+    const collisionExit = await run([
+      "deps",
+      "sync",
+      DEP_NAME,
+      "--format",
+      "text",
+      "--cwd",
+      consumerRoot,
+    ]);
+    expect(collisionExit).toBe(1);
+    const collisionPrinted = [...out, ...err].join("\n");
+    expect(collisionPrinted).toContain(SECOND_NAME);
+    expect(collisionPrinted).toContain(DEP_NAME);
+    expect(collisionPrinted).toContain("acme::extra::Widget");
+
+    // A collision is caught during PLANNING (read-only) — the lock must be
+    // completely untouched by the failed attempt.
+    expect(JSON.parse(readFileSync(lockPath, "utf8"))).toEqual(afterFiltered);
   });
 });

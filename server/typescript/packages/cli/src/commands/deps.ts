@@ -9,6 +9,7 @@ import {
   discoverCollectionRoot,
   loadConfig,
   loadMemory,
+  LOCK_FILE,
   readLock,
   resolveCollection,
   type DependencySpec,
@@ -19,7 +20,27 @@ import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import { reportLoadError } from "../lib/load-error.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
-import { applySync, planSync } from "../lib/dependency-sync.js";
+import { applySync, hash8, planSync } from "../lib/dependency-sync.js";
+
+/**
+ * `readLock`, converted into a diagnostic that NAMES the file rather than
+ * letting a corrupted committed lock's raw `JSON.parse`/`ZodError` surface as
+ * an unhandled rejection. `deps.lock.json` is checked-in, hand-editable, and
+ * merge-conflictable — a realistic way for it to break — and `bin/meta.ts`'s
+ * `run(...).then((code) => process.exit(code))` has no top-level `.catch()`,
+ * so an uncaught throw here would crash the process with a stack trace
+ * instead of the clean exit code every other failure in this command gets.
+ */
+async function readLockOrThrow(configDir: string): Promise<Lock | undefined> {
+  try {
+    return await readLock(configDir);
+  } catch (err) {
+    throw new Error(
+      `${DEFAULT_METAOBJECTS_DIR}/${LOCK_FILE} is corrupted and could not be read: ${(err as Error).message}. ` +
+        "Fix it by hand, or delete it and re-run `meta deps sync` to regenerate it.",
+    );
+  }
+}
 
 /** The declared `dependencies` for the config governing `cwd` — read
  *  DIRECTLY via `loadConfig`, never through `resolveCollection`/`Collection`:
@@ -37,7 +58,16 @@ async function declaredDependencies(cwd: string): Promise<{ configDir: string; s
 }
 
 async function runSync(configDir: string, specs: readonly DependencySpec[], flags: DepsFlags, fmt: OutputFormat): Promise<number> {
-  const lock: Lock | undefined = await readLock(configDir);
+  let lock: Lock | undefined;
+  try {
+    lock = await readLockOrThrow(configDir);
+  } catch (err) {
+    // Same convention as `depsCommand`'s `declaredDependencies` catch below: a
+    // committed project file that fails to parse is a config-class problem,
+    // exit 2 — distinct from the exit-1 a `sync` verdict failure gets.
+    log.error((err as Error).message);
+    return 2;
+  }
 
   let plan;
   try {
@@ -99,7 +129,13 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
 }
 
 async function runList(configDir: string, fmt: OutputFormat): Promise<number> {
-  const lock = await readLock(configDir);
+  let lock: Lock | undefined;
+  try {
+    lock = await readLockOrThrow(configDir);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
   const entries = Object.entries(lock?.dependencies ?? {});
 
   if (fmt === "text") {
@@ -108,9 +144,8 @@ async function runList(configDir: string, fmt: OutputFormat): Promise<number> {
       return 0;
     }
     for (const [name, entry] of entries) {
-      const hash8 = entry.integrity.slice("sha256-".length, "sha256-".length + 8);
       log.info(
-        `${name} ${entry.version} ${hash8} ${entry.nodes.length} node(s) ${entry.packages.join(", ")}`,
+        `${name} ${entry.version} ${hash8(entry.integrity)} ${entry.nodes.length} node(s) ${entry.packages.join(", ")}`,
       );
     }
   } else {

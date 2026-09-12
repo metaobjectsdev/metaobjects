@@ -22,6 +22,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AGENT_DOCS_OPTIONS,
+  DEPS_OPTIONS,
   EJECT_OPTIONS,
   EXPORT_OPTIONS,
   GEN_OPTIONS,
@@ -51,6 +52,7 @@ const COMMANDS: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>
   ["prompt-snapshot", PROMPT_SNAPSHOT_OPTIONS],
   ["migrate", MIGRATE_OPTIONS],
   ["eject", EJECT_OPTIONS],
+  ["deps", DEPS_OPTIONS],
 ];
 
 describe("every accepted flag appears in its command's --help", () => {

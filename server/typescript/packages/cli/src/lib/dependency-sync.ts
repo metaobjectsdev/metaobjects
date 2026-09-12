@@ -23,6 +23,7 @@ import {
 import {
   DEPS_DIR,
   DEFAULT_METAOBJECTS_DIR,
+  INTEGRITY_PREFIX,
   MANIFEST_FILE,
   DependencyManifestSchema,
   dependencyName,
@@ -377,10 +378,12 @@ export interface ApplySyncResult {
   readonly report: readonly DependencyReportLine[];
 }
 
-/** First 8 hex chars after the `sha256-` prefix — the report format's `<hash8>`. */
-function hash8(integrity: string): string {
-  const prefix = "sha256-";
-  return integrity.slice(prefix.length, prefix.length + 8);
+/** First 8 hex chars after the `sha256-` (`INTEGRITY_PREFIX`) prefix — the
+ *  report format's `<hash8>`. Exported so every caller — `deps.ts`'s `deps
+ *  list` rendering, tests — shares this ONE definition rather than each
+ *  reimplementing the slice with its own inlined `"sha256-"` literal. */
+export function hash8(integrity: string): string {
+  return integrity.slice(INTEGRITY_PREFIX.length, INTEGRITY_PREFIX.length + 8);
 }
 
 /**
