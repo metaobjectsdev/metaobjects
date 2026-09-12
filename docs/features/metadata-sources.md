@@ -52,6 +52,15 @@ match wins:
 3. `sources` in `.metaobjects/config.json`.
 4. The built-in default — a `metaobjects/` directory beside that config.
 
+**`dependencies` is read at every rung, on top of whichever one supplied your own
+sources.** It answers a different question than the ladder above — not "where does
+my metadata live" but "what does my metadata build on that lives elsewhere" — so a
+TypeScript project using a declared `sources` list and a Python project using its
+own `metadata:` key both get their declared dependencies resolved the same way, on
+top of whichever rung supplied their own files. **TypeScript and Python only, in
+Phase 1a** — Java, Kotlin, and C# don't read `dependencies` yet (Phase 2). See
+[`metadata-dependencies.md`](metadata-dependencies.md).
+
 A config file that exists but is malformed is an error at its own rung; it never
 falls through to the next one.
 
@@ -387,6 +396,11 @@ Because sources are a set, the vendored entry needs no particular position. If t
 vendored tree and your own both declare the same node, ordinary overlay merge rules
 apply — see [`loaders.md`](loaders.md).
 
+**Want a recorded version, a content hash, and drift detection instead of "whatever
+is in that directory right now"?** That is [`dependencies`](metadata-dependencies.md)
+— a generated artifact + manifest a publisher controls, synced into a committed
+snapshot and checked against a lock, rather than a directory you copy by hand.
+
 ---
 
 ## A worked polyglot example
@@ -552,6 +566,16 @@ Every read path — `loadMemory` itself included — now resolves its files thro
 `sources`, which does no such walk. Two ways to find metadata, one of them implicit
 and reachable only from a particular repository layout, is precisely the divergence
 this feature exists to remove — and one of them was undocumented.
+
+**The sdk exports that implemented the walk are deprecated, not yet removed.**
+`PackageManifestSchema`, `PackageManifest`, `PACKAGE_MANIFEST_FILE`,
+`readPackageManifest`, `resolveMetaobjectsPackage`, `discoverWorkspace`,
+`resolveExtendsOrder`, `packageLabel`, `Workspace`, and `WorkspacePackage` are public
+`@metaobjectsdev/sdk` exports, so they still work today — nothing in the toolchain
+reads a `package.meta.json` anymore, and cross-repo metadata sharing is now built
+properly as [dependencies](metadata-dependencies.md) — but a public export's removal
+is a MAJOR (ADR-0035 Amendment 2), so they carry `@deprecated` JSDoc and are removed
+at 2.0, not before.
 
 **It fails loudly, not silently.** A model that depended on a peer package's
 declarations now fails to load with `ERR_UNRESOLVED_SUPER` naming the `extends:`

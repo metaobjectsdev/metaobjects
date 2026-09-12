@@ -125,6 +125,27 @@ class ErrorCode(str, Enum):
     ERR_SCOPE_PATTERN_INVALID = "ERR_SCOPE_PATTERN_INVALID"
     # Phase-1 metadata-source-resolution — no metadata collection was discovered: no config declaring sources, and no default metaobjects/ directory.
     ERR_COLLECTION_NOT_FOUND = "ERR_COLLECTION_NOT_FOUND"
+    # FR-023 — a declared dependency's transport could not locate a directory holding
+    # metaobjects.pkg.json.
+    ERR_DEPENDENCY_UNRESOLVED = "ERR_DEPENDENCY_UNRESOLVED"
+    # FR-023 — a dependency's metaobjects.pkg.json fails its schema, names a different
+    # dependency, points at a missing/hash-mismatched artifact, or the artifact does not
+    # load standalone / does not declare exactly the listed packages and nodes.
+    ERR_DEPENDENCY_MANIFEST_INVALID = "ERR_DEPENDENCY_MANIFEST_INVALID"
+    # FR-023 — the committed snapshot does not match .metaobjects/deps.lock.json (lock
+    # missing, entry missing or extra, artifact missing, or hash mismatch).
+    ERR_DEPENDENCY_SNAPSHOT_STALE = "ERR_DEPENDENCY_SNAPSHOT_STALE"
+    # FR-023 — two dependencies export the same fully-qualified node.
+    ERR_DEPENDENCY_NODE_COLLISION = "ERR_DEPENDENCY_NODE_COLLISION"
+    # FR-023 — a local top-level node is declared into a package owned by a dependency
+    # (§11.5 — imported-ness is package-keyed; a genuinely new object in a dependency's
+    # package would otherwise silently never generate).
+    ERR_DEPENDENCY_PACKAGE_NOT_OWNED = "ERR_DEPENDENCY_PACKAGE_NOT_OWNED"
+    # FR-023 — a dependency's metamodelVersion major differs from this toolchain's.
+    ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE = "ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE"
+    # FR-023 — `meta deps check` / `verify --deps` found the installed dependency differs
+    # from the committed snapshot.
+    ERR_DEPENDENCY_UPSTREAM_DRIFT = "ERR_DEPENDENCY_UPSTREAM_DRIFT"
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     ERR_PHYSICAL_NAME_KIND_MISMATCH = "ERR_PHYSICAL_NAME_KIND_MISMATCH"
     ERR_PHYSICAL_NAME_MULTIPLE = "ERR_PHYSICAL_NAME_MULTIPLE"

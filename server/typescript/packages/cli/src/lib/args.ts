@@ -296,7 +296,17 @@ export interface VerifyFlags {
    * read as that flag's opposite rather than as a replay depth.
    */
   replaySnapshot: boolean;
-  /** Whether ANY explicit subverb flag (--templates/--db/--codegen/--docs/--replay*) was passed. */
+  /**
+   * Dependency drift (Task 15, FR-023) — re-resolve each declared dependency and
+   * compare its installed artifact's hash against `.metaobjects/deps.lock.json`
+   * (the same comparison `meta deps check` runs). Deliberately NEVER part of the
+   * bare-verify default, unlike --templates: it needs the publisher reachable,
+   * which CI may not have. It is still counted in `anyExplicit`, same as
+   * --codegen/--docs, so a lone `verify --deps` does not ALSO run the template
+   * gate.
+   */
+  deps: boolean;
+  /** Whether ANY explicit subverb flag (--templates/--db/--codegen/--docs/--deps/--replay*) was passed. */
   anyExplicit: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
@@ -308,6 +318,16 @@ export interface VerifyFlags {
    * the half that CAN fail a build switched on. Same shape as --no-antipatterns.
    */
   noRequirementLint: boolean;
+  /**
+   * Suppress the advisory overlay AUTHORING lint (FR-023 §11.1 item 4) — the
+   * finding that an unflagged cross-file redeclaration works today only
+   * because the parser's default merge rule reuses the existing node by
+   * (type, resolutionKey); it silently becomes a NEW object the day the
+   * target is renamed or removed upstream. Same shape as
+   * --no-requirement-lint: mutes the advisory half only, never a gate (this
+   * lint has no gate half at all — it can never fail the build).
+   */
+  noOverlayLint: boolean;
   /**
    * ADR-0023 strict-attr load opt-OUT (#96). `verify` is strict-by-default — an
    * undeclared/typo'd own `@attr` fails verify (ERR_UNKNOWN_ATTR). `--lax`
@@ -342,10 +362,12 @@ export const VERIFY_OPTIONS = {
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
   docs: { type: "boolean", default: false },
+  deps: { type: "boolean", default: false },
   replay: { type: "boolean", default: false },
   "replay-snapshot": { type: "boolean", default: false },
   "no-antipatterns": { type: "boolean", default: false },
   "no-requirement-lint": { type: "boolean", default: false },
+  "no-overlay-lint": { type: "boolean", default: false },
   lax: { type: "boolean", default: false },
   "d1": { type: "string" },
   "remote": { type: "boolean", default: false },
@@ -397,15 +419,17 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
   const templates = !!values.templates;
   const codegen = !!values.codegen;
   const docs = !!values.docs;
+  const deps = !!values.deps;
   const replay = !!values.replay;
   const replaySnapshot = !!values["replay-snapshot"];
   // --db is itself an explicit subverb selector: passing a connection URL means
   // "run the schema-drift mode". So is `--dialect d1` (D1 has no --db connection
   // URL — see the `d1` field doc above). The replay flags are subverbs too, and
   // must be listed here or `meta verify --replay` would ALSO run the template gate
-  // as the bare-verify default.
+  // as the bare-verify default. --deps joins the same list for the same reason —
+  // it must NOT also be part of that default (see the VerifyFlags doc on `deps`).
   const anyExplicit =
-    templates || codegen || docs || values.db !== undefined || dialect === "d1" || replay || replaySnapshot;
+    templates || codegen || docs || deps || values.db !== undefined || dialect === "d1" || replay || replaySnapshot;
 
   return {
     prompts: values.prompts,
@@ -416,11 +440,13 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     templates,
     codegen,
     docs,
+    deps,
     replay,
     replaySnapshot,
     anyExplicit,
     noAntipatterns: !!values["no-antipatterns"],
     noRequirementLint: !!values["no-requirement-lint"],
+    noOverlayLint: !!values["no-overlay-lint"],
     lax: !!values.lax,
     d1: values.d1 as string | undefined,
     remote: !!values.remote,
@@ -605,5 +631,65 @@ export function parseEjectArgs(argv: string[]): EjectFlags {
     name: positionals[0],
     list: !!values.list,
     force: !!values.force,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// deps flags — FR-023 Phase 1a Task 14
+// ---------------------------------------------------------------------------
+
+/** `meta deps`'s subcommand. `sync` and `list` are this task's; `check` is
+ *  parsed (so the grammar and its usage errors are stable now) but not yet
+ *  implemented — Task 15 wires its behavior. */
+export type DepsSubverb = "sync" | "check" | "list";
+
+const DEPS_SUBVERBS: readonly DepsSubverb[] = ["sync", "check", "list"];
+
+export interface DepsFlags {
+  subverb: DepsSubverb;
+  /** Dependency names to narrow to — `sync`'s `[<name>…]`. Empty means "all
+   *  declared dependencies." Accepted (and ignored) by every subverb rather
+   *  than rejected outright: the positional grammar is one shape for all
+   *  three, and only `sync` gives the list meaning today. */
+  names: string[];
+  /** `sync` only: plan and report, write nothing. */
+  dryRun: boolean;
+}
+
+/** The flag table `parseDepsArgs` parses. Exported so the help text can be
+ *  gated against it. Deliberately carries no "format" key: `--format` is a
+ *  GLOBAL flag `index.ts` strips from argv before any command's parser ever
+ *  runs (see `MIGRATE_OPTIONS`'s "--migration-format, not --format" note
+ *  above) — `meta deps` becomes format-aware by index.ts adding "deps" to
+ *  `FORMAT_AWARE_COMMANDS` and passing the resolved `fmt` through, exactly as
+ *  gen/verify/migrate do, not by re-declaring the flag here. */
+export const DEPS_OPTIONS = {
+  "dry-run": { type: "boolean", default: false },
+} as const;
+
+export function parseDepsArgs(argv: string[]): DepsFlags {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: DEPS_OPTIONS,
+    strict: true,
+    allowPositionals: true,
+  });
+
+  const [subverbRaw, ...names] = positionals;
+  if (subverbRaw === undefined) {
+    throw new Error(
+      "meta deps requires a subcommand: sync | check | list. Try `meta deps sync`.",
+    );
+  }
+  if (!DEPS_SUBVERBS.includes(subverbRaw as DepsSubverb)) {
+    throw new Error(
+      `meta deps: unknown subcommand "${subverbRaw}"; expected one of: ${DEPS_SUBVERBS.join(", ")}.`,
+    );
+  }
+
+  return {
+    subverb: subverbRaw as DepsSubverb,
+    names,
+    dryRun: !!values["dry-run"],
   };
 }

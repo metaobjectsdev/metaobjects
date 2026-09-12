@@ -112,7 +112,7 @@ What MetaObjects does not do is write the assertion. A generated stub is a place
 | C# | NuGet `1.0.1` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
 | Python | PyPI `1.0.1` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
 
-Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, 313 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (41 scenarios — 26 core plus TPH / M:N / jsonb / write-through — two lanes: a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
+Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, 314 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (41 scenarios — 26 core plus TPH / M:N / jsonb / write-through — two lanes: a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
 
 ---
 

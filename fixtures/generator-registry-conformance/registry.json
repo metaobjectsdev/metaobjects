@@ -133,6 +133,11 @@
       "tier": "native",
       "ports": ["kotlin"]
     },
+    "shared-model": {
+      "concept": "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`.",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
     "docs": {
       "concept": "Neutral per-entity / per-template Markdown documentation pages.",
       "tier": "neutral",

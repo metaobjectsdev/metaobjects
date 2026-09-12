@@ -99,6 +99,7 @@ describe("typed counts agree with the derived ones", () => {
       render: "render-conformance", persistence: "persistence-conformance",
       "api-contract": "api-contract-conformance",
       "source-resolution": "source-resolution-conformance", scope: "scope-conformance",
+      dependency: "dependency-conformance",
     };
 
     const terms = [...line![1]!.matchAll(/([a-z-]+) (\d+)/g)];

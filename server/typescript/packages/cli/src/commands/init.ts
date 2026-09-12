@@ -1,9 +1,9 @@
 import { mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { basename, dirname } from "node:path";
+import { dirname } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
 import { createRequire } from "node:module";
-import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
+import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, DEPS_DIR, LOCK_FILE } from "@metaobjectsdev/sdk";
 import {
   assemble, resolveAgentContextRoot, planScaffold,
   AGENT_CONTEXT_MANIFEST_PATH, type Manifest, type Stack,
@@ -85,7 +85,8 @@ const METAOBJECTS_GITIGNORE_BODY = `# The codegen merge base. The snapshot BODIE
 # These ARE meant to be tracked — keep them even if a broad pattern matches.
 !migrations/
 !config.json
-!package.meta.json
+!${DEPS_DIR}/
+!${LOCK_FILE}
 `;
 
 // A minimal root .gitignore for a fresh project — only written when none exists,
@@ -673,7 +674,6 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       "metaobjects/meta.common.json",
       ".metaobjects/config.json",
       ".metaobjects/.gitignore",
-      `.metaobjects/${PACKAGE_MANIFEST_FILE}`,
     );
     result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
     for (const name of SCAFFOLDED_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);
@@ -703,19 +703,15 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   await writeFile(join(agentDir, ".gitignore"), METAOBJECTS_GITIGNORE_BODY, "utf8");
   result.created.push(".metaobjects/.gitignore");
 
-  // .metaobjects/package.meta.json — scaffold v0.3 package manifest if absent
-  const manifestPath = join(agentDir, PACKAGE_MANIFEST_FILE);
-  if (!(await fileExists(manifestPath))) {
-    const defaultPackageName = basename(opts.cwd);
-    const manifestBody = {
-      name: defaultPackageName,
-      version: "0.1.0",
-      extends: [] as string[],
-    };
-    await writeFile(manifestPath, JSON.stringify(manifestBody, null, 2) + "\n", "utf8");
-    result.created.push(`.metaobjects/${PACKAGE_MANIFEST_FILE}`);
-  } else {
-    result.preserved.push(`.metaobjects/${PACKAGE_MANIFEST_FILE}`);
+  // .metaobjects/package.meta.json — the v0.3 prototype manifest is deprecated
+  // (nothing reads it; FR-023 metadata dependencies is its replacement), so
+  // `meta init` no longer scaffolds it. A pre-existing one is left untouched;
+  // just note the deprecation so an existing project sees it.
+  const legacyManifestPath = join(agentDir, PACKAGE_MANIFEST_FILE);
+  if (await fileExists(legacyManifestPath)) {
+    result.warnings.push(
+      `note: .metaobjects/${PACKAGE_MANIFEST_FILE} is deprecated (nothing reads it; removed in 2.0) — see docs/features/metadata-dependencies.md`,
+    );
   }
 
   await writeAgentContext(opts, result);

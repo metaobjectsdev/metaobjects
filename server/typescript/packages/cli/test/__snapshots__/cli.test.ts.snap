@@ -14,10 +14,13 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from your declared metadata
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
+  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+                        snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
+  deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
-  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs (bare = --templates)
+  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs / --deps (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
@@ -27,7 +30,7 @@ COMMANDS:
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
   --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY).
-                            Honored by gen, verify, migrate, types; every other
+                            Honored by gen, verify, migrate, types, deps; every other
                             command prints text and says so if you pass it.
                             \`types\` is the one exception to the default: it prints TEXT
                             unless you ask for a format, on a TTY or not, because its
@@ -76,6 +79,10 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         run would emit; never reports an extra file, because docs.outDir
                         holds hand-written documentation MetaObjects did not write.
                         Needs metaobjects.config.ts; exit 2 if absent.
+  --deps                Dependency drift — re-resolve each declared dependency and compare
+                        its installed artifact's hash against .metaobjects/deps.lock.json
+                        (the same check 'meta deps check' runs). Never part of the bare-verify
+                        default — it needs the publisher reachable, which CI may not have.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
@@ -90,6 +97,8 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint
+                        (never a gate — this lint can't fail the build)
   --limit <n|all>       How many advisory lines TEXT output prints per section before
                         it truncates (default 20). Never applies to --format
                         toon/json, which carry every finding and every diagnostic.

@@ -22,6 +22,15 @@ export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" 
    * loaded (unchanged behavior).
    */
   inScope?: ObjectScopePredicate;
+  /**
+   * FR-023 — objects a DEPENDENCY owns. Imported metadata is loaded so this project's
+   * own model can resolve against it and is governed by nobody here unless `inScope`
+   * admits it, so such an object leaves BOTH sides of the diff and, unlike an
+   * `inScope` exclusion, takes its database schema out of the run's scope with it
+   * (migrate-ts `scope.ts` header). Omit for a project with no dependencies
+   * (unchanged behavior).
+   */
+  imported?: ObjectScopePredicate;
 }
 
 export interface PlanOfflineResult {
@@ -41,8 +50,12 @@ export interface PlanOfflineResult {
    * only for what it governs.
    */
   expected: SchemaSnapshot;
-  /** Qualified physical names excluded by `inScope`; empty when no scope was given. */
+  /** Qualified physical names excluded by `inScope` OR by `imported`; empty when
+   *  neither was given. */
   outOfScope: readonly string[];
+  /** The subset of `outOfScope` a dependency contributed (FR-023), so the CLI can say
+   *  WHY those objects were excluded. `undefined` when no `imported` was given. */
+  importedOutOfScope: readonly string[] | undefined;
 }
 
 /**
@@ -58,6 +71,7 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
       ...(args.views !== undefined ? { views: args.views } : {}),
     }),
     args.inScope,
+    args.imported !== undefined ? { imported: args.imported } : undefined,
   );
   // The DIFF runs against the narrowed side; the SNAPSHOT keeps what this run
   // excluded. Committing the narrowed schema would delete every out-of-scope entry
@@ -82,7 +96,13 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     ...(args.onAmbiguous ? { onAmbiguous: args.onAmbiguous } : {}),
     ...(args.ignoreTables ? { ignoreTables: args.ignoreTables } : {}),
   });
-  return { diff: result, nextSnapshot, expected: scoped.snapshot, outOfScope: scoped.outOfScope };
+  return {
+    diff: result,
+    nextSnapshot,
+    expected: scoped.snapshot,
+    outOfScope: scoped.outOfScope,
+    importedOutOfScope: scoped.importedOutOfScope,
+  };
 }
 
 /** Seed an initial reference snapshot from metadata (greenfield baseline). */

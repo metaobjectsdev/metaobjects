@@ -249,11 +249,25 @@ export function collectRequirements(root: MetaData): MetaRequirement[] {
 export interface RequirementScan {
   readonly addressed: readonly AddressedRequirement[];
   readonly claimedObjects: ReadonlySet<string>;
+  /** FR-023 — narrows which entities `coverableEntities` counts. Undefined
+   *  means "every non-abstract entity is coverable", exactly as before this
+   *  option existed: a project with no dependencies gets no change at all.
+   *  Threaded through so BOTH `coverableEntities` call sites (the gate and the
+   *  summary) inherit the same narrowing — see `coverableEntities`. */
+  readonly coverable?: (fqn: string) => boolean;
 }
 
-export function scanRequirements(root: MetaData): RequirementScan {
+export function scanRequirements(
+  root: MetaData,
+  opts?: { coverable?: (fqn: string) => boolean },
+): RequirementScan {
   const addressed = collectAddressedRequirements(root);
-  return { addressed, claimedObjects: claimedObjectKeys(root, addressed.map((r) => r.node)) };
+  return {
+    addressed,
+    claimedObjects: claimedObjectKeys(root, addressed.map((r) => r.node)),
+    // `exactOptionalPropertyTypes` — an omitted key, never an explicit `undefined`.
+    ...(opts?.coverable !== undefined ? { coverable: opts.coverable } : {}),
+  };
 }
 
 /**
@@ -307,10 +321,22 @@ function claimedObjectKeys(root: MetaData, reqs: MetaRequirement[]): Set<string>
  * An ABSTRACT entity is shape, not data: there is no table and no rows, so
  * demanding a capability claim for it is the same category error as demanding
  * one for an object.value. It is exempt for the same reason.
+ *
+ * FR-023: an entity loaded from a dependency's synced snapshot is load-only —
+ * the publisher owns it, and this project never declared it — unless the
+ * project's own `scope.include` names the dependency's package literally
+ * (`Collection.inScope`, threaded in as `coverable`). Demanding a capability
+ * claim for an import nobody here opted into owning would report a project as
+ * failing to claim entities it does not own. `coverable` is applied INSIDE
+ * this function, once, so every call site inherits it — the alternative
+ * (filtering at a call site) is exactly the shape of bug this task exists to
+ * avoid: the other call site would keep counting imports.
  */
-function coverableEntities(root: MetaData): MetaData[] {
+function coverableEntities(root: MetaData, coverable?: (fqn: string) => boolean): MetaData[] {
   return root.children().filter(
-    (n) => n.type === TYPE_OBJECT && n.subType === OBJECT_SUBTYPE_ENTITY && !n.isAbstract,
+    (n) =>
+      n.type === TYPE_OBJECT && n.subType === OBJECT_SUBTYPE_ENTITY && !n.isAbstract &&
+      (coverable === undefined || coverable(n.resolutionKey())),
   );
 }
 
@@ -324,7 +350,7 @@ function coverableEntities(root: MetaData): MetaData[] {
  */
 export function checkRequirements(root: MetaData, scan: RequirementScan = scanRequirements(root)): Diagnostic[] {
   const out: Diagnostic[] = [];
-  const { addressed, claimedObjects } = scan;
+  const { addressed, claimedObjects, coverable } = scan;
   if (addressed.length === 0) return out; // opt-in by declaration — no requirements, nothing to say
 
   for (const { node: req, path: reqPath } of addressed) {
@@ -538,7 +564,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
   //
   // So a green run means "every entity is claimed by something", not "every node is
   // described". The stronger reading would be false.
-  for (const ent of coverableEntities(root)) {
+  for (const ent of coverableEntities(root, coverable)) {
     const key = ent.resolutionKey();
     if (!claimedObjects.has(key)) {
       out.push({
@@ -596,7 +622,7 @@ export function summariseRequirements(
   // summary cannot disagree with the diagnostics printed beneath it — previously
   // the same helper, now literally the same result.
   const claimed = scan.claimedObjects;
-  for (const ent of coverableEntities(root)) {
+  for (const ent of coverableEntities(root, scan.coverable)) {
     summary.entitiesTotal++;
     if (claimed.has(ent.resolutionKey())) summary.entitiesClaimed++;
   }

@@ -108,6 +108,14 @@ def strip_package(name: str) -> str:
     return name.rsplit(PACKAGE_SEP, 1)[-1]
 
 
+def package_of_resolution_key(fqn: str) -> str:
+    """The package half of a resolution key — the complement of :func:`strip_package`
+    (``a::b::C`` → ``a::b``; a root-level ``C`` → ``""``). Mirrors TS
+    ``packageOfResolutionKey``.
+    """
+    return fqn.rpartition(PACKAGE_SEP)[0]
+
+
 def resolve_index_name(node: MetaData) -> str:
     """THE database name of an ``identity.secondary`` / ``index.lookup``.
 

@@ -2,6 +2,7 @@ import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
@@ -16,6 +17,9 @@ import {
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
+import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
+import type { Collection } from "@metaobjectsdev/sdk";
 import { reportLoadError } from "../lib/load-error.js";
 
 /**
@@ -122,11 +126,24 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   let metadata;
   try {
     metadata = await loadMemory(genCollection.configDir, {
-      files: genCollection.files,
+      ...collectionLoadOptions(genCollection),
       ...loadMemoryOptionsFrom(forgeConfig),
     });
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
+    return 2;
+  }
+
+  // FR-023 §11.1 item 2 — refuse a positional that names ONLY objects imported
+  // from a dependency and excluded from output by the default exclusion rule.
+  // Distinct from the runner's existing "no entities matched" WARNING
+  // (runner.ts): that path covers a name matching nothing loaded at all; this
+  // one covers a name that matches something real, just not something this
+  // project generates. A name matching nothing falls through untouched — the
+  // runner's own warning still covers it.
+  const importedRefusal = refuseImportedPositional(cliConfig.entities, metadata, genCollection);
+  if (importedRefusal !== undefined) {
+    log.error(importedRefusal);
     return 2;
   }
 
@@ -145,6 +162,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // passed: an unconfigured project's predicate admits everything, so this
       // is a no-op for the common case, not a behavior change.
       scope: genCollection.inScope,
+      // FR-023 §4.3 — the collection's own source files (never a dependency's
+      // snapshot artifact), so sharedModelFile() defaults its `files` selection
+      // to exactly what this project itself declares.
+      sourceFiles: genCollection.ownFiles,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {
@@ -218,6 +239,45 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
   return hasFailure ? 1 : 0;
+}
+
+/**
+ * FR-023 §11.1 item 2 — the error message for `meta gen <Name>` when EVERY
+ * loaded object named `<Name>` is imported from a dependency and excluded from
+ * output (imported metadata is load-only by default; only the consumer's own
+ * `scope.include` naming the package literally opts it in). Returns undefined
+ * for every other case, INCLUDING a name matching nothing at all — that stays
+ * the runner's existing "no entities matched" warning, unchanged.
+ *
+ * A bare positional is a NAME, not a fully-qualified one (`cliConfig.entities`
+ * is matched against `entity.name` elsewhere in this file the same way), so two
+ * packages declaring the same short name are both candidates; the refusal
+ * fires only when NONE of them would generate.
+ */
+function refuseImportedPositional(
+  entityNames: readonly string[],
+  metadata: MetaRoot,
+  collection: Collection,
+): string | undefined {
+  if (entityNames.length === 0) return undefined;
+  const allObjects = metadata.objects();
+  for (const name of entityNames) {
+    const matches = allObjects.filter((o) => o.name === name);
+    if (matches.length === 0) continue; // nothing loaded by this name — the runner's own warning covers it
+    const allExcludedImports = matches.every((o) => {
+      const fqn = o.resolutionKey();
+      return collection.imported(fqn) && !collection.inScope(fqn);
+    });
+    if (!allExcludedImports) continue;
+    const fqn = matches[0]!.resolutionKey();
+    const pkg = packageOfResolutionKey(fqn);
+    const dependencyName = collection.dependencies.find((d) => d.packages.includes(pkg))?.name ?? pkg;
+    return (
+      `meta gen: '${name}' (${fqn}) is imported from dependency '${dependencyName}' and is not ` +
+      `generated here — add its package to scope.include in .metaobjects/config.json to generate it`
+    );
+  }
+  return undefined;
 }
 
 /**

@@ -13,7 +13,14 @@ import { TypeId, TypeRegistry } from "../registry.js";
 import { coreProviders } from "../core-types.js";
 import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../shared/base-types.js";
-import { RESERVED_KEY_CHILDREN, RESERVED_KEY_OVERLAY } from "../shared/structural.js";
+import {
+  PACKAGE_SEPARATOR,
+  RESERVED_KEY_CHILDREN,
+  RESERVED_KEY_NAME,
+  RESERVED_KEY_OVERLAY,
+  RESERVED_KEY_PACKAGE,
+  TYPE_SUBTYPE_SEPARATOR,
+} from "../shared/structural.js";
 import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
@@ -35,6 +42,7 @@ import { validateAttrSchema } from "../attr-schema-validate.js";
 import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
 import { InMemoryStringSource } from "./meta-data-source.js";
 import type { ParseOptions, ParseResult } from "../parser-core.js";
+import { expandPackageForPath } from "../parser-core.js";
 
 // Local mirror of DirectorySource's options shape. Deliberately inlined here
 // (instead of `import type`'d from ./sources/directory-source.js) so the
@@ -95,6 +103,112 @@ export interface LoadResult {
 
 function makeSyntheticRoot(): MetaRoot {
   return new MetaRoot(new TypeId(TYPE_METADATA, SUBTYPE_ROOT), "");
+}
+
+// ---------------------------------------------------------------------------
+// declaredTopLevelKeys — structural pre-parse walk (#160, generalized)
+// ---------------------------------------------------------------------------
+
+/** One root-level declaration as `declaredTopLevelKeys` structurally scans it —
+ *  before registry-driven parsing, super resolution, or merge. */
+export interface DeclaredTopLevelKey {
+  /** The wrapper key's TYPE segment (e.g. "object" for "object.entity"). A bare
+   *  wrapper key with no "." is its own type — this walk never consults the
+   *  registry for a default subType, because it never needs the subType. */
+  type: string;
+  /** The resolution key the declaration would carry once parsed: the child's
+   *  own `package` if set (expanded against the root's `package` via
+   *  `expandPackageForPath` when it's a relative, `::`-prefixed path — e.g.
+   *  root `acme` + own `::garage` → `acme::garage`), else the root's
+   *  `package` verbatim, then `::`, then its `name`. Exactly
+   *  `rootChildResolutionKey` (parser-core.ts) — including the relative-path
+   *  expansion, reusing `expandPackageForPath` rather than reimplementing it,
+   *  because a second copy is exactly how this walk and the real parser
+   *  silently disagreed on a relative package (task 17 fix-round-1: this
+   *  function used to return `::garage::Garage` for a fixture the real
+   *  loader resolves to `acme::garage::Garage`). */
+  key: string;
+  /** Whether the declaration's body carries `overlay: true`. */
+  overlay: boolean;
+}
+
+/**
+ * Structurally scan a source's raw content (JSON via `JSON.parse`; sigil-free
+ * authoring YAML via the raw YAML walker — `overlay: true` is a bare key
+ * before desugar) and report every top-level declaration under
+ * `metadata.root.children`: its type, the resolution key it would carry once
+ * parsed, and whether it carries `overlay: true`.
+ *
+ * A declaration with no (string, non-empty) `name` is skipped — a resolution
+ * key can't be computed for it, and the real parser will report it as a
+ * loader error rather than silently reusing or creating a node. Malformed
+ * root shapes (root missing, not an object, `children` absent or not an
+ * array) return `[]` rather than throwing — the real parse loop is where a
+ * genuine structural error surfaces; this walk must never crash a caller
+ * that is only trying to answer "what does this file declare".
+ *
+ * Generalizes what `_rootIsOverlayOnly` used to do just for the overlay-only
+ * partition (#160): `_isOverlayOnlySource` is now expressed in terms of this
+ * function, and the overlay authoring lint (`meta verify`) is its second
+ * caller.
+ */
+export async function declaredTopLevelKeys(
+  content: string,
+  format: MetaDataFormat,
+): Promise<ReadonlyArray<DeclaredTopLevelKey>> {
+  // Strip UTF-8 BOM if present (mirrors parseJson / parseYaml).
+  const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+  let parsed: unknown;
+  if (format === "json") {
+    parsed = JSON.parse(normalized);
+  } else if (format === "yaml") {
+    const { parseYamlWithPositions } = await import("../core/yaml-positions-walker.js");
+    parsed = parseYamlWithPositions(normalized).value;
+  } else {
+    return [];
+  }
+  return declaredTopLevelKeysFromParsedRoot(parsed);
+}
+
+/** The structural walk `declaredTopLevelKeys` performs once content is
+ *  structurally parsed — split out so it takes no format/BOM concerns. */
+function declaredTopLevelKeysFromParsedRoot(parsed: unknown): ReadonlyArray<DeclaredTopLevelKey> {
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const parsedRecord = parsed as Record<string, unknown>;
+  // Canonical JSON always fuses the subType onto the root wrapper key
+  // ("metadata.root"); sigil-free YAML authoring writes the bare type
+  // ("metadata") and leaves the default subType to the registry — this
+  // structural walk runs BEFORE desugar/registry resolution, so it must
+  // accept both spellings rather than only ever matching JSON's.
+  const explicitRootKey = `${TYPE_METADATA}${TYPE_SUBTYPE_SEPARATOR}${SUBTYPE_ROOT}`; // "metadata.root"
+  const rootBody = parsedRecord[explicitRootKey] ?? parsedRecord[TYPE_METADATA];
+  if (typeof rootBody !== "object" || rootBody === null) return [];
+  const rawRootPkg = (rootBody as Record<string, unknown>)[RESERVED_KEY_PACKAGE];
+  const rootPkg = typeof rawRootPkg === "string" ? rawRootPkg : "";
+  const children = (rootBody as Record<string, unknown>)[RESERVED_KEY_CHILDREN];
+  if (!Array.isArray(children)) return [];
+
+  const declared: DeclaredTopLevelKey[] = [];
+  for (const child of children) {
+    if (typeof child !== "object" || child === null) continue;
+    // Each child is a single-key wrapper: { "object.entity": { ... } }.
+    for (const [wrapperKey, body] of Object.entries(child as Record<string, unknown>)) {
+      if (typeof body !== "object" || body === null) continue;
+      const bodyRecord = body as Record<string, unknown>;
+      const name = bodyRecord[RESERVED_KEY_NAME];
+      if (typeof name !== "string" || name === "") continue;
+      const dotIdx = wrapperKey.indexOf(TYPE_SUBTYPE_SEPARATOR);
+      const type = dotIdx < 0 ? wrapperKey : wrapperKey.slice(0, dotIdx);
+      const rawOwnPkg = bodyRecord[RESERVED_KEY_PACKAGE];
+      const pkg =
+        typeof rawOwnPkg === "string" && rawOwnPkg !== ""
+          ? expandPackageForPath(rootPkg, rawOwnPkg)
+          : rootPkg;
+      const key = pkg !== "" ? `${pkg}${PACKAGE_SEPARATOR}${name}` : name;
+      declared.push({ type, key, overlay: bodyRecord[RESERVED_KEY_OVERLAY] === true });
+    }
+  }
+  return declared;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,54 +480,16 @@ export class MetaDataLoader {
   }
 
   /**
-   * Structurally scan a source's raw content (JSON via JSON.parse; sigil-free
-   * authoring YAML via the raw YAML walker — `overlay: true` is a bare key
-   * before desugar) and report whether every top-level object declaration under
-   * `metadata.root.children` carries `overlay: true` (and there is at least one).
+   * Whether every top-level declaration in a source's raw content carries
+   * `overlay: true` (and there is at least one) — re-expressed over the
+   * generalized structural walk, {@link declaredTopLevelKeys}.
    */
   private static async _isOverlayOnlySource(
     content: string,
     format: MetaDataFormat,
   ): Promise<boolean> {
-    // Strip UTF-8 BOM if present (mirrors parseJson / parseYaml).
-    const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
-    let parsed: unknown;
-    if (format === "json") {
-      parsed = JSON.parse(normalized);
-    } else if (format === "yaml") {
-      const { parseYamlWithPositions } = await import(
-        "../core/yaml-positions-walker.js"
-      );
-      parsed = parseYamlWithPositions(normalized).value;
-    } else {
-      return false;
-    }
-    return MetaDataLoader._rootIsOverlayOnly(parsed);
-  }
-
-  /** True when the structurally-parsed root has ≥1 child and every top-level
-   * child node carries `overlay: true` (declares no base objects). */
-  private static _rootIsOverlayOnly(parsed: unknown): boolean {
-    if (typeof parsed !== "object" || parsed === null) return false;
-    const rootKey = `${TYPE_METADATA}.${SUBTYPE_ROOT}`; // "metadata.root"
-    const rootBody = (parsed as Record<string, unknown>)[rootKey];
-    if (typeof rootBody !== "object" || rootBody === null) return false;
-    const children = (rootBody as Record<string, unknown>)[RESERVED_KEY_CHILDREN];
-    if (!Array.isArray(children) || children.length === 0) return false;
-    return children.every((child) => {
-      if (typeof child !== "object" || child === null) return false;
-      // Each child is a single-key wrapper: { "object.projection": { ... } }.
-      const bodies = Object.values(child as Record<string, unknown>);
-      return (
-        bodies.length > 0 &&
-        bodies.every(
-          (body) =>
-            typeof body === "object" &&
-            body !== null &&
-            (body as Record<string, unknown>)[RESERVED_KEY_OVERLAY] === true,
-        )
-      );
-    });
+    const declared = await declaredTopLevelKeys(content, format);
+    return declared.length > 0 && declared.every((d) => d.overlay);
   }
 
   // ---------------------------------------------------------------------------

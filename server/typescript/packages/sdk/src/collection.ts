@@ -12,11 +12,26 @@
 // name — this is where that assumption is allowed to live, exactly once.
 import { dirname, extname, join, resolve } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
-import { ParseError, codeSource, SUBTYPE_ROOT, TYPE_METADATA } from "@metaobjectsdev/metadata";
+import {
+  ParseError,
+  codeSource,
+  packageOfResolutionKey,
+  SUBTYPE_ROOT,
+  TYPE_METADATA,
+} from "@metaobjectsdev/metadata";
 import { CONFIG_FILE, loadConfig, type Config } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, isMetadataFile } from "./metadata-files.js";
+import {
+  explicitlyIncludes,
+  importedNodesOf,
+  importedPackagesOf,
+  readLock,
+  verifySnapshot,
+  type DependencySpec,
+  type ResolvedDependency,
+} from "./dependencies.js";
 import {
   DEFAULT_SOURCES,
   orderedPathSpecs,
@@ -33,7 +48,13 @@ export interface Collection {
   /** Canonically-ordered absolute metadata file paths — see `resolveSources`.
    *  Canonical, not sorted: within a directory source the walk order the
    *  toolchain has always used is preserved, because it survives into
-   *  generated output. */
+   *  generated output.
+   *
+   *  FR-023: a project with dependencies leads with their snapshot ARTIFACTS,
+   *  in dependency-name order, then its own files ({@link ownFiles}) — the
+   *  bases a consumer's `extends` and `overlay: true` resolve against must be
+   *  in the tree before the declarations that amend them. A project with no
+   *  dependencies gets exactly the list it always got. */
   readonly files: readonly string[];
   /** Same set, carrying the contributing spec for provenance. */
   readonly sources: readonly ResolvedSource[];
@@ -44,6 +65,32 @@ export interface Collection {
    *  comes from" (`meta docs --site` groups its pages by source root) must not
    *  silently lose a declared source because it happens to be empty today. */
   readonly sourceRoots: readonly string[];
+  /** FR-023 — the project's OWN metadata files: `files` without the dependency
+   *  artifacts it leads with. Identical to `files` when nothing is imported. */
+  readonly ownFiles: readonly string[];
+  /** FR-023 — the resolved dependencies, in dependency-NAME order (never the
+   *  config's declaration order), each verified against `.metaobjects/deps.lock.json`
+   *  before this resolves. Empty for a project that declares none. */
+  readonly dependencies: readonly ResolvedDependency[];
+  /** FR-023 — the `FileSource` id each file loads under, for the dependency
+   *  ARTIFACTS only (`dep:<name>/<artifact>`); own files are absent and keep the
+   *  default `basename(path)`. Threaded to `loadMemory` so every node an artifact
+   *  contributed carries provenance naming the dependency rather than a filename
+   *  that reads like a local file. */
+  readonly fileIds: ReadonlyMap<string, string>;
+  /** FR-023 — the sorted union of every dependency's `packages`: THE exclusion
+   *  key (DESIGN §11.5). Package-keyed, not node-keyed. */
+  readonly importedPackages: readonly string[];
+  /** FR-023 — the union of every dependency's `nodes`. Read by ONE consumer, the
+   *  `ERR_DEPENDENCY_PACKAGE_NOT_OWNED` refusal, which needs it to tell an
+   *  overlay of an imported node from a new local declaration in its package. NOT
+   *  the exclusion key. */
+  readonly importedNodes: ReadonlySet<string>;
+  /** FR-023 — is `fqn` in a package one of this project's dependencies owns?
+   *  Imported metadata is loaded so the project's own model can RESOLVE against
+   *  it, and excluded from every action surface unless the project's own scope
+   *  names its package (DESIGN §11.1 item 2). */
+  readonly imported: (fqn: string) => boolean;
   /**
    * Output filter for codegen: does this fully-qualified name survive the
    * collection's `scope`? Always defined — an unconfigured project compiles to
@@ -67,6 +114,12 @@ export interface Collection {
    *  matched nothing" refusal can name the patterns that missed. Always in
    *  lockstep with `inMigrateScope`: both undefined, or both present. */
   readonly migrateScopePatterns: readonly string[] | undefined;
+  /** FR-023 — the user's declared `migrate.scope` ALONE, before the imported
+   *  suppression `inMigrateScope` composes onto it. In lockstep with
+   *  `migrateScopePatterns` (both undefined, or both present), which is what
+   *  keeps the "your migrate.scope matched nothing" refusal reading the DECLARED
+   *  scope rather than the composed one. */
+  readonly declaredMigrateScope: ((fqn: string) => boolean) | undefined;
 }
 
 /** The canonical-JSON document root key (`metadata.root`) and the sigil-free
@@ -195,6 +248,7 @@ export async function resolveCollection(
   let specs: readonly SourceSpec[] = DEFAULT_SOURCES;
   let scopeSpec: Config["scope"];
   let migrateSpec: string[] | undefined;
+  let dependencySpecs: readonly DependencySpec[] = [];
 
   if (hasConfig) {
     // No try/catch here: a config.json that EXISTS but fails to load
@@ -207,6 +261,7 @@ export async function resolveCollection(
     if (cfg.sources.length > 0) specs = cfg.sources;
     scopeSpec = cfg.scope;
     migrateSpec = cfg.migrate?.scope;
+    dependencySpecs = cfg.dependencies;
   }
 
   // Only the DEFAULT is allowed to be absent — an explicitly declared source
@@ -247,22 +302,85 @@ export async function resolveCollection(
     );
   }
 
-  const sources = await resolveSources(configDir, specs);
+  const ownSources = await resolveSources(configDir, specs);
+
+  // FR-023 — the dependency snapshot, verified against the lock (DESIGN §4.2).
+  // It resolves BEFORE the predicates below because every one of them closes
+  // over what it returns. A project that declares no dependencies AND has no
+  // lock file takes the short-circuit: nothing is read, nothing is verified,
+  // and everything below collapses to exactly its pre-FR-023 behaviour.
+  const lock = await readLock(configDir);
+  const dependencies =
+    dependencySpecs.length === 0 && lock === undefined
+      ? []
+      : await verifySnapshot(configDir, dependencySpecs, lock);
+
+  // The exclusion key is the lock's `packages`; `nodes` is carried for the
+  // ownership refusal alone (DESIGN §11.5).
+  const importedPackages = importedPackagesOf(dependencies);
+  const importedNodes = importedNodesOf(dependencies);
+  const imported = (fqn: string): boolean => importedPackages.has(packageOfResolutionKey(fqn));
+
+  // The artifacts LEAD the file list, in dependency-name order — see `files`.
+  // They carry `dependency`/`id` rather than a declared spec, which is what
+  // distinguishes them from a file some `sources` entry contributed.
+  const dependencySources: readonly ResolvedSource[] = dependencies.map((d) => ({
+    file: d.artifactPath,
+    spec: { path: d.artifactPath },
+    dependency: d.name,
+    id: d.sourceId,
+  }));
+  const ownFiles = ownSources.map((s) => s.file);
+
   const scope = compileScope(toScope(scopeSpec));
   const migrateScope =
     migrateSpec === undefined ? undefined : compileScope({ include: migrateSpec });
+  const declaredMigrateScope =
+    migrateScope === undefined
+      ? undefined
+      : (fqn: string): boolean => matchesScope(fqn, migrateScope);
+
   return {
     configDir,
-    files: sources.map((s) => s.file),
-    sources,
+    files: [...dependencySources.map((s) => s.file), ...ownFiles],
+    ownFiles,
+    sources: [...dependencySources, ...ownSources],
+    dependencies,
+    fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
+    importedPackages: [...importedPackages].sort(),
+    importedNodes,
+    imported,
     // Canonical (content) order, from `resolveSources`'s own ordering — so this
     // list is a pure function of the source SET, exactly like `files`.
+    // DECLARED sources only: a dependency's artifact is not a source root, and
+    // listing one would put another project's tree in "where this model comes
+    // from" (`meta docs --site` groups its pages by these).
     sourceRoots: [
       ...new Set(orderedPathSpecs(specs).map((spec) => resolveSpecPath(configDir, spec))),
     ],
-    inScope: (fqn: string): boolean => matchesScope(fqn, scope),
+    // The declared scope, AND the default exclusion of imported metadata
+    // (DESIGN §11.1 item 2): a dependency's node survives only when the
+    // project's own `scope.include` NAMES its package. A wildcard reaches it
+    // and does not name it — see `explicitlyIncludes`.
+    inScope: (fqn: string): boolean => {
+      if (!matchesScope(fqn, scope)) return false;
+      const pkg = packageOfResolutionKey(fqn);
+      return !importedPackages.has(pkg) || explicitlyIncludes(scopeSpec?.include, pkg);
+    },
+    // Undefined ONLY when the project declares no `migrate.scope` AND imports
+    // nothing — migrate-ts reads that undefined as "govern everything loaded",
+    // and it is what leaves the expected schema untouched. With a dependency
+    // present the predicate must exist even with no declared scope, because the
+    // publisher's tables are in the loaded tree and nobody here declared them.
     inMigrateScope:
-      migrateScope === undefined ? undefined : (fqn: string): boolean => matchesScope(fqn, migrateScope),
+      migrateSpec === undefined && dependencies.length === 0
+        ? undefined
+        : (fqn: string): boolean => {
+            if (!(declaredMigrateScope?.(fqn) ?? true)) return false;
+            const pkg = packageOfResolutionKey(fqn);
+            return !importedPackages.has(pkg) || explicitlyIncludes(migrateSpec, pkg);
+          },
     migrateScopePatterns: migrateSpec,
+    declaredMigrateScope,
   };
 }

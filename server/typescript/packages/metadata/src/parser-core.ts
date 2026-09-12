@@ -346,8 +346,14 @@ function splitTypeKey(key: string, registry: TypeRegistry): SplitKey {
  *   - Absolute path (::foo::bar) → prepended with base: "acme" + "::foo" → "acme::foo::bar"
  *   - Relative parent (..) → handled in super resolution, not here
  *   - No leading :: → used as-is
+ *
+ * Exported so `declaredTopLevelKeys` (meta-data-loader.ts) — the structural
+ * pre-parse walk that must produce the SAME resolution key `rootChildResolutionKey`
+ * below computes — reuses this rather than reimplementing it. A second copy is
+ * exactly how the two silently disagreed on a relative (`::`-prefixed) `package`
+ * before task 17's fix-round-1 caught it against a real fixture.
  */
-function expandPackageForPath(basePkg: string, pkgPath: string): string {
+export function expandPackageForPath(basePkg: string, pkgPath: string): string {
   if (basePkg.trim() === "" || !pkgPath.startsWith(PACKAGE_SEPARATOR)) {
     return pkgPath;
   }

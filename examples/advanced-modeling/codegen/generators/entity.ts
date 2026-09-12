@@ -175,7 +175,16 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
       const files = await perEntityEmit(ctx);
       // FR-019: emit the shared-enums module once per run (null → no file).
-      const sharedEnums = renderSharedEnumsFile(ctx.loadedRoot);
+      // FR-023 §11.1 item 2: this is a REFERENCE TEMPLATE `meta init` copies into
+      // every scaffolded project's codegen/generators/ (ADR-0034) — the DEFAULT
+      // path, not an opt-in one. `select` (never `ctx.matches`, which never runs
+      // for a whole-root render like this one) excludes an enum used only by an
+      // imported, out-of-scope entity; without it every `meta init` project would
+      // silently emit shared enums the library path correctly excludes.
+      const sharedEnums = renderSharedEnumsFile(
+        ctx.loadedRoot,
+        ctx.select !== undefined ? { select: ctx.select } : undefined,
+      );
       if (sharedEnums !== null) {
         files.push({ path: `${SHARED_ENUMS_BASENAME}.ts`, content: await formatTs(sharedEnums) });
       }

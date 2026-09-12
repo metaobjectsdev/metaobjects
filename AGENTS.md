@@ -66,7 +66,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 - **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + payload + relations + filter allowlist + validator + stored-proc + output-parser generators. `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 
 **Cross-port conformance corpora** (every port runs the shared corpus):
-- Metamodel: `fixtures/conformance/` (313 fixtures; 21 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
+- Metamodel: `fixtures/conformance/` (314 fixtures; 22 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
 - Render: `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - Persistence: `fixtures/persistence-conformance/`. **Query** scenarios run on every port (TS / C# / Java / Kotlin / Python), each provisioning its test DB by executing the committed, TS-produced `canonical/schema.postgres.sql` (Postgres only — Derby dropped for the cross-port query corpus, ADR-0015). The **migration** scenarios are exercised by **TS only** (TS owns schema migrations). **The corpus now gates WRITES, not just reads (SP-H):** an `op: roundtrip` scenario type INSERTs through each port's runtime/ORM write codec (NOT raw SQL), reads the row back, and asserts the wire-normalized value. The `AllTypes` entity (`roundtrip-all-types.yaml`) carries one field of **every** persistable `field.*` subtype — string/int/long/double/float/decimal/boolean/date/time/timestamp(+tz)/currency/enum/uuid/object — plus an **array-of-VO** `field.object @isArray @storage:jsonb` column (`labels`, written as 2-element / empty-`[]` / single-element arrays across the three rows) — so every subtype write+read (incl. the array-of-value-object jsonb codec) round-trips through every port against Testcontainers PG. (`field.byte`/`field.short`/`field.class` were cut as non-functional registration-only stubs — the matrix tracks only genuinely-supported subtypes; see `fixtures/registry-conformance/README.md` → "Per-subtype write-round-trip matrix".)
 - API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all green — each port runs **two lanes**: a hand-rolled reference server AND its **generated** API artifact booted over HTTP (the deployed controller/routes; TS+C# full-stack vs Testcontainers PG, Java/Kotlin/Python generated controller + in-memory repo behind the consumer seam). The generated fan-out found 10 real deployment bugs golden snapshots missed.
@@ -288,11 +288,17 @@ File-naming: `meta.<concept>.json`. Each file declares its `package`:
 ```
 metaobjects/
 ├── meta.user.json                     # STRUCTURAL (always present)
-├── meta.user.ui.json                  # UI overlay (views, layouts)
-└── meta.user.db.json                  # DB overlay (sources, dbColumns)
+├── meta.user.ui.json                  # UI overlay (views, layouts) — overlay: true
+└── meta.user.db.json                  # DB overlay (sources, dbColumns) — overlay: true
 ```
 
-All three share the same `package` and object `name`. The Loader merges them. Use only when team-level concerns justify the file proliferation. Default to single-file-per-domain.
+All three share the same `package` and object `name`. The Loader merges them. `meta.user.ui.json`
+and `meta.user.db.json`'s top-level object declaration must carry `overlay: true`: the loader's
+merge doesn't require it (a same-`(type, name)` redeclaration merges either way), but leaving it
+off is exactly what `meta verify`'s overlay authoring lint (`docs/features/metadata-dependencies.md`)
+flags as advisory — and it's what would turn a renamed/removed `User` into a silent second object
+instead of a loud `ERR_OVERLAY_NO_TARGET`. Use only when team-level concerns justify the file
+proliferation. Default to single-file-per-domain.
 
 **`BaseEntity` pattern**: shared abstract bases live in `meta.common.json`. Concrete entities use `extends: "BaseEntity"` to inherit `id` + `createdAt` without redeclaring.
 

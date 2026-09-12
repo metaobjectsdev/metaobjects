@@ -235,7 +235,7 @@ export type { ParseOptions, ParseResult } from "./parser-core.js";
 export { parseJson } from "./parser-json.js";
 
 // Serializer
-export { serializeJson, canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
+export { serializeJson, canonicalSerialize, serializeSharedDocument, inferAttrSubType } from "./serializer-json.js";
 export type { SerializeOptions } from "./serializer-json.js";
 
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)
@@ -245,8 +245,10 @@ export { resolveSuperRef } from "./super-resolve.js";
 export { expandRef, isRelativeRef, refMatchesObject, resolveObjectRef, didYouMeanHint, REF_BEARING_ATTR_NAMES } from "./naming-refs.js";
 
 // Loader hierarchy
-export { MetaDataLoader } from "./loader/meta-data-loader.js";
-export type { LoadOptions, LoadResult, LoadingState, DirectoryFactoryOptions } from "./loader/meta-data-loader.js";
+export { MetaDataLoader, declaredTopLevelKeys } from "./loader/meta-data-loader.js";
+export type {
+  LoadOptions, LoadResult, LoadingState, DirectoryFactoryOptions, DeclaredTopLevelKey,
+} from "./loader/meta-data-loader.js";
 export { InMemoryStringSource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 
@@ -278,6 +280,12 @@ export type {
 } from "./source.js";
 export { codeSource } from "./source.js";
 
+// FR-023 §4.3 — scope-pattern grammar (moved from sdk; sdk re-exports these
+// for compatibility, and codegen-ts's publisher generator depends on this
+// package directly rather than on sdk).
+export { compileScope, matchesScope } from "./scope.js";
+export type { Scope, CompiledScope } from "./scope.js";
+
 // Attribute-schema validation pass (Phase A3)
 export { validateAttrSchema } from "./attr-schema-validate.js";
 export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
@@ -290,7 +298,7 @@ export {
   resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
   primaryRdbSource, sourceAddressKey,
   buildNameMap,
-  stripPackage,
+  stripPackage, packageOfResolutionKey,
 } from "./naming.js";
 export type { EntityNameMap, ColumnNamingStrategy } from "./naming.js";
 

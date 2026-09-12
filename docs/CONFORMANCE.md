@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **21 shared conformance corpora** under
+The MetaObjects standard ships **22 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -25,7 +25,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 313 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 314 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 15 | 15 / 15 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -43,7 +43,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | — |
+| [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | ✓ |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 23 cases | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (2 of 23 assert a documented Python-only vocabulary gap instead of the corpus's full contract — see below) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 
@@ -118,7 +119,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (313)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (314)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -229,20 +230,41 @@ matching is case-sensitive.** These are exactly the rules four independent
 implementations would otherwise each get slightly wrong — the failure mode that
 produced the cross-port `LIKE`/`ILIKE` divergence fixed in 0.21.6.
 
-**TypeScript is the only port with a runner today.** The reference implementation is
-[`server/typescript/packages/sdk/src/scope.ts`](../server/typescript/packages/sdk/src/scope.ts)
-(`compilePattern` / `compileScope` / `matchesScope`), and the corpus was authored
-against it. Java, Kotlin, C# and Python have no runner yet; when each gains one, this corpus is
-what it implements against — it exists now precisely so those four land on one
-grammar rather than four.
+**TypeScript and Python run it today.** The reference implementation is
+[`server/typescript/packages/metadata/src/scope.ts`](../server/typescript/packages/metadata/src/scope.ts)
+(`compilePattern` / `compileScope` / `matchesScope`; `@metaobjectsdev/sdk` re-exports
+it unchanged, since it moved there from `sdk` when FR-023 needed it from
+`codegen-ts` without a `sdk` dependency), and the corpus was authored against it.
+Python's port (`server/python/src/metaobjects/scope.py`, `matches_scope` using
+`re.fullmatch`) runs the same corpus. Java, Kotlin and C# have no runner yet; when
+each gains one, this corpus is what it implements against — it exists now precisely
+so those three land on one grammar rather than three.
+
+### `fixtures/dependency-conformance/` (23 cases)
+
+All 23 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
+(declaring a dependency, `meta deps sync`, the committed snapshot + lock, default
+exclusion of imported metadata, overlay/extends across the boundary, and every load-
+and resolution-time failure). File-shaped like `scope-conformance/` above: one
+committed `cases.json`, no per-port fixture, no ledger.
+
+**TypeScript (the reference implementation) and Python both run all 23 cases,
+identically** — every case's `expectFiles`/`expectImported`/`expectSelected`/
+`expectMigrateGoverned`/`expectLoadError` assertions apply to both runners with no
+exemption. The two overlay cases that need a view child as incidental content use
+`view.currency` (the one concrete `view.*` subtype registered cross-port), not
+`view.text` — a prior revision used `view.text`, which Python doesn't register, and
+carried a since-discharged allowlist for it. Java, Kotlin and C# have no runner —
+Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the eight corpora mapped above (metamodel 313 + yaml 15 + verify 31
-+ render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10) each
-map to a feature doc. None are orphaned today. The remaining corpora in the totals table gate tooling
-contracts (registry manifests, provider composition, agent context, docs emit)
-rather than user-facing metamodel behaviour, so they have no feature-doc row.
+The fixtures in the nine corpora mapped above (metamodel 314 + yaml 15 + verify 31
++ render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10 +
+dependency 23) each map to a feature doc. None are orphaned today. The remaining
+corpora in the totals table gate tooling contracts (registry manifests, provider
+composition, agent context, docs emit) rather than user-facing metamodel behaviour,
+so they have no feature-doc row.
 
 If you add a new fixture and don't see a clear home for it, either:
 

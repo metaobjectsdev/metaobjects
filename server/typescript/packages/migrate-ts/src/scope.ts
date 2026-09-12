@@ -34,6 +34,18 @@
 // survivors instead is precisely the inversion above. Declaring a scope is not a way
 // to hand a schema over; removing the objects from the model is.
 //
+// FR-023 — AN IMPORT IS THE ONE EXCLUSION THAT MUST MOVE THE SCHEMA SET. The rule
+// above is stated for `migrate.scope`, where it is right: that scope narrows a model
+// which DID declare into the schema, so the schema stays this model's to manage. A
+// dependency's node is the opposite case — the consumer never declared it, and the
+// publisher owns the schema it sits in. Leaving that schema pinned would make every
+// table the publisher did NOT export, tables this consumer has never heard of, a
+// proposed DROP against the publisher's data.
+//
+// So `scopeExpectedSchema`'s optional `imported` predicate partitions those objects
+// out FIRST, and `declaredSchemas` is derived from what remains. Everything
+// `migrate.scope` excluded is still in that remainder, so the rule above is untouched.
+//
 // `scopedDiffInputs` exists so no caller has to remember any of this: it returns all
 // three obligations as one object, and every scoped `diff` call goes through it.
 
@@ -74,6 +86,16 @@ export interface ScopedExpectedSchema {
    * (nothing to derive from; `diff`'s legacy whole-DB fallback is preserved).
    */
   declaredSchemas?: string[];
+  /**
+   * The subset of `outOfScope` a DEPENDENCY contributed (FR-023), so a caller can say
+   * why an object was excluded. `outOfScope` deliberately stays the FULL set — it is
+   * what feeds `unmanagedNames`, and splitting it would silently drop half of the
+   * actual-side suppression.
+   *
+   * `undefined` when no `imported` predicate was supplied, which is every project that
+   * declares no dependencies.
+   */
+  importedOutOfScope?: string[];
 }
 
 /**
@@ -217,45 +239,98 @@ export function declaredSchemasOf(snapshot: SchemaSnapshot): string[] {
   ].sort();
 }
 
+/** Optional exclusions layered on top of `inScope`. */
+export interface ScopeExpectedSchemaOptions {
+  /**
+   * FR-023 — is this object's declaring FQN owned by one of the project's
+   * DEPENDENCIES? Such an object is loaded so the consumer's own model can resolve
+   * against it, and is governed by nobody here unless the consumer's own
+   * `migrate.scope` names its package (which `inScope` then admits).
+   *
+   * Supplied only by a project that declares dependencies: absent, this function
+   * behaves exactly as it always has.
+   */
+  imported?: ObjectScopePredicate;
+}
+
 /**
  * Narrow an expected schema to the objects inside `inScope`.
  *
- * An undefined predicate returns the input untouched — the SAME snapshot object,
- * not an equal copy — so a project that declares no `migrate.scope` reaches the
- * diff, the emitter and the committed snapshot through an unchanged value.
+ * An undefined predicate with no `opts` returns the input untouched — the SAME
+ * snapshot object, not an equal copy — so a project that declares no `migrate.scope`
+ * and no dependencies reaches the diff, the emitter and the committed snapshot
+ * through an unchanged value.
  *
- * A table or view with NO recorded provenance is KEPT. Scope decides on the
- * declaring object's FQN, and an object whose FQN is unknown was never proven to be
- * anyone else's; dropping it would silently un-manage it (and, worse, suppressing
- * its name on the actual side would hide real drift).
+ * A table or view with NO recorded provenance is KEPT, by both exclusions. Scope
+ * decides on the declaring object's FQN, and an object whose FQN is unknown was never
+ * proven to be anyone else's; dropping it would silently un-manage it (and, worse,
+ * suppressing its name on the actual side would hide real drift).
+ *
+ * With `opts.imported`, an imported object the scope does not admit leaves the
+ * expected side BEFORE `declaredSchemas` is computed — see the module header for why
+ * that ordering is the whole point.
  */
 export function scopeExpectedSchema(
   built: ExpectedSchemaWithProvenance,
   inScope: ObjectScopePredicate | undefined,
+  opts?: ScopeExpectedSchemaOptions,
 ): ScopedExpectedSchema {
-  if (inScope === undefined) return { snapshot: built.snapshot, outOfScope: [] };
+  const imported = opts?.imported;
+  if (inScope === undefined && imported === undefined) {
+    return { snapshot: built.snapshot, outOfScope: [] };
+  }
 
-  // Computed from `built.snapshot` — the UNSCOPED side — deliberately, and before
-  // the filter below runs. Deriving it from the survivors would reproduce exactly
-  // the defect this exists to close.
-  const declared = declaredSchemasOf(built.snapshot);
+  // PASS 1 — the import partition. An imported object survives only when the
+  // consumer's own scope NAMES it, which is how a consumer opts into owning a
+  // dependency's tables (DESIGN §11.1 item 2: "explicit include replaces `mode`").
+  //
+  // An `inScope` of `undefined` does NOT rescue it. That combination cannot arise
+  // from the CLI — `inMigrateScope` is defined whenever dependencies exist — and
+  // resolving it the other way would be the unsafe direction: excluding an import
+  // costs nothing, while keeping one risks DDL against the publisher's database.
+  const importedOutOfScope: string[] = [];
+  const declaredHere = <T extends { name: string; schema?: string }>(obj: T): boolean => {
+    if (imported === undefined) return true;
+    const qualified = qualifiedDbName(obj);
+    const fqn = built.provenance.get(qualified);
+    if (fqn === undefined || !imported(fqn)) return true;
+    if (inScope?.(fqn) === true) return true;
+    importedOutOfScope.push(qualified);
+    return false;
+  };
+  const remainder: SchemaSnapshot = {
+    ...built.snapshot,
+    tables: built.snapshot.tables.filter(declaredHere),
+    views: built.snapshot.views.filter(declaredHere),
+  };
 
-  const outOfScope: string[] = [];
+  // Computed from the REMAINDER — everything this model actually declares — and
+  // before the scope filter below. Deriving it from the scope's survivors instead
+  // would reproduce exactly the defect the module header describes; deriving it from
+  // the unpartitioned side would pin the publisher's schema. Both halves matter.
+  const declared = declaredSchemasOf(remainder);
+
+  // PASS 2 — the per-command scope, unchanged.
+  const scopeOutOfScope: string[] = [];
   const governed = <T extends { name: string; schema?: string }>(obj: T): boolean => {
+    if (inScope === undefined) return true;
     const qualified = qualifiedDbName(obj);
     const fqn = built.provenance.get(qualified);
     if (fqn === undefined || inScope(fqn)) return true;
-    outOfScope.push(qualified);
+    scopeOutOfScope.push(qualified);
     return false;
   };
 
   return {
     snapshot: {
-      ...built.snapshot,
-      tables: built.snapshot.tables.filter(governed),
-      views: built.snapshot.views.filter(governed),
+      ...remainder,
+      tables: remainder.tables.filter(governed),
+      views: remainder.views.filter(governed),
     },
-    outOfScope,
+    // ONE suppression set: both exclusions must reach `unmanagedNames`, or the
+    // objects they removed from `expected` come back as proposed drops.
+    outOfScope: [...importedOutOfScope, ...scopeOutOfScope],
     ...(declared.length > 0 ? { declaredSchemas: declared } : {}),
+    ...(imported !== undefined ? { importedOutOfScope } : {}),
   };
 }

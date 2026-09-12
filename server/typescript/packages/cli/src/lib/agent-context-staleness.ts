@@ -1,6 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { AGENT_CONTEXT_MANIFEST_PATH, agentContextStaleness, type Manifest } from "@metaobjectsdev/sdk";
+// The agent-context subpath, not the root barrel: `@metaobjectsdev/sdk` exports TWO
+// types named `Manifest` — this one (the scaffolded agent context) via `export *`,
+// and FR-023's `metaobjects.pkg.json` explicitly. An explicit export shadows a
+// star one, so the root barrel now hands out the dependency manifest under this
+// name. `init.ts` already imports these from the subpath; this was the last site
+// reading them from the root.
+import { AGENT_CONTEXT_MANIFEST_PATH, agentContextStaleness, type Manifest } from "@metaobjectsdev/sdk/agent-context";
 import { cliVersion } from "./version.js";
 import { log } from "./log.js";
 

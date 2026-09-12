@@ -2,6 +2,7 @@ import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SourceSpec } from "./sources.js";
+import { DependencySpecSchema, type DependencySpec } from "./dependencies.js";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
 
@@ -106,6 +107,15 @@ const _sourceSpecParitySpecToInfer: z.infer<typeof SourceSpecSchema> = {} as Sou
 void _sourceSpecParityInferToSpec;
 void _sourceSpecParitySpecToInfer;
 
+// Compile-time parity, BOTH directions, for `DependencySpecSchema` /
+// `DependencySpec` — same rationale as the `SourceSpec` pair above: a
+// one-directional assignment would let either side add an arm the other
+// never gained and still compile clean.
+const _dependencySpecParityInferToSpec: DependencySpec = {} as z.infer<typeof DependencySpecSchema>;
+const _dependencySpecParitySpecToInfer: z.infer<typeof DependencySpecSchema> = {} as DependencySpec;
+void _dependencySpecParityInferToSpec;
+void _dependencySpecParitySpecToInfer;
+
 /** Mirrors the hand-written `Scope` interface in `./scope.ts`. An absent or
  *  empty `include` means "everything" — see `matchesScope`. */
 const ScopeSchema = z
@@ -130,6 +140,15 @@ export const ConfigSchema = z.object({
     })
     .default({}),
   sources: z.array(SourceSpecSchema).default([]),
+  /** Declared metadata dependencies (FR-023) — read from this file at every
+   *  rung of the source ladder, by every port, not just TypeScript (DESIGN
+   *  §2.3). Names must be unique across the array. */
+  dependencies: z
+    .array(DependencySpecSchema)
+    .default([])
+    .refine((a) => new Set(a.map((d) => d.name)).size === a.length, {
+      message: "dependencies: names must be unique",
+    }),
   /** Output filter applied across every command — see `./scope.ts`. Absent
    *  means "everything" (no filtering), matching `Scope`'s own contract. */
   scope: ScopeSchema.optional(),

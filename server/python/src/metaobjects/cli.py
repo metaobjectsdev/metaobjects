@@ -49,9 +49,14 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 from metaobjects import MetaDataLoader
 from metaobjects.errors import ParseError
+from metaobjects.config.dependencies import Collection, imported_from, refuse_unowned_packages
+from metaobjects.loader.meta_data_loader import LoadResult
+from metaobjects.loader.sources import FileSource
+from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.agent_context import (
     AGENT_CONTEXT_MANIFEST_PATH,
     agent_context_staleness,
@@ -93,14 +98,14 @@ from metaobjects.codegen.generators.render_helper_generator import (
     _resolve_payload_vo,
 )
 from metaobjects.meta.template import template_constants as tc
-from metaobjects.naming import COLUMN_NAMING_STRATEGIES, DEFAULT_COLUMN_NAMING
+from metaobjects.naming import COLUMN_NAMING_STRATEGIES, DEFAULT_COLUMN_NAMING, package_of_resolution_key
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.verify import (
     ERR_REQUIRED_SLOT_UNUSED,
     PayloadField,
     verify as render_verify,
 )
-from metaobjects.shared.base_types import TYPE_TEMPLATE
+from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 
@@ -296,33 +301,64 @@ def _load_root(
     return result.root, []
 
 
-def _load_root_from_paths(
-    paths: list[str],
+def _load_collection_result(
+    collection: Collection,
+    strict: bool = False,
+    providers: list[object] | None = None,
+    libraries: list[str] | None = None,
+) -> LoadResult:
+    """Load a resolved `Collection`'s files — its dependency artifacts leading,
+    each under its `dep:<name>/<artifact>` source id (FR-023) — then run the
+    post-load ownership refusal (`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, DESIGN
+    §11.5). Mirrors the TS `loadMemory` (`sdk/src/memory.ts`).
+
+    Lower-level than :func:`_load_root_from_collection`: this returns the raw
+    `LoadResult` (structured `MetaError`s, a code + provenance on each) rather
+    than the CLI's flattened `(root, message-strings)` contract, so a caller
+    that needs the CODE or the offending FILE — the dependency corpus runner —
+    can read them. ``refuse_unowned_packages`` runs AFTER the loader's own
+    errors, never before: an unflagged overlay whose target the upstream
+    removed fails first, with its own coded error.
+    """
+    lib_sources: list[object] = []
+    if libraries:
+        from metaobjects.library import library_sources
+
+        lib_sources = library_sources(libraries)
+
+    sources = [FileSource(p, id=collection.file_ids.get(p)) for p in collection.files]
+
+    if providers:
+        from metaobjects.core_types import core_providers
+
+        loader = MetaDataLoader(providers=[*core_providers, *providers], strict=strict)
+    else:
+        loader = MetaDataLoader(strict=strict)
+
+    result = loader.load([*lib_sources, *sources])
+    if not result.errors:
+        refuse_unowned_packages(result.root, collection.imported_packages, collection.imported_nodes)
+    return result
+
+
+def _load_root_from_collection(
+    collection: Collection,
     strict: bool = False,
     providers: list[object] | None = None,
     libraries: list[str] | None = None,
 ) -> tuple[MetaData | None, list[str]]:
-    """Load metadata from an explicit file list rather than a single directory.
-
-    The source-resolution ladder's ``.metaobjects/config.json`` rung
-    (:func:`resolve_metadata_location`) can resolve to several directories or
-    individual files, which a single ``from_directory`` call cannot express —
-    so this loads each resolved file as its own ``file://`` source via
-    :meth:`MetaDataLoader.from_uris`. Mirrors :func:`_load_root`'s ``strict``/
-    ``providers``/``libraries`` contract exactly.
+    """Load a resolved `Collection` — the source-resolution ladder's
+    ``.metaobjects/config.json`` rung (:func:`resolve_metadata_location`), which
+    can resolve to several directories, individual files, AND a dependency's
+    snapshot artifact, none of which a single ``from_directory`` call can
+    express. Mirrors :func:`_load_root`'s ``strict``/``providers``/``libraries``
+    contract exactly (CLI-facing: flattened error messages, never a raised
+    exception for a plain loader error).
     """
-    uris = [Path(p).resolve().as_uri() for p in paths]
-    if providers:
-        from metaobjects.core_types import core_providers
-
-        result = MetaDataLoader.from_uris(
-            uris,
-            providers=[*core_providers, *providers],
-            strict=strict,
-            libraries=libraries,
-        )
-    else:
-        result = MetaDataLoader.from_uris(uris, strict=strict, libraries=libraries)
+    try:
+        result = _load_collection_result(collection, strict=strict, providers=providers, libraries=libraries)
+    except ParseError as exc:
+        return None, [f"{exc.code}: {exc}"]
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
@@ -369,6 +405,51 @@ def _parse_entities(value: str | None) -> list[str] | None:
     return names or None
 
 
+def _refuse_imported_entities(
+    entity_names: list[str] | None,
+    root: MetaData,
+    collection: Collection,
+) -> str | None:
+    """FR-023 §11.1 item 2 — the error message for a target's ``entities:`` (or
+    ``--entities``) naming ONLY objects imported from a dependency and excluded
+    from output (imported metadata is load-only by default; only the project's
+    own `scope.include` naming the package literally opts it in). Returns
+    `None` for every other case, INCLUDING a name matching nothing at all —
+    that stays the runner's own "no entities matched" warning, unchanged.
+    Mirrors the TS `refuseImportedPositional` (`cli/src/commands/gen.ts`).
+
+    A named entity is a bare NAME, not a fully-qualified one, so two packages
+    declaring the same short name are both candidates; the refusal fires only
+    when NONE of them would generate.
+    """
+    if not entity_names:
+        return None
+    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT
+    # (metadata.root is never extended, so own == effective) — mirrors
+    # `codegen.runner._objects`.
+    all_objects = [
+        c for c in root.own_children() if c.type == TYPE_OBJECT and isinstance(c, MetaObject)
+    ]
+    for name in entity_names:
+        matches = [o for o in all_objects if o.name == name]
+        if not matches:
+            continue  # nothing loaded by this name — the runner's own warning covers it
+        all_excluded = all(
+            collection.imported(o.resolution_key()) and not collection.in_scope(o.resolution_key())
+            for o in matches
+        )
+        if not all_excluded:
+            continue
+        fqn = matches[0].resolution_key()
+        pkg = package_of_resolution_key(fqn)
+        dep_name = imported_from(pkg, collection.dependencies) or pkg
+        return (
+            f"error: '{name}' ({fqn}) is imported from dependency '{dep_name}' and is not "
+            "generated here — add its package to scope.include in .metaobjects/config.json"
+        )
+    return None
+
+
 def _run_suite(
     root: MetaData,
     out_dir: str,
@@ -380,6 +461,7 @@ def _run_suite(
     project_root: str | None = None,
     baseline: str = "default",
     refused_out: list[str] | None = None,
+    select: Callable[[str], bool] | None = None,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -387,6 +469,12 @@ def _run_suite(
     metadata once and run multiple passes against it (the default Python suite +
     the ``--template-spec`` pass). See :func:`_generate` for the parameter
     semantics. Returns the written paths.
+
+    ``select`` (FR-023 §11.1 item 2) — normally a resolved `Collection`'s
+    `in_scope`: the output filter that excludes an imported dependency's
+    objects from codegen unless the project's own `scope.include` names their
+    package. `None` (the default) admits everything, byte-identical to a
+    project with no dependencies.
 
     NOTE: ``run_gen``'s output-path collision guard is per-pass — a
     ``--template-spec`` ``outputPattern`` that collides with a default-suite path
@@ -420,7 +508,7 @@ def _run_suite(
         baseline=baseline,
     )
     suite = generators if generators is not None else _default_generators()
-    result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
+    result = run_gen(config, root, generators=suite, entity_filter=entity_filter, select=select)
     for warning in result.warnings:
         print(f"warning: {warning}")
     # A refusal is a FAILED gate, and the return value carries only what was WRITTEN — so
@@ -557,8 +645,11 @@ def template_spec_generators(
 def resolve_metadata_location(
     config: ProjectConfig | None,
     root: Path,
-) -> list[str]:
+) -> Collection:
     """The precedence ladder for where metadata lives, rungs 2-4. First match wins.
+    Returns the full FR-023-aware `Collection` at EVERY rung — `dependencies` (and
+    `scope`/`migrate.scope`) are read from `root`'s neutral `.metaobjects/config.json`
+    regardless of which rung supplied the OWN files (DESIGN §2.3).
 
     2. This port's native surface — ``metadata`` in ``metaobjects.config.yaml``.
     3. ``sources`` in the port-neutral ``.metaobjects/config.json``.
@@ -583,23 +674,27 @@ def resolve_metadata_location(
     through to the next rung. See
     `docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md` §5.
     """
-    from metaobjects.config.source_resolver import resolve_collection, resolve_sources
+    from metaobjects.config.source_resolver import (
+        build_collection,
+        resolve_collection_full,
+        resolve_sources,
+    )
 
     if config is not None:
         # `config.metadata_dir()` is already resolved to an absolute path
         # (`ProjectConfig._resolve_under`), so the base passed here is
-        # likewise irrelevant.
-        return [
-            str(p) for p in resolve_sources(root, [{"path": config.metadata_dir()}])
-        ]
+        # likewise irrelevant to resolving OWN files — but `root` is still
+        # where `.metaobjects/config.json` (dependencies/scope) is read from.
+        own_files = resolve_sources(root, [{"path": config.metadata_dir()}])
+        return build_collection(root, own_files)
 
-    # Rungs 3 and 4 both live in `resolve_collection`.
-    return [str(p) for p in resolve_collection(root)]
+    # Rungs 3 and 4 both live in `resolve_collection_full`.
+    return resolve_collection_full(root)
 
 
 def _resolve_metadata_location_or_print_error(
     config: ProjectConfig | None, root: Path
-) -> list[str] | None:
+) -> Collection | None:
     """``resolve_metadata_location`` for the no-explicit-``metadata_dir`` CLI
     paths (``docs``, and the ``gen``/``verify --codegen`` neutral fallbacks),
     translating a raised ``ParseError`` into this CLI's print-and-return-1
@@ -657,8 +752,8 @@ def _cmd_docs(args: argparse.Namespace) -> int:
             except ConfigError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 1
-        paths = _resolve_metadata_location_or_print_error(config, root_dir)
-        if paths is None:
+        collection = _resolve_metadata_location_or_print_error(config, root_dir)
+        if collection is None:
             return 1
         docs_libraries: list[str] | None = None
         if config is not None:
@@ -673,8 +768,8 @@ def _cmd_docs(args: argparse.Namespace) -> int:
                 return 1
             providers = [*providers, *config_providers]
             docs_libraries = config.libraries
-        root, errors = _load_root_from_paths(
-            paths, providers=providers, libraries=docs_libraries
+        root, errors = _load_root_from_collection(
+            collection, providers=providers, libraries=docs_libraries
         )
         project_default = root_dir.name
     else:
@@ -873,6 +968,7 @@ def _run_gen_targets(
     project_root: str | None = None,
     baseline: str = "default",
     refused_out: list[str] | None = None,
+    select: Callable[[str], bool] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's suite into its ``outDir``. Returns (all_written, errors).
 
@@ -887,6 +983,9 @@ def _run_gen_targets(
     path across targets and record an error when two targets emit the same one.
     (Detection is post-write — the colliding file may already be on disk — but the
     command still fails, so a misconfigured gate is caught in CI.)
+
+    ``select`` (FR-023 §11.1 item 2) — see :func:`_run_suite`; the SAME predicate
+    applies to every target, since a `Collection`'s scope is project-wide.
     """
     all_written: list[str] = []
     seen: dict[str, str] = {}  # full path -> target name
@@ -903,6 +1002,7 @@ def _run_gen_targets(
             written = _run_suite(
                 root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
                 project_root=project_root, baseline=baseline, refused_out=refused_out,
+                select=select,
             )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -942,8 +1042,8 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
         return 2
 
     root_dir = Path.cwd()
-    paths = _resolve_metadata_location_or_print_error(None, root_dir)
-    if paths is None:
+    collection = _resolve_metadata_location_or_print_error(None, root_dir)
+    if collection is None:
         return 1
 
     generators: list[Generator] | None = None
@@ -960,12 +1060,17 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
     if not providers_ok:
         return 1
 
-    root, load_errors = _load_root_from_paths(paths, providers=providers)
+    root, load_errors = _load_root_from_collection(collection, providers=providers)
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
+
+    imported_refusal = _refuse_imported_entities(entities, root, collection)
+    if imported_refusal is not None:
+        print(imported_refusal, file=sys.stderr)
+        return 2
 
     gen_state = str(root_dir.resolve() / ".metaobjects" / ".gen-state")
     column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
@@ -973,6 +1078,7 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
     written = _run_suite(
         root, args.out, generators, entities,
         gen_state_dir=gen_state, column_naming=column_naming,
+        select=collection.in_scope,
         project_root=str(root_dir.resolve()),
         baseline=getattr(args, "baseline", None) or "default",
         refused_out=refused,
@@ -1038,14 +1144,29 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     if not providers_ok:
         return 1
 
-    root, load_errors = _load_root(
-        config.metadata_dir(), providers=providers, libraries=config.libraries
+    # FR-023: rung 2 (this native `metaobjects.config.yaml` surface) still reads
+    # `dependencies`/`scope`/`migrate.scope` from the project's neutral
+    # `.metaobjects/config.json` (DESIGN §2.3 — dependencies apply at EVERY rung).
+    collection = _resolve_metadata_location_or_print_error(
+        config, project_root_for(config.metadata_dir())
+    )
+    if collection is None:
+        return 1
+
+    root, load_errors = _load_root_from_collection(
+        collection, providers=providers, libraries=config.libraries
     )
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
+
+    for t in targets:
+        imported_refusal = _refuse_imported_entities(t.entities, root, collection)
+        if imported_refusal is not None:
+            print(imported_refusal, file=sys.stderr)
+            return 2
 
     refused: list[str] = []
     written, errors = _run_gen_targets(
@@ -1054,6 +1175,7 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         project_root=str(project_root_for(config.metadata_dir())),
         baseline=getattr(args, "baseline", None) or "default",
         refused_out=refused,
+        select=collection.in_scope,
     )
     if errors:
         for msg in errors:
@@ -1323,8 +1445,8 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
         return 2
 
     root_dir = Path.cwd()
-    paths = _resolve_metadata_location_or_print_error(None, root_dir)
-    if paths is None:
+    collection = _resolve_metadata_location_or_print_error(None, root_dir)
+    if collection is None:
         return 1
 
     strict = not getattr(args, "lax", False)
@@ -1338,7 +1460,7 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
-        root, load_errors = _load_root_from_paths(paths, strict=strict, providers=providers)
+        root, load_errors = _load_root_from_collection(collection, strict=strict, providers=providers)
         if root is None:
             print("error: failed to load metadata:", file=sys.stderr)
             for msg in load_errors:
@@ -1347,8 +1469,14 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
                 print(_strict_load_hint(), file=sys.stderr)
             return 1
 
+        imported_refusal = _refuse_imported_entities(entities, root, collection)
+        if imported_refusal is not None:
+            print(imported_refusal, file=sys.stderr)
+            return 2
+
         _run_suite(
-            root, tmp, None, entities, gen_state_dir=None, column_naming=column_naming
+            root, tmp, None, entities, gen_state_dir=None, column_naming=column_naming,
+            select=collection.in_scope,
         )
         expected = _relative_set(Path(tmp))
         committed = _relative_set(Path(args.out))
@@ -1429,8 +1557,16 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     if not providers_ok:
         return 1
 
-    root, load_errors = _load_root(
-        config.metadata_dir(), strict=strict, providers=providers, libraries=config.libraries
+    # FR-023: see the matching comment in `_cmd_gen_config` — dependencies apply
+    # at this rung too.
+    collection = _resolve_metadata_location_or_print_error(
+        config, project_root_for(config.metadata_dir())
+    )
+    if collection is None:
+        return 1
+
+    root, load_errors = _load_root_from_collection(
+        collection, strict=strict, providers=providers, libraries=config.libraries
     )
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
@@ -1439,6 +1575,12 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         if strict and any("ERR_UNKNOWN_ATTR" in m for m in load_errors):
             print(_strict_load_hint(), file=sys.stderr)
         return 1
+
+    for t in closure:
+        imported_refusal = _refuse_imported_entities(t.entities, root, collection)
+        if imported_refusal is not None:
+            print(imported_refusal, file=sys.stderr)
+            return 2
 
     with tempfile.TemporaryDirectory() as temp_root:
         # Map each unique real outDir to ONE temp slot (shared real dir => shared slot).
@@ -1456,7 +1598,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         # gen_state_dir stays None: this regenerates into a temp tree purely to
         # diff, so recording a manifest would mutate the user's project from a
         # read-only drift check, keyed to a directory deleted seconds later.
-        _written, errors = _run_gen_targets(config, remapped, root)
+        _written, errors = _run_gen_targets(config, remapped, root, select=collection.in_scope)
         if errors:
             for msg in errors:
                 print(f"error: {msg}", file=sys.stderr)

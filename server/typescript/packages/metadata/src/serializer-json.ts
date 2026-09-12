@@ -32,7 +32,8 @@ import {
   DEFAULT_SOURCE_KIND,
   PHYSICAL_NAME_ATTR_BY_KIND,
 } from "./persistence/source/source-constants.js";
-import { TYPE_SOURCE } from "./shared/base-types.js";
+import { TYPE_METADATA, TYPE_SOURCE, SUBTYPE_ROOT } from "./shared/base-types.js";
+import { packageOfResolutionKey } from "./naming.js";
 
 const SOURCE_RDB_FUSED_KEY = `${TYPE_SOURCE}${TYPE_SUBTYPE_SEPARATOR}${SOURCE_SUBTYPE_RDB}`;
 
@@ -300,4 +301,48 @@ function sortAttrValue(value: unknown): unknown {
     return result;
   }
   return value;
+}
+
+// ---------------------------------------------------------------------------
+// serializeSharedDocument — the FR-023 shared-model artifact form
+//
+// One canonical-JSON `metadata.root` document holding top-level nodes from any
+// number of packages: NO root `package`, and every top-level node carries its own
+// explicit `package` (a root-level child may name its package — ADR-0029's
+// addressing model — so the document re-loads to the same resolution keys in
+// every port). Each node is its canonicalSerialize form: raw own-layer, `extends`
+// preserved (not flattened), attribute keys alphabetized, the FR-016 physical-name
+// rewrite applied. Top-level nodes are sorted by resolution key; each node's
+// children keep their authored order. Body key order: name, package, then the
+// canonical rest. Byte-identical to Python's `serialize_shared_document`.
+// ---------------------------------------------------------------------------
+
+export function serializeSharedDocument(nodes: readonly MetaData[]): string {
+  const sorted = [...nodes].sort((a, b) => {
+    const ka = a.resolutionKey();
+    const kb = b.resolutionKey();
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  const children = sorted.map((node) => {
+    const pkg = packageOfResolutionKey(node.resolutionKey());
+    if (pkg === "") {
+      throw new Error(
+        `serializeSharedDocument: ${node.resolutionKey()} has no package; a shared document carries only packaged nodes`,
+      );
+    }
+    const parsed = JSON.parse(canonicalSerialize(node)) as Record<string, Record<string, unknown>>;
+    const [fused, body] = Object.entries(parsed)[0]!;
+    // The node's own `package` (if it declared one) is replaced by the RESOLVED
+    // one: a node inheriting its file's root package declares none of its own.
+    const ordered: Record<string, unknown> = {
+      [RESERVED_KEY_NAME]: body[RESERVED_KEY_NAME],
+      [RESERVED_KEY_PACKAGE]: pkg,
+    };
+    for (const [key, value] of Object.entries(body)) {
+      if (key !== RESERVED_KEY_NAME && key !== RESERVED_KEY_PACKAGE) ordered[key] = value;
+    }
+    return { [fused]: ordered };
+  });
+  const doc = { [fusedKey(TYPE_METADATA, SUBTYPE_ROOT)]: { [RESERVED_KEY_CHILDREN]: children } };
+  return JSON.stringify(doc, null, 2) + "\n";
 }

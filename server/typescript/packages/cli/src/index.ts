@@ -17,7 +17,7 @@ const VERSION = cliVersion();
  * human text. It is named ONCE and used by both the warning below and the help
  * text above, so the two cannot drift apart.
  */
-const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types"];
+const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types", "deps"];
 
 const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 
@@ -32,10 +32,13 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from your declared metadata
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
+  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+                        snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
+  deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
-  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs (bare = --templates)
+  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs / --deps (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
@@ -94,6 +97,10 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         run would emit; never reports an extra file, because docs.outDir
                         holds hand-written documentation MetaObjects did not write.
                         Needs metaobjects.config.ts; exit 2 if absent.
+  --deps                Dependency drift — re-resolve each declared dependency and compare
+                        its installed artifact's hash against .metaobjects/deps.lock.json
+                        (the same check 'meta deps check' runs). Never part of the bare-verify
+                        default — it needs the publisher reachable, which CI may not have.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
@@ -108,6 +115,8 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint
+                        (never a gate — this lint can't fail the build)
   --limit <n|all>       How many advisory lines TEXT output prints per section before
                         it truncates (default 20). Never applies to --format
                         toon/json, which carry every finding and every diagnostic.
@@ -192,6 +201,38 @@ generator like form/hooks/grid, or one a package gains later. It prints the
 import line to paste into metaobjects.config.ts, and it never overwrites a
 file you already own unless you pass --force.
 `,
+  deps: `meta deps — sync a declared metadata dependency's committed snapshot
+
+USAGE:
+  meta deps sync [<name>...]   Resolve each declared dependency (path transport only in
+                                this release — npm/python refuse by name), validate its
+                                manifest + artifact, copy it into .metaobjects/deps/<name>/,
+                                and pin it in .metaobjects/deps.lock.json. Naming one or more
+                                <name>s syncs only those; bare 'sync' syncs everything
+                                declared. A dependency removed from config is PRUNED from
+                                the lock and its snapshot dir deleted, every run.
+  meta deps list                One line per locked dependency: name, version, hash8,
+                                node count, packages.
+  meta deps check                Re-resolve each declared dependency (path transport, same
+                                as sync steps 1-2) and compare its INSTALLED artifact's hash
+                                against .metaobjects/deps.lock.json. Read-only — never
+                                touches the lock or the snapshot. Exits 1 if any dependency
+                                has drifted or cannot be resolved (ERR_DEPENDENCY_UPSTREAM_DRIFT).
+
+FLAGS:
+  --dry-run              Plan and report; write nothing (sync only)
+  --format <toon|json|text>   Output format (global flag; default toon off-TTY)
+  --help, -h              Print this help
+
+Only the "path" transport resolves in this release — a "npm"/"python" dependency spec is
+valid config (reserved for a future toolchain) but 'meta deps sync' refuses it by name:
+"transport \`npm\` is not supported by this toolchain yet; use \`path\`".
+
+The lock is the ONLY thing 'meta deps sync' writes to besides the snapshot directory —
+sync never touches your own metadata files. 'meta deps check' compares the lock against
+what is installed right now (the same check 'meta verify --deps' runs); 'meta deps sync'
+only ever compares against what config DECLARES.
+`,
   verify: `meta verify — drift gate (templates / DB schema / codegen / migration replay)
 
 USAGE:
@@ -210,6 +251,12 @@ FLAGS:
                         a namespace MetaObjects owns); the count of exempt pages is
                         reported either way, and a run where every page is ignored is
                         refused rather than reported clean.
+  --deps                Dependency drift — re-resolve each declared dependency exactly as
+                        'meta deps check' does and compare its installed artifact's hash
+                        against .metaobjects/deps.lock.json. Exits 1 if any dependency has
+                        drifted or cannot be resolved (ERR_DEPENDENCY_UPSTREAM_DRIFT). NEVER
+                        part of the bare-verify default — it needs the publisher reachable,
+                        which CI may not have.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
@@ -237,6 +284,8 @@ FLAGS:
                         migrating a model onto a registered provider.
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint —
+                        never a gate; this lint can't fail the build
   --limit <n|all>       Advisory lines TEXT output prints PER SECTION before truncating
                         (default 20; per-section so the authoring lint can never push
                         the gate's own warnings off the end)
@@ -258,6 +307,13 @@ lint in its own section: names that are not addressable, prose slots holding one
 sentence twice, content written where no surface reads it. Warnings only — it can
 never fail the build. Opt out with --no-requirement-lint or META_NO_REQUIREMENT_LINT=1.
 The requirements GATE itself (dangling refs, link floor, levels) always runs.
+
+verify also prints an ADVISORY overlay authoring lint, in its own section: a
+top-level declaration redeclared in two or more files where more than one
+redeclaration lacks 'overlay: true' — today's default merge rule reuses it
+silently, but the same unflagged redeclaration silently becomes a NEW object
+the day the target is renamed or removed upstream. Warnings only — it can
+never fail the build. Opt out with --no-overlay-lint or META_NO_OVERLAY_LINT=1.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 
@@ -529,6 +585,10 @@ export async function run(argv: string[]): Promise<number> {
     case "eject": {
       const { ejectCommand } = await import("./commands/eject.js");
       return ejectCommand(rest, cwd);
+    }
+    case "deps": {
+      const { depsCommand } = await import("./commands/deps.js");
+      return depsCommand(rest, cwd, fmt);
     }
     case "export": {
       const { exportCommand } = await import("./commands/export.js");

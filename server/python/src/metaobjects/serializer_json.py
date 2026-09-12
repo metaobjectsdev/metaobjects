@@ -11,7 +11,8 @@ from .meta.persistence.source.source_constants import (
     SOURCE_ATTR_TABLE,
     SOURCE_SUBTYPE_RDB,
 )
-from .shared.base_types import TYPE_SOURCE
+from .naming import package_of_resolution_key
+from .shared.base_types import SUBTYPE_ROOT, TYPE_METADATA, TYPE_SOURCE
 from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP
 from .shared.structural import (
     KEY_ABSTRACT,
@@ -40,6 +41,39 @@ def canonical_serialize_effective(node: MetaData) -> str:
     members are inlined rather than referenced.
     """
     return _serialize(node, effective=True)
+
+
+def serialize_shared_document(nodes: list[MetaData]) -> str:
+    """The FR-023 shared-model artifact form: one canonical-JSON ``metadata.root``
+    document with NO root ``package``, whose top-level nodes each carry their own
+    explicit ``package`` (so the document re-loads to the same resolution keys in
+    every port).
+
+    Each node is its :func:`canonical_serialize` form — raw own-layer, ``extends``
+    preserved, attribute keys alphabetized, the FR-016 physical-name rewrite applied.
+    Top-level nodes are sorted by resolution key; each node's children keep their
+    authored order. Body key order: name, package, then the canonical rest.
+    Byte-identical to TS ``serializeSharedDocument``.
+    """
+    children: list[dict[str, object]] = []
+    for node in sorted(nodes, key=lambda n: n.resolution_key()):
+        pkg = package_of_resolution_key(node.resolution_key())
+        if not pkg:
+            raise ValueError(
+                f"serialize_shared_document: {node.resolution_key()} has no package; "
+                f"a shared document carries only packaged nodes"
+            )
+        fused = f"{node.type}{FUSED_KEY_SEP}{node.sub_type}"
+        body = _body(node, False)
+        # The rewrite edits source.rdb bodies IN PLACE, so ``body`` stays current.
+        _rewrite_source_rdb_physical_names({fused: body})
+        # The node's own ``package`` (if it declared one) is replaced by the
+        # RESOLVED one: a node inheriting its file's root package declares none.
+        ordered: dict[str, object] = {KEY_NAME: body[KEY_NAME], KEY_PACKAGE: pkg}
+        ordered.update((k, v) for k, v in body.items() if k not in (KEY_NAME, KEY_PACKAGE))
+        children.append({fused: ordered})
+    doc = {f"{TYPE_METADATA}{FUSED_KEY_SEP}{SUBTYPE_ROOT}": {KEY_CHILDREN: children}}
+    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
 
 def _serialize(node: MetaData, effective: bool) -> str:

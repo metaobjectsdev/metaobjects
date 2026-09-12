@@ -19,6 +19,36 @@
 export { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, AllowTokenEnum } from "./config.js";
 export type { Config } from "./config.js";
 
+// Metadata dependencies (FR-023) — the `dependencies` config key's schema,
+// constants, the manifest/lock schemas + integrity hashing, and the snapshot
+// verification + exclusion-key helpers `resolveCollection` composes into
+// `imported` / `inScope` / `inMigrateScope` (DESIGN §4.2, §11.1 item 2).
+export {
+  DEPS_DIR,
+  LOCK_FILE,
+  MANIFEST_FILE,
+  ARTIFACT_SUFFIX,
+  DEPENDENCY_SOURCE_ID_PREFIX,
+  INTEGRITY_PREFIX,
+  DependencySpecSchema,
+  dependencyName,
+  IntegritySchema,
+  DependencyManifestSchema,
+  LockEntrySchema,
+  LockSchema,
+  sha256Integrity,
+  dependencySourceId,
+  readLock,
+  writeLock,
+  verifySnapshot,
+  importedPackagesOf,
+  importedNodesOf,
+  explicitlyIncludes,
+} from "./dependencies.js";
+// `DependencyManifest`, not `Manifest`: the agent-context re-export below already
+// publishes that name, and an explicit export shadows a star one.
+export type { DependencySpec, DependencyManifest, LockEntry, Lock, ResolvedDependency } from "./dependencies.js";
+
 // Meta Forge metadata types + attribute name constants (registered into a
 // TypeRegistry to let Loader parse decision/principle/etc. children + the
 // @forge* attribute namespace).
