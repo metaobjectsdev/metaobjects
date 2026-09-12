@@ -253,104 +253,6 @@ public class MetaDataLoader
         };
     }
 
-    // -------------------------------------------------------------------------
-    // #160 — overlay-only source partition (stable, overlay-only sources last)
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Stable-partition <paramref name="sources"/> so that "overlay-only" sources —
-    /// every top-level object declaration carries <c>overlay: true</c>, i.e. the
-    /// source declares no base objects of its own and only re-opens objects declared
-    /// elsewhere — are parsed LAST. Preserves original order within each group.
-    /// <para>
-    /// A source whose content can't be read or structurally scanned stays in the base
-    /// group (never overlay-only) — this partition must never crash the loader; any
-    /// genuine read/parse failure surfaces later, in the real parse loop.
-    /// </para>
-    /// </summary>
-    private static IReadOnlyList<IMetaDataSource> PartitionOverlayLast(
-        IReadOnlyList<IMetaDataSource> sources)
-    {
-        var baseSources = new List<IMetaDataSource>();
-        var overlayOnly = new List<IMetaDataSource>();
-        foreach (IMetaDataSource source in sources)
-        {
-            bool isOverlayOnly = false;
-            try
-            {
-                isOverlayOnly = IsOverlayOnlySource(source.Read(), source.Format);
-            }
-            catch
-            {
-                isOverlayOnly = false;
-            }
-            (isOverlayOnly ? overlayOnly : baseSources).Add(source);
-        }
-        baseSources.AddRange(overlayOnly);
-        return baseSources;
-    }
-
-    /// <summary>
-    /// Structurally scan a source's raw content (JSON via <see cref="JsonNode"/>;
-    /// sigil-free authoring YAML via the raw YAML walker — <c>overlay: true</c> is a
-    /// bare key before desugar) and report whether every top-level object declaration
-    /// under <c>metadata.root.children</c> carries <c>overlay: true</c> (and there is
-    /// at least one).
-    /// </summary>
-    private static bool IsOverlayOnlySource(string content, MetaDataFormat format)
-    {
-        // Strip UTF-8 BOM (mirrors Parser.ParseJson / ParserYaml).
-        string normalized = content.Length > 0 && content[0] == '﻿' ? content[1..] : content;
-
-        JsonNode? parsed;
-        switch (format)
-        {
-            case MetaDataFormat.Json:
-                parsed = JsonNode.Parse(normalized);
-                break;
-            case MetaDataFormat.Yaml:
-                var stream = new YamlStream();
-                using (var reader = new StringReader(normalized))
-                {
-                    stream.Load(reader);
-                }
-                YamlNode? yamlRoot = stream.Documents.Count > 0
-                    ? stream.Documents[0].RootNode
-                    : null;
-                parsed = YamlPositionWalker.Walk(yamlRoot);
-                break;
-            default:
-                return false;
-        }
-        return RootIsOverlayOnly(parsed);
-    }
-
-    /// <summary>
-    /// True when the structurally-parsed root has ≥1 child and every top-level child
-    /// node carries <c>overlay: true</c> (declares no base objects).
-    /// </summary>
-    private static bool RootIsOverlayOnly(JsonNode? parsed)
-    {
-        if (parsed is not JsonObject rootWrapper) return false;
-        const string rootKey = "metadata.root"; // TYPE_METADATA + "." + SUBTYPE_ROOT
-        if (rootWrapper[rootKey] is not JsonObject rootBody) return false;
-        if (rootBody[Structural.RESERVED_KEY_CHILDREN] is not JsonArray children) return false;
-        if (children.Count == 0) return false;
-        foreach (JsonNode? child in children)
-        {
-            if (child is not JsonObject wrapper || wrapper.Count == 0) return false;
-            foreach (var kvp in wrapper)
-            {
-                if (kvp.Value is not JsonObject body) return false;
-                JsonNode? overlay = body[Structural.RESERVED_KEY_OVERLAY];
-                bool isOverlay = overlay is JsonValue v
-                    && v.TryGetValue(out bool b)
-                    && b;
-                if (!isOverlay) return false;
-            }
-        }
-        return true;
-    }
 
     // -------------------------------------------------------------------------
     // Load — synchronous pipeline over IReadOnlyList<IMetaDataSource>
@@ -384,18 +286,17 @@ public class MetaDataLoader
 
         MetaRoot? root = null;
 
-        // #160 — this loader merges DURING parse (each source is streamed into the
-        // accumulating `root` via ParseOptions.IntoRoot). A source that ONLY re-opens
-        // objects declared elsewhere (every top-level object carries `overlay: true`)
-        // must therefore be parsed AFTER the sources that declare those base objects,
-        // or the overlaid node lands ahead of its base entities — leaving a projection
-        // before its base so order-dependent super-resolution can't resolve its
-        // `extends`/`@via`, and the streaming merge errors ERR_OVERLAY_NO_TARGET.
-        // Directory discovery order is not guaranteed to present base files first
-        // (basename sort can put an overlay-only file first), so stable-partition
-        // overlay-only sources to the END here, making the merge order-independent.
-        // Stable within each group preserves last-writer-wins overlay semantics.
-        sources = PartitionOverlayLast(sources);
+        // ADR-0055 — sources are parsed in the order given. Overlays are not applied
+        // during the walk: each parse QUEUES its `overlay: true` declarations and they
+        // are applied below, once every base exists. That retired the #160 overlay-only
+        // source partition, whose file-level predicate could not rescue a MIXED file
+        // (plain + overlay declarations together) and therefore left the load
+        // order-dependent — and divergent across ports, since every port's directory
+        // walk orders files differently.
+        //
+        // ADR-0055 — every source's queue, concatenated in parse order, which is already
+        // "source order, then declaration order within a source" (G2).
+        var pendingOverlays = new List<PendingOverlay>();
 
         // Parse all sources with super resolution DEFERRED so cross-file super
         // refs work — one source may declare a super target defined in a later
@@ -425,6 +326,10 @@ public class MetaDataLoader
                 Strict = _strict,
                 SourceName = source.Id,
                 DeferSuperResolution = true,
+                // ADR-0055 — queue overlays; this loader drains them after every source is
+                // parsed. Without it each document would drain its own queue and an overlay
+                // could still not reach a base declared in a later source.
+                DeferOverlays = true,
                 IntoRoot = root,  // null on first source; accumulating root thereafter
             };
 
@@ -445,6 +350,10 @@ public class MetaDataLoader
                         warnings.Add(w.Message);
                     }
                 }
+                if (parseResult.PendingOverlays is { Count: > 0 } parsePending)
+                {
+                    pendingOverlays.AddRange(parsePending);
+                }
                 root = parseResult.Root;
             }
             catch (ParseException ex)
@@ -456,6 +365,22 @@ public class MetaDataLoader
         // After the merge loop, BEFORE freeze — validation passes.
         if (root is not null)
         {
+            // ADR-0055 — apply every queued overlay now: all plain declarations from all
+            // sources are in the tree (G1), so a base/overlay relation no longer depends on
+            // file order (G4). Runs BEFORE super resolution so a node an overlay contributes
+            // is visible to every `extends` (G5).
+            if (pendingOverlays.Count > 0)
+            {
+                var applied = Parser.ApplyPendingOverlays(pendingOverlays, _registry, _strict);
+                warnings.AddRange(applied.Warnings);
+                errors.AddRange(applied.Errors);
+                envelopeWarnings.AddRange(applied.EnvelopeWarnings);
+                foreach (LoaderWarning w in applied.EnvelopeWarnings)
+                {
+                    warnings.Add(w.Message);
+                }
+            }
+
             // Pass 1: resolveDeferredSupers — resolve cross-file extends refs against the full merged root.
             var failures = SuperResolve.ResolveDeferredSupers(root);
             foreach (var failure in failures)

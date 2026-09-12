@@ -50,6 +50,17 @@ public sealed class ParseOptions(TypeRegistry registry)
     public MetaRoot? IntoRoot { get; init; }
 
     /// <summary>
+    /// ADR-0055 — if true, <c>overlay: true</c> declarations are QUEUED as the walk
+    /// meets them and returned on <see cref="ParseResult.PendingOverlays"/> for the
+    /// loader to apply once every source is parsed. Exactly the shape
+    /// <see cref="DeferSuperResolution"/> uses for <c>extends</c>, and for the same
+    /// reason: the target may be declared in a source parsed later, or later in this
+    /// same document. When false, <c>BuildTree</c> drains its own queue before
+    /// returning, so a standalone parse is order-independent within its one document.
+    /// </summary>
+    public bool DeferOverlays { get; init; }
+
+    /// <summary>
     /// If true, super refs that don't resolve at parse time are NOT a parse error;
     /// the model retains its raw <c>SuperRef</c> and a second pass resolves them
     /// after all input files are parsed.
@@ -84,7 +95,54 @@ public sealed record ParseResult(
     MetaRoot Root,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<MetaError> Errors,
-    IReadOnlyList<LoaderWarning>? EnvelopeWarnings = null);
+    IReadOnlyList<LoaderWarning>? EnvelopeWarnings = null,
+    IReadOnlyList<PendingOverlay>? PendingOverlays = null);
+
+/// <summary>
+/// ADR-0055 — one <c>overlay: true</c> declaration met during the walk and deferred.
+///
+/// <para>
+/// A deferred super hangs on its node as <c>SuperRef</c>; a deferred overlay has NO
+/// node — nothing was created — so everything needed to apply it, and to report
+/// against its own location long after the walk unwound, travels with it.
+/// </para>
+/// <para>
+/// <b>JsonElement lifetime.</b> <c>ParseJson</c> disposes the <c>JsonDocument</c> as
+/// soon as <c>BuildTree</c> returns, while a queued element outlives that — so
+/// <see cref="NodeData"/> holds a detached <c>Clone()</c>, not a view into a
+/// document that is about to go away.
+/// </para>
+/// </summary>
+public sealed class PendingOverlay
+{
+    /// <summary>Wrapper-key type. The lookup is by (type, name).</summary>
+    public required string Type { get; init; }
+    /// <summary>Wrapper-key subType — diagnostics only; never consulted when matching.</summary>
+    public required string SubType { get; init; }
+    public required string Name { get; init; }
+    /// <summary>The declaration body, DETACHED from its parse document.</summary>
+    public required JsonElement NodeData { get; init; }
+    /// <summary>
+    /// The node the target is sought under — the accumulating root for a top-level
+    /// overlay, the enclosing PLAIN node for a nested one. A live reference: the tree
+    /// is mutated in place and nodes are never replaced.
+    /// </summary>
+    public required MetaData Parent { get; init; }
+    /// <summary>Accumulating root, for super resolution of anything the overlay adds.</summary>
+    public required MetaData AccumRoot { get; init; }
+    /// <summary>Effective context package at the declaration site.</summary>
+    public required string InheritedContextPkg { get; init; }
+    /// <summary>Source id in force when this was queued.</summary>
+    public required string? Source { get; init; }
+    /// <summary>FR5b — source format discriminant at queue time.</summary>
+    public required MetaDataFormat SourceFormat { get; init; }
+    /// <summary>FR5b — JSONPath-keyed YAML position lookup, when parsing YAML.</summary>
+    public required IReadOnlyDictionary<string, YamlPosition>? YamlPositionsByPath { get; init; }
+    /// <summary>JSONPath stack at queue time, re-seeded before the declaration is applied.</summary>
+    public required JsonPathBuilder.Capture Path { get; init; }
+    /// <summary>ADR-0009 parse-time envelope of the declaration itself.</summary>
+    public required ErrorSource Envelope { get; init; }
+}
 
 // ---------------------------------------------------------------------------
 // Parser
@@ -155,6 +213,16 @@ public static class Parser
         public required bool Strict { get; init; }
         public required string? Source { get; init; }
         public required bool DeferSuperResolution { get; init; }
+        /// <summary>ADR-0055 — queue overlays rather than applying them in the walk.</summary>
+        public required bool DeferOverlays { get; init; }
+        /// <summary>
+        /// ADR-0055 — true while <see cref="Parser.ApplyPendingOverlays"/> is walking a
+        /// queued unit. A nested overlay inside that unit resolves find-or-fail right
+        /// there: its parent is complete by then and there is no later pass to defer to.
+        /// </summary>
+        public bool ApplyingOverlays { get; init; }
+        /// <summary>ADR-0055 — overlays deferred out of the walk, in encounter order.</summary>
+        public List<PendingOverlay> PendingOverlays { get; } = new();
         /// <summary>FR5b — source-format discriminant (set from <see cref="ParseOptions"/>).</summary>
         public required MetaDataFormat SourceFormat { get; init; }
         /// <summary>FR5b — JSONPath-keyed YAML position lookup (set when parsing YAML input).</summary>
@@ -417,6 +485,7 @@ public static class Parser
             Strict = opts.Strict,
             Source = opts.SourceName,
             DeferSuperResolution = opts.DeferSuperResolution,
+            DeferOverlays = opts.DeferOverlays,
             SourceFormat = opts.SourceFormat,
             YamlPositionsByPath = opts.YamlPositionsByPath,
         };
@@ -517,7 +586,7 @@ public static class Parser
             string contextPkg = TryGetString(rootData, RESERVED_KEY_PACKAGE)
                 ?? opts.IntoRoot.Package ?? "";
             ParseNodeInto(rootData, opts.IntoRoot, opts.IntoRoot, contextPkg, st);
-            return new ParseResult(opts.IntoRoot, st.Warnings, st.Errors, st.EnvelopeWarnings);
+            return Finish(st, opts, opts.IntoRoot);
         }
 
         // --- Fresh root mode: create a new root from the JSON ---
@@ -531,7 +600,7 @@ public static class Parser
             st,
             parentType: null, parent: null);
 
-        return new ParseResult((MetaRoot)root, st.Warnings, st.Errors, st.EnvelopeWarnings);
+        return Finish(st, opts, (MetaRoot)root);
     }
 
     // -----------------------------------------------------------------------
@@ -1015,12 +1084,49 @@ public static class Parser
 
         if (isOverlayNode)
         {
+            if (!st.ApplyingOverlays)
+            {
+                // ADR-0055 — an overlay is ALWAYS queued, never applied during the walk,
+                // and deliberately not conditioned on whether its target happens to exist
+                // yet. Applying it when the base is already present and queueing only on a
+                // miss is the "retry-on-miss" variant the ADR rejected: output would still
+                // depend on whether a base had been parsed yet. G1 — every plain
+                // declaration precedes every overlay — only holds if the queue is
+                // unconditional.
+                //
+                // This node is the OUTERMOST overlay on this branch and we do not descend
+                // into it, so its whole subtree (nested overlays included) is applied as
+                // one unit (G3). Returning null keeps the caller from adding a node that
+                // was never created.
+                st.PendingOverlays.Add(new PendingOverlay
+                {
+                    Type = type,
+                    SubType = subType,
+                    Name = name,
+                    // Detached: ParseJson disposes the JsonDocument as soon as BuildTree
+                    // returns, and this element is read long after that.
+                    NodeData = nodeData.Clone(),
+                    Parent = parent,
+                    AccumRoot = accumRoot,
+                    InheritedContextPkg = inheritedContextPkg,
+                    Source = st.Source,
+                    SourceFormat = st.SourceFormat,
+                    YamlPositionsByPath = st.YamlPositionsByPath,
+                    Path = st.Builder.Snapshot(),
+                    Envelope = st.CurrentSource(),
+                });
+                return null;
+            }
+
+            // Applying a queued unit: a nested overlay inside it resolves here (§2.2).
             if (existing is null)
             {
-                throw new ParseException(
-                    $"Overlay operation requested for [{type}:{name}] but no existing metadata found to merge into",
-                    ErrorCode.ERR_OVERLAY_NO_TARGET, st.Source, st.Builder.ToString(),
-                    st.CurrentSource());
+                st.Errors.Add(new MetaError(
+                    OverlayNoTargetMessage(type, name),
+                    ErrorCode.ERR_OVERLAY_NO_TARGET,
+                    st.Source,
+                    Envelope: st.CurrentSource()));
+                return null;
             }
             existing.SetIsMerge(true);
             ParseNodeInto(nodeData, existing, accumRoot, inheritedContextPkg, st);
@@ -1038,6 +1144,143 @@ public static class Parser
         return ParseNodeFresh(
             type, subType, nodeData, accumRoot, inheritedContextPkg, st,
             parent.Type, parent);
+    }
+
+    // -----------------------------------------------------------------------
+    // ADR-0055 — deferred overlay application.
+    // -----------------------------------------------------------------------
+
+    /// <summary>The one wording for a missing overlay target, so the in-walk door and
+    /// the deferred pass cannot drift.</summary>
+    private static string OverlayNoTargetMessage(string type, string name) =>
+        $"Overlay operation requested for [{type}:{name}] but no existing metadata found to merge into";
+
+    /// <summary>
+    /// The node an <c>overlay: true</c> declaration re-opens, or null.
+    ///
+    /// <para>
+    /// ADR-0039 sanctioned own read: an overlay targets the AUTHORED declaration layer.
+    /// ROOT-LEVEL lookups are PACKAGE-QUALIFIED — two files declaring the same
+    /// (type, name) under different packages are distinct root nodes, never a merge
+    /// pair. Nested children stay bare-name matched.
+    /// </para>
+    /// </summary>
+    private static MetaData? FindOverlayTarget(
+        MetaData parent, string type, string name, JsonElement nodeData, string inheritedContextPkg)
+    {
+        MetaData? existing = name != "" ? parent.OwnChildByTypeAndName(type, name) : null;
+        if (existing is not null && parent is MetaRoot)
+        {
+            string candidateKey = RootChildResolutionKey(nodeData, inheritedContextPkg, name);
+            if (existing.ResolutionKey() != candidateKey)
+            {
+                existing = parent.OwnChildren().FirstOrDefault(
+                    c => c.Type == type && c.Name == name && c.ResolutionKey() == candidateKey);
+            }
+        }
+        return existing;
+    }
+
+    /// <summary>The declaration's own address, for the resolved envelope's referrer.</summary>
+    private static string OverlayReferrer(PendingOverlay item) =>
+        item.Parent is MetaRoot
+            ? RootChildResolutionKey(item.NodeData, item.InheritedContextPkg, item.Name)
+            // ADR-0029 addressing — a nested overlay is named relative to its parent.
+            : $"{item.Parent.Name}.{item.Name}";
+
+    /// <summary>
+    /// ADR-0055 — apply queued <c>overlay: true</c> declarations against the complete tree.
+    ///
+    /// <para>
+    /// Called once, after every source is parsed and BEFORE deferred super resolution
+    /// (G5), with every source's queue concatenated in parse order — already "source
+    /// order, then declaration order within a source" (G2).
+    /// </para>
+    /// <para>
+    /// Each element is applied independently: a missing target is recorded and the
+    /// element skipped, so one bad overlay no longer takes its whole source down with
+    /// it the way the eager throw did.
+    /// </para>
+    /// </summary>
+    public static (IReadOnlyList<string> Warnings, IReadOnlyList<MetaError> Errors, IReadOnlyList<LoaderWarning> EnvelopeWarnings)
+        ApplyPendingOverlays(IReadOnlyList<PendingOverlay> pending, TypeRegistry registry, bool strict)
+    {
+        var warnings = new List<string>();
+        var errors = new List<MetaError>();
+        var envelopeWarnings = new List<LoaderWarning>();
+
+        foreach (PendingOverlay item in pending)
+        {
+            // Re-enter the walk state this declaration was queued under, so anything
+            // constructed now carries the declaration's own provenance and any error
+            // names its location — the walk that built them has long unwound.
+            var st = new ParseState
+            {
+                Registry = registry,
+                Strict = strict,
+                Source = item.Source,
+                // Anything the overlay adds may `extends` a node in any source; the
+                // loader resolves every ref after this pass.
+                DeferSuperResolution = true,
+                DeferOverlays = false,
+                ApplyingOverlays = true,
+                SourceFormat = item.SourceFormat,
+                YamlPositionsByPath = item.YamlPositionsByPath,
+            };
+            st.Builder.Restore(item.Path);
+
+            try
+            {
+                MetaData? target = FindOverlayTarget(
+                    item.Parent, item.Type, item.Name, item.NodeData, item.InheritedContextPkg);
+                if (target is null)
+                {
+                    // ADR-0009 FR5d — a reference that did not resolve, reported with the
+                    // declaration's own files/jsonPath.
+                    errors.Add(new MetaError(
+                        OverlayNoTargetMessage(item.Type, item.Name),
+                        ErrorCode.ERR_OVERLAY_NO_TARGET,
+                        item.Source,
+                        Envelope: ResolvedSource.From(
+                            item.Envelope, OverlayReferrer(item), $"{item.Type}:{item.Name}")));
+                    continue; // ParseNodeInto never entered — no partial state to unwind
+                }
+                target.SetIsMerge(true);
+                ParseNodeInto(item.NodeData, target, item.AccumRoot, item.InheritedContextPkg, st);
+            }
+            catch (ParseException ex)
+            {
+                // Per-element, as the loader already does per-source: a strict-mode
+                // problem must not abandon the remaining queue.
+                errors.Add(new MetaError(ex.Message, ex.Code, item.Source, Envelope: ex.Envelope));
+            }
+            finally
+            {
+                warnings.AddRange(st.Warnings);
+                errors.AddRange(st.Errors);
+                envelopeWarnings.AddRange(st.EnvelopeWarnings);
+            }
+        }
+
+        return (warnings, errors, envelopeWarnings);
+    }
+
+    /// <summary>
+    /// ADR-0055 — a caller that is not deferring gets its own queue drained here, so
+    /// "queue, then apply" is the only path through the parser and a single document is
+    /// order-independent on its own.
+    /// </summary>
+    private static ParseResult Finish(ParseState st, ParseOptions opts, MetaRoot root)
+    {
+        if (!opts.DeferOverlays && st.PendingOverlays.Count > 0)
+        {
+            var drained = ApplyPendingOverlays(st.PendingOverlays, opts.Registry, opts.Strict);
+            st.Warnings.AddRange(drained.Warnings);
+            st.Errors.AddRange(drained.Errors);
+            st.EnvelopeWarnings.AddRange(drained.EnvelopeWarnings);
+            st.PendingOverlays.Clear();
+        }
+        return new ParseResult(root, st.Warnings, st.Errors, st.EnvelopeWarnings, st.PendingOverlays);
     }
 
     // -----------------------------------------------------------------------

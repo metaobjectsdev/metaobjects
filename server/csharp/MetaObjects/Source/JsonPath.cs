@@ -52,6 +52,28 @@ public sealed class JsonPathBuilder
     public int Depth => _segments.Count;
 
     /// <summary>
+    /// ADR-0055 — capture the current stack so a declaration deferred out of the
+    /// walk can be re-seeded when it is applied. By then the walk that built this
+    /// path has unwound, so an error raised at application time would otherwise
+    /// carry the wrong path (or none).
+    /// </summary>
+    public Capture Snapshot() => new(_segments.ToArray());
+
+    /// <summary>ADR-0055 — re-seed this builder from a <see cref="Snapshot"/>.</summary>
+    public void Restore(Capture capture)
+    {
+        _segments.Clear();
+        _segments.AddRange(capture.Segments);
+    }
+
+    /// <summary>ADR-0055 — an opaque capture of a builder's stack.</summary>
+    public sealed class Capture
+    {
+        internal Segment[] Segments { get; }
+        internal Capture(Segment[] segments) => Segments = segments;
+    }
+
+    /// <summary>
     /// Render the current stack as a canonical JSONPath string.
     /// </summary>
     public override string ToString()
@@ -81,9 +103,11 @@ public sealed class JsonPathBuilder
         return sb.ToString();
     }
 
-    private enum SegmentKind { Key, Index }
+    // internal (not private) so the public ADR-0055 Capture can hold an array of
+    // these in an internal member without CS0053.
+    internal enum SegmentKind { Key, Index }
 
-    private readonly record struct Segment(SegmentKind Kind, string? Key, int Index);
+    internal readonly record struct Segment(SegmentKind Kind, string? Key, int Index);
 }
 
 /// <summary>
