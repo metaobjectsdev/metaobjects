@@ -567,6 +567,20 @@ export async function checkDependencies(
       const { manifest, artifactContent } = await readManifestDir(dir, name);
       // Never trust the manifest's own `integrity` field for the comparison —
       // re-hash the bytes actually sitting on disk right now.
+      //
+      // Right now this cannot observe a divergence from `manifest.integrity`:
+      // `readManifestDir` above (§4.1 step 2, :152-159) already throws
+      // `ERR_DEPENDENCY_MANIFEST_INVALID` unless `sha256Integrity(artifactContent)
+      // === manifest.integrity`, so by the time this line runs the two values are
+      // provably equal — this call is redundant WORK, not redundant SAFETY. The
+      // safety it buys is against `readManifestDir` changing out from under this
+      // function: if that check is ever relaxed, moved, or made conditional, this
+      // line becomes the ONLY thing standing between `check` and trusting a
+      // self-declared field, with no test that would fail to say so (the
+      // divergent state is unreachable through `checkDependencies`'s public
+      // signature today, precisely because `readManifestDir` forecloses it
+      // first). Read `manifest.integrity` here only if you have also confirmed
+      // `readManifestDir` still enforces the hash match unconditionally.
       const installedIntegrity = sha256Integrity(artifactContent);
 
       if (lockEntry === undefined) {
