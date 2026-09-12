@@ -607,3 +607,63 @@ export function parseEjectArgs(argv: string[]): EjectFlags {
     force: !!values.force,
   };
 }
+
+// ---------------------------------------------------------------------------
+// deps flags — FR-023 Phase 1a Task 14
+// ---------------------------------------------------------------------------
+
+/** `meta deps`'s subcommand. `sync` and `list` are this task's; `check` is
+ *  parsed (so the grammar and its usage errors are stable now) but not yet
+ *  implemented — Task 15 wires its behavior. */
+export type DepsSubverb = "sync" | "check" | "list";
+
+const DEPS_SUBVERBS: readonly DepsSubverb[] = ["sync", "check", "list"];
+
+export interface DepsFlags {
+  subverb: DepsSubverb;
+  /** Dependency names to narrow to — `sync`'s `[<name>…]`. Empty means "all
+   *  declared dependencies." Accepted (and ignored) by every subverb rather
+   *  than rejected outright: the positional grammar is one shape for all
+   *  three, and only `sync` gives the list meaning today. */
+  names: string[];
+  /** `sync` only: plan and report, write nothing. */
+  dryRun: boolean;
+}
+
+/** The flag table `parseDepsArgs` parses. Exported so the help text can be
+ *  gated against it. Deliberately carries no "format" key: `--format` is a
+ *  GLOBAL flag `index.ts` strips from argv before any command's parser ever
+ *  runs (see `MIGRATE_OPTIONS`'s "--migration-format, not --format" note
+ *  above) — `meta deps` becomes format-aware by index.ts adding "deps" to
+ *  `FORMAT_AWARE_COMMANDS` and passing the resolved `fmt` through, exactly as
+ *  gen/verify/migrate do, not by re-declaring the flag here. */
+export const DEPS_OPTIONS = {
+  "dry-run": { type: "boolean", default: false },
+} as const;
+
+export function parseDepsArgs(argv: string[]): DepsFlags {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: DEPS_OPTIONS,
+    strict: true,
+    allowPositionals: true,
+  });
+
+  const [subverbRaw, ...names] = positionals;
+  if (subverbRaw === undefined) {
+    throw new Error(
+      "meta deps requires a subcommand: sync | check | list. Try `meta deps sync`.",
+    );
+  }
+  if (!DEPS_SUBVERBS.includes(subverbRaw as DepsSubverb)) {
+    throw new Error(
+      `meta deps: unknown subcommand "${subverbRaw}"; expected one of: ${DEPS_SUBVERBS.join(", ")}.`,
+    );
+  }
+
+  return {
+    subverb: subverbRaw as DepsSubverb,
+    names,
+    dryRun: !!values["dry-run"],
+  };
+}

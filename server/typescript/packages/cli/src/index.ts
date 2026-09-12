@@ -17,7 +17,7 @@ const VERSION = cliVersion();
  * human text. It is named ONCE and used by both the warning below and the help
  * text above, so the two cannot drift apart.
  */
-const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types"];
+const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types", "deps"];
 
 const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 
@@ -32,6 +32,9 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from your declared metadata
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
+  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+                        snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
+  deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
@@ -191,6 +194,33 @@ the same operation for ANY generator — one you skipped at init time, a UI-tier
 generator like form/hooks/grid, or one a package gains later. It prints the
 import line to paste into metaobjects.config.ts, and it never overwrites a
 file you already own unless you pass --force.
+`,
+  deps: `meta deps — sync a declared metadata dependency's committed snapshot
+
+USAGE:
+  meta deps sync [<name>...]   Resolve each declared dependency (path transport only in
+                                this release — npm/python refuse by name), validate its
+                                manifest + artifact, copy it into .metaobjects/deps/<name>/,
+                                and pin it in .metaobjects/deps.lock.json. Naming one or more
+                                <name>s syncs only those; bare 'sync' syncs everything
+                                declared. A dependency removed from config is PRUNED from
+                                the lock and its snapshot dir deleted, every run.
+  meta deps list                One line per locked dependency: name, version, hash8,
+                                node count, packages.
+
+FLAGS:
+  --dry-run              Plan and report; write nothing (sync only)
+  --format <toon|json|text>   Output format (global flag; default toon off-TTY)
+  --help, -h              Print this help
+
+Only the "path" transport resolves in this release — a "npm"/"python" dependency spec is
+valid config (reserved for a future toolchain) but 'meta deps sync' refuses it by name:
+"transport \`npm\` is not supported by this toolchain yet; use \`path\`".
+
+The lock is the ONLY thing 'meta deps sync' writes to besides the snapshot directory —
+sync never touches your own metadata files. 'meta deps check' (a future release) compares
+the lock against what is installed right now; this command only ever compares against
+what config DECLARES.
 `,
   verify: `meta verify — drift gate (templates / DB schema / codegen / migration replay)
 
@@ -529,6 +559,10 @@ export async function run(argv: string[]): Promise<number> {
     case "eject": {
       const { ejectCommand } = await import("./commands/eject.js");
       return ejectCommand(rest, cwd);
+    }
+    case "deps": {
+      const { depsCommand } = await import("./commands/deps.js");
+      return depsCommand(rest, cwd, fmt);
     }
     case "export": {
       const { exportCommand } = await import("./commands/export.js");

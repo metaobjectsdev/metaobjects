@@ -14,6 +14,9 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from your declared metadata
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
+  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+                        snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
+  deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
@@ -27,7 +30,7 @@ COMMANDS:
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
   --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY).
-                            Honored by gen, verify, migrate, types; every other
+                            Honored by gen, verify, migrate, types, deps; every other
                             command prints text and says so if you pass it.
                             \`types\` is the one exception to the default: it prints TEXT
                             unless you ask for a format, on a TTY or not, because its
