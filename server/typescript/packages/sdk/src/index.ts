@@ -19,9 +19,9 @@
 export { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, AllowTokenEnum } from "./config.js";
 export type { Config } from "./config.js";
 
-// Metadata dependencies (FR-023) — the `dependencies` config key's schema
-// and constants. Resolution, the manifest, the lock and sync land in later
-// tasks.
+// Metadata dependencies (FR-023) — the `dependencies` config key's schema,
+// constants, and the manifest/lock schemas + integrity hashing (Task 7).
+// The collection resolver that actually consumes them lands in a later task.
 export {
   DEPS_DIR,
   LOCK_FILE,
@@ -31,8 +31,16 @@ export {
   INTEGRITY_PREFIX,
   DependencySpecSchema,
   dependencyName,
+  IntegritySchema,
+  ManifestSchema,
+  LockEntrySchema,
+  LockSchema,
+  sha256Integrity,
+  dependencySourceId,
+  readLock,
+  writeLock,
 } from "./dependencies.js";
-export type { DependencySpec } from "./dependencies.js";
+export type { DependencySpec, Manifest, LockEntry, Lock, ResolvedDependency } from "./dependencies.js";
 
 // Meta Forge metadata types + attribute name constants (registered into a
 // TypeRegistry to let Loader parse decision/principle/etc. children + the
