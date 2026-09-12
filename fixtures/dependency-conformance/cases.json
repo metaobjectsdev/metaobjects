@@ -734,6 +734,323 @@
         "app/.metaobjects/deps/acme-common/acme-common.metaobjects.json",
         "app/metaobjects/meta.app.json"
       ]
+    },
+    {
+      "name": "an-overlay-whose-target-was-removed-fails",
+      "tree": {
+        "metaobjects/meta.ov.json": "{\"metadata.root\":{\"package\":\"acme::common\",\"children\":[{\"object.entity\":{\"name\":\"Customer\",\"overlay\":true,\"children\":[{\"field.string\":{\"name\":\"email\",\"overlay\":true,\"children\":[{\"view.text\":{\"name\":\"emailView\"}}]}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v2-email-removed.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-c4ba364bff0071b164b127326c095d6d32915b57781271e0be64a7003c27ce7a",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.ov.json"
+      ],
+      "expectLoadError": "ERR_OVERLAY_NO_TARGET"
+    },
+    {
+      "name": "an-overlay-of-a-whole-object-absent-from-the-artifact-fails",
+      "tree": {
+        "metaobjects/meta.ov-invoice.json": "{\"metadata.root\":{\"package\":\"acme::common\",\"children\":[{\"object.entity\":{\"name\":\"Invoice\",\"overlay\":true,\"children\":[{\"field.string\":{\"name\":\"number\"}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.ov-invoice.json"
+      ],
+      "expectLoadError": "ERR_OVERLAY_NO_TARGET"
+    },
+    {
+      "name": "an-extends-whose-target-was-removed-fails",
+      "tree": {
+        "metaobjects/meta.vip.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Vip\",\"extends\":\"acme::common::Gone\",\"children\":[{\"source.rdb\":{\"@table\":\"vips\"}},{\"field.long\":{\"name\":\"id\"}},{\"field.string\":{\"name\":\"tier\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.vip.json"
+      ],
+      "expectLoadError": "ERR_UNRESOLVED_SUPER"
+    },
+    {
+      "name": "a-reference-whose-target-was-removed-fails",
+      "tree": {
+        "metaobjects/meta.vip2.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Vip\",\"children\":[{\"source.rdb\":{\"@table\":\"vips\"}},{\"field.long\":{\"name\":\"id\"}},{\"field.object\":{\"name\":\"addr\",\"@objectRef\":\"acme::common::Missing\",\"@storage\":\"jsonb\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.vip2.json"
+      ],
+      "expectLoadError": "ERR_UNRESOLVED_OBJECT_REF"
+    },
+    {
+      "name": "a-dotted-extends-whose-member-changed-subtype-fails",
+      "tree": {
+        "metaobjects/meta.args.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.value\":{\"name\":\"VipArgs\",\"children\":[{\"field.int\":{\"name\":\"email\",\"extends\":\"acme::common::Customer.email\"}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.args.json"
+      ],
+      "expectLoadError": "ERR_EXTENDS_TARGET_MISMATCH"
+    },
+    {
+      "name": "an-overlay-attr-the-base-now-sets-differently-conflicts",
+      "tree": {
+        "metaobjects/meta.ov-conflict.json": "{\"metadata.root\":{\"package\":\"acme::common\",\"children\":[{\"object.entity\":{\"name\":\"Customer\",\"overlay\":true,\"children\":[{\"field.string\":{\"name\":\"email\",\"overlay\":true,\"@maxLength\":80}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.ov-conflict.json"
+      ],
+      "expectLoadError": "ERR_MERGE_CONFLICT"
+    },
+    {
+      "name": "a-dependency-file-error-names-the-dependency",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "{\"metadata.root\":"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-b8f7f146735efb3ed6d5beca1407ea99009d76c6eda670fc5f0b704340f4f102",
+            "packages": [],
+            "nodes": []
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.app.json"
+      ],
+      "expectLoadError": "ERR_MALFORMED_JSON",
+      "expectErrorFiles": [
+        "dep:acme-common/acme-common.metaobjects.json"
+      ]
     }
   ]
 }

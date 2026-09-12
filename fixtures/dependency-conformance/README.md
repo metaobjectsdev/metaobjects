@@ -107,6 +107,43 @@ If a hash differs, fix the bytes (whitespace, trailing newline, CRLF) — never 
 pinned values; a hash change here is a change to what every port's `sync`/manifest test
 asserts against.
 
+## Load-time failure cases — the loader's existing errors are the first drift gate
+
+DESIGN §2.5 says that once `meta deps sync` replaces a stale snapshot, a consumer construct
+that pointed at something upstream removed or changed fails through the loader's *existing*
+errors — no new machinery. The seven cases below exercise that table end-to-end: the
+dependency's artifact loads first, the consumer's own file loads second and fails exactly
+where §2.5 predicts.
+
+| Upstream change / consumer construct | Case | Error (existing) |
+|---|---|---|
+| a node removed; local `overlay: true` targets it (field-level) | `an-overlay-whose-target-was-removed-fails` | `ERR_OVERLAY_NO_TARGET` |
+| a whole object the artifact never exports; local `overlay: true` targets it | `an-overlay-of-a-whole-object-absent-from-the-artifact-fails` | `ERR_OVERLAY_NO_TARGET` |
+| a node removed/never existed; local `extends` targets it | `an-extends-whose-target-was-removed-fails` | `ERR_UNRESOLVED_SUPER` |
+| a node removed/never existed; local `field.object @objectRef` targets it | `a-reference-whose-target-was-removed-fails` | `ERR_UNRESOLVED_OBJECT_REF` |
+| a member's subtype changed (v1 `Customer.email` is `field.string`); local dotted `extends: Customer.email` from a `field.int` | `a-dotted-extends-whose-member-changed-subtype-fails` | `ERR_EXTENDS_TARGET_MISMATCH` |
+| an attr the consumer's overlay also sets is now set differently upstream (base `@maxLength: 120`, overlay `@maxLength: 80`) | `an-overlay-attr-the-base-now-sets-differently-conflicts` | `ERR_MERGE_CONFLICT` |
+| the dependency's own artifact file fails to parse | `a-dependency-file-error-names-the-dependency` | `ERR_MALFORMED_JSON`, naming `dep:acme-common/acme-common.metaobjects.json` |
+
+All seven pass with **no source change** (`sdk/test/dependency-conformance.test.ts`).
+`an-overlay-whose-target-was-removed-fails` is the one case that rests on a genuine
+upstream removal rather than "never existed" — it loads
+`acme-common-v2-email-removed.json` (v1's `Customer` minus `email`) as the dependency
+snapshot and pins that artifact's hash (`sha256-c4ba…ce7a`, printed above) in the case's
+`lock`; every other case here loads the unmodified `acme-common-v1.json`.
+
+**Ordering note (verified, not merely asserted).**
+`an-overlay-of-a-whole-object-absent-from-the-artifact-fails` overlays a whole top-level
+object (`Invoice`) into `acme::common` — a package the dependency owns but does not
+export `Invoice` from. That input also matches the post-load ownership refusal
+`ERR_DEPENDENCY_PACKAGE_NOT_OWNED` (§11.1 item 2, "a consumer may not declare a new
+top-level node into a dependency's package"). `sdk/src/memory.ts`'s `loadMemory` throws
+the loader's own errors (`result.errors`) BEFORE it runs the ownership walk
+(`refuseUnownedPackages`) — confirmed by running this exact case, not merely read off the
+source — so `ERR_OVERLAY_NO_TARGET` wins. If this case ever reports
+`ERR_DEPENDENCY_PACKAGE_NOT_OWNED` instead, that is an ordering regression to fix, not a
+corpus expectation to update.
+
 ## Which arms each port runs
 
 - **TypeScript** — resolution, load-time failure, lock/snapshot integrity.
