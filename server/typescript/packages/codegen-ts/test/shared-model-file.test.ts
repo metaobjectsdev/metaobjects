@@ -287,4 +287,73 @@ describe("sharedModelFile()", () => {
       gen(sharedModelFile({ name: "acme-common", include: ["acme::nothing::**"] }), tmp),
     ).rejects.toThrow(/selected no nodes/);
   });
+
+  // Review ⚠️ — effectivePackage() (docs-paths.ts) derives a node's package from ITS
+  // OWN resolutionKey()/fileDefaultPackage. A nested field never carries its own
+  // `package`, so its fileDefaultPackage is stamped from the FILE's root default —
+  // NOT from an enclosing top-level object's own (different) explicit `package`. The
+  // loader's OWN generic reference resolution (validation-registry.ts's `walk()`)
+  // instead THREADS the referrer package down the tree, so a nested field resolves
+  // its bare refs against the ENCLOSING TOP-LEVEL OBJECT's actual package — correctly,
+  // by construction. This test drives that exact shape (file default "acme::common",
+  // a top-level node explicitly overriding to "acme::other", a nested field's bare
+  // ref that only resolves correctly under the override) through the closure check,
+  // to find out whether `effectivePackage()`-derived referrerPkg agrees.
+  test("package-override: a top-level node's own explicit package governs its nested field's bare-ref resolution in the closure check", async () => {
+    const fileC = join(tmp, "metaobjects", "meta.pkg-override.json");
+    writeFileSync(
+      fileC,
+      JSON.stringify(
+        {
+          "metadata.root": {
+            package: "acme::common", // the FILE default
+            children: [
+              {
+                "object.value": {
+                  name: "Gadget",
+                  package: "acme::other", // explicit override, DIFFERENT from the file default
+                  children: [{ "field.object": { name: "part", "@objectRef": "Thing" } }],
+                },
+              },
+              {
+                "object.value": {
+                  name: "Thing",
+                  package: "acme::other",
+                  children: [{ "field.string": { name: "label" } }],
+                },
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const loader = new MetaDataLoader();
+    const { root: metadata, errors } = await loader.load([new FileSource(fileC)]);
+    expect(errors).toEqual([]);
+
+    // include ONLY Gadget: a CORRECTLY package-scoped bare ref resolves "Thing" to
+    // acme::other::Thing (Gadget's own package), which is excluded here — closure
+    // must fail naming that pair. Were the referrer package wrongly computed as the
+    // file default "acme::common", the bare ref would resolve to NOTHING (no
+    // acme::common::Thing exists), and `checkClosure`'s defensive
+    // `if (resolved === undefined) continue` (written to trust the loader already
+    // validated every ref) would silently skip it instead — no error at all.
+    await expect(
+      runGen({
+        config: defineConfig({
+          outDir: tmp,
+          extStyle: "none",
+          dbImport: "../db",
+          dialect: "sqlite",
+          generators: [sharedModelFile({ name: "pkg-override", include: ["acme::other::Gadget"] })],
+        }),
+        metadata,
+        projectRoot: tmp,
+        sourceFiles: [fileC],
+      }),
+    ).rejects.toThrow(/acme::other::Gadget.*acme::other::Thing/s);
+  });
 });
