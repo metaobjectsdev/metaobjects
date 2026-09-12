@@ -245,8 +245,10 @@ export { resolveSuperRef } from "./super-resolve.js";
 export { expandRef, isRelativeRef, refMatchesObject, resolveObjectRef, didYouMeanHint, REF_BEARING_ATTR_NAMES } from "./naming-refs.js";
 
 // Loader hierarchy
-export { MetaDataLoader } from "./loader/meta-data-loader.js";
-export type { LoadOptions, LoadResult, LoadingState, DirectoryFactoryOptions } from "./loader/meta-data-loader.js";
+export { MetaDataLoader, declaredTopLevelKeys } from "./loader/meta-data-loader.js";
+export type {
+  LoadOptions, LoadResult, LoadingState, DirectoryFactoryOptions, DeclaredTopLevelKey,
+} from "./loader/meta-data-loader.js";
 export { InMemoryStringSource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 

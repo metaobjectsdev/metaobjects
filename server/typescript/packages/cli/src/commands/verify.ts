@@ -31,6 +31,8 @@ import {
   checkRequirements, summariseRequirements, scanRequirements, type Diagnostic,
 } from "../lib/requirement-check.js";
 import { lintRequirements } from "../lib/requirement-lint.js";
+import { lintOverlays } from "../lib/overlay-lint.js";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
@@ -326,7 +328,7 @@ export async function verifyCommand(
   const promptsDir = join(projectRoot, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
 
-  // The two advisory sections, captured as the gates run so the structured payload
+  // The advisory sections, captured as the gates run so the structured payload
   // can carry them IN FULL. They were previously formatted straight to stderr and
   // existed nowhere else, which is why 96% of a 239-finding report was unreachable
   // by any flag, env var or format.
@@ -334,6 +336,12 @@ export async function verifyCommand(
     skippedSection("the requirement pass did not run");
   let antiPatternSection: AdvisorySection<AdvisoryFindingRow> =
     skippedSection("the advisory anti-pattern pass did not run");
+  // FR-023 §11.1 item 4 (Task 17) — the overlay authoring lint. Its own section
+  // (never folded into `requirements`, which is about a different kind of node
+  // entirely) so the structured payload names what ran and what didn't the same
+  // way every other advisory pass does.
+  let overlaySection: AdvisorySection<AdvisoryDiagnosticRow> =
+    skippedSection("the overlay lint did not run");
   // The ledger counts `meta verify` prints on every run. Undefined for a project
   // declaring no requirement.* node at all (opt-in by declaration) — the payload
   // then omits the block rather than reporting zeroes that would read as an empty
@@ -363,6 +371,12 @@ export async function verifyCommand(
   // was not passed; naming only `flags.replay` here is how `--replay-snapshot`
   // would parse cleanly and do nothing at all.
   const replayExit = flags.replay || flags.replaySnapshot ? await runReplayVerify() : 0;
+
+  // FR-023 §11.1 item 4 (Task 17) — the overlay authoring lint. Runs on every
+  // `meta verify`, not gated on any subverb (an unflagged cross-file
+  // redeclaration is a risk regardless of which drift gates were selected).
+  // Warnings ONLY — never changes the exit code.
+  await runOverlayLintAdvisory();
 
   // Advisory verify-as-teacher pass: surface hand-rolled work the metadata could
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
@@ -400,6 +414,7 @@ export async function verifyCommand(
         requirements: requirementSection,
         requirementCounts,
         antiPatterns: antiPatternSection,
+        overlays: overlaySection,
       }),
       fmt,
     );
@@ -667,18 +682,13 @@ export async function verifyCommand(
 
     const errors = diags.filter((d) => d.severity === "error");
     const warns = diags.filter((d) => d.severity === "warn");
-    // Named `fmtDiag`, not `fmt`: `fmt` is this command's OUTPUT FORMAT parameter,
-    // and a shadow of it inside the one function that must not confuse the two is
-    // how a structured run quietly reverts to text.
-    const fmtDiag = (d: Diagnostic): string =>
-      `  ${d.code}${d.path !== undefined ? ` [${d.path}]` : ""}: ${d.message}`;
     // Capped per SECTION, never across them: a ledger of a few hundred entries can
     // produce hundreds of prose findings, and a shared budget would let the advisory
     // lint push every gate warning off the end. The cap VALUE is now one shared
     // constant (`--limit`), so raising it cannot miss a section — errors stay
     // uncapped, as they always were.
-    for (const d of errors) log.error(fmtDiag(d));
-    warnCapped(warns.map(fmtDiag), flags.limit, { structured });
+    for (const d of errors) log.error(formatDiagnostic(d));
+    warnCapped(warns.map(formatDiagnostic), flags.limit, { structured });
 
     // -- the authoring lint: its own section, its own cap ----------------------
     // Separate from the gate above because it makes a different claim. The gate
@@ -707,7 +717,7 @@ export async function verifyCommand(
         `meta verify — requirements: ${lint.length} authoring warning(s) ` +
         `(advisory — does not fail the build):`,
       );
-      warnCapped(lint.map(fmtDiag), flags.limit, { structured });
+      warnCapped(lint.map(formatDiagnostic), flags.limit, { structured });
     }
 
     // Everything this pass found, uncapped, for the structured payload — gate
@@ -723,6 +733,44 @@ export async function verifyCommand(
       return 1;
     }
     return 0;
+  }
+
+  // -- overlay authoring lint (FR-023 §11.1 item 4, Task 17) ------------------
+  // Its own section, its own cap — same discipline as the requirement lint
+  // above: a noisy section must not push another section's findings off the
+  // end of a capped run. This lint has NO gate half at all (no
+  // "ledger disagrees with the model" claim to make), so nothing here can
+  // ever reach the exit code — records its result either way, same as the
+  // anti-pattern pass below.
+  //
+  // Reads raw file content (via `lintOverlays` + `declaredTopLevelKeys`), never
+  // the loaded/merged model: the merge has already lost which FILE contributed
+  // which declaration, and that is exactly what this lint needs to name.
+  async function runOverlayLintAdvisory(): Promise<void> {
+    if (flags.noOverlayLint) {
+      overlaySection = skippedSection("suppressed by --no-overlay-lint");
+      return;
+    }
+    if (process.env.META_NO_OVERLAY_LINT === "1") {
+      overlaySection = skippedSection("suppressed by META_NO_OVERLAY_LINT=1");
+      return;
+    }
+    let findings: Diagnostic[];
+    try {
+      findings = await lintOverlays(collection, (path) => new FileSource(path));
+    } catch (err) {
+      // Never let an advisory scan break verify — and never report it as clean.
+      overlaySection = skippedSection(`the overlay lint failed: ${(err as Error).message}`);
+      return;
+    }
+    overlaySection = ranSection(findings.map((d) => toDiagnosticRow(d, "lint")));
+    if (findings.length > 0) {
+      log.warn(
+        `meta verify — overlays: ${findings.length} unflagged cross-file redeclaration(s) ` +
+          `(advisory — does not fail the build):`,
+      );
+      warnCapped(findings.map(formatDiagnostic), flags.limit, { structured });
+    }
   }
 
   // -- verify-as-teacher (advisory) ------------------------------------------
@@ -1537,6 +1585,17 @@ interface VerifyGateRow {
   ok: boolean;
 }
 
+/**
+ * Format one `Diagnostic` as a printed TEXT line. Named `formatDiagnostic`, not
+ * `fmt`: `fmt` is this command's OUTPUT FORMAT parameter, and a shadow of it
+ * anywhere near this code is how a structured run quietly reverts to text.
+ * Shared by the requirement gate/lint AND the overlay lint — every advisory or
+ * gate pass that speaks in `Diagnostic` prints it identically.
+ */
+function formatDiagnostic(d: Diagnostic): string {
+  return `  ${d.code}${d.path !== undefined ? ` [${d.path}]` : ""}: ${d.message}`;
+}
+
 /** Project a requirement diagnostic into a payload row. */
 function toDiagnosticRow(d: Diagnostic, source: "gate" | "lint"): AdvisoryDiagnosticRow {
   return {
@@ -1568,6 +1627,7 @@ function buildVerifyPayload(input: {
   requirements: AdvisorySection<AdvisoryDiagnosticRow>;
   requirementCounts: RequirementCounts | undefined;
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;
+  overlays: AdvisorySection<AdvisoryDiagnosticRow>;
 }): Record<string, unknown> {
   const ran = input.gates.filter((g) => g.ran);
   const failed = ran.filter((g) => !g.ok);
@@ -1582,6 +1642,9 @@ function buildVerifyPayload(input: {
   if (input.requirements.total > 0) {
     parts.push(`${input.requirements.total} requirement diagnostic(s)`);
   }
+  if (input.overlays.status === "ran" && input.overlays.total > 0) {
+    parts.push(`${input.overlays.total} overlay authoring finding(s)`);
+  }
 
   const help: string[] = [];
   if (failed.length > 0) {
@@ -1594,7 +1657,17 @@ function buildVerifyPayload(input: {
       `${input.antiPatterns.total} authored site(s) hand-roll what MetaObjects can model — see antiPatterns.rows[] and run \`meta types <construct>\``,
     );
   }
-  if (failed.length === 0 && input.antiPatterns.total === 0 && input.requirements.total === 0) {
+  if (input.overlays.total > 0) {
+    help.push(
+      `${input.overlays.total} unflagged cross-file redeclaration(s) — see overlays.rows[]; add overlay: true so a renamed or removed target fails loudly instead of silently becoming a new object`,
+    );
+  }
+  if (
+    failed.length === 0 &&
+    input.antiPatterns.total === 0 &&
+    input.requirements.total === 0 &&
+    input.overlays.total === 0
+  ) {
     help.push("no drift and nothing advisory to answer — nothing to do");
   }
 
@@ -1605,6 +1678,7 @@ function buildVerifyPayload(input: {
     help,
     antiPatterns: input.antiPatterns,
     requirements: input.requirements,
+    overlays: input.overlays,
     ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
     // The honest boundary. Everything named here is REACHABLE — it is printed as
     // text on stderr — but it is not in this document, and a reader must not have

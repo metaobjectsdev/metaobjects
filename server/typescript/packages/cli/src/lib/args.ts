@@ -319,6 +319,16 @@ export interface VerifyFlags {
    */
   noRequirementLint: boolean;
   /**
+   * Suppress the advisory overlay AUTHORING lint (FR-023 §11.1 item 4) — the
+   * finding that an unflagged cross-file redeclaration works today only
+   * because the parser's default merge rule reuses the existing node by
+   * (type, resolutionKey); it silently becomes a NEW object the day the
+   * target is renamed or removed upstream. Same shape as
+   * --no-requirement-lint: mutes the advisory half only, never a gate (this
+   * lint has no gate half at all — it can never fail the build).
+   */
+  noOverlayLint: boolean;
+  /**
    * ADR-0023 strict-attr load opt-OUT (#96). `verify` is strict-by-default — an
    * undeclared/typo'd own `@attr` fails verify (ERR_UNKNOWN_ATTR). `--lax`
    * restores the legacy open-attr load (today's behavior). Default false (strict).
@@ -357,6 +367,7 @@ export const VERIFY_OPTIONS = {
   "replay-snapshot": { type: "boolean", default: false },
   "no-antipatterns": { type: "boolean", default: false },
   "no-requirement-lint": { type: "boolean", default: false },
+  "no-overlay-lint": { type: "boolean", default: false },
   lax: { type: "boolean", default: false },
   "d1": { type: "string" },
   "remote": { type: "boolean", default: false },
@@ -435,6 +446,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     anyExplicit,
     noAntipatterns: !!values["no-antipatterns"],
     noRequirementLint: !!values["no-requirement-lint"],
+    noOverlayLint: !!values["no-overlay-lint"],
     lax: !!values.lax,
     d1: values.d1 as string | undefined,
     remote: !!values.remote,

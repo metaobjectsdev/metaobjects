@@ -115,6 +115,8 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint
+                        (never a gate — this lint can't fail the build)
   --limit <n|all>       How many advisory lines TEXT output prints per section before
                         it truncates (default 20). Never applies to --format
                         toon/json, which carry every finding and every diagnostic.
@@ -282,6 +284,8 @@ FLAGS:
                         migrating a model onto a registered provider.
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint —
+                        never a gate; this lint can't fail the build
   --limit <n|all>       Advisory lines TEXT output prints PER SECTION before truncating
                         (default 20; per-section so the authoring lint can never push
                         the gate's own warnings off the end)
@@ -303,6 +307,13 @@ lint in its own section: names that are not addressable, prose slots holding one
 sentence twice, content written where no surface reads it. Warnings only — it can
 never fail the build. Opt out with --no-requirement-lint or META_NO_REQUIREMENT_LINT=1.
 The requirements GATE itself (dangling refs, link floor, levels) always runs.
+
+verify also prints an ADVISORY overlay authoring lint, in its own section: a
+top-level declaration redeclared in two or more files where more than one
+redeclaration lacks 'overlay: true' — today's default merge rule reuses it
+silently, but the same unflagged redeclaration silently becomes a NEW object
+the day the target is renamed or removed upstream. Warnings only — it can
+never fail the build. Opt out with --no-overlay-lint or META_NO_OVERLAY_LINT=1.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 

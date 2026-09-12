@@ -97,6 +97,8 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint
+                        (never a gate — this lint can't fail the build)
   --limit <n|all>       How many advisory lines TEXT output prints per section before
                         it truncates (default 20). Never applies to --format
                         toon/json, which carry every finding and every diagnostic.
