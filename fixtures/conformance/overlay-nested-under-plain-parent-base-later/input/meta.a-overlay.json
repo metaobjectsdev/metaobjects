@@ -1,0 +1,21 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.string": {
+                "name": "name",
+                "@maxLength": 120,
+                "overlay": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

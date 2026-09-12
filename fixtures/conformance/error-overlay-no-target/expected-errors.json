@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_OVERLAY_NO_TARGET",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.commerce.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity']",
+        "referrer": "acme::commerce::Product",
+        "target": "object:Product"
+      }
+    }
+  ],
+  "warnings": []
+}

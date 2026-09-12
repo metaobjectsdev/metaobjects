@@ -1,0 +1,23 @@
+# ADR-0055 — an `overlay: true` declaration may precede the base it re-opens,
+# inside a single document. Overlays are applied in a post-parse pass, so this
+# resolves; before ADR-0055 the streaming merge raised ERR_OVERLAY_NO_TARGET.
+# Sigil-free authoring (ADR-0006): bare `overlay`, bare `fields`.
+metadata:
+  package: acme::commerce
+  children:
+    - object.entity:
+        name: Product
+        overlay: true
+        children:
+          - field.string:
+              name: description
+    - object.entity:
+        name: Product
+        children:
+          - field.long:
+              name: id
+          - field.string:
+              name: name
+          - identity.primary:
+              name: id
+              fields: [id]

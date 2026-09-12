@@ -25,8 +25,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 314 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
-| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 15 | 15 / 15 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 322 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
@@ -119,7 +119,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (314)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (322)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -143,7 +143,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the `meta verify` checks are TS-owned; see "Split coverage" above) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
-### `fixtures/yaml-conformance/` (15)
+### `fixtures/yaml-conformance/` (16)
 
 All 15 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
 splits into 7 happy-path fixtures (sigil-free attrs, array suffix, anchor/alias,
@@ -257,9 +257,20 @@ exemption. The two overlay cases that need a view child as incidental content us
 carried a since-discharged allowlist for it. Java, Kotlin and C# have no runner —
 Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
+> **ADR-0055 (deferred overlay application) — per-port status.** The nine cases added for it
+> (`overlay-mixed-file-base-in-later-file`, `overlay-mixed-file-base-in-earlier-file`,
+> `overlay-same-file-before-base`, `overlay-nested-under-plain-parent-base-later`,
+> `overlay-applies-after-all-plain-declarations`, `overlay-two-overlays-source-order`,
+> `error-overlay-no-target`, `error-overlay-no-target-nested`, and the YAML twin
+> `yaml-overlay-before-base-same-file`) are green on **TypeScript** — the reference port — and
+> are expected RED on **C#, Java and Python** until each applies overlays in a post-parse pass.
+> Java additionally reports `ERR_UNKNOWN` rather than `ERR_OVERLAY_NO_TARGET`, because the JVM
+> throw carries no error code; that is fixed in the same change as its port, NOT by ledgering the
+> fixture. The per-port columns above are updated when those ports land.
+
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 314 + yaml 15 + verify 31
+The fixtures in the nine corpora mapped above (metamodel 322 + yaml 16 + verify 31
 + render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

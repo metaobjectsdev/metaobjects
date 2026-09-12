@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_OVERLAY_NO_TARGET",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.commerce.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[2]['field.string']",
+        "referrer": "Product.ghost",
+        "target": "field:ghost"
+      }
+    }
+  ],
+  "warnings": []
+}
