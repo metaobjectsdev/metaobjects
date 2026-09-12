@@ -98,10 +98,11 @@ that gates this feature says so explicitly:
 
 - **Resolved file order.** The ports' directory walks already differ and always
   have — Java sorts by basename, C# by full-path ordinal, Python by basename,
-  TypeScript walks depth-first with files before subdirectories — and the
-  loader's overlay partition discards caller order regardless
-  (super-resolution is order-independent, #188). Every port resolves the same
-  file **set**; only the order within it is each port's own.
+  TypeScript walks depth-first with files before subdirectories — and nothing
+  downstream reads that order: super-resolution is order-independent (#188), and
+  overlay application is a deferred pass whose result is a pure function of the
+  source set (ADR-0055 G4). Every port resolves the same file **set**; only the
+  order within it is each port's own.
 - **The error code for a malformed config.** A `.metaobjects/config.json` that
   exists but is malformed (e.g. `sources` declared as an object instead of an
   array) must raise rather than silently degrade to "no config" — but which

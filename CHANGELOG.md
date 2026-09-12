@@ -119,6 +119,51 @@ here.**
   cross-repo metadata sharing is being built as FR-023 (metadata dependencies). They still work
   and are removed in 2.0.
 
+### Fixed
+
+- **`overlay: true` no longer depends on file order — the loader applies overlays in a
+  deferred pass** ([ADR-0055](spec/decisions/ADR-0055-deferred-overlay-application.md)). The
+  parser used to resolve an overlay against the accumulating tree the instant it met it, so the
+  declaration it re-opens had to have been parsed already. `extends` has never had that
+  constraint: it is deferred to a pass that runs after every source is read. Overlays now work
+  the same way — every source is parsed first, applying only plain declarations, and the queued
+  overlays are applied afterwards, before super-resolution.
+
+  What this fixes, concretely:
+  - **A MIXED file** — one carrying both plain and `overlay: true` top-level declarations —
+    failed `ERR_OVERLAY_NO_TARGET` whenever its target lived in a later-sorted file. The #160
+    partition that was meant to prevent this tested whole FILES (*is every declaration in this
+    file an overlay?*), so a mixed file was classified as a base and never moved. That partition
+    is now deleted in every port; nothing needs it.
+  - **An overlay declared above its base in the same file** now loads, in JSON and in YAML.
+  - **Python diverged silently rather than failing.** Its loader merges post-parse, so its
+    partition chose which node *absorbed* which: with an overlay-first root as the accumulator
+    the base was merged INTO the overlay, producing children `[ov, id]` where every other port
+    produces `[id, ov]` — a difference the byte-gated canonical contract cares about. Folding
+    every root through one matcher also fixes two declarations of one name in a SINGLE Python
+    file staying two disconnected siblings.
+  - **Java reported `ERR_UNKNOWN`.** Its throw carried no structured code, so the code was
+    scraped from the message and found nothing. It now emits `ERR_OVERLAY_NO_TARGET` with the
+    same message wording as every other port.
+  - **One bad overlay no longer discards its whole source.** The eager throw abandoned the
+    entire document, losing every sibling declaration and cascading into `ERR_UNRESOLVED_SUPER`;
+    each overlay is now applied independently and every failure is reported.
+
+  Two behaviour changes ride along, both pinned by the corpus. `ERR_OVERLAY_NO_TARGET`'s
+  envelope moves from the parse-time `format: "json"` / `"yaml"` shape to ADR-0009 FR5d's
+  `format: "resolved"`, carrying the same `files`/`jsonPath` plus `referrer` and `target`. And
+  because the queue is unconditional — an overlay is deferred even when its target is already
+  present, since applying it eagerly "when the base happens to be there" is the retry-on-miss
+  variant ADR-0055 rejects — **an overlay now lands after every plain declaration, including an
+  unflagged redeclaration in a later file that previously landed after it.** Reaching that
+  corner requires an unflagged second declaration of a node, which `meta verify` already reports
+  as `WARN_OVERLAY_IMPLICIT`.
+
+  **`metamodelVersion` does not move** (it stays `1.0`): no registered vocabulary, canonical
+  format or wire contract changed. This is additive on the metadata axis — input that failed now
+  loads, and nothing that loaded stops loading. Shipped in all five ports (TypeScript, C#, Java,
+  Kotlin via the JVM loader, Python), gated by nine new conformance fixtures.
+
 ## [1.0.2] — 2026-09-11
 
 _npm `1.0.2` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

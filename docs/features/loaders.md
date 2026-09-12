@@ -15,7 +15,10 @@ The full design is in
 The Author entity declaration (see [entities.md](entities.md)) lives in
 `./metadata/meta.blog.json` or `./metadata/meta.blog.yaml`. The loader picks up
 both formats; mixed-format directories are fine. Load order is a deterministic
-ordinal-filename sort (because overlay merge is order-sensitive).
+ordinal-filename sort. Neither `extends` nor `overlay: true` depends on it — both
+resolve in passes that run after every file is read (#188, ADR-0055) — but it still
+fixes which file is the `overlay-base` on a merged node's provenance, so it stays a
+cross-port contract.
 
 ## What each port generates
 
@@ -139,8 +142,14 @@ name = author.field("name")
    See [yaml-authoring.md](yaml-authoring.md). JSON is parsed directly.
 3. **Tree-build.** Each parsed file becomes a tree of `MetaData` nodes. Same shape
    across ports.
-4. **Overlay merge.** Files sharing the same `package` + object `name` are merged.
-   Last-writer-wins on attribute conflicts; structural children accumulate.
+4. **Overlay merge.** Nodes sharing the same `package` + object `name` are merged.
+   Last-writer-wins on attribute conflicts; structural children accumulate. A
+   declaration flagged `overlay: true` is applied in a **deferred pass** (ADR-0055),
+   after every source has been parsed and before super-resolve — so it can re-open a
+   node declared in any other file, or later in its own, and `ERR_OVERLAY_NO_TARGET`
+   means the target is *gone* rather than *not parsed yet*. The pass is
+   **order-independent** in the same sense as step 5: every plain declaration from
+   every source lands first, then every overlay in source order.
 5. **Super-resolve.** `extends:` is resolved after all files load (deferred, not
    eager) so a child can extend a base declared in any other file. Resolution is
    **order-independent** — a pure function of the source set — so a dotted

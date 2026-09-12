@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
 | [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 322 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
-| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
+| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
@@ -145,11 +145,12 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ### `fixtures/yaml-conformance/` (16)
 
-All 15 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
-splits into 7 happy-path fixtures (sigil-free attrs, array suffix, anchor/alias,
-block scalars, mixed bare-and-prefixed, quoted leading zero, etc.) and 6
-`error-yaml-*` fixtures that pin the YAML 1.1 coercion guards (bool / null / hex
-in string contexts; numeric in enum contexts; reserved-as-attr).
+All 16 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
+splits into 9 happy-path fixtures (sigil-free attrs, array suffix, anchor/alias,
+block scalars, mixed bare-and-prefixed, quoted leading zero, an overlay declared
+before its base in one file, etc.) and 7 `error-yaml-*` fixtures that pin the
+YAML 1.1 coercion guards (bool / null / hex in string contexts; numeric in enum
+contexts; reserved-as-attr).
 
 ### `fixtures/render-conformance/` (15)
 
@@ -257,16 +258,16 @@ exemption. The two overlay cases that need a view child as incidental content us
 carried a since-discharged allowlist for it. Java, Kotlin and C# have no runner —
 Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
-> **ADR-0055 (deferred overlay application) — per-port status.** The nine cases added for it
-> (`overlay-mixed-file-base-in-later-file`, `overlay-mixed-file-base-in-earlier-file`,
+> **ADR-0055 (deferred overlay application) — SHIPPED in every port.** The nine cases added
+> for it (`overlay-mixed-file-base-in-later-file`, `overlay-mixed-file-base-in-earlier-file`,
 > `overlay-same-file-before-base`, `overlay-nested-under-plain-parent-base-later`,
 > `overlay-applies-after-all-plain-declarations`, `overlay-two-overlays-source-order`,
 > `error-overlay-no-target`, `error-overlay-no-target-nested`, and the YAML twin
-> `yaml-overlay-before-base-same-file`) are green on **TypeScript** — the reference port — and
-> are expected RED on **C#, Java and Python** until each applies overlays in a post-parse pass.
-> Java additionally reports `ERR_UNKNOWN` rather than `ERR_OVERLAY_NO_TARGET`, because the JVM
-> throw carries no error code; that is fixed in the same change as its port, NOT by ledgering the
-> fixture. The per-port columns above are updated when those ports land.
+> `yaml-overlay-before-base-same-file`) are green on TypeScript, C#, Java, Kotlin (via the JVM
+> loader) and Python, with **no entry in any expected-failures ledger** — they ran rather than
+> being excused. The fixtures were committed while three ports were still red, and the red was
+> recorded here rather than in a ledger, because ledgering a fixture the design intends to pass
+> is how a port quietly stays behind.
 
 ## Orphaned fixtures (tested but not yet documented)
 

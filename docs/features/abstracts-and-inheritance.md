@@ -288,7 +288,10 @@ one file, persistence overlay in another). See
 Nothing above changes when the base you `extends` or the node you `overlay` lives in
 a [metadata dependency](metadata-dependencies.md) rather than your own tree —
 dependency files load before yours in the same `loader.load(...)`, so a foreign
-abstract resolves and a foreign node re-opens exactly like a local one. **One rule
+abstract resolves and a foreign node re-opens exactly like a local one. Neither
+actually depends on that ordering: `extends` resolves after every source is parsed
+(#188) and `overlay: true` is applied in a deferred pass after that (ADR-0055), so
+file order is not what makes either work. **One rule
 is stricter across that boundary, though: say `overlay: true` on every amendment to
 a node you do not own.** Within one project the parser merges a same-`(type,
 package::name)` redeclaration whether or not it carries the flag; only the flagged

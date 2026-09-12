@@ -147,7 +147,10 @@ presentation, validators, documentation attrs, or filter/sort flags — the loca
 unshared additions a consumer is expected to make. Put overlay-only contributions in
 their **own file** by convention (this doc uses `meta.<dependency-name>.overlay.json`;
 the corpus itself names these files `meta.ov*.json`) — it is not enforced, but it
-keeps "what did I add to someone else's node" visible at a glance:
+keeps "what did I add to someone else's node" visible at a glance. It is purely a
+readability convention: since ADR-0055 the loader applies every overlay in a deferred
+pass, so an overlay works from any file, in any position, including the same file as
+its base:
 
 ```jsonc
 // metaobjects/meta.acme-common.overlay.json (consumer)

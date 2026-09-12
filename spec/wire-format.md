@@ -53,7 +53,9 @@ this canonical form. Array-ness is the bare reserved `isArray` (YAML: the `[]` k
 
 Multiple objects per file when they share a domain. Projections live inline with their
 base entities. Files are scanned recursively under `metaobjects/`. Same-package +
-same-name objects across files are merged by the Loader via overlay semantics.
+same-name objects across files are merged by the Loader via overlay semantics —
+independently of file order, since a declaration flagged `overlay: true` is applied in
+a deferred pass after every source is parsed (ADR-0055).
 
 ```json
 {
