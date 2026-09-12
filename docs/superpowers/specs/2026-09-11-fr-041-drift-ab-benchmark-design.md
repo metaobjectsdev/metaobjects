@@ -63,6 +63,19 @@ relationships, a REST API, a UI, LLM calls with typed payloads, and a requiremen
 > **both** arms are new builds rather than just Arm A. **Ruling: a purpose-built app, Postgres,
 > both arms new.** Phase 0 is costed accordingly (§11). The existing D1 reference app stays what
 > it is — a production proof — and is not the benchmark subject.
+>
+> **Amended 2026-09-12, Phase 0b.** "Purpose-built" no longer means "from nothing". The seed is
+> **`examples/advanced-modeling` in this repository, forked into the harness and allowed to
+> diverge** — the public example keeps its teaching role and its unfinished series unit. The
+> ruling above was driven by the *dialect contradiction*, not by a preference for greenfield, and
+> the example does not carry that contradiction: its config already declares `dialect: "postgres"`.
+> It arrives with four origin kinds on a projection over a DB view, two relationship subtypes, a
+> typed prompt payload with a `template.output`, value objects and ADR-0034 owned generators — so
+> the seed inherits a real model instead of inventing one. §2's substantive requirement is
+> untouched: both arms are still new, and Arm A is still derived from Arm B's generated output.
+> The fork is not an application today (no entrypoint, no DB connection, no tests, no UI); what it
+> gains, and the standing rule that it gains no hand-written code the product should be emitting,
+> are recorded with the harness.
 
 Frozen at a **seed commit** in two functionally identical variants that pass the same acceptance
 suite. ("Seed" in this document always means the frozen starting commit. It never means an RNG
@@ -390,6 +403,20 @@ publishes.
 The friction log (Phase 0b) is publishable on its own and is the first real deliverable. It is
 **not** a substitute for the study: it reports product fixes with no measured outcome attached,
 which is exactly what four earlier rounds already produced.
+
+> **Amended 2026-09-12 — Phases 0b and 1 overlap, deliberately.** As written the table cannot be
+> executed: Phase 0b's exit criterion is three consecutive clean Arm B pilot **sequences**, while
+> the cumulative multi-task sequence runner is a Phase 1 item. The harness today builds from
+> scratch, applies **one** change, boots and probes over HTTP — there is no sequence to run. **0b
+> therefore builds the minimum runner its pilot needs** (a seeded start that deletes the greenfield
+> phase from every run, the cumulative loop, and the oracle plus target-shape checker for the pilot
+> tasks only); Phase 1 generalizes that and adds the scorer. Engagement and model coverage (§5) are
+> also 0b work rather than Phase 1, because they decide what an H1 null *means* and cannot be
+> retrofitted once the runs exist. One prerequisite gates every number 0b produces: §8's **observed**
+> host-contamination defect must be closed — each arm run in a clean room with its settings and MCP
+> configuration supplied explicitly and recorded — **before** the first billed pilot run, since 0c's
+> power calculation consumes 0b's base rate and variance and a contaminated number calibrates
+> nothing.
 
 ## 12. Acceptance criteria
 
