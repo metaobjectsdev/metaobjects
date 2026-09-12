@@ -15,16 +15,10 @@
  */
 package com.metaobjects.loader;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
-import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
 import com.metaobjects.loader.parser.yaml.ParserYaml;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -224,6 +218,72 @@ public class MetaDataLoader implements LoaderConfigurable {
     /** Queue an unresolved {@code extends} for post-load resolution. */
     public void addPendingExtends(PendingExtends pending) {
         if (pending != null) pendingExtends.add(pending);
+    }
+
+    /**
+     * ADR-0055 — deferred-overlay queue. The parser no longer resolves an
+     * {@code overlay: true} declaration against the accumulating root the instant
+     * it meets it; it queues the declaration here and
+     * {@link #applyPendingOverlays()} applies the whole queue once every source has
+     * been parsed and BEFORE {@link #resolvePendingExtends()}. Exactly the shape
+     * {@code extends} has always used, and for the same reason: the target may be
+     * declared in a source parsed later, or later in this same document.
+     *
+     * <p>Order is encounter order, which — because sources are parsed sequentially
+     * and the walk is pre-order — already IS "source order, then declaration order
+     * within a source" (G2). No sort is needed; stability is by construction.</p>
+     */
+    private final List<CanonicalJsonParser.PendingOverlay> pendingOverlays = new ArrayList<>();
+
+    /**
+     * ADR-0055 — true while {@link #load(List)} is parsing a batch, so the parser
+     * leaves its queue for the loader to drain instead of draining per document.
+     */
+    private boolean deferringOverlays = false;
+
+    /** Queue an {@code overlay: true} declaration for post-parse application. */
+    public void addPendingOverlay(CanonicalJsonParser.PendingOverlay pending) {
+        if (pending != null) pendingOverlays.add(pending);
+    }
+
+    /**
+     * ADR-0055 — whether this loader is mid-batch and owns the overlay drain.
+     * A parser invoked outside {@link #load(List)} drains its own queue at the end
+     * of its document (see {@code CanonicalJsonParser.buildTree}).
+     */
+    public boolean isDeferringOverlays() {
+        return deferringOverlays;
+    }
+
+    /**
+     * ADR-0055 — apply every queued {@code overlay: true} declaration against the
+     * complete tree.
+     *
+     * <p>By the time this runs, all plain declarations from all sources are in the
+     * tree (G1), so a base/overlay relation no longer depends on file order (G4).
+     * It runs BEFORE super resolution so a node an overlay contributes is visible
+     * to every {@code extends} (G5) — the ordering the #160 partition was reaching
+     * for, now guaranteed rather than approximated.</p>
+     *
+     * <p>Each element is applied independently: a failure is RECORDED and the
+     * element skipped, so one bad overlay no longer takes its whole source down
+     * with it. The eager throw abandoned the entire document, losing every sibling
+     * declaration and cascading into {@code ERR_UNRESOLVED_SUPER}.</p>
+     */
+    public void applyPendingOverlays() {
+        if (pendingOverlays.isEmpty()) return;
+        // Copy-and-clear: an overlay nested inside an APPLIED unit resolves in
+        // place rather than re-queueing, so the queue cannot grow here — but
+        // draining a snapshot keeps that guarantee from being load-bearing.
+        List<CanonicalJsonParser.PendingOverlay> queue = new ArrayList<>(pendingOverlays);
+        pendingOverlays.clear();
+        for (CanonicalJsonParser.PendingOverlay pending : queue) {
+            try {
+                pending.apply();
+            } catch (MetaDataException e) {
+                addError(e);
+            }
+        }
     }
 
     /**
@@ -1655,42 +1715,45 @@ public class MetaDataLoader implements LoaderConfigurable {
         clearErrors();
         clearEnvelopeWarnings();
         pendingExtends.clear();
+        pendingOverlays.clear();
 
-        // #160 — this loader merges DURING parse (each source is streamed into the
-        // accumulating MetaRoot). A source that ONLY re-opens objects declared
-        // elsewhere (every top-level object carries `overlay: true`) must therefore
-        // be parsed AFTER the sources that declare those base objects, or the
-        // overlaid node lands ahead of its base entities — leaving a projection
-        // before its base so order-dependent super-resolution can't resolve its
-        // `extends`/`@via`, and the streaming merge errors ERR_OVERLAY_NO_TARGET.
-        // Directory discovery order is not guaranteed to present base files first
-        // (basename sort can put an overlay-only file first), so stable-partition
-        // overlay-only sources to the END here, making the merge order-independent.
-        // Stable within each group preserves last-writer-wins overlay semantics.
-        sources = partitionOverlayLast(sources);
+        // ADR-0055 — sources are parsed in the order given. Overlays are not applied
+        // during the walk: each parse QUEUES its `overlay: true` declarations and the
+        // loader applies them below, once every base exists. That retired the #160
+        // overlay-only source partition, whose file-level predicate could not rescue a
+        // MIXED file (plain + overlay declarations together) and therefore left the
+        // load order-dependent — and divergent across ports, since every port's
+        // directory walk orders files differently.
+        deferringOverlays = true;
+        try {
+            for (MetaDataSource source : sources) {
+                String content;
+                try {
+                    content = source.read();
+                } catch (IOException e) {
+                    throw new MetaDataLoadingException(
+                        "Failed to read metadata source [" + source.getId() + "]: " + e.getMessage(),
+                        getName(), LoadingState.Phase.INITIALIZING, 0, e);
+                }
 
-        for (MetaDataSource source : sources) {
-            String content;
-            try {
-                content = source.read();
-            } catch (IOException e) {
-                throw new MetaDataLoadingException(
-                    "Failed to read metadata source [" + source.getId() + "]: " + e.getMessage(),
-                    getName(), LoadingState.Phase.INITIALIZING, 0, e);
+                // Dispatch by format: canonical JSON → CanonicalJsonParser; sigil-free
+                // authoring YAML → ParserYaml (which desugars to canonical JSON before
+                // calling the same buildTree). ADR-0006 D4.
+                InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
+                com.metaobjects.loader.parser.MetaDataFileParser parser;
+                if (source.getFormat() == MetaDataSource.MetaDataFormat.YAML) {
+                    parser = new ParserYaml(this, source.getId());
+                } else {
+                    parser = new CanonicalJsonParser(this, source.getId());
+                }
+                parser.loadFromStream(is);
             }
-
-            // Dispatch by format: canonical JSON → CanonicalJsonParser; sigil-free
-            // authoring YAML → ParserYaml (which desugars to canonical JSON before
-            // calling the same buildTree). ADR-0006 D4.
-            InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
-            com.metaobjects.loader.parser.MetaDataFileParser parser;
-            if (source.getFormat() == MetaDataSource.MetaDataFormat.YAML) {
-                parser = new ParserYaml(this, source.getId());
-            } else {
-                parser = new CanonicalJsonParser(this, source.getId());
-            }
-            parser.loadFromStream(is);
+        } finally {
+            deferringOverlays = false;
         }
+
+        // ADR-0055 — apply every queued overlay now, before super resolution.
+        applyPendingOverlays();
 
         // Resolve any deferred {@code extends} refs before validation runs —
         // cross-file forward references show up here. Anything still unresolved
@@ -1705,89 +1768,6 @@ public class MetaDataLoader implements LoaderConfigurable {
         ValidationPhase.run(root, this);
 
         return this;
-    }
-
-    // ------------------------------------------------------------------------
-    // #160 — overlay-only source partition (stable, overlay-only sources last)
-    // ------------------------------------------------------------------------
-
-    /**
-     * Stable-partition {@code sources} so that "overlay-only" sources — every
-     * top-level object declaration carries {@code overlay: true}, i.e. the source
-     * declares no base objects of its own and only re-opens objects declared
-     * elsewhere — are parsed LAST. Preserves original order within each group.
-     *
-     * <p>A source whose content can't be read or structurally scanned stays in the
-     * base group (never overlay-only) — this partition must never crash the loader;
-     * any genuine read/parse failure surfaces later, in the real parse loop.</p>
-     */
-    private static List<MetaDataSource> partitionOverlayLast(List<MetaDataSource> sources) {
-        List<MetaDataSource> base = new ArrayList<>();
-        List<MetaDataSource> overlayOnly = new ArrayList<>();
-        for (MetaDataSource source : sources) {
-            boolean isOverlayOnly = false;
-            try {
-                isOverlayOnly = isOverlayOnlySource(source.read(), source.getFormat());
-            } catch (Exception e) {
-                isOverlayOnly = false;
-            }
-            (isOverlayOnly ? overlayOnly : base).add(source);
-        }
-        base.addAll(overlayOnly);
-        return base;
-    }
-
-    /**
-     * Structurally scan a source's raw content (JSON via Gson; sigil-free authoring
-     * YAML via SnakeYAML → Gson — {@code overlay: true} is a bare key before desugar)
-     * and report whether every top-level object declaration under
-     * {@code metadata.root.children} carries {@code overlay: true} (and there is at
-     * least one).
-     */
-    private static boolean isOverlayOnlySource(String content, MetaDataSource.MetaDataFormat format) {
-        if (content == null) return false;
-        // Strip UTF-8 BOM (mirrors CanonicalJsonParser / ParserYaml).
-        String normalized = (!content.isEmpty() && content.charAt(0) == '﻿')
-            ? content.substring(1) : content;
-        JsonElement parsed;
-        if (format == MetaDataSource.MetaDataFormat.YAML) {
-            Object loaded = new org.yaml.snakeyaml.Yaml().load(normalized);
-            parsed = new Gson().toJsonTree(loaded);
-        } else {
-            parsed = JsonParser.parseString(normalized);
-        }
-        return rootIsOverlayOnly(parsed);
-    }
-
-    /**
-     * True when the structurally-parsed root has &ge;1 child and every top-level
-     * child node carries {@code overlay: true} (declares no base objects).
-     */
-    private static boolean rootIsOverlayOnly(JsonElement parsed) {
-        if (parsed == null || !parsed.isJsonObject()) return false;
-        JsonElement rootBodyEl = parsed.getAsJsonObject().get("metadata.root");
-        if (rootBodyEl == null || !rootBodyEl.isJsonObject()) return false;
-        JsonElement childrenEl = rootBodyEl.getAsJsonObject().get(BaseMetaDataParser.ATTR_CHILDREN);
-        if (childrenEl == null || !childrenEl.isJsonArray()) return false;
-        JsonArray children = childrenEl.getAsJsonArray();
-        if (children.size() == 0) return false;
-        for (JsonElement childEl : children) {
-            if (childEl == null || !childEl.isJsonObject()) return false;
-            JsonObject child = childEl.getAsJsonObject();
-            if (child.size() == 0) return false;
-            // Each child is a single-key wrapper: { "object.projection": { ... } }.
-            for (Map.Entry<String, JsonElement> entry : child.entrySet()) {
-                JsonElement bodyEl = entry.getValue();
-                if (bodyEl == null || !bodyEl.isJsonObject()) return false;
-                JsonElement overlayEl = bodyEl.getAsJsonObject().get(BaseMetaDataParser.ATTR_OVERLAY);
-                boolean isOverlay = overlayEl != null
-                    && overlayEl.isJsonPrimitive()
-                    && overlayEl.getAsJsonPrimitive().isBoolean()
-                    && overlayEl.getAsBoolean();
-                if (!isOverlay) return false;
-            }
-        }
-        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////

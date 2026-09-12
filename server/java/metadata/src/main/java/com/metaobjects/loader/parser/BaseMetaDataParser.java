@@ -1,5 +1,6 @@
 package com.metaobjects.loader.parser;
 
+import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
@@ -16,7 +17,9 @@ import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.registry.ChildRequirement;
 import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.source.ErrorSource;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.source.ResolvedSource;
 import com.metaobjects.util.MetaDataUtil;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.view.MetaView;
@@ -360,10 +363,19 @@ public abstract class BaseMetaDataParser {
         catch (MetaDataNotFoundException e) {
             // Handle cases where metadata wasn't found
             if (Boolean.TRUE.equals(isOverlay)) {
-                // Explicit overlay was requested but no existing metadata found - this is an error
-                throw new MetaDataException("Overlay operation requested for MetaData [type=" + typeName 
-                    + "][subType=" + subTypeName + "][name=" + name + "] but no existing metadata found to overlay in file [" 
-                    + getFilename() + "]");
+                // ADR-0055 — the overlay's target does not exist. By the time this
+                // arm is reachable the loader has parsed every source and applied
+                // nothing but plain declarations, so "not found" now means GONE,
+                // not merely "not parsed yet" — which is the whole point of the
+                // deferred pass. Carries the structured code and an FR5d
+                // `format: "resolved"` envelope so the cross-port harness sees the
+                // same error shape every other port emits.
+                throw new MetaDataException(
+                    overlayNoTargetMessage(typeName, name),
+                    ErrorCode.ERR_OVERLAY_NO_TARGET,
+                    overlayNoTargetEnvelope(
+                        overlayReferrer(isRoot, parent, packageName, name),
+                        typeName + ":" + name));
             }
             // If not overlay, continue to create new metadata below
         }
@@ -396,6 +408,50 @@ public abstract class BaseMetaDataParser {
         return md;
     }
 
+
+    /**
+     * ADR-0055 — the one wording for a missing overlay target, so every port's
+     * envelope carries the same message. Kept byte-aligned with the TS reference
+     * ({@code parser-core.ts overlayNoTargetMessage}) and the C# sibling.
+     */
+    protected static String overlayNoTargetMessage(String typeName, String name) {
+        return "Overlay operation requested for [" + typeName + ":" + name
+            + "] but no existing metadata found to merge into";
+    }
+
+    /**
+     * ADR-0055 / ADR-0029 — the declaration's own ADDRESS, for the resolved
+     * envelope's {@code referrer}. Package-qualified at the root; parent-relative
+     * when nested (a nested node carries a BARE name, so its fqn would not
+     * identify it).
+     */
+    protected static String overlayReferrer(boolean isRoot, MetaData parent,
+                                            String packageName, String name) {
+        if (isRoot) {
+            return (packageName != null && !packageName.isEmpty())
+                ? packageName + MetaDataLoader.PKG_SEPARATOR + name
+                : name;
+        }
+        // ADR-0029 — the parent's BARE name: a package qualifies the ROOT-level node
+        // only, and Java folds the package onto a root node's `getName()`. Using the
+        // fqn here would address `acme::commerce::Product.ghost`, which is not how a
+        // nested child is addressed in any port.
+        return parent.getShortName() + "." + name;
+    }
+
+    /**
+     * ADR-0055 — FR5d envelope for a failed overlay, built from the declaration's
+     * own parse-time location. Format-agnostic here: the base parser has no
+     * JSONPath of its own, so a format subclass that tracks one overrides this.
+     * The default keeps the failure reportable (files only) rather than silent.
+     *
+     * @param referrer the declaration's address (see {@link #overlayReferrer})
+     * @param target   {@code <type>:<name>} of the node it tried to re-open
+     */
+    protected ErrorSource overlayNoTargetEnvelope(String referrer, String target) {
+        String file = getFilename();
+        return new ResolvedSource(file == null ? List.of() : List.of(file), null, referrer, target);
+    }
 
     /** Get the Super MetaData if it exists - v6.0.0: Updated to use registry */
     protected MetaData getSuperMetaData(MetaData parent, String typeName, String name, String packageName, String superName ) {

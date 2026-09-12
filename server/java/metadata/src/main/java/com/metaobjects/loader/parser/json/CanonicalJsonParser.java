@@ -16,6 +16,7 @@ import com.metaobjects.source.JsonPath;
 import com.metaobjects.source.JsonSource;
 import com.metaobjects.source.LoaderWarning;
 import com.metaobjects.source.MergedSource;
+import com.metaobjects.source.ResolvedSource;
 import com.metaobjects.source.SemanticDiff;
 import com.metaobjects.source.YamlPosition;
 import com.metaobjects.source.YamlSource;
@@ -167,9 +168,100 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      */
     private Map<String, YamlPosition> yamlPositionsByPath = null;
 
+    /**
+     * ADR-0055 — true while {@link #applyPendingOverlay} is walking a queued unit.
+     *
+     * <p>An {@code overlay: true} node met with this false is QUEUED; met with it
+     * true it resolves find-or-fail on the spot. That second door is how a NESTED
+     * overlay inside an applied unit is handled (G3): its parent is complete by
+     * then and there is no later pass to defer to.</p>
+     */
+    private boolean applyingOverlays = false;
+
     /** Creates a {@code CanonicalJsonParser} for the given loader and filename. */
     public CanonicalJsonParser(MetaDataLoader loader, String filename) {
         super(loader, filename);
+    }
+
+    // -----------------------------------------------------------------------
+    // ADR-0055 — deferred overlay application
+    // -----------------------------------------------------------------------
+
+    /**
+     * ADR-0055 — one {@code overlay: true} declaration met during the walk and
+     * deferred until every source has been parsed.
+     *
+     * <p>A deferred {@code extends} hangs on its node as a
+     * {@link MetaDataLoader.PendingExtends} row; a deferred overlay has NO node —
+     * nothing was created — so everything needed to apply it, and to report against
+     * its own location long after the walk unwound, travels with it. That includes
+     * the PARSER instance itself: it owns the filename, the default package and the
+     * FR5b position map that the re-entered walk reads.</p>
+     */
+    public static final class PendingOverlay {
+        private final CanonicalJsonParser parser;
+        private final MetaData parent;
+        private final String type;
+        private final String subType;
+        private final JsonObject body;
+        private final boolean isRoot;
+        private final JsonPath.Builder.Capture path;
+        private final Map<String, YamlPosition> yamlPositions;
+
+        private PendingOverlay(CanonicalJsonParser parser, MetaData parent, String type,
+                               String subType, JsonObject body, boolean isRoot,
+                               JsonPath.Builder.Capture path,
+                               Map<String, YamlPosition> yamlPositions) {
+            this.parser = parser;
+            this.parent = parent;
+            this.type = type;
+            this.subType = subType;
+            this.body = body;
+            this.isRoot = isRoot;
+            this.path = path;
+            this.yamlPositions = yamlPositions;
+        }
+
+        /** Apply this declaration against the completed tree. */
+        public void apply() {
+            parser.applyPendingOverlay(this);
+        }
+
+        @Override
+        public String toString() {
+            return "PendingOverlay[" + type + "." + subType + " in " + parser.getFilename() + "]";
+        }
+    }
+
+    /**
+     * ADR-0055 — re-enter the walk for one queued declaration.
+     *
+     * <p>Restores the walk state the declaration was queued under — JSONPath stack
+     * and FR5b position map — so anything constructed now carries the declaration's
+     * own provenance and any error names its own location. {@link #applyingOverlays}
+     * is what stops {@link #processNode} from queueing the same node again.</p>
+     */
+    private void applyPendingOverlay(PendingOverlay item) {
+        this.applyingOverlays = true;
+        this.yamlPositionsByPath = item.yamlPositions;
+        jsonPathBuilder.restore(item.path);
+        try {
+            processNode(item.parent, item.type, item.subType, item.body, item.isRoot);
+        } finally {
+            jsonPathBuilder.clear();
+            this.yamlPositionsByPath = null;
+            this.applyingOverlays = false;
+        }
+    }
+
+    /**
+     * ADR-0055 — FR5d envelope for a failed overlay, anchored at the declaration's
+     * own JSONPath (restored by {@link #applyPendingOverlay}) rather than at
+     * {@code $}.
+     */
+    @Override
+    protected ErrorSource overlayNoTargetEnvelope(String referrer, String target) {
+        return ResolvedSource.from(currentSourceEnvelope(), referrer, target);
     }
 
     // -----------------------------------------------------------------------
@@ -452,6 +544,13 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // inherit positions. The Parser is one-shot per file, but defensive.
             this.yamlPositionsByPath = null;
         }
+        // ADR-0055 — a caller that is not batching gets its own queue drained here,
+        // so "queue, then apply" is the only path through the parser and a single
+        // document is order-independent on its own. Inside MetaDataLoader.load the
+        // loader is batching and owns the drain, once every source is parsed.
+        if (!getLoader().isDeferringOverlays()) {
+            getLoader().applyPendingOverlays();
+        }
     }
 
     private void buildTreeInternal(JsonObject canonical) {
@@ -731,6 +830,25 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             } else if (!BaseMetaDataParser.isAutoNamingType(type)) {
                 name = subType;
             }
+        }
+
+        // ADR-0055 — an overlay is ALWAYS queued, never applied during the walk,
+        // and deliberately NOT conditioned on whether its target happens to exist
+        // yet. Applying it when the base is already present and queueing only on a
+        // miss is the retry-on-miss variant the ADR rejected: output would still
+        // depend on whether a base had been parsed yet, which is the fragility
+        // being removed. G1 — every plain declaration, from every source, precedes
+        // every overlay — only holds if the queue is unconditional.
+        //
+        // This node is the OUTERMOST overlay on this branch and we do NOT descend
+        // into it, so its whole subtree — nested overlays included — is applied as
+        // one unit (G3). Returning here is what keeps a node that was never created
+        // out of the tree; the overlay contributes nothing until the drain.
+        if (Boolean.TRUE.equals(isOverlay) && !applyingOverlays) {
+            getLoader().addPendingOverlay(new PendingOverlay(
+                this, parent, type, subType, body, isRoot,
+                jsonPathBuilder.snapshot(), yamlPositionsByPath));
+            return;
         }
 
         // Create or overlay the MetaData via the format-agnostic base method.

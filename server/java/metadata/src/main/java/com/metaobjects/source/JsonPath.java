@@ -128,6 +128,38 @@ public final class JsonPath {
         }
 
         /**
+         * ADR-0055 — capture the current stack so a DEFERRED declaration's JSONPath
+         * survives the walk unwinding.
+         *
+         * <p>A queued {@code overlay: true} declaration is applied long after the
+         * walk that met it has returned and popped every segment. Without a capture
+         * the error it raises would name {@code $} instead of its own location.</p>
+         */
+        public Capture snapshot() {
+            return new Capture(List.copyOf(segments));
+        }
+
+        /** ADR-0055 — re-seed the stack from a {@link #snapshot()}. */
+        public void restore(Capture capture) {
+            segments.clear();
+            segments.addAll(capture.segments);
+        }
+
+        /** ADR-0055 — drop every segment, returning the builder to {@code $}. */
+        public void clear() {
+            segments.clear();
+        }
+
+        /** ADR-0055 — an immutable capture of a builder stack (see {@link #snapshot()}). */
+        public static final class Capture {
+            private final List<Segment> segments;
+
+            private Capture(List<Segment> segments) {
+                this.segments = segments;
+            }
+        }
+
+        /**
          * Render the current stack as a canonical JSONPath string.
          *
          * @return the canonical form (always starts with {@code $})
