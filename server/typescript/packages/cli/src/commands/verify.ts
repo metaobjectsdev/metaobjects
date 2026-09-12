@@ -595,7 +595,7 @@ export async function verifyCommand(
     // ONE scan for all three passes. The gate and the summary each used to walk the
     // model AND resolve every @implementedBy claim for themselves — the resolution
     // being the expensive half — and the lint added a third walk on top.
-    const scan = scanRequirements(root);
+    const scan = scanRequirements(root, { coverable: collection.inScope });
     const diags = [...checkRequirements(root, scan)];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
