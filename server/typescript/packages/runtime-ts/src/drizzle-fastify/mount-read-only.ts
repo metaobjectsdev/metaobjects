@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
@@ -27,6 +27,17 @@ export interface MountReadOnlyOptions {
   readonly dialect: "postgres" | "sqlite";
   /** Override default ID column name (defaults to "id"). */
   readonly idColumn?: string;
+  /**
+   * Fastify route-level hooks applied to every route this mounts — the same option
+   * `mountCrudRoutes` and `mountM2mRoute` take, and for the same reason:
+   *   routeOptions: { preHandler: requireAuthHook }
+   *
+   * A projection is read-only, not public. It was the one mount helper of the three
+   * without this, so a generated projection route could not carry a hook the way a
+   * generated entity route could — an inconsistency, not a policy. (Guarding the whole
+   * mount from an enclosing plugin scope works here too, and needs no option at all.)
+   */
+  readonly routeOptions?: RouteShorthandOptions;
 }
 
 const REJECT_MUTATION = async (
@@ -124,12 +135,13 @@ async function rawRows(db: any, dialect: string | undefined, query: unknown): Pr
 export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const { fastify, path, db, view, filterAllowlist, sortAllowlist, dialect } = opts;
   const idCol = opts.idColumn ?? "id";
+  const ro = opts.routeOptions ?? {};
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
 
   // ── List ──────────────────────────────────────────────────────────────────
-  fastify.get(path, async (req, reply) => {
+  fastify.get(path, ro, async (req, reply) => {
     try {
       if (useRawSql) {
         // .existing() view with no column schema — use raw SQL.
@@ -197,7 +209,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   });
 
   // ── Get by ID ─────────────────────────────────────────────────────────────
-  fastify.get(`${path}/:id`, async (req, reply) => {
+  fastify.get(`${path}/:id`, ro, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (useRawSql) {
       // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
@@ -221,7 +233,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   });
 
   // ── Mutations explicitly rejected (405) ───────────────────────────────────
-  fastify.post(path, REJECT_MUTATION);
-  fastify.patch(`${path}/:id`, REJECT_MUTATION);
-  fastify.delete(`${path}/:id`, REJECT_MUTATION);
+  fastify.post(path, ro, REJECT_MUTATION);
+  fastify.patch(`${path}/:id`, ro, REJECT_MUTATION);
+  fastify.delete(`${path}/:id`, ro, REJECT_MUTATION);
 }

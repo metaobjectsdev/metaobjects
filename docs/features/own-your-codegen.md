@@ -147,6 +147,41 @@ knowing exactly what that means:
 Python's generated output carries the same pointer as `<Entity>_extra.py`, with the same
 meaning.
 
+The generated header says it in those terms — *"Extend in your own module (e.g.
+`Order.extra.ts`) — nothing imports it for you."* It used to read *"Customize via
+`Order.extra.ts` in this directory"*, and on routes files *"(e.g., auth, additional
+handlers)"*. That wording cost a real build ([#367]): an agent wiring authentication read
+it on a routes file, went looking for the seam it names, found none, and dropped
+`routesFile()` from its config rather than mount five unauthenticated endpoints over a
+password-hash table. A convention described as a mechanism is worse than no pointer at
+all, because it sends someone looking.
+
+**Where auth actually goes** is the framework's own composition, not a MetaObjects
+feature, and the generated handler's JSDoc now carries the recipe for the framework it
+emitted for:
+
+```ts
+// Fastify — hooks are encapsulated per plugin scope and inherited by child scopes, so
+// this reaches through the generated handler's own register(..., { prefix }).
+app.register(async (s) => {
+  s.addHook("preHandler", requireAuth);
+  await registerOrderRoutes(s);
+});
+
+// Hono — the trailing wildcard also matches the collection path itself, so one
+// middleware covers list, get and every write.
+app.use(`${Order.$path}/*`, requireAuth);
+registerOrderRoutes(app, { db });
+```
+
+Both are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather than
+asserted in prose. For mounting *fewer* endpoints, narrow the generator:
+`routesFile({ expose: ["list", "get"] })`. What neither can express is a row-ownership
+rule — "only the owner may read this row" is not a property of a mount — so hand-write
+those verbs and narrow the generated file around them.
+
+[#367]: https://github.com/metaobjectsdev/metaobjects/issues/367
+
 ## Per port
 
 Every port offers the **declarative** path — a Mustache template plus a scope, no

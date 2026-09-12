@@ -70,6 +70,7 @@ import {
   namesRef,
   namesConstArg,
   GENERATED_HEADER,
+  sidecarLine,
 } from "@metaobjectsdev/codegen-ts";
 
 export interface RenderEntityOpts {
@@ -143,8 +144,7 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
-    `// Source metadata: ${entity.name} (${entity.fqn()})\n` +
-    `// Customize via ${entity.name}.extra.ts in this directory.\n`;
+    `// Source metadata: ${entity.name} (${entity.fqn()})\n${sidecarLine(`${entity.name}.extra.ts`)}`;
   return header + body;
 }
 

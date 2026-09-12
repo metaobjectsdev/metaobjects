@@ -82,7 +82,7 @@ export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-pol
 export { contentHash, readGeneratedHash, listGeneratedPaths } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
-export { GENERATED_HEADER, NAMES_FILE_SUFFIX, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, type RetiredCodegenAttr } from "./constants.js";
+export { GENERATED_HEADER, NAMES_FILE_SUFFIX, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, sidecarLine, type RetiredCodegenAttr } from "./constants.js";
 export { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 
 export { formatTs } from "./format.js";
@@ -210,7 +210,7 @@ export { renderEntityConstants, resourcePath } from "./templates/entity-constant
 export { renderQueriesFile } from "./templates/queries-file.js";
 // #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED
 // routes generator (ADR-0034) composes the same render call and needs the same option.
-export { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, resolveExpose, intersectExpose, exposeLine } from "./routes-expose.js";
+export { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, resolveExpose, intersectExpose, exposeLine, authSeamJsDoc } from "./routes-expose.js";
 export type { CrudVerb, ExposeOption } from "./routes-expose.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";

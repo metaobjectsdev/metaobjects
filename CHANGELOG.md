@@ -10,6 +10,42 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **Generated files no longer point at a plugin point that does not exist ([#367]).**
+  Every emitted header carried `Customize via <Entity>.extra.ts in this directory`, and
+  routes files added `(e.g., auth, additional handlers)`. Nothing in any toolchain imports
+  a sibling module — the name is a convention, documented as one in
+  [`own-your-codegen.md`](docs/features/own-your-codegen.md), and `EXTRA_SUFFIX` was
+  deleted from `codegen-ts` long ago for implying otherwise. The cost was measured: an
+  agent wiring authentication onto a real API read that line on a routes file, went
+  looking for the seam, found none, and removed `routesFile()` from its config rather
+  than mount five unauthenticated endpoints over a password-hash table. The line now
+  reads *"Extend in your own module (e.g. `Order.extra.ts`) — nothing imports it for
+  you."*, spelled once in `sidecarLine` (TypeScript) and `generated_header` (Python)
+  rather than copy-pasted to eleven emitters.
+
+### Added
+
+- **The auth seam is printed in the generated routes handler's JSDoc ([#367]).** Stock
+  CRUD is unauthenticated and no metadata attribute should change that — authentication
+  is not derivable from a model (ADR-0023). Both frameworks already compose a guard
+  around the generated mount; only the generated output never said so. Fastify hooks are
+  encapsulated per plugin scope and inherited by child scopes, so wrapping the call
+  reaches through the handler's own `register(..., { prefix })`; Hono's trailing wildcard
+  matches the collection path itself, so one `app.use` covers list, get and every write.
+  Both recipes are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather
+  than asserted in prose, and each names the generator that emitted the file
+  (`routesFile` / `routesFileHono`) for narrowing with `expose`. The JSDoc also states
+  what no mount can express: a row-ownership rule is not a property of a route, so those
+  verbs are hand-written and the generated file narrowed around them.
+- **`mountReadOnlyCrudRoutes` accepts `routeOptions`** (`@metaobjectsdev/runtime-ts`,
+  Fastify), the option `mountCrudRoutes` and `mountM2mRoute` already took. A projection's
+  generated routes could not carry a route-level hook the way an entity's could — an
+  inconsistency, not a policy. Read-only is not public.
+
+[#367]: https://github.com/metaobjectsdev/metaobjects/issues/367
+
 ## [1.0.3] — 2026-09-12
 
 _All four registries publish: npm `1.0.3` (full lockstep across all 14 `@metaobjectsdev/*`

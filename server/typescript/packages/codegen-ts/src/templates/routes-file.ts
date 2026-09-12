@@ -24,12 +24,12 @@ import {
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { namesRef, columnExpr } from "../names.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, sidecarLine } from "../constants.js";
 import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
-import { type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
+import { authSeamJsDoc, type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 
 export function renderRoutesFile(
@@ -65,7 +65,7 @@ export function renderRoutesFile(
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n` +
-    `// Customize via ${entityName}.extra.ts in this directory (e.g., auth, additional handlers).\n`;
+    sidecarLine(`${entityName}.extra.ts`);
 
   // --- Projection path: read-only routes (GET list + GET :id) ---
   if (isProjection(entity)) {
@@ -74,6 +74,13 @@ export function renderRoutesFile(
     const mountReadOnlyCrudRoutesSym = imp(
       "mountReadOnlyCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify",
     );
+    // A projection mount is read-only by construction, so `expose` cannot narrow it —
+    // the paragraph drops the narrowing advice and keeps the auth seam.
+    const readOnlyAuthJsDoc = authSeamJsDoc({
+      framework: "fastify",
+      handlerName,
+      narrowable: false,
+    });
 
     const literalImports = code`
 import { db } from ${JSON.stringify(dbImportSpec)};
@@ -93,6 +100,7 @@ import {
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
  * @metaobjectsdev/runtime-ts/drizzle-fastify.
+${readOnlyAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   await fastify.register(async (instance) => {
@@ -115,6 +123,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
  * @metaobjectsdev/runtime-ts/drizzle-fastify.
+${readOnlyAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   ${mountReadOnlyCrudRoutesSym}({
@@ -147,6 +156,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   const readViewLineFlat = writeThrough ? `\n    readView: ${camelName}View,` : "";
   const exposeLinePrefixed = exposeLine(expose, "      ");
   const exposeLineFlat = exposeLine(expose, "    ");
+  const crudAuthJsDoc = authSeamJsDoc({ framework: "fastify", handlerName, narrowable: true });
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
@@ -185,6 +195,7 @@ import {
  * helpers (mountListRoute, mountGetRoute, ...) from
  * @metaobjectsdev/runtime-ts/drizzle-fastify and mix with your own handlers
  * (auth, side effects, etc.).
+${crudAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   await fastify.register(async (instance) => {
@@ -210,6 +221,7 @@ ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
  * helpers (mountListRoute, mountGetRoute, ...) from
  * @metaobjectsdev/runtime-ts/drizzle-fastify and mix with your own handlers
  * (auth, side effects, etc.).
+${crudAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   ${mountCrudRoutesSym}({
@@ -444,6 +456,9 @@ function renderTphRoutesFile(
   });
 
   const mounts = joinCode([polymorphic, ...subtypeMounts], { on: "\n" });
+  // The base path is read-only by construction (TPH_POLYMORPHIC_VERBS), but the
+  // per-subtype mounts below it are full CRUD — so `expose` does narrow this file.
+  const tphAuthJsDoc = authSeamJsDoc({ framework: "fastify", handlerName, narrowable: true });
 
   const fn = ctx.apiPrefix
     ? code`
@@ -452,6 +467,7 @@ function renderTphRoutesFile(
  *
  * GET ${baseName}.$path (+ /:id) lists/gets the discriminated union; each
  * /${baseName}.$path/<subtype> path is a full per-subtype CRUD set.
+${tphAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   await fastify.register(async (instance) => {
@@ -465,6 +481,7 @@ ${mounts}
  *
  * GET ${baseName}.$path (+ /:id) lists/gets the discriminated union; each
  * /${baseName}.$path/<subtype> path is a full per-subtype CRUD set.
+${tphAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
 ${mounts}
@@ -474,6 +491,6 @@ ${mounts}
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${baseName} (${base.fqn()}) — TPH discriminator base\n` +
-    `// Customize via ${baseName}.extra.ts in this directory (e.g., auth, additional handlers).\n`;
+    sidecarLine(`${baseName}.extra.ts`);
   return header + fn.toString();
 }

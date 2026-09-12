@@ -84,3 +84,60 @@ export function exposeLine(verbs: readonly CrudVerb[] | undefined, indent: strin
   if (verbs === undefined) return "";
   return `\n${indent}expose: [${verbs.map((v) => JSON.stringify(v)).join(", ")}],`;
 }
+
+/**
+ * The auth-seam paragraph in a generated routes handler's JSDoc.
+ *
+ * Stock CRUD is unauthenticated, and until #367 the only thing a generated routes file
+ * said about that was a header line pointing at `<Entity>.extra.ts` "(e.g., auth)" — a
+ * sibling module nothing imports. An agent building a real API read it, went looking for
+ * the seam, found none, and deleted `routesFile()` from its config rather than mount five
+ * open endpoints over a password-hash table. The seam it needed already existed in both
+ * frameworks; nothing told it where.
+ *
+ * Both recipes are gated by `runtime-ts/test/route-auth-seam.test.ts` against the real
+ * mount helpers, because a recipe in generated output that does not work is the defect
+ * this replaces, not a smaller version of it. Hono's trailing wildcard is load-bearing
+ * and counter-intuitive: `"/users/*"` matches the collection path `/users` itself, so one
+ * `app.use` covers list, get and every write.
+ *
+ * The closing sentence is the part an adopter most needs and no knob can supply: a
+ * row-ownership rule ("only the owner may read this row") is not expressible in a mount,
+ * so the honest move is to hand-write those verbs and narrow the generated file with
+ * `expose` — not to mount them and hope.
+ */
+export function authSeamJsDoc(opts: {
+  framework: "fastify" | "hono";
+  /** The emitted handler's name, so the worked example is callable as written. */
+  handlerName: string;
+  /** Hono only: the source expression for this file's mount path, e.g. "`/api${User.$path}`". */
+  mountPathExpr?: string;
+  /** False for a read-only mount, which `expose` cannot narrow further. */
+  narrowable: boolean;
+}): string {
+  const recipe =
+    opts.framework === "fastify"
+      ? ` *     app.register(async (s) => {\n` +
+        ` *       s.addHook("preHandler", requireAuth);\n` +
+        ` *       await ${opts.handlerName}(s);\n` +
+        ` *     });`
+      : ` *     app.use(${opts.mountPathExpr}, requireAuth);   // matches the collection path too\n` +
+        ` *     ${opts.handlerName}(app, { db });`;
+  const guarded =
+    opts.framework === "fastify"
+      ? `Register this inside a scope that\n` +
+        ` * carries your hook and every verb below is guarded — routes outside that scope\n` +
+        ` * are not:`
+      : `Guard the mount path with\n` + ` * middleware before calling this:`;
+  // Name the generator that actually emitted this file — `routesFile` does not exist in
+  // a Hono project's config, and a recipe naming the wrong symbol is the same defect
+  // one size smaller.
+  const generatorName = opts.framework === "fastify" ? "routesFile" : "routesFileHono";
+  const narrowNote = opts.narrowable
+    ? `\n *\n * A row-ownership rule ("only the owner may read this row") is not expressible in a\n` +
+      ` * mount. Hand-write those verbs and narrow this file with\n` +
+      ` * ${generatorName}({ expose: ["list", "get"] }) rather than mounting them open.`
+    : `\n *\n * A row-ownership rule ("only the owner may read this row") is not expressible in a\n` +
+      ` * mount. Hand-write those reads rather than exposing this one open.`;
+  return ` *\n * Auth: these endpoints are unauthenticated. ${guarded}\n *\n${recipe}${narrowNote}`;
+}

@@ -22,7 +22,7 @@ import {
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, sidecarLine } from "../constants.js";
 import { namesRef, namesConstArg } from "../names.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
@@ -84,6 +84,6 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${obj.name} (${obj.fqn()})\n` +
-    `// Customize via ${emittedName}.extra.ts in this directory.\n`;
+    sidecarLine(`${emittedName}.extra.ts`);
   return header + body;
 }

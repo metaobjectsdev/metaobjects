@@ -28,9 +28,9 @@ import { code, imp } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { entityModuleSpecifier } from "../import-path.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, sidecarLine } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
-import { type CrudVerb, exposeLine } from "../routes-expose.js";
+import { authSeamJsDoc, type CrudVerb, exposeLine } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 
 export function renderRoutesFileHono(
@@ -58,12 +58,17 @@ export function renderRoutesFileHono(
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n` +
-    `// Customize via ${entityName}.extra.ts in this directory (e.g., auth, additional handlers).\n`;
+    sidecarLine(`${entityName}.extra.ts`);
 
   // Path composition: apiPrefix is a literal string in the URL.
   const pathExpr = ctx.apiPrefix
     ? `\`${ctx.apiPrefix}\${${entityName}.$path}\``
     : `${entityName}.$path`;
+  // The same path with Hono's trailing wildcard, for the auth recipe in the JSDoc.
+  // `"/users/*"` matches `/users` itself, so one app.use covers list, get and writes.
+  const authPathExpr = ctx.apiPrefix
+    ? `\`${ctx.apiPrefix}\${${entityName}.$path}/*\``
+    : `\`\${${entityName}.$path}/*\``;
 
   // --- Projection path: read-only routes (GET list + GET :id) ---
   if (isProjection(entity)) {
@@ -89,6 +94,7 @@ import {
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
  * @metaobjectsdev/runtime-ts/hono.
+${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: false })}
  */
 // biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
 export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {
@@ -143,6 +149,7 @@ import {
  * helpers (mountListRoute, mountGetRoute, ...) from
  * @metaobjectsdev/runtime-ts/hono and mix with your own handlers
  * (auth, side effects, etc.).
+${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: true })}
  */
 // biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
 export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {

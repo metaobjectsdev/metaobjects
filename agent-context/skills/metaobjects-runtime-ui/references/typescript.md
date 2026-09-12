@@ -210,3 +210,38 @@ plus `expose?` (limit verbs), `routeOptions?` (Fastify hooks — e.g.
 custom routes** (HTML pages, nested resources, computed fields) — calling the
 generated query helpers, and a projection's generated query for derived/aggregate
 data. Generate the data layer; hand-write only what's genuinely custom.
+
+Narrowing at the GENERATOR is the same axis without hand-written mounts:
+`routesFile({ expose: ["list", "get"] })` (`routesFileHono` likewise) — per-entity via
+a function, `undefined` meaning all five. A `filter` cannot express it: filter decides
+whether the file emits at all.
+
+### Generated routes are unauthenticated — guard them or don't mount them
+
+Stock CRUD mounts five open endpoints. Nothing in the metamodel says otherwise, and
+nothing should: authentication is not derivable from a model, and there is no `@auth`
+attribute to reach for. Guard them with the framework's own composition — no MetaObjects
+feature involved, and no edit to the generated file:
+
+```ts
+// Fastify — hooks are encapsulated per plugin scope and inherited by child scopes, so
+// this reaches through the generated handler's own register(..., { prefix }). Routes
+// registered outside the scope stay open.
+app.register(async (s) => {
+  s.addHook("preHandler", requireAuth);
+  await registerRecipeRoutes(s);
+});
+
+// Hono — the trailing wildcard matches the collection path itself, so one middleware
+// covers list, get and every write.
+app.use(`${Recipe.$path}/*`, requireAuth);
+registerRecipeRoutes(app, { db });
+```
+
+**Judge each entity before mounting it.** A hook answers "is this caller
+authenticated"; it cannot answer "may this caller see THIS row". For an entity holding
+credentials or user-owned rows — password hashes, per-user secrets, anything a list
+endpoint would hand to the wrong person — stock CRUD is not safe at any verb, and the
+right move is to hand-write those verbs and narrow the generated file with `expose`
+rather than mounting them and layering checks. Generated `create` that skips password
+hashing is the same class of defect as a generated `list` that returns every hash.

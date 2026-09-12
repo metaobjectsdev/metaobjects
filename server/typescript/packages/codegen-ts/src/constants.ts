@@ -36,6 +36,33 @@ export const NAMES_FILE_SUFFIX = ".names.ts";
 // barrel is built from the model, so it does not re-export it. Say that in prose;
 // do not re-add a constant that suggests the engine knows the name.
 
+/**
+ * Line 3 of every generated file's header — where an adopter's own code goes.
+ *
+ * It used to read `Customize via <Name>.extra.ts in this directory`, and on the routes
+ * emitters `(e.g., auth, additional handlers)`. Both asserted a plugin point this engine
+ * does not have — the same claim `EXTRA_SUFFIX` was deleted above for implying. The
+ * convention is real and documented (`docs/features/own-your-codegen.md`): a sibling file
+ * is safe because `meta gen` writes only the paths it records, and the barrel is built
+ * from the model so it never re-exports one. What is NOT real is anything importing it
+ * for you, and "Customize via" is exactly the verb that promises otherwise.
+ *
+ * #367 is the measured cost: an agent building a real API read `(e.g., auth)` on a routes
+ * file, went looking for the seam, found none, and deleted `routesFile()` from its config
+ * rather than mount five unauthenticated endpoints over a password-hash table. The auth
+ * seam it needed exists — a parent plugin scope's `preHandler` (Fastify) or `app.use`
+ * (Hono) — and the routes emitters now say so in the handler's own JSDoc, gated by
+ * `runtime-ts/test/route-auth-seam.test.ts`.
+ *
+ * Spelled once because the literal had been copy-pasted to ten TypeScript emitters plus
+ * Python's `generated_header`, which is how one wrong sentence reached every generated
+ * file in the estate. `sidecarName` is the emitted module name, extension included
+ * (`Order.extra.ts`, `OrderForm.extra.tsx`).
+ */
+export function sidecarLine(sidecarName: string): string {
+  return `// Extend in your own module (e.g. ${sidecarName}) — nothing imports it for you.\n`;
+}
+
 /** Default outDir used by tests + as a sane default for generate(). */
 export const DEFAULT_OUT_DIR = "./src/db/entities";
 

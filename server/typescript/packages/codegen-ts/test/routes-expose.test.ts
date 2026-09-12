@@ -68,6 +68,15 @@ function ctxFor(root: MetaRoot) {
 const entityOf = (root: MetaRoot, name: string): MetaObject =>
   root.objects().find((o) => o.name === name)!;
 
+/**
+ * The emitted `expose:` OPTION — an indented key inside a mount call — as opposed to the
+ * string "expose:" anywhere in the file. The handler's JSDoc now tells a reader to narrow
+ * the surface with `routesFile({ expose: [...] })` (#367), so a bare substring search
+ * matches the advice as well as the code and "emits no expose key" stopped meaning
+ * anything. Key on the shape `exposeLine` actually produces.
+ */
+const hasExposeOption = (out: string): boolean => /\n\s+expose: \[/.test(out);
+
 describe("#348 — expose narrows the generated CRUD surface", () => {
   test("absent expose emits no expose key at all, on both emitters", async () => {
     const root = await load();
@@ -75,8 +84,8 @@ describe("#348 — expose narrows the generated CRUD surface", () => {
     const audit = entityOf(root, "AuditEntry");
     // Byte-identical output for every project that does not use the option is the
     // whole reason this emits nothing rather than the full five-verb list.
-    expect(renderRoutesFile(audit, ctx)).not.toContain("expose:");
-    expect(renderRoutesFileHono(audit, ctx)).not.toContain("expose:");
+    expect(hasExposeOption(renderRoutesFile(audit, ctx))).toBe(false);
+    expect(hasExposeOption(renderRoutesFileHono(audit, ctx))).toBe(false);
   });
 
   test("a verb list reaches the Fastify mount", async () => {
@@ -99,8 +108,11 @@ describe("#348 — expose narrows the generated CRUD surface", () => {
     expect(renderRoutesFile(entityOf(root, "AuditEntry"), ctx, resolveExpose(entityOf(root, "AuditEntry"), expose)))
       .toContain('expose: ["list", "get"],');
     // A different entity keeps the full surface, and emits nothing.
-    expect(renderRoutesFile(entityOf(root, "Customer"), ctx, resolveExpose(entityOf(root, "Customer"), expose)))
-      .not.toContain("expose:");
+    expect(
+      hasExposeOption(
+        renderRoutesFile(entityOf(root, "Customer"), ctx, resolveExpose(entityOf(root, "Customer"), expose)),
+      ),
+    ).toBe(false);
   });
 });
 

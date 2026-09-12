@@ -17,7 +17,7 @@ import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { renderTphDiscriminatorUnion, isTphDiscriminatorBase } from "./tph-discriminator.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, sidecarLine } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
 import {
@@ -224,6 +224,6 @@ ${docsPrefix}export type ${entity.name} = ${z}.infer<typeof ${entity.name}Schema
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${entity.name} (${entity.fqn()})\n` +
-    `// Customize via ${entity.name}.extra.ts in this directory.\n`;
+    sidecarLine(`${entity.name}.extra.ts`);
   return header + body;
 }

@@ -61,6 +61,7 @@ import {
   type RenderContext,
   entityModuleSpecifier,
   GENERATED_HEADER,
+  sidecarLine,
   humanize,
   tphDiscriminatorPin,
   valueObjectFor,
@@ -595,7 +596,7 @@ ${fieldBlocks}
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n` +
-    `// Customize via ${entityName}.extra.tsx (custom layouts, per-field components, etc.).\n`;
+    sidecarLine(`${entityName}.extra.tsx`);
 
   return header + literalImports.toString() + body.toString();
 }

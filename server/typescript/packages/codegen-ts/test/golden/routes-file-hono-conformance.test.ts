@@ -5,9 +5,16 @@
 // file, this test loads the input metadata, runs routesFileHono(), and asserts
 // byte-identical match. Fixtures without an expected Hono routes file are
 // skipped.
+//
+// Run with UPDATE_GOLDEN=1 to (re)write the expected files — same switch the two
+// snapshot gates beside it use. Without it, a template change turns this red with no
+// command to make it green, which is the friction that gets a gate edited instead of
+// its fixture:
+//   UPDATE_GOLDEN=1 bun test test/golden/routes-file-hono-conformance.test.ts
+// Then read `git diff` on fixtures/conformance/*/expected/ before committing.
 
 import { describe, it, expect } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { routesFileHono } from "../../src/generators/routes-file-hono.js";
@@ -19,6 +26,7 @@ import type { GenContext } from "../../src/generator.js";
 // Corpus is six levels up from this file:
 //   test/golden → test → codegen-ts → packages → typescript → server → repo-root/fixtures/conformance
 const CORPUS = resolve(import.meta.dir, "../../../../../../fixtures/conformance");
+const UPDATE = process.env.UPDATE_GOLDEN === "1";
 
 function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): GenContext {
   const renderContext = makeRenderContext({
@@ -83,6 +91,7 @@ describe("routesFileHono() conformance — expected/<Entity>.routes.hono.ts byte
       for (const fname of expectedFiles) {
         const emitted = out.find((f) => f.path === fname);
         expect(emitted, `${fixtureName}: missing emitted file ${fname}`).toBeDefined();
+        if (UPDATE) writeFileSync(join(expectedDir, fname), emitted!.content);
         const expected = readFileSync(join(expectedDir, fname), "utf-8");
         expect(
           emitted!.content,

@@ -530,7 +530,19 @@ the breaking half at `1.1`.
   `operation.query|command`, `binding.rest`, `inputRef`/`outputRef`/`many`; loader ref-resolution +
   path-template↔identity validation; per-port route-shell codegen (typed handler seam, verb bodies
   hand-written); `meta verify` + `meta docs`; atomic `expected-registry.json` flip across 5 ports.
-  The foundation FR-034 references.
+  The foundation FR-034 references. **[RULED 2026-09-12 — this is the answer to
+  [#367](https://github.com/metaobjectsdev/metaobjects/issues/367), and the competing shape is
+  closed.]** #367 is the first measured case where generated routes are unmountable: given an
+  OpenAPI spec with credentials and user-owned rows, an agent consumed every other generator,
+  extended two of them, and deleted `routesFile()` because zero of five stock verbs were safe on
+  either entity — so the whole route tier dropped out of the model's coverage and `meta verify
+  --codegen` stayed green *because* nothing was generated. The issue named a second candidate,
+  "make the tier composable rather than all-or-nothing"; that is **already shipped** as
+  `routesFile({ expose })` (#348, `v1.0.0`+) and narrows to the empty set in exactly this case, so
+  it is not the fix and the route generator takes no further knob for it. What ships before 1.1 is
+  only what needs no vocabulary: the corrected sidecar line, the framework auth seam printed in the
+  generated handler's JSDoc (executed by `runtime-ts/test/route-auth-seam.test.ts`), and
+  `routeOptions` parity on `mountReadOnlyCrudRoutes`.
 - **FR-034 — ecosystem tier (connected systems).** Semantic topology for connecting meta-modeled
   systems over a network: `system` (logical) → `container.service|client` (deployable participants)
   → `surface.provided|consumed` (the API edge, `@apiRef` → an `api.*` node) + `environment.deployment`

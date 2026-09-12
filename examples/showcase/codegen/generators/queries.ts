@@ -56,6 +56,7 @@ import {
   formatTs,
   entityOutputPath,
   GENERATED_HEADER,
+  sidecarLine,
 } from "@metaobjectsdev/codegen-ts";
 
 // --- composition (OWNED for the common case) ---
@@ -128,8 +129,7 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
-    `// Source metadata: ${entityName} (${obj.fqn()})\n` +
-    `// Customize via ${entityName}.extra.ts in this directory (additional queries, custom logic).\n`;
+    `// Source metadata: ${entityName} (${obj.fqn()})\n${sidecarLine(`${entityName}.extra.ts`)}`;
   return header + body;
 }
 
