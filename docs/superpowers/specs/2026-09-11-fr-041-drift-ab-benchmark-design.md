@@ -317,6 +317,17 @@ unflattering headline is the specific thing pre-registration exists to stop.
   flatters it on a measure that requires completion. The cap is set from the pilot so that it
   binds at the same *rate* in both arms rather than at the same number, every truncation is
   recorded, and truncated tasks count as failures (§5a).
+- **Host contamination of the agent's context — OBSERVED, not hypothetical.** A 2026-09-12 pilot
+  run launched the agent headless with the sandbox as its working directory, and it inherited the
+  **host machine's** MCP servers and user-level agent instructions. Part of the arm's context
+  therefore came from whichever workstation ran it, so the treatment was neither fixed across runs
+  nor reproducible by anyone else — and every archived run shares the exposure. Mitigation: run
+  each arm in a clean room with its settings and MCP configuration supplied explicitly, and record
+  in the pre-registration exactly what context each arm was given.
+- **A per-task budget sized on the wrong model.** The cap must be re-derived whenever the agent
+  model changes: the same pilot run took ~2x the turns and cost of its archived predecessor on the
+  previous model generation, so a cap carried over unchanged would bind at a different rate than
+  intended.
 - **Oracle bugs.** Every oracle is run against a known-good and a known-drifted reference solution
   in both arms before any scored run (§4b).
 - **Model drift.** Arms are interleaved; the model version is recorded per run.
