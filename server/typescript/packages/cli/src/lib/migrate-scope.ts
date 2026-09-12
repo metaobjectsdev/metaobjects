@@ -10,7 +10,7 @@
 // or a refusal that drifted between them would be drift the user reads.
 
 import type { Collection } from "@metaobjectsdev/sdk";
-import type { SchemaProvenance } from "@metaobjectsdev/migrate-ts";
+import type { ObjectScopePredicate, SchemaProvenance } from "@metaobjectsdev/migrate-ts";
 
 /**
  * Say what a declared `migrate.scope` left out, for `migrate` and `verify --db`
@@ -30,6 +30,56 @@ export function outOfScopeNote(command: string, names: readonly string[]): strin
     `meta ${command} — ${names.length} object(s) out-of-scope ` +
     `(outside migrate.scope, governed elsewhere): ${names.join(", ")}`
   );
+}
+
+/**
+ * Say what a DEPENDENCY owns, for `migrate` and `verify --db` alike (FR-023).
+ *
+ * A dependency's nodes are loaded so this project's own model can resolve against
+ * them, and are governed by nobody here. That is not the same sentence as
+ * `outOfScopeNote`'s: an excluded import is usually not the result of anything the
+ * author wrote — a project with no `migrate.scope` at all still excludes its imports —
+ * so reporting it as "outside migrate.scope" would name a key that does not exist.
+ * It also carries the opt-in, which is the whole remedy: name the package.
+ */
+export function dependencyNote(command: string, names: readonly string[]): string {
+  return (
+    `meta ${command} — ${names.length} object(s) from dependencies not governed here ` +
+    `(name the package in migrate.scope to own them): ${names.join(", ")}`
+  );
+}
+
+/**
+ * Every exclusion a run owes the reader, each object named exactly ONCE.
+ *
+ * `outOfScope` is the full suppression set and `fromDependencies` a subset of it, so
+ * reporting both as-is would print an imported table twice under two different
+ * explanations. The partition happens here, once, rather than in each command.
+ */
+export function exclusionNotes(
+  command: string,
+  outOfScope: readonly string[],
+  fromDependencies: readonly string[],
+): string[] {
+  const notes: string[] = [];
+  const imported = new Set(fromDependencies);
+  const declared = outOfScope.filter((name) => !imported.has(name));
+  if (declared.length > 0) notes.push(outOfScopeNote(command, declared));
+  if (fromDependencies.length > 0) notes.push(dependencyNote(command, fromDependencies));
+  return notes;
+}
+
+/**
+ * The import predicate a schema run threads into migrate-ts, or NOTHING.
+ *
+ * Nothing is the load-bearing half. A project with no dependencies must reach
+ * `scopeExpectedSchema` exactly as it always did — passing a predicate that happens to
+ * answer `false` for everything is not the same thing, because supplying one at all
+ * leaves the untouched same-object path and changes `declaredSchemas` from absent to
+ * derived. One helper so all five call sites make that decision identically.
+ */
+export function importedOption(collection: Collection): { imported?: ObjectScopePredicate } {
+  return collection.dependencies.length > 0 ? { imported: collection.imported } : {};
 }
 
 /** How many loaded FQNs to name in the refusal below — enough to show the shape
@@ -70,8 +120,13 @@ export function migrateScopeMismatch(
    */
   provenance: () => SchemaProvenance,
 ): string | undefined {
-  const { inMigrateScope, migrateScopePatterns } = collection;
-  if (inMigrateScope === undefined) return undefined;
+  // The DECLARED `migrate.scope` alone, never the composed `inMigrateScope` (FR-023).
+  // The composed predicate also excludes imports, so a consumer whose only
+  // table-declaring objects come from a dependency — and who declared no scope at all
+  // — would be refused here, citing patterns that do not exist. There is nothing wrong
+  // with that project: its imports are excluded by design and it governs no tables yet.
+  const { declaredMigrateScope, migrateScopePatterns } = collection;
+  if (declaredMigrateScope === undefined) return undefined;
 
   // The declaring FQNs of every table and view the UNSCOPED model contributes —
   // the same provenance `scopeExpectedSchema` decides scope on, so the refusal
@@ -87,7 +142,7 @@ export function migrateScopeMismatch(
   // nothing for a pattern to govern, scoped or not, and an empty schema has its
   // own (much louder) failure modes downstream.
   if (fqns.length === 0) return undefined;
-  if (fqns.some(inMigrateScope)) return undefined;
+  if (fqns.some(declaredMigrateScope)) return undefined;
 
   const patterns = JSON.stringify(migrateScopePatterns ?? []);
   const examples = fqns.slice(0, EXAMPLE_FQN_CAP).join(", ");

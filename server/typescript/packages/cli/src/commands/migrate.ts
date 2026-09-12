@@ -14,7 +14,7 @@ import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
-import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
+import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
   allowOptionFor,
   buildExpectedSchemaWithProvenance,
@@ -202,7 +202,8 @@ function warnIfLedgerRelocated(cwd: string, resolvedOutDir: string): void {
 }
 
 /**
- * Report what a declared `migrate.scope` left out (wording: `outOfScopeNote`).
+ * Report what this run did not govern — what a declared `migrate.scope` left out, and
+ * what a DEPENDENCY owns (wording: `exclusionNotes`).
  *
  * STDOUT in text format, STDERR otherwise. `--format json` / `--format toon` put a
  * single machine-readable document on stdout, and a prose line ahead of it breaks
@@ -211,11 +212,15 @@ function warnIfLedgerRelocated(cwd: string, resolvedOutDir: string): void {
  * (`resolveFormat`): suppressing it outright would silence the note for every
  * piped and CI run, which is most of them.
  */
-function logOutOfScope(names: readonly string[], fmt: OutputFormat): void {
-  if (names.length === 0) return;
-  const msg = outOfScopeNote("migrate", names);
-  if (fmt === "text") log.info(msg);
-  else log.warn(msg);
+function logOutOfScope(
+  names: readonly string[],
+  fromDependencies: readonly string[],
+  fmt: OutputFormat,
+): void {
+  for (const msg of exclusionNotes("migrate", names, fromDependencies)) {
+    if (fmt === "text") log.info(msg);
+    else log.warn(msg);
+  }
 }
 
 function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
@@ -680,9 +685,9 @@ export async function migrateCommand(
     // leave the expected schema here and are suppressed on the actual side below —
     // dropping them from `expected` ALONE would propose DROP TABLE for every one of
     // them that exists in the database.
-    const scoped = scopeExpectedSchema(built, collection.inMigrateScope);
+    const scoped = scopeExpectedSchema(built, collection.inMigrateScope, importedOption(collection));
     const expected = scoped.snapshot;
-    logOutOfScope(scoped.outOfScope, fmt);
+    logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -1257,6 +1262,10 @@ export async function runOfflineGenerate(
       views: offlineViews,
       // Per-command scope — narrows BOTH sides of the offline diff (see planOffline).
       ...(offlineScope !== undefined ? { inScope: offlineScope } : {}),
+      // ...and the import exclusion, which planOffline threads into the SAME call.
+      // Passing it only at the direct call sites would leave the offline pipeline —
+      // the default `meta migrate` — performing no import exclusion at all.
+      ...importedOption(collection),
       allow: tokensToAllowOptions(config.allow),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
@@ -1281,7 +1290,7 @@ export async function runOfflineGenerate(
   // entries); `expected` is the governed side the emitter renders against. Equal
   // for an unscoped run.
   const { diff: diffResult, nextSnapshot, expected: governedExpected } = plan;
-  logOutOfScope(plan.outOfScope, fmt);
+  logOutOfScope(plan.outOfScope, plan.importedOutOfScope ?? [], fmt);
 
   if (diffResult.blocked.length > 0) {
     log.error(`migrate: ${diffResult.blocked.length} destructive change(s) blocked; re-run with --allow <tokens>`);
@@ -1483,9 +1492,9 @@ async function runD1Migrate(
   const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
   if (scopeRc !== undefined) return scopeRc;
   // Per-command scope — both-sided, exactly as on the Kysely path above.
-  const scoped = scopeExpectedSchema(built, collection.inMigrateScope);
+  const scoped = scopeExpectedSchema(built, collection.inMigrateScope, importedOption(collection));
   const expected = scoped.snapshot;
-  logOutOfScope(scoped.outOfScope, fmt);
+  logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
   let actual;
   try {
     actual = await introspectD1({

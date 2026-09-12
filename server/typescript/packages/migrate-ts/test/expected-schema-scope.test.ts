@@ -20,7 +20,8 @@ import { scopeExpectedSchema, scopedDiffInputs } from "../src/scope.js";
 import { diff } from "../src/diff/index.js";
 import { planOffline } from "../src/snapshot/plan.js";
 import { serializeSnapshot, SNAPSHOT_FORMAT_VERSION } from "../src/snapshot/serialize.js";
-import type { SchemaSnapshot } from "../src/types.js";
+import type { ExpectedSchemaWithProvenance } from "../src/expected-schema.js";
+import type { SchemaSnapshot, TableDescriptor } from "../src/types.js";
 
 const PLATFORM = JSON.stringify({
   "metadata.root": {
@@ -318,5 +319,130 @@ describe("provenance never reaches the committed snapshot", () => {
     const { provenance } = buildExpectedSchemaWithProvenance(root, { dialect: "sqlite" });
     expect(provenance.get("public.jobs")).toBe("acme::platform::Job");
     expect(provenance.get("public.matches")).toBe("arena::Match");
+  });
+});
+
+/**
+ * FR-023 §11.1 item 2 — an EXCLUDED IMPORT leaves the expected side BEFORE
+ * `declaredSchemas` is computed.
+ *
+ * `migrate.scope` and an import exclude for opposite reasons, and the schema pin is
+ * where the difference bites. A `migrate.scope` narrows a model that DID declare into
+ * the schema, so the schema stays pinned ("a scope narrows objects, never schemas").
+ * A dependency's node was never declared by this consumer at all: the publisher owns
+ * that schema, and pinning it would make every table the publisher did NOT export —
+ * tables this consumer has never heard of — a proposed DROP.
+ *
+ * So the import partition runs FIRST, and `declaredSchemas` is derived from what is
+ * left. Everything the *scope* excluded is still in that remainder, so the older rule
+ * is untouched.
+ */
+function scopeTable(name: string, schema: string): TableDescriptor {
+  return {
+    name,
+    schema,
+    columns: [
+      { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment" },
+    ],
+    indexes: [],
+    foreignKeys: [],
+    primaryKey: ["id"],
+    checks: [],
+  };
+}
+
+/**
+ * A consumer's own `app.orders`, a dependency's `public.customers`, and a co-owner's
+ * `reporting.matches` — one object per exclusion REASON, so the two can be told apart.
+ */
+function builtWithImport(): ExpectedSchemaWithProvenance {
+  return {
+    snapshot: {
+      tables: [
+        scopeTable("orders", "app"),
+        scopeTable("customers", "public"),
+        scopeTable("matches", "reporting"),
+      ],
+      views: [],
+    },
+    provenance: new Map([
+      ["app.orders", "app::Order"],
+      ["public.customers", "acme::common::Customer"],
+      ["reporting.matches", "arena::Match"],
+    ]),
+  };
+}
+
+const ownOnly = (fqn: string): boolean => fqn === "app::Order";
+const importedCustomer = (fqn: string): boolean => fqn === "acme::common::Customer";
+
+describe("scopeExpectedSchema — excluded imports (FR-023)", () => {
+  test("an excluded import leaves the expected side and never widens the schema scope", () => {
+    const scoped = scopeExpectedSchema(builtWithImport(), ownOnly, { imported: importedCustomer });
+
+    expect(scoped.snapshot.tables.map((t) => t.name)).toEqual(["orders"]);
+    expect(scoped.outOfScope.sort()).toEqual(["public.customers", "reporting.matches"]);
+
+    // THE assertion this task exists for. `public` is the PUBLISHER's schema — this
+    // consumer never declared into it — so it must be gone. `reporting` was excluded
+    // by the SCOPE, over an object this model does declare, so it stays pinned.
+    expect(scoped.declaredSchemas).toEqual(["app", "reporting"]);
+    expect(scoped.declaredSchemas).not.toContain("public");
+  });
+
+  test("the hazard is real: without the import predicate the publisher's schema stays pinned", () => {
+    // Today's behaviour, kept as the counter-assertion. `public` is pinned, so every
+    // table the publisher did not export becomes a drop candidate in it.
+    const scoped = scopeExpectedSchema(builtWithImport(), ownOnly);
+    expect(scoped.declaredSchemas).toEqual(["app", "public", "reporting"]);
+  });
+
+  test("an import the scope NAMES is governed like any other object", () => {
+    const scoped = scopeExpectedSchema(builtWithImport(), () => true, { imported: importedCustomer });
+
+    // `inScope` admits it, so the partition does not take it: the consumer opted in
+    // (`migrate.scope` naming the package) and owns those tables.
+    expect(scoped.snapshot.tables.map((t) => t.name)).toEqual(["orders", "customers", "matches"]);
+    expect(scoped.outOfScope).toEqual([]);
+    expect(scoped.declaredSchemas).toEqual(["app", "public", "reporting"]);
+    expect(scoped.importedOutOfScope).toEqual([]);
+  });
+
+  test("the imported half is reported separately, so the CLI can word its note", () => {
+    const scoped = scopeExpectedSchema(builtWithImport(), ownOnly, { imported: importedCustomer });
+    // `outOfScope` stays the FULL suppression set (it feeds `unmanagedNames`); this is
+    // only the subset a dependency contributed.
+    expect(scoped.importedOutOfScope).toEqual(["public.customers"]);
+  });
+
+  test("a table with no provenance is never treated as imported", () => {
+    const built = builtWithImport();
+    const withStranger: ExpectedSchemaWithProvenance = {
+      snapshot: { ...built.snapshot, tables: [...built.snapshot.tables, scopeTable("stranger", "public")] },
+      provenance: built.provenance,
+    };
+    const scoped = scopeExpectedSchema(withStranger, () => true, { imported: () => true });
+    // Scope never guesses: an unknown FQN was not proven to be anyone else's.
+    expect(scoped.snapshot.tables.map((t) => t.name)).toContain("stranger");
+    expect(scoped.importedOutOfScope).toEqual([]);
+  });
+
+  test("an undefined scope still partitions imports (defensive — Task 8 never produces it)", () => {
+    // `inMigrateScope` is defined whenever dependencies exist, so this cannot arise
+    // from the CLI. It resolves fail-SAFE: excluding an import risks nothing, while
+    // keeping one risks proposing DROP against the publisher's database.
+    const scoped = scopeExpectedSchema(builtWithImport(), undefined, { imported: importedCustomer });
+    expect(scoped.snapshot.tables.map((t) => t.name)).toEqual(["orders", "matches"]);
+    expect(scoped.outOfScope).toEqual(["public.customers"]);
+    expect(scoped.declaredSchemas).toEqual(["app", "reporting"]);
+  });
+
+  test("no opts ⇒ byte-identical: the untouched path is the SAME object", () => {
+    const built = builtWithImport();
+    const scoped = scopeExpectedSchema(built, undefined);
+    expect(scoped.snapshot).toBe(built.snapshot);
+    expect(scoped.outOfScope).toEqual([]);
+    expect(scoped.declaredSchemas).toBeUndefined();
+    expect(scoped.importedOutOfScope).toBeUndefined();
   });
 });

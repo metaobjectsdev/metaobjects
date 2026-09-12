@@ -58,6 +58,18 @@ export interface ComputeDriftOptions {
    * failing on tables migrate does not own is incoherent.
    */
   inScope?: ObjectScopePredicate;
+  /**
+   * FR-023 — objects a DEPENDENCY owns. Such an object is loaded so this project's own
+   * model can resolve against it and is governed by nobody here unless `inScope`
+   * admits it: it leaves the expected side, is suppressed on the actual side, and —
+   * unlike an `inScope` exclusion — takes the publisher's database schema out of the
+   * run's scope with it, so a table the publisher never exported is not reported as an
+   * extra table in a schema this project does not manage (migrate-ts `scope.ts`).
+   *
+   * `verify --db` and `migrate` share this declaration for the same reason they share
+   * `inScope`. Omit for a project with no dependencies (unchanged behavior).
+   */
+  imported?: ObjectScopePredicate;
 }
 
 export interface DriftResult extends DiffResult {
@@ -77,6 +89,13 @@ export interface DriftResult extends DiffResult {
    * `GovernedScope`, which is what `excludeFromSnapshot` takes.
    */
   declaredSchemas: readonly string[] | undefined;
+  /**
+   * The subset of `outOfScope` a DEPENDENCY contributed (FR-023). Reported for the
+   * same reason `declaredSchemas` is: so the caller states WHY an object was left out
+   * without re-deriving the decision from a second expected-schema build, which could
+   * come to disagree with the one this comparison actually made.
+   */
+  importedOutOfScope: readonly string[] | undefined;
 }
 
 /**
@@ -106,6 +125,7 @@ export async function computeDriftFromActual(
       ...(opts?.views !== undefined ? { views: opts.views } : {}),
     }),
     opts?.inScope,
+    opts?.imported !== undefined ? { imported: opts.imported } : undefined,
   );
   const result = await diff({
     // The three scoped-diff obligations as one value (see scope.ts's header):
@@ -122,6 +142,7 @@ export async function computeDriftFromActual(
     ...result,
     outOfScope: scoped.outOfScope,
     declaredSchemas: scoped.declaredSchemas,
+    importedOutOfScope: scoped.importedOutOfScope,
   };
 }
 

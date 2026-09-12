@@ -71,7 +71,7 @@ import {
   type DriftResult,
 } from "@metaobjectsdev/migrate-ts";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
-import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
+import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_PROMPT,
@@ -554,7 +554,7 @@ export async function verifyCommand(
         columnNamingStrategy: viewStrategy,
         views: buildProjectionViews(root, { dialect, columnNamingStrategy: viewStrategy }),
       });
-      governed = scopeExpectedSchema(built, schemaScope);
+      governed = scopeExpectedSchema(built, schemaScope, importedOption(collection));
     }
 
     // `verifyReplay` calls `applyPending` itself. That is NOT a second replay: the
@@ -1002,6 +1002,9 @@ export async function verifyCommand(
           allow,
           views: expectedViews,
           ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
+          // The import exclusion reaches scopeExpectedSchema through this option bag —
+          // there is no direct call on this path to attach it to.
+          ...importedOption(collection),
         });
       } catch (err) {
         log.error(`verify: failed to introspect ${kysely.displayUrl}: ${(err as Error).message}`);
@@ -1088,6 +1091,8 @@ export async function verifyCommand(
         allow,
         views: expectedViews,
         ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
+        // Same option bag on the D1 path, for the same reason.
+        ...importedOption(collection),
       });
     } catch (err) {
       log.error(`verify: ${(err as Error).message}`);
@@ -1200,11 +1205,12 @@ export async function verifyCommand(
       );
     }
 
-    // Same reasoning for the per-command scope: an object `migrate.scope` excluded
-    // was NOT checked, and silence would misreport it as checked-and-clean. Shared
-    // wording with `meta migrate` — one declaration, one sentence about it.
-    if (driftResult.outOfScope.length > 0) {
-      say(outOfScopeNote("verify", driftResult.outOfScope));
+    // Same reasoning for the per-command scope and for imported metadata: an object
+    // excluded either way was NOT checked, and silence would misreport it as
+    // checked-and-clean. Shared wording with `meta migrate` — one declaration, one
+    // sentence about it — and each object named once (`exclusionNotes`).
+    for (const note of exclusionNotes("verify", driftResult.outOfScope, driftResult.importedOutOfScope ?? [])) {
+      say(note);
     }
 
     const changes = driftResult.changes;
