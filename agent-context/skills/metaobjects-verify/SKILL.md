@@ -105,19 +105,23 @@ If this project declares `requirement.functional` / `requirement.architectural` 
 `meta verify` — there is no subverb — and the severity of a broken link depends on the
 requirement's `@status`, which is the part that surprises people reading a failure.
 
-## The overlay authoring lint runs on every run too
+## The overlay authoring lint runs on every run, dependencies or not
 
-If this project declares `dependencies` in `.metaobjects/config.json`
-(`docs/features/metadata-dependencies.md`), `meta verify` also runs an ADVISORY
-overlay lint on every invocation, no subverb needed: a top-level `(type,
-resolutionKey)` declared in two or more collection files — dependency artifacts
-included, since they are the base a consumer's own files amend — where MORE THAN
-ONE declaration lacks `overlay: true`. Exactly one unflagged declaration is the
-base and is fine; every additional one is a finding naming its file, because it is
-exactly the state that turns loud (`ERR_OVERLAY_NO_TARGET`) the day the target is
-renamed or removed, instead of quietly forking into a second, disconnected object.
-Never fails the build; mute it with `--no-overlay-lint` or
-`META_NO_OVERLAY_LINT=1` the same way the anti-pattern pass is muted.
+`meta verify` always runs an ADVISORY overlay lint, no subverb needed and
+regardless of whether this project declares `dependencies` in
+`.metaobjects/config.json` (`docs/features/metadata-dependencies.md`): a
+top-level `(type, resolutionKey)` declared in two or more collection files —
+dependency artifacts included when there are any, since they are the base a
+consumer's own files amend, but a plain multi-file **local** overlay (no
+dependencies at all — e.g. the layered-overlay pattern in `AGENTS.md`, or any
+project that re-opens its own node from a second file) triggers it exactly the
+same way — where MORE THAN ONE declaration lacks `overlay: true`. Exactly one
+unflagged declaration is the base and is fine; every additional one is a
+finding naming its file, because it is exactly the state that turns loud
+(`ERR_OVERLAY_NO_TARGET`) the day the target is renamed or removed, instead of
+quietly forking into a second, disconnected object. Never fails the build;
+mute it with `--no-overlay-lint` or `META_NO_OVERLAY_LINT=1` the same way the
+anti-pattern pass is muted.
 
 **A stale dependency snapshot is a load-time failure, not a `verify` finding.**
 If `.metaobjects/deps/<name>/` disagrees with `.metaobjects/deps.lock.json` — a

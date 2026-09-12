@@ -77,6 +77,18 @@ here.**
   declared scope too. This is a real behavior change for an existing project that
   already declares `scope.include` and reads its `meta verify` coverage numbers —
   they may drop even though nothing was deleted.
+- **`meta verify` now runs the overlay authoring lint for EVERY project, not just
+  one with `dependencies` declared.** `runOverlayLintAdvisory()` is unconditional —
+  it lints `collection.files`, which for a zero-dependency project is simply its
+  own files — so a project with no dependencies at all, but with a top-level
+  `(type, resolutionKey)` redeclared across two or more of its own files (e.g. the
+  ["Optional layered overlay pattern"](AGENTS.md) — a `meta.user.json` +
+  `meta.user.ui.json` + `meta.user.db.json` split), now gets new advisory
+  `WARN_OVERLAY_IMPLICIT` output on `meta verify` it did not get before this
+  release. Advisory only — never fails the build, mute with `--no-overlay-lint` /
+  `META_NO_OVERLAY_LINT=1` — but this is a second, real carve-out from "a project
+  with no dependencies behaves identically," alongside the ledger-denominator one
+  above.
 - **`Collection`** (`@metaobjectsdev/sdk`) gains `dependencies`, `ownFiles`,
   `fileIds`, `importedPackages`, `importedNodes`, `imported(fqn)`,
   `declaredMigrateScope`; `inScope` and `inMigrateScope` are now the COMPOSED

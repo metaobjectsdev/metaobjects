@@ -288,11 +288,17 @@ File-naming: `meta.<concept>.json`. Each file declares its `package`:
 ```
 metaobjects/
 ├── meta.user.json                     # STRUCTURAL (always present)
-├── meta.user.ui.json                  # UI overlay (views, layouts)
-└── meta.user.db.json                  # DB overlay (sources, dbColumns)
+├── meta.user.ui.json                  # UI overlay (views, layouts) — overlay: true
+└── meta.user.db.json                  # DB overlay (sources, dbColumns) — overlay: true
 ```
 
-All three share the same `package` and object `name`. The Loader merges them. Use only when team-level concerns justify the file proliferation. Default to single-file-per-domain.
+All three share the same `package` and object `name`. The Loader merges them. `meta.user.ui.json`
+and `meta.user.db.json`'s top-level object declaration must carry `overlay: true`: the loader's
+merge doesn't require it (a same-`(type, name)` redeclaration merges either way), but leaving it
+off is exactly what `meta verify`'s overlay authoring lint (`docs/features/metadata-dependencies.md`)
+flags as advisory — and it's what would turn a renamed/removed `User` into a silent second object
+instead of a loud `ERR_OVERLAY_NO_TARGET`. Use only when team-level concerns justify the file
+proliferation. Default to single-file-per-domain.
 
 **`BaseEntity` pattern**: shared abstract bases live in `meta.common.json`. Concrete entities use `extends: "BaseEntity"` to inherit `id` + `createdAt` without redeclaring.
 
