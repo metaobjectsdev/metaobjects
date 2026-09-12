@@ -20,6 +20,16 @@ export interface GenContext {
    *  filter is set). Always call this from helpers; do not call generator.filter
    *  directly. */
   matches: (entity: MetaObject) => boolean;
+  /** FR-023 §11.1 item 2 — the model-wide output-scope predicate over a node's
+   *  `resolutionKey()` (the runner's own `RunGenOpts.scope`, verbatim). A
+   *  DIFFERENT knob from `matches`: `matches` is the per-generator `filter`
+   *  (ANDed into what THIS generator emits), while `select` is the whole-model
+   *  scope every generator shares — for a template that renders once over
+   *  `ctx.loadedRoot` rather than per-entity (the shared-enums module is the
+   *  first such template), `matches` never runs at all, so that template must
+   *  read `select` directly to honour the same exclusion. Undefined ⇒ every
+   *  node is in scope, byte-identical to a project with no `scope` declared. */
+  select?: (fqn: string) => boolean;
   config: ResolvedGenConfig;
   /** Pre-built by the runner for built-in generators that wrap existing
    *  templates. Third-party generators typically don't need this. Always

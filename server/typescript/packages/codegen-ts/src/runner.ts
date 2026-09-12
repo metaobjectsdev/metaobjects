@@ -605,6 +605,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       entities: safeEntities,
       loadedRoot: root,
       matches: (e) => generator.filter?.(e) ?? true,
+      // FR-023 §11.1 item 2 — the SAME `scope` predicate that already narrowed
+      // `entities` above, re-exposed for a template that renders once over the
+      // WHOLE loaded root (the shared-enums module, so far the only one) rather
+      // than per matched entity, where `matches` never runs. Absent scope ⇒ no
+      // `select` at all, byte-identical to a project with no `scope` declared.
+      ...(scope !== undefined && { select: scope }),
       config: {
         outDir: selfTarget.outDir,
         extStyle: config.extStyle,

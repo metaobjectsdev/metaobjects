@@ -59,7 +59,13 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
       // FR-019: emit the shared-enums module ONCE per run, into the entity-module
       // target root. Returns null (no file) when the model uses no materialized
       // shared enums — keeping the inline-enum default byte-identical (no new file).
-      const sharedEnums = renderSharedEnumsFile(ctx.loadedRoot);
+      // FR-023 §11.1 item 2: `select` (never `ctx.matches` — this renders from the
+      // WHOLE root, not this generator's filtered subset) excludes an enum used
+      // only by an imported, out-of-scope entity.
+      const sharedEnums = renderSharedEnumsFile(
+        ctx.loadedRoot,
+        ctx.select !== undefined ? { select: ctx.select } : undefined,
+      );
       if (sharedEnums !== null) {
         files.push({
           path: `${SHARED_ENUMS_BASENAME}.ts`,

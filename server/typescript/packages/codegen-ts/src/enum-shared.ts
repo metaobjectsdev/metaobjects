@@ -77,10 +77,21 @@ export function sharedEnumForField(field: MetaField): SharedEnum | undefined {
  * actually CONSUMED by at least one concrete entity field — keyed by the
  * materialized type name. A declaration nobody extends is not materialized (no
  * dangling type). Deterministic order: first-consumption order across entities.
+ *
+ * `select` (FR-023 §11.1 item 2), when given, narrows which CONSUMING entities
+ * count toward "is this enum used" — an entity for which `select(entity.
+ * resolutionKey())` is false contributes nothing, even if it extends the shared
+ * declaration. It does not touch which declarations EXIST, only which usages are
+ * counted. Absent `select` ⇒ every entity counts, byte-identical to before this
+ * parameter existed.
  */
-export function collectSharedEnums(root: MetaRoot): Map<string, SharedEnum> {
+export function collectSharedEnums(
+  root: MetaRoot,
+  select?: (fqn: string) => boolean,
+): Map<string, SharedEnum> {
   const out = new Map<string, SharedEnum>();
   for (const entity of root.objects()) {
+    if (select !== undefined && !select(entity.resolutionKey())) continue;
     for (const field of entity.fields()) {
       const shared = sharedEnumForField(field);
       if (shared === undefined) continue;
@@ -91,8 +102,11 @@ export function collectSharedEnums(root: MetaRoot): Map<string, SharedEnum> {
 }
 
 /** The shared enums that metaobjects MATERIALIZES (non-@provided, consumed). */
-export function materializedSharedEnums(root: MetaRoot): SharedEnum[] {
-  return [...collectSharedEnums(root).values()].filter((e) => !e.provided);
+export function materializedSharedEnums(
+  root: MetaRoot,
+  select?: (fqn: string) => boolean,
+): SharedEnum[] {
+  return [...collectSharedEnums(root, select).values()].filter((e) => !e.provided);
 }
 
 /** Whether any shared enum (materialized or provided) is consumed in the model. */

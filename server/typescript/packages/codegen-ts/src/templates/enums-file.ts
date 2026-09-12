@@ -37,9 +37,20 @@ export const ${sharedEnumZodConstName(e.name)} = ${z}.enum([${members}]);
 /**
  * The full shared-enums module body, or null when the model has no materialized
  * shared enums (so the generator emits no file at all).
+ *
+ * `opts.select` (FR-023 §11.1 item 2) — the model-wide scope predicate over a
+ * CONSUMING entity's `resolutionKey()`: an enum extended only by entities
+ * `select` excludes is not materialized. This module renders once per run from
+ * the WHOLE loaded root (never per-generator-filtered — see #266), so it is the
+ * one shared-enums call site that must be threaded the scope predicate
+ * separately from `ctx.matches`. Omitted ⇒ every entity counts, byte-identical
+ * to a caller that never passes `opts` at all.
  */
-export function renderSharedEnumsFile(root: MetaRoot): string | null {
-  const enums = materializedSharedEnums(root);
+export function renderSharedEnumsFile(
+  root: MetaRoot,
+  opts?: { select?: (fqn: string) => boolean },
+): string | null {
+  const enums = materializedSharedEnums(root, opts?.select);
   if (enums.length === 0) return null;
 
   const body = joinCode(enums.map(renderOneSharedEnum), { on: "\n" }).toString();
