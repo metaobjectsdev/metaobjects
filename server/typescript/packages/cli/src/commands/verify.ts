@@ -70,7 +70,14 @@ import {
   type D1Runner,
   type DriftResult,
 } from "@metaobjectsdev/migrate-ts";
-import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import {
+  DEFAULT_METAOBJECTS_DIR,
+  loadConfig,
+  loadMemory,
+  resolveCollection,
+  type DependencySpec,
+} from "@metaobjectsdev/sdk";
+import { checkDependencies, ERR_DEPENDENCY_UPSTREAM_DRIFT, formatCheckLine, readLockOrThrow } from "../lib/dependency-sync.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
   TYPE_TEMPLATE,
@@ -164,11 +171,15 @@ export async function verifyCommand(
   // D1 has no URL connection); that check lives inside runSchemaVerify.
   const runCodegen = flags.codegen;
   const runDocs = flags.docs;
+  // Task 15 — same shape as --codegen/--docs: selected ONLY by its own flag,
+  // never folded into the bare-verify default (it needs the publisher
+  // reachable, which CI may not have — see the VerifyFlags doc on `deps`).
+  const runDeps = flags.deps;
   if (!flags.anyExplicit) {
     say(
       "meta verify — running --templates (default). Explicit subverbs: " +
         "--templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift), " +
-        "--docs (docs drift), " +
+        "--docs (docs drift), --deps (dependency drift), " +
         "--replay/--replay-snapshot (the committed migration chain replays from empty).",
     );
   }
@@ -342,6 +353,7 @@ export async function verifyCommand(
   const schemaExit = await runSchemaVerify();
   const codegenExit = runCodegen ? await runCodegenVerify() : 0;
   const docsExit = runDocs ? await runDocsVerify() : 0;
+  const depsExit = runDeps ? await runDepsVerify() : 0;
   // Requirements have no subverb: `requirement.*` nodes are metadata, so they
   // are checked on every `meta verify`. Opt-in by DECLARATION — a model with no
   // requirement nodes is silent, not in drift.
@@ -363,6 +375,7 @@ export async function verifyCommand(
     schemaExit,
     codegenExit,
     docsExit,
+    depsExit,
     requirementExit,
     replayExit,
   );
@@ -379,6 +392,7 @@ export async function verifyCommand(
           { gate: "schema", ran: ranSchemaGate, ok: schemaExit === 0 },
           { gate: "codegen", ran: runCodegen, ok: codegenExit === 0 },
           { gate: "docs", ran: runDocs, ok: docsExit === 0 },
+          { gate: "deps", ran: runDeps, ok: depsExit === 0 },
           { gate: "requirements", ran: true, ok: requirementExit === 0 },
           { gate: "replay", ran: flags.replay || flags.replaySnapshot, ok: replayExit === 0 },
         ],
@@ -1403,6 +1417,55 @@ export async function verifyCommand(
       );
     }
     return 1;
+  }
+
+  // -- dependency drift (Task 15, FR-023) --------------------------------------
+  // Gated on --deps. Re-resolves each declared dependency exactly as `meta deps
+  // check` does — never part of the bare-verify default (it needs the publisher
+  // reachable, which CI may not have).
+  async function runDepsVerify(): Promise<number> {
+    // Read RAW declared specs (never `collection.dependencies`, which is the
+    // already-`ResolvedDependency[]` the LOCK produced — it carries no
+    // transport info, so it cannot be re-resolved). A project with no
+    // config.json at all declares no dependencies.
+    let depSpecs: readonly DependencySpec[] = [];
+    try {
+      const cfg = await loadConfig(join(collection.configDir, DEFAULT_METAOBJECTS_DIR));
+      depSpecs = cfg.dependencies;
+    } catch {
+      depSpecs = [];
+    }
+
+    if (depSpecs.length === 0) {
+      say("verify --deps: no dependencies declared — nothing to check.");
+      return 0;
+    }
+
+    let lock: Awaited<ReturnType<typeof readLockOrThrow>>;
+    try {
+      lock = await readLockOrThrow(collection.configDir);
+    } catch (err) {
+      log.error(`verify --deps: ${(err as Error).message}`);
+      return 2;
+    }
+
+    const results = await checkDependencies(collection.configDir, depSpecs, lock);
+    const failing = results.filter((r) => r.status !== "current");
+
+    for (const r of results) {
+      if (r.status === "current") say(formatCheckLine(r));
+      else log.error(formatCheckLine(r));
+    }
+
+    if (failing.length > 0) {
+      log.error(
+        `verify --deps: ${failing.length} of ${results.length} dependenc` +
+          `${results.length === 1 ? "y" : "ies"} drifted or unresolved (${ERR_DEPENDENCY_UPSTREAM_DRIFT}).`,
+      );
+      return 1;
+    }
+    say("verify --deps: every dependency's installed artifact matches the lock.");
+    return 0;
   }
 }
 

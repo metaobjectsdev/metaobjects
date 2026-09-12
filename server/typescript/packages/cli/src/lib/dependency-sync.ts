@@ -19,14 +19,17 @@ import {
   METAMODEL_VERSION,
   packageOfResolutionKey,
   ParseError,
+  type ErrorCode,
 } from "@metaobjectsdev/metadata";
 import {
   DEPS_DIR,
   DEFAULT_METAOBJECTS_DIR,
   INTEGRITY_PREFIX,
+  LOCK_FILE,
   MANIFEST_FILE,
   DependencyManifestSchema,
   dependencyName,
+  readLock,
   sha256Integrity,
   writeLock,
   type DependencyManifest,
@@ -461,4 +464,179 @@ export async function applySync(
   }
 
   return { lock, report };
+}
+
+// ---------------------------------------------------------------------------
+// Task 15 — `meta deps check` / `verify --deps`: does the INSTALLED artifact
+// (re-resolved live, exactly as `sync` steps 1-2 do) still hash to what the
+// LOCK pinned? (DESIGN §2.3 "the lock pins bytes", §4.1 as amended by §11 —
+// no usage-aware classification, just current/drifted/unresolved.)
+// ---------------------------------------------------------------------------
+
+/**
+ * `readLock`, converted into a diagnostic that NAMES the file rather than
+ * letting a corrupted committed lock's raw `JSON.parse`/`ZodError` surface as
+ * an unhandled rejection. `deps.lock.json` is checked-in, hand-editable, and
+ * merge-conflictable — a realistic way for it to break — and `bin/meta.ts`'s
+ * `run(...).then((code) => process.exit(code))` has no top-level `.catch()`,
+ * so an uncaught throw here would crash the process with a stack trace
+ * instead of the clean exit code every other failure in this command gets.
+ *
+ * The ONE call site for the sdk's `readLock` in `cli/src` — `deps.ts`'s
+ * `sync`/`list`/`check` handlers and `verify.ts`'s `--deps` gate all call
+ * THIS wrapper instead, so the diagnostic can never go stale in one of them.
+ */
+export async function readLockOrThrow(configDir: string): Promise<Lock | undefined> {
+  try {
+    return await readLock(configDir);
+  } catch (err) {
+    throw new Error(
+      `${DEFAULT_METAOBJECTS_DIR}/${LOCK_FILE} is corrupted and could not be read: ${(err as Error).message}. ` +
+        "Fix it by hand, or delete it and re-run `meta deps sync` to regenerate it.",
+    );
+  }
+}
+
+/**
+ * `meta deps check` / `verify --deps`'s classification for one declared
+ * dependency (DESIGN §4.1 as amended by §11 — no usage-aware classifier, just
+ * "does the installed hash match the lock"):
+ *  - `current`    — resolved fine, and its installed artifact hashes to
+ *                   exactly what the lock pinned.
+ *  - `drifted`    — resolved fine, but the hash differs.
+ *  - `unresolved` — step 1 (`resolveDependencyDir`) or step 2
+ *                   (`readManifestDir`) failed, OR the dependency is declared
+ *                   but the lock has no entry for it at all (nothing to
+ *                   compare against — "a check that cannot check must not
+ *                   pass"). `detail` carries WHY.
+ *
+ * `lockVersion`/`lockIntegrity` are `undefined` exactly when there is no lock
+ * entry; `installedVersion`/`installedIntegrity` are `undefined` exactly when
+ * resolution itself failed.
+ */
+export interface DependencyCheckResult {
+  readonly name: string;
+  readonly status: "current" | "drifted" | "unresolved";
+  readonly lockVersion: string | undefined;
+  readonly lockIntegrity: string | undefined;
+  readonly installedVersion: string | undefined;
+  readonly installedIntegrity: string | undefined;
+  /** Populated for `unresolved` only — the reason, with the redundant
+   *  `dependency "<name>": ` prefix (`manifestInvalid`/`resolveDependencyDir`'s
+   *  own convention) stripped, since `formatCheckLine` already names the
+   *  dependency once in its own lead-in. */
+  readonly detail: string | undefined;
+}
+
+/** Strips the `dependency "<name>": ` prefix `resolveDependencyDir` and
+ *  `readManifestDir`'s errors always carry — `formatCheckLine` names the
+ *  dependency itself, so repeating it verbatim inside `detail` would read
+ *  twice. */
+function stripDependencyPrefix(name: string, message: string): string {
+  const prefix = `dependency "${name}": `;
+  return message.startsWith(prefix) ? message.slice(prefix.length) : message;
+}
+
+/**
+ * DESIGN §4.1 as amended by §11 — resolve each declared dependency EXACTLY as
+ * `sync` steps 1-2 do (`resolveDependencyDir` then `readManifestDir`; never
+ * step 3's `validateAgainstSpec` — `check` compares hashes, it does not
+ * re-validate the spec), then compare the freshly-read artifact's TRUE hash
+ * (re-hashed here from the bytes `readManifestDir` returned, never the
+ * installed manifest's `integrity` field taken on faith) against the lock's.
+ *
+ * Read-only: nothing here writes the lock, the snapshot, or touches
+ * `.metaobjects/deps/` — that is `sync`'s job. Every declared dependency gets
+ * exactly one result, in name order.
+ */
+export async function checkDependencies(
+  configDir: string,
+  specs: readonly DependencySpec[],
+  lock: Lock | undefined,
+): Promise<DependencyCheckResult[]> {
+  const entries = lock?.dependencies ?? {};
+  const sorted = [...specs].sort((a, b) => dependencyName(a).localeCompare(dependencyName(b)));
+  const results: DependencyCheckResult[] = [];
+
+  for (const spec of sorted) {
+    const name = dependencyName(spec);
+    const lockEntry = entries[name];
+
+    try {
+      const dir = resolveDependencyDir(configDir, spec);
+      const { manifest, artifactContent } = await readManifestDir(dir, name);
+      // Never trust the manifest's own `integrity` field for the comparison —
+      // re-hash the bytes actually sitting on disk right now.
+      const installedIntegrity = sha256Integrity(artifactContent);
+
+      if (lockEntry === undefined) {
+        results.push({
+          name,
+          status: "unresolved",
+          lockVersion: undefined,
+          lockIntegrity: undefined,
+          installedVersion: manifest.version,
+          installedIntegrity,
+          detail: "declared, and resolves, but is not in the lock yet",
+        });
+        continue;
+      }
+
+      results.push({
+        name,
+        status: installedIntegrity === lockEntry.integrity ? "current" : "drifted",
+        lockVersion: lockEntry.version,
+        lockIntegrity: lockEntry.integrity,
+        installedVersion: manifest.version,
+        installedIntegrity,
+        detail: undefined,
+      });
+    } catch (err) {
+      results.push({
+        name,
+        status: "unresolved",
+        lockVersion: lockEntry?.version,
+        lockIntegrity: lockEntry?.integrity,
+        installedVersion: undefined,
+        installedIntegrity: undefined,
+        detail: stripDependencyPrefix(name, (err as Error).message),
+      });
+    }
+  }
+
+  return results;
+}
+
+/** The one code every `checkDependencies` failure (`drifted` or `unresolved`)
+ *  is reported under — `deps.ts`'s `check` handler and `verify.ts`'s `--deps`
+ *  gate both surface it, so it is named once here rather than inlined twice. */
+export const ERR_DEPENDENCY_UPSTREAM_DRIFT: ErrorCode = "ERR_DEPENDENCY_UPSTREAM_DRIFT";
+
+/**
+ * `meta deps check` / `verify --deps`'s one report line per dependency. The
+ * `drifted` shape is pinned exactly by the task brief:
+ * `<name>: drifted — lock <v> (<hash8>), installed <v> (<hash8>); run meta
+ * deps sync and review the artifact diff`.
+ */
+export function formatCheckLine(result: DependencyCheckResult): string {
+  const lockDesc = `${result.lockVersion ?? "(none)"} (${
+    result.lockIntegrity !== undefined ? hash8(result.lockIntegrity) : "n/a"
+  })`;
+  const installedDesc = `${result.installedVersion ?? "(none)"} (${
+    result.installedIntegrity !== undefined ? hash8(result.installedIntegrity) : "n/a"
+  })`;
+  switch (result.status) {
+    case "current":
+      return `${result.name}: current — ${lockDesc}`;
+    case "drifted":
+      return (
+        `${result.name}: drifted — lock ${lockDesc}, installed ${installedDesc}; ` +
+        "run meta deps sync and review the artifact diff"
+      );
+    case "unresolved":
+      return (
+        `${result.name}: unresolved — ${result.detail ?? "could not resolve the dependency"}; ` +
+        "run meta deps sync once the dependency is reachable"
+      );
+  }
 }

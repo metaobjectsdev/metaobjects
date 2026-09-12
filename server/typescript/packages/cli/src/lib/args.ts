@@ -296,7 +296,17 @@ export interface VerifyFlags {
    * read as that flag's opposite rather than as a replay depth.
    */
   replaySnapshot: boolean;
-  /** Whether ANY explicit subverb flag (--templates/--db/--codegen/--docs/--replay*) was passed. */
+  /**
+   * Dependency drift (Task 15, FR-023) — re-resolve each declared dependency and
+   * compare its installed artifact's hash against `.metaobjects/deps.lock.json`
+   * (the same comparison `meta deps check` runs). Deliberately NEVER part of the
+   * bare-verify default, unlike --templates: it needs the publisher reachable,
+   * which CI may not have. It is still counted in `anyExplicit`, same as
+   * --codegen/--docs, so a lone `verify --deps` does not ALSO run the template
+   * gate.
+   */
+  deps: boolean;
+  /** Whether ANY explicit subverb flag (--templates/--db/--codegen/--docs/--deps/--replay*) was passed. */
   anyExplicit: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
@@ -342,6 +352,7 @@ export const VERIFY_OPTIONS = {
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
   docs: { type: "boolean", default: false },
+  deps: { type: "boolean", default: false },
   replay: { type: "boolean", default: false },
   "replay-snapshot": { type: "boolean", default: false },
   "no-antipatterns": { type: "boolean", default: false },
@@ -397,15 +408,17 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
   const templates = !!values.templates;
   const codegen = !!values.codegen;
   const docs = !!values.docs;
+  const deps = !!values.deps;
   const replay = !!values.replay;
   const replaySnapshot = !!values["replay-snapshot"];
   // --db is itself an explicit subverb selector: passing a connection URL means
   // "run the schema-drift mode". So is `--dialect d1` (D1 has no --db connection
   // URL — see the `d1` field doc above). The replay flags are subverbs too, and
   // must be listed here or `meta verify --replay` would ALSO run the template gate
-  // as the bare-verify default.
+  // as the bare-verify default. --deps joins the same list for the same reason —
+  // it must NOT also be part of that default (see the VerifyFlags doc on `deps`).
   const anyExplicit =
-    templates || codegen || docs || values.db !== undefined || dialect === "d1" || replay || replaySnapshot;
+    templates || codegen || docs || deps || values.db !== undefined || dialect === "d1" || replay || replaySnapshot;
 
   return {
     prompts: values.prompts,
@@ -416,6 +429,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     templates,
     codegen,
     docs,
+    deps,
     replay,
     replaySnapshot,
     anyExplicit,

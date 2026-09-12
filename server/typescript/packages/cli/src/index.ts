@@ -38,7 +38,7 @@ COMMANDS:
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
-  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs (bare = --templates)
+  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs / --deps (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
@@ -97,6 +97,10 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         run would emit; never reports an extra file, because docs.outDir
                         holds hand-written documentation MetaObjects did not write.
                         Needs metaobjects.config.ts; exit 2 if absent.
+  --deps                Dependency drift — re-resolve each declared dependency and compare
+                        its installed artifact's hash against .metaobjects/deps.lock.json
+                        (the same check 'meta deps check' runs). Never part of the bare-verify
+                        default — it needs the publisher reachable, which CI may not have.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
@@ -207,6 +211,11 @@ USAGE:
                                 the lock and its snapshot dir deleted, every run.
   meta deps list                One line per locked dependency: name, version, hash8,
                                 node count, packages.
+  meta deps check                Re-resolve each declared dependency (path transport, same
+                                as sync steps 1-2) and compare its INSTALLED artifact's hash
+                                against .metaobjects/deps.lock.json. Read-only — never
+                                touches the lock or the snapshot. Exits 1 if any dependency
+                                has drifted or cannot be resolved (ERR_DEPENDENCY_UPSTREAM_DRIFT).
 
 FLAGS:
   --dry-run              Plan and report; write nothing (sync only)
@@ -218,9 +227,9 @@ valid config (reserved for a future toolchain) but 'meta deps sync' refuses it b
 "transport \`npm\` is not supported by this toolchain yet; use \`path\`".
 
 The lock is the ONLY thing 'meta deps sync' writes to besides the snapshot directory —
-sync never touches your own metadata files. 'meta deps check' (a future release) compares
-the lock against what is installed right now; this command only ever compares against
-what config DECLARES.
+sync never touches your own metadata files. 'meta deps check' compares the lock against
+what is installed right now (the same check 'meta verify --deps' runs); 'meta deps sync'
+only ever compares against what config DECLARES.
 `,
   verify: `meta verify — drift gate (templates / DB schema / codegen / migration replay)
 
@@ -240,6 +249,12 @@ FLAGS:
                         a namespace MetaObjects owns); the count of exempt pages is
                         reported either way, and a run where every page is ignored is
                         refused rather than reported clean.
+  --deps                Dependency drift — re-resolve each declared dependency exactly as
+                        'meta deps check' does and compare its installed artifact's hash
+                        against .metaobjects/deps.lock.json. Exits 1 if any dependency has
+                        drifted or cannot be resolved (ERR_DEPENDENCY_UPSTREAM_DRIFT). NEVER
+                        part of the bare-verify default — it needs the publisher reachable,
+                        which CI may not have.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.

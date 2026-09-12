@@ -6,7 +6,7 @@ describe("parseVerifyArgs", () => {
   test("defaults: prompts/db/dialect undefined, allow empty, skipSchema false, no explicit subverb", () => {
     expect(parseVerifyArgs([])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false,
-      templates: false, codegen: false, docs: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
+      templates: false, codegen: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -14,7 +14,7 @@ describe("parseVerifyArgs", () => {
   test("--prompts <dir> is captured", () => {
     expect(parseVerifyArgs(["--prompts", "templates"])).toEqual({
       prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false,
-      templates: false, codegen: false, docs: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
+      templates: false, codegen: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -22,7 +22,7 @@ describe("parseVerifyArgs", () => {
   test("--db / --dialect / --skip-schema are captured", () => {
     expect(parseVerifyArgs(["--db", "file:x.db", "--dialect", "sqlite", "--skip-schema"])).toEqual({
       prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true,
-      templates: false, codegen: false, docs: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
+      templates: false, codegen: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -32,7 +32,7 @@ describe("parseVerifyArgs", () => {
   test("--dialect d1 --d1 <binding> --remote are captured; --dialect d1 alone is an explicit subverb", () => {
     expect(parseVerifyArgs(["--dialect", "d1", "--d1", "DB", "--remote"])).toEqual({
       prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false,
-      templates: false, codegen: false, docs: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
+      templates: false, codegen: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: "DB", remote: true, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -56,7 +56,7 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs(["--allow", "drop-column,drop-table"])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined,
       allow: ["drop-column", "drop-table"], skipSchema: false,
-      templates: false, codegen: false, docs: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
+      templates: false, codegen: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -109,6 +109,18 @@ describe("parseVerifyArgs", () => {
     expect(f.templates).toBe(true);
     expect(f.codegen).toBe(true);
     expect(f.anyExplicit).toBe(true);
+  });
+  // Task 15 — --deps is its own subverb, same shape as --codegen/--docs: it
+  // counts toward anyExplicit (so a lone `verify --deps` does not ALSO run the
+  // bare-verify template default) but is never itself part of that default.
+  test("--deps sets the explicit-subverb flags and nothing else", () => {
+    const f = parseVerifyArgs(["--deps"]);
+    expect(f.deps).toBe(true);
+    expect(f.templates).toBe(false);
+    expect(f.codegen).toBe(false);
+    expect(f.docs).toBe(false);
+    expect(f.anyExplicit).toBe(true);
+    expect(parseVerifyArgs([]).deps).toBe(false);
   });
   test("--no-requirement-lint mutes the advisory lint, and defaults off", () => {
     expect(parseVerifyArgs([]).noRequirementLint).toBe(false);
