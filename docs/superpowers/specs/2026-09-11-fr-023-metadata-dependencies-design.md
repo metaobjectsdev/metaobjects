@@ -1199,8 +1199,11 @@ The plan (`docs/superpowers/plans/2026-09-11-fr-023-phase-1a.md`) is re-cut to m
    - **A consumer may not declare a new top-level node into a dependency's package.** Post
      load, a top-level object whose `packageOf(fqn)` is a dependency package and whose FQN
      is NOT in that dependency's `nodes` was declared locally into a package the consumer
-     does not own: `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, naming the object, the package and
-     the dependency, with the fix ("declare it in your own package and `extends` the
+     does not own: `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, naming the object and the package (NOT the
+     dependency — ruled 2026-09-11: the load-time option shape carries flat
+     `importedPackages` / `importedNodes` sets with no package-to-dependency-name map,
+     and the package is what the user acts on, since `scope.include` takes a package),
+     with the fix ("declare it in your own package and `extends` the
      dependency's node, or overlay the dependency's node with `overlay: true`"). An
      OVERLAY merges into the existing node, whose FQN *is* in `nodes`, so it passes
      untouched — only a genuinely new object is refused. This is what keeps a
@@ -1278,7 +1281,7 @@ The plan (`docs/superpowers/plans/2026-09-11-fr-023-phase-1a.md`) is re-cut to m
 |---|---|
 | `.metaobjects/config.json` | `dependencies: [{ name, path }]`; `npm` / `python` arms stay in the schema and are refused by `deps sync` (`ERR_DEPENDENCY_UNRESOLVED`, "not supported by this toolchain yet") — the `sources` `resource`/`package` precedent |
 | `sdk` `Collection` | `dependencies`, `ownFiles`, `fileIds`, `importedPackages`, `importedNodes`, `imported(fqn)` (package-keyed); `inScope` and `inMigrateScope` become the composed predicates; `declaredMigrateScope` is the user's alone |
-| `metadata` | `LockSchema`/`ManifestSchema` live in sdk; `declaredTopLevelKeys(source)` exported from the loader for the overlay lint |
+| `metadata` | `LockSchema`/`DependencyManifestSchema` live in sdk; `declaredTopLevelKeys(source)` exported from the loader for the overlay lint |
 | `codegen-ts` | `sharedModelFile()`; `GenContext.registry` / `sourceFiles`; `renderSharedEnumsFile(root, { select })` |
 | `migrate-ts` | `scopeExpectedSchema(built, inScope, { imported })` — the `declaredSchemas` correction |
 | `cli` | `meta deps sync \| check \| list`; `verify --deps`; the overlay lint; `gen` refusal by name; `init` no longer scaffolds `package.meta.json` |
