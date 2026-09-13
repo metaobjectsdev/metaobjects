@@ -129,6 +129,11 @@ import {
   CARDINALITY_ONE,
   CARDINALITY_MANY,
 } from "../core/relationship/relationship-constants.js";
+import {
+  referenceCandidatesFor,
+  resolveRelationshipReference,
+} from "../core/relationship/resolve-relationship-reference.js";
+import type { MetaRoot } from "../shared/meta-root.js";
 import { stripPackage } from "../naming.js";
 import {
   FILTER_COMPOSE_OR,
@@ -2011,7 +2016,8 @@ export function validateRelationships(root: MetaData): ParseError[] {
         // #368: @sourceRefField also disambiguates a `@cardinality: one`
         // relationship when the entity holds more than one identity.reference
         // onto the same target. Only the M:N *junction* reading is rejected
-        // here; rule (e) below checks that it names a real local reference.
+        // here; rule (e) — validateOneSideReferenceResolution, below in this
+        // file — checks that it names a real local reference.
         if (hasSourceRefField && cardinality !== CARDINALITY_ONE) {
           errors.push(
             new ParseError(
@@ -2108,6 +2114,57 @@ export function validateRelationships(root: MetaData): ParseError[] {
           );
         }
       }
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Rule (e) — #368: a `@cardinality: one` relationship must resolve to exactly
+// one identity.reference. Two references onto the same target are
+// indistinguishable from the relationship's @objectRef alone, so the resolver
+// would silently emit the first one's FK column. ADR-0029 §5: a second path
+// is a load error naming the candidates.
+//
+// Registered alongside validateRelationships (the M:N slim-vocabulary pass,
+// above) — same deferred-resolution timing (after all files load + extends
+// resolution), same own-relationships-only scope.
+// ---------------------------------------------------------------------------
+
+export function validateOneSideReferenceResolution(root: MetaRoot): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.objects()) {
+    // ADR-0039: own — a relationship is validated on the entity that DECLARES it.
+    for (const rel of obj.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP)) {
+      // ADR-0039: resolving — @cardinality/@objectRef may be inherited via extends.
+      if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_ONE) continue;
+      const objectRef = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+      if (typeof objectRef !== "string" || objectRef === "") continue;
+
+      const candidates = referenceCandidatesFor(obj, objectRef);
+      if (candidates.length <= 1) continue;
+
+      const sourceRefField = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      const declared = typeof sourceRefField === "string" && sourceRefField !== ""
+        ? sourceRefField
+        : undefined;
+      const resolved = resolveRelationshipReference(obj, rel.name, objectRef, declared);
+      if (resolved) continue;
+
+      const listed = candidates.map((c) => `${c.name}(${c.fields[0]})`).join(", ");
+      errors.push(
+        new ParseError(
+          declared !== undefined
+            ? `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} ` +
+              `"${declared}", which names no identity.reference targeting "${objectRef}". ` +
+              `Candidates: ${listed}.`
+            : `relationship "${obj.name}.${rel.name}" is ambiguous: "${obj.name}" declares ` +
+              `${candidates.length} identity.reference nodes targeting "${objectRef}" and the ` +
+              `relationship name does not pair with exactly one. Candidates: ${listed}. ` +
+              `Set @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} to the FK field this relationship navigates.`,
+          { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+        ),
+      );
     }
   }
   return errors;

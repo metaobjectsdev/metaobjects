@@ -379,3 +379,70 @@ describe("FR-017 M:N validation rules", () => {
     expect(codesOf(errors)).not.toContain("ERR_BAD_ATTR_VALUE");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Rule (e) (#368): a `@cardinality: one` relationship must resolve to exactly
+// one identity.reference. Two references onto the same target are
+// indistinguishable from @objectRef alone — the resolver used to silently
+// emit the first one's FK column, so ambiguity is now a load error naming
+// the candidates instead.
+// ---------------------------------------------------------------------------
+
+describe("FR-017 Rule (e) — #368 ambiguous 1:N reference resolution", () => {
+  test("two references to one target with an unpairable relationship name is a load error (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "alphaFk" } },
+        { "field.long": { name: "betaFk" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "alphaRef", "@fields": ["alphaFk"], "@references": "Team" } },
+        { "identity.reference": { name: "betaRef", "@fields": ["betaFk"], "@references": "Team" } },
+        { "relationship.association": { name: "winner", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("Match.winner");
+    expect(message).toContain("alphaRef(alphaFk)");
+    expect(message).toContain("betaRef(betaFk)");
+  });
+
+  test("the issue #368 repro loads clean via name pairing", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("sourceRefField naming no local reference is a load error (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "nonesuch" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "awayTeamId" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+  });
+});
