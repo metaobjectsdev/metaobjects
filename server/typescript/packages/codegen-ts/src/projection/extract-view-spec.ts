@@ -47,7 +47,7 @@ import {
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   FIELD_ATTR_COLUMN,
   OBJECT_PROJECTION_ATTR_FILTER,
-  findReferenceBetween,
+  findReferencesBetween,
   resolveObjectRef,
   type AggregateFunction,
 } from "@metaobjectsdev/metadata";
@@ -757,7 +757,18 @@ function buildJoinTree(
         const target = resolveEntityRef(root, targetName, packageOf(currentObj));
         if (!target) break;
 
-        const ref = findReferenceBetween(currentObj as MetaObject, target);
+        // #368: two identity.reference declarations onto the same target are
+        // legal (e.g. Match.homeTeamRef/awayTeamRef -> Team), so the hop
+        // cannot silently take the first — refuse and name the remedy.
+        const refs = findReferencesBetween(currentObj as MetaObject, target);
+        if (refs.length > 1) {
+          throw new Error(
+            `projection join from "${(currentObj as MetaObject).name}" to "${target.name}" is ambiguous: ` +
+              `${refs.map((r) => r.referenceIdentity.name).join(", ")}. ` +
+              `Declare the hop explicitly with @via.`,
+          );
+        }
+        const ref = refs[0];
         if (!ref) break;
 
         const fkField = ref.referenceIdentity.fields[0];
@@ -1090,7 +1101,17 @@ function buildSelectSpec(
       // The base↔child correlation FK — resolved exactly as buildJoinTree resolves a
       // single hop (the identity.reference is the FK-direction SSOT). Single-hop @via;
       // a multi-hop @via on origin.first is not lowered here (rare, and validated away).
-      const ref = findReferenceBetween(base, childEntity);
+      // #368: two identity.reference declarations onto the same target are legal, so
+      // this correlation cannot silently take the first — refuse and name the remedy.
+      const refs = findReferencesBetween(base, childEntity);
+      if (refs.length > 1) {
+        throw new Error(
+          `origin.first correlation from "${base.name}" to "${childEntity.name}" is ambiguous: ` +
+            `${refs.map((r) => r.referenceIdentity.name).join(", ")}. ` +
+            `Declare the hop explicitly with @via.`,
+        );
+      }
+      const ref = refs[0];
       if (!ref) continue;
       const fkField = ref.referenceIdentity.fields[0];
       if (!fkField) continue;

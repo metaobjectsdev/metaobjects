@@ -114,7 +114,7 @@ export type { IdentityPassthroughResolution } from "./core/identity/validate-ide
 // Relationship
 export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
-export { findReferenceBetween } from "./core/relationship/find-reference.js";
+export { findReferenceBetween, findReferencesBetween } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";
 export {
   referenceCandidatesFor,

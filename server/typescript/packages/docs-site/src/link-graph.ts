@@ -1,5 +1,5 @@
 import type { MetaData, MetaObject, MetaRelationship } from "@metaobjectsdev/metadata";
-import { deriveM2MFields, stripPackage } from "@metaobjectsdev/metadata";
+import { deriveM2MFields, resolveRelationshipReference, stripPackage } from "@metaobjectsdev/metadata";
 import { type LoadedModel, treeOf } from "./load.js";
 
 export interface DocNode { kind: "object" | "prompt" | "output"; name: string; pkg: string; pkgPath: string; href: string; node: MetaData; tree: string; }
@@ -99,10 +99,18 @@ export class LinkGraph {
             addM2mEdge(fqn, to, rel, obj, dn.pkg, onDelete, subtype);   // Task 3 helper
             continue;
           }
-          // belongs-to (1:N, one) — find the matching identity.reference to dedupe (mirrors
-          // relation-resolver: first reference whose target matches, package-stripped).
+          // belongs-to (1:N, one) — resolve the identity.reference this relationship
+          // actually navigates, so the FK loop below can dedupe the edge it supersedes.
+          // #368: an entity may declare more than one reference onto the same target
+          // (e.g. Match.homeTeamRef/awayTeamRef -> Team), so a bare "target matches"
+          // `.find()` picked the same candidate for every same-target relationship —
+          // resolveRelationshipReference is the SSOT ladder (unique candidate,
+          // @sourceRefField, or unique name-pairing) that relation-resolver itself now
+          // uses; ambiguous cases resolve to undefined and simply leave every candidate
+          // reference to draw its own "fk" edge, which is the safe (extra-info, not
+          // missing-edge) outcome for a docs graph.
           const target = stripPackage(objectRef);
-          const match = obj.referenceIdentities().find((r) => stripPackage(r.targetEntity ?? "") === target);
+          const match = resolveRelationshipReference(obj, rel.name, target, rel.sourceRefField);
           const fkField = match?.fields?.[0];
           if (fkField) coveredFk.add(`${to}::${fkField}`);
           addRef({ from: fqn, to, via: rel.name, kind: "relationship", cardinality, onDelete, subtype });
