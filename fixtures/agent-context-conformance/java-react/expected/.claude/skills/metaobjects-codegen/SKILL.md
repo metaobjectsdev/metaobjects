@@ -143,17 +143,30 @@ they emit.
    `layer`, `framework`, what it emits, what it requires, what it costs to install,
    and — with `--probe`, which constructs each generator and dry-runs it against YOUR
    model — how many files each would actually emit.
-3. **Choose by `layer`.** Satisfy every `requires`. Take what `wouldEmit > 0` says your
+3. **Check the libraries before you choose generators.** The same catalog carries
+   `kind: "library"` rows — declared design MetaObjects ships, each with a `useWhen`.
+   If one matches a capability you are about to model, **opt in and adapt rather than
+   author**: you inherit its entities, its requirements, and the rulings recorded with
+   them. Layers are how much of it you take. The bare name is the CORE layer — the
+   model and its ledger, sourceless, so it adds **no tables and no generated code**;
+   `<lib>/db` is the separate opt-in that proposes the schema. Opt in with
+   `"libraries": ["iam", "iam/db"]` in `.metaobjects/config.json`.
+4. **Choose by `layer`.** Satisfy every `requires`. Take what `wouldEmit > 0` says your
    model is already asking for.
    - Pick **ONE** framework on the `api` layer: `routes` and `routes-hono` are
      alternatives, and wiring both silently produces two complete HTTP surfaces.
    - Do **NOT** apply that rule to `client`. `@metaobjectsdev/tanstack` peers on
      `react`, so a form generator plus the TanStack hook/grid generators is the
      intended composition, not a conflict.
-4. **`meta eject <names...> --format json`** — copies each into `codegen/generators/`
+5. **`meta eject <names...> --format json`** — copies each into `codegen/generators/`
    (yours to edit), and reports the import line, the entry to add to `generators`, one
    consolidated install command, and any config keys those generators read.
-5. **`meta gen`** — read its warnings, then typecheck.
+6. **`meta gen`** — read its warnings, then typecheck.
+
+A library row also carries `provides` (what is in the box) and, under `--probe`, a
+`project` block: which layers you selected, how many tables and requirements they
+added here, which of your entities `extends` into it, and any generator the library
+implies that you have not wired.
 
 ### The six layers, and what picks them
 

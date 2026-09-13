@@ -29,11 +29,25 @@ import * as coreTpl from "@metaobjectsdev/codegen-ts";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackTpl from "@metaobjectsdev/codegen-ts-tanstack";
 import { listCatalog, packageOf } from "./catalog.js";
+import {
+  buildLibraryRows, renderLibraryText,
+  type LibraryCatalogRow, type LibraryProjectContext,
+} from "./library-listing.js";
 import { installSetFor } from "./install-set.js";
 import { readPackageManifest, declaredDependencyNames } from "./package-manifest.js";
 
-/** One `--list` row. The cross-port subset is name / layer / tier / description. */
-export interface CatalogRow {
+/**
+ * One `--list` row. The cross-port subset is name / layer / tier / description.
+ *
+ * `kind` is the discriminator: FR-043 adds `kind: "library"` rows to THIS table rather
+ * than a parallel one, because an agent about to model a capability should meet the
+ * library that already declares it in the list it was already reading.
+ */
+export type CatalogRow = GeneratorCatalogRow | LibraryCatalogRow;
+
+export type { LibraryCatalogRow };
+
+export interface GeneratorCatalogRow {
   name: string;
   kind: "generator";
   layer: Layer;
@@ -141,6 +155,10 @@ export interface CatalogProject {
   ownedNames: ReadonlySet<string>;
   /** Declared dependency names from package.json, for `frameworkDetected`. */
   declaredDeps: ReadonlySet<string> | undefined;
+  /** FR-043 — the project's `libraries` selection, for the `kind: "library"` rows.
+   *  Defaults to none, so a caller that predates libraries reports "not opted in"
+   *  rather than crashing. */
+  libraries?: readonly string[];
 }
 
 export interface CatalogListingOpts {
@@ -189,7 +207,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
     const install = installSetFor([entry]);
     const pkg = packageOf(entry.name) ?? "";
 
-    const row: CatalogRow = {
+    const row: GeneratorCatalogRow = {
       name: entry.name,
       kind: entry.kind,
       layer: entry.layer,
@@ -239,6 +257,17 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
 
     rows.push(row);
   }
+
+  // FR-043 — the library rows, after the generators. Same table, same `--probe`.
+  const libraryCtx: LibraryProjectContext | undefined =
+    opts.project === undefined
+      ? undefined
+      : {
+          libraries: opts.project.libraries ?? [],
+          wiredNames: opts.project.wiredNames,
+          ...(opts.probe !== undefined ? { metadata: opts.probe.metadata } : {}),
+        };
+  rows.push(...(await buildLibraryRows(libraryCtx)));
 
   return rows;
 }
@@ -301,9 +330,10 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   lines.push("Generator catalog — nothing runs until you wire it in `generators: [...]`.");
   lines.push("");
 
-  const width = Math.max(...rows.map((r) => r.name.length));
+  const generators = rows.filter((r): r is GeneratorCatalogRow => r.kind === "generator");
+  const width = Math.max(...generators.map((r) => r.name.length));
   let layer: string | undefined;
-  for (const r of rows) {
+  for (const r of generators) {
     if (r.layer !== layer) {
       layer = r.layer;
       lines.push(`${layer}  —  ${LAYER_BLURB[r.layer]}`);
@@ -322,6 +352,11 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
       lines.push(`  ${" ".repeat(width)}     requires: ${r.requires.join(", ")}`);
     }
   }
+
+  // The library section sits between the generators and the footer: the footer's
+  // `meta eject` line applies to both kinds, and putting libraries after it buries
+  // the one row an agent modelling a capability most needs to see.
+  lines.push(...renderLibraryText(rows.filter((r): r is LibraryCatalogRow => r.kind === "library")));
 
   lines.push("");
   lines.push("`meta eject <name...>` copies a generator into codegen/generators/ and prints");

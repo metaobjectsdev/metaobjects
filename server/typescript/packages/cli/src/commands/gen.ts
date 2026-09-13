@@ -403,6 +403,10 @@ async function listCatalogCommand(
         wiredNames: wiredGeneratorNames(forgeConfig),
         ownedNames: ownedGeneratorNames(projectRoot),
         declaredDeps: declaredDepsOf(projectRoot),
+        // FR-043 — the library rows read the selection from the COLLECTION, which is
+        // where `libraries` lives now (`.metaobjects/config.json`), not from the
+        // codegen config it was moved out of.
+        libraries: genCollection.libraries,
       },
       probe: { metadata, scope: genCollection.inScope },
     };
@@ -421,6 +425,7 @@ async function listCatalogCommand(
           wiredNames: wiredGeneratorNames(forgeConfig),
           ownedNames: ownedGeneratorNames(projectRoot),
           declaredDeps: declaredDepsOf(projectRoot),
+          libraries: collection.libraries,
         },
       };
     } catch {
