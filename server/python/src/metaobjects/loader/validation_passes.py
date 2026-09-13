@@ -136,6 +136,11 @@ from ..meta.persistence.db.db_constants import (
 )
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref
+from ..meta.core.relationship.relationship_references import (
+    reference_candidates_for,
+    reference_fields,
+    resolve_relationship_reference,
+)
 
 # A subtype-specific template attr is valid ONLY on the subtype(s) it is registered
 # for. The metamodel registers these per-subtype (see the core_types template block),
@@ -193,6 +198,10 @@ def run_validations(
     # FR-024 B6 — an entity's origin-bearing field needs a read-capable source.
     _validate_derived_field_providability(root, errors)
     _validate_relationships(root, errors)
+    # Rule (e) (#368) — registered alongside _validate_relationships (the M:N
+    # slim-vocabulary pass, rule (d)): same deferred-resolution timing (after
+    # all files load + extends resolution).
+    _validate_one_side_reference_resolution(root, errors)
     # Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
     # carries its reference descriptors (relationship @objectRef, identity.reference
     # @references for core; a downstream provider's type carries its own) + validator,
@@ -2614,17 +2623,44 @@ def _count_junction_references(junction: MetaData) -> int:
 
 
 def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
-    # ADR-0039: a relationship is validated on the entity that DECLARES it — the
-    # M:N slim-vocabulary rules apply to own-declared relationships (obj.own_children()),
-    # but each relationship's @through/@sourceRefField/@symmetric/@cardinality/@objectRef
-    # is read RESOLVING (get_meta_attr), since those attrs may be inherited via extends.
-    # Mirrors the TS validateRelationships (root.children() + obj.ownChildren() +
-    # `rel.attr` which resolves — validation-passes.ts:1313-1324). (The junction's
-    # identity.reference fields are also read resolving — see _count_junction_references.)
+    # #368 — the inner loop below iterates the EFFECTIVE relationship set
+    # (obj.children(), resolving), so a relationship inherited unmodified by N
+    # entities is reached N times. Its own attrs never change based on who
+    # inherits it, so re-validating it more than once would report the
+    # identical finding N times — pure noise. `checked` is keyed on the
+    # relationship NODE's own object identity: MetaData.children()'s
+    # effective-children computation reuses the super's child object in place
+    # for an unmodified inherited child (see MetaData._effective_children_inner),
+    # so the same physical declaration IS the same object everywhere it's
+    # visible, while an override replaces it with a genuinely different object
+    # (correctly NOT deduped — a distinct declaration is a distinct finding).
+    checked: set[MetaData] = set()
+    # ADR-0039: root has no super; children()==own_children(), but resolving
+    # is still the correct default (mirrors the TS root.children()).
     for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
-        # ADR-0042 — a bare @through / @objectRef resolves in the declaring entity's package.
-        referrer_pkg = obj.package or obj.file_default_package or ""
-        for rel in (c for c in obj.own_children() if c.type == TYPE_RELATIONSHIP):
+        # ADR-0039: resolving — rule (d) (like rule (e)) must see a
+        # relationship inherited via extends, not just this entity's own
+        # declarations. `checked` absorbs the resulting revisits.
+        for rel in (c for c in obj.children() if c.type == TYPE_RELATIONSHIP):
+            if rel in checked:
+                continue
+            checked.add(rel)
+
+            # Every rule below validates a property of the relationship's OWN
+            # declaration (its attrs, plus for rule (c) the @through target), so
+            # context — the entity name in messages, the package a bare
+            # @through resolves in (ADR-0042), and rule (a)'s self-join
+            # comparison — is always the entity that DECLARES `rel`
+            # (rel.parent), never `obj` (the entity whose effective view
+            # happened to reach it first). This keeps the check's result
+            # independent of iteration order/inheritance depth, which is what
+            # makes checking each node exactly once correct.
+            declaring_entity = rel.parent if rel.parent is not None else obj
+            referrer_pkg = (
+                declaring_entity.package or declaring_entity.file_default_package or ""
+            )
+
+            # ADR-0039: resolving — a relationship may inherit its M:N attrs via extends.
             through = rel.get_meta_attr(RELATIONSHIP_ATTR_THROUGH)
             source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
             symmetric = rel.get_meta_attr(RELATIONSHIP_ATTR_SYMMETRIC) is True
@@ -2637,6 +2673,7 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             )
             is_many = cardinality == CARDINALITY_MANY
             is_m2m = has_through and is_many
+            is_cardinality_one = cardinality == CARDINALITY_ONE
 
             # NOTE: @objectRef existence resolution moved to the validation registry
             # (a declarative ReferenceDescriptor on relationship.* TypeDefinitions,
@@ -2646,22 +2683,28 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             if not is_m2m:
                 if has_through:
                     errors.append(MetaError(
-                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'relationship "{declaring_entity.name}.{rel.name}" sets '
                         f'@{RELATIONSHIP_ATTR_THROUGH} but is not a M:N relationship '
                         f'(requires @{RELATIONSHIP_ATTR_CARDINALITY}: "{CARDINALITY_MANY}").',
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         envelope=rel.source,
                     ))
-                if has_source_ref_field:
+                # #368: @sourceRefField also disambiguates a `@cardinality: one`
+                # relationship when the entity holds more than one
+                # identity.reference onto the same target. Only the M:N
+                # *junction* reading is rejected here; rule (e) —
+                # _validate_one_side_reference_resolution, below in this file —
+                # checks that it names a real local reference.
+                if has_source_ref_field and not is_cardinality_one:
                     errors.append(MetaError(
-                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'relationship "{declaring_entity.name}.{rel.name}" sets '
                         f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.',
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         envelope=rel.source,
                     ))
                 if symmetric:
                     errors.append(MetaError(
-                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'relationship "{declaring_entity.name}.{rel.name}" sets '
                         f'@{RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.',
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         envelope=rel.source,
@@ -2671,7 +2714,7 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             # Rule (b): @symmetric and @sourceRefField are mutually exclusive.
             if symmetric and has_source_ref_field:
                 errors.append(MetaError(
-                    f'relationship "{obj.name}.{rel.name}" sets both '
+                    f'relationship "{declaring_entity.name}.{rel.name}" sets both '
                     f'@{RELATIONSHIP_ATTR_SYMMETRIC} and '
                     f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.',
                     ErrorCode.ERR_BAD_ATTR_VALUE,
@@ -2684,13 +2727,13 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             # name entity) is NOT (comparing stripped short names would misclassify it).
             is_self_join = (
                 isinstance(object_ref, str)
-                and resolve_object_ref(root, object_ref, referrer_pkg) is obj
+                and resolve_object_ref(root, object_ref, referrer_pkg) is declaring_entity
             )
             if symmetric and not is_self_join:
                 errors.append(MetaError(
-                    f'relationship "{obj.name}.{rel.name}" sets '
+                    f'relationship "{declaring_entity.name}.{rel.name}" sets '
                     f'@{RELATIONSHIP_ATTR_SYMMETRIC} but @{RELATIONSHIP_ATTR_OBJECT_REF} '
-                    f'"{object_ref}" is not the declaring entity "{obj.name}"; '
+                    f'"{object_ref}" is not the declaring entity "{declaring_entity.name}"; '
                     f'@{RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.',
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     envelope=rel.source,
@@ -2704,12 +2747,12 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             junction = resolve_object_ref(root, str(through), referrer_pkg)
             if junction is None:
                 errors.append(MetaError(
-                    f'relationship "{obj.name}.{rel.name}" '
+                    f'relationship "{declaring_entity.name}.{rel.name}" '
                     f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" does not resolve to an '
                     f"entity.{did_you_mean_hint(root, str(through))}",
                     ErrorCode.ERR_INVALID_RELATIONSHIP,
                     envelope=resolved_source(
-                        rel.source, f"{obj.fqn()}::{rel.name}", str(through)
+                        rel.source, f"{declaring_entity.fqn()}::{rel.name}", str(through)
                     ),
                 ))
                 continue
@@ -2719,7 +2762,7 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             # assert it here. (A value/projection has no table to join through.)
             if junction.sub_type != OBJECT_SUBTYPE_ENTITY:
                 errors.append(MetaError(
-                    f'relationship "{obj.name}.{rel.name}" '
+                    f'relationship "{declaring_entity.name}.{rel.name}" '
                     f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" resolves to '
                     f"{junction.type}.{junction.sub_type}, not an entity — a junction is a "
                     f"persisted join table and must be object.entity.",
@@ -2730,7 +2773,7 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             ref_count = _count_junction_references(junction)
             if ref_count != 2:
                 errors.append(MetaError(
-                    f'relationship "{obj.name}.{rel.name}" '
+                    f'relationship "{declaring_entity.name}.{rel.name}" '
                     f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" must declare exactly two '
                     f'identity.reference children (one per FK side); found {ref_count}.',
                     ErrorCode.ERR_INVALID_RELATIONSHIP,
@@ -2744,13 +2787,125 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                 if source_ref_field not in fk_fields:
                     available = ", ".join(fk_fields) or "(none)"
                     errors.append(MetaError(
-                        f'relationship "{obj.name}.{rel.name}" '
+                        f'relationship "{declaring_entity.name}.{rel.name}" '
                         f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "{source_ref_field}" '
                         f'does not match any identity.reference FK field on junction '
                         f'"{through}". Available: {available}.',
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         envelope=rel.source,
                     ))
+
+
+# ---------------------------------------------------------------------------
+# Rule (e) — #368: a `@cardinality: one` relationship must resolve to exactly
+# one identity.reference. Two references onto the same target are
+# indistinguishable from the relationship's @objectRef alone, so the resolver
+# would silently emit the first one's FK column. ADR-0029 Section 5: ambiguity
+# is a load error naming the candidates.
+#
+# Registered alongside _validate_relationships (the M:N slim-vocabulary pass,
+# above) — same deferred-resolution timing (after all files load + extends
+# resolution).
+#
+# Scope differs deliberately from rule (d): rule (d) validates attrs that
+# travel with the relationship's OWN declaration (@through/@symmetric/
+# @sourceRefField), so own-scoping there is correct — those attrs don't
+# change meaning depending on who inherits the relationship. Rule (e)
+# instead validates whether THIS entity's reference set resolves the
+# relationship uniquely, which is a property of the EFFECTIVE entity, not of
+# wherever the relationship happens to be declared. A child entity that
+# extends a clean parent and adds a second identity.reference onto the same
+# target makes an INHERITED relationship ambiguous on the child even though
+# the parent (and the relationship's own declaration) are untouched — own-
+# scoping this pass would leave that case unchecked, and codegen/runtime
+# (which resolve against the effective entity) would silently drop the
+# relation. If a parent and a child are both genuinely ambiguous, both are
+# reported — two entities are broken, not one error duplicated. (No dedupe
+# here, unlike rule (d): rule (e)'s candidate set genuinely differs per
+# entity.)
+# ---------------------------------------------------------------------------
+
+
+def _validate_one_side_reference_resolution(
+    root: MetaData, errors: list[MetaError]
+) -> None:
+    # ADR-0039: root has no super; children()==own_children().
+    for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
+        # ADR-0039: resolving — see the scope note above: rule (e) checks THIS
+        # entity's effective reference set against every relationship it can
+        # see, including one only inherited via extends.
+        for rel in (c for c in obj.children() if c.type == TYPE_RELATIONSHIP):
+            # ADR-0039: resolving — @cardinality/@objectRef may be inherited via extends.
+            if rel.get_meta_attr(RELATIONSHIP_ATTR_CARDINALITY) != CARDINALITY_ONE:
+                continue
+            object_ref = rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)
+            if not isinstance(object_ref, str) or object_ref == "":
+                continue
+
+            candidates = reference_candidates_for(obj, object_ref)
+
+            source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
+            declared = (
+                source_ref_field
+                if isinstance(source_ref_field, str) and source_ref_field != ""
+                else None
+            )
+
+            if declared is not None:
+                # A declared @sourceRefField short-circuits the ladder at ANY
+                # candidate count — checked independently of
+                # resolve_relationship_reference, whose step 1 ("exactly one
+                # candidate -> that one") would otherwise silently return the
+                # lone candidate even when it disagrees with the declared
+                # field. The author named a specific FK; it must exist,
+                # whether there are zero, one, or many candidates.
+                matches_declared = any(
+                    reference_fields(c)[:1] == [declared] for c in candidates
+                )
+                if matches_declared:
+                    continue
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" sets '
+                    f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "{declared}", which names '
+                    f'no identity.reference targeting "{object_ref}". '
+                    f'Candidates: {_format_reference_candidates(candidates)}.',
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    envelope=rel.source,
+                ))
+                continue
+
+            # No @sourceRefField declared: ambiguity only exists with 2+
+            # candidates — resolve_relationship_reference's name-pairing step
+            # (ladder step 3) decides.
+            if len(candidates) <= 1:
+                continue
+            resolved = resolve_relationship_reference(obj, rel.name, object_ref)
+            if resolved is not None:
+                continue
+
+            errors.append(MetaError(
+                f'relationship "{obj.name}.{rel.name}" is ambiguous: "{obj.name}" declares '
+                f'{len(candidates)} identity.reference nodes targeting "{object_ref}" and '
+                f'the relationship name does not pair with exactly one. '
+                f'Candidates: {_format_reference_candidates(candidates)}. '
+                f'Set @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} to the FK field this '
+                f'relationship navigates.',
+                ErrorCode.ERR_INVALID_RELATIONSHIP,
+                envelope=rel.source,
+            ))
+
+
+def _format_reference_candidates(candidates: list[MetaData]) -> str:
+    """Render a candidate reference as ``name(fkField)``, or
+    ``name(fieldA, fieldB)`` for a composite reference — so two composite
+    references sharing a first column still print distinguishably.
+
+    NOTE: this is display only. Matching (both here and in
+    resolve_relationship_reference) still keys on the first field alone — a
+    composite reference cannot actually be disambiguated by @sourceRefField.
+    That's a documented limitation, not fixed by this rendering.
+    """
+    return ", ".join(f"{c.name}({', '.join(reference_fields(c))})" for c in candidates)
 
 
 # NOTE: identity.reference @references resolution moved to the validation registry
