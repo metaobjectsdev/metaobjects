@@ -7,12 +7,13 @@
 // the same stable name in every port. This is the discoverability + identity
 // surface behind `dotnet meta gen --list`.
 //
-// It is ADDITIVE. The existing default suite (GenCommand.DefaultGenerators)
-// keeps the same four generators by default — the registry powers `--list`,
-// a stable identity, and selection-by-name so the previously-unreachable
-// generators (render-helper, extractor, output-prompt, filter-allowlist,
-// template) become runnable from the CLI without changing what any generator
-// EMITS.
+// It is the ONLY door. ADR-0034 Amendment 2 made codegen opt-in and DELETED the
+// default suite this note used to name (GenCommand.DefaultGenerators): a run that
+// selects no generator generates nothing and says so (GenCommand.NoGeneratorsSelected).
+// So the registry powers `--list`, a stable identity, and the selection-by-name every
+// run now goes through — including the once-unreachable generators (render-helper,
+// extractor, output-prompt, filter-allowlist, template) — without changing what any
+// generator EMITS.
 //
 // Stable names mirror the TS registry exactly where the concept matches
 // (cross-port contract): entity, db-context, routes, output-parser, extractor,

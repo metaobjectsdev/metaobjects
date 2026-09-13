@@ -48,9 +48,10 @@ public static class GenCommand
         "pass --generators <a,b,c>. See the catalog: dotnet meta gen --list";
 
     /// <summary>
-    /// Run codegen selecting generators by stable name. When
-    /// <paramref name="generatorNames"/> is null/empty the default suite runs
-    /// (back-compat). An unknown name (or a render-helper selected without a
+    /// Run codegen selecting generators by stable name. There is no default suite:
+    /// a null or empty <paramref name="generatorNames"/> generates nothing and reports
+    /// <see cref="NoGeneratorsSelected"/> — ADR-0034 Amendment 2 made codegen opt-in.
+    /// An unknown name (or a render-helper selected without a
     /// <paramref name="templateRoot"/>) surfaces as a load-style error in the
     /// returned <see cref="Outcome"/> rather than throwing.
     ///
@@ -198,7 +199,7 @@ public static class GenCommand
             // throwaway directory and records nothing at all.
             Baseline = baseline,
             // C1 — the presence gate: is `names` actually part of THIS resolved suite
-            // (`names` above — the default suite, or whatever `--generators` selected)?
+            // (`names` above — whatever `--generators` selected; there is no default)?
             // Computed the one way GeneratorRegistry.IncludesNames defines, so `gen` and
             // `verify --codegen` (VerifyCommand.RunCodegenDrift) cannot independently
             // drift on the answer.

@@ -19,7 +19,7 @@
 //   from `libraries`, or both trees load and merge (ERR_LIBRARY_PACKAGE_COLLISION).
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { MetaDataLoader, canonicalSerialize, type MetaData } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, PACKAGE_SEPARATOR, canonicalSerialize, type MetaData } from "@metaobjectsdev/metadata";
 import {
   libraryManifests, libraryRefSource, libraryRefs, librarySources,
   knownLibraryTokens, splitLayerToken,
@@ -157,24 +157,58 @@ export interface LibraryStaleness {
   stillOptedIn: boolean;
 }
 
-/** Root-level nodes keyed by NAME, canonically serialized in OWN mode.
+/** The longest package prefix every node shares — the library's own root package.
  *
- *  By name rather than by resolution key, because §3.4 says an adopter who ejects "may
+ *  Segment-wise, never by string prefix: `acme::identity` and `acme::identityhub` share
+ *  six characters and no package at all. */
+function commonPackagePrefix(packages: readonly string[]): string {
+  if (packages.length === 0) return "";
+  let common = packages[0]!.split(PACKAGE_SEPARATOR);
+  for (const pkg of packages.slice(1)) {
+    const segments = pkg.split(PACKAGE_SEPARATOR);
+    let i = 0;
+    while (i < common.length && i < segments.length && common[i] === segments[i]) i++;
+    common = common.slice(0, i);
+  }
+  return common.join(PACKAGE_SEPARATOR);
+}
+
+/** Root-level nodes keyed by their package path RELATIVE to the library's own root
+ *  package, canonically serialized in OWN mode.
+ *
+ *  Relative rather than by resolution key, because §3.4 says an adopter who ejects "may
  *  rename the package freely" — keying on the FQN would report every node of a renamed
  *  copy as both upstream-only and local-only, which is the least useful answer
- *  available. Own mode, because the question is what each file DECLARES; the effective
- *  tree would fold a shipped base's fields into a subtype and report a difference that
- *  is not in either file. */
-function ownNodesByName(root: MetaData): Map<string, string> {
+ *  available. Relative rather than by BARE NAME, because a library free to use two
+ *  packages is free to declare `User` in both, and one key for two declarations means
+ *  the one serialized last silently wins: a real divergence in the other is reported as
+ *  `identical`. The relative path is what survives the rename — moving the root leaves
+ *  every suffix below it exactly where it was — so it distinguishes without giving that
+ *  edit anything to catch on. A single-package library yields the bare names it always
+ *  did. Own mode, because the question is what each file DECLARES; the effective tree
+ *  would fold a shipped base's fields into a subtype and report a difference that is not
+ *  in either file. */
+export function ownNodesByName(root: MetaData): Map<string, string> {
+  const nodes = [...root.children()];
+  const packageOf = (node: MetaData) => node.package ?? node.fileDefaultPackage ?? "";
+  // The ROOT package, neutralized in every node's serialization — for the same reason
+  // the keying is relative to it. A rename reaches the `package` key AND every `extends`
+  // inside the node, so comparing the raw text would report a renamed copy as wholly
+  // changed: the loudest possible answer to the one edit §3.4 explicitly invites. The
+  // root rather than each node's own package, so that a deeper node's reference back up
+  // to the root package is neutralized in it too.
+  const rootPackage = commonPackagePrefix(nodes.map(packageOf));
+
   const out = new Map<string, string>();
-  for (const node of root.children()) {
-    // The node's OWN package, neutralized in its serialization — for the same reason the
-    // keying is by name. A rename reaches the `package` key AND every `extends` inside
-    // the node, so comparing the raw text would report a renamed copy as wholly changed:
-    // the loudest possible answer to the one edit §3.4 explicitly invites.
-    const pkg = node.package ?? node.fileDefaultPackage ?? "";
+  for (const node of nodes) {
+    const pkg = packageOf(node);
+    const suffix =
+      rootPackage === "" ? pkg
+      : pkg === rootPackage ? ""
+      : pkg.slice(rootPackage.length + PACKAGE_SEPARATOR.length);
+    const key = suffix === "" ? node.name : `${suffix}${PACKAGE_SEPARATOR}${node.name}`;
     const text = canonicalSerialize(node);
-    out.set(node.name, pkg === "" ? text : text.replaceAll(pkg, "<package>"));
+    out.set(key, rootPackage === "" ? text : text.replaceAll(rootPackage, "<package>"));
   }
   return out;
 }

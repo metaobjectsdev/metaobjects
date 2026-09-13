@@ -6,9 +6,11 @@ the cross-port contract: the same logical generator carries the same stable name
 in every port. This module is the discoverability + identity surface behind
 ``metaobjects gen --list`` and the ``--generators a,b`` selection path.
 
-It is ADDITIVE. The default suite in ``cli.py`` (``_default_generators``) and the
-``run_gen(..., generators=[...])`` factory-array path keep working unchanged — the
-registry powers ``--list`` and stable identity; it does not replace those paths.
+It is the ONLY name-based door. ADR-0034 Amendment 2 made codegen opt-in and DELETED
+the default suite this note used to name (``cli._default_generators``): a run that
+selects no generator generates nothing and raises ``NoGeneratorsSelectedError``. The
+``run_gen(..., generators=[...])`` factory-array path remains for in-process callers,
+where ``generators`` is likewise required.
 
 The registry's name set is conformance-tested for SET EQUALITY against the Python
 slice of the canonical manifest
