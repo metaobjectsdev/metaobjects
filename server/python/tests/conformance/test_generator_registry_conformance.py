@@ -4,7 +4,7 @@ ADR-0021 D3. ``fixtures/generator-registry-conformance/registry.json`` is the
 single cross-port source of truth for generator stable names. This test asserts
 that the Python ``GENERATOR_REGISTRY`` exposes EXACTLY the set of stable names
 whose manifest ``ports`` array includes ``python`` — no extras, none missing —
-and that every Python entry's tier agrees with the manifest.
+and that every Python entry's tier AND layer agree with the manifest.
 
 If this fails, the registry and the manifest disagree. The manifest is canonical:
 do NOT edit it to make this pass — fix the Python registry (or report the diff).
@@ -73,6 +73,36 @@ def test_registry_tiers_agree_with_manifest() -> None:
                 f"{name}: registry tier={actual_tier!r} != manifest tier={expected_tier!r}"
             )
     assert not mismatches, "tier disagreement vs manifest:\n  " + "\n  ".join(mismatches)
+
+
+def test_registry_layers_agree_with_manifest() -> None:
+    py_slice = _manifest_python_slice()
+    mismatches = []
+    for name, spec in py_slice.items():
+        if name not in GENERATOR_REGISTRY:
+            continue  # name-set test reports this
+        expected_layer = spec["layer"]
+        actual_layer = GENERATOR_REGISTRY[name].layer
+        if actual_layer != expected_layer:
+            mismatches.append(
+                f"{name}: registry layer={actual_layer!r} != manifest layer={expected_layer!r}"
+            )
+    assert not mismatches, "layer disagreement vs manifest:\n  " + "\n  ".join(mismatches)
+
+
+def test_every_manifest_entry_declares_one_of_the_six_layers() -> None:
+    # The closed set, spelled out rather than imported from the code: importing the
+    # port's own tuple would make the gate agree with whatever the code says.
+    allowed = {"model", "persistence", "api", "client", "docs", "capability"}
+    manifest = json.loads(_find_manifest().read_text())
+    bad = sorted(
+        f"{name}={spec.get('layer')!r}"
+        for name, spec in manifest["generators"].items()
+        if spec.get("layer") not in allowed
+    )
+    assert not bad, (
+        f"manifest entries with a missing or unknown layer (allowed: {sorted(allowed)}): {bad}"
+    )
 
 
 def test_registry_python_slice_is_all_native() -> None:

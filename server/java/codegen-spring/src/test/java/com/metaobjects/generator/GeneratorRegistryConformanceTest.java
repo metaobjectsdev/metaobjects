@@ -3,6 +3,7 @@ package com.metaobjects.generator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.metaobjects.generator.GeneratorRegistry.GeneratorInfo;
+import com.metaobjects.generator.GeneratorRegistry.Layer;
 import com.metaobjects.generator.GeneratorRegistry.Tier;
 import org.junit.Test;
 
@@ -22,7 +23,7 @@ import static org.junit.Assert.assertTrue;
  * Conformance gate: Java's {@link GeneratorRegistry} stable-name set MUST equal the
  * {@code java} slice of the canonical cross-port manifest
  * {@code fixtures/generator-registry-conformance/registry.json} (ADR-0021 D3), and
- * every entry's tier MUST agree with the manifest.
+ * every entry's tier AND layer MUST agree with the manifest.
  *
  * <p>If this fails, the fix is to reconcile the registry and the manifest in the same
  * change — never edit the manifest just to make a port pass.</p>
@@ -31,6 +32,14 @@ public class GeneratorRegistryConformanceTest {
 
     private static final String PORT_ID = "java";
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * The closed set of {@code layer} values, spelled out rather than derived from
+     * {@link Layer}. Enumerating the enum would make this gate agree with whatever the
+     * code says, which is the one thing a conformance gate must not do.
+     */
+    private static final Set<String> ALLOWED_LAYERS =
+            Set.of("model", "persistence", "api", "client", "docs", "capability");
 
     /**
      * Registered stable names whose {@code classname} is deliberately NOT a wirable
@@ -97,6 +106,18 @@ public class GeneratorRegistryConformanceTest {
         return slice;
     }
 
+    /** Every manifest entry's {@code layer}, for EVERY port — this gate also checks the
+     *  manifest's own well-formedness, which is not port-scoped. */
+    private static Map<String, String> manifestLayers(JsonNode manifest) {
+        Map<String, String> layers = new TreeMap<>();
+        Iterator<Map.Entry<String, JsonNode>> it = manifest.get("generators").fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> e = it.next();
+            layers.put(e.getKey(), e.getValue().path("layer").asText(""));
+        }
+        return layers;
+    }
+
     @Test
     public void registryNameSetEqualsManifestJavaSlice() throws Exception {
         Map<String, Tier> expected = manifestSliceForPort(loadManifest());
@@ -139,6 +160,34 @@ public class GeneratorRegistryConformanceTest {
     }
 
     @Test
+    public void registryLayersAgreeWithManifest() throws Exception {
+        JsonNode manifest = loadManifest();
+        Map<String, String> layers = manifestLayers(manifest);
+        Map<String, GeneratorInfo> actual = GeneratorRegistry.list();
+
+        for (Map.Entry<String, Tier> e : manifestSliceForPort(manifest).entrySet()) {
+            GeneratorInfo info = actual.get(e.getKey());
+            if (info == null) {
+                continue; // set-equality test reports the diff; avoid NPE noise here.
+            }
+            assertEquals("layer mismatch for stable name '" + e.getKey() + "'",
+                    layers.get(e.getKey()), info.layer().manifestValue());
+        }
+    }
+
+    @Test
+    public void everyManifestEntryDeclaresOneOfTheSixLayers() throws Exception {
+        TreeSet<String> bad = new TreeSet<>();
+        for (Map.Entry<String, String> e : manifestLayers(loadManifest()).entrySet()) {
+            if (!ALLOWED_LAYERS.contains(e.getValue())) {
+                bad.add(e.getKey() + "='" + e.getValue() + "'");
+            }
+        }
+        assertTrue("manifest entries with a missing or unknown layer (allowed: "
+                + new TreeSet<>(ALLOWED_LAYERS) + "): " + bad, bad.isEmpty());
+    }
+
+    @Test
     public void everyRegistryEntryIsWellFormed() {
         for (Map.Entry<String, GeneratorInfo> e : GeneratorRegistry.list().entrySet()) {
             GeneratorInfo info = e.getValue();
@@ -148,6 +197,7 @@ public class GeneratorRegistryConformanceTest {
             assertTrue("description must be set for " + e.getKey(),
                     info.description() != null && !info.description().isBlank());
             assertTrue("tier must be set for " + e.getKey(), info.tier() != null);
+            assertTrue("layer must be set for " + e.getKey(), info.layer() != null);
         }
     }
 

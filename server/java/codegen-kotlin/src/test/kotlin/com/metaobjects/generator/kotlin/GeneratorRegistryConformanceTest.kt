@@ -21,15 +21,24 @@ import kotlin.test.assertTrue
  *       IS in the Kotlin registry, and the Kotlin registry exposes NO name whose
  *       manifest `ports` omits `kotlin` (i.e. the two sets are EQUAL);
  *   (3) tier agreement — every native manifest name is NATIVE in the registry
- *       (Kotlin has no neutral generators per the manifest).
+ *       (Kotlin has no neutral generators per the manifest);
+ *   (4) layer agreement — every manifest name's `layer` equals the registry's, and
+ *       every manifest entry declares one of the six.
  *
- * On mismatch this REPORTS the exact diff (missing / extra / tier) so the manifest
+ * On mismatch this REPORTS the exact diff (missing / extra / tier / layer) so the manifest
  * and registry can be reconciled. It never mutates either. Repo-root resolution
  * mirrors the sibling Kotlin conformance tests (walk up from `user.dir`).
  */
 class GeneratorRegistryConformanceTest {
 
     private val port = "kotlin"
+
+    /**
+     * The closed set of `layer` values, spelled out rather than derived from
+     * [GeneratorLayer]. Enumerating the enum would make this gate agree with whatever
+     * the code says, which is the one thing a conformance gate must not do.
+     */
+    private val allowedLayers = setOf("model", "persistence", "api", "client", "docs", "capability")
 
     private val manifestPath: Path = run {
         var p: Path? = Path.of(System.getProperty("user.dir")).toAbsolutePath()
@@ -43,7 +52,12 @@ class GeneratorRegistryConformanceTest {
         p!!.resolve("fixtures/generator-registry-conformance/registry.json")
     }
 
-    private data class ManifestEntry(val name: String, val tier: String, val ports: Set<String>)
+    private data class ManifestEntry(
+        val name: String,
+        val tier: String,
+        val layer: String,
+        val ports: Set<String>,
+    )
 
     private fun loadManifest(): List<ManifestEntry> {
         val root: JsonNode = ObjectMapper().readTree(Files.readString(manifestPath))
@@ -53,6 +67,7 @@ class GeneratorRegistryConformanceTest {
             ManifestEntry(
                 name = name,
                 tier = node.get("tier").asText(),
+                layer = node.path("layer").asText(""),
                 ports = node.get("ports").map { it.asText() }.toSet(),
             )
         }.toList()
@@ -102,6 +117,39 @@ class GeneratorRegistryConformanceTest {
             tierMismatches.isEmpty(),
             "Kotlin generator registry tier disagrees with the canonical manifest:\n  " +
                 tierMismatches.joinToString("\n  "),
+        )
+    }
+
+    /** (4a): every manifest name's layer equals the Kotlin registry's. */
+    @Test
+    fun `layers agree with the manifest`() {
+        val layerMismatches = loadManifest()
+            .filter { port in it.ports }
+            .mapNotNull { entry ->
+                val reg = GENERATOR_REGISTRY[entry.name] ?: return@mapNotNull null
+                if (reg.layer.manifestValue() != entry.layer) {
+                    "${entry.name}: manifest layer=`${entry.layer}` but registry layer=`${reg.layer.manifestValue()}`"
+                } else null
+            }
+
+        assertTrue(
+            layerMismatches.isEmpty(),
+            "Kotlin generator registry layer disagrees with the canonical manifest:\n  " +
+                layerMismatches.joinToString("\n  "),
+        )
+    }
+
+    /** (4b): every manifest entry — every port's — declares one of the six. */
+    @Test
+    fun `every manifest entry declares one of the six layers`() {
+        val bad = loadManifest()
+            .filter { it.layer !in allowedLayers }
+            .map { "${it.name}='${it.layer}'" }
+            .sorted()
+
+        assertTrue(
+            bad.isEmpty(),
+            "manifest entries with a missing or unknown layer (allowed: ${allowedLayers.sorted()}): $bad",
         )
     }
 

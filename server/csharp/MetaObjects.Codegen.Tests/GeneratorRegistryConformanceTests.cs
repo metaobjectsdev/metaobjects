@@ -16,10 +16,12 @@ namespace MetaObjects.Codegen.Tests;
 ///       <c>csharp</c> IS in the C# registry, and the C# registry exposes NO name
 ///       whose manifest <c>ports</c> omits <c>csharp</c> (i.e. the two sets are EQUAL);
 ///   (3) tier agreement — every native manifest name is non-neutral in the registry
-///       (C# has no neutral generators per the manifest).
+///       (C# has no neutral generators per the manifest);
+///   (4) layer agreement — every manifest name's <c>layer</c> equals the registry's,
+///       and every manifest entry declares one of the six.
 ///
-/// On mismatch this REPORTS the exact diff (extras / missing / tier) so the manifest
-/// and registry can be reconciled. It never mutates either.
+/// On mismatch this REPORTS the exact diff (extras / missing / tier / layer) so the
+/// manifest and registry can be reconciled. It never mutates either.
 /// </summary>
 public sealed class GeneratorRegistryConformanceTests
 {
@@ -39,7 +41,14 @@ public sealed class GeneratorRegistryConformanceTests
         return Path.Combine(dir, "fixtures", "generator-registry-conformance", "registry.json");
     }
 
-    private sealed record ManifestEntry(string Name, string Tier, IReadOnlyList<string> Ports);
+    private sealed record ManifestEntry(
+        string Name, string Tier, string Layer, IReadOnlyList<string> Ports);
+
+    // The closed set, spelled out rather than read off GeneratorLayer: enumerating the
+    // enum would make this gate agree with whatever the code says, which is the one
+    // thing a conformance gate must not do.
+    private static readonly string[] AllowedLayers =
+        ["model", "persistence", "api", "client", "docs", "capability"];
 
     private static IReadOnlyList<ManifestEntry> LoadManifest()
     {
@@ -49,9 +58,10 @@ public sealed class GeneratorRegistryConformanceTests
         foreach (var prop in generators.EnumerateObject())
         {
             var tier = prop.Value.GetProperty("tier").GetString()!;
+            var layer = prop.Value.TryGetProperty("layer", out var l) ? l.GetString() ?? "" : "";
             var ports = prop.Value.GetProperty("ports").EnumerateArray()
                 .Select(p => p.GetString()!).ToList();
-            entries.Add(new ManifestEntry(prop.Name, tier, ports));
+            entries.Add(new ManifestEntry(prop.Name, tier, layer, ports));
         }
         return entries;
     }
@@ -102,6 +112,45 @@ public sealed class GeneratorRegistryConformanceTests
             "C# generator registry tier disagrees with the canonical manifest:\n  " +
             string.Join("\n  ", tierMismatches));
     }
+
+    /// <summary>(4a): every manifest name's layer equals the C# registry's.</summary>
+    [Fact]
+    public void LayerAgreement_ManifestLayers_MatchRegistry()
+    {
+        var manifest = LoadManifest();
+
+        var layerMismatches = manifest
+            .Where(e => e.Ports.Contains(Port))
+            .Where(e => GeneratorRegistry.Entries.TryGetValue(e.Name, out var reg)
+                        && !LayerMatches(e.Layer, reg.Layer))
+            .Select(e =>
+                $"{e.Name}: manifest layer=`{e.Layer}` but registry layer=`{GeneratorRegistry.Entries[e.Name].Layer}`")
+            .ToList();
+
+        Assert.True(
+            layerMismatches.Count == 0,
+            "C# generator registry layer disagrees with the canonical manifest:\n  " +
+            string.Join("\n  ", layerMismatches));
+    }
+
+    /// <summary>(4b): every manifest entry — every port's — declares one of the six.</summary>
+    [Fact]
+    public void EveryManifestEntry_DeclaresOneOfTheSixLayers()
+    {
+        var bad = LoadManifest()
+            .Where(e => !AllowedLayers.Contains(e.Layer))
+            .Select(e => $"{e.Name}=`{e.Layer}`")
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(
+            bad.Count == 0,
+            $"manifest entries with a missing or unknown layer (allowed: {string.Join(", ", AllowedLayers)}): " +
+            string.Join(", ", bad));
+    }
+
+    private static bool LayerMatches(string manifestLayer, GeneratorLayer registryLayer) =>
+        manifestLayer == registryLayer.ToString().ToLowerInvariant();
 
     private static bool TierMatches(string manifestTier, GeneratorTier registryTier) =>
         manifestTier switch

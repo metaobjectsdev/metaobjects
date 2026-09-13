@@ -31,6 +31,40 @@ enum class GeneratorTier {
 }
 
 /**
+ * The six layers a generator can belong to — the axis an adopter SELECTS BY,
+ * mirroring the canonical manifest's `layer` field and gated against it exactly as
+ * [GeneratorTier] is.
+ *
+ * Six, not ten. An earlier draft split [CAPABILITY] four ways, each with ONE member —
+ * a layer with one member does no grouping work. The first four layers are app-shape
+ * decisions a builder makes; [CAPABILITY] holds the ones the MODEL has already made
+ * (you declared a `template.prompt`), which is why they are found by probing a real
+ * model rather than by browsing a taxonomy.
+ */
+enum class GeneratorLayer {
+    /** Entity / DTO / value-object modules and the constants beside them. */
+    MODEL,
+
+    /** Query helpers, repositories, table objects, stored-proc bindings. */
+    PERSISTENCE,
+
+    /** HTTP surface: routes, filter allowlists, validators, wiring. */
+    API,
+
+    /** Browser tier: forms, hooks, grids. */
+    CLIENT,
+
+    /** Documentation artifacts (on by default; owned by the docs door). */
+    DOCS,
+
+    /** Chosen by the model, not by browsing — prompts, parsers, payloads, traces. */
+    CAPABILITY;
+
+    /** The manifest's spelling: lower-case. */
+    fun manifestValue(): String = name.lowercase()
+}
+
+/**
  * One registry entry: stable id + one-line description + tier + a refactor-safe
  * factory. The factory constructs the generator with its no-arg constructor
  * (each Kotlin generator is configured via [MultiFileDirectGeneratorBase.setArgs]
@@ -44,6 +78,8 @@ data class GeneratorInfo(
     val description: String,
     /** NATIVE = recommended `gen` suite; NEUTRAL = `docs`-owned. */
     val tier: GeneratorTier,
+    /** The selection axis — see [GeneratorLayer]. Gated cross-port. */
+    val layer: GeneratorLayer,
     /** Constructs the generator with sensible defaults. Calling it must not throw. */
     val factory: () -> MultiFileDirectGeneratorBase<*>,
 )
@@ -62,90 +98,105 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         name = "entity",
         description = "Per-entity Kotlin data class (the entity module).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.MODEL,
         factory = ::KotlinEntityGenerator,
     ),
     "routes" to GeneratorInfo(
         name = "routes",
         description = "Per-entity Spring REST controller (CRUD endpoint surface).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.API,
         factory = ::KotlinSpringControllerGenerator,
     ),
     "repository" to GeneratorInfo(
         name = "repository",
         description = "Per-entity Kotlin persistence repository base (row-mapper + CRUD + patch).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinRepositoryGenerator,
     ),
     "output-parser" to GeneratorInfo(
         name = "output-parser",
         description = "Per-template tolerant output parser (recover-on-receipt).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinOutputParserGenerator,
     ),
     "output-prompt" to GeneratorInfo(
         name = "output-prompt",
         description = "Per-template output-format prompt fragment generator.",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinOutputPromptGenerator,
     ),
     "render-helper" to GeneratorInfo(
         name = "render-helper",
         description = "Per-template.output render helper (document/email typed wrappers).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinRenderHelperGenerator,
     ),
     "extractor" to GeneratorInfo(
         name = "extractor",
         description = "Per-template strict typed extract<Name> helper (strict payload extraction).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinExtractorGenerator,
     ),
     "filter-allowlist" to GeneratorInfo(
         name = "filter-allowlist",
         description = "Per-entity REST filter allowlist (queryable-field guard).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.API,
         factory = ::KotlinFilterAllowlistGenerator,
     ),
     "payload" to GeneratorInfo(
         name = "payload",
         description = "Per-template payload value object (the strict payload type).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinPayloadGenerator,
     ),
     "names" to GeneratorInfo(
         name = "names",
         description = "Per-object physical database name constants (table/view name, schema, columns).",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.MODEL,
         factory = ::KotlinNamesGenerator,
     ),
     "exposed-table" to GeneratorInfo(
         name = "exposed-table",
         description = "Per-entity Kotlin Exposed table object.",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinExposedTableGenerator,
     ),
     "relations" to GeneratorInfo(
         name = "relations",
         description = "Cross-entity relationship helpers.",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinRelationsGenerator,
     ),
     "spring-config" to GeneratorInfo(
         name = "spring-config",
         description = "Spring wiring/configuration for the generated surface.",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.API,
         factory = ::KotlinSpringConfigGenerator,
     ),
     "stored-proc" to GeneratorInfo(
         name = "stored-proc",
         description = "Stored-procedure binding helpers.",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinStoredProcGenerator,
     ),
     "validator" to GeneratorInfo(
         name = "validator",
         description = "Per-entity input validator.",
         tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.API,
         factory = ::KotlinValidatorGenerator,
     ),
 )
