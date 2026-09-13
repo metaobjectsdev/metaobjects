@@ -347,8 +347,32 @@ The following conformance fixtures gate this feature's behavior across ports:
 **Overlay / merge**
 
 - [`fixtures/conformance/overlay-same-object-different-files/`](../../fixtures/conformance/overlay-same-object-different-files/) — same `package` + `name` merge across files
-- [`fixtures/conformance/overlay-attr-last-writer-wins/`](../../fixtures/conformance/overlay-attr-last-writer-wins/) — attr conflict resolution
+- [`fixtures/conformance/overlay-attr-last-writer-wins/`](../../fixtures/conformance/overlay-attr-last-writer-wins/) — a MARKED overlay overriding an attr: last-writer-wins, and **no error**
+- [`fixtures/conformance/merge-conflict-unmarked-attr-redeclaration/`](../../fixtures/conformance/merge-conflict-unmarked-attr-redeclaration/) — the same collision UNMARKED: `ERR_MERGE_CONFLICT`
 - [`fixtures/conformance/overlay-merge-flag-explicit/`](../../fixtures/conformance/overlay-merge-flag-explicit/) — `overlay: true` is explicit-merge-intent
+
+### `overlay: true` licenses an attribute override
+
+Two files can set the same attribute to different values two ways, and they mean
+different things:
+
+- **Unmarked** — two declarations of the same `(type, package::name)` that collided
+  *without knowing about each other*. The value merges last-writer-wins so the loader
+  sees one canonical tree, and the load emits **`ERR_MERGE_CONFLICT`** so somebody can
+  fix it.
+- **Marked `overlay: true`** — the author saying *"I know about the other declaration
+  and I mean to change it."* The value wins and the load is **silent**.
+
+The loader already treats the flag specially — `overlay: true` is find-or-throw, a plain
+redeclaration is create-or-find — and this makes it mean one coherent thing rather than
+two. It is how an adopter retunes an inherited attribute (a library's `@status`, a
+dependency's `@maxLength`) without the toolchain calling a deliberate act a defect.
+
+**Mark the whole ancestor chain, not just the leaf.** Addressing a nested node means
+re-declaring its ancestors, and every one of them must carry `overlay: true` too. Left
+plain, each ancestor is a same-shape redeclaration and emits
+`WARN_DUPLICATE_DECLARATION` — three warnings to change one leaf in a depth-4 tree.
+Marked, the load is silent.
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
 via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)

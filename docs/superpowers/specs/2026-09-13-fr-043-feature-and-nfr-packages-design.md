@@ -148,6 +148,17 @@ precisely what §5.5 asks an adopter to do.
 **MAINTAINER RULING: `overlay: true` licenses the override.** `ERR_MERGE_CONFLICT`
 fires only when the conflicting redeclaration is **not** marked `overlay: true`.
 
+> **SHIPPED 2026-09-13** in all four loaders (Kotlin inherits the JVM's), with the
+> fixture pair below. One consequence beyond what this amendment weighed: the ruling is
+> unconditional, so it also reaches a `dependency` node an adopter overlays.
+> `fixtures/dependency-conformance`'s `an-overlay-attr-the-base-now-sets-differently-conflicts`
+> expected `ERR_MERGE_CONFLICT` there and now loads clean; it was renamed
+> `…-is-licensed` and an unmarked sibling added, so the accident case stays covered on
+> that axis too. What guards a dependency is the hash lock plus `meta deps check`
+> (upstream moved) and `refuseUnownedPackages` (a NEW node in their package), not the
+> merge-conflict error — but the loss of that one signal is recorded here rather than
+> discovered later.
+
 The reasoning: the conflict error exists to catch two files that collided without
 knowing about each other. `overlay: true` is the author saying "I know about the
 other declaration and I mean to change it." The loader already treats the flag

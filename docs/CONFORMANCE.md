@@ -25,7 +25,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 324 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 325 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -119,7 +119,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (324)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (325)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -131,7 +131,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `auto-set-on-*` | [features/entities.md](features/entities.md) (auto-set timestamps) |
 | `attr-filter-*`, `loader-filterable-*`, `warning-filterable-*`, `layout-data-grid-*`, `error-data-grid-*` | [features/entities.md](features/entities.md) (filter / sort / grid) |
 | `overlay-*` | [features/entities.md](features/entities.md) (overlay / merge) |
-| `merge-three-way-no-conflict`, `error-merge-conflict-attr`, `warning-duplicate-declaration` | [features/loaders.md](features/loaders.md) (multi-file merge attribution, FR5c) |
+| `merge-three-way-no-conflict`, `error-merge-conflict-attr`, `merge-conflict-unmarked-attr-redeclaration`, `warning-duplicate-declaration` | [features/loaders.md](features/loaders.md) (multi-file merge attribution, FR5c) |
 | `field-string-*`, `field-decimal-*`, `field-object-storage-*`, `error-field-object-storage-*` | [features/field-types.md](features/field-types.md) |
 | `currency-*` | [features/field-types.md](features/field-types.md) (currency) |
 | `enum-*`, `error-enum-*`, `warning-enum-*` | [features/field-types.md](features/field-types.md) (enum) |
@@ -271,7 +271,7 @@ Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 324 + yaml 16 + verify 31
+The fixtures in the nine corpora mapped above (metamodel 325 + yaml 16 + verify 31
 + render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

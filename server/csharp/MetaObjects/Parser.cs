@@ -821,7 +821,17 @@ public static class Parser
         // `format: "merged"` envelope. Last-writer-wins is preserved for
         // non-conflicting cases (one side unset, same value, etc.) — those carry
         // through to the existing ApplyInlineAttrsAndUnknownKeys logic below.
-        if (fr5cActive && preMergeAttrSnapshot is not null)
+        //
+        // FR-043 Amendment 2 — `overlay: true` LICENSES the override. The conflict error
+        // exists to catch two files that collided without knowing about each other; the
+        // flag is the author saying "I know about the other declaration and I mean to
+        // change it". The loader already treats it specially (find-or-throw versus
+        // create-or-find), so honouring it here makes it mean ONE thing rather than two.
+        // Per NODE: a nested overlay marks its own ancestors too, and each is judged on
+        // its own flag.
+        if (fr5cActive
+            && preMergeAttrSnapshot is not null
+            && TryGetBool(nodeData, RESERVED_KEY_OVERLAY) != true)
         {
             DetectAttrMergeConflicts(target, nodeData, preMergeAttrSnapshot, newContributorFile, st);
         }

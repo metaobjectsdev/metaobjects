@@ -133,10 +133,25 @@ where §2.5 predicts.
 | a node removed/never existed; local `extends` targets it | `an-extends-whose-target-was-removed-fails` | `ERR_UNRESOLVED_SUPER` |
 | a node removed/never existed; local `field.object @objectRef` targets it | `a-reference-whose-target-was-removed-fails` | `ERR_UNRESOLVED_OBJECT_REF` |
 | a member's subtype changed (v1 `Customer.email` is `field.string`); local dotted `extends: Customer.email` from a `field.int` | `a-dotted-extends-whose-member-changed-subtype-fails` | `ERR_EXTENDS_TARGET_MISMATCH` |
-| an attr the consumer's overlay also sets is now set differently upstream (base `@maxLength: 120`, overlay `@maxLength: 80`) | `an-overlay-attr-the-base-now-sets-differently-conflicts` | `ERR_MERGE_CONFLICT` |
+| an attr the consumer REDECLARES without marking it, set differently upstream (base `@maxLength: 120`, redeclaration `@maxLength: 80`) | `an-unmarked-attr-redeclaration-over-a-dependency-conflicts` | `ERR_MERGE_CONFLICT` |
 | the dependency's own artifact file fails to parse | `a-dependency-file-error-names-the-dependency` | `ERR_MALFORMED_JSON`, naming `dep:acme-common/acme-common.metaobjects.json` |
 
-All seven pass with **no source change** (`sdk/test/dependency-conformance.test.ts`).
+One further case is the same collision with the overlay MARKED, and it is deliberately
+**not** an error:
+
+| Upstream change / consumer construct | Case | Outcome |
+|---|---|---|
+| the same attr collision, but the consumer's declaration carries `overlay: true` | `an-overlay-attr-the-base-sets-differently-is-licensed` | loads clean; the consumer's value wins |
+
+That pair is FR-043 Amendment 2 reaching the dependency axis. `overlay: true` licenses
+the override — the flag is the author saying "I know about the other declaration and I
+mean to change it", and an overlay pinned against a dependency node is exactly that
+statement. What guards a dependency is the hash lock plus `meta deps check` (upstream
+moved) and `refuseUnownedPackages` (you declared a NEW node into their package), not the
+merge-conflict error; the unmarked row above is what keeps the collision-by-accident case
+covered here.
+
+All eight pass with **no source change** (`sdk/test/dependency-conformance.test.ts`).
 `an-overlay-whose-target-was-removed-fails` is the one case that rests on a genuine
 upstream removal rather than "never existed" — it loads
 `acme-common-v2-email-removed.json` (v1's `Customer` minus `email`) as the dependency
