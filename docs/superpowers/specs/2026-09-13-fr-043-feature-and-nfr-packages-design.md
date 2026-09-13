@@ -102,6 +102,79 @@ Neither gates the library; both gate what the layering **rests on**.
    per library, in the doctrine of §4's "every manifest fact is resolved, not
    trusted".
 
+## Amendment 2 (2026-09-13) — Q1 is answered, and `overlay: true` licenses an override
+
+**Both of Amendment 1's gating fixtures have landed and are green in all five
+ports** (TS, C#, Java, Kotlin, Python — `scripts/ci-local.sh`, no expected-failure
+ledger entries):
+
+| fixture | what it settles |
+|---|---|
+| `fixtures/conformance/overlay-adds-source` | Amendment 1's layering. A core model declares no source; a db layer overlays `source.rdb` + `index.lookup` onto it. **Zero errors, zero warnings.** |
+| `fixtures/conformance/overlay-nested-requirement` | §12 **Q1**. An adopter overlays a library requirement nested three deep. **The tree merges correctly** — right shape, no duplicates, adopter's values applied. |
+
+**Q1 is answered YES structurally**, so §5.5 is not withdrawn and Phase 1 keeps
+its shape. But running it surfaced two things the spec had assumed away.
+
+### Finding 1 — the whole ancestor chain must be marked, not just the leaf
+
+Addressing a nested node means re-declaring its ancestors. Every one of them must
+**also** carry `overlay: true`. Left plain — which is the shape the pre-existing
+`overlay-nested-under-plain-parent-base-later` fixture uses — each ancestor emits
+`WARN_DUPLICATE_DECLARATION` ("duplicate declaration … with no semantic change"),
+so a depth-4 library tree costs **three warnings to change one leaf**. Marked, the
+load is silent. Measured, not inferred. This is a documentation obligation on
+§5.5 and on `docs/features/libraries.md`.
+
+### Finding 2 — and the ruling that follows
+
+**§0's fact row is wrong as written.** It states: *"Overlay attr conflicts are
+last-writer-wins, and adopter files load after library files ⇒ The adopter always
+wins. This is the adaptation door."* The adopter's value does win — but the load
+emits `ERR_MERGE_CONFLICT`, **even under an explicit `overlay: true`**:
+
+```
+ERR_MERGE_CONFLICT  attr '@status' conflicts:
+  existing value "live" differs from new value "partial" on scopedGrantRequiresMembership
+```
+
+That is deliberate FR5c behaviour shared by every overlay, not something specific
+to requirements, and `parser-core.ts:1035-1040` records the intent: *"the error
+surfaces the conflict so a consumer can fix the metadata."* The loader treats an
+override as a defect to fix. Adding a **new** attribute is clean — so `@disposition`
+and `@notes` merge silently and only `@status: live → partial` conflicts, which is
+precisely what §5.5 asks an adopter to do.
+
+**MAINTAINER RULING: `overlay: true` licenses the override.** `ERR_MERGE_CONFLICT`
+fires only when the conflicting redeclaration is **not** marked `overlay: true`.
+
+The reasoning: the conflict error exists to catch two files that collided without
+knowing about each other. `overlay: true` is the author saying "I know about the
+other declaration and I mean to change it." The loader already treats the flag
+specially (find-or-throw versus create-or-find), and this makes it mean one
+coherent thing instead of two. It is a loader behaviour change, **no vocabulary**,
+so `expected-registry.json` and `metamodelVersion` do not move.
+
+It is also not only a requirements fix — it removes the same papercut from the db
+and ui layers the moment an adopter *retunes* an inherited attribute rather than
+only adding one.
+
+### What the ruling costs — and the coverage trap in it
+
+Four loaders (TS, Java, Python, C#; Kotlin inherits the JVM's), plus a fixture
+change that must not be a blanket flip:
+
+- **`overlay-attr-last-writer-wins` currently marks its overlay `overlay: true`
+  and expects `ERR_MERGE_CONFLICT`.** Under the ruling it expects **zero** errors.
+  Flipping it alone would silently delete the only coverage of the accident case.
+- So a **new fixture must take over the error branch** — an unmarked
+  redeclaration whose attribute conflicts. The loader merges a same-`(type, name)`
+  redeclaration either way, so that case stays reachable and stays an error.
+- `overlay-nested-requirement`'s `expected-errors.json` drops to zero errors in
+  the same change.
+
+Net corpus effect: +1 fixture, two expectation flips, and the four-site count bump.
+
 ## 0. Facts this rests on — verified in the tree, not assumed
 
 | Fact | Consequence |
@@ -113,7 +186,7 @@ Neither gates the library; both gate what the layering **rests on**.
 | `checkRequirements` early-returns only when the tree has **zero** requirements | A library shipping requirements would switch the unclaimed-entity gate on for every adopter entity. §5.4 is the rule that prevents it. |
 | Architectural claims propagate down `extends`; functional ones do not. Bare `@implementedBy` binds package-locally (ADR-0042) | A library's architectural requirement on its abstract base claims every adopter subtype for free. |
 | An M:N `@through` junction must declare **exactly two** `identity.reference` children | A three-FK scoped-grant table cannot be an M:N relationship; it is read by explicit finders. |
-| Overlay attr conflicts are last-writer-wins, and adopter files load after library files | The adopter always wins. This is the adaptation door. |
+| Overlay attr conflicts are last-writer-wins, and adopter files load after library files | The adopter's VALUE always wins — but see **Amendment 2**: today the load also emits `ERR_MERGE_CONFLICT`, even under `overlay: true`. Ruled to be licensed by the flag. |
 | `requirementTests()` is filter-driven | No day-one stub ambush. |
 
 **Independently verified for this FR:** the §7.4 model **loads clean under
@@ -664,6 +737,7 @@ removed, and the library never built it.
 | 2 | `library/iam/{model,db,requirements}.yaml`; `library/ai` **split** into `{model,db}.yaml` + `requirements.yaml`; per-port standalone strict-load test; TS standalone-verify gate | content cross-port, gates per port |
 | 2a | **Conformance fixture: an overlay adds a `source.rdb`.** Documented in `CLAUDE.md`, gated nowhere, and now load-bearing in five ports | fixtures + all 5 ports |
 | 2b | **Assertion: every core layer declares no source** — the inertness promise, resolved not trusted | TS (per library) |
+| 2c | **`overlay: true` licenses an attribute override** (Amendment 2 ruling) — `ERR_MERGE_CONFLICT` fires only on an UNMARKED conflicting redeclaration. Flip `overlay-attr-last-writer-wins` to zero errors and `overlay-nested-requirement` likewise, and add a new fixture taking over the unmarked-conflict error branch so the coverage is moved, not deleted | 4 loaders (Kotlin inherits JVM) + 3 fixtures |
 | 3 | Coverage-activation rule (§5.4) | TS |
 | 4 | Catalog `kind: "library"` + `--probe` project block; one-namespace test; skill amendments + agent-context corpus regen **in the same commit** | TS |
 | 5 | Implied-generator warnings; `GenContext.libraries`; `trace-helper` anchor from manifest | TS + Java + Python |
@@ -754,9 +828,11 @@ justifies the vocabulary.
 
 ## 12. Remaining open questions
 
-> **AMENDED — read Amendment 1 first.** Q2, Q3 and Q4 are RULED and are no
-> longer open; Q1 is the only one still open, and it is the one that gates
-> "Phase 1 shippable".
+> **AMENDED — read Amendments 1 and 2 first. NOTHING IN THIS SECTION IS STILL
+> OPEN.** Q2, Q3 and Q4 are ruled in Amendment 1. Q1 is ANSWERED in Amendment 2
+> — yes structurally, by `fixtures/conformance/overlay-nested-requirement`,
+> green in all five ports — with the attribute-override conflict it exposed
+> ruled there too.
 
 1. **Evidence, and the one that gates "shippable": does `overlay: true` merge on
    a NESTED `requirement.*` node?** If not, an adopter cannot disagree with a
