@@ -30,6 +30,32 @@ public class DbContextGenerator : IGenerator
     public virtual string Name => "dbcontext-generator";
 
     /// <summary>
+    /// Whether <c>OnModelCreating</c> carries the explicit 1:N relationship configuration for each
+    /// enforced <c>identity.reference</c> (ADR-0047 / #294). <c>true</c> by default — that is what
+    /// gives EF the foreign key the metadata declares and lets the referential action ride on the
+    /// call that establishes it.
+    ///
+    /// <para>Override to <c>false</c> when the generated entities DO carry reference navigation
+    /// properties. This generator's FK configuration uses the navigation-LESS
+    /// <c>HasOne&lt;Target&gt;()</c> overload, which is correct for stock codegen precisely because
+    /// stock <see cref="EntityGenerator"/> emits no reference navigations at all — ADR-0038
+    /// replaced reverse navigation with explicit FK finders, so there is no navigation to name on
+    /// either side. That premise is load-bearing, and it is NOT something this generator can
+    /// detect: it holds for the entity generator in this repo and silently fails for an adopter
+    /// that substitutes its own.</para>
+    ///
+    /// <para>When navigations do exist, EF's conventions discover them and build their own
+    /// relationship over the same FK column, and a navigation-less configuration claiming that
+    /// column leaves the convention-built one unable to identify its dependent
+    /// ("The dependent side could not be determined for the one-to-one relationship between
+    /// 'X.Y' and 'Y.X'") — which fails model validation, and a failed model takes down every
+    /// query in the application, not just the one relationship. Such an adopter turns this off and
+    /// configures its relationships itself, against the navigations only it knows about. Nothing
+    /// else this generator emits is affected.</para>
+    /// </summary>
+    protected virtual bool EmitsReferenceForeignKeys => true;
+
+    /// <summary>
     /// True iff this object gets a DbSet on the generated AppDbContext: a persisted
     /// entity/projection (<c>IsEntity() || DbView != null</c>) that emits instance
     /// artifacts (not abstract) and is NOT a TPH subtype (subtypes share the base's
@@ -181,7 +207,8 @@ public class DbContextGenerator : IGenerator
             // metadata — or the database — said. A junction's sides are owned by
             // UsingEntityConfig; see the m2mJunctions note above.
             junctionOwnedFks.TryGetValue(e, out var ownedByUsingEntity);
-            EmitReferenceConfig(owner, e, tph, ctx, modelLines, ownedByUsingEntity);
+            if (EmitsReferenceForeignKeys)
+                EmitReferenceConfig(owner, e, tph, ctx, modelLines, ownedByUsingEntity);
         }
 
         // #214 (FR-024 §7) — register the write-through read model against its replica view.
@@ -481,14 +508,34 @@ public class DbContextGenerator : IGenerator
             // declare (a compile error in the generated file).
             if (entity.FindField(name) is not { } field) return null;
             if (isWriteThrough && field.IsDerived()) return null;
-            props.Add($"nameof({owner}.{CSharpNaming.Pascal(name)})");
+            props.Add(CSharpNaming.Pascal(name));
         }
 
         var actions = ReferentialActions.Resolve(entity, reference);
         return $"        modelBuilder.Entity<{owner}>().HasOne<{CSharpNaming.Pascal(target.Name)}>()"
-             + $".WithMany().HasForeignKey({string.Join(", ", props)})"
+             + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)};";
     }
+
+    /// <summary>
+    /// The <c>HasForeignKey</c> argument naming <paramref name="props"/> on the dependent:
+    /// <c>e =&gt; e.Prop</c> for one column, <c>e =&gt; new { e.A, e.B }</c> for a composite.
+    ///
+    /// <para>A typed lambda rather than <c>nameof(&lt;Owner&gt;.Prop)</c>, and not by accident.
+    /// This expression lands INSIDE the generated DbContext class body, where C# simple-name
+    /// lookup binds <c>&lt;Owner&gt;</c> to a MEMBER of the context before it considers a type of
+    /// the same name — and the context declares one DbSet property per entity. So an entity whose
+    /// type name equals any DbSet property name made <c>nameof</c> read the DbSet and fail to
+    /// compile (CS1061). That is reachable from stock metadata, not just exotic input:
+    /// <c>Pluralize("Address") == "Addresses"</c>, so a model carrying both an <c>Address</c> and
+    /// an <c>Addresses</c> entity broke. A lambda parameter is local, so nothing in scope can
+    /// shadow it. A bare string literal would also dodge the shadowing but would give up
+    /// compile-checking of the property name, turning a build error into a runtime EF failure.</para>
+    /// </summary>
+    private static string ForeignKeyExpression(string param, IReadOnlyList<string> props) =>
+        props.Count == 1
+            ? $"{param} => {param}.{props[0]}"
+            : $"{param} => new {{ {string.Join(", ", props.Select(p => $"{param}.{p}"))} }}";
 
     /// <summary>
     /// The <c>.OnDelete(...)</c> suffix for a resolved action, or <c>""</c> for none.
@@ -590,10 +637,14 @@ public class DbContextGenerator : IGenerator
         var targetFkProp = CSharpNaming.Pascal(nav.TargetField);
         var targetOnDelete = JunctionSideOnDelete(nav.Junction, nav.TargetField, ctx);
         var sourceOnDelete = JunctionSideOnDelete(nav.Junction, nav.SourceField, ctx);
+        // Typed lambdas for the same reason the 1:N path uses them (see ForeignKeyExpression):
+        // `nameof(<Through>.Prop)` inside the DbContext body binds <Through> to a same-named DbSet
+        // property instead of the type. The inner parameter cannot reuse the outer `l`/`r` (CS0136),
+        // hence `j` — it is the junction being configured on both sides.
         return
             $"        modelBuilder.Entity<{source}>().HasMany(x => x.{navProp}).WithMany().UsingEntity<{through}>(" +
-            $"l => l.HasOne<{target}>().WithMany().HasForeignKey(nameof({through}.{targetFkProp})){targetOnDelete}, " +
-            $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})){sourceOnDelete});";
+            $"l => l.HasOne<{target}>().WithMany().HasForeignKey({ForeignKeyExpression("j", [targetFkProp])}){targetOnDelete}, " +
+            $"r => r.HasOne<{source}>().WithMany().HasForeignKey({ForeignKeyExpression("j", [sourceFkProp])}){sourceOnDelete});";
     }
 
     /// <summary>

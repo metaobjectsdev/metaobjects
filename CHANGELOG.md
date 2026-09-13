@@ -55,6 +55,55 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   only the member was gone. The error now ends *"'app::Task' has no member 'dueDate'."* The
   did-you-mean hint still appears when the object itself does not resolve.
 
+
+### Fixed
+
+- **C#: a `field.decimal` reached through a nested object generated code that did not
+  compile.** `ExtractDelegateEmitter.ScalarReader` — the reader map for the runtime-DELEGATING
+  extract mirror — had no `Decimal` branch, so a decimal fell through to the `DlgString`
+  default while `Fr010FieldMapping.ScalarMirrorType` typed the same mirror property `decimal?`:
+  `error CS0029: Cannot implicitly convert type 'string' to 'decimal?'`. A decimal **array**
+  broke the same way with `CS0266` (`IReadOnlyList<string?>` → `IReadOnlyList<decimal?>`),
+  because the delegating mirror kind-types array elements through `ScalarMirrorType` too. Only
+  the delegating path was affected — that is the path for a field reached through a nested
+  object or an array-of-objects, so a flat top-level payload went through the self-contained
+  reader, which always had its Decimal branch. Fixed by adding the branch plus a `DlgDecimal`
+  helper mirroring `ExtractMap.AsDecimal`'s never-throws contract (an out-of-range double
+  degrades to null rather than throwing `OverflowException` mid-parse, which is the point of a
+  *lenient* extract). `ScalarMirrorType`'s doc-comment had claimed the self-contained and
+  delegating mirrors were "in lock-step" with nothing testing it; a new gate now compiles
+  generated output for **every** scalar subtype in `FIELD_SUBTYPES`, in both the single and the
+  array position, so a newly registered subtype cannot quietly take a mismatched default.
+
+- **C#: the generated `AppDbContext` failed to compile when an entity name collided with a
+  `DbSet` property name.** The reference-FK configuration named its column through
+  `nameof(<Owner>.<Prop>)`, an expression sitting inside the `DbContext` class body — where C#
+  simple-name lookup binds `<Owner>` to a *member* of the context before it considers a type of
+  the same name, and the context declares one `DbSet` per entity. Reachable from stock
+  metadata, not just exotic input: `Pluralize("Address") == "Addresses"`, so a model carrying
+  both an `Address` and an `Addresses` entity emitted `nameof(Addresses.AddressId)`, bound
+  `Addresses` to `DbSet<Address>`, and failed with `CS1061`. Now emitted as a typed lambda —
+  `.HasForeignKey(e => e.AddressId)`, or `.HasForeignKey(e => new { e.OrgId, e.SiteId })` for a
+  composite — whose parameter is local and therefore unshadowable, and which unlike a bare
+  string literal keeps the property name compile-checked. The M:N `UsingEntity<Through>(...)`
+  sides carried the identical hazard and were converted too.
+
+### Added
+
+- **C#: `DbContextGenerator.EmitsReferenceForeignKeys`, an opt-out for the reference-FK
+  configuration.** The navigation-less `HasOne<Target>()` overload that configuration uses is
+  correct *because* the stock entity generator emits no reference navigations (ADR-0038
+  replaced reverse navigation with explicit FK finders) — a premise this generator cannot
+  detect, and one that does not hold for an adopter who substitutes their own entity generator
+  and emits navigations. There, EF's conventions discover those navigations and build their own
+  relationship over the same FK column, and a navigation-less config claiming that column
+  leaves the convention-built one unable to identify its dependent ("The dependent side could
+  not be determined for the one-to-one relationship between 'X.Y' and 'Y.X'") — failing model
+  validation, which takes down every query in the application rather than just that
+  relationship. Override the property to `false` and configure those relationships yourself;
+  nothing else the generator emits changes. Documented in
+  [`relationships.md`](docs/features/relationships.md).
+
 ## [1.0.4] — 2026-09-14
 
 _All four registries publish: npm `1.0.4` (full lockstep across all 14 `@metaobjectsdev/*`

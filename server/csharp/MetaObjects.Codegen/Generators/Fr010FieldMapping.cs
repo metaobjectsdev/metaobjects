@@ -99,6 +99,15 @@ internal static class Fr010FieldMapping
     /// string-backed (<c>string?</c>). Shared by the self-contained mirror, the nested-aware
     /// (delegating) mirror, and the scalar-ARRAY element type so the three stay in lock-step with
     /// PayloadCodegen's strict scalar map.
+    ///
+    /// <para>"Lock-step" means: for every kind <see cref="ScalarKind"/> can return, the type this
+    /// gives and the reader the corresponding path emits must agree — <see cref="ExtractMapCall"/>
+    /// on the self-contained path, <c>ExtractDelegateEmitter.ScalarReader</c> on the delegating one.
+    /// That was an untested claim and the delegating side had drifted (no Decimal branch, so a
+    /// nested <c>field.decimal</c> compiled to <c>DlgString</c> into a <c>decimal?</c>).
+    /// Fr010DelegatingMirrorLockStepTests now compiles generated output for EVERY scalar subtype in
+    /// <c>FIELD_SUBTYPES</c>, in both the single and the array position, so a newly registered
+    /// subtype cannot quietly take a reader default that does not match its type.</para>
     /// </summary>
     public static string ScalarMirrorType(string subType) => subType switch
     {
