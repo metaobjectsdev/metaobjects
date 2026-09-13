@@ -199,8 +199,11 @@ app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(se
 
 ### `<entity>_names.py` — the physical names, as constants
 
-The `names` generator is opt-in — use `meta eject names` or wire it via `generators` in your
-config. When selected, a project gets `<entity>_names.py`. The module
+The `names` generator is opt-in — select it with `--generators names` on
+`metaobjects gen` (`--list` names the whole catalog). The Python console-script
+has no `eject` verb: ejecting is the Node `meta` CLI's, and it is about OWNING a
+generator's source, never about selecting one for a run. When selected, a project
+gets `<entity>_names.py`. The module
 mirrors the metadata that declared it: every node it describes — the object,
 each `source.rdb` child, each `identity.*` and `index.*` child — carries its
 own `_TYPE`, `_SUB_TYPE` and `_NAME`, and a source's physical name sits under
