@@ -3,7 +3,7 @@
 No database required. Covers:
 - the CONTRACT gate: ``build_llm_call_row`` writes exactly the field set the
   SHIPPED ``metaobjects::ai::LlmCallBase`` declares (loaded from
-  ``library/ai/llm-call.yaml``) — a divergence becomes a build failure;
+  ``library/ai/model.yaml``) — a divergence becomes a build failure;
 - ``NullLlmCallRecorder`` is a no-op;
 - ``ObjectManagerLlmCallRecorder`` NEVER raises on a write failure and routes the
   error to ``on_error`` (telemetry must not break the app).
@@ -54,7 +54,10 @@ def _sample_input() -> LlmCallInput:
 def test_build_row_matches_shipped_llm_call_base_field_set() -> None:
     """The base row's keys == the shipped LlmCallBase concrete entity's fields."""
     loader = MetaDataLoader(strict=True)
-    result = loader.load([FileSource(_repo_file("library/ai/llm-call.yaml"))])
+    result = loader.load([
+        FileSource(_repo_file("library/ai/model.yaml")),
+        FileSource(_repo_file("library/ai/db.yaml")),
+    ])
     assert not result.errors, f"shipped library failed to load: {result.errors}"
 
     llm_call = None
@@ -62,7 +65,7 @@ def test_build_row_matches_shipped_llm_call_base_field_set() -> None:
         if obj.name.endswith("LlmCall") and not obj.name.endswith("LlmCallBase"):
             llm_call = obj
             break
-    assert llm_call is not None, "concrete LlmCall entity not found in library/ai/llm-call.yaml"
+    assert llm_call is not None, "concrete LlmCall entity not found in library/ai/{model,db}.yaml"
 
     shipped_fields = {f.name for f in llm_call.fields()}
     row_keys = set(build_llm_call_row(_sample_input()).keys())

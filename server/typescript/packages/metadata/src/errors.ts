@@ -260,6 +260,11 @@ export const ERROR_CODES = [
   // Phase-1 metadata-source-resolution — no metadata collection was discovered:
   // no config declaring sources, and no default metaobjects/ directory.
   "ERR_COLLECTION_NOT_FOUND",
+  // FR-043 — `.metaobjects/config.json`'s `libraries` names a shipped library or layer
+  // this build does not have. A HUMAN typed it, so it is refused with the available
+  // tokens rather than skipped: skipped, it resurfaces as ERR_UNRESOLVED_SUPER against
+  // the adopter's own metadata, which is the wrong place to send someone looking.
+  "ERR_UNKNOWN_LIBRARY",
   // FR-023 — a declared dependency's transport could not locate a directory holding
   // metaobjects.pkg.json.
   "ERR_DEPENDENCY_UNRESOLVED",

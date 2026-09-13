@@ -52,10 +52,43 @@ def main() -> int:
     if not entries:
         raise SystemExit(f"no *.yaml found under {library_dir} — refusing to emit an empty library")
 
-    body = "".join(f"    {ref!r}: {text!r},\n" for ref, text in entries)
-    out_path.write_text(HEADER + body + "}\n", encoding="utf-8")
+    # The MANIFESTS ride the same embed, in their own map keyed by library NAME.
+    #
+    # Their own map rather than another entry in the ref map, because a ref is
+    # "path under library/ minus .yaml" and every reader appends ``.yaml`` back. Folding
+    # a ``.json`` into that would mean a special case at every call site in four ports.
+    manifests = []
+    missing = []
+    for d in sorted(p for p in library_dir.iterdir() if p.is_dir()):
+        manifest = d / "library.json"
+        if manifest.is_file():
+            manifests.append((d.name, manifest.read_text(encoding="utf-8")))
+        else:
+            missing.append(d.name)
 
-    print(f"wrote {out_path.relative_to(root)} ({len(entries)} ref(s): {', '.join(r for r, _ in entries)})")
+    # A library directory with no manifest is a build error, not a silently-skipped one:
+    # the manifest declares the library's LAYERS, and without it ``libraries: ["iam/db"]``
+    # resolves to nothing and the adopter gets an empty tree with no explanation.
+    if missing:
+        raise SystemExit(f"library director{'y' if len(missing) == 1 else 'ies'} with no library.json: {', '.join(missing)}")
+
+    body = "".join(f"    {ref!r}: {text!r},\n" for ref, text in entries)
+    manifest_body = "".join(f"    {name!r}: {text!r},\n" for name, text in manifests)
+    out_path.write_text(
+        HEADER
+        + body
+        + "}\n\n"
+        + "#: Library NAME -> the exact text of its ``library.json`` manifest.\n"
+        + "EMBEDDED_LIBRARY_MANIFESTS: dict[str, str] = {\n"
+        + manifest_body
+        + "}\n",
+        encoding="utf-8",
+    )
+
+    print(
+        f"wrote {out_path.relative_to(root)} ({len(entries)} ref(s): "
+        f"{', '.join(r for r, _ in entries)}; {len(manifests)} manifest(s))"
+    )
     return 0
 
 

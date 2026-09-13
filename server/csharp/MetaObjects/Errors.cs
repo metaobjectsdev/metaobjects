@@ -146,6 +146,14 @@ public enum ErrorCode
     ERR_SCOPE_PATTERN_INVALID,
     // Phase-1 metadata-source-resolution: no metadata collection was discovered — no config declaring sources, and no default metaobjects/ directory.
     ERR_COLLECTION_NOT_FOUND,
+
+    /// <summary>
+    /// FR-043 — <c>.metaobjects/config.json</c>'s <c>libraries</c> names a shipped library or
+    /// layer this build does not have. Refused with the available tokens rather than skipped:
+    /// skipped, it resurfaces as <c>ERR_UNRESOLVED_SUPER</c> against the adopter's own
+    /// metadata, which is the wrong place to send someone looking.
+    /// </summary>
+    ERR_UNKNOWN_LIBRARY,
     // FR5c — multi-file overlay merge produced a conflicting attribute value:
     // two contributors set the same @attr to different non-empty values.
     ERR_MERGE_CONFLICT,

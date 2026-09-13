@@ -1,0 +1,137 @@
+# library/iam/requirements.yaml — what this library's design PROMISES.
+#
+# This is what makes iam a library rather than a schema snippet. Without requirements an
+# adopter gets nine tables; with them they get nine tables plus a build that is held to
+# "no authorization decision is hard-wired to a name", which no snippet can do.
+#
+# Two reading rules, both load-bearing:
+#
+#   `live` here means "the model AS SHIPPED realises this" — never "your application
+#   does". A ledger binds to model nodes; runtime guarantees are the runtime's tests, and
+#   this library does not invent a way to point a requirement at code (@verifiedBy was
+#   retired for exactly that). Behaviour the model cannot carry ships as `partial` +
+#   `disposition: accepted` with a notes sentence naming what the adopter must do.
+#
+#   The functional tree roots at L2, not L1. L1 is the adopter's SOLUTION, and a library
+#   is by definition a segment of someone else's. Architectural claims ship flat.
+metadata:
+  package: metaobjects::iam
+  children:
+    # ---- functional: the L2 segment and its four concerns --------------------
+    - requirement.functional:
+        name: accessControl
+        level: 2
+        status: live
+        statement: Who may do what is answered from stored grants, never from a name compared to a literal in code.
+        counterexample: A branch that reads `if (user.role === "admin")`.
+        description: The segment this library covers. Its four children below are the concerns it decomposes into.
+
+    - requirement.functional:
+        name: identity
+        level: 4
+        status: live
+        statement: A person or service account is represented once, addressed by a uuid, and reachable by username or email.
+        counterexample: Two rows for the same person because the email changed.
+        implementedBy: [User]
+
+    - requirement.functional:
+        name: grouping
+        level: 4
+        status: live
+        statement: Users are collected into typed, nestable groups, and the kind of group is data rather than a hard-coded set.
+        counterexample: A `teamOrTenant` boolean.
+        implementedBy: [Group, GroupType, GroupMember]
+
+    - requirement.functional:
+        name: acyclicGroupNesting
+        level: 4
+        status: partial
+        disposition: accepted
+        statement: A group is never its own ancestor.
+        counterexample: Two groups each naming the other as parent.
+        notes: >-
+          The schema cannot express this — a self-referencing FK admits a cycle, and the
+          only relational forms that would catch it (a recursive CHECK, a closure table
+          maintained by trigger) are DB-specific and would not survive three dialects.
+          The adopter enforces it where the write happens. Recorded rather than omitted
+          so an agent reading the ledger before adding a parent-setting endpoint sees the
+          obligation.
+        implementedBy: [Group]
+
+    - requirement.functional:
+        name: grants
+        level: 4
+        status: live
+        statement: A role is granted to a user either system-wide or scoped to one group, and both are ordinary rows.
+        counterexample: A nullable `groupId` on one grant table, where NULL means "everywhere".
+        description: >-
+          Two junctions, not one with a nullable scope. A NULL in a unique key is DISTINCT
+          from every other NULL in SQL, so a nullable-scope design lets the same global
+          grant be inserted twice; the fix needs a partial index whose expression carries
+          a physical column name. Two composite-keyed tables need no escape hatch and
+          survive three dialects and five ports unchanged.
+        implementedBy: [UserRole, GroupMemberRole]
+
+    - requirement.functional:
+        name: roleScopedToGroupType
+        level: 4
+        status: partial
+        disposition: accepted
+        statement: A role bound to a group type is granted only within groups of that type.
+        counterexample: A "tenant admin" role granted inside a project group.
+        notes: >-
+          Expressing this relationally needs the grant row to carry the group's type and
+          a composite FK back to (group, type) — three foreign keys deep, unverified
+          across five ports' DDL and ORM paths. The adopter checks it at the point of
+          grant. Role.groupTypeId is the declared half; the enforcement is not.
+        implementedBy: [Role.groupTypeId, GroupMemberRole]
+
+    - requirement.functional:
+        name: decision
+        level: 4
+        status: live
+        statement: An authorization decision is the question "does this user hold this permission key", answered from rows.
+        counterexample: A hard-coded list of usernames that bypass a check.
+        implementedBy: [Permission, RolePermission]
+
+    # ---- architectural: prohibitions in force --------------------------------
+
+    - requirement.architectural:
+        name: grantsAreRows
+        status: live
+        statement: A grant exists only as a stored row; nothing is granted by naming, position or convention.
+        counterexample: A superuser recognised by username.
+        implementedBy: [UserRole, GroupMemberRole, RolePermission, GroupMember]
+
+    - requirement.architectural:
+        name: noCredentialsOnUser
+        status: live
+        statement: A user row carries no authentication secret — no password, no hash, no knowledge-based question or answer.
+        counterexample: A password or secret-answer column on the user table.
+        description: >-
+          Authentication is a separate capability with an entity per factor; this library
+          is identity and authorization only.
+        notes: >-
+          This is the one thing every reader of a user table proposes adding, and a real
+          legacy model of this shape stored a length-bounded plaintext password and a
+          knowledge-based secret pair on the user row. Stating it as a prohibition IN
+          FORCE — claimable, and rendered on agent/requirements.md — is what stops an
+          agent extending "the user model" from re-deriving it on sight. It is
+          `architectural`, not `retired`: retired is chartered for a capability built
+          here and removed, and this library never built one.
+        implementedBy: [User]
+
+    - requirement.architectural:
+        name: principalDeletionRevokesGrants
+        status: live
+        statement: Deleting a user or group removes its grants; deleting a role or permission still in use is refused.
+        counterexample: A grant row pointing at a user who no longer exists.
+        description: The referential rule in one sentence — cascade from a principal, restrict from a definition.
+        implementedBy: [GroupMember, UserRole, GroupMemberRole, RolePermission]
+
+    - requirement.architectural:
+        name: stableIdentifiers
+        status: live
+        statement: Every principal and definition is addressed by a uuid that never changes; every grant by its participants.
+        counterexample: A group referenced by its display name.
+        implementedBy: [IamBase]

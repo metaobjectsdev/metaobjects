@@ -310,6 +310,14 @@ public enum ErrorCode {
     ERR_COLLECTION_NOT_FOUND,
 
     /**
+     * FR-043 — {@code .metaobjects/config.json}'s {@code libraries} names a shipped library
+     * or layer this build does not have. Refused with the available tokens rather than
+     * skipped: skipped, it resurfaces as {@code ERR_UNRESOLVED_SUPER} against the adopter's
+     * own metadata, which is the wrong place to send someone looking.
+     */
+    ERR_UNKNOWN_LIBRARY,
+
+    /**
      * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name
      * alias ({@code @view} / {@code @materializedView} / {@code @proc} /
      * {@code @function}) that does not match its {@code @kind}. The legacy

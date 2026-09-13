@@ -2,7 +2,7 @@
 
 Proves a typed LLM-call trace persists + reads back through the ObjectManager
 runtime against a live Postgres: a trace entity extending the SHIPPED
-``metaobjects::ai::LlmCallBase`` (library/ai/llm-call.yaml) plus a typed
+``metaobjects::ai::LlmCallBase`` (library/ai/model.yaml) plus a typed
 ``voResponse`` (field.object + @objectRef + @storage:jsonb). Asserts BOTH the raw
 envelope (the 18 base fields, raw llmRequest/llmResponse jsonb) AND the typed
 voResponse jsonb round-trip.
@@ -76,7 +76,8 @@ def test_typed_trace_round_trips_through_postgres() -> None:
     # through the metadata-driven ObjectManager runtime.
     loader = MetaDataLoader(strict=True)
     result = loader.load([
-        FileSource(_repo_file("library/ai/llm-call.yaml")),
+        FileSource(_repo_file("library/ai/model.yaml")),
+        FileSource(_repo_file("library/ai/db.yaml")),
         FileSource(Path(__file__).parent / "meta_ai_trace.yaml"),
     ])
     assert not result.errors, f"metadata failed to load: {result.errors}"

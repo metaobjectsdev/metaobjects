@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MetaObjects.Loader;
 
 namespace MetaObjects.Library;
@@ -19,32 +20,65 @@ namespace MetaObjects.Library;
 public static class LibrarySources
 {
     /// <summary>
-    /// Package to ordered refs, derived from the generated embed so that adding a library file
-    /// (which regenerates <see cref="EmbeddedLibrary"/>) needs no edit here.
+    /// Library name to its manifest's LAYERS: layer token to that layer's ordered refs.
+    /// The CORE layer's token is the empty string.
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> RefsByPackage =
-        BuildRefsByPackage();
+    /// <remarks>
+    /// Read from the embedded <c>library.json</c> manifests, not derived from the ref names.
+    /// This used to be package-granular — every ref under a library came back for a bare
+    /// <c>"ai"</c> — which under the layered design (FR-043 Amendment 1) would hand an adopter
+    /// the db layer they did not ask for, and with it a migration proposing tables.
+    /// </remarks>
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> LayersByLibrary =
+        BuildLayers();
 
     /// <summary>Resolved once per process; null means "looked, not present".</summary>
     private static readonly Lazy<string?> LibraryDir = new(LibraryDirOnDisk);
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<string>> BuildRefsByPackage()
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> BuildLayers()
     {
-        var map = new Dictionary<string, List<string>>();
-        foreach (var r in EmbeddedLibrary.Content.Keys.OrderBy(k => k, StringComparer.Ordinal))
+        var map = new Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>(StringComparer.Ordinal);
+        foreach (var (name, text) in EmbeddedLibrary.Manifests.OrderBy(kv => kv.Key, StringComparer.Ordinal))
         {
-            var slash = r.IndexOf('/');
-            if (slash <= 0) continue;
-            var pkg = r[..slash];
-            if (!map.TryGetValue(pkg, out var list))
+            using var doc = JsonDocument.Parse(text);
+            var layers = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            if (doc.RootElement.TryGetProperty("layers", out var layersEl))
             {
-                list = [];
-                map[pkg] = list;
+                foreach (var layer in layersEl.EnumerateObject())
+                {
+                    var refs = new List<string>();
+                    if (layer.Value.TryGetProperty("refs", out var refsEl))
+                    {
+                        foreach (var r in refsEl.EnumerateArray())
+                        {
+                            if (r.GetString() is { } s) refs.Add(s);
+                        }
+                    }
+                    layers[layer.Name] = refs;
+                }
             }
-            list.Add(r);
+            map[name] = layers;
         }
-        return map.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value);
+        return map;
     }
+
+    /// <summary>
+    /// Split a selection token into library and layer — <c>"iam"</c> to <c>("iam", "")</c>,
+    /// <c>"iam/db"</c> to <c>("iam", "db")</c>. Only the FIRST separator is meaningful, so a
+    /// typo stays a typo rather than resolving to a prefix.
+    /// </summary>
+    public static (string Library, string Layer) SplitToken(string token)
+    {
+        var i = token.IndexOf('/');
+        return i == -1 ? (token, "") : (token[..i], token[(i + 1)..]);
+    }
+
+    /// <summary>Every selection token this build accepts, sorted — what a config error prints.</summary>
+    public static IReadOnlyList<string> KnownTokens() =>
+        LayersByLibrary
+            .SelectMany(kv => kv.Value.Keys.Select(layer => layer.Length == 0 ? kv.Key : $"{kv.Key}/{layer}"))
+            .OrderBy(t => t, StringComparer.Ordinal)
+            .ToList();
 
     /// <summary>
     /// The library package names this build ships, sorted.
@@ -55,7 +89,7 @@ public static class LibrarySources
     /// validates against this first.</para>
     /// </summary>
     public static IReadOnlyList<string> KnownPackages() =>
-        RefsByPackage.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+        LayersByLibrary.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
 
     /// <summary>
     /// Locate the repo-root <c>library/</c> directory by walking up from this assembly's
@@ -85,17 +119,39 @@ public static class LibrarySources
     /// typed into a config file is the opposite case, and the caller that read it validates
     /// against <see cref="KnownPackages"/> before calling this.</para>
     /// </summary>
-    /// <param name="packages">Package names to include (e.g. <c>["ai"]</c>); null yields none.</param>
+    /// <param name="packages">Selection tokens (e.g. <c>["iam", "iam/db"]</c>); null yields none.</param>
     public static List<IMetaDataSource> Resolve(IEnumerable<string>? packages)
     {
         var outSources = new List<IMetaDataSource>();
         if (packages is null) return outSources;
 
-        var dir = LibraryDir.Value;
-        foreach (var pkg in packages)
-        {
-            if (!RefsByPackage.TryGetValue(pkg, out var refs)) continue; // unknown — no sources
+        // A token whose LAYER is unknown is dropped whole, not reduced to its core: implying
+        // the core from an invalid layer would answer a mistyped "iam/database" with an inert
+        // core and no tables, which is the worst of the available outcomes.
+        var wanted = packages
+            .Select(SplitToken)
+            .Where(t => LayersByLibrary.TryGetValue(t.Library, out var l) && l.ContainsKey(t.Layer))
+            .ToList();
 
+        // Core layers FIRST, across every requested library, so a db layer named before its
+        // core in the config still parses after it. "iam/db" IMPLIES "iam": a db layer is
+        // nothing but overlay:true redeclarations, and an overlay whose target was never
+        // declared is ERR_OVERLAY_NO_TARGET.
+        var refs = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        void Add(string r) { if (seen.Add(r)) refs.Add(r); }
+        foreach (var (lib, _) in wanted)
+        {
+            foreach (var r in LayersByLibrary[lib][""]) Add(r);
+        }
+        foreach (var (lib, layer) in wanted)
+        {
+            if (layer.Length == 0) continue;
+            foreach (var r in LayersByLibrary[lib][layer]) Add(r);
+        }
+
+        var dir = LibraryDir.Value;
+        {
             foreach (var r in refs)
             {
                 if (dir is not null)
@@ -110,7 +166,7 @@ public static class LibrarySources
                 if (!EmbeddedLibrary.Content.TryGetValue(r, out var embedded))
                 {
                     throw new InvalidOperationException(
-                        $"library ref \"{r}\" (package \"{pkg}\") has no on-disk file and no "
+                        $"library ref \"{r}\" has no on-disk file and no "
                         + "embedded entry — the embedded library class is stale; run "
                         + "scripts/generate-embedded-library.ts");
                 }

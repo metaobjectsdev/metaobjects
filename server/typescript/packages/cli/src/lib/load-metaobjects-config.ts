@@ -249,11 +249,10 @@ function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string
  * than set to `undefined`, which is what lets `loadMemory` apply its own defaults.
  */
 export function loadMemoryOptionsFrom(
-  cfg: Pick<MetaobjectsGenConfig, "providers" | "libraries"> | undefined,
-): { providers?: readonly MetaDataTypeProvider[]; libraries?: readonly string[] } {
+  cfg: Pick<MetaobjectsGenConfig, "providers"> | undefined,
+): { providers?: readonly MetaDataTypeProvider[] } {
   return {
     ...(cfg?.providers !== undefined ? { providers: cfg.providers } : {}),
-    ...(cfg?.libraries !== undefined ? { libraries: cfg.libraries } : {}),
   };
 }
 
@@ -518,24 +517,19 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     if (!cfg || typeof cfg !== "object" || !Array.isArray(cfg.generators)) {
       throw new Error(`metaobjects.config.ts at ${fullPath} did not export a valid MetaobjectsGenConfig (missing 'generators' array).`);
     }
-    // An unknown `libraries` name is a hard config error naming the valid ones, while
-    // `librarySources` keeps skipping one silently for a programmatic caller. The two
-    // are deliberately different: an API caller asking for a package this version does
-    // not ship should still be able to load its own metadata, but a name a human typed
-    // into a config file is a mistake worth failing on — skipped, it resurfaces later as
-    // ERR_UNRESOLVED_SUPER pointing at the adopter's own metadata, which is the wrong
-    // place to send someone looking. Python's `project_config` draws the same line in
-    // the same place, and the two ports agreeing here is the point.
-    if (cfg.libraries !== undefined && cfg.libraries.length > 0) {
-      const { knownLibraryPackages } = await import("@metaobjectsdev/metadata/library");
-      const available = knownLibraryPackages();
-      const unknown = cfg.libraries.filter((n) => !available.includes(n));
-      if (unknown.length > 0) {
-        throw new Error(
-          `metaobjects.config.ts at ${fullPath}: 'libraries' names unknown package(s) ` +
-            `${JSON.stringify(unknown)}; available: ${JSON.stringify(available)}.`,
-        );
-      }
+    // `libraries` used to be validated here. It moved to `.metaobjects/config.json`
+    // (FR-043 Amendment 1), and so did its validation — see `assertKnownLibraries`,
+    // called from `resolveCollection`'s readers. A config still carrying the old key
+    // gets a pointed error rather than silence, because silence is what turns a moved
+    // key into "my library stopped loading and nothing said why".
+    if ("libraries" in (cfg as unknown as Record<string, unknown>)) {
+      throw new Error(
+        `metaobjects.config.ts at ${fullPath}: 'libraries' moved to ` +
+          `.metaobjects/config.json (FR-043). Which designs a project adopts is a fact ` +
+          `about the PROJECT, not about how one port generates code from it, and that ` +
+          `file is the port-neutral one every port already reads. Move the array across ` +
+          `verbatim — the tokens are unchanged.`,
+      );
     }
     return cfg;
   } finally {

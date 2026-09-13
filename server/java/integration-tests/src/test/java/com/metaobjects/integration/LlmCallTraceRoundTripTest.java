@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>Proves that a typed LLM-call trace persists and reads back through OMDB
  * against a live Postgres: a trace entity extending the SHIPPED
- * {@code metaobjects::ai::LlmCallBase} (loaded from {@code library/ai/llm-call.yaml})
+ * {@code metaobjects::ai::LlmCallBase} (loaded from {@code library/ai/model.yaml})
  * with an explicit typed {@code voResponse} ({@code field.object} +
  * {@code @objectRef} + {@code @dbType:jsonb}). Asserts BOTH the raw envelope
  * (the 18 LlmCallBase fields, raw {@code llmRequest}/{@code llmResponse}) AND the
@@ -80,7 +80,7 @@ final class LlmCallTraceRoundTripTest {
             reg.register(() -> Map.of("metaobjects::ai::GreetingResponse", GreetingResponse.class));
             ObjectClassRegistry.setGlobal(reg);
 
-            // Load the SHIPPED library/ai/llm-call.yaml (LlmCallBase) + the test
+            // Load the SHIPPED library/ai/{model,db}.yaml (LlmCallBase) + the test
             // trace entity from one loader (deferred extends resolution merges them).
             MetaDataLoader loader = loadAiTraceMetadata();
             MetaDataLoaderRegistry registry =
@@ -199,16 +199,18 @@ final class LlmCallTraceRoundTripTest {
     // -----------------------------------------------------------------------
 
     /**
-     * Load the shipped {@code library/ai/llm-call.yaml} (real LlmCallBase) by file
+     * Load the shipped {@code library/ai/model.yaml} + {@code db.yaml} (real LlmCallBase) by file
      * URI, plus the test trace-entity resource. Demonstrates loading the shipped
      * AI library metadata in a Java test (Java has no {@code libraries:} loader
      * option wired yet, so the library YAML is loaded directly as a source).
      */
     private static MetaDataLoader loadAiTraceMetadata() {
-        Path libraryYaml = findRepoFile("library/ai/llm-call.yaml");
-        URI libUri = URIHelper.toURI("model:file:" + libraryYaml.toAbsolutePath());
+        Path libraryModel = findRepoFile("library/ai/model.yaml");
+        Path libraryDb = findRepoFile("library/ai/db.yaml");
+        URI modelUri = URIHelper.toURI("model:file:" + libraryModel.toAbsolutePath());
+        URI dbUri = URIHelper.toURI("model:file:" + libraryDb.toAbsolutePath());
         URI entityUri = URIHelper.toURI("model:resource:meta.ai-trace.yaml");
-        return MetaDataLoader.fromUris("test-ai-trace", List.of(libUri, entityUri));
+        return MetaDataLoader.fromUris("test-ai-trace", List.of(modelUri, dbUri, entityUri));
     }
 
     /** Walk up from the working dir to locate a repo-relative file. */

@@ -11,19 +11,56 @@ import { fileURLToPath } from "node:url";
 import { FileSource } from "../loader/sources/file-source.js";
 import { InMemoryStringSource } from "../loader/meta-data-source.js";
 import type { MetaDataSource } from "../loader/meta-data-source.js";
-import { EMBEDDED_LIBRARY } from "./embedded-library.generated.js";
+import { EMBEDDED_LIBRARY, EMBEDDED_LIBRARY_MANIFESTS } from "./embedded-library.generated.js";
 
-// Package → ordered refs, derived from the generated embedded module so adding a
-// library file (which regenerates EMBEDDED_LIBRARY) needs no edit here.
-const REFS_BY_PACKAGE: Readonly<Record<string, readonly string[]>> = (() => {
-  const map: Record<string, string[]> = {};
-  for (const ref of Object.keys(EMBEDDED_LIBRARY).sort()) {
-    const pkg = ref.split("/")[0];
-    if (pkg === undefined || pkg === "") continue;
-    (map[pkg] ??= []).push(ref);
+/** One layer of a library, as its manifest declares it. */
+export interface LibraryLayer {
+  /** Refs (path under `library/` minus `.yaml`) this layer contributes, in order. */
+  readonly refs: readonly string[];
+  readonly description?: string;
+}
+
+/** A library's `library.json`, parsed. Only the fields this module reads are typed;
+ *  the catalog reads the rest off the same text. */
+export interface LibraryManifest {
+  readonly name: string;
+  readonly kind?: string;
+  readonly stability?: string;
+  readonly since?: string;
+  readonly description?: string;
+  readonly useWhen?: string;
+  readonly packages?: readonly string[];
+  /** Layer token → layer. The CORE layer's token is the empty string. */
+  readonly layers?: Readonly<Record<string, LibraryLayer>>;
+  readonly generators?: ReadonlyArray<{ readonly name: string; readonly anchor?: string }>;
+  readonly runtime?: Readonly<Record<string, readonly string[]>>;
+}
+
+const MANIFESTS: Readonly<Record<string, LibraryManifest>> = (() => {
+  const out: Record<string, LibraryManifest> = {};
+  for (const [name, text] of Object.entries(EMBEDDED_LIBRARY_MANIFESTS)) {
+    out[name] = JSON.parse(text) as LibraryManifest;
   }
-  return map;
+  return out;
 })();
+
+/** Every shipped library's parsed manifest, keyed by name. */
+export function libraryManifests(): Readonly<Record<string, LibraryManifest>> {
+  return MANIFESTS;
+}
+
+/**
+ * Split a selection token into `[library, layer]` — `"iam"` → `["iam", ""]`,
+ * `"iam/db"` → `["iam", "db"]`.
+ *
+ * Path-like, so `libraries` stays `string[]` and no config schema moves. Only ONE
+ * separator is meaningful; anything after a second is part of the layer token, which
+ * keeps a typo failing loudly rather than resolving to a prefix.
+ */
+export function splitLayerToken(token: string): [string, string] {
+  const i = token.indexOf("/");
+  return i === -1 ? [token, ""] : [token.slice(0, i), token.slice(i + 1)];
+}
 
 /**
  * Locate the repo-root `library/` directory by walking up from this module's
@@ -62,48 +99,100 @@ function getLibraryDir(): string | undefined {
  * available (Python's `project_config` draws the same line, in the same place).
  */
 export function knownLibraryPackages(): string[] {
-  return Object.keys(REFS_BY_PACKAGE).sort();
+  return Object.keys(MANIFESTS).sort();
 }
 
 /**
- * Returns a list of `MetaDataSource` instances for the requested library packages.
+ * Every selection token this build accepts, sorted — `["ai", "ai/db", "iam", "iam/db"]`.
  *
- * - Recognized packages: `"ai"` (others contribute no sources).
- * - Per ref: if the on-disk `library/<ref>.yaml` exists, returns a `FileSource`;
- *   otherwise falls back to an `InMemoryStringSource` built from the embedded content.
- *
- * @param packages - Package names to include (e.g. `["ai"]`).
+ * What a config error message should print, so an adopter who typed `iam/database` is
+ * shown the layer they meant rather than only the library they got right.
  */
-export function librarySources(packages: string[]): MetaDataSource[] {
+export function knownLibraryTokens(): string[] {
+  const out: string[] = [];
+  for (const [name, manifest] of Object.entries(MANIFESTS)) {
+    for (const layer of Object.keys(manifest.layers ?? { "": { refs: [] } })) {
+      out.push(layer === "" ? name : `${name}/${layer}`);
+    }
+  }
+  return out.sort();
+}
+
+/**
+ * `MetaDataSource` instances for the requested library selection.
+ *
+ * **Layer-granular.** A token is `<library>` or `<library>/<layer>`; the CORE layer is
+ * the bare name. This used to be package-granular — every ref under a library came back
+ * for a bare `"iam"` — which under the layered design would have handed an adopter the
+ * db and ui layers they did not ask for, and with them a migration proposing nine tables.
+ *
+ * **`"iam/db"` IMPLIES `"iam"`**, and the implication is not a convenience: a db layer is
+ * nothing but `overlay: true` redeclarations, and an overlay whose target was never
+ * declared is `ERR_OVERLAY_NO_TARGET`. Resolving the layer without its core would produce
+ * exactly that error, so implying it is the only coherent reading.
+ *
+ * Refs are de-duplicated and returned in a stable order — core first, then each requested
+ * layer in the manifest's own order — because an overlay must be parsed after its base
+ * even though ADR-0055 applies overlays in a deferred pass.
+ *
+ * An unrecognised token contributes nothing and is skipped silently: that is right for a
+ * programmatic caller asking for something a given version may not ship. A name a HUMAN
+ * typed is a different case and is refused by the config readers, which call
+ * {@link knownLibraryTokens} to say what is available.
+ *
+ * @param selection - Tokens, e.g. `["iam", "iam/db"]`.
+ */
+export function librarySources(selection: string[]): MetaDataSource[] {
   const dir = getLibraryDir();
+  const refs: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (ref: string): void => {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    refs.push(ref);
+  };
+
+  // Core layers first, across every requested library, so a db layer named before its
+  // core in the config still parses after it.
+  //
+  // A token whose LAYER is unknown is dropped whole, not reduced to its core. The core is
+  // implied by a VALID layer token; implying it from an invalid one would answer a
+  // mistyped `iam/database` with an inert core and no tables — "I asked for the db layer
+  // and got nothing" with no diagnostic, which is the worst of the available outcomes.
+  const wanted = selection
+    .map(splitLayerToken)
+    .filter(([lib, layer]) => lib in MANIFESTS && (MANIFESTS[lib]!.layers ?? {})[layer] !== undefined);
+  for (const [lib] of wanted) {
+    for (const ref of MANIFESTS[lib]!.layers?.[""]?.refs ?? []) add(ref);
+  }
+  for (const [lib, layer] of wanted) {
+    if (layer === "") continue;
+    for (const ref of MANIFESTS[lib]!.layers?.[layer]?.refs ?? []) add(ref);
+  }
+
   const out: MetaDataSource[] = [];
-
-  for (const pkg of packages) {
-    const refs = REFS_BY_PACKAGE[pkg];
-    if (refs === undefined) continue; // unknown package — no sources
-
-    for (const ref of refs) {
-      if (dir !== undefined) {
-        const path = join(dir, `${ref}.yaml`);
-        if (existsSync(path)) {
-          out.push(new FileSource(path));
-          continue;
-        }
+  for (const ref of refs) {
+    if (dir !== undefined) {
+      const path = join(dir, `${ref}.yaml`);
+      if (existsSync(path)) {
+        out.push(new FileSource(path));
+        continue;
       }
-      const embedded = EMBEDDED_LIBRARY[ref];
-      if (embedded !== undefined) {
-        out.push(
-          new InMemoryStringSource(embedded, {
-            id: `library:${ref}.yaml`,
-            format: "yaml",
-          }),
-        );
-      } else {
-        throw new Error(
-          `library ref "${ref}" (package "${pkg}") has no on-disk file and no embedded entry — ` +
-            `the embedded library module is stale; run scripts/generate-embedded-library.ts`,
-        );
-      }
+    }
+    const embedded = EMBEDDED_LIBRARY[ref];
+    if (embedded !== undefined) {
+      out.push(
+        new InMemoryStringSource(embedded, {
+          id: `library:${ref}.yaml`,
+          format: "yaml",
+        }),
+      );
+    } else {
+      throw new Error(
+        `library ref "${ref}" has no on-disk file and no embedded entry — ` +
+          `the embedded library module is stale; run scripts/generate-embedded-library.ts`,
+      );
     }
   }
 

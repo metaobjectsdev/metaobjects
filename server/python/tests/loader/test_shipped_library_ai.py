@@ -21,6 +21,7 @@ import pytest
 from metaobjects import LoadResult, MetaDataLoader, load_directory
 from metaobjects.errors import ErrorCode
 from metaobjects.library import library_sources
+from metaobjects.library.library_sources import known_tokens
 from metaobjects.library.embedded_library import EMBEDDED_LIBRARY
 from metaobjects.runtime import LlmCallInput
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -152,7 +153,11 @@ class TestSourcesResolveOnDiskFirst:
         if _repo_root() is None:
             pytest.skip("no repo-root library/ (installed layout)")
 
-        sources = library_sources(["ai"])
+        # Every token, so the count covers the whole embed. `["ai"]` alone is the CORE
+        # layer only since FR-043 Amendment 1 — a bare name no longer means "every ref
+        # under this library", which is exactly the behaviour change this file's
+        # sibling tests pin.
+        sources = library_sources(known_tokens())
 
         assert len(sources) == len(EMBEDDED_LIBRARY)
         assert all("library:" not in s.id for s in sources), "expected on-disk FileSource in a checkout"
