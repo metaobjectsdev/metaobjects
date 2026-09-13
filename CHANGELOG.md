@@ -98,6 +98,38 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   output now reports the refresh and states what was left untouched. `--refresh-docs` on a
   repo that is *not* yet initialized still falls through to a full init and still prints the
   scaffold banner, so the branch keys off what actually happened rather than off the flag.
+
+- **Java: the generated extract mapper did not compile for most scalar subtypes.** A
+  responding `template.prompt` types its `<Template>Response` record through
+  `SpringTypeMapper.javaTypeName`, which is richly kind-typed (`BigDecimal`, `LocalDate`,
+  `LocalTime`, `Instant`, `UUID`, `URI`, `InetAddress`, `Float`, `Long` for currency) — while
+  `SpringOutputParserGenerator`'s mapper recognised only Integer/Long/Double/Boolean and fell
+  through to `ExtractMap.asString` for everything else, with **every** scalar array going to
+  `asStringList`. Each mismatch is `incompatible types` at compile time: **9 of 15 scalar
+  subtypes as a single component, 13 of 15 as an array**. It shipped because no test payload in
+  the module carried a decimal, date, time, timestamp, currency, uuid, uri or inet — and
+  because javac reports only the FIRST bad argument of a constructor call, so even a fixture
+  with several would have looked like one defect (which is exactly how it was first reported,
+  as a decimal-only bug). The record stays strictly typed per ADR-0052; the generated parser now
+  coerces on the way in, with never-throws helpers emitted only where used. A new per-subtype
+  gate compiles generated output for every subtype in both positions.
+
+- **Java: `MetaObjectExtractor.assemble` violated its own documented never-throws contract.**
+  Its javadoc promises the assembled object comes back with malformed data already classified
+  into the report and no exception — but the per-field write goes through `DataConverter`, which
+  throws on a value it cannot convert. One unconvertible component therefore destroyed the
+  entire extract, the opposite of the lenient tier's purpose: a model answering `"31/12/2026"`
+  for one date should cost you that date, not the twenty fields beside it that parsed. The
+  component is now left unset, which is what "lost" already means everywhere else in that pass.
+
+- **Java: `DataConverter.toDate` could not parse an ISO-8601 date.** The `String` arm was a bare
+  `Long.parseLong`, so it accepted epoch milliseconds and nothing else — a plain `"2026-03-04"`
+  threw `NumberFormatException`. Since that is the form `normalization.md` puts on the wire, no
+  `field.date` or `field.timestamp` could be assembled from its own wire representation. It now
+  accepts epoch millis (tried first, and only for an all-digit string, so every value that
+  parsed before still parses identically) plus ISO instant, zone-less date-time, and date-only
+  forms. Unparseable input still throws, preserving the failure mode for callers outside the
+  lenient tier.
 ### Added
 
 - **C#: `DbContextGenerator.EmitsReferenceForeignKeys`, an opt-out for the reference-FK

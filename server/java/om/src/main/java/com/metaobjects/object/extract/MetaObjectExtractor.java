@@ -291,14 +291,27 @@ public final class MetaObjectExtractor {
             if (!isObjectField || field instanceof EnumField) {
                 // scalar / enum / scalar-array / enum-array: engine already coerced it.
                 if (value != null) {
-                    if (field.isArrayType() && value instanceof List) {
-                        // Route a scalar/enum List through the object's setValue, which coerces
-                        // via the array-equivalent data type (e.g. STRING -> STRING_ARRAY) — the
-                        // element-by-element scalar setObjectArray guard rejects a List for a
-                        // scalar field whose value-class is the element type.
-                        mo.setValue(field, o, value);
-                    } else {
-                        field.setObject(o, value);
+                    // NEVER THROW. This method's contract (see the javadoc above) is that
+                    // malformed data was already classified into the report and assembly itself
+                    // cannot fail — but the write goes through DataConverter, which throws on a
+                    // value it cannot convert. One unconvertible component was therefore taking
+                    // the ENTIRE extract down, which is the opposite of the lenient tier's
+                    // purpose: a model that returns "31/12/2026" for one date should cost you
+                    // that date, not the twenty fields that parsed correctly alongside it.
+                    // Leaving the component unset is what "lost" already means everywhere else
+                    // in this pass.
+                    try {
+                        if (field.isArrayType() && value instanceof List) {
+                            // Route a scalar/enum List through the object's setValue, which coerces
+                            // via the array-equivalent data type (e.g. STRING -> STRING_ARRAY) — the
+                            // element-by-element scalar setObjectArray guard rejects a List for a
+                            // scalar field whose value-class is the element type.
+                            mo.setValue(field, o, value);
+                        } else {
+                            field.setObject(o, value);
+                        }
+                    } catch (RuntimeException unconvertible) {
+                        // Deliberately swallowed: see above. The field stays null.
                     }
                 }
                 continue;

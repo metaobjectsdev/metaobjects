@@ -625,8 +625,9 @@ public final class DataConverter
 			return (Date) val;
 	    }
 		else if ( val instanceof String ) {
-			if (((String)val).isEmpty()) return null;
-			else return new Date(Long.parseLong((String) val));
+			String s = ((String) val).trim();
+			if (s.isEmpty()) return null;
+			return parseDateString(s);
 		}
 	    else if ( val instanceof Boolean ) {
 	        if ((Boolean) val) return new Date();
@@ -654,6 +655,53 @@ public final class DataConverter
 	    // Catch anything else
 		return new Date( Long.parseLong( val.toString() ));
 	} // toDate
+
+	/**
+	 * Parse a date STRING into a {@link Date}: epoch milliseconds, or an ISO-8601 date /
+	 * date-time.
+	 *
+	 * <p>Epoch millis is tried first, and only for an all-digit string, so every value that
+	 * parsed before this method existed still parses to the same instant.</p>
+	 *
+	 * <p>The ISO forms are the ones normalization.md puts on the wire, and they could not be
+	 * read at all before: this arm was a bare {@code Long.parseLong}, so a perfectly valid
+	 * {@code "2026-03-04"} threw {@link NumberFormatException}. That made every
+	 * {@code field.date} / {@code field.timestamp} unassemblable from its own wire form —
+	 * including through {@code MetaObjectExtractor}, whose contract says it never throws.</p>
+	 *
+	 * <p>A zone-less form is resolved in the SYSTEM default zone, matching what
+	 * {@code new Date(y, m, d)} has always meant for a {@code java.util.Date} (which has no
+	 * zone of its own). An offset/Z-bearing form uses the offset it carries.</p>
+	 *
+	 * @throws NumberFormatException when the string is neither — preserving the previous
+	 *         failure MODE (callers outside the lenient tier still fail loudly on garbage)
+	 *         while widening what counts as valid.
+	 */
+	private static Date parseDateString( String s )
+	{
+		if ( EPOCH_MILLIS.matcher(s).matches() ) {
+			return new Date(Long.parseLong(s));
+		}
+		try {
+			// Offset/Z-bearing instant: "2026-03-04T05:06:07Z", "...+01:00".
+			return Date.from(java.time.Instant.parse(s));
+		} catch ( java.time.format.DateTimeParseException ignored ) { /* try the next form */ }
+		try {
+			// Zone-less date-time: "2026-03-04T05:06:07".
+			return Date.from(java.time.LocalDateTime.parse(s)
+					.atZone(java.time.ZoneId.systemDefault()).toInstant());
+		} catch ( java.time.format.DateTimeParseException ignored ) { /* try the next form */ }
+		try {
+			// Date only: "2026-03-04" -> start of that day.
+			return Date.from(java.time.LocalDate.parse(s)
+					.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant());
+		} catch ( java.time.format.DateTimeParseException ignored ) { /* fall through */ }
+		throw new NumberFormatException("For input string: \"" + s + "\"");
+	}
+
+	/** An optionally-negative run of digits — the only shape read as epoch milliseconds. */
+	private static final java.util.regex.Pattern EPOCH_MILLIS =
+			java.util.regex.Pattern.compile("-?\\d+");
 
 	/** Check down scaling for decimals */
 	private static double downScaleCheck( String from, String to, double val, double min, double max ) {
