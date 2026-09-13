@@ -15,6 +15,93 @@ different shape can always copy the metadata into their own project and rename
 the packaging, which is the eject door (§3.4) and the reason a shape freeze is
 survivable.
 
+## Amendment 1 (2026-09-13) — libraries are LAYERED; the core model is inert
+
+**Ruled by the maintainer, and it supersedes §3.3, §7.4, §10 and §12 Q2 as
+originally written.** A library ships its **core model**, its **DB persistence**
+and its **UI rendering** as separate layers, the second and third applied as
+`overlay: true` files over the first. Requirements split the same way. An adopter
+takes the core model alone, or adds the DB layer, or adds the UI layer.
+
+This is the layered overlay pattern the project already documents (`CLAUDE.md`,
+"Optional layered overlay pattern") and the shape the maintainer used habitually
+on the predecessor JVM implementation — DB and UI metadata in their own files.
+
+**Why it changes the design rather than decorating it.** The core layer declares
+no `source.rdb`, and a sourceless object is inert by a contract that already
+ships:
+
+- `server/typescript/packages/migrate-ts/src/expected-schema.ts:201` —
+  `if (!hasWritableSource) continue;` — no writable source, no table.
+- `server/typescript/packages/codegen-ts/src/instance-artifacts.ts:15-25` —
+  sourceless means no route, no queries, no hooks, no grid, no form. It still
+  gets a type-only interface, so `extends` and reference still work.
+
+Both cite #248: *persistability derives from source presence, never from the
+object subtype.* So `libraries: ["iam"]` adds **zero tables and zero generated
+code**. What an adopter gains is the design being present and resolvable — which
+is the whole point: an agent working in the repo knows the capability exists and
+can draw on it, and nothing else happens until the adopter asks for it.
+
+**Verified for this amendment** (real loader, `strict: true`, at `72b103320`):
+a core `object.entity` with no source loads clean with zero writable sources; a
+second file declaring the same `(type, package::name)` with `overlay: true` and a
+`source.rdb` + `index.lookup` child merges to exactly one writable source, no
+errors.
+
+### What this supersedes
+
+| section | as written | amended |
+|---|---|---|
+| §3.3 | opting in proposes nine `CREATE TABLE`s | opting into the **core** proposes none; the **db layer** is the opt-in that proposes tables |
+| §7.4 | one `model.yaml` carrying `source.rdb` | `model.yaml` (sourceless) + `db.yaml` (overlay: sources, lookup indexes) |
+| §10 | risk: "Opt-in means tables. Nine for `iam`" | **withdrawn** — the core layer adds none |
+| §10, §0 | "the `ai` concrete `LlmCall` wart persists" | **withdrawn** — `ai` splits the same way (see below) |
+| §12 Q2 | `migrate.scope.exclude` — Phase 1 or Phase 2? | **dissolved.** Nothing is added to subtract. `migrate.scope` stays include-only and its committed rationale stands |
+| §12 Q3 | composite `identity.reference` conformance case | **dropped.** `iam` uses no composite FK; this was a metamodel question wearing a library costume |
+| §12 Q4 | should `libraries` move to `.metaobjects/config.json`? | **yes, outright.** A sweep of ~70 estate `metaobjects.config.ts` / `.metaobjects/config.json` files found **zero** uses of the key — there is no installed base to dual-read for |
+| §11 | a `delete` overlay directive | **ruled: not Phase 1**, unchanged. It stays a candidate awaiting evidence that the track-upstream minority is real |
+
+### The `ai` split falls out of the same ruling
+
+`library/ai/llm-call.yaml` ships `LlmCallBase` (abstract, sourceless) beside a
+concrete `LlmCall` carrying `source.rdb: { table: llm_call }`. §0 and §10 carried
+that as an accepted wart, on the grounds that splitting it changes what existing
+`ai` adopters get. The estate sweep removes the objection: there are no existing
+`ai` adopters. `ai` splits into `ai/model.yaml` + `ai/db.yaml` like everything
+else, and the wart is closed rather than documented.
+
+### Opt-in surface
+
+Layers are addressed path-like, which needs no config schema change — `libraries`
+stays `string[]`:
+
+```jsonc
+"libraries": ["iam"]                        // core model only — inert
+"libraries": ["iam", "iam/db"]              // + persistence
+"libraries": ["iam", "iam/db", "iam/ui"]    // + UI
+```
+
+`"iam/db"` **implies** `"iam"`: a db layer is an overlay, and an overlay whose
+target was never declared is already `ERR_OVERLAY_NO_TARGET`, so implication is
+the only coherent reading. `librarySources()` today is package-granular
+(`REFS_BY_PACKAGE[pkg]` returns every ref under the package), so layer selection
+is real work — see the plan.
+
+### Two things this makes worth gating
+
+Neither gates the library; both gate what the layering **rests on**.
+
+1. **"An overlay can add a `source.rdb`" is documented in `CLAUDE.md` and gated
+   nowhere** — no conformance fixture, no test, in any port. Verified working in
+   TypeScript for this amendment; Java, Python, C# and Kotlin are unverified. The
+   layered design makes this behaviour load-bearing in all five ports, so it
+   earns one conformance fixture.
+2. **The core layer must declare no source.** That is the inertness promise, and
+   an added `source.rdb` in `model.yaml` would break it silently. One assertion
+   per library, in the doctrine of §4's "every manifest fact is resolved, not
+   trusted".
+
 ## 0. Facts this rests on — verified in the tree, not assumed
 
 | Fact | Consequence |
@@ -115,6 +202,15 @@ embedded **manifests** rather than file refs, so a pure-NFR library with no YAML
 is still a known name.
 
 ### 3.3 Scope: in by default, and why
+
+> **AMENDED — read Amendment 1 first.** The paragraph below describes the
+> pre-layering design, in which one undivided library put nine tables into your
+> migration. Under the amendment the **core layer is sourceless and therefore
+> inert**: in scope, resolvable, visible to an agent, and generating nothing.
+> "In scope by default" survives and still distinguishes a library from an
+> FR-023 dependency — but what is in scope by default now *produces nothing*
+> until the adopter opts into the db layer. The `migrate.scope` asymmetry the
+> last sentence carries is no longer reachable from here.
 
 A library's nodes are generated, migrated and ledgered **as if you had written
 them** — the opposite of FR-023, because you opt in to *have the thing*.
@@ -360,6 +456,14 @@ profile/PII (adopter overlay), audit history (a future library), and a runtime
 
 ### 7.4 The model
 
+> **AMENDED — read Amendment 1 first.** The single document below is the
+> pre-layering form. It splits into `library/iam/model.yaml` (everything
+> shown here EXCEPT the `source.rdb` and `index.lookup` children) and
+> `library/iam/db.yaml` (an `overlay: true` redeclaration of each entity
+> carrying only those two child kinds). The field/identity/relationship
+> content is unchanged and still loads clean under `strict: true`; the
+> split is where the children live, not what they are.
+
 `library/iam/model.yaml`. Verified to load clean under `strict: true`.
 
 ```yaml
@@ -548,15 +652,23 @@ removed, and the library never built it.
 
 ## 8. Phase 1 / Phase 2
 
+> **AMENDED — read Amendment 1 first.** Items 1 and 2 are restated below to
+> carry the layering; items 3–7 stand as written. Three items are added (1a, 2a,
+> 2b) and one is added to item 7.
+
 | # | Phase 1 | scope |
 |---|---|---|
-| 1 | `library.json` per library, embedded; `knownLibraryPackages()` from manifests; manifest-resolution test | 4 embeds, 4 code sites, 4 tests |
-| 2 | `library/ai/requirements.yaml`; `library/iam/{model,requirements}.yaml`; per-port standalone strict-load test; TS standalone-verify gate | content cross-port, gates per port |
+| 1 | `library.json` per library, embedded, declaring its **layers**; `knownLibraryPackages()` from manifests and accepting layer tokens (`iam`, `iam/db`, `iam/ui`); manifest-resolution test | 4 embeds, 4 code sites, 4 tests |
+| 1a | **Layer selection in `librarySources()`** — today `REFS_BY_PACKAGE[pkg]` returns every ref under a package, so a bare `iam` would pull the db and ui layers too. Selection resolves a layer token to its manifest-declared refs, and `iam/db` implies `iam` | TS, then Java + Python + C# embeds |
+| 1b | **`libraries` moves to `.metaobjects/config.json`** beside FR-023 `dependencies`, and OUT of `metaobjects.config.ts` — outright, no dual-read (§12 Q4: zero estate uses) | TS + Python |
+| 2 | `library/iam/{model,db,requirements}.yaml`; `library/ai` **split** into `{model,db}.yaml` + `requirements.yaml`; per-port standalone strict-load test; TS standalone-verify gate | content cross-port, gates per port |
+| 2a | **Conformance fixture: an overlay adds a `source.rdb`.** Documented in `CLAUDE.md`, gated nowhere, and now load-bearing in five ports | fixtures + all 5 ports |
+| 2b | **Assertion: every core layer declares no source** — the inertness promise, resolved not trusted | TS (per library) |
 | 3 | Coverage-activation rule (§5.4) | TS |
 | 4 | Catalog `kind: "library"` + `--probe` project block; one-namespace test; skill amendments + agent-context corpus regen **in the same commit** | TS |
 | 5 | Implied-generator warnings; `GenContext.libraries`; `trace-helper` anchor from manifest | TS + Java + Python |
 | 6 | `meta eject <lib>`; `ERR_LIBRARY_PACKAGE_COLLISION`; ownership refusal; `eject --list` per-node staleness | TS (+ Python for the refusal) |
-| 7 | `docs/features/libraries.md`; `cli.md`; compat-policy clause for shipped-library shape; the `CLAUDE.md` pillar paragraph; CHANGELOG | docs |
+| 7 | `docs/features/libraries.md` (leading with the layer model); `cli.md`; compat-policy clause for shipped-library shape; the `CLAUDE.md` pillar paragraph; **the `ai` split as a CHANGELOG breaking-ish note**; CHANGELOG | docs |
 
 **Phase 2:** third-party libraries over FR-023's `npm`/`python` transports;
 `requires` edges library→library; loader-level collision/ownership errors in all
@@ -641,6 +753,10 @@ that minority turns out to be real — their existence is the evidence that
 justifies the vocabulary.
 
 ## 12. Remaining open questions
+
+> **AMENDED — read Amendment 1 first.** Q2, Q3 and Q4 are RULED and are no
+> longer open; Q1 is the only one still open, and it is the one that gates
+> "Phase 1 shippable".
 
 1. **Evidence, and the one that gates "shippable": does `overlay: true` merge on
    a NESTED `requirement.*` node?** If not, an adopter cannot disagree with a
