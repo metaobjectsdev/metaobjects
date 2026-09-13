@@ -8,7 +8,7 @@ describe("parseGenArgs", () => {
       dryRun: false,
       entities: [],
       baseline: "default",
-      list: false,
+      list: false, probe: false,
       noAntipatterns: false,
       limit: DEFAULT_ADVISORY_LIMIT,
     });

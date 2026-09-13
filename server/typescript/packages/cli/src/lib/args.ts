@@ -107,6 +107,12 @@ export interface GenFlags {
   /** ADR-0021 D3 — print the stable-name generator registry and exit without
    *  running codegen. */
   list: boolean;
+  /**
+   * `--list` only: construct every catalog generator and dry-run it against THIS
+   * project's model, reporting a real file count per generator. Needs a project;
+   * plain `--list` deliberately does not (it describes the installed engine).
+   */
+  probe: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
   /**
@@ -122,6 +128,7 @@ export const GEN_OPTIONS = {
   "dry-run": { type: "boolean", default: false },
   "baseline": { type: "string" },
   "list": { type: "boolean", default: false },
+  "probe": { type: "boolean", default: false },
   "no-antipatterns": { type: "boolean", default: false },
   "limit": { type: "string" },
 } as const;
@@ -149,6 +156,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
     entities: positionals,
     baseline: (baselineRaw as "default" | "fresh" | "adopt" | undefined) ?? "default",
     list: !!values.list,
+    probe: !!values.probe,
     noAntipatterns: !!values["no-antipatterns"],
     // Throws on a bad value; the command layer reports it and exits 2, exactly as
     // it does for --baseline above.

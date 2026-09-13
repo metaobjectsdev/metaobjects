@@ -15,12 +15,17 @@ import {
   type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
-import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
+import { runGen } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Collection } from "@metaobjectsdev/sdk";
 import { reportLoadError } from "../lib/load-error.js";
+import {
+  buildCatalogListing, renderCatalogText, wiredGeneratorNames, ownedGeneratorNames,
+  declaredDepsOf,
+} from "../lib/catalog-listing.js";
+import { emitStructured } from "../lib/format.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -56,10 +61,16 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   try { flags = parseGenArgs(args); }
   catch (err) { log.error((err as Error).message); return 2; }
 
-  // ADR-0021 D3 — `meta gen --list`: print the stable-name generator registry
-  // and exit 0 WITHOUT running codegen (no config/metadata required).
+  // ADR-0021 D3 — `meta gen --list`: print the generator CATALOG and exit 0 WITHOUT
+  // running codegen. No project is required (like `meta types`): "what can this engine
+  // do" is a question about the installed engine. `--probe` adds "...and what would
+  // each emit for MY model", which does need one.
   if (flags.list) {
-    return listGeneratorsCommand();
+    return listCatalogCommand(cwd, fmt, flags.probe);
+  }
+  if (flags.probe) {
+    log.error("--probe is only meaningful with --list. Run: meta gen --list --probe");
+    return 2;
   }
 
   const cliConfig = resolveGenConfig(flags);
@@ -311,34 +322,95 @@ function runAntiPatternScan(
 }
 
 /**
- * `meta gen --list` — print the stable-name generator registry (ADR-0021 D3).
+ * `meta gen --list` — the generator catalog (ADR-0021 D3; opt-in-codegen design §D3).
  *
- * Generators are grouped by tier: the recommended native `meta gen` suite
- * first, then neutral artifacts (owned by `meta docs` per D1). Each line is
- * `<stable-name>  —  <description>` plus an options summary and, for neutral
- * entries, a note pointing at the canonical door. Exits 0; no codegen runs.
+ * Codegen is opt-in, so this is the door: the tool describes what it can do and the
+ * builder decides what the app needs. Rows are grouped by `layer`, the axis you select
+ * by; `--format json|toon` emits the same catalog as ONE document (nothing else on
+ * stdout, per `meta types`' purity rule).
+ *
+ * With `--probe`, every catalog generator is constructed and dry-run against this
+ * project's real model, so the `capability` layer stops being a list of labels and
+ * becomes `output-parser: 3, callable: 0, requirement-tests: 7` — information that
+ * cannot go stale, because it does not describe the generators, it runs them.
  */
-function listGeneratorsCommand(): number {
-  const entries = listGenerators();
-  const native = entries.filter((e) => e.tier === "native");
-  const neutral = entries.filter((e) => e.tier === "neutral");
-  const width = Math.max(...entries.map((e) => e.name.length));
+async function listCatalogCommand(
+  cwd: string,
+  fmt: OutputFormat,
+  probe: boolean,
+): Promise<number> {
+  let opts: Parameters<typeof buildCatalogListing>[0] = {};
 
-  const lines: string[] = [];
-  lines.push("Available generators (select by stable name):");
-  lines.push("");
-  lines.push("Native (recommended `meta gen` suite):");
-  for (const e of native) {
-    lines.push(`  ${e.name.padEnd(width)}  —  ${e.description}`);
-    if (e.options) lines.push(`  ${" ".repeat(width)}     options: ${e.options}`);
-  }
-  lines.push("");
-  lines.push("Neutral (owned by `meta docs`; not part of the native suite):");
-  for (const e of neutral) {
-    lines.push(`  ${e.name.padEnd(width)}  —  ${e.description}`);
-    if (e.note) lines.push(`  ${" ".repeat(width)}     ${e.note}`);
+  if (probe) {
+    // A probe reports what YOUR model would produce, so a project is mandatory here
+    // even though it is optional for a bare --list. Failing loudly beats a listing of
+    // zeros that reads like "none of these apply to you".
+    let collection;
+    try {
+      collection = await resolveCollection(cwd);
+    } catch (err) {
+      log.error(
+        `meta gen --list --probe needs a project to probe: ${(err as Error).message}\n` +
+          "Run `meta gen --list` (no --probe) for the catalog on its own.",
+      );
+      return 2;
+    }
+    const projectRoot = resolveGenConfigDir(cwd, collection.configDir);
+    const genCollection = await resolveGenCollection(collection, projectRoot);
+
+    let forgeConfig;
+    try {
+      forgeConfig = await loadMetaobjectsConfig(projectRoot);
+    } catch (err) {
+      log.error((err as Error).message);
+      return 2;
+    }
+
+    let metadata;
+    try {
+      metadata = await loadMemory(genCollection.configDir, {
+        ...collectionLoadOptions(genCollection),
+        ...loadMemoryOptionsFrom(forgeConfig),
+      });
+    } catch (err) {
+      reportLoadError(log, "failed to load metadata", err);
+      return 2;
+    }
+
+    opts = {
+      project: {
+        projectRoot,
+        config: forgeConfig,
+        wiredNames: wiredGeneratorNames(forgeConfig),
+        ownedNames: ownedGeneratorNames(projectRoot),
+        declaredDeps: declaredDepsOf(projectRoot),
+      },
+      probe: { metadata, scope: genCollection.inScope },
+    };
+  } else {
+    // No probe: still report `wired` / `owned` when a project happens to be here, since
+    // both are free. A directory with no config is not an error — the catalog is a fact
+    // about the installed engine.
+    try {
+      const collection = await resolveCollection(cwd);
+      const projectRoot = resolveGenConfigDir(cwd, collection.configDir);
+      const forgeConfig = await loadMetaobjectsConfig(projectRoot);
+      opts = {
+        project: {
+          projectRoot,
+          config: forgeConfig,
+          wiredNames: wiredGeneratorNames(forgeConfig),
+          ownedNames: ownedGeneratorNames(projectRoot),
+          declaredDeps: declaredDepsOf(projectRoot),
+        },
+      };
+    } catch {
+      // No project here — the catalog stands on its own.
+    }
   }
 
-  log.info(lines.join("\n"));
+  const rows = await buildCatalogListing(opts);
+  if (fmt === "text") log.info(renderCatalogText(rows, probe));
+  else emitStructured(rows, fmt);
   return 0;
 }

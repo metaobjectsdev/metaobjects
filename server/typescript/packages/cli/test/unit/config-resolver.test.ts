@@ -22,13 +22,13 @@ describe("resolveGenConfig", () => {
   // outDir/dialect/dbImport/extStyle. Only dryRun + entities come from flags.
 
   test("passes dryRun and entities through", () => {
-    const resolved = resolveGenConfig({ dryRun: true, entities: ["User", "Post"], baseline: "default", list: false, noAntipatterns: false, limit: DEFAULT_ADVISORY_LIMIT });
+    const resolved = resolveGenConfig({ dryRun: true, entities: ["User", "Post"], baseline: "default", list: false, probe: false, noAntipatterns: false, limit: DEFAULT_ADVISORY_LIMIT });
     expect(resolved.dryRun).toBe(true);
     expect(resolved.entities).toEqual(["User", "Post"]);
   });
 
   test("defaults: dryRun false, entities empty", () => {
-    const resolved = resolveGenConfig({ dryRun: false, entities: [], baseline: "default", list: false, noAntipatterns: false, limit: DEFAULT_ADVISORY_LIMIT });
+    const resolved = resolveGenConfig({ dryRun: false, entities: [], baseline: "default", list: false, probe: false, noAntipatterns: false, limit: DEFAULT_ADVISORY_LIMIT });
     expect(resolved.dryRun).toBe(false);
     expect(resolved.entities).toEqual([]);
   });
