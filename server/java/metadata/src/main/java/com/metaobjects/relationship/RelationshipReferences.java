@@ -15,7 +15,6 @@
  */
 package com.metaobjects.relationship;
 
-import com.metaobjects.MetaData;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.ReferenceIdentity;
 import com.metaobjects.object.MetaObject;
@@ -66,19 +65,9 @@ public final class RelationshipReferences {
         return value;
     }
 
-    /** The FK field a reference is anchored on (first field; composite FKs pair on their
-     *  first column), or {@code null} when the reference declares no {@code @fields}. */
-    private static String refFkField(ReferenceIdentity ref) {
-        List<String> fields = ref.getFields();
-        return fields.isEmpty() ? null : fields.get(0);
-    }
-
-    /** Last {@code ::}-segment of a (possibly package-qualified, possibly null/empty) name. */
-    private static String stripPackage(String name) {
-        if (name == null || name.isEmpty()) return "";
-        int idx = name.lastIndexOf(MetaData.PKG_SEPARATOR);
-        return idx < 0 ? name : name.substring(idx + MetaData.PKG_SEPARATOR.length());
-    }
+    // refFkField / stripPackage moved to the package-private ReferenceFkUtil (fix
+    // round 1, finding 5) — they were byte-for-byte duplicates of M2MFields' own
+    // private copies, and both classes live in this same package.
 
     /**
      * The set of lowercased names a candidate reference answers to: its own name
@@ -92,7 +81,7 @@ public final class RelationshipReferences {
     public static Set<String> referencePairingKeys(ReferenceIdentity ref) {
         Set<String> keys = new HashSet<>();
         addPairingKey(keys, ref.getShortName());
-        addPairingKey(keys, refFkField(ref));
+        addPairingKey(keys, ReferenceFkUtil.refFkField(ref));
         return keys;
     }
 
@@ -112,13 +101,13 @@ public final class RelationshipReferences {
      * defaulting true) honors references inherited via extends.</p>
      */
     public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, String targetEntity) {
-        String target = stripPackage(targetEntity);
+        String target = ReferenceFkUtil.stripPackage(targetEntity);
         List<ReferenceIdentity> out = new ArrayList<>();
         for (MetaIdentity id : holder.getIdentities()) {
             if (!(id instanceof ReferenceIdentity)) continue;
             ReferenceIdentity ref = (ReferenceIdentity) id;
-            if (!target.equals(stripPackage(ref.getTargetEntity()))) continue;
-            if (refFkField(ref) == null) continue;
+            if (!target.equals(ReferenceFkUtil.stripPackage(ref.getTargetEntity()))) continue;
+            if (ReferenceFkUtil.refFkField(ref) == null) continue;
             out.add(ref);
         }
         return out;
@@ -151,7 +140,7 @@ public final class RelationshipReferences {
 
         if (sourceRefField != null && !sourceRefField.isEmpty()) {
             for (ReferenceIdentity ref : candidates) {
-                if (sourceRefField.equals(refFkField(ref))) return ref;
+                if (sourceRefField.equals(ReferenceFkUtil.refFkField(ref))) return ref;
             }
             return null;
         }

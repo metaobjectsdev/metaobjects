@@ -217,10 +217,12 @@ public final class M2MFields {
         return out;
     }
 
-    /** First {@code @fields} entry of a reference (the physical FK column on the junction). */
+    // refFkField / stripPackage moved to the package-private ReferenceFkUtil (fix
+    // round 1, finding 5) — they were byte-for-byte duplicates of
+    // RelationshipReferences' own private copies, and both classes live in this
+    // same package.
     private static String refFkField(MetaIdentity ref) {
-        List<String> fields = ref.getFields();
-        return fields.isEmpty() ? null : fields.get(0);
+        return ReferenceFkUtil.refFkField(ref);
     }
 
     /**
@@ -278,8 +280,6 @@ public final class M2MFields {
     }
 
     private static String stripPackage(String name) {
-        if (name == null) return null;
-        int idx = name.lastIndexOf(MetaData.PKG_SEPARATOR);
-        return (idx >= 0) ? name.substring(idx + MetaData.PKG_SEPARATOR.length()) : name;
+        return ReferenceFkUtil.stripPackage(name);
     }
 }

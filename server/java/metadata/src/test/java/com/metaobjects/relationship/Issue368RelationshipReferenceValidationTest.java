@@ -171,18 +171,84 @@ public class Issue368RelationshipReferenceValidationTest extends SharedRegistryT
 
     @Test
     public void symmetricOnCardinalityOneStillErrors() {
-        // @symmetric still requires M:N -- only @sourceRefField was widened.
+        // @symmetric still requires M:N -- only @sourceRefField was widened. The
+        // fixture sets @cardinality: "one" EXPLICITLY (not just omits it) -- an
+        // omitted @cardinality is the diverging case covered separately by
+        // sourceRefFieldOnAbsentCardinalityStillErrors below; this test must not
+        // rely on MetaRelationship.getCardinality()'s "one" default to exercise
+        // the genuine @cardinality: "one" path.
         String doc =
             "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
             + "  { \"object.entity\": { \"name\": \"Week\", \"children\": ["
             + "    { \"field.long\": { \"name\": \"id\" } },"
             + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } },"
-            + "    { \"relationship.association\": { \"name\": \"program\", \"@objectRef\": \"Program\", \"@symmetric\": true } } ] } },"
+            + "    { \"relationship.association\": { \"name\": \"program\", \"@objectRef\": \"Program\", \"@cardinality\": \"one\", \"@symmetric\": true } } ] } },"
             + "  { \"object.entity\": { \"name\": \"Program\", \"children\": ["
             + "    { \"field.long\": { \"name\": \"id\" } },"
             + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } } ] } }"
             + "] } }";
         assertHasError(attemptLoad(doc), ErrorCode.ERR_INVALID_RELATIONSHIP);
+    }
+
+    @Test
+    public void sourceRefFieldOnAbsentCardinalityStillErrors() {
+        // Cross-port divergence guard (fix round 1): MetaRelationship.getCardinality()
+        // defaults to "one" when the attribute is absent, but TS/C#/Python all compare
+        // the RAW attribute -- an absent @cardinality is neither "many" nor "one" on
+        // any of the other three ports, so @sourceRefField must still be rejected by
+        // RULE (D) there. This relationship declares NO @cardinality at all.
+        //
+        // The @sourceRefField ("programId") deliberately NAMES A REAL, MATCHING
+        // candidate (programRef) so that rule (e) -- which also gates on cardinality
+        // and would otherwise independently flag/clear this fixture -- cannot mask
+        // whether rule (d) itself was fixed: under the (buggy) defaulting behavior,
+        // rule (d) wrongly exempts @sourceRefField (isCardinalityOne defaults true)
+        // AND rule (e) wrongly applies but finds the declared field matches its one
+        // candidate, so the WHOLE load comes back clean -- only the raw-read fix
+        // makes rule (d) reject this relationship at all.
+        String doc =
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+            + "  { \"object.entity\": { \"name\": \"Week\", \"children\": ["
+            + "    { \"field.long\": { \"name\": \"id\" } },"
+            + "    { \"field.long\": { \"name\": \"programId\" } },"
+            + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } },"
+            + "    { \"identity.reference\": { \"name\": \"programRef\", \"@fields\": \"programId\", \"@references\": \"Program\" } },"
+            + "    { \"relationship.association\": { \"name\": \"program\", \"@objectRef\": \"Program\", \"@sourceRefField\": \"programId\" } } ] } },"
+            + "  { \"object.entity\": { \"name\": \"Program\", \"children\": ["
+            + "    { \"field.long\": { \"name\": \"id\" } },"
+            + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } } ] } }"
+            + "] } }";
+        Outcome outcome = attemptLoad(doc);
+        List<MetaDataException> all = outcome.allErrors();
+        assertEquals(outcome.joinedMessages(), 1, all.size());
+        assertHasError(outcome, ErrorCode.ERR_INVALID_RELATIONSHIP);
+        assertTrue(outcome.joinedMessages(), outcome.joinedMessages().contains("Week.program"));
+        assertTrue(outcome.joinedMessages(), outcome.joinedMessages()
+            .contains("sets @sourceRefField but is not a M:N relationship"));
+    }
+
+    @Test
+    public void ruleEDoesNotApplyToAbsentCardinality() {
+        // Cross-port divergence guard (fix round 1), rule (e) side: a relationship
+        // with NO @cardinality and 2+ same-target candidates must NOT be flagged as
+        // ambiguous by rule (e) on Java -- TS/C#/Python only apply rule (e) when the
+        // raw @cardinality attribute is exactly "one". With getCardinality()'s "one"
+        // default, this fixture would (wrongly, Java-only) fail to load.
+        String doc =
+            "{ \"metadata.root\": { \"package\": \"repro\", \"children\": ["
+            + "  { \"object.entity\": { \"name\": \"Team\", \"children\": ["
+            + "    { \"field.long\": { \"name\": \"id\" } },"
+            + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } } ] } },"
+            + "  { \"object.entity\": { \"name\": \"Match\", \"children\": ["
+            + "    { \"field.long\": { \"name\": \"id\" } },"
+            + "    { \"field.long\": { \"name\": \"alphaFk\" } },"
+            + "    { \"field.long\": { \"name\": \"betaFk\" } },"
+            + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } },"
+            + "    { \"identity.reference\": { \"name\": \"alphaRef\", \"@fields\": \"alphaFk\", \"@references\": \"Team\" } },"
+            + "    { \"identity.reference\": { \"name\": \"betaRef\", \"@fields\": \"betaFk\", \"@references\": \"Team\" } },"
+            + "    { \"relationship.association\": { \"name\": \"winner\", \"@objectRef\": \"Team\" } } ] } }"
+            + "] } }";
+        assertLoadsClean(doc);
     }
 
     // -------------------------------------------------------------------------
@@ -433,6 +499,39 @@ public class Issue368RelationshipReferenceValidationTest extends SharedRegistryT
         assertEquals(ErrorCode.ERR_INVALID_RELATIONSHIP, all.get(0).getCode().orElse(null));
     }
 
+    @Test
+    public void twoIndependentRelationshipViolationsBothSurface() {
+        // Fix round 1, finding 2: proves the collect-all change actually matters.
+        // Under the OLD eager-throw-on-first-violation style, only ONE of these two
+        // independent, unrelated relationship defects (different entities, different
+        // relationships, different JSON source locations) would ever be reported --
+        // the walk would abort at whichever one it reached first, silently leaving
+        // the other entity's defect unexamined. run()'s own code+envelope dedupe
+        // (ValidationPhase.dedupe) does NOT collapse these two: different source
+        // envelopes, different messages.
+        String doc =
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+            + "  { \"object.entity\": { \"name\": \"Program\", \"children\": ["
+            + "    { \"field.long\": { \"name\": \"id\" } },"
+            + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } } ] } },"
+            + "  { \"object.entity\": { \"name\": \"WeekA\", \"children\": ["
+            + "    { \"field.long\": { \"name\": \"id\" } },"
+            + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } },"
+            + "    { \"relationship.composition\": { \"name\": \"program\", \"@objectRef\": \"Program\", \"@cardinality\": \"one\", \"@through\": \"X\" } } ] } },"
+            + "  { \"object.entity\": { \"name\": \"WeekB\", \"children\": ["
+            + "    { \"field.long\": { \"name\": \"id\" } },"
+            + "    { \"identity.primary\": { \"name\": \"id\", \"@fields\": \"id\" } },"
+            + "    { \"relationship.association\": { \"name\": \"sponsor\", \"@objectRef\": \"Program\", \"@cardinality\": \"one\", \"@symmetric\": true } } ] } }"
+            + "] } }";
+        Outcome outcome = attemptLoad(doc);
+        List<MetaDataException> all = outcome.allErrors();
+        assertEquals("Expected BOTH independent relationship violations to surface "
+            + "from one load: " + outcome.joinedMessages(), 2, all.size());
+        String joined = outcome.joinedMessages();
+        assertTrue(joined, joined.contains("WeekA.program"));
+        assertTrue(joined, joined.contains("WeekB.sponsor"));
+    }
+
     // -------------------------------------------------------------------------
     // Cross-relationship state-leakage regression: a declared-but-unmatched
     // @sourceRefField at 2+ candidates on one relationship must not affect a
@@ -510,6 +609,14 @@ public class Issue368RelationshipReferenceValidationTest extends SharedRegistryT
             + "    { \"identity.reference\": { \"name\": \"b\", \"@fields\": \"bId\", \"@references\": \"NodeBase\" } } ] } }"
             + "] } }";
         Outcome outcome = attemptLoad(doc);
+        // Pin the iteration-order invariant this test's premise depends on: if
+        // root.objects() ever stopped iterating in declaration order (e.g. started
+        // sorting alphabetically), "Node" would no longer be visited before
+        // "NodeBase" and this test would keep passing for the wrong reason --
+        // silently no longer exercising the bug at all. Fail loudly instead.
+        assertEquals("root.objects() must iterate in declaration order for this "
+            + "test's premise (Node visited before NodeBase) to hold",
+            List.of("acme::Node", "acme::NodeBase", "acme::NodeLink"), objectVisitOrder(outcome));
         assertNoErrorOfCode(outcome, ErrorCode.ERR_BAD_ATTR_VALUE);
         assertNoErrorOfCode(outcome, ErrorCode.ERR_INVALID_RELATIONSHIP);
     }
@@ -548,7 +655,25 @@ public class Issue368RelationshipReferenceValidationTest extends SharedRegistryT
             + "    { \"identity.reference\": { \"name\": \"l\", \"@fields\": \"labelId\", \"@references\": \"base::Tag\" } } ] } }"
             + "] } }";
         Outcome outcome = attemptLoad(acmeDoc, baseDoc);
+        // Pin the iteration-order invariant: the acme source must be fully visited
+        // (Week, then acme::Tag) before base's WeekBase/Tag, or this test's premise
+        // (obj = Week visited before obj = WeekBase) silently stops holding and the
+        // test would keep passing without ever exercising the bug.
+        assertEquals("root.objects() must iterate in source-then-declaration order "
+            + "for this test's premise (Week visited before WeekBase) to hold",
+            List.of("acme::Week", "acme::Tag", "base::WeekBase", "base::Tag"), objectVisitOrder(outcome));
         assertNoErrorOfCode(outcome, ErrorCode.ERR_INVALID_RELATIONSHIP);
+    }
+
+    /** The FQNs of {@code root.objects()} in iteration order, for pinning the
+     *  declaration/source-order invariant the two order-dependence regression
+     *  tests above rely on. */
+    private static List<String> objectVisitOrder(Outcome outcome) {
+        List<String> names = new ArrayList<>();
+        for (com.metaobjects.object.MetaObject obj : outcome.loader.getRoot().objects()) {
+            names.add(obj.getName());
+        }
+        return names;
     }
 
     // -------------------------------------------------------------------------

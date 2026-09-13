@@ -199,18 +199,27 @@ public final class ValidationPhase {
         // Pass 14 (FR-017): M:N relationship slim-vocabulary validation — collects
         // EVERY violation across the effective relationship set (own + inherited via
         // extends), deduped by the relationship node's own identity (#368 / ADR-0039).
-        for (MetaDataException e : validateRelationshipsM2M(root)) {
-            collected.add(e);
-        }
+        // Routed through pass(...) (not a bare loop) so a MetaDataException escaping
+        // the list-building call itself — as opposed to one already safely collected
+        // into the returned list — is still folded into `collected` rather than
+        // propagating straight out of run(), which would skip every remaining pass,
+        // dedupe(), and loader.addError().
+        pass(collected, () -> {
+            for (MetaDataException e : validateRelationshipsM2M(root)) {
+                collected.add(e);
+            }
+        });
         // Rule (e) (#368) — registered alongside validateRelationshipsM2M above: a
         // @cardinality: one relationship must resolve to exactly one identity.reference
         // candidate on the EFFECTIVE entity; ambiguity is a load error naming the
         // candidates (ERR_INVALID_RELATIONSHIP). No dedupe — the candidate set is a
         // property of the effective entity, so a parent and a child can both be
         // genuinely, independently ambiguous.
-        for (MetaDataException e : validateOneSideReferenceResolution(root)) {
-            collected.add(e);
-        }
+        pass(collected, () -> {
+            for (MetaDataException e : validateOneSideReferenceResolution(root)) {
+                collected.add(e);
+            }
+        });
         // ADR-0042 — the cross-package ambiguity pass (ERR_AMBIGUOUS_REF) is RETIRED. A bare
         // reference now resolves package-locally (referrer's package, else root-level) at every
         // ref site (SymbolTable / resolveRootObject), so cross-package ambiguity is unreachable;
@@ -1766,8 +1775,17 @@ public final class ValidationPhase {
         String sourceRefField = rel.getSourceRefField();
         boolean symmetric = rel.isSymmetric();
         String objectRef = rel.getObjectRef();
-        // getCardinality() defaults to "one" when absent — matches the TS isMany check.
-        String cardinality = rel.getCardinality();
+        // Cross-port divergence guard: MetaRelationship.getCardinality() DEFAULTS to
+        // "one" when the attr is absent, but TS (validation-passes.ts:2058/:2196),
+        // C# (ValidationPasses.cs:3179) and Python (validation_passes.py:2676) all
+        // compare the RAW attribute — an absent @cardinality is neither "many" nor
+        // "one" there. Using the defaulting getter here would spare @sourceRefField
+        // on a cardinality-less relationship (Java-only) and, in rule (e) below,
+        // wrongly apply the one-side-resolution check to it too. Read the raw own
+        // attr instead, mirroring the established hopCardinality(...) idiom elsewhere
+        // in this file (FR-024 B5/B6, a few hundred lines down) — defaulting is
+        // deliberately NOT reproduced here so all four ports treat "absent" alike.
+        String cardinality = rawCardinality(rel);
 
         boolean hasThrough = through != null && !through.isEmpty();
         boolean hasSourceRefField = sourceRefField != null && !sourceRefField.isEmpty();
@@ -1933,7 +1951,10 @@ public final class ValidationPhase {
             // see, including one only inherited via extends.
             for (MetaRelationship rel : obj.getRelationships()) {
                 // ADR-0039: resolving — @cardinality/@objectRef may be inherited via extends.
-                if (!MetaRelationship.CARDINALITY_ONE.equals(rel.getCardinality())) continue;
+                // Raw read, not getCardinality() (see the cross-port divergence note in
+                // validateRelationshipM2MNode above) — an absent @cardinality must skip
+                // this pass entirely on Java, exactly as it does on TS/C#/Python.
+                if (!MetaRelationship.CARDINALITY_ONE.equals(rawCardinality(rel))) continue;
                 String objectRef = rel.getObjectRef();
                 if (objectRef == null || objectRef.isEmpty()) continue;
 
@@ -2005,6 +2026,18 @@ public final class ValidationPhase {
             sb.append(c.getShortName()).append('(').append(String.join(", ", c.getFields())).append(')');
         }
         return sb.toString();
+    }
+
+    /** The relationship's own (effective, resolving) {@code @cardinality}, or
+     *  {@code null} when absent — deliberately NOT {@link MetaRelationship#getCardinality()},
+     *  which defaults to {@code "one"}. TS/C#/Python all compare the raw attribute
+     *  at the rule (d) sourceRefField-exemption check and the rule (e) gate, so an
+     *  absent @cardinality must read as neither "many" nor "one" here too (matches
+     *  the same raw-read idiom as {@code hopCardinality(...)} elsewhere in this file). */
+    private static String rawCardinality(MetaRelationship rel) {
+        return rel.hasMetaAttr(MetaRelationship.ATTR_CARDINALITY)
+            ? rel.getMetaAttr(MetaRelationship.ATTR_CARDINALITY).getValueAsString()
+            : null;
     }
 
     /** Count a junction's {@code identity.reference} children.
