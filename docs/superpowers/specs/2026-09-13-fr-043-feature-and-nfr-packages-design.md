@@ -60,8 +60,11 @@ when Phase 1 ships, not before):
 > adapted with `extends` and `overlay: true`, and taken over with `meta eject`.
 > Model and requirements are cross-port by construction; generator selection and
 > runtime are per-port by nature. Two ship: `ai` (the LLM-call trace envelope)
-> and `iam` (users, groups, roles, permissions). A project that names no library
-> sees nothing.
+> and `iam` (users, groups, roles, permissions). A library is first a REFERENCE:
+> the expected use is to copy it, repackage it and make it yours, exactly as the
+> codegen reference templates are copied under ADR-0034 — using one in place and
+> adapting it by overlay is the deliberate choice of an adopter who wants to
+> track upstream. A project that names no library sees nothing.
 
 ## 2. The model
 
@@ -121,20 +124,34 @@ library table from a migration is awkward because `migrate.scope` is
 include-only; that asymmetry predates this FR and is carried as an open question
 rather than solved here.
 
-### 3.4 Adaptation: the ladder
+### 3.4 Adaptation: copy is the expected mode
 
-`overlay: true` is the **primary** door, not eject — nearly every real adaptation
-is additive, and overlay does it today from any file, with `ERR_OVERLAY_NO_TARGET`
-if the library later drops the node.
+**A library is first a reference — something to copy and make your own.** That is
+the same ruling ADR-0034 made on the generator side: the reference templates are
+copied into the adopter's repo because the adopter owns their code. Metadata is
+no different, and a design that told adopters to use library metadata in place
+while adapting it through a merge would contradict the project's own doctrine.
+
+So the ladder leads with copy, and using a library in place is the deliberate
+minority choice made by someone who wants to track upstream:
 
 | you want to | door |
 |---|---|
-| a new shape sharing a library base | `extends` |
-| add to a shipped node (fields, indexes, views, `@filterable`) | `overlay: true` on the same `(type, metaobjects::<lib>::Name)` |
-| change a shipped requirement's verdict | `overlay: true` on the requirement node (§5.5) |
-| remove a field, change a PK strategy, rename a table **or repackage it entirely** | `meta eject <lib>` |
+| **the design, as a starting point you own** — rename the package, delete what you do not need, change a PK strategy, keep the requirements and edit them | **`meta eject <lib>`** — the expected path |
+| a new shape sharing a library base, tracking upstream | `extends` |
+| add to a shipped node while tracking upstream (fields, indexes, views, `@filterable`) | `overlay: true` on the same `(type, metaobjects::<lib>::Name)` |
+| change a shipped requirement's verdict while tracking upstream | `overlay: true` on the requirement node (§5.5) |
 
-**Eject is also the answer to "I want a different shape".** `meta eject iam`
+Two consequences follow, and both are good:
+
+- **The shape freeze mostly evaporates.** If most adopters copy, a later change
+  to `iam` reaches only the minority who opted to track it. That is the real
+  answer to the `stability` question, of which `preview` is only the belt.
+- **Phase 1's weight shifts to the copy path.** The provenance header, a clean
+  package rename, and the staleness report are the parts that have to be
+  excellent; `libraries: [...]` polish matters less than it looked.
+
+`meta eject iam`
 copies `library/iam/*.yaml` into the project's first resolved source root (via
 `resolveCollection()`, never a hard-coded directory name), stamps a provenance
 header, and prints the next step: remove `iam` from `libraries`. From there the
@@ -561,12 +578,12 @@ additive-only within a MINOR.
 
 ## 10. Risks
 
-- **Shipping `iam` freezes a shape.** Once an adopter has `iam_user` in
-  production, renaming a field breaks *their* schema. Mitigated three ways:
-  `stability: preview` at ship; a promotion bar to `stable` requiring one
-  external estate to have run it with the drift gate enforced (the G3d
-  precedent); and the standing escape — an adopter may eject the metadata into
-  their own project and repackage it however they like (§3.4).
+- **Shipping `iam` freezes a shape — but only for adopters who track it.**
+  Because copy-and-own is the expected mode (§3.4), a later change to `iam`
+  reaches only those who chose `libraries: ["iam"]` over ejecting. That is the
+  primary mitigation; `stability: preview` at ship and a promotion bar to
+  `stable` (one external estate running it with the drift gate enforced, the G3d
+  precedent) are the belt.
 - **Opt-in means tables.** Nine for `iam`; an adopter wanting only `User` will
   feel over-served. `--probe` makes it visible before commitment, overlay and
   eject make it adaptable, and the design deliberately refuses optional
@@ -585,7 +602,45 @@ additive-only within a MINOR.
   of being wrong low — `preview`, no vocabulary, everything opt-in — and `iam`
   gives FR-041 a concrete "more declared metadata" arm to measure.
 
-## 11. Remaining open questions
+## 11. Candidate: a delete directive for overlays
+
+Overlay today can add and can override an attribute; it cannot **remove**. The
+eight reserved structural keys are `name`, `package`, `extends`, `abstract`,
+`overlay`, `isArray`, `children`, `value` — there is no removal semantic
+anywhere, so an adopter tracking a library upstream cannot drop a field,
+identity or requirement they do not want. They must eject.
+
+**Shape, if built.** It is a merge directive, the same class as `overlay: true`,
+so it is a reserved structural key on the child being removed — not an
+`@`-attribute. `delete` and `remove` are both free: no registered attribute in
+any port uses either name.
+
+**The constraint that decides the semantics.** Overlay merge is deliberately
+order-independent — ADR-0055 made it a deferred pass, and #188 established the
+same property for super-resolution: the result is a pure function of the source
+SET, not of load order. A naive delete breaks that. It is preserved by making
+delete **absorbing**: present anywhere in the source set, the node is absent from
+the result, and nothing can add it back. That keeps the merge a set operation.
+The cost of absorbing semantics is that a library which later legitimately
+reintroduces a member cannot reach an adopter who deleted it — which is the
+correct outcome and should be stated rather than discovered.
+
+**The ledger interaction is a feature.** Deleting `User.email` dangles
+`uniqueLogin`'s `implementedBy: [User.username, User.email]`, which is an ERROR
+on a live requirement. The adopter must also overlay the requirement to say what
+they now claim. Removing a capability forces you to amend the design that
+promised it — which is precisely what the requirements pillar is for.
+
+**Why it is a candidate and not Phase 1.** A new reserved structural key is a
+change to the canonical interchange format, so it lands in all five ports'
+parsers and serializers and in the canonical body-key order, and it moves
+`metamodelVersion` (post-1.0, that must be called out in the CHANGELOG). Against
+that: once copy-and-own is the expected mode (§3.4), you delete by editing your
+copy, and the directive serves only the track-upstream minority. Build it when
+that minority turns out to be real — their existence is the evidence that
+justifies the vocabulary.
+
+## 12. Remaining open questions
 
 1. **Evidence, and the one that gates "shippable": does `overlay: true` merge on
    a NESTED `requirement.*` node?** If not, an adopter cannot disagree with a
