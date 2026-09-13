@@ -88,6 +88,16 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   string literal keeps the property name compile-checked. The M:N `UsingEntity<Through>(...)`
   sides carried the identical hazard and were converted too.
 
+- **`meta init --refresh-docs` no longer reports a scaffold it did not perform.** On an
+  established project the refresh-only path did the right thing — agent context refreshed in
+  place, metadata, `.metaobjects/config.json`, `codegen/generators/` and
+  `metaobjects.config.ts` all left alone, nothing created — but then printed the full first-run
+  banner: "Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts", "Codegen
+  generators copied to codegen/generators/", and next-steps telling you to set
+  `"type": "module"`. It read as though the command had just scaffolded over your project. The
+  output now reports the refresh and states what was left untouched. `--refresh-docs` on a
+  repo that is *not* yet initialized still falls through to a full init and still prints the
+  scaffold banner, so the branch keys off what actually happened rather than off the flag.
 ### Added
 
 - **C#: `DbContextGenerator.EmitsReferenceForeignKeys`, an opt-out for the reference-FK

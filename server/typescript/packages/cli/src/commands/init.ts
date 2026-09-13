@@ -182,6 +182,20 @@ export interface InitResult {
   /** agent-context files deleted because this stack no longer assembles them. */
   removed: string[];
   warnings: string[];
+  /**
+   * True when the run took the `--refresh-docs` refresh-ONLY branch: agent-context docs
+   * (re)written, and nothing else touched — no `metaobjects/`, no `.metaobjects/config.json`,
+   * no `codegen/generators/`, no `metaobjects.config.ts`, no `package.json`.
+   *
+   * The caller cannot infer this from the flags alone, which is what made the reporting wrong:
+   * `--refresh-docs` on a repo that is NOT yet initialized deliberately falls through to a full
+   * init, so the flag says what was asked for while this says what happened. Without it the
+   * refresh path printed the whole first-run scaffold banner — "Initialized metaobjects/ + ...",
+   * "Codegen generators copied to ...", and next-steps telling you to set `"type": "module"` —
+   * describing actions it had not taken, on an established project, which reads as though it had
+   * just scaffolded over your work.
+   */
+  refreshedDocsOnly?: boolean;
 }
 
 async function readManifest(cwd: string): Promise<Manifest | undefined> {
@@ -557,6 +571,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     // even when --force is set (issue #163). A refresh on a not-yet-initialized
     // repo (!exists) still falls through to a full init, matching prior behavior.
     await writeAgentContext(opts, result);
+    result.refreshedDocsOnly = true;
     return result;
   }
 
@@ -879,6 +894,13 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
         for (const w of result.warnings) log.info(`  ${w}`);
         log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+      } else if (result.refreshedDocsOnly) {
+        // Report the refresh, not a scaffold. `result.refreshedDocsOnly` (not `flags.refreshDocs`)
+        // because --refresh-docs on an uninitialized repo falls through to a full init, which
+        // genuinely DID scaffold and must still say so.
+        log.info(`Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + .metaobjects/CLAUDE.md + .claude/skills/metaobjects-*.`);
+        log.info("Your metadata, .metaobjects/config.json, codegen/generators/ and metaobjects.config.ts were left untouched.");
+        for (const w of result.warnings) log.warn(w);
       } else if (flags.configOnly) {
         if (result.created.includes(".metaobjects/config.json")) {
           log.info("Wrote .metaobjects/config.json — declare your metadata sources there for the Node CLI (migrate, verify --db).");
