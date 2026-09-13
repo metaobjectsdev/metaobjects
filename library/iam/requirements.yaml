@@ -14,85 +14,104 @@
 #
 #   The functional tree roots at L2, not L1. L1 is the adopter's SOLUTION, and a library
 #   is by definition a segment of someone else's. Architectural claims ship flat.
+#
+# HIERARCHY IS NESTING, and the L4/L5 split is grain. The concerns are CHILDREN of the L2
+# rather than its siblings, and an L4 names the OBJECT it is about while the field that
+# carries it hangs off it as an L5 child. Written flat, the L2 claims nothing in its whole
+# subtree; written at L4, a field reference is ERR_REQUIREMENT_L4_NOT_OBJECT. Both shipped
+# here until the standalone verify gate existed (`cli/test/shipped-library-verify.test.ts`).
 metadata:
   package: metaobjects::iam
   children:
-    # ---- functional: the L2 segment and its four concerns --------------------
+    # ---- functional: the L2 segment and the concerns nested under it --------
     - requirement.functional:
         name: accessControl
         level: 2
         status: live
         statement: Who may do what is answered from stored grants, never from a name compared to a literal in code.
         counterexample: A branch that reads `if (user.role === "admin")`.
-        description: The segment this library covers. Its four children below are the concerns it decomposes into.
+        description: The segment this library covers. The concerns beneath it are what it decomposes into.
+        children:
+          - requirement.functional:
+              name: identity
+              level: 4
+              status: live
+              statement: A person or service account is represented once, addressed by a uuid, and reachable by username or email.
+              counterexample: Two rows for the same person because the email changed.
+              implementedBy: [User]
 
-    - requirement.functional:
-        name: identity
-        level: 4
-        status: live
-        statement: A person or service account is represented once, addressed by a uuid, and reachable by username or email.
-        counterexample: Two rows for the same person because the email changed.
-        implementedBy: [User]
+          - requirement.functional:
+              name: grouping
+              level: 4
+              status: live
+              statement: Users are collected into typed, nestable groups, and the kind of group is data rather than a hard-coded set.
+              counterexample: A `teamOrTenant` boolean.
+              implementedBy: [Group, GroupType, GroupMember]
 
-    - requirement.functional:
-        name: grouping
-        level: 4
-        status: live
-        statement: Users are collected into typed, nestable groups, and the kind of group is data rather than a hard-coded set.
-        counterexample: A `teamOrTenant` boolean.
-        implementedBy: [Group, GroupType, GroupMember]
+          - requirement.functional:
+              name: acyclicGroupNesting
+              level: 4
+              status: partial
+              disposition: accepted
+              statement: A group is never its own ancestor.
+              counterexample: Two groups each naming the other as parent.
+              notes: >-
+                The schema cannot express this — a self-referencing FK admits a cycle, and the
+                only relational forms that would catch it (a recursive CHECK, a closure table
+                maintained by trigger) are DB-specific and would not survive three dialects.
+                The adopter enforces it where the write happens. Recorded rather than omitted
+                so an agent reading the ledger before adding a parent-setting endpoint sees the
+                obligation.
+              implementedBy: [Group]
 
-    - requirement.functional:
-        name: acyclicGroupNesting
-        level: 4
-        status: partial
-        disposition: accepted
-        statement: A group is never its own ancestor.
-        counterexample: Two groups each naming the other as parent.
-        notes: >-
-          The schema cannot express this — a self-referencing FK admits a cycle, and the
-          only relational forms that would catch it (a recursive CHECK, a closure table
-          maintained by trigger) are DB-specific and would not survive three dialects.
-          The adopter enforces it where the write happens. Recorded rather than omitted
-          so an agent reading the ledger before adding a parent-setting endpoint sees the
-          obligation.
-        implementedBy: [Group]
+          - requirement.functional:
+              name: grants
+              level: 4
+              status: live
+              statement: A role is granted to a user either system-wide or scoped to one group, and both are ordinary rows.
+              counterexample: A nullable `groupId` on one grant table, where NULL means "everywhere".
+              description: >-
+                Two junctions, not one with a nullable scope. A NULL in a unique key is DISTINCT
+                from every other NULL in SQL, so a nullable-scope design lets the same global
+                grant be inserted twice; the fix needs a partial index whose expression carries
+                a physical column name. Two composite-keyed tables need no escape hatch and
+                survive three dialects and five ports unchanged.
+              implementedBy: [UserRole, GroupMemberRole]
 
-    - requirement.functional:
-        name: grants
-        level: 4
-        status: live
-        statement: A role is granted to a user either system-wide or scoped to one group, and both are ordinary rows.
-        counterexample: A nullable `groupId` on one grant table, where NULL means "everywhere".
-        description: >-
-          Two junctions, not one with a nullable scope. A NULL in a unique key is DISTINCT
-          from every other NULL in SQL, so a nullable-scope design lets the same global
-          grant be inserted twice; the fix needs a partial index whose expression carries
-          a physical column name. Two composite-keyed tables need no escape hatch and
-          survive three dialects and five ports unchanged.
-        implementedBy: [UserRole, GroupMemberRole]
+          - requirement.functional:
+              name: roleScopedToGroupType
+              level: 4
+              status: partial
+              disposition: accepted
+              statement: A role bound to a group type is granted only within groups of that type.
+              counterexample: A "tenant admin" role granted inside a project group.
+              notes: >-
+                Expressing this relationally needs the grant row to carry the group's type and
+                a composite FK back to (group, type) — three foreign keys deep, unverified
+                across five ports' DDL and ORM paths. The adopter checks it at the point of
+                grant. The declared half is the L5 child below; the enforcement is not.
+              implementedBy: [Role, GroupMemberRole]
+              children:
+                - requirement.functional:
+                    name: roleDeclaresItsGroupType
+                    level: 5
+                    status: live
+                    statement: A role declares the group type it is bound to, as a nullable reference.
+                    counterexample: A role whose intended scope is recoverable only from its name.
+                    description: >-
+                      `live` where its parent is `partial`, and the split is grain as much as
+                      verdict: the DECLARATION is shipped and resolves against the field itself,
+                      so dropping the column fails the build — while the ENFORCEMENT, which no
+                      schema here can carry, stays the parent's accepted gap.
+                    implementedBy: [Role.groupTypeId]
 
-    - requirement.functional:
-        name: roleScopedToGroupType
-        level: 4
-        status: partial
-        disposition: accepted
-        statement: A role bound to a group type is granted only within groups of that type.
-        counterexample: A "tenant admin" role granted inside a project group.
-        notes: >-
-          Expressing this relationally needs the grant row to carry the group's type and
-          a composite FK back to (group, type) — three foreign keys deep, unverified
-          across five ports' DDL and ORM paths. The adopter checks it at the point of
-          grant. Role.groupTypeId is the declared half; the enforcement is not.
-        implementedBy: [Role.groupTypeId, GroupMemberRole]
-
-    - requirement.functional:
-        name: decision
-        level: 4
-        status: live
-        statement: An authorization decision is the question "does this user hold this permission key", answered from rows.
-        counterexample: A hard-coded list of usernames that bypass a check.
-        implementedBy: [Permission, RolePermission]
+          - requirement.functional:
+              name: decision
+              level: 4
+              status: live
+              statement: An authorization decision is the question "does this user hold this permission key", answered from rows.
+              counterexample: A hard-coded list of usernames that bypass a check.
+              implementedBy: [Permission, RolePermission]
 
     # ---- architectural: prohibitions in force --------------------------------
 

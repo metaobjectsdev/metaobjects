@@ -646,15 +646,20 @@ export async function verifyCommand(
       say(
         `meta verify — requirements: ${s.total} entries (${s.functional} functional, ` +
         `${s.architectural} architectural) — ${parts.join(", ")}; ` +
-        `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed, ` +
-        `counted over ${collection.files.length} metadata file(s)` +
-        // FR-023 — only when there ARE dependencies. A project that declares none
-        // must print the sentence it printed before dependencies existed, to the
-        // byte: "0 from dependencies" is noise on every existing project, and this
-        // line is a SURFACE the no-dependency guarantee covers like any other.
-        (collection.dependencies.length > 0
-          ? `, ${collection.dependencies.length} from dependencies.`
-          : `.`),
+        // FR-043 §5.4 — a project whose every requirement came from a shipped library
+        // is not measured, and says so rather than printing a ratio. Silence would be
+        // worse than either: a missing clause reads as a clean coverage result.
+        (s.entitiesTotal === undefined
+          ? `coverage: not measured (no project-authored requirements).`
+          : `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed, ` +
+            `counted over ${collection.files.length} metadata file(s)` +
+            // FR-023 — only when there ARE dependencies. A project that declares none
+            // must print the sentence it printed before dependencies existed, to the
+            // byte: "0 from dependencies" is noise on every existing project, and this
+            // line is a SURFACE the no-dependency guarantee covers like any other.
+            (collection.dependencies.length > 0
+              ? `, ${collection.dependencies.length} from dependencies.`
+              : `.`)),
       );
       if (s.undecided > 0) {
         say(
@@ -674,8 +679,12 @@ export async function verifyCommand(
           .filter((k) => (s.byStatus[k] ?? 0) > 0)
           .map((k) => ({ status: k, count: s.byStatus[k] ?? 0 })),
         undecided: s.undecided,
-        entitiesClaimed: s.entitiesClaimed,
-        entitiesTotal: s.entitiesTotal,
+        // Absent when coverage was not measured (FR-043 §5.4), never zeroed: a reader
+        // cannot tell `0/0 claimed` from "not measured", and the two mean opposite
+        // things.
+        ...(s.entitiesTotal === undefined
+          ? {}
+          : { entitiesClaimed: s.entitiesClaimed ?? 0, entitiesTotal: s.entitiesTotal }),
         metadataFiles: collection.files.length,
       };
     }
@@ -1572,8 +1581,9 @@ interface RequirementCounts {
   architectural: number;
   byStatus: { status: string; count: number }[];
   undecided: number;
-  entitiesClaimed: number;
-  entitiesTotal: number;
+  /** Absent when coverage was not measured — FR-043 §5.4. */
+  entitiesClaimed?: number;
+  entitiesTotal?: number;
   /** How many metadata files the two entity counts were taken over. */
   metadataFiles: number;
 }

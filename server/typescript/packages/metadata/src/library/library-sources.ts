@@ -103,6 +103,25 @@ export function knownLibraryPackages(): string[] {
 }
 
 /**
+ * Every package name a shipped library OWNS, across every library and layer.
+ *
+ * The provenance key for FR-043 §5.4 — object coverage activates on adopter-authored
+ * requirements only, and "adopter-authored" means "declared outside every library
+ * package". It reads the manifests rather than node source ids deliberately: `packages`
+ * is a manifest fact the standalone gate resolves against the library loaded alone,
+ * while a source id differs between the on-disk dev layout (an absolute path) and the
+ * embedded one (`library:<ref>.yaml`), so a rule keyed on that would hold here and stop
+ * holding in an installed build.
+ */
+export function libraryPackages(): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const manifest of Object.values(MANIFESTS)) {
+    for (const pkg of manifest.packages ?? []) out.add(pkg);
+  }
+  return out;
+}
+
+/**
  * Every selection token this build accepts, sorted — `["ai", "ai/db", "iam", "iam/db"]`.
  *
  * What a config error message should print, so an adopter who typed `iam/database` is
