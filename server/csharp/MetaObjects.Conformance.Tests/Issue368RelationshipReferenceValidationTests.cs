@@ -303,6 +303,53 @@ public class Issue368RelationshipReferenceValidationTests
     }
 
     // -------------------------------------------------------------------------
+    // Cross-relationship state-leakage regression: a declared-but-unmatched
+    // @sourceRefField at 2+ candidates on one relationship must not affect a
+    // SIBLING relationship on the same entity whose declared field DOES match.
+    // Backfilled from the Java port (Issue368RelationshipReferenceValidationTest
+    // .siblingRelationshipWithMatchingSourceRefFieldProducesNoErrorWhileTheBadOneDoes) --
+    // the case most likely to catch per-relationship state accidentally shared
+    // across a loop iteration.
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Sibling_relationship_with_matching_source_ref_field_produces_no_error_while_the_bad_one_does()
+    {
+        const string doc = """
+        { "metadata.root": { "package": "repro", "children": [
+          { "object.entity": { "name": "Team", "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]}},
+          { "object.entity": { "name": "Venue", "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]}},
+          { "object.entity": { "name": "Match", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "venueId" } },
+            { "field.long": { "name": "alphaFk" } },
+            { "field.long": { "name": "betaFk" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "identity.reference": { "name": "venueRef", "@fields": ["venueId"], "@references": "Venue" } },
+            { "relationship.association": { "name": "venue", "@objectRef": "Venue", "@cardinality": "one", "@sourceRefField": "venueId" } },
+            { "identity.reference": { "name": "alphaRef", "@fields": ["alphaFk"], "@references": "Team" } },
+            { "identity.reference": { "name": "betaRef", "@fields": ["betaFk"], "@references": "Team" } },
+            { "relationship.association": { "name": "winner", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "doesNotExist" } }
+          ]}}
+        ]}}
+        """;
+        var result = LoadInline(doc);
+        Assert.Equal([ErrorCode.ERR_INVALID_RELATIONSHIP], result.Errors.Select(e => e.Code));
+        string joined = string.Join("\n", result.Errors.Select(e => e.Message));
+        Assert.Contains("Match.winner", joined);
+        Assert.Contains("\"doesNotExist\"", joined);
+        // The good sibling must never be named in any error -- no state leaked
+        // from evaluating "winner" into (or out of) evaluating "venue".
+        Assert.DoesNotContain("Match.venue", joined);
+    }
+
+    // -------------------------------------------------------------------------
     // (D) Rule (e) must iterate the EFFECTIVE relationship set.
     // -------------------------------------------------------------------------
 

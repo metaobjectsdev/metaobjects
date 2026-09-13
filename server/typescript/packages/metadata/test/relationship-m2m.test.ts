@@ -600,3 +600,98 @@ describe("FR-017 Rule (e) — #368 ambiguous 1:N reference resolution", () => {
     expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Two latent "obj vs. declaring entity" bugs, backfilled from the C#/Java
+// ports (see Issue368RelationshipReferenceValidationTests.cs and
+// Issue368RelationshipReferenceValidationTest.java). Both bugs are
+// ORDER-DEPENDENT: they only manifest when an inheriting entity is visited
+// by validateRelationships's outer loop BEFORE its declaring base — which is
+// why neither was caught by the tests above when the #368 fix landed here
+// (`const declaringEntity = rel.parent ?? obj;` in validation-passes.ts).
+// Each fixture pins the visit-order invariant it depends on via
+// `objectVisitOrder`, so a future change to iteration order fails loudly
+// instead of silently making the test pass for the wrong reason.
+// ---------------------------------------------------------------------------
+
+describe("FR-017 #368 order-dependence regressions (declaring entity vs. visiting entity)", () => {
+  function objectVisitOrder(root: { children(): readonly { type: string; resolutionKey(): string }[] }): string[] {
+    return root.children().filter((c) => c.type === TYPE_OBJECT).map((o) => o.resolutionKey());
+  }
+
+  test("inherited self-join relationship is not misflagged as non-self-join", async () => {
+    // Node extends NodeBase, which declares a @symmetric self-join relationship
+    // onto NodeBase itself (@objectRef: "NodeBase"). Node is declared BEFORE
+    // NodeBase (extends is resolved order-independently by a deferred pass, so
+    // this is legal) so that the outer validation loop visits `obj = Node`
+    // FIRST — if rule (a)'s self-join comparison used the visiting `obj`
+    // instead of the relationship's DECLARING entity (NodeBase, via rel.parent),
+    // it would wrongly conclude @objectRef "NodeBase" is not the (visiting)
+    // declaring entity "Node" and misfire ERR_BAD_ATTR_VALUE.
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Node", "extends": "NodeBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "NodeBase",
+            "@through": "NodeLink", "@symmetric": true } } ] } },
+      { "object.entity": { name: "NodeLink", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "aId" } },
+        { "field.long": { name: "bId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "a", "@fields": ["aId"], "@references": "NodeBase" } },
+        { "identity.reference": { name: "b", "@fields": ["bId"], "@references": "NodeBase" } } ] } },
+    ] } });
+    // Pin the iteration-order invariant this test's premise depends on: if
+    // root.children() ever stopped iterating in declaration order (e.g. started
+    // sorting alphabetically), "Node" would no longer be visited before
+    // "NodeBase" and this test would keep passing for the wrong reason —
+    // silently no longer exercising the bug at all. Fail loudly instead.
+    expect(objectVisitOrder(root)).toEqual(["acme::Node", "acme::NodeBase", "acme::NodeLink"]);
+    expect(codesOf(errors)).not.toContain("ERR_BAD_ATTR_VALUE");
+    expect(codesOf(errors)).not.toContain("ERR_INVALID_RELATIONSHIP");
+  });
+
+  test("inherited bare @through resolves in the declaring entity's package, not the visiting one", async () => {
+    // WeekBase (package "base") declares a M:N relationship with a BARE
+    // @through "Tag" — ADR-0042 says a bare ref resolves in the DECLARING
+    // entity's package ("base::Tag"), never the package of whichever entity
+    // inherits and visits it. Week extends WeekBase from a DIFFERENT package
+    // ("acme") that also happens to declare its own unrelated "Tag" entity.
+    // The acme source is loaded FIRST so the outer validation loop visits
+    // `obj = Week` before `obj = WeekBase` — if @through resolution used
+    // the visiting entity's package it would wrongly bind to "acme::Tag"
+    // (which has zero identity.reference children) instead of "base::Tag"
+    // (which correctly has two).
+    const acmeDoc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Week", "extends": "base::WeekBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Tag", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+    ] } };
+    const baseDoc = { "metadata.root": { package: "base", children: [
+      { "object.entity": { name: "WeekBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "Tag" } } ] } },
+      { "object.entity": { name: "Tag", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "weekId" } },
+        { "field.long": { name: "labelId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "w", "@fields": ["weekId"], "@references": "base::WeekBase" } },
+        { "identity.reference": { name: "l", "@fields": ["labelId"], "@references": "base::Tag" } } ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(acmeDoc), { id: "acme.json" }),
+      new InMemoryStringSource(JSON.stringify(baseDoc), { id: "base.json" }),
+    ]);
+    // Pin the iteration-order invariant: the acme source must be fully visited
+    // (Week, then acme::Tag) before base's WeekBase/Tag, or this test's premise
+    // (obj = Week visited before obj = WeekBase) silently stops holding and the
+    // test would keep passing without ever exercising the bug.
+    expect(objectVisitOrder(root)).toEqual(["acme::Week", "acme::Tag", "base::WeekBase", "base::Tag"]);
+    expect(codesOf(errors)).not.toContain("ERR_INVALID_RELATIONSHIP");
+  });
+});
