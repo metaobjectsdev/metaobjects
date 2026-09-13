@@ -325,6 +325,41 @@ describe("FR-017 M:N validation rules", () => {
     expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
   });
 
+  // Rule (d) exception (#368): @sourceRefField also disambiguates a
+  // @cardinality:one relationship — which of several identity.reference nodes
+  // onto the same target it navigates (see resolve-relationship-reference.test.ts).
+  // Only the M:N *junction* reading of @sourceRefField still requires @cardinality:many.
+  test("sourceRefField on a cardinality:one relationship loads cleanly (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "homeTeamId" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "awayTeamId" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("sourceRefField on a @cardinality:many relationship without @through still errors", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "relationship.association": { name: "teams", "@objectRef": "Team", "@cardinality": "many", "@sourceRefField": "whatever" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+  });
+
   test("valid hetero M:N produces no relationship errors", async () => {
     const { errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Post", children: [

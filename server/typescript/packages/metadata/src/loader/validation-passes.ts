@@ -1938,8 +1938,11 @@ export function validateDataGridFilterValues(root: MetaData): ParseError[] {
 //   (c) When @through is present: the named entity must exist and declare exactly
 //       two identity.reference children; @sourceRefField (if present) must match
 //       one of those references' FK fields → ERR_INVALID_RELATIONSHIP.
-//   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
-//       relationship (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+//   (d) @through / @symmetric are invalid on a non-M:N relationship
+//       (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+//       @sourceRefField is also invalid there, EXCEPT on @cardinality: "one"
+//       (#368: it then names which of several identity.reference nodes onto
+//       the same target the relationship navigates).
 //
 // Own-relationships only: a relationship is validated on the entity that declares
 // it (matching the own-attrs policy of the other passes).
@@ -2005,7 +2008,11 @@ export function validateRelationships(root: MetaData): ParseError[] {
             ),
           );
         }
-        if (hasSourceRefField) {
+        // #368: @sourceRefField also disambiguates a `@cardinality: one`
+        // relationship when the entity holds more than one identity.reference
+        // onto the same target. Only the M:N *junction* reading is rejected
+        // here; rule (e) below checks that it names a real local reference.
+        if (hasSourceRefField && cardinality !== CARDINALITY_ONE) {
           errors.push(
             new ParseError(
               `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.`,
