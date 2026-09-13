@@ -62,6 +62,7 @@ MetaObjects deliberately does **not** ship one universal binary. Schema operatio
 
 - Node CLI binary name: `meta`
 - Project config file: `metaobjects.config.ts` (configures `outDir`, `targets`, `dialect`, `dbImport`, `apiPrefix`, `columnNamingStrategy`, and the `generators` array)
+- Codegen is **opt-in**: no port ships a default generator suite, `meta init` scaffolds `generators: []`, and `meta gen --list` is the catalog (`--probe` reports how many files each generator would emit for your model)
 - Project marker directory: `.metaobjects/`
 - Install (TypeScript reference): `npm install -D @metaobjectsdev/cli` (or `bun add @metaobjectsdev/cli`)
 - Install (Java): `<dependency><groupId>com.metaobjects</groupId><artifactId>metaobjects-metadata</artifactId><version>8.0.3</version></dependency>` plus per-concern artifacts (`metaobjects-codegen-spring`, `metaobjects-omdb`, `metaobjects-maven-plugin`, etc.)

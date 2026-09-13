@@ -57,12 +57,20 @@ Run schema ops from the compiled binary:
 
 ```bash
 # 1. Scaffold metaobjects/ + .metaobjects/ + codegen/generators/ + metaobjects.config.ts
+#    Codegen is OPT-IN: the scaffolded selection is empty.
 meta init
 
 # 2. Author entity metadata
 $EDITOR metaobjects/meta.myapp.json    # see .metaobjects/AGENTS.md for format
 
-# 3. Generate TS code (config-driven via metaobjects.config.ts)
+# 3. Choose your generators. --probe runs each one against YOUR model and reports
+#    how many files it would emit, so you can see what your metadata already asks for.
+meta gen --list --probe
+
+# 4. Take the ones you want. Prints the import, the entry to wire, and what to install.
+meta eject entity queries routes barrel
+
+# 5. Generate TS code (config-driven via metaobjects.config.ts)
 meta gen
 
 # 4. Diff metadata against your DB and emit migration SQL
@@ -86,9 +94,9 @@ Running `meta` with no arguments prints a concise status line (whether a `metaob
 
 ### `meta init`
 
-Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), the **owned codegen generators** at `codegen/generators/{entity,queries,routes,barrel}.ts`, and `metaobjects.config.ts` at the repo root.
+Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), an **empty** `codegen/generators/` plus its `tsconfig.codegen.json`, and `metaobjects.config.ts` at the repo root.
 
-The generators are copied from the codegen reference templates and are **yours to edit** (ADR-0034 scaffold-and-own); the scaffolded `metaobjects.config.ts` imports them locally, and `meta gen` runs from those local copies — not from the package. Each generator file is written only if absent, so re-running with `--force` never clobbers a hand-edited generator.
+**It copies no generators and declares no dependencies.** Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model; `meta eject <name>...` copies the ones you choose into `codegen/generators/` — **yours to edit** — and prints the import line, the entry to add, the install command and any config keys those generators read. `meta gen` runs your local copies, never the package's.
 
 Flags:
 - `--force` — overwrite scaffold files (memory records preserved)
@@ -161,7 +169,7 @@ Flags:
 
 Two config files, by design:
 
-**`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS. The generators are imported from the **owned local copies** that `meta init` scaffolded into `codegen/generators/` (ADR-0034 scaffold-and-own), not from the package:
+**`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS. It starts with `generators: []`; each import below appears when you `meta eject` that generator, which copies it into `codegen/generators/` (ADR-0034 scaffold-and-own) and prints the line to add:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
@@ -193,7 +201,7 @@ concern — declare named **targets** and point generators at them with `target`
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+// Owned generators — copied in by `meta eject` (ADR-0034 scaffold-and-own).
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";

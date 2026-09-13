@@ -10,7 +10,7 @@ port** — this is intentional (ADR-0035 §3, ratified), not a parity gap:
 
 1. **You own the invocation** — codegen runs through your own build, on your terms,
    in every port.
-2. **You own the templates** — in TypeScript, `meta init` scaffolds the reference
+2. **You own the templates** — in TypeScript, `meta eject <name>...` copies the reference
    generators *into your repo* so you can edit them (ADR-0034 scaffold-and-own). The
    JVM/Python/C# ports own codegen through **build configuration** rather than copied
    template files; template customization there is via the declarative
@@ -194,7 +194,7 @@ you get is the first thing to establish, because it changes what you can plan.
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
-| **TypeScript** | `meta init` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` copies `entityFile`/`queriesFile`/`routesFile`/`namesFile`/`barrel` into `codegen/generators/*.ts`; `metaobjects.config.ts` imports those local copies. Edit them freely, or `meta eject <generator>` any other one — except `shared-model` (FR-023's publisher generator), which is registered and discoverable but deliberately not ejectable, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to add to `metaobjects.config.ts`. Edit them freely. Not every registered generator is ejectable — `shared-model` (FR-023's publisher generator) is discoverable but deliberately not, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
 | **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **No.** `GeneratorRegistry` is a closed built-in registry; `--generators` *selects* from what ships. There is no registration seam. | **Yes, and it is your only path** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
 | **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **No.** `GENERATOR_REGISTRY` is a closed built-in registry, same as C#. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator — do not reach for it here.) | **Yes, and it is your only path** — `metaobjects gen --template-spec <json> --templates <dir>`. |
@@ -290,5 +290,5 @@ the same "idiomatic per port" principle as generator ownership (ADR-0035 §3).
 
 Importing the built-in generators from `@metaobjectsdev/codegen-ts/generators`
 (`entityFile`, `queriesFile`, `routesFile`, `barrel`) is **deprecated** (ADR-0034) and
-**removed at the 1.0/8.0 release**. Use the owned copies `meta init` scaffolds into
+**removed at the 1.0/8.0 release**. Use the owned copies `meta eject` writes into
 `codegen/generators/*` and import those from your `metaobjects.config.ts`.

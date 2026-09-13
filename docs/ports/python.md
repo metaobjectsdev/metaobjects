@@ -117,8 +117,8 @@ metaobjects gen ./metadata --out ./generated --generators names
 It emits one `<entity>_names.py` per object and nothing else. Each carries
 `<ENTITY>_SOURCE_PRIMARY_TABLE`, a `<ENTITY>_<FIELD>_COLUMN` per field, a
 `<ENTITY>_COLUMNS_BY_FIELD` map, and `<ENTITY>_SOURCE_PRIMARY_SCHEMA` when the
-source declares a `@schema`. On the 16-entity persistence-conformance model the
-default suite emits 68 files and this emits 19 — so adopting the names tier does
+source declares a `@schema`. On the 16-entity persistence-conformance model the full
+server-side selection emits 68 files and this emits 19 — so adopting the names tier does
 not drag a REST surface into a repo that does not want one.
 
 **Pass the same `--column-naming` the schema was created with.** It defaults to
@@ -384,7 +384,8 @@ spec is ignored there rather than refused.
 
 Each spec entry derives the neutral template data dict for its scope and names
 each file via the `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`).
-The named generators are **appended** to the default suite and gated byte-identical
+The named generators are **appended** to the `--generators` selection (there is no
+default suite) and gated byte-identical
 against the shared `fixtures/template-codegen-conformance/` corpus. Output is
 format-agnostic (text/markdown/csv/json/xml/html), so the template-spec pass emits
 no `__init__.py` into its tree. A `target` field is rejected (the Python port has

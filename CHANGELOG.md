@@ -10,6 +10,66 @@ here.**
 
 ## [Unreleased]
 
+### Changed
+
+- **Codegen is OPT-IN: no port ships a default generator suite** (ADR-0034 Amendment 2).
+  A new project got code it never asked for — TypeScript's `meta init` copied and wired
+  five generators, C# ran nine for a caller who named none, Python eight; Java never had
+  a default set and has been right all along. Deciding which code an application needs
+  belongs to whoever is building it, increasingly an LLM in the repo, which is well able
+  to make that call given a truthful catalog and is badly served by a default that
+  pre-empts it.
+
+  **This is a PATCH and no existing project changes by one byte.** An adopter already has
+  their owned copies on disk and their selection committed in their own config; `meta gen`
+  keeps running exactly that list, `verify --codegen` keeps checking exactly that output,
+  and re-running `init` never clobbers a file that exists. What changes is what a *new*
+  project starts with. `docs/compatibility-policy.md` is narrowed in the same change: the
+  scaffold-and-own promise is the LAYOUT and the INTERFACES, not which generators a fresh
+  scaffold wires.
+
+  What this means per port:
+  - **TypeScript** — `meta init` scaffolds `codegen/generators/` **empty**, a config with
+    `generators: []`, and no dependencies. `dbImport` and the throwing `src/db.ts` stub are
+    gone with it: both existed only because the scaffold wired `routesFile()`, whose output
+    emits `import { db } from …`. `dbImport` is now a declared `configKey` on the `routes`
+    catalog entry, reported by `meta eject routes` to the adopter who chose routes.
+  - **C# / Python** — `--generators` is REQUIRED; a run that names none is a usage error
+    and writes nothing. `verify --codegen` re-runs the SELECTION, so with none named it
+    reports that there is nothing to check rather than regenerating a suite the project
+    never ran. Python's `verify` gains `--generators`, matching C#.
+
+- **`meta gen --list` is now the generator CATALOG, and `--probe` answers it against your
+  own model.** `--list --format json` emits one document per generator: its `layer`,
+  `framework`, what it emits, what it `requires`, the consolidated install set, the config
+  keys it reads, and whether this project already owns a copy. `--probe` constructs every
+  generator and dry-runs it against the loaded model, reporting how many files each would
+  emit — so `output-parser: 3, callable: 0, requirement-tests: 7` replaces a category
+  label, and cannot go stale, because it runs the generators rather than describing them.
+
+- **`meta eject` takes many names and reports one consolidated install set.** A real
+  selection is several generators, and three separate invocations produced three separate
+  install lines for the same package. `--format json` carries, per file, the import line
+  and the entry to wire, plus one install set with third-party ranges read from the runtime
+  package's own `peerDependencies`. An unknown name refuses the whole call before writing
+  anything.
+
+### Added
+
+- **`layer` joins the cross-port generator manifest** — `model` / `persistence` / `api` /
+  `client` / `docs` / `capability` — gated by all five ports' registry-conformance tests
+  exactly as `tier` is. Five TypeScript generators that were in no manifest at all (`form`,
+  `hooks`, `grid`, `grid-hook`, `requirement-tests`) join it too, so the catalog describes
+  34 generators where the manifest described 29.
+
+- **`meta gen` audits the selection.** Two self-extinguishing warnings, neither a build
+  failure: a wired generator whose `requires` are not wired (its output will import a
+  module nothing emits), and two `api`-layer generators declaring different frameworks
+  (`routes` + `routes-hono` emit to different paths, so nothing conflicts and two complete
+  HTTP surfaces appear silently). There is deliberately no equivalent rule on the `client`
+  layer: `@metaobjectsdev/tanstack` peers on `react`, so a form generator plus the TanStack
+  hook/grid generators is the intended composition.
+
 ### Fixed
 
 - **Generated files no longer point at a plugin point that does not exist ([#367]).**

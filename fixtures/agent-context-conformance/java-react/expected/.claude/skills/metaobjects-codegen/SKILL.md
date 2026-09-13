@@ -124,19 +124,59 @@ implementing the port's generator interface elsewhere. Your language reference h
 mechanism; see also "The commands and config keys that implement the steps above differ
 per port" below.
 
-## Selecting generators by stable name
+## Selecting generators — NOTHING is generated until you choose it
 
-Codegen is a set of named generators you opt into. Each generator has a **stable
-name** (kebab-case) that surfaces in diagnostics — reference generators by that
-name, never by inlining what they emit. Typical generators cover: the entity
-type/model, the DB table/schema, query/finder helpers, REST routes, client
-form/grid/hook artifacts, filter + sort allowlists, payload value-objects, and
-parsers for a responding `template.prompt` (one carrying `@responseRef`). You
-enable the subset your project needs; an abstract entity never emits
-instance/write artifacts regardless.
+**`meta init` wires no generators, and no port ships a default suite.** A fresh
+scaffold has `generators: []` and an empty `codegen/generators/`; `--generators` is
+required on the C# and Python CLIs; Java has never had a default set. Choosing what an
+application needs is a judgment over its purpose and stack, and the tool's job is to
+make that choice cheap and truthful, not to make it for you.
 
-Per-entity opt-outs exist (e.g. skipping client-side artifacts for a given
-entity) and are set as attributes on the entity in metadata, not in code.
+Each generator has a **stable name** (kebab-case) that is the same in every port and
+surfaces in diagnostics — reference generators by that name, never by inlining what
+they emit.
+
+### The procedure
+
+1. **Read the app's purpose and stack.** What is it for; what does it already use.
+2. **`meta gen --list --format json --probe`** — the catalog. Every generator with its
+   `layer`, `framework`, what it emits, what it requires, what it costs to install,
+   and — with `--probe`, which constructs each generator and dry-runs it against YOUR
+   model — how many files each would actually emit.
+3. **Choose by `layer`.** Satisfy every `requires`. Take what `wouldEmit > 0` says your
+   model is already asking for.
+   - Pick **ONE** framework on the `api` layer: `routes` and `routes-hono` are
+     alternatives, and wiring both silently produces two complete HTTP surfaces.
+   - Do **NOT** apply that rule to `client`. `@metaobjectsdev/tanstack` peers on
+     `react`, so a form generator plus the TanStack hook/grid generators is the
+     intended composition, not a conflict.
+4. **`meta eject <names...> --format json`** — copies each into `codegen/generators/`
+   (yours to edit), and reports the import line, the entry to add to `generators`, one
+   consolidated install command, and any config keys those generators read.
+5. **`meta gen`** — read its warnings, then typecheck.
+
+### The six layers, and what picks them
+
+| layer | what it is | chosen by |
+|---|---|---|
+| `model` | entity/DTO/value-object modules and the constants beside them | app shape |
+| `persistence` | how rows are read and written | app shape |
+| `api` | the HTTP surface — pick one framework | app shape |
+| `client` | the browser tier | app shape |
+| `docs` | on by default; the canonical door is `meta docs` | — |
+| `capability` | prompts, parsers, payloads, traces, test stubs | **`--probe`** |
+
+At intent level: a **headless data service** is `model` + `persistence`; an **HTTP API**
+adds `api` with one framework; an **admin UI** adds `client`. Members come from the live
+catalog, never from a list in prose — a list here would go stale the day a generator is
+added, and `--probe` cannot, because it runs the generators rather than describing them.
+
+`capability` looking like one large bucket is the point: you are not meant to choose
+inside it by reading labels. You declared a `template.prompt`, or a
+`requirement.functional`, or a stored-proc source — `--probe` reports the file count
+that follows, for your model.
+
+An abstract entity never emits instance/write artifacts regardless of what is wired.
 
 ## A dependency's metadata is load-only by default — codegen excludes it
 
@@ -239,8 +279,9 @@ the data access too.
     **`@unmanaged: true`** (view or table); migrate/verify then never touch it.
     `@sql` and `@unmanaged` are mutually exclusive.
 
-`meta gen --list` prints every generator by stable name; the `generators` array in
-`metaobjects.config.ts` is where you opt each one in or out.
+`meta gen --list` prints every generator by stable name (add `--probe` for a file count
+against your own model); the `generators` array in `metaobjects.config.ts` is where you
+opt each one in. It starts empty.
 
 ### Adopting onto existing code — make codegen match the code, not the code match codegen
 

@@ -50,8 +50,12 @@ work*. A release can move one without the other, and most releases move neither.
 
 - **The CLI command surface** — `init` / `gen` / `verify` and their *documented*
   flags, per port (`meta`, `dotnet meta`, `mvn metaobjects:*`, `metaobjects`).
-- **The scaffold-and-own contract** — what `meta init` scaffolds and the `Generator`
-  interface owned templates implement.
+- **The scaffold-and-own contract** — the *layout and the interfaces*:
+  `codegen/generators/`, the local-import config shape, `.metaobjects/`, and the
+  `Generator` interface owned templates implement. **Not** *which* generators a fresh
+  scaffold wires: codegen is opt-in and the scaffolded selection is empty by design
+  (ADR-0034 Amendment 2), so changing what `meta init` starts you with changes nothing
+  for a project that already exists.
 
 > **What this costs you, stated plainly.** Post-1.0 the caret rule stops being a gate —
 > `^1.0.0` accepts `1.1.0` — so a metamodel change can reach you on a routine update

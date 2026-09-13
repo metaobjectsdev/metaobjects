@@ -394,7 +394,8 @@ dotnet meta verify --codegen ./metadata --out ./Generated --template-root ./temp
 Each spec entry derives the neutral template data dict for its scope
 (`MetaObjects.Codegen.TemplateCodegen.TemplateData`) and names each file via the
 `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The named generators
-are **appended** to the default suite and gated byte-identical against the shared
+are **appended** to the `--generators` selection (there is no default suite) and gated
+byte-identical against the shared
 `fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has
 no output-target concept); a bad template ref or wrong `--template-root` surfaces as a
 clean error, not a stack trace. For output to be regenerable, the **template** must emit

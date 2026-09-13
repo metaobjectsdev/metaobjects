@@ -32,9 +32,13 @@ npm install --save-dev @metaobjectsdev/codegen-ts-react @metaobjectsdev/codegen-
 Codegen is wired in a type-checked TS config at the project root. `defineConfig`
 comes from `@metaobjectsdev/cli`; the generators come from their packages.
 
+`meta init` scaffolds this file with **`generators: []`** — nothing is generated until
+you choose it. Each import below appears once you `meta eject` that generator, which
+prints the exact line to add.
+
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+// Owned generators — copied in by `meta eject` (ADR-0034 scaffold-and-own).
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";
@@ -83,13 +87,19 @@ PROJECT ROOT that CONTAINS the metadata — never the metadata directory itself.
 
 ## The generators
 
-Server-side, framework-neutral. The first four are **scaffolded into your repo** by
-`meta init` and imported from `./codegen/generators/*` (ADR-0034) — 1.0 REMOVED their
-`@metaobjectsdev/codegen-ts/generators` export, so an owned copy is the only path. The
-engine primitives come from the package main entry, `@metaobjectsdev/codegen-ts`. The
-`/generators` subpath itself is NOT deprecated: it is the supported home of the generators
-with no ownable copy — `promptRender`, `outputParser`, `outputPrompt`, `extractor`,
-`renderHelper`, `traceHelperFile`, `routesFileHono`, `namesFile`, `callableFile`.
+Server-side, framework-neutral. **None is wired by default** — `meta init` writes
+`generators: []` and an empty `codegen/generators/`. `meta eject <name>...` copies the
+ownable ones into your repo, imported from `./codegen/generators/*` (ADR-0034); 1.0
+REMOVED their `@metaobjectsdev/codegen-ts/generators` export, so an owned copy is the only
+path for those. The engine primitives come from the package main entry,
+`@metaobjectsdev/codegen-ts`. The `/generators` subpath itself is NOT deprecated: it is the
+supported home of the generators with no ownable copy — `promptRender`, `outputParser`,
+`outputPrompt`, `extractor`, `renderHelper`, `traceHelperFile`, `namesFile`,
+`callableFile`, `requirementTests`.
+
+The table below is a per-emission reference, NOT the selection surface. Select with
+`meta gen --list --format json --probe`, which is generated from the live registry and
+reports a file count for your own model; a table in a document cannot do either.
 
 | Generator | Emits per entity |
 |---|---|

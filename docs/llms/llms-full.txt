@@ -250,12 +250,16 @@ metadata.root:
 
 The project config (`metaobjects.config.ts`) wires up the generators and target settings:
 
+Codegen is **opt-in**: `meta init` writes `generators: []`, and no port ships a default
+suite. `meta gen --list --probe` is the catalog — it runs every generator against your
+model and reports how many files each would emit — and `meta eject <name>...` copies the
+ones you choose into your repo, printing the import line and the entry to add.
+
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own) — these files are
-// copied into YOUR repo and are yours to edit. The default emit targets Fastify on Node;
-// retarget it by editing these, not by switching tools. `meta eject <name>` takes ownership
-// of any other generator.
+// Owned generators — copied in by `meta eject` (ADR-0034 scaffold-and-own). These files
+// are in YOUR repo and are yours to edit. The default emit targets Fastify on Node;
+// retarget it by editing these, not by switching tools.
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { routesFile } from "./codegen/generators/routes.js";
@@ -274,10 +278,16 @@ Run the CLI:
 
 ```bash
 # Scaffold metaobjects/, .metaobjects/, metaobjects.config.ts, AND the agent context
-# (.metaobjects/AGENTS.md + CLAUDE.md + .claude/skills/metaobjects-*)
+# (.metaobjects/AGENTS.md + CLAUDE.md + .claude/skills/metaobjects-*). Wires no generators.
 $ meta init
 
-# Generate code (entities + queries + routes + barrel per config)
+# The catalog: every generator by layer, with a file count for YOUR model
+$ meta gen --list --probe
+
+# Take the ones you want — copies them into codegen/generators/ and says what to wire
+$ meta eject entity queries routes barrel
+
+# Generate code from exactly what you wired
 $ meta gen
 
 # Optional positional filter

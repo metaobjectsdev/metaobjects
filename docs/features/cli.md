@@ -275,7 +275,8 @@ libraries: [ai]                  # optional; MetaObjects-shipped library package
 targets:
   api:
     outDir: src/generated/api
-    generators: [entity, routes] # optional; stable names from `metaobjects gen --list`; omit = default suite
+    generators: [entity, routes] # REQUIRED; stable names from `metaobjects gen --list`.
+                                 # There is no default suite — see ADR-0034 Amendment 2.
   admin:
     outDir: src/generated/admin
     entities: [Author, Book]     # optional allowlist; omit = every entity
