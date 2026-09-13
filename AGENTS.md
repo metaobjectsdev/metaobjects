@@ -20,7 +20,7 @@ The first four ship per-language today across the five ports (TS / C# / Java / P
 
 ## Status
 
-_Last refreshed 2026-09-12._
+_Last refreshed 2026-09-13._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
