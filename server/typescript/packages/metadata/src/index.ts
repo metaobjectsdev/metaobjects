@@ -116,6 +116,11 @@ export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
 export { findReferenceBetween } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";
+export {
+  referenceCandidatesFor,
+  referencePairingKeys,
+  resolveRelationshipReference,
+} from "./core/relationship/resolve-relationship-reference.js";
 // FR-017 — M:N junction FK derivation (hetero / directed-self-join / symmetric)
 export { deriveM2MFields, M2MDerivationError } from "./core/relationship/derive-m2m-fields.js";
 export type { M2MFields } from "./core/relationship/derive-m2m-fields.js";
