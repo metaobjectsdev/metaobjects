@@ -84,3 +84,21 @@ test("symmetric self-join (@symmetric) is flagged symmetric", async () => {
   expect(e!.through).toBe("acme::shop::CustomerFriend");
   expect(e!.symmetric).toBe(true);
 });
+
+// #368 — Match declares TWO identity.reference children onto the SAME target
+// (Team), each backed by its own named `@cardinality: "one"` relationship
+// (homeTeam/awayTeam). Before fix-round-1, the belongs-to dedup pass used
+// `.find()` to guess which reference a relationship navigates, so BOTH
+// relationships resolved to the same (first) candidate — the second reference
+// (awayTeamId) was never marked covered and rendered an extra, redundant "fk"
+// edge alongside its own "relationship" edge: 3 edges where 2 were correct.
+// Kept in its own fixture dir (not acme/) so it never has to be reconciled
+// against golden.test.ts's full-site snapshot.
+test("two references to the same target render exactly one edge per relationship, no redundant fk edge (#368)", async () => {
+  const model = await loadModel([join(FIX, "repro368")]);
+  const g = new LinkGraph(model);
+  const toTeam = g.refsFrom("repro368::Match").filter((r) => r.to === "repro368::Team");
+  expect(toTeam.map((r) => r.via).sort()).toEqual(["awayTeam", "homeTeam"]);
+  expect(toTeam.every((r) => r.kind === "relationship")).toBe(true);
+  expect(toTeam.length).toBe(2);
+});
