@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::iam",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "overlay": true,
+          "children": [
+            { "source.rdb": { "@table": "iam_user", "@role": "primary" } },
+            { "index.lookup": { "name": "ixUsername", "@fields": ["username"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

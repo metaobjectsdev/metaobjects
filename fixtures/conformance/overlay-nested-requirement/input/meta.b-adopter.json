@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "acme::iam",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "accessControl",
+          "overlay": true,
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "grants",
+                "overlay": true,
+                "children": [
+                  {
+                    "requirement.functional": {
+                      "name": "scopedGrantRequiresMembership",
+                      "overlay": true,
+                      "@status": "partial",
+                      "@disposition": "accepted",
+                      "@notes": "The schema cannot express it; enforced in the service layer."
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

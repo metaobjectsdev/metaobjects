@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "acme::iam",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "accessControl",
+          "@level": 2,
+          "@status": "live",
+          "@statement": "Who may do what is answered from stored grants, never from a name compared to a literal in code",
+          "@counterexample": "A superuser recognised by username",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "grants",
+                "@level": 3,
+                "@status": "live",
+                "@statement": "A role is granted to a user either system-wide or within one group",
+                "@counterexample": "A grant that cannot say where it applies",
+                "children": [
+                  {
+                    "requirement.functional": {
+                      "name": "scopedGrantRequiresMembership",
+                      "@level": 4,
+                      "@status": "live",
+                      "@statement": "A role granted within a group is held only by a member of that group",
+                      "@counterexample": "A scoped grant naming a user who never joined the group"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
