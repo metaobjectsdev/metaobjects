@@ -29,6 +29,10 @@ export const reactGeneratorRegistry: Record<string, GeneratorRegistryEntry> = {
     // as a peer, so form (react) + hooks/grid (tanstack) is the intended composition,
     // NOT a conflict. Framework exclusivity is advisory and only on the `api` layer.
     framework: "react",
+    requires: ["entity"],
+    runtimePackages: ["@metaobjectsdev/react"],
+    runtimePeers: ["react", "react-hook-form"],
+    configKeys: ["extStyle", "clientDirective"],
     ejectable: ejectable("form"),
   },
 };

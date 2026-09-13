@@ -23,6 +23,10 @@ export const tanstackGeneratorRegistry: Record<string, GeneratorRegistryEntry> =
     factory: () => tanstackQuery(),
     options: "filter?, target?",
     framework: "tanstack",
+    requires: ["entity"],
+    runtimePackages: ["@metaobjectsdev/runtime-web", "@metaobjectsdev/tanstack"],
+    runtimePeers: ["@tanstack/react-query"],
+    configKeys: ["extStyle", "clientDirective"],
     ejectable: ejectable("hooks"),
   },
   grid: {
@@ -35,6 +39,9 @@ export const tanstackGeneratorRegistry: Record<string, GeneratorRegistryEntry> =
     factory: () => tanstackGrid(),
     options: "filter?, tphSubtypeGrids?, target?",
     framework: "tanstack",
+    requires: ["entity"],
+    runtimePeers: ["@tanstack/react-table"],
+    configKeys: ["extStyle", "clientDirective"],
     ejectable: ejectable("grid"),
   },
   "grid-hook": {
@@ -47,6 +54,14 @@ export const tanstackGeneratorRegistry: Record<string, GeneratorRegistryEntry> =
     factory: () => tanstackGridHook(),
     options: "filter?, tphSubtypeGrids?, target?",
     framework: "tanstack",
+    // `grid` is here because the emitted hook imports the columns module's filter
+    // PRESET constants — an edge that only exists when a layout.dataGrid declares a
+    // `filter`. Derived, not assumed: the probe fixture declares one precisely so this
+    // edge is visible to the gate rather than left to prose.
+    requires: ["entity", "grid", "hooks"],
+    runtimePackages: ["@metaobjectsdev/runtime-web", "@metaobjectsdev/tanstack"],
+    runtimePeers: ["@tanstack/react-query", "@tanstack/react-table", "react"],
+    configKeys: ["extStyle", "clientDirective"],
     ejectable: ejectable("grid-hook"),
   },
 };

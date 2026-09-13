@@ -92,15 +92,16 @@ export function installSetFor(entries: readonly GeneratorRegistryEntry[]): Insta
     const pkg = packageOf(entry.name);
     if (pkg !== undefined) dev.add(spec(pkg, `^${version}`));
 
-    if (entry.runtimePackage !== undefined) {
-      runtime.add(spec(entry.runtimePackage, `^${version}`));
-    }
+    for (const rt of entry.runtimePackages ?? []) runtime.add(spec(rt, `^${version}`));
+
     if (entry.runtimePeers !== undefined && entry.runtimePeers.length > 0) {
-      // Ranges come from whichever runtime package declares these as peers. A generator
-      // with third-party peers but no runtime package of its own has none to read, so
-      // its peers are named unpinned — honest, and better than a made-up bound.
-      const ranges =
-        entry.runtimePackage !== undefined ? peerRangesOf(entry.runtimePackage) : {};
+      // Ranges come from whichever runtime package declares these as peers — the union
+      // over this generator's runtimes, since a generator emitting against two of them
+      // may take a peer from either. A generator with third-party peers but no runtime
+      // package of its own has none to read, so its peers are named UNPINNED: honest,
+      // and better than a made-up bound.
+      const ranges: Record<string, string> = {};
+      for (const rt of entry.runtimePackages ?? []) Object.assign(ranges, peerRangesOf(rt));
       for (const peer of entry.runtimePeers) runtime.add(spec(peer, ranges[peer]));
     }
   }

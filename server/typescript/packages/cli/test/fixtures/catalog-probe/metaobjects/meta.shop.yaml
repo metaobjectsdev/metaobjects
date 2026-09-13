@@ -24,12 +24,19 @@ metadata:
           - field.boolean: { name: active, filterable: true }
           - identity.primary: { name: pk, fields: [id], generation: increment }
           - identity.secondary: { name: uqEmail, fields: [email] }
-          # grid / grid-hook emit only for an entity that DECLARES a data grid.
+          # grid / grid-hook emit only for an entity that DECLARES a data grid. The
+          # `filter` PRESET is load-bearing here and not decoration: the grid-hook only
+          # imports the columns module when a preset exists, so without one the
+          # grid-hook → grid dependency edge the requires gate is supposed to derive
+          # would never appear, and the gate would certify a declaration of `[]`.
           - layout.dataGrid:
               name: default
               columns: [email, displayName, active]
               defaultSortField: email
               pageSize: 25
+              filterable: true
+              filter:
+                active: true
 
     - object.entity:
         name: Order

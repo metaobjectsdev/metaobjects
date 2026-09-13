@@ -117,12 +117,21 @@ export interface GeneratorRegistryEntry {
    * cannot ship claiming it depends on nothing.
    */
   requires?: readonly string[];
-  /** The `@metaobjectsdev` runtime package the EMITTED code imports, if any. */
-  runtimePackage?: string;
+  /**
+   * The `@metaobjectsdev` runtime packages the EMITTED code imports.
+   *
+   * PLURAL, against the design's first sketch, because the emitted code is: an
+   * `output-parser` module imports `@metaobjectsdev/metadata`, `/render` AND
+   * `/runtime-ts`, and a `hooks` module imports `/runtime-web` and `/tanstack`. A
+   * singular field would have forced two of the three to go undeclared, which is the
+   * exact under-declaration the gate exists to catch. Resolved, not trusted — the
+   * emitted files are read back and every `@metaobjectsdev` import must appear here.
+   */
+  runtimePackages?: readonly string[];
   /**
    * Third-party packages the EMITTED code imports.
    *
-   * Per generator rather than derived from {@link runtimePackage}, because
+   * Per generator rather than derived from {@link runtimePackages}, because
    * `@metaobjectsdev/runtime-ts`'s peers are a union (drizzle-orm, fastify, hono, kysely,
    * zod) — deriving per package would tell someone ejecting `entity` to install both
    * Fastify and Hono. Version RANGES are read from the runtime package's own
@@ -169,6 +178,11 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => entityFile(),
     options: "filter?, target?",
+    requires: [],
+    runtimePackages: ["@metaobjectsdev/runtime-ts"],
+    runtimePeers: ["drizzle-orm", "zod"],
+    configKeys: ["dialect", "extStyle", "outputLayout", "columnNamingStrategy",
+      "pluralizeCollections", "collectionNameOverrides", "providedEnumModule", "apiPrefix"],
     ejectable: ejectable("entity"),
   },
   names: {
@@ -179,6 +193,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => namesFile(),
     options: "filter?, target?",
+    configKeys: ["columnNamingStrategy"],
     ejectable: ejectable("names"),
   },
   barrel: {
@@ -189,6 +204,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => barrel(),
     options: "target?",
+    requires: ["entity"],
+    configKeys: ["extStyle"],
     ejectable: ejectable("barrel"),
   },
 
@@ -201,6 +218,9 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => queriesFile(),
     options: "filter?, target?",
+    requires: ["entity"],
+    runtimePeers: ["drizzle-orm"],
+    configKeys: ["dialect", "extStyle", "pluralizeCollections", "collectionNameOverrides"],
     ejectable: ejectable("queries"),
   },
 
@@ -214,6 +234,10 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => routesFile(),
     options: "filter?, target?",
     framework: "fastify",
+    requires: ["entity"],
+    runtimePackages: ["@metaobjectsdev/runtime-ts"],
+    runtimePeers: ["fastify"],
+    configKeys: ["dbImport", "apiPrefix", "dialect", "extStyle", "outputLayout", "columnNamingStrategy"],
     ejectable: ejectable("routes"),
   },
   "routes-hono": {
@@ -225,6 +249,10 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => routesFileHono(),
     options: "filter?, target?",
     framework: "hono",
+    requires: ["entity"],
+    runtimePackages: ["@metaobjectsdev/runtime-ts"],
+    runtimePeers: ["hono"],
+    configKeys: ["dbImport", "apiPrefix", "dialect", "extStyle"],
     ejectable: ejectable("routes-hono"),
   },
 
@@ -272,6 +300,9 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => callableFile(),
     options: "filter?, target?",
+    requires: ["entity"],
+    runtimePeers: ["drizzle-orm"],
+    configKeys: ["columnNamingStrategy"],
     ejectable: ejectable("callable"),
   },
   "prompt-render": {
@@ -282,6 +313,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => promptRender(),
     options: "filter?, target?",
+    runtimePackages: ["@metaobjectsdev/render"],
     ejectable: ejectable("prompt-render"),
   },
   "output-parser": {
@@ -292,6 +324,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => outputParser(),
     options: "filter?, target?",
+    runtimePackages: ["@metaobjectsdev/metadata", "@metaobjectsdev/render", "@metaobjectsdev/runtime-ts"],
+    runtimePeers: ["zod"],
     ejectable: ejectable("output-parser"),
   },
   extractor: {
@@ -302,6 +336,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => extractor(),
     options: "filter?, target?",
+    requires: ["entity", "output-parser"],
+    runtimePackages: ["@metaobjectsdev/metadata", "@metaobjectsdev/render"],
     ejectable: ejectable("extractor"),
   },
   "output-prompt": {
@@ -312,6 +348,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => outputPrompt(),
     options: "filter?, target?",
+    runtimePackages: ["@metaobjectsdev/render"],
     ejectable: ejectable("output-prompt"),
   },
   "render-helper": {
@@ -322,6 +359,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => renderHelper(),
     options: "filter?, target?",
+    runtimePackages: ["@metaobjectsdev/render"],
+    configKeys: ["extStyle"],
     ejectable: ejectable("render-helper"),
   },
   template: {
