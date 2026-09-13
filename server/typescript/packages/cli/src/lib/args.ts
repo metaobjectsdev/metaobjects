@@ -610,8 +610,14 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
 // ---------------------------------------------------------------------------
 
 export interface EjectFlags {
-  /** The generator name to eject; undefined when only --list was given. */
-  name: string | undefined;
+  /**
+   * The generator names to eject, in the order given. Empty when only --list was given.
+   *
+   * MANY, not one: choosing a client tier means `form hooks grid`, and three separate
+   * invocations produce three separate install lines for the same package. The
+   * consolidated install set is the point of taking them together.
+   */
+  names: string[];
   list: boolean;
   /** Overwrite an already-ejected file; default false — eject never clobbers. */
   force: boolean;
@@ -631,12 +637,22 @@ export function parseEjectArgs(argv: string[]): EjectFlags {
     allowPositionals: true,
   });
 
-  if (positionals.length > 1) {
-    throw new Error(`meta eject takes at most one generator name; got: ${positionals.join(", ")}`);
+  // `Set.add` returns the SET, which is always truthy — so the tempting
+  // `positionals.filter((n) => !seen.add(n))` never reports anything.
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  for (const n of positionals) {
+    if (seen.has(n)) duplicates.push(n);
+    else seen.add(n);
+  }
+  if (duplicates.length > 0) {
+    throw new Error(
+      `meta eject: repeated generator name(s): ${[...new Set(duplicates)].join(", ")}`,
+    );
   }
 
   return {
-    name: positionals[0],
+    names: positionals,
     list: !!values.list,
     force: !!values.force,
   };

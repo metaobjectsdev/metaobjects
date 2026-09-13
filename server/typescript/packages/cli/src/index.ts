@@ -17,7 +17,7 @@ const VERSION = cliVersion();
  * human text. It is named ONCE and used by both the warning below and the help
  * text above, so the two cannot drift apart.
  */
-const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types", "deps"];
+const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types", "deps", "eject"];
 
 const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 
@@ -195,15 +195,23 @@ limit on the machine-readable result.
 
 NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
 `,
-  eject: `meta eject — copy a reference generator into your repo so you own it
+  eject: `meta eject — copy reference generators into your repo so you own them
 
 USAGE:
-  meta eject <name>      Copy generator <name> into codegen/generators/<name>.ts
+  meta eject <name>...   Copy each generator into codegen/generators/<name>.ts
   meta eject --list      List every ejectable generator name, grouped by package
+
+Codegen is opt-in — \`meta init\` wires nothing — so this is the door every generator
+you run comes through. Take several at once: the install set is CONSOLIDATED, so
+\`meta eject form hooks grid\` prints one install line, not three. An unknown name
+refuses the whole call and copies nothing.
 
 FLAGS:
   --list                 List ejectable generators instead of copying one
   --force                Overwrite an already-ejected file (default: never clobber)
+  --format <toon|json|text>   Output format (global flag). The structured form carries
+                         each file's wire lines, the consolidated install set and the
+                         config keys the ejected generators read.
   --help, -h             Print this help
 
 \`meta init\` copies five generators (entity, queries, routes, barrel, names) into
@@ -596,7 +604,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     case "eject": {
       const { ejectCommand } = await import("./commands/eject.js");
-      return ejectCommand(rest, cwd);
+      return ejectCommand(rest, cwd, fmt);
     }
     case "deps": {
       const { depsCommand } = await import("./commands/deps.js");
