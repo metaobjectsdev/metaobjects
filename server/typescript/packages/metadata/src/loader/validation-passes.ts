@@ -1949,8 +1949,23 @@ export function validateDataGridFilterValues(root: MetaData): ParseError[] {
 //       (#368: it then names which of several identity.reference nodes onto
 //       the same target the relationship navigates).
 //
-// Own-relationships only: a relationship is validated on the entity that declares
-// it (matching the own-attrs policy of the other passes).
+// ADR-0039: resolving, not own-only (#368 fix round 3) — every rule above
+// validates a property of the relationship's OWN declaration (its attrs,
+// plus for rule (c) the @through target resolved against the root), so a
+// relationship inherited via extends must be validated wherever it's
+// visible, or a child entity that only SEES the relationship through
+// inheritance could carry a violation no pass ever examines. That makes an
+// inherited, UNMODIFIED relationship visited once per inheriting entity —
+// checked once below (keyed on the relationship node's own identity), not
+// once per entity, using the DECLARING entity (rel.parent) rather than
+// whichever entity's effective view got there first for every piece of
+// context a rule reads (message text, @through's package per ADR-0042, rule
+// (a)'s self-join comparison). That keeps each check's result independent of
+// which entity triggered it, which is what makes "checked once" both
+// sufficient and correct. An override replaces the node in place
+// (MetaData._effectiveChildren), so it is never the same object as what it
+// overrides and is never skipped against it — a genuinely different
+// declaration is always independently checked.
 // ---------------------------------------------------------------------------
 
 // The junction's reference view: the validator and the runtime/codegen FK
@@ -1978,14 +1993,36 @@ function _countJunctionReferences(junction: MetaData): number {
 
 export function validateRelationships(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
+  // #368 fix round 3 — the outer loop below is now resolving (obj.relationships()),
+  // so a relationship inherited unmodified by N entities is reached N times. Its
+  // own attrs never change based on who inherits it, so re-validating it more
+  // than once would report the identical finding N times — pure noise. Checked
+  // is keyed on the relationship NODE's own object identity: MetaData._effectiveChildren
+  // reuses the super's child object in place for an unmodified inherited child,
+  // so the same physical declaration IS the same object everywhere it's visible,
+  // while an override replaces it with a genuinely different object (correctly
+  // NOT skipped — a distinct declaration is a distinct finding).
+  const checked = new Set<MetaData>();
   // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
-    // ADR-0042 — a bare @through resolves in the declaring entity's package.
-    const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
-    // ADR-0039: own — a relationship is validated on the entity that DECLARES it
-    // (the M:N slim-vocabulary rules apply to own-declared relationships; its
-    // inheritable attrs are read resolving below).
-    for (const rel of obj.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP)) {
+    // ADR-0039: resolving — see the header comment above: rule (d) (like rule
+    // (e)) must see a relationship inherited via extends, not just this
+    // entity's own declarations. `checked` absorbs the resulting revisits.
+    for (const rel of (obj as MetaObject).relationships()) {
+      if (checked.has(rel)) continue;
+      checked.add(rel);
+
+      // Every rule below validates a property of the relationship's OWN
+      // declaration (its attrs, plus for rule (c) the @through target), so
+      // context — the entity name in messages, the package a bare @through
+      // resolves in (ADR-0042), and rule (a)'s self-join comparison — is
+      // always the entity that DECLARES `rel` (rel.parent), never `obj` (the
+      // entity whose effective view happened to reach it first). This keeps
+      // the check's result independent of iteration order/inheritance depth,
+      // which is what makes checking each node exactly once correct.
+      const declaringEntity = rel.parent ?? obj;
+      const referrerPkg = declaringEntity.package ?? declaringEntity.fileDefaultPackage ?? "";
+
       // ADR-0039: resolving — a relationship may inherit its M:N attrs via extends.
       const through = rel.attr(RELATIONSHIP_ATTR_THROUGH);
       const sourceRefField = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
@@ -2007,7 +2044,7 @@ export function validateRelationships(root: MetaData): ParseError[] {
         if (hasThrough) {
           errors.push(
             new ParseError(
-              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_THROUGH} but is not a M:N ` +
+              `relationship "${declaringEntity.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_THROUGH} but is not a M:N ` +
                 `relationship (requires @${RELATIONSHIP_ATTR_CARDINALITY}: "${CARDINALITY_MANY}").`,
               { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
             ),
@@ -2021,7 +2058,7 @@ export function validateRelationships(root: MetaData): ParseError[] {
         if (hasSourceRefField && cardinality !== CARDINALITY_ONE) {
           errors.push(
             new ParseError(
-              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.`,
+              `relationship "${declaringEntity.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.`,
               { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
             ),
           );
@@ -2029,7 +2066,7 @@ export function validateRelationships(root: MetaData): ParseError[] {
         if (symmetric) {
           errors.push(
             new ParseError(
-              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.`,
+              `relationship "${declaringEntity.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.`,
               { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
             ),
           );
@@ -2041,7 +2078,7 @@ export function validateRelationships(root: MetaData): ParseError[] {
       if (symmetric && hasSourceRefField) {
         errors.push(
           new ParseError(
-            `relationship "${obj.name}.${rel.name}" sets both @${RELATIONSHIP_ATTR_SYMMETRIC} and ` +
+            `relationship "${declaringEntity.name}.${rel.name}" sets both @${RELATIONSHIP_ATTR_SYMMETRIC} and ` +
               `@${RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.`,
             { code: "ERR_BAD_ATTR_VALUE", source: rel.source },
           ),
@@ -2053,12 +2090,13 @@ export function validateRelationships(root: MetaData): ParseError[] {
       // in this package is self, but an FQN "other::Widget" (a different same-short-
       // name entity) is NOT (comparing stripped short names would misclassify it).
       const isSelfJoin =
-        typeof objectRef === "string" && resolveObjectRef(root, objectRef, referrerPkg).node === obj;
+        typeof objectRef === "string" &&
+        resolveObjectRef(root, objectRef, referrerPkg).node === declaringEntity;
       if (symmetric && !isSelfJoin) {
         errors.push(
           new ParseError(
-            `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but @${RELATIONSHIP_ATTR_OBJECT_REF} ` +
-              `"${String(objectRef)}" is not the declaring entity "${obj.name}"; @${RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.`,
+            `relationship "${declaringEntity.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but @${RELATIONSHIP_ATTR_OBJECT_REF} ` +
+              `"${String(objectRef)}" is not the declaring entity "${declaringEntity.name}"; @${RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.`,
             { code: "ERR_BAD_ATTR_VALUE", source: rel.source },
           ),
         );
@@ -2069,8 +2107,8 @@ export function validateRelationships(root: MetaData): ParseError[] {
       if (!junction) {
         errors.push(
           new ParseError(
-            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" does not resolve to an entity.${didYouMeanHint(root, String(through))}`,
-            { code: "ERR_INVALID_RELATIONSHIP", source: resolvedSource(rel.source, `${obj.fqn()}::${rel.name}`, String(through)) },
+            `relationship "${declaringEntity.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" does not resolve to an entity.${didYouMeanHint(root, String(through))}`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: resolvedSource(rel.source, `${declaringEntity.fqn()}::${rel.name}`, String(through)) },
           ),
         );
         continue;
@@ -2082,7 +2120,7 @@ export function validateRelationships(root: MetaData): ParseError[] {
       if (junction.subType !== OBJECT_SUBTYPE_ENTITY) {
         errors.push(
           new ParseError(
-            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" resolves to ` +
+            `relationship "${declaringEntity.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" resolves to ` +
               `${junction.type}.${junction.subType}, not an entity — a junction is a persisted join table ` +
               `and must be object.entity.`,
             { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
@@ -2094,7 +2132,7 @@ export function validateRelationships(root: MetaData): ParseError[] {
       if (refCount !== 2) {
         errors.push(
           new ParseError(
-            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" must declare exactly two ` +
+            `relationship "${declaringEntity.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" must declare exactly two ` +
               `identity.reference children (one per FK side); found ${refCount}.`,
             { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
           ),
@@ -2107,7 +2145,7 @@ export function validateRelationships(root: MetaData): ParseError[] {
         if (!fkFields.includes(sourceRefField as string)) {
           errors.push(
             new ParseError(
-              `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "${sourceRefField}" does not match ` +
+              `relationship "${declaringEntity.name}.${rel.name}" @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "${sourceRefField}" does not match ` +
                 `any identity.reference FK field on junction "${through}". Available: ${fkFields.join(", ") || "(none)"}.`,
               { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
             ),

@@ -561,4 +561,42 @@ describe("FR-017 Rule (e) — #368 ambiguous 1:N reference resolution", () => {
     ] } });
     expect(errors).toHaveLength(0);
   });
+
+  // Fix round 3: validateRelationships (rule (d), the M:N slim-vocabulary
+  // pass) also switched to the resolving relationship set for ADR-0039
+  // compliance. Unlike rule (e), rule (d)'s checks read only the
+  // relationship's own attrs, so an inherited, UNMODIFIED relationship must
+  // be reported exactly once no matter how many entities inherit it — this
+  // is the dedup guard, not a "different entity, different finding" case.
+  test("an inherited rule-(d) violation is reported once, not once per inheriting entity (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Program", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "relationship.composition": { name: "program", "@objectRef": "Program",
+            "@cardinality": "one", "@through": "X" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "B", "extends": "A" } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+  });
+
+  test("an inherited rule-(d) violation stays a single error across several inheriting children (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Program", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "relationship.composition": { name: "program", "@objectRef": "Program",
+            "@cardinality": "one", "@through": "X" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "B", "extends": "A" } },
+      { "object.entity": { name: "C", "extends": "A" } },
+      { "object.entity": { name: "D", "extends": "A" } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+  });
 });
