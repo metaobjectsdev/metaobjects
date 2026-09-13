@@ -548,8 +548,19 @@ public class MetaDataLoader
             // Pass 14 (FR-017): M:N relationship slim-vocabulary validation —
             // symmetric-self-join-only / symmetric⊕sourceRefField (ERR_BAD_ATTR_VALUE);
             // junction-two-references / sourceRefField-match / M:N-attr-on-1:N
-            // (ERR_INVALID_RELATIONSHIP). Deferred-resolution (own-relationships only).
+            // (ERR_INVALID_RELATIONSHIP). Deferred-resolution, iterating the
+            // EFFECTIVE relationship set (own + inherited via extends), deduped by
+            // the relationship node's own identity (ADR-0039 / #368).
             errors.AddRange(ValidationPasses.ValidateRelationships(root));
+
+            // Rule (e) (#368) — registered alongside ValidateRelationships (the
+            // M:N slim-vocabulary pass, above): a @cardinality: one relationship
+            // must resolve to exactly one identity.reference candidate on the
+            // EFFECTIVE entity; ambiguity is a load error naming the candidates
+            // (ERR_INVALID_RELATIONSHIP). No dedupe — the candidate set is a
+            // property of the effective entity, so a parent and a child can both
+            // be genuinely, independently ambiguous.
+            errors.AddRange(ValidationPasses.ValidateOneSideReferenceResolution(root));
 
             // index.lookup @fields resolution — every index.lookup must name ≥1 field,
             // and each must exist in the entity's effective field set (ERR_INVALID_INDEX).

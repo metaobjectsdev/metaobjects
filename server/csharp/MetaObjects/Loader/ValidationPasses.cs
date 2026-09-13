@@ -10,6 +10,7 @@
 
 using System.Text.RegularExpressions;
 using MetaObjects.Core.Attr;
+using MetaObjects.Core.Relationship;
 using MetaObjects.Core.Requirement;
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Source;
@@ -3059,10 +3060,7 @@ public static class ValidationPasses
     // Pass 14 (FR-017): ValidateRelationships — M:N slim-vocabulary rules.
     //
     // Deferred-resolution validation (runs after all files load + extends:
-    // resolution, like origin paths), enforcing the cross-port M:N contract.
-    // Iterates OWN relationships (a relationship is validated on the entity that
-    // declares it — a declaration-structure walk), but reads each relationship's
-    // inheritable M:N attrs via the RESOLVING Attr accessor (ADR-0039; TS parity):
+    // resolution, like origin paths), enforcing the cross-port M:N contract:
     //
     //   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
     //       entity). Otherwise ERR_BAD_ATTR_VALUE.
@@ -3071,8 +3069,29 @@ public static class ValidationPasses
     //       must exist and declare exactly two identity.reference children;
     //       @sourceRefField (if present) must match one of those references' FK
     //       fields -> ERR_INVALID_RELATIONSHIP.
-    //   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
-    //       relationship (@cardinality != "many", or no @through) -> ERR_INVALID_RELATIONSHIP.
+    //   (d) @through / @symmetric are invalid on a non-M:N relationship
+    //       (@cardinality != "many", or no @through) -> ERR_INVALID_RELATIONSHIP.
+    //       @sourceRefField is also invalid there, EXCEPT on @cardinality: "one"
+    //       (#368: it then names which of several identity.reference nodes onto
+    //       the same target the relationship navigates).
+    //
+    // ADR-0039: resolving, not own-only (#368) — every rule above validates a
+    // property of the relationship's OWN declaration (its attrs, plus for rule
+    // (c) the @through target resolved against the root), so a relationship
+    // inherited via extends must be validated wherever it's visible, or a child
+    // entity that only SEES the relationship through inheritance could carry a
+    // violation no pass ever examines. That makes an inherited, UNMODIFIED
+    // relationship visited once per inheriting entity — checked once below
+    // (keyed on the relationship node's own identity), not once per entity,
+    // using the DECLARING entity (rel.Parent) rather than whichever entity's
+    // effective view got there first for every piece of context a rule reads
+    // (message text, @through's package per ADR-0042, rule (a)'s self-join
+    // comparison). That keeps each check's result independent of which entity
+    // triggered it, which is what makes "checked once" both sufficient and
+    // correct. An override replaces the node in place (effective-children), so
+    // it is never the same object as what it overrides and is never skipped
+    // against it — a genuinely different declaration is always independently
+    // checked.
     //
     // Ported from validateRelationships in
     // typescript/packages/metadata/src/loader/validation-passes.ts.
@@ -3108,15 +3127,45 @@ public static class ValidationPasses
     {
         var errors = new List<MetaError>();
 
-        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        // #368 — the inner loop below iterates the EFFECTIVE relationship set
+        // (obj.Relationships(), resolving), so a relationship inherited unmodified
+        // by N entities is reached N times. Its own attrs never change based on
+        // who inherits it, so re-validating it more than once would report the
+        // identical finding N times — pure noise. `checkedRels` is keyed on the
+        // relationship NODE's own object identity: effective-children reuses the
+        // super's child object in place for an unmodified inherited child, so the
+        // same physical declaration IS the same object everywhere it's visible,
+        // while an override replaces it with a genuinely different object
+        // (correctly NOT deduped — a distinct declaration is a distinct finding).
+        // Explicit ReferenceEqualityComparer — MetaData carries no Equals/
+        // GetHashCode override today, but identity-keyed dedupe must not
+        // silently degrade to value equality if one is added later.
+        var checkedRels = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+
+        // ADR-0039: root has no super; OwnChildren()==Children(), but resolving
+        // is still the correct default (mirrors the TS/Python root.children()).
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT).Cast<MetaObject>())
         {
-            // ADR-0042 — a bare @through / @objectRef resolves in the declaring entity's package.
-            string referrerPkg = NamingRefs.EffectivePackage(obj);
-            foreach (var rel in obj.OwnChildren().Where(c => c.Type == TYPE_RELATIONSHIP))
+            // ADR-0039: resolving — rule (d) (like rule (e)) must see a
+            // relationship inherited via extends, not just this entity's own
+            // declarations. `checkedRels` absorbs the resulting revisits.
+            foreach (var rel in obj.Relationships())
             {
-                // ADR-0039: resolving — a relationship may inherit its M:N attrs via extends
-                // (TS validation-passes.ts:1320-1324). Iterated via OwnChildren above (a rel is
-                // validated on the entity that declares it), but its attrs may still be inherited.
+                if (!checkedRels.Add(rel)) continue;
+
+                // Every rule below validates a property of the relationship's OWN
+                // declaration (its attrs, plus for rule (c) the @through target), so
+                // context — the entity name in messages, the package a bare @through
+                // resolves in (ADR-0042), and rule (a)'s self-join comparison — is
+                // always the entity that DECLARES `rel` (rel.Parent), never `obj`
+                // (the entity whose effective view happened to reach it first). This
+                // keeps the check's result independent of iteration order/
+                // inheritance depth, which is what makes checking each node exactly
+                // once correct.
+                var declaringEntity = rel.Parent ?? obj;
+                string referrerPkg = NamingRefs.EffectivePackage(declaringEntity);
+
+                // ADR-0039: resolving — a relationship may inherit its M:N attrs via extends.
                 var through = rel.Attr(RELATIONSHIP_ATTR_THROUGH);
                 var sourceRefField = rel.Attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
                 bool symmetric = rel.Attr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
@@ -3127,6 +3176,7 @@ public static class ValidationPasses
                 bool hasSourceRefField = sourceRefField is string srs && srs.Length > 0;
                 bool isMany = cardinality is string cs && cs == CARDINALITY_MANY;
                 bool isM2M = hasThrough && isMany;
+                bool isCardinalityOne = cardinality is string co && co == CARDINALITY_ONE;
 
                 // NOTE: @objectRef existence resolution moved to the validation registry
                 // (a declarative ReferenceDescriptor on relationship.* TypeDefinitions,
@@ -3138,22 +3188,28 @@ public static class ValidationPasses
                     if (hasThrough)
                     {
                         errors.Add(new MetaError(
-                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_THROUGH} but is not a M:N " +
+                            $"relationship \"{declaringEntity.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_THROUGH} but is not a M:N " +
                             $"relationship (requires @{RELATIONSHIP_ATTR_CARDINALITY}: \"{CARDINALITY_MANY}\").",
                             ErrorCode.ERR_INVALID_RELATIONSHIP,
                             Envelope: rel.Source));
                     }
-                    if (hasSourceRefField)
+                    // #368: @sourceRefField also disambiguates a `@cardinality: one`
+                    // relationship when the entity holds more than one
+                    // identity.reference onto the same target. Only the M:N
+                    // *junction* reading is rejected here; rule (e) —
+                    // ValidateOneSideReferenceResolution, below in this file —
+                    // checks that it names a real local reference.
+                    if (hasSourceRefField && !isCardinalityOne)
                     {
                         errors.Add(new MetaError(
-                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.",
+                            $"relationship \"{declaringEntity.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.",
                             ErrorCode.ERR_INVALID_RELATIONSHIP,
                             Envelope: rel.Source));
                     }
                     if (symmetric)
                     {
                         errors.Add(new MetaError(
-                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.",
+                            $"relationship \"{declaringEntity.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.",
                             ErrorCode.ERR_INVALID_RELATIONSHIP,
                             Envelope: rel.Source));
                     }
@@ -3164,7 +3220,7 @@ public static class ValidationPasses
                 if (symmetric && hasSourceRefField)
                 {
                     errors.Add(new MetaError(
-                        $"relationship \"{obj.Name}.{rel.Name}\" sets both @{RELATIONSHIP_ATTR_SYMMETRIC} and " +
+                        $"relationship \"{declaringEntity.Name}.{rel.Name}\" sets both @{RELATIONSHIP_ATTR_SYMMETRIC} and " +
                         $"@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.",
                         ErrorCode.ERR_BAD_ATTR_VALUE,
                         Envelope: rel.Source));
@@ -3175,12 +3231,12 @@ public static class ValidationPasses
                 // package is self, but an FQN "other::Widget" (a different same-short-name entity)
                 // is NOT (comparing stripped short names would misclassify it).
                 bool isSelfJoin = objectRef is string objRefStr &&
-                    ReferenceEquals(NamingRefs.ResolveObjectRef(root, objRefStr, referrerPkg), obj);
+                    ReferenceEquals(NamingRefs.ResolveObjectRef(root, objRefStr, referrerPkg), declaringEntity);
                 if (symmetric && !isSelfJoin)
                 {
                     errors.Add(new MetaError(
-                        $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but @{RELATIONSHIP_ATTR_OBJECT_REF} " +
-                        $"\"{objectRef}\" is not the declaring entity \"{obj.Name}\"; @{RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.",
+                        $"relationship \"{declaringEntity.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but @{RELATIONSHIP_ATTR_OBJECT_REF} " +
+                        $"\"{objectRef}\" is not the declaring entity \"{declaringEntity.Name}\"; @{RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.",
                         ErrorCode.ERR_BAD_ATTR_VALUE,
                         Envelope: rel.Source));
                 }
@@ -3191,9 +3247,9 @@ public static class ValidationPasses
                 if (junction is null)
                 {
                     errors.Add(new MetaError(
-                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" does not resolve to an entity.",
+                        $"relationship \"{declaringEntity.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" does not resolve to an entity.",
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
-                        Envelope: ResolvedSource.From(rel.Source, $"{obj.Fqn()}::{rel.Name}", (string)through!)));
+                        Envelope: ResolvedSource.From(rel.Source, $"{declaringEntity.Fqn()}::{rel.Name}", (string)through!)));
                     continue;
                 }
                 // A junction is a physical join table — it MUST be an object.entity. ADR-0046
@@ -3203,7 +3259,7 @@ public static class ValidationPasses
                 if (junction.SubType != OBJECT_SUBTYPE_ENTITY)
                 {
                     errors.Add(new MetaError(
-                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" resolves to " +
+                        $"relationship \"{declaringEntity.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" resolves to " +
                         $"{junction.Type}.{junction.SubType}, not an entity — a junction is a persisted join table " +
                         "and must be object.entity.",
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
@@ -3214,7 +3270,7 @@ public static class ValidationPasses
                 if (refCount != 2)
                 {
                     errors.Add(new MetaError(
-                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" must declare exactly two " +
+                        $"relationship \"{declaringEntity.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" must declare exactly two " +
                         $"identity.reference children (one per FK side); found {refCount}.",
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         Envelope: rel.Source));
@@ -3227,7 +3283,7 @@ public static class ValidationPasses
                     if (!fkFields.Contains((string)sourceRefField!, StringComparer.Ordinal))
                     {
                         errors.Add(new MetaError(
-                            $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} \"{sourceRefField}\" does not match " +
+                            $"relationship \"{declaringEntity.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} \"{sourceRefField}\" does not match " +
                             $"any identity.reference FK field on junction \"{through}\". Available: {(fkFields.Count > 0 ? string.Join(", ", fkFields) : "(none)")}.",
                             ErrorCode.ERR_INVALID_RELATIONSHIP,
                             Envelope: rel.Source));
@@ -3238,6 +3294,106 @@ public static class ValidationPasses
 
         return errors.AsReadOnly();
     }
+
+    // ---------------------------------------------------------------------------
+    // Rule (e) — #368: a `@cardinality: one` relationship must resolve to exactly
+    // one identity.reference. Two references onto the same target are
+    // indistinguishable from the relationship's @objectRef alone, so the resolver
+    // would silently emit the first one's FK column. ADR-0029 §5: ambiguity is a
+    // load error naming the candidates.
+    //
+    // Registered alongside ValidateRelationships (the M:N slim-vocabulary pass,
+    // above) — same deferred-resolution timing (after all files load + extends
+    // resolution).
+    //
+    // Scope differs deliberately from rule (d): rule (d) validates attrs that
+    // travel with the relationship's OWN declaration (@through/@symmetric/
+    // @sourceRefField), so own-scoping there is correct — those attrs don't
+    // change meaning depending on who inherits the relationship. Rule (e)
+    // instead validates whether THIS entity's reference set resolves the
+    // relationship uniquely, which is a property of the EFFECTIVE entity, not of
+    // wherever the relationship happens to be declared. A child entity that
+    // extends a clean parent and adds a second identity.reference onto the same
+    // target makes an INHERITED relationship ambiguous on the child even though
+    // the parent (and the relationship's own declaration) are untouched — own-
+    // scoping this pass would leave that case unchecked, and codegen/runtime
+    // (which resolve against the effective entity) would silently drop the
+    // relation. If a parent and a child are both genuinely ambiguous, both are
+    // reported — two entities are broken, not one error duplicated. (No dedupe
+    // here, unlike rule (d): rule (e)'s candidate set genuinely differs per entity.)
+    // ---------------------------------------------------------------------------
+
+    public static IReadOnlyList<MetaError> ValidateOneSideReferenceResolution(MetaRoot root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.Objects())
+        {
+            // ADR-0039: resolving — see the scope note above: rule (e) checks THIS
+            // entity's effective reference set against every relationship it can see,
+            // including one only inherited via extends.
+            foreach (var rel in obj.Relationships())
+            {
+                // ADR-0039: resolving — @cardinality/@objectRef may be inherited via extends.
+                if (rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) is not string cardinality || cardinality != CARDINALITY_ONE) continue;
+                if (rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF) is not string objectRef || objectRef.Length == 0) continue;
+
+                var candidates = RelationshipReferences.ReferenceCandidatesFor(obj, objectRef);
+
+                var sourceRefField = rel.Attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+                string? declared = sourceRefField is string srf && srf.Length > 0 ? srf : null;
+
+                if (declared is not null)
+                {
+                    // A declared @sourceRefField short-circuits the ladder at ANY
+                    // candidate count — checked independently of
+                    // RelationshipReferences.ResolveRelationshipReference, whose step 1
+                    // ("exactly one candidate -> that one") would otherwise silently
+                    // return the lone candidate even when it disagrees with the
+                    // declared field. The author named a specific FK; it must exist,
+                    // whether there are zero, one, or many candidates.
+                    bool matchesDeclared = candidates.Any(c => c.Fields.Count > 0 && c.Fields[0] == declared);
+                    if (matchesDeclared) continue;
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} " +
+                        $"\"{declared}\", which names no identity.reference targeting \"{objectRef}\". " +
+                        $"Candidates: {FormatReferenceCandidates(candidates)}.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        Envelope: rel.Source));
+                    continue;
+                }
+
+                // No @sourceRefField declared: ambiguity only exists with 2+
+                // candidates — ResolveRelationshipReference's name-pairing step
+                // (ladder step 3) decides.
+                if (candidates.Count <= 1) continue;
+                var resolved = RelationshipReferences.ResolveRelationshipReference(obj, rel.Name, objectRef);
+                if (resolved is not null) continue;
+
+                errors.Add(new MetaError(
+                    $"relationship \"{obj.Name}.{rel.Name}\" is ambiguous: \"{obj.Name}\" declares " +
+                    $"{candidates.Count} identity.reference nodes targeting \"{objectRef}\" and the " +
+                    "relationship name does not pair with exactly one. Candidates: " +
+                    $"{FormatReferenceCandidates(candidates)}. Set @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} to the FK field this " +
+                    "relationship navigates.",
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    Envelope: rel.Source));
+            }
+        }
+        return errors.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Render a candidate reference as <c>name(fkField)</c>, or <c>name(fieldA, fieldB)</c>
+    /// for a composite reference — so two composite references sharing a first column still
+    /// print distinguishably.
+    ///
+    /// NOTE: this is display only. Matching (both here and in
+    /// RelationshipReferences.ResolveRelationshipReference) still keys on the first field
+    /// alone — a composite reference cannot actually be disambiguated by @sourceRefField.
+    /// That's a documented limitation, not fixed by this rendering.
+    /// </summary>
+    private static string FormatReferenceCandidates(IReadOnlyList<MetaReferenceIdentity> candidates) =>
+        string.Join(", ", candidates.Select(c => $"{c.Name}({string.Join(", ", c.Fields)})"));
 
     // NOTE: identity.reference @references resolution moved to the validation registry
     // (a declarative ReferenceDescriptor with dottedFieldPath on the identity.reference
