@@ -740,13 +740,33 @@ removed, and the library never built it.
 > carry the layering; items 3–7 stand as written. Three items are added (1a, 2a,
 > 2b) and one is added to item 7.
 
-**SHIPPED so far (2026-09-13):** items **1, 1a, 1b, 2, 2a, 2b, 2c**. `library/iam/`
-(model + db + requirements) and the `library/ai` split are on disk and load clean in
-every port; `library.json` is embedded in all four; `librarySources` is layer-granular in
-TypeScript, Java, C# and Python; `libraries` reads from `.metaobjects/config.json`;
-`ERR_UNKNOWN_LIBRARY` is registered in four ports and the shared corpus list; the core
-layer's inertness is asserted per library rather than trusted. **Still to do: items 3, 4,
-5, 6, 7.**
+**PHASE 1 IS SHIPPED (2026-09-13): items 1, 1a, 1b, 2, 2a, 2b, 2c, 3, 4, 5, 6, 7.**
+
+Three findings from building the second half, recorded because each contradicts something
+this spec assumed:
+
+- **Item 2's "TS standalone-verify gate" was declared shipped and did not exist**, and
+  writing it found that **BOTH shipped libraries failed the requirement gate** — eleven
+  errors and two warnings, in metadata an adopter cannot fix. Every L4 in `ai` claimed
+  FIELDS (`ERR_REQUIREMENT_L4_NOT_OBJECT`), and both libraries wrote their concerns as
+  SIBLINGS of the L2 segment their own comments described them as children of, leaving
+  that L2 claiming nothing in its subtree. Loading clean and VERIFYING clean are different
+  claims; only the first was gated. Both ledgers are fixed as the model intends and the
+  gate now holds every library — and every future one, since it iterates
+  `knownLibraryTokens()` — to zero loader errors, zero loader warnings, zero gate
+  findings, zero lint findings, no unruled gaps, and every entity claimed by its own
+  ledger.
+- **§6's "latent bug" in `trace-helper` was the WHOLE behaviour, not a corner of it.** The
+  short-name compare meant the generator never actually keyed on the shipped base: every
+  trace fixture in three ports declared its own `LlmCallBase` and passed. Fixing the
+  anchor required pointing all of them at the real library — which is the bypass ADR-0024
+  named, closed rather than documented.
+- **Library files carried an ambiguous source id** — the file's basename on disk,
+  `library:<ref>.yaml` when embedded. The collision guard needs to tell a library's
+  contribution from an adopter's, and an ejected copy is named after the library's own
+  files, so the id is now stable in every build and in all four ports.
+
+§8's table stands as the record of what each item covered.
 
 | # | Phase 1 | scope |
 |---|---|---|
