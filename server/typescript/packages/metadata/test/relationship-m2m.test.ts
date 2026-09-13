@@ -444,5 +444,74 @@ describe("FR-017 Rule (e) — #368 ambiguous 1:N reference resolution", () => {
         { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "awayTeamId" } } ] } },
     ] } });
     expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("Match.homeTeam");
+    expect(message).toContain('"nonesuch"');
+    // awayTeam's @sourceRefField correctly names awayTeamRef's FK field — no error for it.
+    expect(message).not.toContain("Match.awayTeam");
+  });
+
+  // Fix round 1: a declared @sourceRefField naming nothing must error even
+  // with exactly one candidate — resolveRelationshipReference's ladder step 1
+  // ("exactly one candidate -> that one") would otherwise silently return
+  // that lone candidate regardless of whether it matches the declared field,
+  // emitting a join on the wrong column with no error at all.
+  test("sourceRefField naming nothing with a single candidate is a load error (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "awayTeamId" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("Match.awayTeam");
+    expect(message).toContain('"awayTeamId"');
+  });
+
+  test("sourceRefField correctly naming the single candidate loads clean (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "homeTeamId" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
+
+  // Fix round 1: two composite references sharing a first column must still
+  // print distinguishably in the candidate list (previously rendered as
+  // `fields[0]` only, so both showed as e.g. "aRef(tenantId), bRef(tenantId)").
+  // Matching still keys on fields[0] alone (documented limitation) — this is
+  // a message-rendering fix only.
+  test("composite reference candidates render their full field tuple (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "tenantId" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "aRef", "@fields": ["tenantId", "homeTeamId"], "@references": "Team" } },
+        { "identity.reference": { name: "bRef", "@fields": ["tenantId", "awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "winner", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("aRef(tenantId, homeTeamId)");
+    expect(message).toContain("bRef(tenantId, awayTeamId)");
   });
 });

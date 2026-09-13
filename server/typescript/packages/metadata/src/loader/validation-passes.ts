@@ -2142,32 +2142,64 @@ export function validateOneSideReferenceResolution(root: MetaRoot): ParseError[]
       if (typeof objectRef !== "string" || objectRef === "") continue;
 
       const candidates = referenceCandidatesFor(obj, objectRef);
-      if (candidates.length <= 1) continue;
 
       const sourceRefField = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
       const declared = typeof sourceRefField === "string" && sourceRefField !== ""
         ? sourceRefField
         : undefined;
-      const resolved = resolveRelationshipReference(obj, rel.name, objectRef, declared);
+
+      if (declared !== undefined) {
+        // A declared @sourceRefField short-circuits the ladder at ANY
+        // candidate count — checked independently of resolveRelationshipReference,
+        // whose step 1 ("exactly one candidate -> that one") would otherwise
+        // silently return the lone candidate even when it disagrees with the
+        // declared field. The author named a specific FK; it must exist,
+        // whether there are zero, one, or many candidates.
+        const matchesDeclared = candidates.some((c) => c.fields[0] === declared);
+        if (matchesDeclared) continue;
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} ` +
+              `"${declared}", which names no identity.reference targeting "${objectRef}". ` +
+              `Candidates: ${formatReferenceCandidates(candidates)}.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+          ),
+        );
+        continue;
+      }
+
+      // No @sourceRefField declared: ambiguity only exists with 2+ candidates —
+      // resolveRelationshipReference's name-pairing step (ladder step 3) decides.
+      if (candidates.length <= 1) continue;
+      const resolved = resolveRelationshipReference(obj, rel.name, objectRef);
       if (resolved) continue;
 
-      const listed = candidates.map((c) => `${c.name}(${c.fields[0]})`).join(", ");
       errors.push(
         new ParseError(
-          declared !== undefined
-            ? `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} ` +
-              `"${declared}", which names no identity.reference targeting "${objectRef}". ` +
-              `Candidates: ${listed}.`
-            : `relationship "${obj.name}.${rel.name}" is ambiguous: "${obj.name}" declares ` +
-              `${candidates.length} identity.reference nodes targeting "${objectRef}" and the ` +
-              `relationship name does not pair with exactly one. Candidates: ${listed}. ` +
-              `Set @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} to the FK field this relationship navigates.`,
+          `relationship "${obj.name}.${rel.name}" is ambiguous: "${obj.name}" declares ` +
+            `${candidates.length} identity.reference nodes targeting "${objectRef}" and the ` +
+            `relationship name does not pair with exactly one. Candidates: ${formatReferenceCandidates(candidates)}. ` +
+            `Set @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} to the FK field this relationship navigates.`,
           { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
         ),
       );
     }
   }
   return errors;
+}
+
+/**
+ * Render a candidate reference as `name(fkField)`, or `name(fieldA, fieldB)`
+ * for a composite reference — so two composite references sharing a first
+ * column (e.g. both starting `tenantId`) still print distinguishably.
+ *
+ * NOTE: this is display only. Matching (both here and in
+ * resolveRelationshipReference) still keys on `fields[0]` alone — a
+ * composite reference cannot actually be disambiguated by @sourceRefField.
+ * That's a documented limitation, not fixed by this rendering change.
+ */
+function formatReferenceCandidates(candidates: readonly MetaReferenceIdentity[]): string {
+  return candidates.map((c) => `${c.name}(${c.fields.join(", ")})`).join(", ");
 }
 
 // NOTE: identity.reference @references resolution moved to the validation registry

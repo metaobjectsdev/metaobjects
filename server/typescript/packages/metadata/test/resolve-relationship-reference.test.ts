@@ -125,7 +125,7 @@ describe("resolveRelationshipReference", () => {
     // error — it's the exact ambiguity the ladder returning undefined exists
     // to surface. The ladder function itself is unchanged; assert its return
     // value directly against the merged root rather than requiring a clean load.
-    expect(errors.map((e) => (e as { code?: string }).code)).toContain("ERR_INVALID_RELATIONSHIP");
+    expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
     const match = root.findObject("Match")!;
     expect(resolveRelationshipReference(match, "winner", "Team")).toBeUndefined();
   });
@@ -160,7 +160,7 @@ describe("resolveRelationshipReference", () => {
     // #368 rule (e) (validation-passes.ts) now flags this fixture as a load
     // error too — see the comment on "unpairable names return undefined
     // rather than guessing" above.
-    expect(errors.map((e) => (e as { code?: string }).code)).toContain("ERR_INVALID_RELATIONSHIP");
+    expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
     const match = root.findObject("Match")!;
     expect(resolveRelationshipReference(match, "valid", "Team")).toBeUndefined();
   });
