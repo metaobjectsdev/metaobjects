@@ -6,9 +6,11 @@ the cross-port contract: the same logical generator carries the same stable name
 in every port. This module is the discoverability + identity surface behind
 ``metaobjects gen --list`` and the ``--generators a,b`` selection path.
 
-It is ADDITIVE. The default suite in ``cli.py`` (``_default_generators``) and the
-``run_gen(..., generators=[...])`` factory-array path keep working unchanged — the
-registry powers ``--list`` and stable identity; it does not replace those paths.
+It is the ONLY name-based door. ADR-0034 Amendment 2 made codegen opt-in and DELETED
+the default suite this note used to name (``cli._default_generators``): a run that
+selects no generator generates nothing and raises ``NoGeneratorsSelectedError``. The
+``run_gen(..., generators=[...])`` factory-array path remains for in-process callers,
+where ``generators`` is likewise required.
 
 The registry's name set is conformance-tested for SET EQUALITY against the Python
 slice of the canonical manifest
@@ -45,10 +47,27 @@ from metaobjects.render.verify import InMemoryProvider
 
 GeneratorTier = str  # "native" | "neutral"
 
+#: The six layers a generator can belong to — the axis an adopter SELECTS BY, gated
+#: cross-port against the manifest exactly as ``tier`` is. Six, not ten: an earlier
+#: draft split ``capability`` four ways, each with ONE member, and a layer with one
+#: member does no grouping work. ``capability`` holds the generators the MODEL has
+#: already chosen (you declared a ``template.prompt``), which is why they are found
+#: by probing a real model rather than by browsing a taxonomy.
+GENERATOR_LAYERS: tuple[str, ...] = (
+    "model",
+    "persistence",
+    "api",
+    "client",
+    "docs",
+    "capability",
+)
+
+GeneratorLayer = str  # one of GENERATOR_LAYERS
+
 
 @dataclass(frozen=True)
 class GeneratorEntry:
-    """A registry entry: stable name + one-line description + tier + factory."""
+    """A registry entry: stable name + one-line description + tier + layer + factory."""
 
     #: Stable, cross-port-consistent id. Equals the registry map key.
     name: str
@@ -56,6 +75,8 @@ class GeneratorEntry:
     description: str
     #: "native" = recommended ``metaobjects gen`` suite; "neutral" = ``meta docs``-owned.
     tier: GeneratorTier
+    #: The selection axis — one of :data:`GENERATOR_LAYERS`. Gated cross-port.
+    layer: GeneratorLayer
     #: Constructs the generator with sensible defaults. Calling it must not throw.
     factory: Callable[[], Generator]
 
@@ -89,72 +110,84 @@ def _render_helper_default() -> Generator:
 
 
 #: Stable name -> GeneratorEntry. The 11 native generators whose manifest `ports`
-#: include `python` (ADR-0021 D3). Set-equality conformance-tested vs the manifest.
+#: include `python` (ADR-0021 D3). Set equality, tier AND layer are conformance-tested
+#: against the manifest.
 GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     "entity": GeneratorEntry(
         name="entity",
         description="Per-entity model/class — the entity module (table-backed or value object).",
         tier="native",
+        layer="model",
         factory=entity_model,
     ),
     "routes": GeneratorEntry(
         name="routes",
         description="Per-entity REST endpoint surface (controllers / routes / router).",
         tier="native",
+        layer="api",
         factory=router_generator,
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",
         description="Per-template tolerant output parser (recover-on-receipt).",
         tier="native",
+        layer="capability",
         factory=output_parser_generator,
     ),
     "output-prompt": GeneratorEntry(
         name="output-prompt",
         description="Per-template output-format prompt fragment generator.",
         tier="native",
+        layer="capability",
         factory=output_prompt_generator,
     ),
     "render-helper": GeneratorEntry(
         name="render-helper",
         description="Per-template.output render helper (document/email typed wrappers).",
         tier="native",
+        layer="capability",
         factory=_render_helper_default,
     ),
     "extractor": GeneratorEntry(
         name="extractor",
         description="Per-template strict typed extract<Name> helper (strict payload extraction).",
         tier="native",
+        layer="capability",
         factory=extractor_generator,
     ),
     "template": GeneratorEntry(
         name="template",
         description="Generic Mustache template primitive (walk + template -> files).",
         tier="native",
+        layer="capability",
         factory=_template_primitive,
     ),
     "filter-allowlist": GeneratorEntry(
         name="filter-allowlist",
         description="Per-entity REST filter allowlist (queryable-field guard).",
         tier="native",
+        layer="api",
         factory=filter_allowlist_generator,
     ),
     "names": GeneratorEntry(
         name="names",
         description="Per-entity physical database name constants (table/view name, schema, column names).",
         tier="native",
+        layer="model",
         factory=names_generator,
     ),
     "payload": GeneratorEntry(
         name="payload",
         description="Per-template payload value object (the strict payload type).",
         tier="native",
+        layer="capability",
         factory=payload_vo_generator,
     ),
     "trace-helper": GeneratorEntry(
         name="trace-helper",
         description="Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist).",
         tier="native",
+        layer="capability",
         factory=trace_helper_generator,
     ),
 }

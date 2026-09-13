@@ -396,13 +396,20 @@ public class NoMagicPhysicalNamesTests
     // hide a real escape the day one is spelled inside an accessor-shaped string.
 
     /// <summary>
-    /// The DEFAULT generator suite — the one `dotnet meta gen` runs — plus <c>callable</c>.
-    /// <c>callable</c> is opt-in (FR-015 niche) and so OUTSIDE the default set; a stored-proc
-    /// shape in the model reaches no generator unless it is wired in, and an unreached
-    /// generator is a gap this gate would otherwise be blind to, not a shape it covers.
+    /// EVERY registered generator, minus the two that cannot run from a bare fixture.
     /// </summary>
+    /// <remarks>
+    /// <para>This used to be the default suite plus <c>callable</c> — <c>callable</c>
+    /// added by hand because a stored-proc shape reaches no generator unless it is wired
+    /// in, and an unreached generator is a gap this gate would be blind to rather than a
+    /// shape it covers. Opt-in codegen removed the default suite, and that same reasoning
+    /// says what replaces it: the whole registry, so a NEW generator is covered the day it
+    /// is registered instead of the day someone remembers this list.</para>
+    /// <para><c>render-helper</c> needs a <c>--template-root</c> and <c>template</c> is a
+    /// primitive with no default walk; neither can emit here.</para>
+    /// </remarks>
     private static readonly IReadOnlyList<string> GeneratorNames =
-        [.. GenCommand.DefaultGeneratorNames, "callable"];
+        [.. GeneratorRegistry.Entries.Keys.Where(n => n is not ("render-helper" or "template"))];
 
     /// <summary>Run the generator suite over the fixture.</summary>
     private static IReadOnlyList<EmittedFile> Generate()

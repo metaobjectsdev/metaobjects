@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::iam",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            { "field.uuid": { "name": "id", "@required": true } },
+            { "field.string": { "name": "username", "@required": true, "@maxLength": 64 } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "uuid" } }
+          ]
+        }
+      }
+    ]
+  }
+}

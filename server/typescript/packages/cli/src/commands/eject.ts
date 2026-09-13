@@ -1,8 +1,19 @@
-// FR-040 §4.2(a) — `meta eject <generator>` takes ownership of any reference-template
-// generator, in any package, at any time after `meta init`. ADR-0034 scaffold-and-own
-// has `init` copy five of them eagerly (entity, queries, routes, barrel, names); this is the
-// SAME copy operation, generalised to every ejectable name and callable on demand — for
-// a generator you skipped at init time, or one a package gained since.
+// FR-040 §4.2(a) — `meta eject <generator>...` takes ownership of any reference-template
+// generator, in any package, at any time after `meta init`.
+//
+// Under opt-in codegen this is THE copy door: `meta init` scaffolds the layout and an
+// empty selection, so every generator an adopter runs arrives through here. It takes
+// MANY names, because a real selection is several — choosing a client tier is
+// `form hooks grid` — and three separate invocations produce three separate install
+// lines for the same package. The consolidated install set is the point.
+//
+// It REPORTS; it never edits `metaobjects.config.ts` or `package.json`. ADR-0034 §3(c)
+// already rules out a parameterized add/configure surface; the config is user-owned
+// TypeScript with comments, and automated mutation of a real user config is the
+// persistently fragile step even for well-resourced teams (Nuxt's `nuxi module add`
+// config-array edit has regressed across at least four filed issues). The primary
+// consumer performs two file edits and one install trivially when told exactly what
+// they are. `meta gen` plus `tsc` is the audit.
 import { mkdir, writeFile, stat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cliVersion } from "../lib/version.js";
@@ -13,6 +24,13 @@ import { parseEjectArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { declaredDependencyNames, readPackageManifest } from "../lib/package-manifest.js";
 import { compareOwnedCopy, type OwnedComparison } from "../lib/owned-copy.js";
+import { composeCatalog } from "../lib/catalog.js";
+import { installSetFor, type InstallSet } from "../lib/install-set.js";
+import { emitStructured, type OutputFormat } from "../lib/format.js";
+import {
+  ejectLibrary, ejectableLibraryNames, isLibraryName, libraryStaleness,
+  type LibraryEjectResult,
+} from "../lib/library-eject.js";
 
 // Mirrors `OWNED_GENERATORS_DIR` in init.ts's `writeOwnedGenerators` — same directory,
 // same never-clobber-without-consent contract. Kept as its own local constant rather
@@ -291,11 +309,209 @@ async function listOutput(cwd: string): Promise<string> {
     );
     lines.push("");
   }
+  // FR-043 — the shipped libraries, and how far this project's copies have drifted.
+  lines.push("Shipped libraries (copy one into your own sources and own it):");
+  for (const name of ejectableLibraryNames()) lines.push(`  ${name}`);
+  lines.push("");
+  const staleness = await libraryStaleness(cwd);
+  if (staleness.length > 0) {
+    lines.push("Libraries this project has already ejected:");
+    for (const row of staleness) {
+      if (row.verdict === "unreadable") {
+        lines.push(`  ${row.library}  [ejected — NOT COMPARED: ${row.reason}]`);
+      } else if (row.verdict === "identical") {
+        lines.push(`  ${row.library}  [ejected — identical to the shipped library]`);
+      } else {
+        lines.push(
+          `  ${row.library}  [ejected — DIFFERS: ${row.changed} node(s) changed, ` +
+            `${row.upstreamOnly} only upstream, ${row.localOnly} only yours]`,
+        );
+      }
+      lines.push(`      ${row.files.join(", ")}`);
+      if (row.stillOptedIn) {
+        lines.push(
+          `      STILL OPTED IN — remove "${row.library}" from \`libraries\`; the shipped ` +
+            "tree and your copy both load, and deletions in yours do nothing.",
+        );
+      }
+    }
+    lines.push("");
+    lines.push(
+      "  Compared through the canonical serializer in OWN mode, so re-indentation and " +
+        "key order never show up — only a declaration that actually changed. Nodes are " +
+        "matched by NAME, so renaming the package (which you may) does not read as drift.",
+    );
+    lines.push(
+      "  \"only upstream\" — the library gained or you deleted. \"only yours\" — you added.",
+    );
+    lines.push("");
+  }
+
   lines.push("Run: meta eject <name>");
   return lines.join("\n");
 }
 
-export async function ejectCommand(args: string[], cwd: string): Promise<number> {
+// ---------------------------------------------------------------------------
+// the command
+// ---------------------------------------------------------------------------
+
+/** One row of the `--format json` payload. */
+interface EjectedRow {
+  name: string;
+  path: string;
+  status: EjectResult["status"];
+  /** The two edits an adopter makes in `metaobjects.config.ts`. */
+  wire: { import: string; entry: string };
+  requires: readonly string[];
+}
+
+interface EjectPayload {
+  ejected: EjectedRow[];
+  install: InstallSet;
+  /** Config keys the ejected generators read — what to set beside `generators`. */
+  config: { keys: string[] };
+  /** FR-043 — libraries ejected in this call. Absent when none were. */
+  libraries?: LibraryEjectResult[];
+}
+
+/** The text report for one ejected library. */
+function reportLibrary(result: LibraryEjectResult): void {
+  const created = result.files.filter((f) => f.status !== "preserved");
+  const kept = result.files.filter((f) => f.status === "preserved");
+  if (created.length > 0) {
+    log.info(
+      `Ejected library "${result.library}" -> ${result.root}:`,
+    );
+    for (const f of created) log.info(`  ${f.path}  [${f.status}]`);
+  }
+  if (kept.length > 0) {
+    // Never clobber without consent — the same contract the generator path keeps, and
+    // the stakes are higher here: these files are the adopter's MODEL.
+    for (const f of kept) {
+      log.info(`  ${f.path} already exists — left untouched (--force replaces it).`);
+    }
+  }
+  log.info(
+    `You own this metadata now (FR-043 §3.4): rename the package, delete what you do ` +
+      `not need, change anything. Nothing regenerates it.`,
+  );
+  if (result.stillOptedIn.length > 0) {
+    // The one step that makes the eject complete. Said here AND stamped in every file,
+    // because the failure it prevents is silent in a way an adopter cannot diagnose.
+    log.info(
+      `NEXT: remove ${result.stillOptedIn.map((t) => `"${t}"`).join(", ")} from ` +
+        `\`libraries\` in .metaobjects/config.json. Left there, the shipped tree and your ` +
+        `copy BOTH load: additions take effect and deletions do NOT, because the library ` +
+        `still declares what you removed. The loader refuses it outright ` +
+        `(ERR_LIBRARY_PACKAGE_COLLISION) — your next command will fail until you do.`,
+    );
+  }
+  log.info("`meta eject --list` reports how far your copy has drifted from the shipped one.");
+}
+
+/**
+ * Validate EVERY name before writing ANY file.
+ *
+ * A partial eject is the worst outcome available here: a non-zero exit over a repo
+ * that is half-changed, where re-running the fixed command then reports the
+ * already-copied half as "preserved" and the adopter cannot tell what happened.
+ * Returns the unknown names, or an empty array.
+ */
+function unknownNames(names: readonly string[]): string[] {
+  return names.filter((n) => resolveSource(n) === undefined && !isLibraryName(n));
+}
+
+/** Print the per-name text report — every branch below predates this command taking
+ *  more than one name, and each was written against a real incident. */
+function reportOne(result: EjectResult, name: string): void {
+  if (result.status === "preserved") {
+    // "already exists — left untouched" was the whole message, and it answered the
+    // question nobody has. What an owner needs to know is whether their copy still
+    // matches what this CLI ships — the only way an owned generator's staleness is
+    // ever observable, since no gate compares the two.
+    if (result.comparison?.verdict === "identical") {
+      log.info(
+        `${result.path} already exists and is IDENTICAL to the ${result.packageName} ` +
+          "reference template — nothing to do.",
+      );
+    } else if (result.comparison?.verdict === "reformatted") {
+      // Worth its own branch: this is the state a project that formats what it owns
+      // is in permanently, and calling it DIFFERS taught every one of them to ignore
+      // the line that is supposed to warn them.
+      log.info(
+        `${result.path} already exists and has the SAME CONTENT as the ` +
+          `${result.packageName} reference template, in your own formatting — ` +
+          "nothing to do.",
+      );
+    } else {
+      log.info(
+        `${result.path} already exists and DIFFERS from the ${result.packageName} ` +
+          `reference template (${result.comparison?.referenceOnly ?? 0} line(s) behind it, ` +
+          `${result.comparison?.localOnly ?? 0} line(s) of your own) — left untouched.`,
+      );
+      log.info(
+        "  Formatting is not counted: both files are re-formatted and their lines " +
+          "sorted before comparing, so re-wrapping and import order never show up.",
+      );
+      log.info(
+        "  That difference is either YOUR customization or upstream having moved on. " +
+          "See which, before deciding:",
+      );
+      log.info(`    diff -u node_modules/${result.packageName}/src/reference/${name}.ts ${result.path}`);
+      log.info(
+        "  To take upstream changes AND keep your customization, three-way merge them — " +
+          "`git merge-file --diff3 <your copy> <the reference you ejected from> <the reference above>`. " +
+          "`--force` does NOT merge: it replaces the file and your customization with it.",
+      );
+    }
+  } else if (result.status === "replaced") {
+    // Never let a --force over a modified file be silent: this is the step that
+    // destroys an adopter's customization, and the file's own header is often the
+    // only record that the customization was deliberate.
+    log.info(
+      `Ejected "${name}" -> ${result.path}, REPLACING the file that was there` +
+        (result.comparison?.verdict === "differs"
+          ? ` and DISCARDING ${result.comparison.localOnly} line(s) it had that the reference does not.`
+          : result.comparison?.verdict === "reformatted"
+            ? " (its content was already the reference's — only your formatting is gone)."
+            : " (it was already identical to the reference)."),
+    );
+  } else {
+    log.info(`Ejected "${name}" -> ${result.path}. You own it now (ADR-0034 scaffold-and-own).`);
+  }
+
+  // REPLACE, never "paste". A generator reaches `generators: [...]` under ONE binding,
+  // so a reader told to "paste" gets a duplicate identifier at best — and at worst
+  // deletes nothing, keeps `formFile()` in the array bound to the PACKAGE import, and
+  // silently runs the packaged generator while editing the ejected file. That failure
+  // is invisible and is the exact one ejecting exists to prevent.
+  //
+  // But eject reads no config, so it cannot know WHICH of the three states this project
+  // is in, and stating one of them as fact is wrong in the other two. Name the goal,
+  // then the three branches; the reader knows which one they are looking at.
+  log.info(`In metaobjects.config.ts, "${result.exportName}" must resolve to this file:`);
+  log.info(`  ${result.importLine}`);
+  log.info(
+    `  - If it is imported from "${result.packageName}", REPLACE that import with the ` +
+    "line above. Adding a second one leaves `generators` bound to the PACKAGED " +
+    "generator, and your edits to this file do nothing.",
+  );
+  log.info(
+    "  - If it is already imported from ./codegen/generators/, it points here already " +
+    "— nothing to change.",
+  );
+  log.info(
+    `  - If ${result.exportName}() is not in \`generators\` yet, add the import above ` +
+    "AND the entry.",
+  );
+  for (const line of result.dependencyNotes) log.info(line);
+}
+
+export async function ejectCommand(
+  args: string[],
+  cwd: string,
+  fmt: OutputFormat = "text",
+): Promise<number> {
   let flags;
   try {
     flags = parseEjectArgs(args);
@@ -309,98 +525,96 @@ export async function ejectCommand(args: string[], cwd: string): Promise<number>
     return 0;
   }
 
-  if (flags.name === undefined) {
-    log.error("meta eject requires a generator name, or --list to see what's ejectable.");
+  if (flags.names.length === 0) {
+    log.error(
+      "meta eject requires at least one generator name, or --list to see what's ejectable. " +
+        "`meta gen --list --format json --probe` is the catalog, with a file count per " +
+        "generator for your own model.",
+    );
     return 2;
   }
 
+  // All-or-nothing on the names, BEFORE any write — see unknownNames().
+  const unknown = unknownNames(flags.names);
+  if (unknown.length > 0) {
+    log.error(
+      `unknown name(s): ${unknown.join(", ")}. Nothing was ejected. ` +
+        `Ejectable generators: ${ejectableNames().join(", ")}. ` +
+        `Shipped libraries: ${ejectableLibraryNames().join(", ")}. ` +
+        "Run `meta eject --list` to see them grouped.",
+    );
+    return 2;
+  }
+
+  const catalog = composeCatalog();
+  const rows: EjectedRow[] = [];
+  const libraries: LibraryEjectResult[] = [];
   try {
-    const result = await ejectGenerator({ cwd, name: flags.name, force: flags.force });
-    if (result.status === "preserved") {
-      // "already exists — left untouched" was the whole message, and it answered the
-      // question nobody has. What an owner needs to know is whether their copy still
-      // matches what this CLI ships — the only way an owned generator's staleness is
-      // ever observable, since no gate compares the two.
-      if (result.comparison?.verdict === "identical") {
-        log.info(
-          `${result.path} already exists and is IDENTICAL to the ${result.packageName} ` +
-            "reference template — nothing to do.",
-        );
-      } else if (result.comparison?.verdict === "reformatted") {
-        // Worth its own branch: this is the state a project that formats what it owns
-        // is in permanently, and calling it DIFFERS taught every one of them to ignore
-        // the line that is supposed to warn them.
-        log.info(
-          `${result.path} already exists and has the SAME CONTENT as the ` +
-            `${result.packageName} reference template, in your own formatting — ` +
-            "nothing to do.",
-        );
-      } else {
-        log.info(
-          `${result.path} already exists and DIFFERS from the ${result.packageName} ` +
-            `reference template (${result.comparison?.referenceOnly ?? 0} line(s) behind it, ` +
-            `${result.comparison?.localOnly ?? 0} line(s) of your own) — left untouched.`,
-        );
-        log.info(
-          "  Formatting is not counted: both files are re-formatted and their lines " +
-            "sorted before comparing, so re-wrapping and import order never show up.",
-        );
-        log.info(
-          "  That difference is either YOUR customization or upstream having moved on. " +
-            "See which, before deciding:",
-        );
-        log.info(`    diff -u node_modules/${result.packageName}/src/reference/${flags.name}.ts ${result.path}`);
-        log.info(
-          "  To take upstream changes AND keep your customization, three-way merge them — " +
-            "`git merge-file --diff3 <your copy> <the reference you ejected from> <the reference above>`. " +
-            "`--force` does NOT merge: it replaces the file and your customization with it.",
-        );
+    for (const name of flags.names) {
+      if (isLibraryName(name)) {
+        const lib = await ejectLibrary({ cwd, name, force: flags.force });
+        libraries.push(lib);
+        if (fmt === "text") reportLibrary(lib);
+        continue;
       }
-    } else if (result.status === "replaced") {
-      // Never let a --force over a modified file be silent: this is the step that
-      // destroys an adopter's customization, and the file's own header is often the
-      // only record that the customization was deliberate.
-      log.info(
-        `Ejected "${flags.name}" -> ${result.path}, REPLACING the file that was there` +
-          (result.comparison?.verdict === "differs"
-            ? ` and DISCARDING ${result.comparison.localOnly} line(s) it had that the reference does not.`
-            : result.comparison?.verdict === "reformatted"
-              ? " (its content was already the reference's — only your formatting is gone)."
-              : " (it was already identical to the reference)."),
-      );
-    } else {
-      log.info(`Ejected "${flags.name}" -> ${result.path}. You own it now (ADR-0034 scaffold-and-own).`);
+      const result = await ejectGenerator({ cwd, name, force: flags.force });
+      rows.push({
+        name,
+        path: result.path,
+        status: result.status,
+        wire: { import: result.importLine, entry: `${result.exportName}()` },
+        requires: catalog[name]?.requires ?? [],
+      });
+      if (fmt === "text") reportOne(result, name);
     }
-    // REPLACE, never "paste". A generator reaches `generators: [...]` under ONE binding,
-    // so a reader told to "paste" gets a duplicate identifier at best — and at worst
-    // deletes nothing, keeps `formFile()` in the array bound to the PACKAGE import, and
-    // silently runs the packaged generator while editing the ejected file. That failure
-    // is invisible and is the exact one ejecting exists to prevent.
-    //
-    // But eject reads no config, so it cannot know WHICH of the three states this project
-    // is in, and stating one of them as fact is wrong in the other two — including for the
-    // five `meta init` scaffolds, whose config already imports from ./codegen/generators/,
-    // which is precisely the `meta eject <name> --force` re-sync case. Name the goal, then
-    // the three branches; the reader knows which one they are looking at.
-    log.info(`In metaobjects.config.ts, "${result.exportName}" must resolve to this file:`);
-    log.info(`  ${result.importLine}`);
-    log.info(
-      `  - If it is imported from "${result.packageName}", REPLACE that import with the ` +
-      "line above. Adding a second one leaves `generators` bound to the PACKAGED " +
-      "generator, and your edits to this file do nothing.",
-    );
-    log.info(
-      "  - If it is already imported from ./codegen/generators/ (what `meta init` " +
-      "scaffolds), it points here already — nothing to change.",
-    );
-    log.info(
-      `  - If ${result.exportName}() is not in \`generators\` yet, add the import above ` +
-      "AND the entry.",
-    );
-    for (const line of result.dependencyNotes) log.info(line);
-    return 0;
   } catch (err) {
     log.error((err as Error).message);
     return 1;
   }
+
+  // ONE install set for the whole call, not one per name: ejecting `hooks` and `grid`
+  // needs @metaobjectsdev/codegen-ts-tanstack once, and an adopter handed the same
+  // package twice reasonably wonders which line to run.
+  const entries = flags.names
+    .filter((n) => !isLibraryName(n))
+    .map((n) => catalog[n])
+    .filter((e) => e !== undefined);
+  const install = installSetFor(entries);
+  const configKeys = [...new Set(entries.flatMap((e) => e.configKeys ?? []))].sort();
+
+  if (fmt === "text") {
+    if (install.command !== "") {
+      log.info("");
+      log.info("Install what the ejected generators and their output need:");
+      log.info(`  ${install.command}`);
+    }
+    if (configKeys.length > 0) {
+      log.info(
+        `These generators read config: ${configKeys.join(", ")} — set them in ` +
+          "metaobjects.config.ts beside `generators`.",
+      );
+    }
+    // Every requires edge the selection does not itself satisfy. `meta gen` warns
+    // about this too, but saying it HERE is what stops the adopter wiring a broken
+    // pair in the first place.
+    const chosen = new Set(flags.names);
+    const missing = [...new Set(rows.flatMap((r) => r.requires).filter((d) => !chosen.has(d)))].sort();
+    if (missing.length > 0) {
+      log.info(
+        `Also needed: ${missing.join(", ")} — the code you just ejected imports modules ` +
+          `${missing.length === 1 ? "that generator emits" : "those generators emit"}. ` +
+          `Eject ${missing.length === 1 ? "it" : "them"} too, or keep your own.`,
+      );
+    }
+  } else {
+    const payload: EjectPayload = {
+      ejected: rows,
+      install,
+      config: { keys: configKeys },
+      ...(libraries.length > 0 ? { libraries } : {}),
+    };
+    emitStructured(payload, fmt);
+  }
+
+  return 0;
 }

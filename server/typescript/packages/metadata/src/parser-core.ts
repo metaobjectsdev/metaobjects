@@ -945,7 +945,18 @@ function parseNodeInto(
   // "merged"` envelope. Last-writer-wins is preserved for non-conflicting
   // cases (one side unset, same value, etc.) — those carry through to the
   // existing applyInlineAttrsAndUnknownKeys logic below.
-  if (fr5cActive && preMergeAttrSnapshot !== undefined) {
+  //
+  // FR-043 Amendment 2 — `overlay: true` LICENSES the override. The conflict error
+  // exists to catch two files that collided without knowing about each other; the flag
+  // is the author saying "I know about the other declaration and I mean to change it".
+  // The loader already treats the flag specially (find-or-throw versus create-or-find),
+  // so honouring it here makes it mean ONE thing rather than two. An unmarked
+  // redeclaration still merges and still errors, which is the case FR5c was written for.
+  if (
+    fr5cActive &&
+    preMergeAttrSnapshot !== undefined &&
+    nodeData[RESERVED_KEY_OVERLAY] !== true
+  ) {
     detectAttrMergeConflicts(
       target,
       nodeData,
@@ -1037,7 +1048,9 @@ function parseNodeInto(
  *  non-empty value. If so, emit ERR_MERGE_CONFLICT with a `format: "merged"`
  *  envelope naming both contributors. The merge itself proceeds (existing
  *  last-writer-wins) so the loader sees one canonical tree; the error
- *  surfaces the conflict so a consumer can fix the metadata. */
+ *  surfaces the conflict so a consumer can fix the metadata.
+ *
+ *  NOT called for an `overlay: true` declaration — see the call site. */
 function detectAttrMergeConflicts(
   target: MetaData,
   nodeData: Record<string, unknown>,

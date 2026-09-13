@@ -62,7 +62,7 @@ For each **`template.output`**:
   → `string` (document) / `EmailDocument` (email).
 - **Output parser / prompt** where generated.
 
-Coverage **tracks the default generator suite** — document exactly what a normal
+Coverage **is configuration-driven** — document exactly what the currently-configured
 `meta gen` produces, nothing speculative. (The api-docs generator inspects which
 generators are configured/registered and documents their output.)
 

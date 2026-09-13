@@ -46,22 +46,28 @@ is, this once:**
 **Before you hand-write anything data-shaped, STOP and find the model.** The moment
 you reach for a hand-written query, route, validator, form, relationship, or
 aggregate — that is almost always **metadata you have not declared yet.** In order:
-1. **Search the vocabulary** — `meta types <term>`, or `meta types --all
+1. **Check whether the design already ships.** `meta gen --list --format json`
+   carries `kind: "library"` rows — declared design MetaObjects ships, each with a
+   `useWhen`. If one matches the capability you are about to declare, opt in and adapt
+   rather than author it from scratch: you inherit its entities, its requirements, and
+   the rulings recorded with them. The bare name is the core layer (sourceless — no
+   tables, no generated code); `<lib>/db` is the separate opt-in that adds the schema.
+2. **Search the vocabulary** — `meta types <term>`, or `meta types --all
    <what-it-does>` to search by behavior. There are field subtypes, relationships,
    projections, origins, identities, sources, and attributes you may not know exist.
    Find the construct that models it. Add `--detail` for one construct's valid
    `@attrs`, or `--format json` for the same answer as one machine-readable document
    — that form carries every match (`--limit` never truncates it) with each attr's
    `allowedValues`, so you read the accepted values rather than guessing them.
-2. **Declare it and generate** — then *consume* the generated query/type/route;
+3. **Declare it and generate** — then *consume* the generated query/type/route;
    never reimplement it alongside.
-3. **If the model is right but the generated OUTPUT is wrong, change your generator.**
+4. **If the model is right but the generated OUTPUT is wrong, change your generator.**
    Naming, file layout, imports, framework, signatures are generator concerns, not
    reasons to hand-write. The generators are in *your* repo and are yours to edit — a
    standing rule not to change the MetaObjects repo does not reach them; they are a
    different repository. Editing one is ordinary work, not an escalation. (See
    `metaobjects-codegen` → "Your generators are yours".)
-4. **Only if no construct can express it** — and you have actually looked —
+5. **Only if no construct can express it** — and you have actually looked —
    hand-write it, wired to generated types. Business algorithms, external
    integrations, and bespoke interactions are legitimately hand-written; CRUD,
    validation, finders, relationships, and derived/aggregate data are not.

@@ -36,6 +36,11 @@ import {
   type BaselineMode,
   type DecideAndWriteOpts,
 } from "./overwrite-policy.js";
+import {
+  warnUnsatisfiedRequires, warnMixedApiFrameworks, warnLibrarySelectionMismatch,
+} from "./catalog-gates.js";
+import { libraryManifests, splitLayerToken } from "@metaobjectsdev/metadata/library";
+import { generatorRegistry, type GeneratorRegistryEntry } from "./generator-registry.js";
 
 /** JS-identifier-shape only. Prevents filesystem traversal when metadata comes
  *  from untrusted sources (e.g. MCP). Mirrors the guard in legacy generate.ts. */
@@ -74,6 +79,15 @@ export interface RunGenOpts {
    * `--dry-run`, and watching it reappear.
    */
   dryRun?: boolean;
+  /**
+   * The catalog the `requires` / api-framework gates check against.
+   *
+   * Injected because the COMPOSITION lives in the CLI: `codegen-ts` cannot import its
+   * own dependents, so it cannot see the react and tanstack registry slices. Defaults
+   * to this package's own slice, which keeps a programmatic embedder that never
+   * composes correct — it simply has nothing to say about client-tier generators.
+   */
+  catalog?: Record<string, GeneratorRegistryEntry>;
   /**
    * Output scope — an object is generated only when this predicate returns true
    * for its fully-qualified name (`obj.resolutionKey()`, `<package>::<name>`).
@@ -118,6 +132,16 @@ export interface RunGenOpts {
    * option explicitly) can omit this with no behavior change elsewhere.
    */
   sourceFiles?: readonly string[];
+  /**
+   * FR-043 §6 — the project's shipped-library selection TOKENS (`Collection.libraries`,
+   * e.g. `["ai", "ai/db"]`), resolved to manifests and threaded onto
+   * `GenContext.libraries`, and read by the post-selection audit.
+   *
+   * Omitted means the caller never said; `[]` means it looked and this project opted
+   * into none. The two differ for a generator keying on a library anchor — see
+   * `GenContext.libraries`.
+   */
+  libraries?: readonly string[];
 }
 
 export interface RunGenResult {
@@ -386,6 +410,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 2. Resolve targets + entity-module target.
   const config = normalizeConfig(opts.config);
 
+  // FR-043 §6 — the opted-in manifests, resolved once per run. A token names its
+  // library whether or not it carries a layer, and an unknown name contributes nothing
+  // (the config reader is what refuses a typo, by name — see `knownLibraryTokens`).
+  const selectedManifests =
+    opts.libraries === undefined
+      ? undefined
+      : [...new Set(opts.libraries.map((t) => splitLayerToken(t)[0]))]
+          .map((name) => libraryManifests()[name])
+          .filter((m): m is NonNullable<typeof m> => m !== undefined);
+
   // FR-023 §4.3 — the run's composed registry, threaded onto every GenContext.
   // Mirrors sdk's `loadMemory` exactly (`defaultLoadMemoryProviders` = core
   // providers, then the project's own `config.providers` appended) so
@@ -528,6 +562,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   warnMissingPromptGenerators(root, config.generators, (m) => warnings.push(m));
   warnUnmarkedUiGenerators(config.generators, (m) => warnings.push(m));
 
+  // Codegen is opt-in, so `meta gen` is the post-selection audit: the two ways a legal
+  // selection still surprises you. Warnings only — see catalog-gates.ts.
+  const catalog = opts.catalog ?? generatorRegistry;
+  warnUnsatisfiedRequires(config.generators, catalog, (m) => warnings.push(m));
+  warnMixedApiFrameworks(config.generators, catalog, (m) => warnings.push(m));
+  // FR-043 §6 — only when the caller actually told us what was selected. A programmatic
+  // caller that never threads `libraries` gets no library warnings at all, rather than
+  // "you opted into nothing", which would be a claim we cannot support.
+  if (opts.libraries !== undefined) {
+    warnLibrarySelectionMismatch(
+      config.generators, catalog, libraryManifests(), opts.libraries, (m) => warnings.push(m),
+    );
+  }
+
   // <Entity>Names is opt-in on TypeScript and an existing project gets no signal that
   // it exists. Fires ONCE, on the first gen after crossing the release that made it the
   // doctrine — see shouldNoteNamesArtifactAbsent for why it is keyed on the engine stamp
@@ -644,6 +692,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       ...(projectRoot !== undefined && { projectRoot }),
       registry,
       ...(opts.sourceFiles !== undefined && { sourceFiles: opts.sourceFiles }),
+      ...(selectedManifests !== undefined && { libraries: selectedManifests }),
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
 

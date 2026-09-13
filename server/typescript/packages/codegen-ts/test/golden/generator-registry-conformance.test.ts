@@ -5,11 +5,19 @@
 // The manifest is the single source of truth. For THIS port (`typescript`) the
 // README contract is:
 //   1. Every stable name the TS registry exposes appears in the manifest.
-//   2. Presence both ways — every manifest entry whose `ports` includes
-//      `typescript` IS in the TS registry, and the TS registry exposes NO name
-//      whose `ports` omits `typescript`. (Set equality catches both at once.)
-//   3. Tier agreement — a manifest name marked `tier: "neutral"` is flagged
+//   2. Tier agreement — a manifest name marked `tier: "neutral"` is flagged
 //      neutral in the TS registry; native manifest names are NOT neutral.
+//   3. Layer agreement — a manifest name's `layer` equals the TS registry's.
+//   4. Every manifest entry declares one of the six layers.
+//
+// PRESENCE BOTH WAYS IS ASSERTED ELSEWHERE. `codegen-ts` is one SLICE of the
+// TypeScript catalog: `form` lives in `codegen-ts-react` and `hooks`/`grid`/
+// `grid-hook` in `codegen-ts-tanstack`, and this package cannot import its own
+// dependents to see them. Set equality against the manifest's `typescript` slice is
+// therefore a property of the COMPOSED catalog and is asserted in
+// `packages/cli/test/catalog-conformance.test.ts`, which is the only place all three
+// slices are visible at once. What is checkable here is the one direction that does
+// not need them: no rogue names.
 //
 // If this test fails, the manifest and the TS registry DISAGREE: report the diff;
 // do NOT mutate the manifest to force a pass (the manifest is reconciled
@@ -45,9 +53,16 @@ function findRepoRoot(start: string): string {
 interface ManifestEntry {
   concept: string;
   tier: "native" | "neutral";
+  layer: string;
   note?: string;
   ports: string[];
 }
+
+// The closed set, mirrored from GENERATOR_LAYERS. Spelled out here rather than
+// imported so this gate fails if the CODE's union and the MANIFEST's values ever
+// diverge from the six the design ruled — importing the union would make the test
+// agree with whatever the code says.
+const LAYERS = ["model", "persistence", "api", "client", "docs", "capability"] as const;
 
 interface Manifest {
   ports: string[];
@@ -78,32 +93,39 @@ describe("generator registry — conforms to canonical stable-name manifest (ADR
     expect(manifest.ports).toContain(PORT);
   });
 
-  it(`TS registry names == manifest's ${PORT} slice (no rogue, no missing)`, () => {
+  it(`no rogue names — every name codegen-ts registers is a ${PORT} name in the manifest`, () => {
     const extraInRegistry = [...actualNames]
       .filter((n) => !expectedNames.has(n))
       .sort();
-    const missingFromRegistry = [...expectedNames]
-      .filter((n) => !actualNames.has(n))
-      .sort();
 
     const message = [
-      `TS generator registry disagrees with the canonical manifest for port "${PORT}".`,
-      `  extra in registry (name registered but manifest's ${PORT} omits it): [${extraInRegistry.join(", ")}]`,
-      `  missing from registry (manifest expects ${PORT} but not registered): [${missingFromRegistry.join(", ")}]`,
+      `The codegen-ts registry exposes names the canonical manifest does not give to "${PORT}".`,
+      `  extra in registry: [${extraInRegistry.join(", ")}]`,
       `  manifest: ${manifestPath}`,
+      "  (The other direction — every manifest typescript name IS registered — is asserted",
+      "   on the COMPOSED catalog in packages/cli/test/catalog-conformance.test.ts, because",
+      "   codegen-ts is one slice of three.)",
     ].join("\n");
 
-    // Assert the symmetric difference is empty (actionable on failure).
-    expect(
-      { extraInRegistry, missingFromRegistry },
-      message,
-    ).toEqual({ extraInRegistry: [], missingFromRegistry: [] });
+    expect(extraInRegistry, message).toEqual([]);
   });
 
-  // Tier agreement — only over names present in BOTH sets.
+  it("every manifest entry declares one of the six layers", () => {
+    const bad = Object.entries(manifest.generators)
+      .filter(([, e]) => !(LAYERS as readonly string[]).includes(e.layer))
+      .map(([n, e]) => `${n}=${String(e.layer)}`)
+      .sort();
+    expect(
+      bad,
+      `entries with a missing or unknown layer (allowed: ${LAYERS.join(", ")}): ${bad.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  // Tier + layer agreement — only over names present in BOTH sets.
   const sharedNames = [...expectedNames].filter((n) => actualNames.has(n)).sort();
   for (const name of sharedNames) {
     const manifestTier = manifest.generators[name]!.tier;
+    const manifestLayer = manifest.generators[name]!.layer;
     it(`tier agreement: "${name}" is ${manifestTier} in both manifest and TS registry`, () => {
       const registryTier = generatorRegistry[name]!.tier;
       if (manifestTier === "neutral") {
@@ -111,6 +133,12 @@ describe("generator registry — conforms to canonical stable-name manifest (ADR
       } else {
         expect(registryTier).not.toBe("neutral");
       }
+    });
+    it(`layer agreement: "${name}" is ${manifestLayer} in both manifest and TS registry`, () => {
+      // Compared as plain strings: the manifest is the source of truth and its value is
+      // untyped here on purpose, so narrowing it to the code's union would make the
+      // gate agree with whatever the code says.
+      expect(String(generatorRegistry[name]!.layer)).toBe(manifestLayer);
     });
   }
 });

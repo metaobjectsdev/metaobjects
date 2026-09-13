@@ -50,7 +50,11 @@ meta docs --out ./docs                     # Node: run from the PROJECT ROOT (no
 
 ## Generators
 
-Wire generators by their stable name (`--generators <names>`), or run the default set.
+Wire generators by their stable name — **`--generators <names>` is REQUIRED**. There is
+no default set: a run that names none is a usage error and writes nothing (ADR-0034
+Amendment 2). `metaobjects gen --list` is the catalog. `verify --codegen` re-runs the
+SELECTION and diffs, so it takes the same `--generators`; with none named it reports that
+there is nothing to check.
 Output lands under `--out` (with the `@generated` guard header). Metadata is the same
 canonical JSON every port reads (fused-key form, `source.rdb` + `@table`, `@column` for
 a renamed physical column).

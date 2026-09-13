@@ -1,0 +1,81 @@
+# library/iam/db.yaml — the DB PERSISTENCE layer for metaobjects::iam.
+#
+# Opted into as `"iam/db"`, which IMPLIES `"iam"`: this file is nothing but
+# `overlay: true` redeclarations, and an overlay whose target was never declared is
+# ERR_OVERLAY_NO_TARGET.
+#
+# It carries exactly two kinds of child — `source.rdb` and `index.lookup` — and nothing
+# else. The field set, the identities and the relationships all live in model.yaml,
+# because they are the DESIGN; what lives here is where the rows go and which lookups are
+# worth an index. Add a field here and the core layer stops being the whole model, which
+# is the thing the split exists to guarantee.
+#
+# Physical names are `iam_`-prefixed. Two reasons, both real: `user` and `group` are
+# reserved words in Postgres, and an adopter very likely has tables of their own by those
+# names. A library that collides on a table name is a library nobody can adopt.
+metadata:
+  package: metaobjects::iam
+  children:
+    - object.entity:
+        name: User
+        overlay: true
+        children:
+          - source.rdb: { table: iam_user, role: primary }
+
+    - object.entity:
+        name: GroupType
+        overlay: true
+        children:
+          - source.rdb: { table: iam_group_type, role: primary }
+
+    - object.entity:
+        name: Group
+        overlay: true
+        children:
+          - source.rdb: { table: iam_group, role: primary }
+          # Nesting is walked parent-ward constantly; the FK alone gives no index.
+          - index.lookup: { name: ixParent, fields: [parentId] }
+
+    - object.entity:
+        name: Role
+        overlay: true
+        children:
+          - source.rdb: { table: iam_role, role: primary }
+
+    - object.entity:
+        name: Permission
+        overlay: true
+        children:
+          - source.rdb: { table: iam_permission, role: primary }
+
+    - object.entity:
+        name: GroupMember
+        overlay: true
+        children:
+          - source.rdb: { table: iam_group_member, role: primary }
+          # The composite PK covers (userId, groupId), so "who is in this group?" —
+          # the other direction — has no index without this one. Same reasoning for
+          # every ixSecond below.
+          - index.lookup: { name: ixGroup, fields: [groupId] }
+
+    - object.entity:
+        name: RolePermission
+        overlay: true
+        children:
+          - source.rdb: { table: iam_role_permission, role: primary }
+          - index.lookup: { name: ixPermission, fields: [permissionId] }
+
+    - object.entity:
+        name: UserRole
+        overlay: true
+        children:
+          - source.rdb: { table: iam_user_role, role: primary }
+          - index.lookup: { name: ixRole, fields: [roleId] }
+
+    - object.entity:
+        name: GroupMemberRole
+        overlay: true
+        children:
+          - source.rdb: { table: iam_group_member_role, role: primary }
+          # "who holds this role in this group?" — the scoped-grant read.
+          - index.lookup: { name: ixGroupRole, fields: [groupId, roleId] }

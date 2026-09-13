@@ -100,7 +100,7 @@ resolve the column themselves, so that path never needs a physical name. The mom
 repository `Protocol` is backed by your own SQLAlchemy Core / asyncpg / psycopg code, it
 does — and nothing Python generates carries one: the Pydantic models, create/patch
 shapes, router and allowlist all key by field. Take it from the generated
-`<entity_snake>_names.py` (`names` is in the default suite):
+`<entity_snake>_names.py` (`names` is opt-in — name it in `--generators`):
 
 ```python
 from generated.author_names import (

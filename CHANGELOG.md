@@ -10,6 +10,155 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Libraries: reusable declared design you opt into** (FR-043, the sixth pillar).
+  `"libraries": ["iam"]` in `.metaobjects/config.json` brings a shipped, requirement-backed
+  model into your project. Two ship: **`iam`** (`preview`) — users, nestable typed groups,
+  roles as permission bundles, grants global or scoped to a group, nine entities and eleven
+  requirements — and **`ai`** (`stable`), the LLM-call trace envelope that already existed.
+
+  **A library is LAYERED, and the core layer is INERT.** The core declares no `source.rdb`,
+  and a sourceless object generates nothing and migrates to nothing (#248), so
+  `["iam"]` adds **zero tables and zero generated code** — the design is present and
+  resolvable, and nothing else happens until you add `["iam", "iam/db"]`. A layer token
+  implies its core; a token whose layer is unknown is dropped whole rather than reduced to
+  it, because answering a mistyped `iam/database` with an inert core and no tables is the
+  worst of the available outcomes.
+
+  **Copy is the expected mode.** `meta eject <library>` copies every layer into your first
+  DECLARED source root with a provenance header, and `meta eject --list` reports how far
+  your copy has drifted from the shipped tree — nodes changed, only-upstream, only-yours —
+  matched by name with the package neutralized, because renaming the package is something
+  you are invited to do. Ejecting and leaving the library in `libraries` is refused at load
+  (`ERR_LIBRARY_PACKAGE_COLLISION`): both trees merge, and the merge is asymmetric —
+  additions take effect, deletions do not. Its mirror `ERR_LIBRARY_PACKAGE_NOT_OWNED`
+  refuses a NEW node declared into a library's package; an `overlay: true` amendment stays
+  open. See [libraries.md](docs/features/libraries.md).
+
+  `meta gen --list` carries `kind: "library"` rows beside the generators — one door, one
+  namespace — with `useWhen`, `layers`, `provides`, and under `--probe` what your selection
+  actually added here.
+
+- **`overlay: true` licenses an attribute override.** `ERR_MERGE_CONFLICT` now fires only
+  on an UNMARKED conflicting redeclaration. The flag is the author saying "I know about the
+  other declaration and I mean to change it", and without this an adopter could not disagree
+  with a library's shipped requirement without ejecting the whole ledger. All four loaders
+  (Kotlin inherits the JVM's); one new conformance fixture takes over the unmarked-conflict
+  error branch, so the coverage moved rather than being deleted.
+
+### Changed
+
+- **`libraries` moved to `.metaobjects/config.json`**, out of `metaobjects.config.ts`,
+  outright and with no dual-read — a sweep of the estate found zero uses of the key. Which
+  designs a project adopts is a fact about the PROJECT, not about how one port generates
+  code from it. A config still carrying the old key gets a pointed error rather than
+  silence.
+
+- **`library/ai` is SPLIT into `model` + `db` layers, and its requirements are new.**
+  Opting into `"ai"` alone no longer proposes `CREATE TABLE llm_call` — that moved to
+  `"ai/db"`. Breaking-ish for an `ai` adopter tracking the library: add `"ai/db"` to keep
+  the table. The concrete-`LlmCall` wart was previously carried as accepted on the grounds
+  that splitting would change what existing adopters get; the estate sweep found there are
+  none, so it was closed rather than documented.
+
+- **`trace-helper` keys on a declared ANCHOR, not a hard-coded entity name** — and the
+  name it hard-coded was never actually matching the shipped base. It compared
+  `"LlmCallBase"` against the SHORT name, so any adopter entity of that name in any package
+  emitted a helper writing columns that entity does not declare. It now resolves the anchor
+  its library's manifest declares and compares by node identity, in all three ports that
+  ship it. Two self-extinguishing warnings cover the halves of the choice: a library opted
+  into whose implied generator is not wired, and a generator wired whose library is not.
+
+- **Object coverage activates on ADOPTER-authored requirements only.** A library shipping
+  its own ledger would otherwise switch the unclaimed-entity gate on across a project that
+  has never written a requirement. Library entries are still counted and still checked;
+  they simply cannot volunteer you. `meta verify` prints `coverage: not measured (no
+  project-authored requirements)` rather than a ratio, and the JSON omits the pair rather
+  than zeroing it — `0/0 claimed` and "not measured" mean opposite things.
+
+  **A project that already has a ledger sees its coverage denominator grow** to include an
+  opted-in library's entities. They are all claimed by the library's own ledger, so no new
+  warnings appear, but the printed numbers move.
+
+- **A shipped library's files carry a stable `library:<ref>.yaml` source id in every
+  build.** It was the file's basename in a checkout and `library:…` when embedded, so one
+  node's error envelope read differently depending on how the library was resolved — and
+  collided with an adopter file of that name.
+
+### Fixed
+
+- **Both shipped libraries failed `meta verify`'s requirement gate**, in metadata an
+  adopter cannot fix: every L4 in `ai` claimed FIELDS (`ERR_REQUIREMENT_L4_NOT_OBJECT`),
+  and both libraries wrote their concerns as SIBLINGS of the L2 segment their own comments
+  said they were children of, leaving that L2 claiming nothing in its whole subtree. The
+  load test proved they LOAD clean, which is a different claim, and nothing checked the
+  other one. Both ledgers are fixed as the model intends — concerns nested under their L2,
+  each L4 naming the OBJECT with its fields in an L5 child — and a new standalone gate
+  holds every shipped library, and every future one, to zero loader errors, zero loader
+  warnings, zero gate findings, zero lint findings, no unruled gaps, and every entity
+  claimed by its own ledger.
+
+### Changed
+
+- **Codegen is OPT-IN: no port ships a default generator suite** (ADR-0034 Amendment 2).
+  A new project got code it never asked for — TypeScript's `meta init` copied and wired
+  five generators, C# ran nine for a caller who named none, Python eight; Java never had
+  a default set and has been right all along. Deciding which code an application needs
+  belongs to whoever is building it, increasingly an LLM in the repo, which is well able
+  to make that call given a truthful catalog and is badly served by a default that
+  pre-empts it.
+
+  **This is a PATCH and no existing project changes by one byte.** An adopter already has
+  their owned copies on disk and their selection committed in their own config; `meta gen`
+  keeps running exactly that list, `verify --codegen` keeps checking exactly that output,
+  and re-running `init` never clobbers a file that exists. What changes is what a *new*
+  project starts with. `docs/compatibility-policy.md` is narrowed in the same change: the
+  scaffold-and-own promise is the LAYOUT and the INTERFACES, not which generators a fresh
+  scaffold wires.
+
+  What this means per port:
+  - **TypeScript** — `meta init` scaffolds `codegen/generators/` **empty**, a config with
+    `generators: []`, and no dependencies. `dbImport` and the throwing `src/db.ts` stub are
+    gone with it: both existed only because the scaffold wired `routesFile()`, whose output
+    emits `import { db } from …`. `dbImport` is now a declared `configKey` on the `routes`
+    catalog entry, reported by `meta eject routes` to the adopter who chose routes.
+  - **C# / Python** — `--generators` is REQUIRED; a run that names none is a usage error
+    and writes nothing. `verify --codegen` re-runs the SELECTION, so with none named it
+    reports that there is nothing to check rather than regenerating a suite the project
+    never ran. Python's `verify` gains `--generators`, matching C#.
+
+- **`meta gen --list` is now the generator CATALOG, and `--probe` answers it against your
+  own model.** `--list --format json` emits one document per generator: its `layer`,
+  `framework`, what it emits, what it `requires`, the consolidated install set, the config
+  keys it reads, and whether this project already owns a copy. `--probe` constructs every
+  generator and dry-runs it against the loaded model, reporting how many files each would
+  emit — so `output-parser: 3, callable: 0, requirement-tests: 7` replaces a category
+  label, and cannot go stale, because it runs the generators rather than describing them.
+
+- **`meta eject` takes many names and reports one consolidated install set.** A real
+  selection is several generators, and three separate invocations produced three separate
+  install lines for the same package. `--format json` carries, per file, the import line
+  and the entry to wire, plus one install set with third-party ranges read from the runtime
+  package's own `peerDependencies`. An unknown name refuses the whole call before writing
+  anything.
+
+### Added
+
+- **`layer` joins the cross-port generator manifest** — `model` / `persistence` / `api` /
+  `client` / `docs` / `capability` — gated by all five ports' registry-conformance tests
+  exactly as `tier` is. Five TypeScript generators that were in no manifest at all (`form`,
+  `hooks`, `grid`, `grid-hook`, `requirement-tests`) join it too, so the catalog describes
+  34 generators where the manifest described 29.
+
+- **`meta gen` audits the selection.** Two self-extinguishing warnings, neither a build
+  failure: a wired generator whose `requires` are not wired (its output will import a
+  module nothing emits), and two `api`-layer generators declaring different frameworks
+  (`routes` + `routes-hono` emit to different paths, so nothing conflicts and two complete
+  HTTP surfaces appear silently). There is deliberately no equivalent rule on the `client`
+  layer: `@metaobjectsdev/tanstack` peers on `react`, so a form generator plus the TanStack
+  hook/grid generators is the intended composition.
+
 ### Fixed
 
 - **Generated files no longer point at a plugin point that does not exist ([#367]).**

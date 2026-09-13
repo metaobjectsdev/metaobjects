@@ -966,9 +966,54 @@
       "expectLoadError": "ERR_EXTENDS_TARGET_MISMATCH"
     },
     {
-      "name": "an-overlay-attr-the-base-now-sets-differently-conflicts",
+      "name": "an-overlay-attr-the-base-sets-differently-is-licensed",
       "tree": {
         "metaobjects/meta.ov-conflict.json": "{\"metadata.root\":{\"package\":\"acme::common\",\"children\":[{\"object.entity\":{\"name\":\"Customer\",\"overlay\":true,\"children\":[{\"field.string\":{\"name\":\"email\",\"overlay\":true,\"@maxLength\":80}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.ov-conflict.json"
+      ]
+    },
+    {
+      "name": "an-unmarked-attr-redeclaration-over-a-dependency-conflicts",
+      "tree": {
+        "metaobjects/meta.ov-conflict.json": "{\"metadata.root\":{\"package\":\"acme::common\",\"children\":[{\"object.entity\":{\"name\":\"Customer\",\"children\":[{\"field.string\":{\"name\":\"email\",\"@maxLength\":80}}]}}]}}"
       },
       "treeFiles": {
         ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"

@@ -103,8 +103,8 @@ byte-identical.
 
 ### Taking one tier and not the rest
 
-`--generators <csv>` runs exactly the named generators instead of the default
-suite (`--list` names all of them). This is the answer for a project that wants
+`--generators <csv>` selects exactly the named generators from the available
+catalog (`--list` names all of them). This is the answer for a project that wants
 one tier without adopting the others — most often a **schema-only adopter** whose
 tables come from `meta migrate` and whose application code is not generated at all,
 but which still has physical table and column names hard-coded across its data
@@ -117,8 +117,8 @@ metaobjects gen ./metadata --out ./generated --generators names
 It emits one `<entity>_names.py` per object and nothing else. Each carries
 `<ENTITY>_SOURCE_PRIMARY_TABLE`, a `<ENTITY>_<FIELD>_COLUMN` per field, a
 `<ENTITY>_COLUMNS_BY_FIELD` map, and `<ENTITY>_SOURCE_PRIMARY_SCHEMA` when the
-source declares a `@schema`. On the 16-entity persistence-conformance model the
-default suite emits 68 files and this emits 19 — so adopting the names tier does
+source declares a `@schema`. On the 16-entity persistence-conformance model the full
+server-side selection emits 68 files and this emits 19 — so adopting the names tier does
 not drag a REST surface into a repo that does not want one.
 
 **Pass the same `--column-naming` the schema was created with.** It defaults to
@@ -199,8 +199,11 @@ app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(se
 
 ### `<entity>_names.py` — the physical names, as constants
 
-The `names` generator ships in the **default generator suite** — a new
-project gets `<entity>_names.py` without configuring anything. The module
+The `names` generator is opt-in — select it with `--generators names` on
+`metaobjects gen` (`--list` names the whole catalog). The Python console-script
+has no `eject` verb: ejecting is the Node `meta` CLI's, and it is about OWNING a
+generator's source, never about selecting one for a run. When selected, a project
+gets `<entity>_names.py`. The module
 mirrors the metadata that declared it: every node it describes — the object,
 each `source.rdb` child, each `identity.*` and `index.*` child — carries its
 own `_TYPE`, `_SUB_TYPE` and `_NAME`, and a source's physical name sits under
@@ -384,7 +387,8 @@ spec is ignored there rather than refused.
 
 Each spec entry derives the neutral template data dict for its scope and names
 each file via the `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`).
-The named generators are **appended** to the default suite and gated byte-identical
+The named generators are **appended** to the `--generators` selection (there is no
+default suite) and gated byte-identical
 against the shared `fixtures/template-codegen-conformance/` corpus. Output is
 format-agnostic (text/markdown/csv/json/xml/html), so the template-spec pass emits
 no `__init__.py` into its tree. A `target` field is rejected (the Python port has

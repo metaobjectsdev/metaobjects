@@ -1,0 +1,51 @@
+{
+  "metadata.root": {
+    "package": "acme::iam",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "username",
+                "@maxLength": 64,
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "uuid"
+              }
+            },
+            {
+              "source.rdb": {
+                "@role": "primary",
+                "@table": "iam_user"
+              }
+            },
+            {
+              "index.lookup": {
+                "name": "ixUsername",
+                "@fields": [
+                  "username"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from metaobjects.cli import main
 from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY, list_generators
+from tests.codegen.gen_suite import GEN_SUITE
 
 FIXTURE = (
     Path(__file__).parents[4]
@@ -29,7 +30,7 @@ def _meta_dir(tmp_path: Path) -> str:
 
 
 def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
-    rc = main(["gen", "--list"])
+    rc = main(["gen", "--generators", GEN_SUITE, "--list"])
     assert rc == 0
     out = capsys.readouterr().out
     # Every registered stable name appears in the listing.
@@ -44,7 +45,7 @@ def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
 
 def test_gen_list_does_not_run_codegen(capsys, tmp_path: Path) -> None:
     out = tmp_path / "out"
-    rc = main(["gen", "--list", "--out", str(out)])
+    rc = main(["gen", "--generators", GEN_SUITE, "--list", "--out", str(out)])
     assert rc == 0
     # --list must NOT write any generated files even when --out is given.
     assert not out.exists() or not list(out.rglob("*.py"))

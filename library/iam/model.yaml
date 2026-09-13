@@ -1,0 +1,157 @@
+# library/iam/model.yaml — the CORE layer: identity and access management.
+#
+# Adopters opt in via `libraries: ["iam"]` in .metaobjects/config.json.
+#
+# This layer declares NO `source.rdb`, and that is the whole point of the split. A
+# sourceless object is inert by a contract that already ships: migrate skips an object
+# with no writable source, and codegen emits no route, queries, hooks, grid or form for
+# one (both citing #248 — persistability derives from source presence, never from the
+# object subtype). It still gets a type-only interface, so `extends` and reference work.
+#
+# So `libraries: ["iam"]` adds ZERO tables and ZERO generated code. What an adopter gains
+# is the design being present and resolvable: an agent working in the repo knows the
+# capability exists and can draw on it, and nothing else happens until the adopter adds
+# `"iam/db"`.
+#
+# Authoring discipline (FR-043 §3.1), so the departures are visible:
+#   - `field.uuid` + `generation: uuid` on principals; composite ASSIGNED keys on
+#     junctions. Never `increment` — a library cannot know the adopter's id strategy.
+#   - Physical names carry the `iam_` prefix (in db.yaml): `user` and `group` are
+#     reserved words in Postgres, and an adopter has tables of their own.
+#   - No adopter-facing profile data. That arrives by `overlay: true`.
+#   - No credentials. See requirements.yaml → `noCredentialsOnUser`.
+metadata:
+  package: metaobjects::iam
+  children:
+    - object.entity:
+        name: IamBase
+        abstract: true
+        description: Shared shape of every iam principal and definition — a stable uuid plus change timestamps. Junctions do not extend it; they are addressed by their participants.
+        children:
+          - field.uuid:      { name: id, required: true }
+          - field.timestamp: { name: createdAt, autoSet: onCreate }
+          - field.timestamp: { name: updatedAt, autoSet: onUpdate }
+
+    - object.entity:
+        name: User
+        extends: IamBase
+        description: A person or service account that can be granted access. Carries no authentication secret of any kind — see the noCredentialsOnUser requirement.
+        children:
+          - field.string:    { name: username, required: true, maxLength: 64, filterable: true }
+          - field.string:    { name: email, required: true, maxLength: 254, stringFormat: email, filterable: true }
+          - field.string:    { name: displayName, maxLength: 120 }
+          # NOT `filterable: true`, deliberately. The loader warns when a filterable
+          # field is in no identity — filtering on it sequential-scans — and a library
+          # must not ship a warning to every adopter. `username` and `email` carry it
+          # because they have identity.secondary; `status` does not. An adopter who
+          # wants to filter on status overlays `filterable` AND an index together,
+          # which is exactly what the layer split is for.
+          - field.enum:      { name: status, required: true, values: [invited, active, suspended, closed], default: active }
+          - field.timestamp: { name: emailVerifiedAt }
+          - field.timestamp: { name: lastSeenAt }
+          - identity.primary:   { name: pk, fields: [id], generation: uuid }
+          - identity.secondary: { name: uqUsername, fields: [username] }
+          - identity.secondary: { name: uqEmail, fields: [email] }
+          - relationship.association: { name: groups, objectRef: Group, cardinality: many, through: GroupMember }
+          - relationship.association: { name: roles,  objectRef: Role,  cardinality: many, through: UserRole }
+
+    - object.entity:
+        name: GroupType
+        extends: IamBase
+        description: What KIND of group this is — a team, a tenant, a project. An entity rather than an enum, because "which roles may be held in this kind of group" is data an adopter extends, and an enum's values cannot be extended by overlay.
+        children:
+          - field.string: { name: key, required: true, maxLength: 64 }
+          - field.string: { name: name, required: true, maxLength: 120 }
+          - field.string: { name: description, maxLength: 500 }
+          - identity.primary:   { name: pk, fields: [id], generation: uuid }
+          - identity.secondary: { name: uqKey, fields: [key] }
+
+    - object.entity:
+        name: Group
+        extends: IamBase
+        description: A nestable collection of users, of a declared GroupType. Nesting is by parentId; acyclicity is an invariant the schema cannot express — see the acyclicGroupNesting requirement.
+        children:
+          - field.uuid:   { name: groupTypeId, required: true }
+          - field.uuid:   { name: parentId }
+          - field.string: { name: key, required: true, maxLength: 64 }
+          # Not filterable for the same reason as User.status above.
+          - field.string: { name: name, required: true, maxLength: 120 }
+          - field.string: { name: description, maxLength: 500 }
+          - identity.primary:   { name: pk, fields: [id], generation: uuid }
+          - identity.secondary: { name: uqKey, fields: [key] }
+          - identity.reference: { name: fkGroupType, fields: [groupTypeId], references: GroupType, onDelete: restrict }
+          - identity.reference: { name: fkParent,    fields: [parentId],    references: Group,     onDelete: restrict }
+
+    - object.entity:
+        name: Role
+        extends: IamBase
+        description: A reusable bundle of permissions. Code never compares a role NAME to a literal — it asks whether a user holds a permission, and the mapping is data.
+        children:
+          - field.string: { name: key, required: true, maxLength: 64 }
+          - field.string: { name: name, required: true, maxLength: 120 }
+          - field.string: { name: description, maxLength: 500 }
+          - field.uuid:   { name: groupTypeId, description: "When set, this role may be held only within groups of this type; absent means grantable anywhere." }
+          - identity.primary:   { name: pk, fields: [id], generation: uuid }
+          - identity.secondary: { name: uqKey, fields: [key] }
+          - identity.reference: { name: fkGroupType, fields: [groupTypeId], references: GroupType, onDelete: restrict }
+          - relationship.association: { name: permissions, objectRef: Permission, cardinality: many, through: RolePermission }
+
+    - object.entity:
+        name: Permission
+        extends: IamBase
+        description: "The assignable unit — a stable <resource>:<action> key the application checks against. An entity, not an enum, on ADR-0037's own reasoning: it has its own identity, its own lifecycle, and a junction with real foreign keys."
+        children:
+          - field.string: { name: key, required: true, maxLength: 128, description: "Stable <resource>:<action> key the application checks against." }
+          - field.string: { name: description, maxLength: 500 }
+          - identity.primary:   { name: pk, fields: [id], generation: uuid }
+          - identity.secondary: { name: uqKey, fields: [key] }
+
+    # ---- grant surface: every grant is a row, addressed by its participants ----
+    #
+    # Junctions do NOT extend IamBase: they have no identity of their own, and adding a
+    # surrogate uuid to a row whose identity IS its participants invites a duplicate.
+
+    - object.entity:
+        name: GroupMember
+        description: A user's membership of a group.
+        children:
+          - field.uuid:      { name: userId,  required: true }
+          - field.uuid:      { name: groupId, required: true }
+          - field.timestamp: { name: joinedAt, autoSet: onCreate }
+          - identity.primary:   { name: pk, fields: [userId, groupId], generation: assigned }
+          - identity.reference: { name: fkUser,  fields: [userId],  references: User,  onDelete: cascade }
+          - identity.reference: { name: fkGroup, fields: [groupId], references: Group, onDelete: cascade }
+
+    - object.entity:
+        name: RolePermission
+        description: A permission granted by a role.
+        children:
+          - field.uuid: { name: roleId,       required: true }
+          - field.uuid: { name: permissionId, required: true }
+          - identity.primary:   { name: pk, fields: [roleId, permissionId], generation: assigned }
+          - identity.reference: { name: fkRole,       fields: [roleId],       references: Role,       onDelete: cascade }
+          - identity.reference: { name: fkPermission, fields: [permissionId], references: Permission, onDelete: restrict }
+
+    - object.entity:
+        name: UserRole
+        description: A system-wide grant of a role to a user.
+        children:
+          - field.uuid:      { name: userId, required: true }
+          - field.uuid:      { name: roleId, required: true }
+          - field.timestamp: { name: grantedAt, autoSet: onCreate }
+          - identity.primary:   { name: pk, fields: [userId, roleId], generation: assigned }
+          - identity.reference: { name: fkUser, fields: [userId], references: User, onDelete: cascade }
+          - identity.reference: { name: fkRole, fields: [roleId], references: Role, onDelete: restrict }
+
+    - object.entity:
+        name: GroupMemberRole
+        description: A grant of a role to a user WITHIN one group. Three foreign keys, so it is not an M:N @through junction (which must declare exactly two identity.reference children); it is read by explicit finders.
+        children:
+          - field.uuid:      { name: userId,  required: true }
+          - field.uuid:      { name: groupId, required: true }
+          - field.uuid:      { name: roleId,  required: true }
+          - field.timestamp: { name: grantedAt, autoSet: onCreate }
+          - identity.primary:   { name: pk, fields: [userId, groupId, roleId], generation: assigned }
+          - identity.reference: { name: fkUser,  fields: [userId],  references: User,  onDelete: cascade }
+          - identity.reference: { name: fkGroup, fields: [groupId], references: Group, onDelete: cascade }
+          - identity.reference: { name: fkRole,  fields: [roleId],  references: Role,  onDelete: restrict }

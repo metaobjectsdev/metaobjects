@@ -924,7 +924,17 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // Detect attr conflicts up-front. The base-parser's parseInlineAttribute
             // is last-writer-wins (the existing attr child is deleted and replaced),
             // so we must compare BEFORE that replacement happens.
-            detectAttrMergeConflicts(md, body, preMergeAttrSnapshot, preMergeSource);
+            //
+            // FR-043 Amendment 2 — `overlay: true` LICENSES the override. The conflict
+            // error exists to catch two files that collided without knowing about each
+            // other; the flag is the author saying "I know about the other declaration
+            // and I mean to change it". The loader already treats it specially
+            // (find-or-throw versus create-or-find), so honouring it here makes it mean
+            // ONE thing rather than two. Per NODE: a nested overlay marks its own
+            // ancestors too, and each is judged on its own flag.
+            if (!Boolean.TRUE.equals(isOverlay)) {
+                detectAttrMergeConflicts(md, body, preMergeAttrSnapshot, preMergeSource);
+            }
         }
 
         // FR5a / ADR-0009 — tag the node with its JsonSource provenance.

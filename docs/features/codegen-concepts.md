@@ -256,7 +256,8 @@ JSON-schema'd beside the TS port at
 `codegen-ts/src/template-codegen/template-spec.schema.json`). Pass it on `gen`:
 `metaobjects gen <metadataDir> --out <dir> --template-spec spec.json --templates <dir>`
 (Python), or `dotnet meta gen <metadataDir> --out <dir> --template-spec spec.json --template-root <dir>` (C#).
-The named generators are appended to the default suite, resolving template refs
+The named generators are appended to the SELECTION (there is no default suite —
+ADR-0034 Amendment 2), resolving template refs
 under the templates root (`--templates` in Python, `--template-root` in C#; default
 `templates`). `scope` must be one of
 `perEntity`/`perPackage`/`perModel` and `format` (when present) one of the

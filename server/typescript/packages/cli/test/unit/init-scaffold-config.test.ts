@@ -14,10 +14,11 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(existsSync(join(tmp, "metaobjects.config.ts"))).toBe(true);
     const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
     expect(body).toContain(`import { defineConfig } from "@metaobjectsdev/cli"`);
-    expect(body).toContain(`entityFile()`);
-    expect(body).toContain(`queriesFile()`);
-    expect(body).toContain(`routesFile()`);
-    expect(body).toContain(`barrel()`);
+    // Codegen is opt-in: the scaffolded selection is EMPTY, and the config's job is to
+    // say so and point at the catalog rather than to wire a shape nobody chose.
+    expect(body).toContain("generators: []");
+    expect(body).toContain("meta gen --list");
+    expect(body).toContain("meta eject");
     expect(result.created).toContain("metaobjects.config.ts");
   });
 
@@ -42,7 +43,7 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     // `requirements` and `agent` for every scaffolded project and defeating exactly
     // that. Asserted as an ABSENCE because the correct scaffold says nothing here.
     expect(body).not.toMatch(/^\s*surfaces:\s*\[/m);
-    expect(nextStepsBlock(true)).toContain("meta docs");
+    expect(nextStepsBlock()).toContain("meta docs");
   });
 
   test("does not overwrite an existing metaobjects.config.ts on subsequent runs", async () => {
@@ -69,47 +70,48 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
   });
 });
 
-// ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
-// the consumer repo (codegen/generators/*.ts), and the scaffolded config imports those
-// OWNED local copies instead of the deprecated package `/generators` export.
-describe("meta init scaffolds OWNED codegen generators (ADR-0034)", () => {
-  const GENERATORS = ["entity", "queries", "routes", "barrel"] as const;
-
-  test("writes codegen/generators/{entity,queries,routes,barrel}.ts", async () => {
+// ADR-0034 Amendment 2 — `meta init` copies NOTHING into codegen/generators/.
+//
+// The directory and its tsconfig are scaffolded because they are the LAYOUT the
+// scaffold-and-own contract promises; what lands in them is the adopter's choice, made
+// through `meta eject`. Ownership itself is unchanged: an ejected file is theirs, and
+// `meta gen` runs their copy.
+describe("meta init scaffolds the owned-codegen tier, empty (ADR-0034 Amendment 2)", () => {
+  test("creates the directory and its tsconfig, and copies no generator into it", async () => {
     const result = await init({ cwd: tmp, quiet: true });
-    for (const name of GENERATORS) {
-      const rel = `codegen/generators/${name}.ts`;
-      expect(existsSync(join(tmp, rel))).toBe(true);
-      expect(result.created).toContain(rel);
+    expect(existsSync(join(tmp, "codegen/generators"))).toBe(true);
+    expect(existsSync(join(tmp, "tsconfig.codegen.json"))).toBe(true);
+    expect(result.created).toContain("tsconfig.codegen.json");
+    for (const name of ["entity", "queries", "routes", "barrel", "names"]) {
+      expect(existsSync(join(tmp, `codegen/generators/${name}.ts`)), name).toBe(false);
     }
+    expect(result.created.filter((p) => p.startsWith("codegen/generators/"))).toEqual([]);
   });
 
-  test("owned generators are the copyable reference templates (REFERENCE TEMPLATE header)", async () => {
-    await init({ cwd: tmp, quiet: true });
-    const entity = readFileSync(join(tmp, "codegen/generators/entity.ts"), "utf-8");
-    expect(entity).toContain("REFERENCE TEMPLATE");
-    // They import the stable engine, never the deprecated `/generators` export.
-    expect(entity).toContain('from "@metaobjectsdev/codegen-ts"');
-    expect(entity).not.toContain("@metaobjectsdev/codegen-ts/generators");
-  });
-
-  test("the scaffolded config imports each owned generator locally", async () => {
+  test("the scaffolded config imports no generator at all", async () => {
     await init({ cwd: tmp, quiet: true });
     const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
-    expect(body).toContain('import { entityFile } from "./codegen/generators/entity.js"');
-    expect(body).toContain('import { queriesFile } from "./codegen/generators/queries.js"');
-    expect(body).toContain('import { routesFile } from "./codegen/generators/routes.js"');
-    expect(body).toContain('import { barrel } from "./codegen/generators/barrel.js"');
+    expect(body).not.toMatch(/^import .* from "\.\/codegen\/generators\//m);
     expect(body).not.toContain("@metaobjectsdev/codegen-ts/generators");
   });
 
-  test("re-init with --force preserves a hand-edited owned generator", async () => {
+  test("an ejected generator is the copyable reference template, and re-init preserves it", async () => {
     await init({ cwd: tmp, quiet: true });
+
+    const { ejectGenerator } = await import("../../src/commands/eject.js");
+    await ejectGenerator({ cwd: tmp, name: "entity" });
     const entityPath = join(tmp, "codegen/generators/entity.ts");
-    const edited = readFileSync(entityPath, "utf-8") + "\n// HAND-EDIT-SENTINEL\n";
-    writeFileSync(entityPath, edited);
-    const result = await init({ cwd: tmp, quiet: true, force: true });
+    const entity = readFileSync(entityPath, "utf-8");
+    expect(entity).toContain("REFERENCE TEMPLATE");
+    // It imports the stable engine, never the deprecated `/generators` export.
+    expect(entity).toContain('from "@metaobjectsdev/codegen-ts"');
+    expect(entity).not.toContain("@metaobjectsdev/codegen-ts/generators");
+
+    // A hand edit survives `meta init --force` — init has no business in this
+    // directory at all now, which is a stronger guarantee than the copier's old
+    // preserve-if-present rule.
+    writeFileSync(entityPath, entity + "\n// HAND-EDIT-SENTINEL\n");
+    await init({ cwd: tmp, quiet: true, force: true });
     expect(readFileSync(entityPath, "utf-8")).toContain("HAND-EDIT-SENTINEL");
-    expect(result.preserved).toContain("codegen/generators/entity.ts");
   });
 });

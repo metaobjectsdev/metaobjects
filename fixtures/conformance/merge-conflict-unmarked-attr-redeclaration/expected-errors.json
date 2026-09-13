@@ -6,7 +6,7 @@
         "format": "merged",
         "files": [
           "meta.commerce.json",
-          "meta.commerce.overlay.json"
+          "meta.commerce.second.json"
         ]
       }
     }

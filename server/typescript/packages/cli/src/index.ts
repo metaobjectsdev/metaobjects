@@ -17,7 +17,7 @@ const VERSION = cliVersion();
  * human text. It is named ONCE and used by both the warning below and the help
  * text above, so the two cannot drift apart.
  */
-const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types", "deps"];
+const FORMAT_AWARE_COMMANDS: readonly string[] = ["gen", "verify", "migrate", "types", "deps", "eject"];
 
 const HELP_TEXT = `meta — MetaObjects CLI (v${VERSION})
 
@@ -58,8 +58,14 @@ GLOBAL OPTIONS:
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
-  --list                Print the generator registry (name, tier, options) and exit —
-                        no config or metadata required
+  --list                Print the generator CATALOG (name, layer, tier, what it emits,
+                        what to install) and exit. Codegen is opt-in: nothing runs until
+                        you wire it, and this is where you choose. No config or metadata
+                        required — add --format json for the same catalog, machine-readable.
+  --probe               With --list: construct every catalog generator and dry-run it
+                        against YOUR model, reporting how many files each would emit.
+                        A count per generator beats any category label — and it
+                        cannot go stale, because it runs the generators. Needs a project.
   --baseline <default|adopt|fresh>
                         First-time-on-existing-file behavior. Default: refuse a file that
                         cannot be proved to be generated output. "adopt" records the files
@@ -156,8 +162,14 @@ USAGE:
 
 FLAGS:
   --dry-run             Compute and print, don't write
-  --list                Print the generator registry (name, tier, options) and exit —
-                        no config or metadata required
+  --list                Print the generator CATALOG (name, layer, tier, what it emits,
+                        what to install) and exit. Codegen is opt-in: nothing runs until
+                        you wire it, and this is where you choose. No config or metadata
+                        required — add --format json for the same catalog, machine-readable.
+  --probe               With --list: construct every catalog generator and dry-run it
+                        against YOUR model, reporting how many files each would emit.
+                        A count per generator beats any category label — and it cannot go
+                        stale, because it runs the generators. Needs a project.
   --baseline <default|adopt|fresh>
                         First-time-on-existing-file behavior. Default: refuse a file that
                         cannot be proved to be generated output. "adopt" records the files
@@ -183,23 +195,33 @@ limit on the machine-readable result.
 
 NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
 `,
-  eject: `meta eject — copy a reference generator into your repo so you own it
+  eject: `meta eject — copy reference generators into your repo so you own them
 
 USAGE:
-  meta eject <name>      Copy generator <name> into codegen/generators/<name>.ts
+  meta eject <name>...   Copy each generator into codegen/generators/<name>.ts
   meta eject --list      List every ejectable generator name, grouped by package
+
+Codegen is opt-in — \`meta init\` wires nothing — so this is the door every generator
+you run comes through. Take several at once: the install set is CONSOLIDATED, so
+\`meta eject form hooks grid\` prints one install line, not three. An unknown name
+refuses the whole call and copies nothing.
 
 FLAGS:
   --list                 List ejectable generators instead of copying one
   --force                Overwrite an already-ejected file (default: never clobber)
+  --format <toon|json|text>   Output format (global flag). The structured form carries
+                         each file's wire lines, the consolidated install set and the
+                         config keys the ejected generators read.
   --help, -h             Print this help
 
-\`meta init\` copies five generators (entity, queries, routes, barrel, names) into
-codegen/generators/ automatically (ADR-0034 scaffold-and-own). \`meta eject\` is
-the same operation for ANY generator — one you skipped at init time, a UI-tier
-generator like form/hooks/grid, or one a package gains later. It prints the
-import line to paste into metaobjects.config.ts, and it never overwrites a
-file you already own unless you pass --force.
+\`meta init\` copies NO generators — codegen is opt-in, and codegen/generators/
+starts empty on purpose. Everything you run comes through here (ADR-0034
+scaffold-and-own): the file is YOURS to edit, and \`meta gen\` runs your copy, not
+the package's. It prints the import line and the entry to add in
+metaobjects.config.ts, and never overwrites a file you already own without --force.
+
+Find names with \`meta gen --list\` — add --probe to see how many files each would
+emit for your model.
 `,
   deps: `meta deps — sync a declared metadata dependency's committed snapshot
 
@@ -584,7 +606,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     case "eject": {
       const { ejectCommand } = await import("./commands/eject.js");
-      return ejectCommand(rest, cwd);
+      return ejectCommand(rest, cwd, fmt);
     }
     case "deps": {
       const { depsCommand } = await import("./commands/deps.js");

@@ -7,12 +7,13 @@
 // the same stable name in every port. This is the discoverability + identity
 // surface behind `dotnet meta gen --list`.
 //
-// It is ADDITIVE. The existing default suite (GenCommand.DefaultGenerators)
-// keeps the same four generators by default — the registry powers `--list`,
-// a stable identity, and selection-by-name so the previously-unreachable
-// generators (render-helper, extractor, output-prompt, filter-allowlist,
-// template) become runnable from the CLI without changing what any generator
-// EMITS.
+// It is the ONLY door. ADR-0034 Amendment 2 made codegen opt-in and DELETED the
+// default suite this note used to name (GenCommand.DefaultGenerators): a run that
+// selects no generator generates nothing and says so (GenCommand.NoGeneratorsSelected).
+// So the registry powers `--list`, a stable identity, and the selection-by-name every
+// run now goes through — including the once-unreachable generators (render-helper,
+// extractor, output-prompt, filter-allowlist, template) — without changing what any
+// generator EMITS.
 //
 // Stable names mirror the TS registry exactly where the concept matches
 // (cross-port contract): entity, db-context, routes, output-parser, extractor,
@@ -34,6 +35,34 @@ public enum GeneratorTier
 }
 
 /// <summary>
+/// The six layers a generator can belong to — the axis an adopter SELECTS BY, gated
+/// cross-port against <c>fixtures/generator-registry-conformance/registry.json</c>
+/// exactly as <see cref="GeneratorTier"/> is.
+/// </summary>
+/// <remarks>
+/// Six, not ten. An earlier draft split <c>Capability</c> four ways, each with ONE
+/// member — a layer with one member does no grouping work. The first four layers are
+/// app-shape decisions a builder makes; <c>Capability</c> holds the ones the MODEL has
+/// already made (you declared a <c>template.prompt</c>), which is why they are found by
+/// probing a real model rather than by browsing a taxonomy.
+/// </remarks>
+public enum GeneratorLayer
+{
+    /// <summary>Entity/DTO/value-object modules and the constants beside them.</summary>
+    Model,
+    /// <summary>Query helpers, DbContext, repositories, table objects.</summary>
+    Persistence,
+    /// <summary>HTTP surface: routes, filter allowlists, validators, wiring.</summary>
+    Api,
+    /// <summary>Browser tier: forms, hooks, grids.</summary>
+    Client,
+    /// <summary>Documentation artifacts (on by default; owned by the docs door).</summary>
+    Docs,
+    /// <summary>Chosen by the model, not by browsing — prompts, parsers, payloads, traces.</summary>
+    Capability,
+}
+
+/// <summary>
 /// Extra inputs a factory may need to construct a generator. Today only the
 /// on-disk template root (required by <c>render-helper</c>'s build-time drift
 /// gate and the <c>template</c> primitive). Optional so <c>--list</c> can
@@ -50,6 +79,8 @@ public sealed record GeneratorRegistryEntry
     public required string Description { get; init; }
     /// <summary>Native = recommended `gen` suite; Neutral = `docs`-owned.</summary>
     public required GeneratorTier Tier { get; init; }
+    /// <summary>The selection axis — see <see cref="GeneratorLayer"/>. Gated cross-port.</summary>
+    public required GeneratorLayer Layer { get; init; }
     /// <summary>
     /// Constructs the generator with sensible defaults. Calling it (even with an
     /// empty <see cref="GeneratorBuildContext"/>) must NOT throw — <c>--list</c>
@@ -95,6 +126,7 @@ public static class GeneratorRegistry
                 Name = "entity",
                 Description = "Per-entity EF Core entity class (the entity module).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Model,
                 Factory = _ => new EntityGenerator(),
             },
             ["db-context"] = new()
@@ -102,6 +134,7 @@ public static class GeneratorRegistry
                 Name = "db-context",
                 Description = "Single EF Core DbContext binding every generated entity.",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Persistence,
                 Factory = _ => new DbContextGenerator(),
             },
             ["routes"] = new()
@@ -109,6 +142,7 @@ public static class GeneratorRegistry
                 Name = "routes",
                 Description = "Per-entity ASP.NET Core CRUD route handlers.",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Api,
                 Factory = _ => new RoutesGenerator(),
             },
             ["payload"] = new()
@@ -116,6 +150,7 @@ public static class GeneratorRegistry
                 Name = "payload",
                 Description = "Per-template strict typed payload record(s) (the prompt/parser/extractor bind type).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
                 Factory = _ => new PayloadGenerator(),
             },
             ["output-parser"] = new()
@@ -123,6 +158,7 @@ public static class GeneratorRegistry
                 Name = "output-parser",
                 Description = "Per-template tolerant output parser (recover-on-receipt).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
                 Factory = _ => new OutputParserGenerator(),
             },
             ["extractor"] = new()
@@ -130,6 +166,7 @@ public static class GeneratorRegistry
                 Name = "extractor",
                 Description = "Per-template typed Extract<Name> helper (strict payload extraction).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
                 Factory = _ => new ExtractorGenerator(),
             },
             ["output-prompt"] = new()
@@ -137,6 +174,7 @@ public static class GeneratorRegistry
                 Name = "output-prompt",
                 Description = "Per-template output-format prompt fragment generator.",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
                 Factory = _ => new OutputPromptGenerator(),
             },
             ["render-helper"] = new()
@@ -144,6 +182,7 @@ public static class GeneratorRegistry
                 Name = "render-helper",
                 Description = "Per-template.output render helper (document/email typed wrappers).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
                 Factory = RenderHelper,
                 Options = "template-root (required when selected)",
             },
@@ -152,6 +191,7 @@ public static class GeneratorRegistry
                 Name = "filter-allowlist",
                 Description = "Per-entity REST filter allowlist (queryable-field guard).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Api,
                 Factory = _ => new FilterAllowlistGenerator(),
             },
             ["names"] = new()
@@ -159,6 +199,7 @@ public static class GeneratorRegistry
                 Name = "names",
                 Description = "Per-object physical database name constants (table/view name, schema, columns).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Model,
                 Factory = _ => new NamesGenerator(),
             },
             ["template"] = new()
@@ -166,6 +207,7 @@ public static class GeneratorRegistry
                 Name = "template",
                 Description = "Generic Mustache template primitive (walk + template -> files).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
                 Factory = TemplatePrimitive,
                 Options = "name, walk, template, format? (config-only)",
             },
@@ -177,6 +219,7 @@ public static class GeneratorRegistry
                 Name = "callable",
                 Description = "Per-entity callable wrapper (storedProc / tableFunction FromSqlInterpolated method).",
                 Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
                 Factory = _ => new CallableGenerator(),
             },
         };

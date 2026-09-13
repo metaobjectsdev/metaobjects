@@ -37,11 +37,21 @@ public sealed class CodegenDriftTests : IDisposable
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
-    // Was a hand-copied duplicate of GenCommand.DefaultGeneratorNames, "kept in sync" by
-    // a source comment only -- nothing asserted it. A generator added to the real list
-    // and forgotten here is silently never drift-tested: a gate that loses coverage
-    // fails nothing. Derived instead.
-    private static readonly IReadOnlyList<string> DefaultNames = GenCommand.DefaultGeneratorNames;
+    // Was a hand-copied duplicate of the port's default suite, "kept in sync" by a source
+    // comment only -- nothing asserted it. A generator added to the real list and
+    // forgotten here is silently never drift-tested: a gate that loses coverage fails
+    // nothing. So it was derived from that list -- and when opt-in codegen removed the
+    // default suite, the anchor had to move rather than become a literal again.
+    //
+    // It moves UP, not sideways: the whole REGISTRY, which is strictly more coverage than
+    // the nine that happened to be default. Two are excluded, each because it cannot run
+    // from a bare fixture rather than because it is uninteresting:
+    //   render-helper -- requires --template-root for its build-time drift gate
+    //   template      -- a PRIMITIVE; real use supplies name/walk/template via config
+    private static readonly IReadOnlyList<string> ExcludedFromDrift = ["render-helper", "template"];
+
+    private static readonly IReadOnlyList<string> DefaultNames =
+        [.. GeneratorRegistry.Entries.Keys.Where(n => !ExcludedFromDrift.Contains(n))];
 
     private static IReadOnlyList<IGenerator> DefaultGenerators() => GeneratorRegistry.Resolve(DefaultNames);
 

@@ -56,6 +56,9 @@ public sealed class VerifyTemplateSpecTests : IDisposable
     private VerifyCommand.Options CodegenOpts() => new()
     {
         MetadataDir = MetaDir,
+        // verify --codegen re-runs the SELECTION; there is no default suite to fall
+        // back on, so the mechanics tests name the one their fixtures were written for.
+        Generators = GenSuite.Names,
         TemplatesRoot = TemplateRoot,
         TemplateRoot = TemplateRoot,
         OutDir = OutDir,
@@ -67,7 +70,7 @@ public sealed class VerifyTemplateSpecTests : IDisposable
     private void Gen() =>
         Assert.True(
             GenCommand.Run(MetaDir, OutDir, "Acme.Generated", emitAbstractShapes: false,
-                generatorNames: null, templateRoot: TemplateRoot).Ok);
+                generatorNames: GenSuite.Names, templateRoot: TemplateRoot).Ok);
 
     [Fact]
     public void Gen_auto_discovers_the_conventional_spec()
@@ -133,7 +136,7 @@ public sealed class VerifyTemplateSpecTests : IDisposable
 
         Assert.True(
             GenCommand.Run(MetaDir, OutDir, "Acme.Generated", emitAbstractShapes: false,
-                generatorNames: null, templateRoot: TemplateRoot, templateSpecPath: other).Ok);
+                generatorNames: GenSuite.Names, templateRoot: TemplateRoot, templateSpecPath: other).Ok);
 
         Assert.True(File.Exists(Path.Combine(OutDir, "Widget.flagged.txt")), "the flag's spec did not run");
         Assert.False(File.Exists(Path.Combine(OutDir, "Widget.summary.txt")), "the flag must REPLACE discovery");
@@ -145,7 +148,7 @@ public sealed class VerifyTemplateSpecTests : IDisposable
         File.WriteAllText(DiscoveredSpec, "{ not json");
 
         var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated", emitAbstractShapes: false,
-            generatorNames: null, templateRoot: TemplateRoot);
+            generatorNames: GenSuite.Names, templateRoot: TemplateRoot);
 
         // Must fail loudly: silently skipping a broken spec puts gen and verify back
         // out of agreement, which is the defect this whole change exists to remove.

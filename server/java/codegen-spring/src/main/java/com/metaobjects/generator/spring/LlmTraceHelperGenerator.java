@@ -5,6 +5,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.library.LibrarySources;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
@@ -78,8 +79,20 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  */
 public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
 
-    /** The abstract base entity a trace entity must (transitively) extend. */
-    public static final String LLM_CALL_BASE = "LlmCallBase";
+    /** This generator's cross-port stable name — the key a library manifest declares
+     *  its {@code anchor} under. */
+    public static final String STABLE_NAME = "trace-helper";
+
+    /**
+     * FQNs of the library nodes a trace entity must (transitively) extend — read from
+     * the shipped {@code library.json} manifests (FR-043 §6), never hard-coded here.
+     *
+     * <p>What it replaces: {@code "LlmCallBase"} compared against
+     * {@link MetaData#getShortName()}, which matched ANY adopter entity of that name in
+     * ANY package while never actually keying on the shipped abstract.</p>
+     */
+    public static final java.util.List<String> ANCHOR_FQNS =
+            java.util.Collections.unmodifiableList(LibrarySources.generatorAnchors(STABLE_NAME));
 
     /** FQN of the runtime extract entry point (emitted as a source FQN string). */
     public static final String META_OBJECT_EXTRACT_FQN =
@@ -275,11 +288,18 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
     // Resolution helpers
     // -------------------------------------------------------------------------
 
-    /** Walk the super chain looking for a node short-named {@link #LLM_CALL_BASE}. */
+    /**
+     * Walk the super chain looking for one of {@link #ANCHOR_FQNS}.
+     *
+     * <p>The FULL name, not the short one: within one loader an FQN identifies exactly
+     * one node (a same-name redeclaration merges), so this is the node-identity compare
+     * the TypeScript port makes against the resolved anchor node.</p>
+     */
     protected static boolean extendsBase(MetaObject entity) {
+        if (ANCHOR_FQNS.isEmpty()) return false;
         MetaObject cur = entity.getSuperObject();
         while (cur != null) {
-            if (LLM_CALL_BASE.equals(cur.getShortName())) return true;
+            if (ANCHOR_FQNS.contains(cur.getName())) return true;
             cur = cur.getSuperObject();
         }
         return false;

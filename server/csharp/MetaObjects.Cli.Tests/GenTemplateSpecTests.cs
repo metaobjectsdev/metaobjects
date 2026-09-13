@@ -44,7 +44,7 @@ public sealed class GenTemplateSpecTests : IDisposable
         """);
 
         var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated",
-            emitAbstractShapes: false, generatorNames: null, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
+            emitAbstractShapes: false, generatorNames: GenSuite.Names, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
         var summary = Path.Combine(OutDir, "Widget.summary.txt");
@@ -64,7 +64,7 @@ public sealed class GenTemplateSpecTests : IDisposable
         """);
 
         var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated",
-            emitAbstractShapes: false, generatorNames: null, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
+            emitAbstractShapes: false, generatorNames: GenSuite.Names, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
 
         Assert.False(outcome.Ok);
         Assert.Contains(outcome.LoadErrors, e => e.Contains("template render failed") || e.Contains("unresolved"));
@@ -83,7 +83,7 @@ public sealed class GenTemplateSpecTests : IDisposable
         """);
 
         var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated",
-            emitAbstractShapes: false, generatorNames: null, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
+            emitAbstractShapes: false, generatorNames: GenSuite.Names, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
 
         Assert.False(outcome.Ok);
         Assert.Contains(outcome.LoadErrors, e => e.Contains("codegen failed"));
@@ -99,7 +99,7 @@ public sealed class GenTemplateSpecTests : IDisposable
         """);
 
         var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated",
-            emitAbstractShapes: false, generatorNames: null, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
+            emitAbstractShapes: false, generatorNames: GenSuite.Names, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
 
         Assert.False(outcome.Ok);
         Assert.Contains(outcome.LoadErrors, e => e.Contains("target"));

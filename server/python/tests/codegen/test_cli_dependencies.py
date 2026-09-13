@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 
 from metaobjects.cli import main
+from tests.codegen.gen_suite import GEN_SUITE
 
 _CORPUS_ARTIFACT = (
     Path(__file__).resolve().parents[4]
@@ -89,7 +90,7 @@ def _consumer(
 
 def test_gen_excludes_the_dependencys_entities_by_default(tmp_path: Path) -> None:
     cfg = _consumer(tmp_path)
-    rc = main(["gen", "--config", str(cfg)])
+    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
     assert rc == 0
     assert (tmp_path / "gen" / "order_names.py").exists()
     assert not (tmp_path / "gen" / "customer_names.py").exists()
@@ -97,7 +98,7 @@ def test_gen_excludes_the_dependencys_entities_by_default(tmp_path: Path) -> Non
 
 def test_gen_scope_include_naming_the_package_opts_it_in(tmp_path: Path) -> None:
     cfg = _consumer(tmp_path, scope_include=["acme::common::**"])
-    rc = main(["gen", "--config", str(cfg)])
+    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
     assert rc == 0
     assert (tmp_path / "gen" / "order_names.py").exists()
     assert (tmp_path / "gen" / "customer_names.py").exists()
@@ -107,7 +108,7 @@ def test_gen_a_wildcard_scope_include_does_not_opt_the_package_in(tmp_path: Path
     # `acme::**` REACHES the package's nodes without NAMING it literally
     # (`explicitly_includes`) — the default exclusion still applies.
     cfg = _consumer(tmp_path, scope_include=["acme::**"])
-    rc = main(["gen", "--config", str(cfg)])
+    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
     assert rc == 0
     assert (tmp_path / "gen" / "order_names.py").exists()
     assert not (tmp_path / "gen" / "customer_names.py").exists()
@@ -117,7 +118,7 @@ def test_gen_target_naming_an_excluded_import_refuses_with_exit_2(
     tmp_path: Path, capsys
 ) -> None:
     cfg = _consumer(tmp_path, target_entities=["Customer"])
-    rc = main(["gen", "--config", str(cfg)])
+    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
     assert rc == 2
     err = capsys.readouterr().err
     assert "'Customer'" in err
@@ -130,7 +131,7 @@ def test_gen_target_naming_an_excluded_import_is_fine_once_scope_includes_it(
     tmp_path: Path,
 ) -> None:
     cfg = _consumer(tmp_path, scope_include=["acme::common::**"], target_entities=["Customer"])
-    rc = main(["gen", "--config", str(cfg)])
+    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
     assert rc == 0
     assert (tmp_path / "gen" / "customer_names.py").exists()
     assert not (tmp_path / "gen" / "order_names.py").exists()
@@ -138,16 +139,16 @@ def test_gen_target_naming_an_excluded_import_is_fine_once_scope_includes_it(
 
 def test_verify_codegen_shares_the_selection_with_gen(tmp_path: Path) -> None:
     cfg = _consumer(tmp_path)
-    assert main(["gen", "--config", str(cfg)]) == 0
+    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
     # Fresh gen, same selection → verify --codegen must see no drift, and must
     # NOT regenerate the excluded customer_names.py and report it "missing".
-    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
+    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
 
 
 def test_verify_codegen_shares_the_selection_after_scope_widens(tmp_path: Path) -> None:
     cfg = _consumer(tmp_path, scope_include=["acme::common::**"])
-    assert main(["gen", "--config", str(cfg)]) == 0
-    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
+    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
 
 
 def test_gen_a_stale_snapshot_is_refused_before_generation(tmp_path: Path, capsys) -> None:
@@ -161,7 +162,7 @@ def test_gen_a_stale_snapshot_is_refused_before_generation(tmp_path: Path, capsy
     data[0] ^= 0xFF  # one bit-flipped byte -> the lock's pinned sha256 no longer matches
     artifact.write_bytes(bytes(data))
 
-    rc = main(["gen", "--config", str(cfg)])
+    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
     assert rc != 0
     err = capsys.readouterr().err
     # `_resolve_metadata_location_or_print_error` prints `str(exc)` — a

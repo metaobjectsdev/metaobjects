@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from metaobjects.cli import main
+from tests.codegen.gen_suite import GEN_SUITE
 
 FITNESS = (
     Path(__file__).parents[4]
@@ -135,17 +136,17 @@ def _meta_dir_with(tmp_path: Path, meta_json: str) -> str:
 def test_codegen_in_sync_returns_zero(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", meta_dir, "--out", str(out)]) == 0
-    assert main(["verify", "--codegen", meta_dir, "--out", str(out)]) == 0
+    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
 
 
 def test_codegen_detects_drift(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", meta_dir, "--out", str(out)]) == 0
+    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
     target = out / "Program.py"
     target.write_text(target.read_text() + "\n# hand-edited drift\n")
-    assert main(["verify", "--codegen", meta_dir, "--out", str(out)]) != 0
+    assert main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) != 0
 
 
 # --- 2. --templates = render-verify drift -----------------------------------
@@ -154,14 +155,14 @@ def test_codegen_detects_drift(tmp_path: Path) -> None:
 def test_templates_clean_returns_zero(tmp_path: Path) -> None:
     meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
     troot = _templates_dir(tmp_path, "Hello {{name}}")
-    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
     assert rc == 0
 
 
 def test_templates_field_not_on_payload_is_drift(tmp_path: Path, capsys) -> None:
     meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
     troot = _templates_dir(tmp_path, "Hello {{missing}}")
-    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
     assert rc != 0
     err = capsys.readouterr().err
     # Names the offending field + the template.
@@ -174,7 +175,7 @@ def test_templates_unresolvable_ref_is_drift(tmp_path: Path) -> None:
     # Empty templates root → pages/welcome.mustache does not exist.
     troot = tmp_path / "empty_templates"
     troot.mkdir()
-    rc = main(["verify", "--templates", meta_dir, "--templates-root", str(troot)])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", str(troot)])
     assert rc != 0
 
 
@@ -183,7 +184,7 @@ def test_templates_email_clean_returns_zero(tmp_path: Path) -> None:
     # fields is clean (#193 — email parts drift-checked like a document body).
     meta_dir = _meta_dir_with(tmp_path, _META_EMAIL)
     troot = _email_templates_dir(tmp_path, "Hello {{name}}", "<p>Hi {{name}}</p>")
-    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
     assert rc == 0
 
 
@@ -192,7 +193,7 @@ def test_templates_email_body_drift_is_caught(tmp_path: Path, capsys) -> None:
     # per-port bug was skipping @kind=email templates entirely.
     meta_dir = _meta_dir_with(tmp_path, _META_EMAIL)
     troot = _email_templates_dir(tmp_path, "Hello {{name}}", "<p>Hi {{missing}}</p>")
-    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
     assert rc != 0
     err = capsys.readouterr().err
     assert "missing" in err
@@ -234,7 +235,7 @@ def test_templates_prompt_required_tag_missing_is_drift(tmp_path: Path, capsys) 
     # enforced neither — a divergence from TS/Java/C#.
     meta_dir = _meta_dir_with(tmp_path, _META_PROMPT_TAGS)
     troot = _templates_dir(tmp_path, "Hello {{name}}")  # no <answer>…</answer> tag
-    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
     assert rc != 0
     err = capsys.readouterr().err
     assert "ERR_OUTPUT_TAG_MISSING" in err
@@ -244,7 +245,7 @@ def test_templates_prompt_required_tag_missing_is_drift(tmp_path: Path, capsys) 
 def test_templates_prompt_required_tag_present_passes(tmp_path: Path) -> None:
     meta_dir = _meta_dir_with(tmp_path, _META_PROMPT_TAGS)
     troot = _templates_dir(tmp_path, "Hello {{name}} <answer>{{name}}</answer>")
-    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
     assert rc == 0
 
 
@@ -254,8 +255,8 @@ def test_templates_prompt_required_tag_present_passes(tmp_path: Path) -> None:
 def test_bare_verify_is_codegen_backcompat(tmp_path: Path, capsys) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", meta_dir, "--out", str(out)]) == 0
-    rc = main(["verify", meta_dir, "--out", str(out)])
+    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    rc = main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])
     assert rc == 0
     note = capsys.readouterr().err + capsys.readouterr().out
     # A one-line note advertising the explicit subverbs is printed.
@@ -265,9 +266,9 @@ def test_bare_verify_is_codegen_backcompat(tmp_path: Path, capsys) -> None:
 def test_bare_verify_detects_codegen_drift(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", meta_dir, "--out", str(out)]) == 0
+    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
     (out / "Program.py").unlink()
-    assert main(["verify", meta_dir, "--out", str(out)]) != 0
+    assert main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) != 0
 
 
 # --- 4. --db is rejected in the Python port (exit 2) ------------------------
@@ -275,7 +276,7 @@ def test_bare_verify_detects_codegen_drift(tmp_path: Path) -> None:
 
 def test_db_is_rejected_exit_2(tmp_path: Path, capsys) -> None:
     meta_dir = _meta_dir(tmp_path)
-    rc = main(["verify", "--db", "postgres://x", meta_dir])
+    rc = main(["verify", "--generators", GEN_SUITE, "--db", "postgres://x", meta_dir])
     assert rc == 2
     err = capsys.readouterr().err
     assert "not supported" in err.lower()
@@ -289,7 +290,7 @@ def test_invalid_flag_exit_2() -> None:
     import pytest
 
     with pytest.raises(SystemExit) as exc:
-        main(["verify", "--bogus", "x"])
+        main(["verify", "--generators", GEN_SUITE, "--bogus", "x"])
     assert exc.value.code == 2
 
 
@@ -299,13 +300,13 @@ def test_invalid_flag_exit_2() -> None:
 def test_combined_codegen_and_templates_aggregates_exit(tmp_path: Path) -> None:
     meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
     out = tmp_path / "out"
-    assert main(["gen", meta_dir, "--out", str(out)]) == 0
+    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
     troot = _templates_dir(tmp_path, "Hello {{missing}}")
     # codegen clean, templates drift → aggregate non-zero.
     rc = main(
         [
             "verify",
-            "--codegen",
+            "--codegen", "--generators", GEN_SUITE,
             "--templates",
             meta_dir,
             "--out",
@@ -420,5 +421,5 @@ def test_templates_payload_ref_fqn_collision_binds_correct_package_not_load_firs
     # first (never the FQN's actual target unless it happened to be first),
     # whose field tree lacks `target_field` — spurious ERR_VAR_NOT_ON_PAYLOAD
     # drift. The fix must report CLEAN (exit 0) regardless of load order.
-    rc = main(["verify", "--templates", str(d), "--templates-root", str(troot)])
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", str(d), "--templates-root", str(troot)])
     assert rc == 0

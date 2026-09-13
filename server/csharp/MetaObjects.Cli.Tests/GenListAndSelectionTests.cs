@@ -53,16 +53,14 @@ public sealed class GenListAndSelectionTests : IDisposable
     }
 
     [Fact]
-    public void Default_suite_is_python_parity_plus_names()
+    public void There_is_no_default_suite()
     {
-        // Parity with the Python default (entity / router / filter-allowlist / payload /
-        // output-parser / output-prompt / extractor), plus `names` — C# ships the
-        // per-object physical-database-names artifact default ON (program spec §A5;
-        // Python has not built it yet). render-helper is opt-in (needs --template-root);
-        // template / callable stay opt-in.
-        Assert.Equal(
-            ["entity", "names", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"],
-            GenCommand.DefaultGeneratorNames);
+        // This port used to run NINE generators for a caller who named none, and this
+        // test pinned that list. Codegen is opt-in now: what is pinned instead is that
+        // the concept is gone, and that the refusal says how to proceed. Java never had
+        // a default set and has been right all along.
+        Assert.Contains("--generators", GenCommand.NoGeneratorsSelected);
+        Assert.Contains("--list", GenCommand.NoGeneratorsSelected);
     }
 
     [Fact]
@@ -91,14 +89,28 @@ public sealed class GenListAndSelectionTests : IDisposable
     }
 
     [Fact]
-    public void Null_generator_names_runs_the_default_suite()
+    public void Null_generator_names_is_a_usage_error_and_writes_nothing()
     {
         var outcome = GenCommand.Run(
             MetaDir, OutDir, "Acme.Generated",
             emitAbstractShapes: false, generatorNames: null, templateRoot: null);
 
+        Assert.False(outcome.Ok);
+        Assert.Contains(outcome.LoadErrors, e => e.Contains("--generators"));
+        // Nothing was emitted — a refusal that still wrote half a suite would be worse
+        // than the default it replaces.
+        Assert.False(Directory.Exists(OutDir) && Directory.GetFiles(OutDir).Length > 0);
+    }
+
+    [Fact]
+    public void An_explicit_selection_still_emits_exactly_what_it_names()
+    {
+        var outcome = GenCommand.Run(
+            MetaDir, OutDir, "Acme.Generated",
+            emitAbstractShapes: false,
+            generatorNames: ["entity", "payload", "output-parser"], templateRoot: null);
+
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
-        // The default suite still includes output-parser, which emits for a responding prompt.
         Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.response.cs")));
     }
 }

@@ -123,9 +123,11 @@ describe("metaobjects.config.ts wiring still scaffolded", () => {
     await init({ cwd });
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
     expect(configTs).toContain("defineConfig");
-    // ADR-0034 — the scaffolded config imports the OWNED local generators, never the
-    // deprecated package `/generators` export.
-    expect(configTs).toContain('from "./codegen/generators/entity.js"');
+    // ADR-0034 Amendment 2 — the scaffolded config wires nothing and imports nothing.
+    // What it must NOT do is reach for the deprecated package `/generators` export,
+    // which is the one import path 1.0 removed.
+    expect(configTs).toContain("generators: []");
+    expect(configTs).not.toMatch(/^import .* from "\.\/codegen\/generators\//m);
     expect(configTs).not.toContain("@metaobjectsdev/codegen-ts/generators");
   });
 });

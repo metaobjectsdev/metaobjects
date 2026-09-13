@@ -50,8 +50,12 @@ work*. A release can move one without the other, and most releases move neither.
 
 - **The CLI command surface** — `init` / `gen` / `verify` and their *documented*
   flags, per port (`meta`, `dotnet meta`, `mvn metaobjects:*`, `metaobjects`).
-- **The scaffold-and-own contract** — what `meta init` scaffolds and the `Generator`
-  interface owned templates implement.
+- **The scaffold-and-own contract** — the *layout and the interfaces*:
+  `codegen/generators/`, the local-import config shape, `.metaobjects/`, and the
+  `Generator` interface owned templates implement. **Not** *which* generators a fresh
+  scaffold wires: codegen is opt-in and the scaffolded selection is empty by design
+  (ADR-0034 Amendment 2), so changing what `meta init` starts you with changes nothing
+  for a project that already exists.
 
 > **What this costs you, stated plainly.** Post-1.0 the caret rule stops being a gate —
 > `^1.0.0` accepts `1.1.0` — so a metamodel change can reach you on a routine update
@@ -70,6 +74,29 @@ work*. A release can move one without the other, and most releases move neither.
 - **Anything explicitly marked experimental or reserved** and not yet in the registry
   (e.g. the reserved-but-unregistered declared-API vocabulary `api.*`/`operation.*`/
   `binding.*`, and reserved index subtypes `index.fulltext`/`vector`/`spatial`).
+
+## Shipped libraries (`libraries: [...]`)
+
+A [library](features/libraries.md) is declared design MetaObjects ships as metadata —
+nodes an adopter opts into and then generates from. What its SHAPE promises depends on
+the `stability` its manifest declares, and `meta gen --list` prints it:
+
+- **`stable`** — additive only within a MINOR. A field, an index, a requirement may be
+  added; a node or field is not removed or renamed, and a physical name does not change,
+  without a MAJOR.
+- **`preview`** — exempt from that promise. The shape may change in a MINOR, including
+  removals and renames. A library ships `preview` while its shape is still being learned
+  from use, and is promoted on evidence: one external estate running it with the drift
+  gate enforced (the same bar G3d set for the 1.0 cut).
+
+Two things bound what that costs you. **Copy is the expected mode** — `meta eject <lib>`
+hands you the metadata to own, and a later change to the library then reaches only the
+adopters who chose to track it. And the layering means the core layer generates nothing
+until you opt into `db`, so a shape change in a library you took for its design alone
+cannot move your schema.
+
+The library's own REQUIREMENTS carry the same reading rule as its model: `live` means
+"the model as shipped realises this", never "your application does".
 
 ## MINOR vs. PATCH (what a version bump means)
 

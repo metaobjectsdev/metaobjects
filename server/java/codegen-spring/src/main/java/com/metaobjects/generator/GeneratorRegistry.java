@@ -52,18 +52,52 @@ public final class GeneratorRegistry {
         NEUTRAL
     }
 
+    /**
+     * The six layers a generator can belong to — the axis an adopter SELECTS BY,
+     * mirroring the manifest's {@code layer} field and gated against it exactly as
+     * {@link Tier} is.
+     *
+     * <p>Six, not ten. An earlier draft split {@code CAPABILITY} four ways, each with
+     * ONE member — a layer with one member does no grouping work. The first four layers
+     * are app-shape decisions a builder makes; {@code CAPABILITY} holds the ones the
+     * MODEL has already made (you declared a {@code template.prompt}), which is why they
+     * are found by probing a real model rather than by browsing a taxonomy.</p>
+     */
+    public enum Layer {
+        /** Entity / DTO / value-object modules and the constants beside them. */
+        MODEL,
+        /** Query helpers, DbContext, repositories, table objects. */
+        PERSISTENCE,
+        /** HTTP surface: routes, filter allowlists, validators, wiring. */
+        API,
+        /** Browser tier: forms, hooks, grids. */
+        CLIENT,
+        /** Documentation artifacts (on by default; owned by the docs door). */
+        DOCS,
+        /** Chosen by the model, not by browsing — prompts, parsers, payloads, traces. */
+        CAPABILITY;
+
+        /** The manifest's spelling: lower-case, hyphen-free. */
+        public String manifestValue() {
+            return name().toLowerCase(java.util.Locale.ROOT);
+        }
+    }
+
     /** Immutable metadata for a single registered generator. */
     public static final class GeneratorInfo {
         private final String stableName;
         private final String classname;
         private final String description;
         private final Tier tier;
+        private final Layer layer;
 
-        public GeneratorInfo(String stableName, String classname, String description, Tier tier) {
+        public GeneratorInfo(String stableName, String classname, String description,
+                             Tier tier, Layer layer) {
             this.stableName = stableName;
             this.classname = classname;
             this.description = description;
             this.tier = tier;
+            this.layer = layer;
         }
 
         /** Canonical cross-port stable name (the manifest key). */
@@ -86,9 +120,15 @@ public final class GeneratorRegistry {
             return tier;
         }
 
+        /** The generator's layer — the axis an adopter selects by. */
+        public Layer layer() {
+            return layer;
+        }
+
         @Override
         public String toString() {
-            return "GeneratorInfo{" + stableName + " -> " + classname + " (" + tier + ")}";
+            return "GeneratorInfo{" + stableName + " -> " + classname
+                    + " (" + tier + ", " + layer + ")}";
         }
     }
 
@@ -100,44 +140,44 @@ public final class GeneratorRegistry {
     private static Map<String, GeneratorInfo> buildRegistry() {
         Map<String, GeneratorInfo> m = new LinkedHashMap<>();
         register(m, "entity", JavaObjectCodeGenerator.class.getName(),
-                "Per-entity Java model/class (table-backed or value object).", Tier.NATIVE);
+                "Per-entity Java model/class (table-backed or value object).", Tier.NATIVE, Layer.MODEL);
         register(m, "routes", SpringControllerGenerator.class.getName(),
-                "Per-entity Spring @RestController endpoint surface.", Tier.NATIVE);
+                "Per-entity Spring @RestController endpoint surface.", Tier.NATIVE, Layer.API);
         register(m, "output-parser", SpringOutputParserGenerator.class.getName(),
-                "Per-template tolerant output parser (recover-on-receipt).", Tier.NATIVE);
+                "Per-template tolerant output parser (recover-on-receipt).", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "output-prompt", SpringOutputPromptGenerator.class.getName(),
-                "Per-template output-format prompt fragment generator.", Tier.NATIVE);
+                "Per-template output-format prompt fragment generator.", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "render-helper", SpringRenderHelperGenerator.class.getName(),
-                "Per-template.output render helper (document/email typed wrappers).", Tier.NATIVE);
+                "Per-template.output render helper (document/email typed wrappers).", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "extractor", ExtractorCodeGenerator.class.getName(),
                 "Per-template strict typed extract<Name> helper. FUSED into `entity` on this "
-                    + "port — emitted by JavaObjectCodeGenerator, not separately wirable.", Tier.NATIVE);
+                    + "port — emitted by JavaObjectCodeGenerator, not separately wirable.", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "template", TemplateScopeGenerator.class.getName(),
                 "Generic Mustache template primitive (walk + template -> files) — the "
-                    + "Maven-wirable declarative form over the conformance-pinned renderer.", Tier.NATIVE);
+                    + "Maven-wirable declarative form over the conformance-pinned renderer.", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "filter-allowlist", SpringFilterAllowlistGenerator.class.getName(),
-                "Per-entity REST filter allowlist (queryable-field guard).", Tier.NATIVE);
+                "Per-entity REST filter allowlist (queryable-field guard).", Tier.NATIVE, Layer.API);
         register(m, "payload", SpringPayloadGenerator.class.getName(),
-                "Per-template payload value object (the strict payload type).", Tier.NATIVE);
+                "Per-template payload value object (the strict payload type).", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "repository", SpringRepositoryGenerator.class.getName(),
-                "Per-entity Spring Data repository.", Tier.NATIVE);
+                "Per-entity Spring Data repository.", Tier.NATIVE, Layer.PERSISTENCE);
         register(m, "dto", SpringDtoGenerator.class.getName(),
-                "Per-entity Spring DTO record.", Tier.NATIVE);
+                "Per-entity Spring DTO record.", Tier.NATIVE, Layer.MODEL);
         register(m, "value-object", SpringValueObjectGenerator.class.getName(),
                 "Per-value-object Spring record with jakarta constraints — the typed "
-                    + "component the DTO/Patch bind for a field.object @storage:jsonb column.", Tier.NATIVE);
+                    + "component the DTO/Patch bind for a field.object @storage:jsonb column.", Tier.NATIVE, Layer.MODEL);
         register(m, "trace-helper", LlmTraceHelperGenerator.class.getName(),
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
-                    + "LlmCallBase-derived entities only).", Tier.NATIVE);
+                    + "LlmCallBase-derived entities only).", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "names", SpringNamesGenerator.class.getName(),
                 "Per-object physical database name constants (table/view/schema/column) "
-                    + "for a hand-written consumer to reference instead of a string literal.", Tier.NATIVE);
+                    + "for a hand-written consumer to reference instead of a string literal.", Tier.NATIVE, Layer.MODEL);
         return Collections.unmodifiableMap(m);
     }
 
     private static void register(Map<String, GeneratorInfo> m, String stableName,
-                                 String classname, String description, Tier tier) {
-        if (m.put(stableName, new GeneratorInfo(stableName, classname, description, tier)) != null) {
+                                 String classname, String description, Tier tier, Layer layer) {
+        if (m.put(stableName, new GeneratorInfo(stableName, classname, description, tier, layer)) != null) {
             throw new IllegalStateException("duplicate generator stable name: " + stableName);
         }
     }

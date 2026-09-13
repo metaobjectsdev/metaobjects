@@ -1,6 +1,6 @@
 # Opt-in codegen and the generator catalog
 
-**Status:** design, pending maintainer review
+**Status:** approved 2026-09-13 (§8a and §8b ruled; see §10 for what is deliberately NOT here)
 **Date:** 2026-09-12
 **Ships as:** PATCH (see §6)
 
@@ -227,9 +227,11 @@ list:
 
 1. Read the app's purpose and stack.
 2. `meta gen --list --format json --probe`.
-3. Choose by `layer`; at most one `framework` per `api` and per `client` layer;
-   satisfy every `requires`; take what `wouldEmit > 0` says the model already
-   asks for.
+3. Choose by `layer`; satisfy every `requires`; take what `wouldEmit > 0` says
+   the model already asks for. Pick ONE `api` framework — `routes` and
+   `routes-hono` are alternatives. Do NOT apply that rule to `client`:
+   `@metaobjectsdev/tanstack` peers on `react`, so `form` + `hooks` + `grid`
+   is the intended composition, not a conflict.
 4. `meta eject <names...> --format json`; apply `wire`, run `install.command`,
    set `config.keys`.
 5. `meta gen`; read its warnings; typecheck.
@@ -261,8 +263,25 @@ registry, or the build fails.
 - A test asserts every ejectable name has a registry entry and every
   `ejectable: true` entry has a template; `requires ⊆ registry keys` is a
   compile-time check.
-- `runtimePeers` is checked against what the generators actually emit.
+- **Every compatibility declaration is resolved, not trusted** — the doctrine
+  `@implementedBy` already runs on, applied to the catalog. A declaration is a
+  promise someone has to remember to keep, and "someone remembers" scales badly
+  across five ports and a growing framework set:
+  - `runtimePeers` — run each generator over a fixture model; assert the emitted
+    files' third-party imports are a subset of what the entry declares.
+  - `requires` — resolve each generator's emitted RELATIVE imports back to
+    whichever generator emits those paths; assert that set is a subset of the
+    declared `requires`. A new framework generator that quietly depends on
+    `entity` cannot ship claiming it depends on nothing.
+  - `framework` — the manifest is byte-matched by all five ports, so a framework
+    generator cannot be added without an entry that declares itself.
 - Skill prose is checked against the composed registry.
+
+Note what this separates. **Applicability** — "would this emit anything for MY
+model?" — is answered by `--probe`, which cannot drift because it does not
+describe the generators, it runs them. **Compatibility** — "what does this need
+in order to work?" — is declared, and therefore has to be gated. Conflating the
+two is how a catalog goes quietly wrong as frameworks are added.
 
 ## 4. Cross-port
 
@@ -368,44 +387,95 @@ README quickstart, the root README, the `llms.txt` pair (one line — "codegen i
 opt-in; `meta gen --list` is the catalog" — never the enumeration), a migration
 note, `docs/compatibility-policy.md:53`, and the CHANGELOG.
 
-## 8. Open questions for the maintainer
+## 8. Rulings (was: open questions) — settled 2026-09-13
 
-### 8a. Is `framework` exclusivity a gate, or only part of the procedure?
+### 8a. `framework` exclusivity is an ADVISORY, and only on the `api` layer
 
-D4 tells the builder to wire at most one `framework` per `api` and per `client`
-layer, but nothing enforces it: wiring both `routes` and `routes-hono` would emit
-two HTTP surfaces over the same entities. Three options, in ascending cost —
-leave it advisory (the generated files have different names, so the failure is
-visible and cheap to undo); add a warning to the `requires` gate when two entries
-in the same layer declare different `framework` values; or make it a real
-exclusivity slot, the way Quarkus fails a build when two extensions provide the
-same capability. Advisory is consistent with every other gate here being
-self-extinguishing, and with not hard-coding decisions into the CLI — but it is a
-ruling, not an omission, and the plan needs it settled.
+Verified first: `routes` emits `<Entity>.routes.ts` and `routes-hono` emits
+`<Entity>.routes.hono.ts`. **Different paths** — so wiring both does not trip the
+runner's conflicting-output-path error, does not fail `tsc`, and silently
+produces two complete HTTP surfaces over the same entities.
 
-### 8b. The closed `layer` set
+It is nonetheless not an error. Migrating Fastify→Hono, or serving Node and edge
+from one model, are legitimate. So: a self-extinguishing warning when two wired
+`api`-layer entries declare different `framework` values, consistent with every
+other gate here. No build failure.
 
-It becomes cross-port gated vocabulary, so it needs a ruling rather than a guess.
-Verified to cover all 34 generator names exactly — the 29 in the manifest plus
-the five being added — with no gaps and no invented entries. Proposed:
+**And no general per-layer rule**, because the `client` layer disproves it:
+`@metaobjectsdev/tanstack` declares `react` as a peer, so `form` (react) +
+`hooks`/`grid` (tanstack) is the documented, normal composition. An earlier draft
+of this spec stated "at most one framework per `api` and per `client` layer";
+that rule would have forbidden the single most common client selection, and is
+corrected in D4.
 
-| layer | members |
-|---|---|
-| `model` | entity, names, barrel, dto, value-object |
-| `persistence` | queries, db-context, repository, exposed-table, relations, stored-proc, callable |
-| `api` | routes, routes-hono, filter-allowlist, validator, spring-config |
-| `client` | form, hooks, grid, grid-hook |
-| `prompt` | prompt-render, output-parser, output-prompt, extractor, render-helper, payload |
-| `trace` | trace-helper |
-| `requirements` | requirement-tests |
-| `publish` | shared-model |
-| `docs` | docs, mermaid-er, api-docs |
-| `primitive` | template |
+### 8b. Six layers, not ten
+
+The ten-layer draft had four single-member layers (`trace`, `requirements`,
+`publish`, `primitive`). A layer with one member does no grouping work, and the
+draft conflated two different kinds of choice: the app-shape decisions a builder
+makes, and the model-driven ones the model has already made. Nobody picks
+`prompt-render` by browsing a taxonomy — they pick it because they declared a
+`template.prompt`, which `--probe` reports exactly, with a file count from the
+real model.
+
+| layer | members | chosen by |
+|---|---|---|
+| `model` | entity, names, barrel, dto, value-object | app shape |
+| `persistence` | queries, db-context, repository, exposed-table, relations, stored-proc | app shape |
+| `api` | routes, routes-hono, filter-allowlist, validator, spring-config | app shape |
+| `client` | form, hooks, grid, grid-hook | app shape |
+| `docs` | docs, mermaid-er, api-docs | on by default |
+| `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, payload, trace-helper, requirement-tests, shared-model, template, callable | `--probe` |
+
+All 34 names covered — the 29 in the manifest plus the five being added — with no
+gaps and no invented entries.
+
+`capability` looking like a large undifferentiated bucket is the point: you are
+not meant to choose inside it by reading labels. `output-parser: 3, callable: 0,
+requirement-tests: 7` from your own model is strictly better information than a
+category name, and it cannot go stale. Six gated values instead of ten, and one
+fewer invented taxonomy — the same principle the opt-in ruling rests on.
 
 `layer` rather than a reuse of "tier", which is already taken twice
 (native/neutral in ADR-0020, and server/UI elsewhere).
 
-## 9. Validation
+## 9. Forward compatibility: this catalog is the first `kind`
+
+There is a larger idea this design must not foreclose, specified separately in
+**FR-043**: shipping *packages* an agent pulls into a project and adapts —
+**feature packages**, about a capability the application has, and
+**non-functional packages**, about a property its construction has.
+
+That is not greenfield. `library/ai/llm-call.yaml` already ships one: the
+LLM-call audit model, opted into by name through the loader's `libraries`
+option, embedded per port under an `embedded-library drift` gate, with the
+`trace-helper` generator and OMDB runtime beside it. Read FR-043 before
+assuming the two kinds differ by whether they carry code — that shipped package
+is a *feature* package which nonetheless carries a generator, so the real model
+is a set of components (metadata, requirements, generator selection, runtime
+helpers) of which any subset may be present.
+
+Two decisions here keep that reachable without building any of it now.
+
+**A catalog entry gains a `kind`, rather than packages becoming a parallel
+system.** Today every entry is `kind: "generator"`. A package is a later value.
+Nothing else in this spec needs to change for that: entries are already keyed on
+ADR-0021 stable names, which is exactly what a package would reference, and
+`requires` already expresses "this needs that" in a form that extends from
+generator→generator to package→package.
+
+**Three mechanisms exist, and FR-023 is not the one.** `libraries: [...]` is
+embed-and-use (what the shipped `ai` package does); FR-023 `dependencies` is
+*sync-and-pin* — hash-locked, deliberately excluded from your own codegen and
+ledger — which is right for sharing a model you do NOT own; `eject` is
+copy-and-own. A package pulled in to be modified and implemented against wants
+its requirements IN your ledger, which is the opposite of what a dependency
+does. So the shape is embed by default, eject to own — `library` composed with
+ADR-0034 — and FR-023 stays what it is for.
+
+Nothing in §3 is built speculatively for this. The `kind` field is one string.
+
+## 10. Validation
 
 FR-040 §1's own bar: put an adopting agent on a fresh `meta init` with the new
 catalog and skill, on a stack nobody wrote a recipe for, and check whether it

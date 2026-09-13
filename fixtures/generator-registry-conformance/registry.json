@@ -1,152 +1,211 @@
 {
-  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python. `tier`: native (idiomatic per-port code) or neutral (Tier-2, owned by `meta docs`). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
+  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python. `tier`: native (idiomatic per-port code) or neutral (Tier-2, owned by `meta docs`). `layer`: one of model, persistence, api, client, docs, capability — the grouping an adopter SELECTS BY, gated in every port exactly as `tier` is (see README.md). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
   "ports": ["typescript", "csharp", "java", "kotlin", "python"],
   "generators": {
     "entity": {
       "concept": "Per-entity model/class — the entity module (table-backed or value object).",
       "tier": "native",
+      "layer": "model",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "routes": {
       "concept": "Per-entity REST endpoint surface (controllers / routes / router).",
       "tier": "native",
+      "layer": "api",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "output-parser": {
       "concept": "Per-template tolerant output parser (recover-on-receipt).",
       "tier": "native",
+      "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "output-prompt": {
       "concept": "Per-template output-format prompt fragment generator.",
       "tier": "native",
+      "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "render-helper": {
       "concept": "Per-template.output render helper (document/email typed wrappers).",
       "tier": "native",
+      "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "extractor": {
       "concept": "Per-template strict typed extract<Name> helper (strict payload extraction).",
       "tier": "native",
+      "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "template": {
       "concept": "Generic Mustache template primitive (walk + template -> files).",
       "tier": "native",
+      "layer": "capability",
       "ports": ["typescript", "csharp", "java", "python"]
     },
     "filter-allowlist": {
       "concept": "Per-entity REST filter allowlist (queryable-field guard).",
       "tier": "native",
+      "layer": "api",
       "ports": ["csharp", "java", "kotlin", "python"]
     },
     "payload": {
       "concept": "Per-template payload value object (the strict payload type).",
       "tier": "native",
+      "layer": "capability",
       "ports": ["csharp", "java", "kotlin", "python"]
     },
     "queries": {
       "concept": "Per-entity typed query helpers (findById/create/...).",
       "tier": "native",
+      "layer": "persistence",
       "ports": ["typescript"]
     },
     "callable": {
       "concept": "Per-entity callable wrapper for a callable source (storedProc / tableFunction); in TS it also covers the service surface wrapping the query helpers.",
       "tier": "native",
+      "layer": "capability",
       "ports": ["typescript", "csharp"]
     },
     "routes-hono": {
       "concept": "Per-entity Hono CRUD routes.",
       "tier": "native",
+      "layer": "api",
       "ports": ["typescript"]
     },
     "barrel": {
       "concept": "Single index module re-exporting every generated entity module.",
       "tier": "native",
+      "layer": "model",
       "ports": ["typescript"]
     },
     "names": {
       "concept": "Per-entity physical database name constants (table/view name, schema, column names).",
       "tier": "native",
+      "layer": "model",
       "ports": ["typescript", "csharp", "kotlin", "python", "java"]
     },
     "prompt-render": {
       "concept": "Per-template prompt-render helper over the render engine.",
       "tier": "native",
+      "layer": "capability",
       "ports": ["typescript"]
     },
     "api-docs": {
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
+      "layer": "docs",
       "ports": ["typescript"]
     },
     "trace-helper": {
       "concept": "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
       "tier": "native",
+      "layer": "capability",
       "note": "TS emits record<Entity> + call<Entity>; Java (codegen-spring) emits record<Entity> only — the Java LlmClient seam is BYO/vendor-neutral and not ported (ADR-0024). Python emits record_<entity> only (same BYO-caller rationale).",
       "ports": ["typescript", "java", "python"]
     },
     "db-context": {
       "concept": "Single EF Core DbContext binding every generated entity.",
       "tier": "native",
+      "layer": "persistence",
       "ports": ["csharp"]
     },
     "repository": {
       "concept": "Per-entity repository seam (Java: Spring Data interface; Kotlin: an open Exposed persistence base with CRUD + patch bodies).",
       "tier": "native",
+      "layer": "persistence",
       "ports": ["java", "kotlin"]
     },
     "dto": {
       "concept": "Per-entity Spring DTO.",
       "tier": "native",
+      "layer": "model",
       "ports": ["java"]
     },
     "value-object": {
       "concept": "Per-value-object Spring record with jakarta constraints (the DTO/Patch bind target for a field.object jsonb column).",
       "tier": "native",
+      "layer": "model",
       "ports": ["java"]
     },
     "exposed-table": {
       "concept": "Per-entity Kotlin Exposed table object.",
       "tier": "native",
+      "layer": "persistence",
       "ports": ["kotlin"]
     },
     "relations": {
       "concept": "Cross-entity relationship helpers.",
       "tier": "native",
+      "layer": "persistence",
       "ports": ["kotlin"]
     },
     "spring-config": {
       "concept": "Spring wiring/configuration for the generated surface.",
       "tier": "native",
+      "layer": "api",
       "ports": ["kotlin"]
     },
     "stored-proc": {
       "concept": "Stored-procedure binding helpers.",
       "tier": "native",
+      "layer": "persistence",
       "ports": ["kotlin"]
     },
     "validator": {
       "concept": "Per-entity input validator.",
       "tier": "native",
+      "layer": "api",
       "ports": ["kotlin"]
     },
     "shared-model": {
       "concept": "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`.",
       "tier": "native",
+      "layer": "capability",
+      "ports": ["typescript"]
+    },
+    "form": {
+      "concept": "Per-entity React form component over the generated Zod schema.",
+      "tier": "native",
+      "layer": "client",
+      "ports": ["typescript"]
+    },
+    "hooks": {
+      "concept": "Per-entity TanStack Query hooks (useEntity / useEntities / useCreate / useUpdate / useDelete).",
+      "tier": "native",
+      "layer": "client",
+      "ports": ["typescript"]
+    },
+    "grid": {
+      "concept": "Per-entity TanStack Table column definitions, from a layout.dataGrid declaration.",
+      "tier": "native",
+      "layer": "client",
+      "ports": ["typescript"]
+    },
+    "grid-hook": {
+      "concept": "Per-entity server-driven grid state hook (sort/filter/page) over the generated columns.",
+      "tier": "native",
+      "layer": "client",
+      "ports": ["typescript"]
+    },
+    "requirement-tests": {
+      "concept": "Per-requirement test stub, one per requirement.functional claim in the ledger.",
+      "tier": "native",
+      "layer": "capability",
       "ports": ["typescript"]
     },
     "docs": {
       "concept": "Neutral per-entity / per-template Markdown documentation pages.",
       "tier": "neutral",
+      "layer": "docs",
       "note": "Owned by `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended native suite.",
       "ports": ["typescript"]
     },
     "mermaid-er": {
       "concept": "Neutral Mermaid ER diagram of the entity/relationship model.",
       "tier": "neutral",
+      "layer": "docs",
       "note": "Neutral artifact owned by the docs engine (ADR-0020); surfaced via `meta docs`.",
       "ports": ["typescript"]
     }

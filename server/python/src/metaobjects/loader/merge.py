@@ -235,6 +235,11 @@ def _apply_overlay(
             )
         )
         return
+    # The loader's record that this node was amended BY an `overlay: true` declaration —
+    # mirrors the TS parser's `target.setIsMerge(true)`. Read by the FR-043 library guard
+    # to tell an intentional amendment from an ejected copy that landed in the same
+    # package; both merge, and only the flag separates them.
+    tc.is_merge = True
     _merge_into(tc, node, errors, warnings, envelope_warnings, None)
 
 
@@ -382,7 +387,8 @@ def _merge_into(
     """Merge *src*'s own attrs/children into *target* in place.
 
     FR5c — runs three diagnostics around the merge:
-      1. ``ERR_MERGE_CONFLICT`` on conflicting @-attrs (before the write).
+      1. ``ERR_MERGE_CONFLICT`` on conflicting @-attrs (before the write), unless
+         *src* is marked ``overlay: true`` — see FR-043 Amendment 2 below.
       2. ``MergedSource`` upgrade when the merge produced semantic change.
       3. ``WARN_DUPLICATE_DECLARATION`` when no semantic change occurred
          AND the contributor file is new.
@@ -398,7 +404,16 @@ def _merge_into(
     pre_canonical: Optional[str] = None
     if fr5c_active:
         pre_canonical = canonical_serialize(target)
-        _detect_attr_merge_conflicts(target, src, errors)
+        # FR-043 Amendment 2 — ``overlay: true`` LICENSES the override. The conflict
+        # error exists to catch two files that collided without knowing about each
+        # other; the flag is the author saying "I know about the other declaration and
+        # I mean to change it". The loader already treats it specially (find-or-throw
+        # versus create-or-find), so honouring it here makes it mean ONE thing rather
+        # than two. Per NODE, not per file: a nested overlay marks its own ancestors
+        # too, and each is judged on its own flag — same rule as the TS parser's
+        # ``nodeData[RESERVED_KEY_OVERLAY]`` check.
+        if not getattr(src, "is_overlay", False):
+            _detect_attr_merge_conflicts(target, src, errors)
 
     # ADR-0039 sanctioned own: overlay/merge — accumulate each file's own attrs +
     # own children (declared-here layers) into the merged tree.

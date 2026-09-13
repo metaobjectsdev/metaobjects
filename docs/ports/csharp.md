@@ -108,8 +108,11 @@ The codegen emits:
 
 ### `<Entity>Names` — the physical names, as constants
 
-`names` ships in the **default generator suite** — a new project gets
-`<Entity>Names.g.cs` without configuring anything. It carries the physical
+`names` is opt-in — select it with `--generators names` on `dotnet meta gen`
+(`dotnet meta gen --list` names the whole catalog). This port ships no `eject`
+verb — ejecting belongs to the Node `meta` CLI, and it is about OWNING a
+generator's source, never about selecting one for a run. When selected, a project gets
+`<Entity>Names.g.cs`. It carries the physical
 database names for one object as `const string`s:
 
 ```csharp
@@ -394,7 +397,8 @@ dotnet meta verify --codegen ./metadata --out ./Generated --template-root ./temp
 Each spec entry derives the neutral template data dict for its scope
 (`MetaObjects.Codegen.TemplateCodegen.TemplateData`) and names each file via the
 `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The named generators
-are **appended** to the default suite and gated byte-identical against the shared
+are **appended** to the `--generators` selection (there is no default suite) and gated
+byte-identical against the shared
 `fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has
 no output-target concept); a bad template ref or wrong `--template-root` surfaces as a
 clean error, not a stack trace. For output to be regenerable, the **template** must emit

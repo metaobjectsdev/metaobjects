@@ -103,3 +103,52 @@ component library — code you copy into your project and own."
 - Open: whether to hard-remove the package generator export or deprecate it; the
   exact compiled-port mechanism per language; whether templates live in-package as
   assets or in a dedicated scaffold package. Tracked in the design doc.
+
+## Amendments
+
+### Amendment 1 (FR-040, 2026-08) — `meta eject` is the copy operation, generalised
+
+Decision 2 left the copy to "plain file operations" by a human or Claude, with
+`meta init` doing an eager copy of a chosen few. FR-040 made the copy a first-class
+command: `meta eject <name>` copies ANY reference template, from any package, at any
+time after `init`, reporting the import line to wire and the packages the copied file
+needs. The doctrine is unchanged — the adopter owns the file, and `meta gen` runs their
+copy — but "adding a starting point is adding a documented file" now also means it is
+reachable by name.
+
+### Amendment 2 (2026-09-13) — codegen is OPT-IN; `init` scaffolds an empty selection
+
+**Superseded:** Decision 2's "`meta init` scaffolds a sensible default generator set +
+local-import config for a running start", and the consequence "First-run still works
+(init scaffolds defaults), so the pivot costs no quick-start."
+
+**Replaced by:** `meta init` scaffolds the **layout and an empty documented selection**
+— `codegen/generators/` (empty), `tsconfig.codegen.json`, and a config whose
+`generators: []` carries a comment pointing at the catalog. `meta eject <name>...`
+(Amendment 1, now taking many names) is the copy door. The catalog is the composed
+stable-name registry behind `meta gen --list`, with `--probe` reporting how many files
+each generator would emit for the adopter's own model. C# and Python dropped their
+default suites in the same change; Java never had one.
+
+**Why.** A default suite is a selection decision hard-coded into the CLI, and Decision 2
+already ruled that such decisions "cannot be captured in CLI flags" because they are
+judgment over infinite per-project variation. It then made one anyway, for the
+first-run case. The consequence was measurable: a new project got five generators, five
+dependencies declared for them, and a throwing `src/db.ts` stub to make one of those
+generators' emitted import resolve — none of it chosen, and the count was growing.
+Deciding what an application needs belongs to whoever is building it; increasingly that
+is an LLM in the repo, which is well able to make the call given a truthful catalog and
+is badly served by a default that pre-empts it.
+
+**Everything else in ADR-0034 stands** — the engine/template split, scaffold-and-own
+ownership, no interview, and "adding a starting point is adding a documented file,
+never a CLI change".
+
+**Compatibility.** This is a PATCH. No existing project changes by one byte: an adopter
+already has their owned copies on disk and their selection committed in their own
+config, `meta gen` keeps running exactly that list, and re-running `init` never
+clobbers a file that exists. `docs/compatibility-policy.md` is narrowed in the same
+change — the scaffold-and-own promise is the LAYOUT and the INTERFACES, not which
+generators a fresh scaffold happens to wire.
+
+Design: `docs/superpowers/specs/2026-09-12-opt-in-codegen-and-generator-catalog-design.md`.

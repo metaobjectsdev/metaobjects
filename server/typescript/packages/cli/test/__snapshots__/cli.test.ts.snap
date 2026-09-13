@@ -30,7 +30,7 @@ COMMANDS:
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
   --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY).
-                            Honored by gen, verify, migrate, types, deps; every other
+                            Honored by gen, verify, migrate, types, deps, eject; every other
                             command prints text and says so if you pass it.
                             \`types\` is the one exception to the default: it prints TEXT
                             unless you ask for a format, on a TTY or not, because its
@@ -40,8 +40,14 @@ GLOBAL OPTIONS:
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
-  --list                Print the generator registry (name, tier, options) and exit —
-                        no config or metadata required
+  --list                Print the generator CATALOG (name, layer, tier, what it emits,
+                        what to install) and exit. Codegen is opt-in: nothing runs until
+                        you wire it, and this is where you choose. No config or metadata
+                        required — add --format json for the same catalog, machine-readable.
+  --probe               With --list: construct every catalog generator and dry-run it
+                        against YOUR model, reporting how many files each would emit.
+                        A count per generator beats any category label — and it
+                        cannot go stale, because it runs the generators. Needs a project.
   --baseline <default|adopt|fresh>
                         First-time-on-existing-file behavior. Default: refuse a file that
                         cannot be proved to be generated output. "adopt" records the files

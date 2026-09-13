@@ -245,9 +245,22 @@ public static class VerifyCommand
                         string.Join(", ", load.Errors.Select(e => e.Code.ToString())) + ").",
             };
 
-        var names = opts.Generators is { Count: > 0 }
-            ? opts.Generators
-            : GenCommand.DefaultGeneratorNames;
+        // `verify --codegen` re-runs the SELECTION and compares. With no default suite
+        // there is nothing to compare against, so it says so rather than silently
+        // checking nine artifacts this project never generates — which would convict
+        // every one of them as missing.
+        if (opts.Generators is not { Count: > 0 })
+            return new Codegen.CodegenDrift.Result
+            {
+                Clean = true,
+                Lines =
+                [
+                    "verify --codegen: no generators selected, so there is no generated " +
+                    "output to check. Pass --generators <a,b,c> (dotnet meta gen --list " +
+                    "is the catalog).",
+                ],
+            };
+        var names = opts.Generators;
         IReadOnlyList<IGenerator> generators;
         try
         {

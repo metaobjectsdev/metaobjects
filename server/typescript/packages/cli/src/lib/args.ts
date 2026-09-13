@@ -107,6 +107,12 @@ export interface GenFlags {
   /** ADR-0021 D3 — print the stable-name generator registry and exit without
    *  running codegen. */
   list: boolean;
+  /**
+   * `--list` only: construct every catalog generator and dry-run it against THIS
+   * project's model, reporting a real file count per generator. Needs a project;
+   * plain `--list` deliberately does not (it describes the installed engine).
+   */
+  probe: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
   /**
@@ -122,6 +128,7 @@ export const GEN_OPTIONS = {
   "dry-run": { type: "boolean", default: false },
   "baseline": { type: "string" },
   "list": { type: "boolean", default: false },
+  "probe": { type: "boolean", default: false },
   "no-antipatterns": { type: "boolean", default: false },
   "limit": { type: "string" },
 } as const;
@@ -149,6 +156,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
     entities: positionals,
     baseline: (baselineRaw as "default" | "fresh" | "adopt" | undefined) ?? "default",
     list: !!values.list,
+    probe: !!values.probe,
     noAntipatterns: !!values["no-antipatterns"],
     // Throws on a bad value; the command layer reports it and exits 2, exactly as
     // it does for --baseline above.
@@ -602,8 +610,14 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
 // ---------------------------------------------------------------------------
 
 export interface EjectFlags {
-  /** The generator name to eject; undefined when only --list was given. */
-  name: string | undefined;
+  /**
+   * The generator names to eject, in the order given. Empty when only --list was given.
+   *
+   * MANY, not one: choosing a client tier means `form hooks grid`, and three separate
+   * invocations produce three separate install lines for the same package. The
+   * consolidated install set is the point of taking them together.
+   */
+  names: string[];
   list: boolean;
   /** Overwrite an already-ejected file; default false — eject never clobbers. */
   force: boolean;
@@ -623,12 +637,22 @@ export function parseEjectArgs(argv: string[]): EjectFlags {
     allowPositionals: true,
   });
 
-  if (positionals.length > 1) {
-    throw new Error(`meta eject takes at most one generator name; got: ${positionals.join(", ")}`);
+  // `Set.add` returns the SET, which is always truthy — so the tempting
+  // `positionals.filter((n) => !seen.add(n))` never reports anything.
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  for (const n of positionals) {
+    if (seen.has(n)) duplicates.push(n);
+    else seen.add(n);
+  }
+  if (duplicates.length > 0) {
+    throw new Error(
+      `meta eject: repeated generator name(s): ${[...new Set(duplicates)].join(", ")}`,
+    );
   }
 
   return {
-    name: positionals[0],
+    names: positionals,
     list: !!values.list,
     force: !!values.force,
   };

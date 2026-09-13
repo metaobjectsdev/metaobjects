@@ -94,8 +94,9 @@ the Java, Kotlin, and Python backends byte-for-byte.
 Inside LINQ keep the property (`db.Authors.Where(a => a.Name == …)`): it is type-checked
 against the model, and a string constant there trades a compile error for a runtime one.
 Where LINQ does not reach — raw SQL, a migration script, a log line — take the physical
-name from the generated `<Entity>Names.g.cs`. `names` is in the default suite, and the
-generated entity and `AppDbContext` already read it, so it cannot disagree with the
+name from the generated `<Entity>Names.g.cs`. `names` is opt-in — name it in
+`--generators` — and once selected the generated entity and `AppDbContext` already read
+it, so it cannot disagree with the
 mapping: `AuthorNames.SourcePrimaryTable` is the table (the member is named for the
 source's `@kind`, so a view reads `SourceReplicaView` / `SourcePrimaryView` and a stored
 procedure `SourcePrimaryProc`), `AuthorNames.<Field>Column` the column,

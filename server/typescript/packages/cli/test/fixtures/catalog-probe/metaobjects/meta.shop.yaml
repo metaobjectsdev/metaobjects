@@ -1,0 +1,105 @@
+# The catalog probe's model.
+#
+# `--probe` constructs EVERY catalog generator and dry-runs it, so this fixture has to
+# make each one either emit or deliberately not emit. It is therefore not a realistic
+# app — it is one declaration per generator gate, which is exactly what the probe's own
+# gate needs to distinguish "emits 0 because nothing declared it" from "emits 0 because
+# it is broken".
+#
+# Deliberately its OWN fixture rather than a reach into fixtures/conformance/: a corpus
+# fixture exists to pin a loader behaviour and may change shape for reasons that have
+# nothing to do with this gate.
+metadata:
+  package: catalog::shop
+  children:
+    # Two entities with a relationship — entity / queries / routes / names / barrel /
+    # api-docs / form / hooks all key off concrete sourced objects.
+    - object.entity:
+        name: Customer
+        children:
+          - source.rdb: { table: customer, role: primary }
+          - field.long:    { name: id, required: true }
+          - field.string:  { name: email, required: true, maxLength: 254, filterable: true }
+          - field.string:  { name: displayName, maxLength: 120 }
+          - field.boolean: { name: active, filterable: true }
+          - identity.primary: { name: pk, fields: [id], generation: increment }
+          - identity.secondary: { name: uqEmail, fields: [email] }
+          # grid / grid-hook emit only for an entity that DECLARES a data grid. The
+          # `filter` PRESET is load-bearing here and not decoration: the grid-hook only
+          # imports the columns module when a preset exists, so without one the
+          # grid-hook → grid dependency edge the requires gate is supposed to derive
+          # would never appear, and the gate would certify a declaration of `[]`.
+          - layout.dataGrid:
+              name: default
+              columns: [email, displayName, active]
+              defaultSortField: email
+              pageSize: 25
+              filterable: true
+              filter:
+                active: true
+
+    - object.entity:
+        name: Order
+        children:
+          - source.rdb: { table: shop_order, role: primary }
+          - field.long:   { name: id, required: true }
+          - field.long:   { name: customerId, required: true }
+          - field.int:    { name: quantity }
+          - identity.primary:   { name: pk, fields: [id], generation: increment }
+          - identity.reference: { name: fkCustomer, fields: [customerId], references: Customer, onDelete: cascade }
+          - index.lookup: { name: ixCustomer, fields: [customerId] }
+
+    # A proc-kind projection — the `callable` generator's gate.
+    - object.projection:
+        name: OrderTotals
+        children:
+          - source.rdb: { kind: storedProc, proc: fn_order_totals }
+          - field.long:   { name: customerId }
+          - field.double: { name: total }
+
+    # The prompt tier: payload / response value objects, a RESPONDING template.prompt
+    # (one carrying @responseRef — since 0.24.0 the whole inbound tier keys off it) and
+    # an outbound template.output.
+    - object.value:
+        name: RestockRequest
+        children:
+          - field.string: { name: sku, required: true }
+
+    - object.value:
+        name: RestockAdvice
+        children:
+          - field.string: { name: recommendation, required: true }
+          - field.int:    { name: units, required: true }
+
+    - template.prompt:
+        name: RestockPrompt
+        payloadRef: catalog::shop::RestockRequest
+        responseRef: catalog::shop::RestockAdvice
+        textRef: shop/restock
+        format: text
+        responseFormat: json
+        promptStyle: inline
+
+    - object.value:
+        name: OrderReceipt
+        children:
+          - field.string: { name: customerName }
+          - field.string: { name: summary }
+
+    - template.output:
+        name: ReceiptDocument
+        kind: document
+        payloadRef: catalog::shop::OrderReceipt
+        textRef: shop/receipt
+        format: html
+
+    # One functional claim — the `requirement-tests` generator's gate. Level 4
+    # (OBJECT) deliberately: the generator's default filter is functional claims at or
+    # below the link floor, so a level-2 claim would probe as 0 and look like a bug.
+    - requirement.functional:
+        name: EveryOrderNamesItsCustomer
+        level: 4
+        status: live
+        statement: An order always names the customer who placed it.
+        counterexample: An order row whose customer reference is absent.
+        implementedBy: [Order.customerId]

@@ -14,6 +14,8 @@ from pathlib import Path
 
 from metaobjects.cli import main
 
+from tests.codegen.gen_suite import GEN_SUITE
+
 # A provider module the test writes to disk + imports. Registers the custom
 # ``validator.geocheck`` subtype (a validator, so it exercises provider-threading
 # without depending on how codegen maps a novel field's physical type).
@@ -78,7 +80,7 @@ def _install_provider_module(tmp_path: Path, name: str) -> None:
 
 def test_gen_without_provider_fails_on_custom_subtype(tmp_path: Path) -> None:
     """Baseline: the custom subtype is unknown without the provider."""
-    rc = main(["gen", _project(tmp_path), "--out", str(tmp_path / "out")])
+    rc = main(["gen", "--generators", GEN_SUITE, _project(tmp_path), "--out", str(tmp_path / "out")])
     assert rc != 0
 
 
@@ -89,7 +91,7 @@ def test_gen_with_provider_loads_custom_subtype(tmp_path: Path) -> None:
     try:
         rc = main(
             [
-                "gen",
+                "gen", "--generators", GEN_SUITE,
                 meta_dir,
                 "--out",
                 str(tmp_path / "out"),
@@ -111,14 +113,14 @@ def test_verify_with_provider_loads_custom_subtype(tmp_path: Path) -> None:
     try:
         # generate committed output first (with the provider), then verify no drift.
         gen_rc = main(
-            ["gen", meta_dir, "--out", str(out), "--provider", "geo_prov_ver:geo_provider"]
+            ["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--provider", "geo_prov_ver:geo_provider"]
         )
         assert gen_rc == 0
         rc = main(
             [
                 "verify",
                 meta_dir,
-                "--codegen",
+                "--codegen", "--generators", GEN_SUITE,
                 "--out",
                 str(out),
                 "--provider",
@@ -135,7 +137,7 @@ def test_bad_provider_spec_reports_error(tmp_path: Path) -> None:
     """A malformed --provider spec fails cleanly (not 'module:symbol')."""
     rc = main(
         [
-            "gen",
+            "gen", "--generators", GEN_SUITE,
             _project(tmp_path),
             "--out",
             str(tmp_path / "out"),

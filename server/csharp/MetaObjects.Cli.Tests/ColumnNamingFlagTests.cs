@@ -56,7 +56,13 @@ public sealed class ColumnNamingFlagTests : IDisposable
     private (string Entity, string Names) GenerateWith(params string[] extraArgs)
     {
         var outDir = Path.Combine(_tmp, "generated-" + Guid.NewGuid().ToString("N"));
-        var args = new List<string> { "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated" };
+        // --generators is REQUIRED now: there is no default suite. The two this test
+        // reads (entity + names) are exactly what its assertions inspect.
+        var args = new List<string>
+        {
+            "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated",
+            "--generators", "entity,names",
+        };
         args.AddRange(extraArgs);
         var (exit, stdout, stderr) = RunCli(_tmp, args.ToArray());
         Assert.True(exit == 0, $"exit={exit}\n{stdout}{stderr}");

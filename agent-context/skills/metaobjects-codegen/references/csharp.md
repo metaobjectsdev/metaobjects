@@ -28,6 +28,10 @@ dotnet meta gen metaobjects --out Generated --generators entity,db-context,route
 dotnet meta verify metaobjects --codegen --out Generated   # codegen-drift gate (regenerate + diff vs committed)
 ```
 
+`dotnet meta verify --codegen` re-runs the SELECTION and diffs, so it takes the same
+`--generators` the `gen` that produced the output used; with none named it reports that
+there is nothing to check.
+
 `dotnet meta verify` defaults to `--templates` (the FR-004 prompt/template drift
 gate, see the prompts reference); `--codegen` is the codegen-output drift gate.
 **Schema migration + live-DB drift are NOT `dotnet meta`** — they run through the
@@ -35,8 +39,10 @@ Node `meta` tool (see the migration reference).
 
 ## `MetaObjects.Codegen` generators
 
-Wire generators by their stable name (`dotnet meta gen --generators <names>`),
-or run the default set. Output lands under `--namespace` in `--output-dir`.
+Wire generators by their stable name — **`--generators <names>` is REQUIRED**. There is
+no default set: a run that names none is a usage error and writes nothing (ADR-0034
+Amendment 2). `dotnet meta gen --list` is the catalog. Output lands under `--namespace`
+in `--output-dir`.
 
 | Stable name | Output |
 |---|---|

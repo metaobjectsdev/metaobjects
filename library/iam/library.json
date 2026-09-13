@@ -1,0 +1,16 @@
+{
+  "$comment": "Library manifest (FR-043 §4). Embedded beside the YAML in every port. Every fact here is RESOLVED by a test, never trusted: `packages` against the library loaded standalone, `layers[].refs` against the embedded set, `generators[].name` against the generator registry, `generators[].anchor` against the library's own nodes, and `name` against the last package segment.",
+  "name": "iam",
+  "kind": "feature",
+  "stability": "preview",
+  "since": "1.1.0",
+  "description": "Users, nestable typed groups, roles as permission bundles, grants global or scoped to a group.",
+  "useWhen": "the application has people who log in and things some of them may not do",
+  "packages": ["metaobjects::iam"],
+  "layers": {
+    "": { "refs": ["iam/model", "iam/requirements"], "description": "the core model and its requirements — sourceless, so it adds no tables" },
+    "db": { "refs": ["iam/db"], "description": "nine tables, iam_-prefixed, plus the lookup indexes the composite keys do not cover" }
+  },
+  "generators": [],
+  "runtime": {}
+}
