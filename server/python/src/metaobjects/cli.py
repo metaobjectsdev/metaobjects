@@ -119,22 +119,29 @@ def _pkg_of(node: MetaData) -> str:
     return "" if i == -1 else key[:i]
 
 
-def _default_generators() -> list[Generator]:
-    """The default codegen suite — the no-config generators every project gets.
+#: The error a run with no generator selection reports.
+#:
+#: There is no default suite. This port used to run EIGHT generators for a caller who
+#: named none — entity, router, filter-allowlist, names, payload, output-parser,
+#: output-prompt, extractor — which is a shape nobody chose. Java has never had a
+#: default set and has been right all along; TypeScript and C# dropped theirs in the
+#: same change.
+#:
+#: Deciding WHICH code an application needs belongs to whoever is building it —
+#: increasingly an LLM working in the repo, which is well able to make that call given a
+#: truthful catalog and is badly served by a default that pre-empts it. ``--list`` is
+#: that catalog.
+NO_GENERATORS_SELECTED = (
+    "gen: no generators selected. Nothing is generated until you choose it — "
+    "pass --generators <a,b,c>. See the catalog: metaobjects gen --list"
+)
 
-    ``template_generator`` is excluded: it requires a caller-supplied text
-    provider + Mustache template and is not a zero-config per-entity emitter.
-    """
-    return [
-        entity_model(),
-        router_generator(),
-        filter_allowlist_generator(),
-        names_generator(),
-        payload_vo_generator(),
-        output_parser_generator(),
-        output_prompt_generator(),
-        extractor_generator(),
-    ]
+
+class NoGeneratorsSelectedError(ValueError):
+    """Raised when a codegen run names no generator. Carries the usage message."""
+
+    def __init__(self) -> None:
+        super().__init__(NO_GENERATORS_SELECTED)
 
 
 def _resolve_providers(specs: list[str] | None) -> tuple[list[object], list[str]]:
@@ -507,7 +514,11 @@ def _run_suite(
         # verify path (those pass gen_state_dir=None and record nothing at all).
         baseline=baseline,
     )
-    suite = generators if generators is not None else _default_generators()
+    # No default suite — see NO_GENERATORS_SELECTED. A caller that names none gets a
+    # usage error and an empty out dir, never a shape this CLI picked.
+    if not generators:
+        raise NoGeneratorsSelectedError
+    suite = generators
     result = run_gen(config, root, generators=suite, entity_filter=entity_filter, select=select)
     for warning in result.warnings:
         print(f"warning: {warning}")
@@ -885,6 +896,11 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             for msg in gen_errors:
                 print(f"  {msg}", file=sys.stderr)
             return 1
+    else:
+        # Codegen is opt-in: refuse here, at the door, rather than letting the run reach
+        # the generator loop and fail with an empty out dir half-created.
+        print(f"error: {NO_GENERATORS_SELECTED}", file=sys.stderr)
+        return 2
 
     # SP-1: declarative Mustache generators from a JSON template-spec. Their output
     # is format-agnostic (text/markdown/csv/json/xml/html), so they run as a SECOND,
@@ -1380,12 +1396,35 @@ def _verify_codegen(args: argparse.Namespace) -> int:
         print(spec_err, file=sys.stderr)
         return 1
 
+    # `verify --codegen` re-runs the SELECTION and compares. Codegen is opt-in, so the
+    # selection has to be named — with none, there is no generated output to check, and
+    # saying so beats silently regenerating a suite this project never asked for and
+    # convicting every file of being missing.
+    selection: list[Generator] | None = None
+    if getattr(args, "generators", None):
+        selection, gen_errors = _resolve_generators(args.generators)
+        if gen_errors:
+            print("error: invalid --generators selection:", file=sys.stderr)
+            for msg in gen_errors:
+                print(f"  {msg}", file=sys.stderr)
+            return 1
+    elif not spec_gens:
+        print(
+            "verify --codegen: no generators selected, so there is no generated output "
+            "to check. Pass --generators <a,b,c> naming the same suite `gen` ran "
+            "(metaobjects gen --list is the catalog).",
+        )
+        return 0
+
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
-        written, errors = _generate(
-            args.metadata_dir, tmp, None, entities, strict=strict, providers=providers,
-            column_naming=column_naming,
-        )
+        written: list[str] = []
+        errors: list[str] = []
+        if selection is not None:
+            written, errors = _generate(
+                args.metadata_dir, tmp, selection, entities, strict=strict,
+                providers=providers, column_naming=column_naming,
+            )
         if errors:
             print("error: failed to load metadata:", file=sys.stderr)
             for msg in errors:
@@ -1458,6 +1497,22 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
     if not providers_ok:
         return 1
 
+    # Same rule as _verify_codegen: the selection must be named, because there is no
+    # default suite to regenerate and diff against.
+    if not getattr(args, "generators", None):
+        print(
+            "verify --codegen: no generators selected, so there is no generated output "
+            "to check. Pass --generators <a,b,c> naming the same suite `gen` ran "
+            "(metaobjects gen --list is the catalog).",
+        )
+        return 0
+    selection, gen_errors = _resolve_generators(args.generators)
+    if gen_errors:
+        print("error: invalid --generators selection:", file=sys.stderr)
+        for msg in gen_errors:
+            print(f"  {msg}", file=sys.stderr)
+        return 1
+
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
         root, load_errors = _load_root_from_collection(collection, strict=strict, providers=providers)
@@ -1475,7 +1530,7 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
             return 2
 
         _run_suite(
-            root, tmp, None, entities, gen_state_dir=None, column_naming=column_naming,
+            root, tmp, selection, entities, gen_state_dir=None, column_naming=column_naming,
             select=collection.in_scope,
         )
         expected = _relative_set(Path(tmp))
@@ -1903,9 +1958,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--generators",
         default=None,
         help=(
-            "comma-separated STABLE generator names to run (e.g. entity,routes). "
-            "Resolved via the registry; omit to run the default suite. "
-            "See `gen --list`."
+            "REQUIRED — comma-separated STABLE generator names to run "
+            "(e.g. entity,routes). Codegen is opt-in: there is no default suite, so a "
+            "run that names none is a usage error. See `gen --list` for the catalog."
         ),
     )
     gen.add_argument(
@@ -2133,6 +2188,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--target",
         default=None,
         help="verify only this named target from the config (default: every target)",
+    )
+    verify.add_argument(
+        "--generators",
+        default=None,
+        help=(
+            "comma-separated STABLE generator names — must MATCH the `gen` that "
+            "produced --out. `verify --codegen` re-runs the selection and diffs; with "
+            "none named there is nothing to check and it says so."
+        ),
     )
     verify.set_defaults(func=_cmd_verify)
 

@@ -62,6 +62,9 @@ public sealed class VerifySubverbTests : IDisposable
         new()
         {
             MetadataDir = MetaDir,
+            // verify --codegen re-runs the SELECTION; there is no default suite to fall
+            // back on, so the mechanics tests name the one their fixtures were written for.
+            Generators = GenSuite.Names,
             TemplatesRoot = TplDir,
             OutDir = OutDir,
             // Match the namespace the committed output was generated with, so a
@@ -102,6 +105,9 @@ public sealed class VerifySubverbTests : IDisposable
         var opts = new VerifyCommand.Options
         {
             MetadataDir = MetaDir,
+            // verify --codegen re-runs the SELECTION; there is no default suite to fall
+            // back on, so the mechanics tests name the one their fixtures were written for.
+            Generators = GenSuite.Names,
             TemplatesRoot = TplDir,
             OutDir = OutDir,
             Templates = false,
@@ -131,7 +137,7 @@ public sealed class VerifySubverbTests : IDisposable
     public void Codegen_clean_committed_output_is_exit0()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
 
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
         Assert.Equal(0, r.ExitCode);
@@ -144,7 +150,7 @@ public sealed class VerifySubverbTests : IDisposable
     public void Codegen_mutated_committed_file_is_nonzero_and_named()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
         File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// drift\n");
 
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
@@ -156,7 +162,7 @@ public sealed class VerifySubverbTests : IDisposable
     public void Codegen_does_not_touch_the_real_out_dir_on_drift()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
         File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// drift\n");
 
         var before = SnapshotDir(OutDir);
@@ -185,6 +191,9 @@ public sealed class VerifySubverbTests : IDisposable
         new()
         {
             MetadataDir = MetaDir,
+            // verify --codegen re-runs the SELECTION; there is no default suite to fall
+            // back on, so the mechanics tests name the one their fixtures were written for.
+            Generators = GenSuite.Names,
             OutDir = OutDir,
             Codegen = true,
             // Namespace intentionally NOT set + NamespaceExplicit defaults to false.
@@ -195,7 +204,7 @@ public sealed class VerifySubverbTests : IDisposable
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
         // Committed output generated with a CUSTOM namespace.
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
 
         // verify --codegen WITHOUT --namespace → must infer "Acme.Generated" from the
         // committed files and produce a byte-identical regen → exit 0 (no spurious drift).
@@ -208,7 +217,7 @@ public sealed class VerifySubverbTests : IDisposable
     public void Codegen_inference_still_detects_real_drift_with_custom_namespace()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
         // A real hand-edit on top of the custom namespace must still be drift.
         File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// real drift\n");
 
@@ -221,12 +230,15 @@ public sealed class VerifySubverbTests : IDisposable
     public void Codegen_explicit_namespace_still_wins_over_inference()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
 
         // Explicit namespace set (matching) → wins, byte-identical regen → exit 0.
         var opts = new VerifyCommand.Options
         {
             MetadataDir = MetaDir,
+            // verify --codegen re-runs the SELECTION; there is no default suite to fall
+            // back on, so the mechanics tests name the one their fixtures were written for.
+            Generators = GenSuite.Names,
             OutDir = OutDir,
             Namespace = "Acme.Generated",
             NamespaceExplicit = true,
@@ -272,6 +284,9 @@ public sealed class VerifySubverbTests : IDisposable
     private VerifyCommand.Options ColumnNamingOpts(ColumnNamingStrategy verifyStrategy) => new()
     {
         MetadataDir = MetaDir,
+        // verify --codegen re-runs the SELECTION; there is no default suite to fall
+        // back on, so the mechanics tests name the one their fixtures were written for.
+        Generators = GenSuite.Names,
         OutDir = OutDir,
         Namespace = "Acme.Generated",
         NamespaceExplicit = true,
@@ -283,7 +298,7 @@ public sealed class VerifySubverbTests : IDisposable
     public void Codegen_with_matching_column_naming_is_clean()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), ColumnNamingMetadata);
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated", false, null, null, null, ColumnNamingStrategy.SnakeCase);
+        GenCommand.Run(MetaDir, OutDir, "Acme.Generated", false, GenSuite.Names, null, null, ColumnNamingStrategy.SnakeCase);
 
         var r = VerifyCommand.RunSubverbs(ColumnNamingOpts(ColumnNamingStrategy.SnakeCase));
         Assert.Equal(0, r.ExitCode);
@@ -294,7 +309,7 @@ public sealed class VerifySubverbTests : IDisposable
     public void Codegen_with_mismatched_column_naming_reports_drift()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), ColumnNamingMetadata);
-        GenCommand.Run(MetaDir, OutDir, "Acme.Generated", false, null, null, null, ColumnNamingStrategy.SnakeCase);
+        GenCommand.Run(MetaDir, OutDir, "Acme.Generated", false, GenSuite.Names, null, null, ColumnNamingStrategy.SnakeCase);
 
         // The discriminating half: a verify blind to --column-naming (accepting it but
         // dropping it, or never reading Options.ColumnNaming) would ALSO pass the

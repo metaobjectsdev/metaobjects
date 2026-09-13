@@ -44,7 +44,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "model" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
@@ -60,7 +60,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
         // being routed through resolution rather than still failing the old way.
         Directory.CreateDirectory(_tmp);
 
-        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--out", Path.Combine(_tmp, "generated"), "--namespace", "X");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", "--out", Path.Combine(_tmp, "generated"), "--namespace", "X");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("ERR_COLLECTION_NOT_FOUND", stderr);
@@ -76,7 +76,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
         // confusing on the common first-run case where both are missing at once.
         Directory.CreateDirectory(_tmp);
 
-        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("usage: dotnet meta gen", stderr);
@@ -99,7 +99,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "a" }, { "path": "b" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "X");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", "--out", outDir, "--namespace", "X");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("2 metadata sources", stderr);
@@ -123,7 +123,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "vendor/meta.catalog.json" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "X");
+        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", "--out", outDir, "--namespace", "X");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("is a FILE", stderr);
@@ -162,7 +162,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "model" } ] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
@@ -181,7 +181,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
         File.WriteAllText(Path.Combine(modelDir, "meta.acme.json"), Metadata);
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);

@@ -33,6 +33,7 @@ from metaobjects.codegen.overwrite_policy import (
     decide_and_write,
     read_generated_hash,
 )
+from tests.codegen.gen_suite import GEN_SUITE
 
 
 def _manifest(gen_state: Path) -> dict[str, str]:
@@ -167,7 +168,7 @@ def test_a_project_reached_through_a_symlink_keeps_its_jurisdiction(
     from metaobjects.cli import main
 
     monkeypatch.chdir(tmp_path)
-    assert main(["gen", str(link / "metaobjects"), "--out", str(link / "gen")]) == 0
+    assert main(["gen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")]) == 0
 
     manifest = json.loads(
         (real / ".metaobjects" / ".gen-state" / ".hashes.json").read_text(encoding="utf-8")
@@ -179,4 +180,4 @@ def test_a_project_reached_through_a_symlink_keeps_its_jurisdiction(
 
     # And the gate still convicts stale output reached through the link.
     meta_file.write_text('{"metadata.root": {"package": "fitness", "children": []}}')
-    assert main(["verify", "--codegen", str(link / "metaobjects"), "--out", str(link / "gen")]) == 1
+    assert main(["verify", "--codegen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")]) == 1

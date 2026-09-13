@@ -30,31 +30,22 @@ public static class GenCommand
     public const string DefaultNamespace = "Generated";
 
     /// <summary>
-    /// The default generator suite's stable names (ADR-0021 D3). Brought to parity
-    /// with the Python default (entity / router / filter-allowlist / payload /
-    /// output-parser / output-prompt / extractor), plus <c>names</c>: the C# suite is
-    /// <c>entity</c>, <c>names</c>, <c>db-context</c>, <c>routes</c>,
-    /// <c>filter-allowlist</c>, <c>payload</c>, <c>output-parser</c>,
-    /// <c>output-prompt</c>, <c>extractor</c>. C# is the best-wired port for the
-    /// per-object physical-database-names artifact — <c>ColumnNamingStrategy</c> is
-    /// already threaded to every emit site — so it ships default ON here (program
-    /// spec §A5); Python has since built the same artifact and also ships it default
-    /// ON (<c>names_generator</c> in its default suite).
-    /// The <c>render-helper</c> generator is intentionally NOT in the default suite —
-    /// it requires <c>--template-root</c> for its build-time drift gate (matching the
-    /// Python default, which also excludes the render helper). <c>template</c> /
-    /// <c>callable</c> stay opt-in (config-only / FR-015 niche). Every default name is
-    /// a registered generator, selectable individually via <c>--generators</c>.
+    /// The error a run with no generator selection reports.
     /// </summary>
-    public static readonly IReadOnlyList<string> DefaultGeneratorNames =
-        ["entity", "names", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"];
-
-    /// <summary>The default generator set, built from the registry by stable name.</summary>
-    public static IReadOnlyList<IGenerator> DefaultGenerators() =>
-        GeneratorRegistry.Resolve(DefaultGeneratorNames);
-
-    public static Outcome Run(string metadataDir, string outDir, string ns, bool emitAbstractShapes = false) =>
-        Run(metadataDir, outDir, ns, emitAbstractShapes, generatorNames: null, templateRoot: null);
+    /// <remarks>
+    /// <para>There is no default suite. This port used to run NINE generators for a
+    /// caller who named none — entity, names, db-context, routes, filter-allowlist,
+    /// payload, output-parser, output-prompt, extractor — which is a shape nobody chose.
+    /// Java has never had a default set and has been right all along; TypeScript and
+    /// Python dropped theirs in the same change.</para>
+    /// <para>Deciding WHICH code an application needs belongs to whoever is building it
+    /// — increasingly an LLM working in the repo, which is well able to make that call
+    /// given a truthful catalog and is badly served by a default that pre-empts it.
+    /// <c>--list</c> is that catalog.</para>
+    /// </remarks>
+    public const string NoGeneratorsSelected =
+        "gen: no generators selected. Nothing is generated until you choose it — " +
+        "pass --generators <a,b,c>. See the catalog: dotnet meta gen --list";
 
     /// <summary>
     /// Run codegen selecting generators by stable name. When
@@ -162,7 +153,11 @@ public static class GenCommand
         if (loadErrors.Count > 0)
             return new Outcome(loadErrors, null);
 
-        var names = generatorNames is { Count: > 0 } ? generatorNames : DefaultGeneratorNames;
+        // No default suite — see NoGeneratorsSelected. A caller that names none gets a
+        // usage error and an empty out dir, never a shape this CLI picked.
+        if (generatorNames is not { Count: > 0 })
+            return new Outcome([NoGeneratorsSelected], null);
+        var names = generatorNames;
         List<IGenerator> generators;
         try
         {

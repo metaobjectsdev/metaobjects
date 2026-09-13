@@ -72,7 +72,8 @@ public static class CodegenDrift
     /// </summary>
     /// <param name="config">the gen config (provides OutDir = the committed output).</param>
     /// <param name="root">the loaded model (same object `gen` would use).</param>
-    /// <param name="generators">the generator suite (default suite, or a --generators selection).</param>
+    /// <param name="generators">the generator suite — always a --generators selection;
+    /// this port has no default set (see GenCommand.NoGeneratorsSelected).</param>
     public static Result Compute(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators)
     {
         var committed = Path.GetFullPath(config.OutDir);

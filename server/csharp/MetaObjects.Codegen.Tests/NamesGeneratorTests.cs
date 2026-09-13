@@ -657,17 +657,21 @@ public class NamesGeneratorTests
     }
 
     [Fact]
-    public void The_default_generator_suite_fails_the_run_on_a_divergent_primary_source()
+    public void A_run_including_names_fails_on_a_divergent_primary_source()
     {
         // R-E's corrected version of the brief's sketched
         // Assert.Throws<GeneratorException>(() => GenerateEntity("WeirdBase")): no such
         // type as GeneratorException exists anywhere in this port, and no per-generator
         // call reaches the divergent shape (see the test above). D4's guarantee — every
         // consumption site references the constant unconditionally, divergence is a
-        // build error — is delivered at the RUN level: "names" is a member of
-        // GenCommand.DefaultGeneratorNames, so a default `dotnet meta gen` over this
-        // model fails via NamesGenerator's own InvalidOperationException, caught and
-        // surfaced by GenCommand.Run as a clean Outcome failure naming both sides.
+        // build error — is delivered at the RUN level, via NamesGenerator's own
+        // InvalidOperationException, caught and surfaced by GenCommand.Run as a clean
+        // Outcome failure naming both sides.
+        //
+        // The selection is EXPLICIT now. This used to pass `generatorNames: null` and
+        // lean on "names is a member of the default suite"; there is no default suite,
+        // and null is a usage error. Naming the generator under test is the more
+        // direct statement of the claim anyway.
         var load = new MetaDataLoader().Load(
             [new InMemoryStringSource(DivergentBothWritable, id: "gen.json")]);
         Assert.Empty(load.Errors);
@@ -675,13 +679,33 @@ public class NamesGeneratorTests
         var tmp = Path.Combine(Path.GetTempPath(), "moc-names-run-" + Guid.NewGuid().ToString("N"));
         var outcome = GenCommand.Run(
             load, outDir: Path.Combine(tmp, "out"), ns: "Acme.Generated", emitAbstractShapes: false,
-            generatorNames: null, templateRoot: null, templateSpecPath: null, projectRoot: tmp);
+            generatorNames: ["entity", "names"], templateRoot: null, templateSpecPath: null,
+            projectRoot: tmp);
 
         Assert.False(outcome.Ok);
         var message = string.Join("\n", outcome.LoadErrors);
         Assert.Contains("ChildWeird", message);
         Assert.Contains("parent_table", message);
         Assert.Contains("child_table", message);
+    }
+
+    [Fact]
+    public void A_run_that_names_no_generator_is_a_usage_error_and_writes_nothing()
+    {
+        // There is no default suite: nine artifacts nobody chose is exactly what opt-in
+        // codegen exists to stop. A caller naming none gets told what to do.
+        var load = new MetaDataLoader().Load(
+            [new InMemoryStringSource(DivergentBothWritable, id: "gen.json")]);
+        var tmp = Path.Combine(Path.GetTempPath(), "moc-names-none-" + Guid.NewGuid().ToString("N"));
+        var outDir = Path.Combine(tmp, "out");
+
+        var outcome = GenCommand.Run(
+            load, outDir: outDir, ns: "Acme.Generated", emitAbstractShapes: false,
+            generatorNames: null, templateRoot: null, templateSpecPath: null, projectRoot: tmp);
+
+        Assert.False(outcome.Ok);
+        Assert.Contains("--generators", string.Join("\n", outcome.LoadErrors));
+        Assert.False(Directory.Exists(outDir));
     }
 
     // -------------------------------------------------------------------------
