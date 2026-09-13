@@ -71,10 +71,10 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   migration script, a body-to-column map (drift signature 11). Every port emits a per-object
   names artifact from the declaration, so a literal is a second source of truth even when it
   agrees with the naming strategy today. A typed ORM handle in its place is correct. **Check
-  the artifact is emitted at all before scoring the literals: on TypeScript and the JVM the
-  generator list in the config IS the complete list, so an existing project emits none and the
-  un-wired generator is the finding FIRST** (C# and Python have a real default suite and get it
-  by upgrading). **This entry is the physical-name INSTANCE of signature 11.** The rule that
+  the artifact is emitted at all before scoring the literals: on every port the selection IS
+  the complete list — the config's on TypeScript and the JVM, `--generators` on C# and Python —
+  so an existing project emits none and the un-wired generator is the finding FIRST** (no port
+  ships a default suite; ADR-0034 Amendment 2). **This entry is the physical-name INSTANCE of signature 11.** The rule that
   generates the rest — and the reason an enum member compared as a bare string is NOT one — is
   the Cross-cutting entry below.
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored

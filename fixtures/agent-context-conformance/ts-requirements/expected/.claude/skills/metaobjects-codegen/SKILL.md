@@ -489,7 +489,8 @@ generator sets are **closed built-in registries** — `--generators` *selects* f
 ships, and there is no seam to register a `Generator` of your own. (Python's
 `--provider module:symbol` registers **metamodel vocabulary**, not a generator; do not
 reach for it here.) Use `--template-spec <json>` — plus `--templates <dir>` on Python or
-`--template-root <dir>` on C# — and your entries are appended to the default suite. Worked
+`--template-root <dir>` on C# — and your entries are appended to your `--generators`
+selection. Worked
 examples with the full JSON: `docs/ports/python.md` and `docs/ports/csharp.md`.
 
 **The spec is auto-discovered, and that is load-bearing.** With no `--template-spec`, both
@@ -544,21 +545,21 @@ everywhere — **each physical name is spelled once, and generated code referenc
 | Kotlin | `<Entity>Names.kt` | `ProgramNames.CREATED_AT_COLUMN` |
 | Python | `<entity_snake>_names.py` | `PROGRAM_CREATED_AT_COLUMN` |
 
-**Check that it is actually wired before you reference it — on three of five ports an
-EXISTING project emits none.** "In the default suite" and "what a fresh scaffold writes"
-are different facts, and only C# and Python have the first:
+**Check that it is actually wired before you reference it — on ALL FIVE ports a project
+emits none until it asks for it.** ADR-0034 Amendment 2 made codegen opt-in everywhere: no
+port ships a default suite, so there is no port on which upgrading the package starts
+emitting this artifact. "Wired" is the only fact there is.
 
-| Port | Where the suite is decided | An existing project upgrading gets it? |
+| Port | Where the selection is declared | An existing project upgrading gets it? |
 |---|---|---|
-| C# | `GenCommand.DefaultGeneratorNames` — a real default | **Yes**, with no edit |
-| Python | `cli.py` `_default_generators()` — a real default | **Yes**, with no edit |
-| TypeScript | `metaobjects.config.ts` `generators: [...]` — **the complete list; there is no default suite** | **No** — add `namesFile()` |
+| C# | `--generators <csv>` on `dotnet meta gen` — required, no default | **No** — name `names` |
+| Python | `--generators <csv>` on `metaobjects gen` — required, no default | **No** — name `names` |
+| TypeScript | `metaobjects.config.ts` `generators: [...]` — the complete list | **No** — add `namesFile()` |
 | Java / Kotlin | the pom's `<generators>` — the complete list | **No** — add `SpringNamesGenerator` / `KotlinNamesGenerator` |
 
-TypeScript's `meta init` scaffolds `namesFile()`, so a project *initialized* at 1.0 has it;
-a project initialized earlier has the config `meta init` wrote then, and upgrading the
-package never edits a config. So on TypeScript the artifact is opt-in exactly as it is on
-the JVM — the scaffold is not a default. To wire it into an existing TS project:
+`meta init` scaffolds `generators: []` and an empty `codegen/generators/`, so even a
+project *initialized* at 1.0 has to choose this one — the scaffold is deliberately not a
+default by another name. To wire it into a TS project:
 
 ```ts
 import { namesFile } from "./codegen/generators/names.js";   // after `meta eject names`
