@@ -740,6 +740,14 @@ removed, and the library never built it.
 > carry the layering; items 3–7 stand as written. Three items are added (1a, 2a,
 > 2b) and one is added to item 7.
 
+**SHIPPED so far (2026-09-13):** items **1, 1a, 1b, 2, 2a, 2b, 2c**. `library/iam/`
+(model + db + requirements) and the `library/ai` split are on disk and load clean in
+every port; `library.json` is embedded in all four; `librarySources` is layer-granular in
+TypeScript, Java, C# and Python; `libraries` reads from `.metaobjects/config.json`;
+`ERR_UNKNOWN_LIBRARY` is registered in four ports and the shared corpus list; the core
+layer's inertness is asserted per library rather than trusted. **Still to do: items 3, 4,
+5, 6, 7.**
+
 | # | Phase 1 | scope |
 |---|---|---|
 | 1 | `library.json` per library, embedded, declaring its **layers**; `knownLibraryPackages()` from manifests and accepting layer tokens (`iam`, `iam/db`, `iam/ui`); manifest-resolution test | 4 embeds, 4 code sites, 4 tests |
