@@ -108,8 +108,8 @@ The codegen emits:
 
 ### `<Entity>Names` — the physical names, as constants
 
-`names` ships in the **default generator suite** — a new project gets
-`<Entity>Names.g.cs` without configuring anything. It carries the physical
+`names` is opt-in — use `dotnet meta eject names` or wire it via `--generators` on the command line.
+When selected, a project gets `<Entity>Names.g.cs`. It carries the physical
 database names for one object as `const string`s:
 
 ```csharp

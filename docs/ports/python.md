@@ -103,8 +103,8 @@ byte-identical.
 
 ### Taking one tier and not the rest
 
-`--generators <csv>` runs exactly the named generators instead of the default
-suite (`--list` names all of them). This is the answer for a project that wants
+`--generators <csv>` selects exactly the named generators from the available
+catalog (`--list` names all of them). This is the answer for a project that wants
 one tier without adopting the others — most often a **schema-only adopter** whose
 tables come from `meta migrate` and whose application code is not generated at all,
 but which still has physical table and column names hard-coded across its data
@@ -199,8 +199,8 @@ app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(se
 
 ### `<entity>_names.py` — the physical names, as constants
 
-The `names` generator ships in the **default generator suite** — a new
-project gets `<entity>_names.py` without configuring anything. The module
+The `names` generator is opt-in — use `meta eject names` or wire it via `generators` in your
+config. When selected, a project gets `<entity>_names.py`. The module
 mirrors the metadata that declared it: every node it describes — the object,
 each `source.rdb` child, each `identity.*` and `index.*` child — carries its
 own `_TYPE`, `_SUB_TYPE` and `_NAME`, and a source's physical name sits under

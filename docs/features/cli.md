@@ -134,7 +134,7 @@ filesystem provider rooted at `--prompts`), and `verify --db` which is
 ADR-0015"). Bare `verify` stays `--codegen` for back-compat. The **C# `dotnet
 meta`** port likewise ships the codegen-side subverbs: `verify --templates` (its
 historical template/prompt drift gate, the C# back-compat default), `verify
---codegen` (regenerate the default generator suite to a temp dir and diff against
+--codegen` (regenerate the configured generators to a temp dir and diff against
 the committed `--out` tree, never touching it), and a **clean `--db` rejection
 (exit 2)** — bare `dotnet meta verify` keeps `--templates` and prints the subverb
 note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
