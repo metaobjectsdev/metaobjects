@@ -1,12 +1,11 @@
-import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import {
-  TYPE_OBJECT, TYPE_RELATIONSHIP, TYPE_IDENTITY,
-  IDENTITY_SUBTYPE_REFERENCE,
-  IDENTITY_ATTR_FIELDS,
-  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  TYPE_OBJECT, TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
   CARDINALITY_ONE, CARDINALITY_MANY,
   DEFAULT_COLUMN_NAMING_STRATEGY,
+  resolveRelationshipReference,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import {
@@ -26,28 +25,20 @@ export interface RelationDescriptor {
 }
 
 /**
- * Find an identity.reference declared on `holder` whose @references targets `targetName`.
- * Returns the FK field name (first field on the identity) or undefined.
+ * The FK field a `@cardinality: one` relationship navigates through.
+ * #368: an entity may declare several identity.reference nodes onto the same
+ * target, so the target alone is not enough — resolve through the shared ladder.
  */
-function findReferenceFkField(holder: MetaData, targetName: string): string | undefined {
-  // ADR-0039: effective children — an identity.reference may be inherited via extends.
-  for (const child of holder.children()) {
-    if (child.type !== TYPE_IDENTITY) continue;
-    if (child.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
-    // ADR-0039: effective attrs — @references/@fields may be inherited.
-    const ref = child.attr(IDENTITY_REFERENCE_ATTR_REFERENCES);
-    if (typeof ref !== "string") continue;
-    const dotIdx = ref.indexOf(".");
-    const entityName = dotIdx === -1 ? ref : ref.slice(0, dotIdx);
-    if (entityName !== targetName) continue;
-    const fields = child.attr(IDENTITY_ATTR_FIELDS);
-    if (Array.isArray(fields) && fields.length > 0) return String(fields[0]);
-    if (typeof fields === "string") {
-      const first = fields.split(",")[0]?.trim();
-      if (first) return first;
-    }
-  }
-  return undefined;
+function findReferenceFkField(
+  holder: MetaData,
+  targetName: string,
+  relationshipName: string,
+  sourceRefField?: string,
+): string | undefined {
+  const ref = resolveRelationshipReference(
+    holder as unknown as MetaObject, relationshipName, targetName, sourceRefField,
+  );
+  return ref?.fields[0];
 }
 
 /**
@@ -77,7 +68,9 @@ export function resolveRelationDescriptor(
         { entity: sourceEntity.name },
       );
     }
-    const fkField = findReferenceFkField(sourceEntity, targetEntityName);
+    // ADR-0039: resolving — @sourceRefField may be inherited via extends.
+    const declaredRefField = child.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
+    const fkField = findReferenceFkField(sourceEntity, targetEntityName, child.name, declaredRefField);
     if (!fkField) {
       throw new MetadataError(
         `Relationship '${relationName}' on '${sourceEntity.name}' has no identity.reference targeting '${targetEntityName}'`,
@@ -114,7 +107,11 @@ export function resolveRelationDescriptor(
       if (targetEntityName !== sourceEntity.name) continue;
       const inverseName = inversePluralName(other.name);
       if (inverseName !== relationName) continue;
-      const fkField = findReferenceFkField(other, sourceEntity.name);
+      // ADR-0039: resolving — @sourceRefField may be inherited via extends. This
+      // FK lives on `other` and belongs to `other`'s own relationship `child` —
+      // not to anything declared on sourceEntity (see #368 module comment).
+      const declaredRefField = child.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
+      const fkField = findReferenceFkField(other, sourceEntity.name, child.name, declaredRefField);
       if (!fkField) {
         throw new MetadataError(
           `Inverse relationship for '${relationName}' on '${sourceEntity.name}': entity '${other.name}' has no identity.reference targeting '${sourceEntity.name}'`,
