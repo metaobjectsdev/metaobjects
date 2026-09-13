@@ -91,6 +91,20 @@ function genConfig(outDir: string) {
   });
 }
 
+/**
+ * The warnings this file cares about — everything except the api-framework advisory.
+ *
+ * These tests wire BOTH route generators deliberately: the question under test is
+ * whether a sourceless object gets DB-bound artifacts, and asking it of both HTTP
+ * surfaces at once is the point. That is exactly the shape `warnMixedApiFrameworks`
+ * exists to remark on, so the advisory fires here and is correct to. Filtering it by
+ * substring rather than relaxing the assertion to "some warnings" keeps every OTHER
+ * unexpected warning failing these tests, which is what `toEqual([])` was buying.
+ */
+function unrelatedWarnings(warnings: readonly string[]): string[] {
+  return warnings.filter((w) => !w.includes("two api-layer frameworks are wired"));
+}
+
 // Task 3 — the ADR-0034 scaffold-and-own reference templates (src/reference/*)
 // must gate queries/routes emission on the same hasAnyRdbSource signal as the
 // engine generators above. `entityFile` is reused unchanged (its table-vs-shape
@@ -111,7 +125,7 @@ describe("#248 R2 — sourceless objects get no DB-bound artifacts", () => {
   test("Order (sourced) gets entity+queries+routes+hono; Money (value) and Ghost (sourceless entity) get neither", async () => {
     const root = await loadRoot([ORDER, MONEY, GHOST]);
     const out = await runGen({ config: genConfig(tmp), metadata: root });
-    expect(out.warnings).toEqual([]);
+    expect(unrelatedWarnings(out.warnings)).toEqual([]);
 
     // runGen reports files.path as absolute (outDir-joined) paths.
     const paths = new Set(out.files.map((f) => f.path));
@@ -145,7 +159,7 @@ describe("#248 R2 — sourceless objects get no DB-bound artifacts", () => {
   test("reference (scaffold-and-own) generators: same gating as the engine — Order gets queries+routes; Money/Ghost get neither", async () => {
     const root = await loadRoot([ORDER, MONEY, GHOST]);
     const out = await runGen({ config: refGenConfig(tmp), metadata: root });
-    expect(out.warnings).toEqual([]);
+    expect(unrelatedWarnings(out.warnings)).toEqual([]);
 
     const paths = new Set(out.files.map((f) => f.path));
     const at = (name: string) => join(tmp, name);
@@ -235,7 +249,7 @@ describe("#248 R2 — sourceless objects get no DB-bound artifacts", () => {
     ]);
 
     const out = await runGen({ config: genConfig(tmp), metadata: root });
-    expect(out.warnings).toEqual([]);
+    expect(unrelatedWarnings(out.warnings)).toEqual([]);
     const paths = new Set(out.files.map((f) => f.path));
     expect(paths.has(join(tmp, "ProgramSummary.ts"))).toBe(true);
     expect(paths.has(join(tmp, "ProgramSummary.queries.ts"))).toBe(true);

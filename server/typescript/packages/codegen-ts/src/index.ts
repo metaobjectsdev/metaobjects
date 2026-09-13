@@ -47,6 +47,14 @@ export type {
   Layer,
 } from "./generator-registry.js";
 
+// The post-selection audits `meta gen` runs over a wired suite, and the impl-name →
+// stable-name resolver both of them go through. Public so the CLI can gate it.
+export {
+  warnUnsatisfiedRequires,
+  warnMixedApiFrameworks,
+  stableNameIndex,
+} from "./catalog-gates.js";
+
 export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, DocsConfig, ResolvedDocsConfig, DocsSurface, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
 export { defineConfig, normalizeConfig, resolveGenerators, resolveDocsConfig } from "./metaobjects-config.js";
 // The dialect every generator falls back to when a config declares none. Exported because

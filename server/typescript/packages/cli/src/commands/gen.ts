@@ -26,6 +26,7 @@ import {
   declaredDepsOf,
 } from "../lib/catalog-listing.js";
 import { emitStructured } from "../lib/format.js";
+import { composeCatalog } from "../lib/catalog.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -164,6 +165,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       config: forgeConfig,
       metadata,
       projectRoot,
+      // The COMPOSED catalog, so the requires / api-framework gates can see the react
+      // and tanstack entries too. codegen-ts only knows its own slice.
+      catalog: composeCatalog(),
       baseline: flags.baseline,
       // --dry-run must actually preview. This was previously passed only to the
       // display object below, so a "preview" run wrote every file.

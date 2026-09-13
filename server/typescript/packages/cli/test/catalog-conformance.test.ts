@@ -13,7 +13,7 @@
 import { describe, it, expect } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { GENERATOR_LAYERS } from "@metaobjectsdev/codegen-ts";
+import { GENERATOR_LAYERS, stableNameIndex } from "@metaobjectsdev/codegen-ts";
 import { composeCatalog, listCatalog, packageOf, catalogPackages } from "../src/lib/catalog.js";
 
 const PORT = "typescript" as const;
@@ -108,6 +108,29 @@ describe("the composed TS catalog conforms to the canonical manifest", () => {
     // in GENERATOR_LAYERS order.
     expect(new Set(seen).size).toBe(seen.length);
     expect(seen).toEqual(GENERATOR_LAYERS.filter((l) => seen.includes(l)));
+  });
+
+  it("every catalog entry resolves back from the generator its factory builds", () => {
+    // The runner sees CONSTRUCTED generators, whose `name` is the implementation name
+    // (`routes-file`, `tanstack-grid-hook`), not the catalog key (`routes`,
+    // `grid-hook`). Both post-selection gates map back through stableNameIndex(), and
+    // an entry missing from that index is skipped in SILENCE — indistinguishable from
+    // somebody's own generator. So the index has to be total, and that is asserted
+    // here rather than left to the two gates to fail vaguely.
+    const catalog = composeCatalog();
+    const index = stableNameIndex(catalog);
+    const unreachable: string[] = [];
+    for (const [stable, entry] of Object.entries(catalog)) {
+      const implName = entry.factory().name;
+      if (index.get(implName) !== stable) {
+        unreachable.push(`${stable}: its factory builds "${implName}", which resolves to ${String(index.get(implName))}`);
+      }
+    }
+    expect(
+      unreachable,
+      "A catalog entry whose constructed generator does not map back to it. The\n" +
+        "requires and api-framework gates would skip it silently:\n  " + unreachable.join("\n  "),
+    ).toEqual([]);
   });
 
   it("every one of the six layers has at least one member", () => {
