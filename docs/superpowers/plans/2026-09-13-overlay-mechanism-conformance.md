@@ -2,6 +2,25 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> ## STATUS: COMPLETE (2026-09-13) — executed inline, `7cdd886f3` + `f6624b6e1`
+>
+> All three tasks done. Both fixtures landed and are **green in all five ports**
+> (TS, C#, Java, Kotlin, Python), no expected-failure ledger entries, corpus
+> 322 → 324, count gate and site payload verified.
+>
+> **Task 1 — `overlay-adds-source`: clean.** Zero errors, zero warnings. The
+> layered-library design is verified cross-port.
+>
+> **Task 2 — `overlay-nested-requirement`: Q1 answered YES structurally**, plus
+> two findings the spec had assumed away — every ancestor in an overlay chain
+> must also be marked `overlay: true` or each emits
+> `WARN_DUPLICATE_DECLARATION`, and an attribute override emits
+> `ERR_MERGE_CONFLICT` even under an explicit `overlay: true`. Both are recorded
+> in **FR-043 Amendment 2**, along with the maintainer's ruling that the flag
+> licenses the override, and the coverage trap in implementing it.
+>
+> The plan's "stop and re-scope" branch did NOT fire: §5.5 survives.
+
 **Goal:** Prove, in all five ports, the two overlay behaviours that FR-043's layered library design and its `§5.5` adaptation door both rest on — and which are currently gated nowhere.
 
 **Architecture:** Two additions to the shared metamodel conformance corpus at `fixtures/conformance/`. Discovery is automatic — no runner code changes in any port — so each fixture reaches TypeScript, Java, Kotlin (via `metadata-ktx`), Python and C# by existing. A port that cannot yet pass one is recorded in its `conformance-expected-failures.json` ledger rather than left silently red. The corpus count is a **derived value with three committed copies**, so each fixture-adding commit must move them together or the `gates` lane goes red in a way no port lane can see.
@@ -60,7 +79,7 @@ This is the mechanism Amendment 1's whole layered-library design rests on: `mode
 
 **Naming note:** input files are read in sorted order, so the `a-`/`b-` prefixes make "base first, overlay second" explicit. ADR-0055 made the overlay pass deferred and order-independent, so this ordering is documentary, not load-bearing — `overlay-mixed-file-base-in-later-file` already covers the inverse.
 
-- [ ] **Step 1: Write the base — a sourceless entity**
+- [x] **Step 1: Write the base — a sourceless entity**
 
 Create `fixtures/conformance/overlay-adds-source/input/meta.a-model.json`:
 
@@ -84,7 +103,7 @@ Create `fixtures/conformance/overlay-adds-source/input/meta.a-model.json`:
 }
 ```
 
-- [ ] **Step 2: Write the overlay — persistence only**
+- [x] **Step 2: Write the overlay — persistence only**
 
 Create `fixtures/conformance/overlay-adds-source/input/meta.b-db.json`:
 
@@ -108,7 +127,7 @@ Create `fixtures/conformance/overlay-adds-source/input/meta.b-db.json`:
 }
 ```
 
-- [ ] **Step 3: Write the expected golden**
+- [x] **Step 3: Write the expected golden**
 
 Overlay children **append** to the base's in declaration order, and `overlay: true` is not serialized (confirmed against `fixtures/conformance/overlay-same-object-different-files/expected.json`). Attributes are `@`-prefixed and sorted alphabetically after `name`.
 
@@ -136,7 +155,7 @@ Create `fixtures/conformance/overlay-adds-source/expected.json`:
 }
 ```
 
-- [ ] **Step 4: Run it — and treat a golden mismatch as information, not failure**
+- [x] **Step 4: Run it — and treat a golden mismatch as information, not failure**
 
 ```bash
 cd server/typescript/packages/metadata && bun test test/conformance.test.ts -t "overlay-adds-source"
@@ -147,7 +166,7 @@ Two outcomes, and they mean opposite things:
 - **A diff in which attributes are present/absent or ordered differently from Step 3** — the golden is wrong, not the loader. Canonical serialization omits defaulted attributes (`@role: primary` may not survive), and a defaulted `@kind` may be *added*. Replace `expected.json` with the serializer's actual output **only after** reading it and confirming the entity has exactly one `source.rdb` and one `index.lookup`.
 - **A merge failure — `ERR_OVERLAY_NO_TARGET`, a second `User` object, or zero sources on the merged entity** — that is the real finding. **Stop and report it.** Amendment 1's layering does not work, and FR-043 needs re-opening before any further work.
 
-- [ ] **Step 5: Verify the entity is genuinely persisted, not just structurally merged**
+- [x] **Step 5: Verify the entity is genuinely persisted, not just structurally merged**
 
 A merged `source.rdb` that does not satisfy `isWritableSource` would pass the golden and still leave the entity inert — the exact failure the layering must not have. Confirm against the shipped predicate:
 
@@ -157,7 +176,7 @@ cd server/typescript/packages/metadata && bun test test/conformance.test.ts -t "
 
 Expected: both the `lint:` and `conformance:` tests for this fixture PASS.
 
-- [ ] **Step 6: Move all four count sites in this same commit**
+- [x] **Step 6: Move all four count sites in this same commit**
 
 The count is derived by `scripts/site/counts.test.ts` and asserted against three committed copies plus the site payload. Bump `322` → `323`:
 
@@ -168,7 +187,7 @@ cd <repo-root>
 bun run site:payload
 ```
 
-- [ ] **Step 7: Prove the count gate green — a port lane cannot tell you**
+- [x] **Step 7: Prove the count gate green — a port lane cannot tell you**
 
 ```bash
 cd <repo-root> && bun test scripts/site && bun scripts/build-site-payload.ts --check
@@ -176,7 +195,7 @@ cd <repo-root> && bun test scripts/site && bun scripts/build-site-payload.ts --c
 
 Expected: PASS. This gate lives in the `gates` lane; `--only <port>` never runs it. On 2026-09-12 a fixtures commit moved 314 → 322, updated only `docs/CONFORMANCE.md`, and left `site payload is true` red across the entire port fan-out.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add fixtures/conformance/overlay-adds-source AGENTS.md docs/CONFORMANCE.md examples/showcase/site-payload.json
@@ -210,7 +229,7 @@ This settles FR-043 **§12 Q1**, which the spec names as the question gating "Ph
 
 **What the fixture also documents.** To address a nested node, the overlay file re-declares the ancestor chain — plain parents, `overlay: true` on the node actually being changed. That is the shape `overlay-nested-under-plain-parent-base-later` uses, and it is what an adopter following §5.5 will have to write. It is not obvious, and the fixture is where it becomes legible.
 
-- [ ] **Step 1: Write the base — a library-shaped requirement tree**
+- [x] **Step 1: Write the base — a library-shaped requirement tree**
 
 Create `fixtures/conformance/overlay-nested-requirement/input/meta.a-requirements.json`:
 
@@ -255,7 +274,7 @@ Create `fixtures/conformance/overlay-nested-requirement/input/meta.a-requirement
 }
 ```
 
-- [ ] **Step 2: Write the adopter's disagreement**
+- [x] **Step 2: Write the adopter's disagreement**
 
 This is §5.5 exactly: same `(type, package::path)`, `overlay: true` on the innermost node, downgrading the verdict and recording why. Ancestors are re-declared plain.
 
@@ -294,7 +313,7 @@ Create `fixtures/conformance/overlay-nested-requirement/input/meta.b-adopter.jso
 }
 ```
 
-- [ ] **Step 3: Write the expected golden**
+- [x] **Step 3: Write the expected golden**
 
 Last-writer-wins on attribute conflicts, so `@status` becomes `partial`; `@disposition` and `@notes` are added; everything else survives.
 
@@ -343,7 +362,7 @@ Create `fixtures/conformance/overlay-nested-requirement/expected.json`:
 }
 ```
 
-- [ ] **Step 4: Run it**
+- [x] **Step 4: Run it**
 
 ```bash
 cd server/typescript/packages/metadata && bun test test/conformance.test.ts -t "overlay-nested-requirement"
@@ -353,7 +372,7 @@ Read the outcome the same way as Task 1 Step 4 — an attribute-ordering diff is
 
 **If `@status` stays `live`, or a second `scopedGrantRequiresMembership` appears, or the load errors — STOP.** That is Q1 answered NO. Report it and do not start the FR-043 plan: §5.5 collapses to eject-only, and Phase 1 has to be re-scoped before it can be planned. Record the finding in the spec's §12 Q1 in the same session.
 
-- [ ] **Step 5: Confirm the ancestors were not duplicated**
+- [x] **Step 5: Confirm the ancestors were not duplicated**
 
 The failure mode that passes a naive golden is the overlay creating a *parallel* tree rather than merging. Assert the root has exactly one child:
 
@@ -363,7 +382,7 @@ cd server/typescript/packages/metadata && bun test test/conformance.test.ts -t "
 
 Expected: both `lint:` and `conformance:` PASS, and the golden above — which declares exactly one `accessControl` — is what matched.
 
-- [ ] **Step 6: Move all four count sites in this same commit**
+- [x] **Step 6: Move all four count sites in this same commit**
 
 Bump `323` → `324` in `AGENTS.md:71` and all three `docs/CONFORMANCE.md` sites, then:
 
@@ -371,7 +390,7 @@ Bump `323` → `324` in `AGENTS.md:71` and all three `docs/CONFORMANCE.md` sites
 cd <repo-root> && bun run site:payload
 ```
 
-- [ ] **Step 7: Prove the count gate green**
+- [x] **Step 7: Prove the count gate green**
 
 ```bash
 cd <repo-root> && bun test scripts/site && bun scripts/build-site-payload.ts --check
@@ -379,7 +398,7 @@ cd <repo-root> && bun test scripts/site && bun scripts/build-site-payload.ts --c
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add fixtures/conformance/overlay-nested-requirement AGENTS.md docs/CONFORMANCE.md examples/showcase/site-payload.json
@@ -409,7 +428,7 @@ TypeScript is the reference implementation; a fixture green there says nothing a
 - Consumes: both fixtures from Tasks 1 and 2, committed.
 - Produces: the cross-port verdict that Amendment 1's gate #1 asked for. The FR-043 plan reads this to know whether the layering is proven or ledgered.
 
-- [ ] **Step 1: Run the four port lanes**
+- [x] **Step 1: Run the four port lanes**
 
 ```bash
 cd <repo-root> && scripts/ci-local.sh --only java --only python --only csharp --only ts-unit
@@ -417,7 +436,7 @@ cd <repo-root> && scripts/ci-local.sh --only java --only python --only csharp --
 
 Kotlin inherits the corpus through `metadata-ktx` and runs inside the `java` lane.
 
-- [ ] **Step 2: Read the SUMMARY, never the exit code**
+- [x] **Step 2: Read the SUMMARY, never the exit code**
 
 `ci-local.sh` **prints "LOCAL CI FAILED" and still returns 0.** Grep the summary block; do not branch on `$?`.
 
@@ -427,18 +446,18 @@ cd <repo-root> && scripts/ci-local.sh --only java --only python --only csharp --
 
 Expected: every lane `ok`.
 
-- [ ] **Step 3: If a port fails, diagnose before ledgering**
+- [x] **Step 3: If a port fails, diagnose before ledgering**
 
 A ledger entry is a recorded gap, not a way to make a lane green. Read the port's actual error first:
 
 - **`ERR_OVERLAY_NO_TARGET` on `overlay-adds-source`** in a port means that port's deferred-overlay pass does not reach a `source.*` child. That is a real cross-port defect in the mechanism Amendment 1 depends on — **report it**, do not ledger it silently.
 - **An unknown-type error on `overlay-nested-requirement`** means that port has not registered the requirement vocabulary in its conformance provider set. Check whether the port passes the existing `requirement-levels-and-nesting` fixture; if it does, the vocabulary is there and the failure is about overlay, not registration.
 
-- [ ] **Step 4: Ledger only a genuine, understood gap**
+- [x] **Step 4: Ledger only a genuine, understood gap**
 
 If and only if Step 3 establishes the port cannot pass yet, add the fixture name to that port's `conformance-expected-failures.json` with the reason. Then re-run that lane and confirm it reports `ok`.
 
-- [ ] **Step 5: Commit — only if Step 4 changed a ledger**
+- [x] **Step 5: Commit — only if Step 4 changed a ledger**
 
 ```bash
 git add server/<port>/.../conformance-expected-failures.json
@@ -449,7 +468,7 @@ git commit -m "test(conformance): ledger <port> on <fixture>
 
 If no ledger changed, there is nothing to commit — say so and move on.
 
-- [ ] **Step 6: Record the verdict in the spec**
+- [x] **Step 6: Record the verdict in the spec**
 
 Amendment 1 says the overlay-adds-source behaviour "earns one conformance fixture", and §12 Q1 is still written as open. Update both in one docs commit: replace §12 Q1's text with the answer and the fixture name, and add the fixture name to Amendment 1's gating list. If any port is ledgered, say which and why — a green corpus with a ledgered port is not the same claim as a green corpus.
 
