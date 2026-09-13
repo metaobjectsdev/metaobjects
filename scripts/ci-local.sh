@@ -184,6 +184,16 @@ gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-p
 # checks names. Offline; one manifest.
 gate_script_name_hooks() { node scripts/check-script-name-hooks.mjs; }
 
+# ── the extract engine's coercion vocabulary is a CROSS-PORT contract ────────
+# Every port's extract engine runs fixtures/extract-conformance/, and that corpus's
+# schema.json `kind` values ARE this vocabulary. So a port that adds or drops a kind
+# changes what the shared corpus can express while every existing fixture still passes:
+# the drift is invisible by construction. It had already happened — C# carries a Decimal
+# kind no other port has and no fixture exercises. Reads each port's real definition;
+# deviations pass only when expected-field-kinds.json records them with a reason.
+# Offline; four files.
+gate_extract_field_kinds() { node scripts/check-extract-field-kinds.mjs; }
+
 # ── release hygiene: uv.lock must agree with pyproject.toml ──────────────────
 # Every lane runs plain `uv run`, which REWRITES a disagreeing lockfile in place, so a
 # release that bumps pyproject and forgets the lock stays green forever. Twice now: the
@@ -743,6 +753,7 @@ if want gates; then step    "publish-set parity"               gate_publish_set;
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
 if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
 if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi
+if want gates; then step    "extract field kinds"              gate_extract_field_kinds;    fi
 if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
 if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi

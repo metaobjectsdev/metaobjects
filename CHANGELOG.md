@@ -55,9 +55,6 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   only the member was gone. The error now ends *"'app::Task' has no member 'dueDate'."* The
   did-you-mean hint still appears when the object itself does not resolve.
 
-
-### Fixed
-
 - **C#: a `field.decimal` reached through a nested object generated code that did not
   compile.** `ExtractDelegateEmitter.ScalarReader` — the reader map for the runtime-DELEGATING
   extract mirror — had no `Decimal` branch, so a decimal fell through to the `DlgString`
@@ -130,6 +127,7 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   parsed before still parses identically) plus ISO instant, zone-less date-time, and date-only
   forms. Unparseable input still throws, preserving the failure mode for callers outside the
   lenient tier.
+
 ### Added
 
 - **C#: `DbContextGenerator.EmitsReferenceForeignKeys`, an opt-out for the reference-FK
@@ -145,6 +143,22 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   relationship. Override the property to `false` and configure those relationships yourself;
   nothing else the generator emits changes. Documented in
   [`relationships.md`](docs/features/relationships.md).
+
+- **The extract engine's `FieldKind` vocabulary is now gated across ports**
+  (`scripts/check-extract-field-kinds.mjs`, `gates` lane). Every port's extract engine runs
+  `fixtures/extract-conformance/`, and that corpus's `schema.json` `kind` values ARE this
+  vocabulary — so a port that adds or drops a kind changes what the shared corpus can express
+  while every existing fixture keeps passing. The drift is invisible by construction, and it had
+  already happened: C# carries a `Decimal` kind no other port has and no fixture exercises. The
+  gate reads each port's real definition rather than a copied list (an unrecognised declaration
+  shape fails loudly instead of reporting an empty set, which would read as "no drift"), and it
+  fails if Kotlin ever grows its own `FieldKind` — it ships no extract engine, driving the shared
+  Java one. Deviations pass only when
+  [`expected-field-kinds.json`](fixtures/extract-conformance/expected-field-kinds.json) records
+  them with a reason; the C# one is recorded there, including why deleting it is not the
+  one-liner it looks like (`ExtractMap.AsDecimal` has no string arm, so an engine that stopped
+  producing `decimal` would silently return null for every decimal). A recorded deviation that
+  is no longer true also fails, so the record cannot go stale.
 
 ## [1.0.4] — 2026-09-14
 

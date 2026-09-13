@@ -1,0 +1,47 @@
+{
+  "$comment": [
+    "The extract engine's coercion-target vocabulary (FieldKind), pinned across ports.",
+    "This is the machine-readable form of the `kind` values documented in README.md ->",
+    "'schema.json field keys'. Every port's extract engine runs the same corpus, so a port",
+    "that quietly adds or drops a kind changes what that corpus can even express.",
+    "",
+    "It was unpinned until now, and it had already drifted: C# carries a Decimal kind that",
+    "no other port has and no fixture exercises. Nothing failed, because nothing looked.",
+    "Gated by scripts/check-extract-field-kinds.mjs in ci-local.sh's `gates` lane."
+  ],
+  "canonical": ["STRING", "INT", "LONG", "DOUBLE", "BOOLEAN", "ENUM", "OBJECT"],
+  "ports": {
+    "java": "server/java/render/src/main/java/com/metaobjects/render/extract/FieldKind.java",
+    "csharp": "server/csharp/MetaObjects.Render/Extract/FieldKind.cs",
+    "typescript": "server/typescript/packages/render/src/extract/types.ts",
+    "python": "server/python/src/metaobjects/render/extract/types.py"
+  },
+  "kotlinReusesJava": true,
+  "$kotlinNote": "Kotlin ships no extract engine of its own — metadata-ktx drives the shared Java one, so there is no Kotlin FieldKind to check and adding one would itself be the drift.",
+  "sanctionedDeviations": {
+    "csharp": {
+      "extra": ["DECIMAL"],
+      "missing": [],
+      "recordedOn": "2026-09-13",
+      "reason": [
+        "C#'s extract engine coerces a field.decimal to a native `decimal` through this kind,",
+        "and MetaObjects.Render's ExtractMap.AsDecimal reads it. It is NOT dead vocabulary.",
+        "",
+        "It is a deviation rather than the canonical shape because the outcome it buys does not",
+        "require an engine kind: Java reaches the same place (a typed BigDecimal on the response",
+        "record) by leaving the engine's STRING coercion alone and converting in GENERATED code.",
+        "That keeps the engine's vocabulary small and puts the port's native-type choice at the",
+        "port boundary, which is where ADR-0019 says it belongs.",
+        "",
+        "Not removed here because removal is not the one-line change it looks like: AsDecimal has",
+        "no string arm, so an engine that stopped producing `decimal` would make it return null",
+        "for EVERY decimal — silently. Reconciling properly means either propagating DECIMAL to",
+        "the other four engines or moving C# onto the generated-coercion pattern, and either is a",
+        "cross-port behaviour change that wants its own spec.",
+        "",
+        "This entry exists so the divergence is a reviewed decision with a stated cost, not an",
+        "accident nobody can see. Anything NOT listed here fails the gate."
+      ]
+    }
+  }
+}
