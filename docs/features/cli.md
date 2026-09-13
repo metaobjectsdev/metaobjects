@@ -312,15 +312,13 @@ targets:
 
 ## `libraries` — opting into a MetaObjects-shipped library package
 
-MetaObjects ships a small set of standard metadata packages under `library/`. A project
-opts into one by name, and its nodes become available to `extends`:
+MetaObjects ships a small set of declared designs under `library/` — see
+[libraries.md](libraries.md) for what they are and how to adapt one. A project opts into
+one by name, and its nodes become available to `extends`:
 
-```ts
-// metaobjects.config.ts  (Node `meta`)
-export default defineConfig({
-  libraries: ["ai"],             // makes metaobjects::ai::LlmCallBase resolvable
-  generators: [entityFile()],
-});
+```jsonc
+// .metaobjects/config.json  — the port-neutral file, beside `dependencies`
+{ "schema_version": 1, "sources": [], "libraries": ["ai"] }
 ```
 
 ```yaml
@@ -333,6 +331,17 @@ libraries: [ai]
 { "object.entity": { "name": "AgentCall", "extends": "metaobjects::ai::LlmCallBase", ... } }
 ```
 
+- **A LAYER at a time.** A token is `<library>` or `<library>/<layer>`; the bare name is
+  the CORE layer, which declares no `source.rdb` and therefore adds **no tables and no
+  generated code**. `"ai/db"` adds the persistence layer and IMPLIES `"ai"` (a db layer
+  is nothing but `overlay: true` redeclarations, so without its base it would be
+  `ERR_OVERLAY_NO_TARGET`). A token whose LAYER is unknown is dropped WHOLE rather than
+  reduced to its core — implying the core from a mistyped `ai/database` would hand you
+  an inert core and no tables, with no diagnostic.
+- **It lives in `.metaobjects/config.json`**, not in `metaobjects.config.ts`. Which
+  designs a project adopts is a fact about the PROJECT, not about how one port generates
+  code from it; that file is the port-neutral one every port already reads. A config
+  still carrying the old key gets a pointed error rather than silence.
 - **Opt-in, never automatic.** A library package registers real top-level nodes. A project
   that never references one should not find them in its model, its generated output or its
   docs — so nothing is loaded until the key names it.
@@ -370,6 +379,25 @@ On C# the opt-in is loader-only — `MetaDataLoader.FromDirectory(dir, new[] { "
 the `dotnet meta` CLI has no project-config file to carry a key. All five ports resolve
 `metaobjects::ai::LlmCallBase`; three of them (Node `meta`, Python `metaobjects`, Maven) expose
 it declaratively.
+
+### `meta eject <library>` — taking the metadata to own
+
+`meta eject` takes generator names AND library names. A library ejects every layer into
+your first DECLARED source root (resolved through `sources`, never a hard-coded
+directory) as `meta.<library>.<file>.yaml`, each stamped with a provenance header, and
+never overwrites without `--force`. It does not edit your config.
+
+**One step remains, and the loader enforces it**: remove the library from `libraries`.
+Left there, the shipped tree and your copy both load and merge asymmetrically —
+additions take effect, deletions do not — so the load is refused with
+`ERR_LIBRARY_PACKAGE_COLLISION`. Its mirror, `ERR_LIBRARY_PACKAGE_NOT_OWNED`, fires on a
+NEW node declared into a library's package while the library is opted in; an
+`overlay: true` amendment of one of its own nodes is the documented door and is
+untouched.
+
+`meta eject --list` reports, per ejected library, `identical` or `differs` against the
+shipped tree with counts changed / only-upstream / only-yours — the same staleness
+report it gives for owned generators, one level up.
 
 ## `meta gen` / `meta verify` run an advisory anti-pattern pass (Node `meta`)
 
