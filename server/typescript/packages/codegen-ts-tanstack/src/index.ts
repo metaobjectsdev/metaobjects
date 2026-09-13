@@ -3,6 +3,10 @@ export { tanstackQuery, type TanstackQueryOpts } from "./tanstack-query.js";
 export { tanstackGrid, type TanstackGridOpts } from "./tanstack-grid.js";
 export { tanstackGridHook, type TanstackGridHookOpts } from "./tanstack-grid-hook.js";
 
+// ADR-0021 D3 — this package's slice of the stable-name generator registry. The CLI
+// unions the three slices into the catalog behind `meta gen --list`.
+export { tanstackGeneratorRegistry } from "./generator-registry.js";
+
 // FR-040 §4.2(b) — public so an owned generator composes the engine rather than
 // forking it. Signatures are stable API: (entity, ctx) => string.
 export { renderHooksFile } from "./templates/hooks-file.js";

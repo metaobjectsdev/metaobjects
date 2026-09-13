@@ -3,8 +3,10 @@ import {
   generatorRegistry,
   listGenerators,
   getGenerator,
+  GENERATOR_LAYERS,
   type GeneratorRegistryEntry,
 } from "../src/generator-registry.js";
+import { REFERENCE_GENERATOR_NAMES } from "../src/reference-templates.js";
 
 // ADR-0021 D3 — stable-name generator registry. The stable names are the
 // cross-port contract; this test pins them + asserts each entry carries a
@@ -29,6 +31,7 @@ const EXPECTED_NATIVE = [
   "template",
   "api-docs",
   "trace-helper",
+  "requirement-tests",
   "shared-model",
 ] as const;
 
@@ -107,5 +110,46 @@ describe("generator-registry (ADR-0021 D3)", () => {
     // generator without it would emit the artifact while every template still
     // embedded its own literal.
     expect(gen?.emitsNames).toBe(true);
+  });
+
+  // ----- the catalog facets (opt-in codegen design §D2b) --------------------
+
+  test("every entry declares kind, a known layer, and ejectable", () => {
+    for (const [id, entry] of Object.entries(generatorRegistry)) {
+      expect(entry.kind, `${id}.kind`).toBe("generator");
+      expect(GENERATOR_LAYERS, `${id}.layer`).toContain(entry.layer);
+      expect(typeof entry.ejectable, `${id}.ejectable`).toBe("boolean");
+    }
+  });
+
+  test("ejectable is DERIVED from the shipped reference templates, never hand-kept", () => {
+    const templates = new Set<string>(REFERENCE_GENERATOR_NAMES);
+    for (const [id, entry] of Object.entries(generatorRegistry)) {
+      expect(entry.ejectable, `${id}.ejectable`).toBe(templates.has(id));
+    }
+    // ...and every template this package ships has an entry to be reached through.
+    for (const name of templates) {
+      expect(Object.keys(generatorRegistry), `template ${name} has a registry entry`).toContain(name);
+    }
+  });
+
+  test("requires only names entries this slice actually contains", () => {
+    // codegen-ts is self-contained: nothing here may require a react/tanstack name,
+    // because this package cannot see those slices to resolve one.
+    for (const [id, entry] of Object.entries(generatorRegistry)) {
+      for (const dep of entry.requires ?? []) {
+        expect(Object.keys(generatorRegistry), `${id} requires ${dep}`).toContain(dep);
+      }
+    }
+  });
+
+  test("no entry declares a framework — every codegen-ts generator but routes is neutral", () => {
+    // The two `api`-layer route generators are the only framework-bearing entries in
+    // this package; `client` (react/tanstack) lives in the other two slices.
+    const framed = Object.values(generatorRegistry)
+      .filter((e) => e.framework !== undefined)
+      .map((e) => `${e.name}=${e.framework}`)
+      .sort();
+    expect(framed).toEqual(["routes-hono=hono", "routes=fastify"]);
   });
 });

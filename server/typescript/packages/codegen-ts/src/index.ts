@@ -38,8 +38,14 @@ export {
   generatorRegistry,
   listGenerators,
   getGenerator,
+  GENERATOR_LAYERS,
 } from "./generator-registry.js";
-export type { GeneratorRegistryEntry, GeneratorTier } from "./generator-registry.js";
+export type {
+  GeneratorRegistryEntry,
+  GeneratorTier,
+  GeneratorFramework,
+  Layer,
+} from "./generator-registry.js";
 
 export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, DocsConfig, ResolvedDocsConfig, DocsSurface, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
 export { defineConfig, normalizeConfig, resolveGenerators, resolveDocsConfig } from "./metaobjects-config.js";

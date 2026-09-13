@@ -1,6 +1,10 @@
 // Public API surface for @metaobjectsdev/codegen-ts-react.
 export { formFile, type FormFileOpts } from "./form-file.js";
 
+// ADR-0021 D3 — this package's slice of the stable-name generator registry. The CLI
+// unions the three slices into the catalog behind `meta gen --list`.
+export { reactGeneratorRegistry } from "./generator-registry.js";
+
 // FR-040 §4.2(b) — public so an owned generator composes the engine rather than
 // forking it. Signature is stable API: (entity, ctx) => string.
 export { renderFormFile } from "./templates/form-file.js";
