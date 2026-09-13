@@ -181,6 +181,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // snapshot artifact), so sharedModelFile() defaults its `files` selection
       // to exactly what this project itself declares.
       sourceFiles: genCollection.ownFiles,
+      // FR-043 §6 — the shipped-library selection. Always passed, including as `[]`:
+      // that is what tells the post-selection audit "this project opted into none",
+      // which is a different statement from a programmatic caller that never said.
+      libraries: genCollection.libraries,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

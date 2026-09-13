@@ -46,6 +46,27 @@ LIBRARY_MANIFESTS: dict[str, dict] = {
 }
 
 
+#: The prefix every library source id carries — the discriminator for "did a shipped
+#: library contribute this file", and the reason the id is stable rather than derived
+#: from a path (see :func:`library_file_id`).
+LIBRARY_FILE_ID_PREFIX = "library:"
+
+
+def library_file_id(ref: str) -> str:
+    """The source id a library file loads under, in every build —
+    ``library:iam/model.yaml``.
+
+    Stable rather than path-derived so a library node's ADR-0009 provenance envelope
+    reads the same from a checkout and from an installed wheel, carries no absolute
+    path, and cannot be confused with an adopter file sharing a basename."""
+    return f"{LIBRARY_FILE_ID_PREFIX}{ref}.yaml"
+
+
+def is_library_file_id(source_id: str) -> bool:
+    """True when a source id names a file a shipped library contributed."""
+    return source_id.startswith(LIBRARY_FILE_ID_PREFIX)
+
+
 def split_layer_token(token: str) -> tuple[str, str]:
     """Split a selection token into ``(library, layer)``.
 
@@ -143,7 +164,13 @@ def library_sources(packages: list[str]) -> list[MetaDataSource]:
         if directory is not None:
             path = directory / f"{ref}.yaml"
             if path.is_file():
-                out.append(FileSource(path, format=MetaDataFormat.YAML))
+                # The SAME id the embedded branch uses: a path-derived id would make a
+                # library node's error envelope differ between a checkout and an
+                # installed wheel, and would collide with an adopter file of the same
+                # basename.
+                out.append(
+                    FileSource(path, id=library_file_id(ref), format=MetaDataFormat.YAML)
+                )
                 continue
 
         embedded = EMBEDDED_LIBRARY.get(ref)
@@ -156,7 +183,7 @@ def library_sources(packages: list[str]) -> list[MetaDataSource]:
         out.append(
             InMemoryStringSource(
                 embedded,
-                id=f"library:{ref}.yaml",
+                id=library_file_id(ref),
                 format=MetaDataFormat.YAML,
             )
         )

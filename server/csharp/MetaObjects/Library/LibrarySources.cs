@@ -74,6 +74,20 @@ public static class LibrarySources
     }
 
     /// <summary>Every selection token this build accepts, sorted — what a config error prints.</summary>
+    /// <summary>The prefix every library source id carries.</summary>
+    public const string LibraryFileIdPrefix = "library:";
+
+    /// <summary>
+    /// The source id a library file loads under, in every build —
+    /// <c>library:iam/model.yaml</c>.
+    /// </summary>
+    /// <remarks>
+    /// Stable rather than path-derived so a library node's ADR-0009 provenance envelope
+    /// reads the same from a checkout and from an installed package, carries no absolute
+    /// path, and cannot be confused with an adopter file sharing a basename.
+    /// </remarks>
+    public static string LibraryFileId(string reference) => $"{LibraryFileIdPrefix}{reference}.yaml";
+
     public static IReadOnlyList<string> KnownTokens() =>
         LayersByLibrary
             .SelectMany(kv => kv.Value.Keys.Select(layer => layer.Length == 0 ? kv.Key : $"{kv.Key}/{layer}"))
@@ -159,7 +173,8 @@ public static class LibrarySources
                     var path = Path.Combine(dir, r.Replace('/', Path.DirectorySeparatorChar) + ".yaml");
                     if (File.Exists(path))
                     {
-                        outSources.Add(new FileSource(path));
+                        // The SAME id the embedded branch below uses — see LibraryFileId.
+                        outSources.Add(new FileSource(path, LibraryFileId(r)));
                         continue;
                     }
                 }
@@ -171,7 +186,7 @@ public static class LibrarySources
                         + "scripts/generate-embedded-library.ts");
                 }
                 outSources.Add(new InMemoryStringSource(
-                    embedded, $"library:{r}.yaml", MetaDataFormat.Yaml));
+                    embedded, LibraryFileId(r), MetaDataFormat.Yaml));
             }
         }
         return outSources;

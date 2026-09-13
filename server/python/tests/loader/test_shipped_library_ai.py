@@ -21,6 +21,7 @@ import pytest
 from metaobjects import LoadResult, MetaDataLoader, load_directory
 from metaobjects.errors import ErrorCode
 from metaobjects.library import library_sources
+from metaobjects.loader.sources import FileSource
 from metaobjects.library.library_sources import known_tokens
 from metaobjects.library.embedded_library import EMBEDDED_LIBRARY
 from metaobjects.runtime import LlmCallInput
@@ -160,7 +161,12 @@ class TestSourcesResolveOnDiskFirst:
         sources = library_sources(known_tokens())
 
         assert len(sources) == len(EMBEDDED_LIBRARY)
-        assert all("library:" not in s.id for s in sources), "expected on-disk FileSource in a checkout"
+        # The SOURCE KIND, not its id: since FR-043 a library file carries the same
+        # stable `library:<ref>.yaml` id in both branches, so that a library node's
+        # error envelope reads identically from a checkout and from an installed
+        # wheel. Which branch served it is a question about the object, not its label.
+        assert all(isinstance(s, FileSource) for s in sources), "expected on-disk FileSource in a checkout"
+        assert all(s.id.startswith("library:") for s in sources), "and the stable id in both branches"
 
 
 def test_the_loader_prepends_library_sources(adopter_dir: Path) -> None:

@@ -515,6 +515,88 @@ def refuse_unowned_packages(
         )
 
 
+def refuse_library_package_misuse(
+    root: MetaData,
+    selection: Sequence[str] | None,
+) -> None:
+    """FR-043 §3.4 / §3.5 — refuse the two ways an adopter's own file lands in a
+    shipped library's package while that library is opted in.
+
+    Both are SILENT otherwise, and they fail in opposite directions:
+
+    the EJECTED COPY
+        ``meta eject <lib>`` hands you the library's YAML to own, and the next step it
+        prints is to remove the library from ``libraries``. Skip that and both trees
+        load: the copy merges into the shipped node, so ADDITIONS take and DELETIONS do
+        not, because the library still declares what you removed
+        (``ERR_LIBRARY_PACKAGE_COLLISION``).
+
+    the NEW NODE
+        something of your own declared into ``metaobjects::<lib>``, where a later
+        release of the library may ship a node of that name and merge into it
+        (``ERR_LIBRARY_PACKAGE_NOT_OWNED``).
+
+    An ``overlay: true`` redeclaration is the documented adaptation door (§3.4) and is
+    deliberately untouched — ``is_merge`` is the loader's own record that the flag was
+    honoured, so this cannot mistake the two. Mirrors the TS
+    ``refuseLibraryPackageMisuse`` (``sdk/src/memory.ts``); called AFTER the loader's
+    own errors for the same reason its sibling above is.
+
+    No-op for a project that opts into no library.
+    """
+    if not selection:
+        return
+    from metaobjects.library.library_sources import (
+        LIBRARY_MANIFESTS,
+        is_library_file_id,
+        split_layer_token,
+    )
+
+    owner: dict[str, str] = {}
+    for token in selection:
+        library = split_layer_token(token)[0]
+        for pkg in LIBRARY_MANIFESTS.get(library, {}).get("packages", []):
+            owner[pkg] = library
+    if not owner:
+        return
+
+    # ADR-0039 SANCTIONED own-accessor case: a root-level scan, exactly as the
+    # dependency refusal above — `MetaRoot` has no super, and the question is "what did
+    # this tree declare at the top level".
+    for node in root.own_children():
+        key = node.resolution_key()
+        library = owner.get(package_of_resolution_key(key))
+        if library is None:
+            continue
+        files = getattr(node.source, "files", None) or []
+        if not any(not is_library_file_id(f) for f in files):
+            continue  # the library's own node, untouched
+        if getattr(node, "is_merge", False):
+            continue  # a marked overlay — the documented door
+        if any(is_library_file_id(f) for f in files):
+            raise ParseError(
+                f'"{key}" is declared by your own metadata AND by the shipped library '
+                f'"{library}", which this project opts into. The two merge silently and '
+                "asymmetrically: additions in your copy take effect and DELETIONS do not, "
+                "because the library still declares what you removed. Remove "
+                f'"{library}" from \'libraries\' in .metaobjects/config.json — you own the '
+                "metadata now — or delete your copy and amend the library with "
+                "'overlay: true' on the nodes you want to change.",
+                code=ErrorCode.ERR_LIBRARY_PACKAGE_COLLISION,
+            )
+        raise ParseError(
+            f'"{key}" is declared here, but the package '
+            f'"{package_of_resolution_key(key)}" belongs to the shipped library '
+            f'"{library}", which this project opts into. A later release of that library '
+            "may ship a node of this name and merge into yours. Declare it in a package "
+            "this project owns and 'extends' the library's node if it needs its shape; if "
+            "it was meant to AMEND a library node, give it that node's name and "
+            f"'overlay: true'; if you want this design outright, run 'meta eject {library}' "
+            f'and remove "{library}" from \'libraries\'.',
+            code=ErrorCode.ERR_LIBRARY_PACKAGE_NOT_OWNED,
+        )
+
+
 @dataclass(frozen=True)
 class Collection:
     """Everything the FR-023-aware source ladder resolved for one project:

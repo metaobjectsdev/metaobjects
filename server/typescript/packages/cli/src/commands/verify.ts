@@ -14,7 +14,9 @@ import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
   type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
+  libraryPrefixRows,
 } from "../lib/advisory.js";
+import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
@@ -382,7 +384,7 @@ export async function verifyCommand(
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
   // Suppressed with --no-antipatterns or META_NO_ANTIPATTERNS=1 for the rare
   // noisy project (both opt-outs work on `meta verify` and `meta gen`).
-  runAntiPatternAdvisory();
+  await runAntiPatternAdvisory();
 
   const exitCode = Math.max(
     templateExit,
@@ -786,7 +788,7 @@ export async function verifyCommand(
   // Records its result EITHER WAY — a skip carries its reason rather than looking
   // like a clean scan. Warnings only; nothing here reaches the exit code (the
   // scanner's own header: bias to under-flagging, never a non-zero exit).
-  function runAntiPatternAdvisory(): void {
+  async function runAntiPatternAdvisory(): Promise<void> {
     if (flags.noAntipatterns) {
       antiPatternSection = skippedSection("suppressed by --no-antipatterns");
       return;
@@ -825,10 +827,23 @@ export async function verifyCommand(
       // advisory only — never breaks verify.
     }
 
+    // FR-043 §3.5 — `metaobjects::` in this project's own metadata with no ejection
+    // provenance. Advisory because with the library NOT opted in nothing is broken; the
+    // opted-in case is refused at load instead.
+    let libraryPrefix: Awaited<ReturnType<typeof scanForUnprovenancedLibraryPrefix>> = [];
+    try {
+      libraryPrefix = await scanForUnprovenancedLibraryPrefix(
+        root, collection.ownFiles, collection.configDir,
+      );
+    } catch {
+      // Same discipline as its siblings: an advisory scan never breaks verify.
+    }
+
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
       ...missingBaseUrlRows(baseUrl),
       ...removedPropRows(removedProps),
+      ...libraryPrefixRows(libraryPrefix),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -850,6 +865,13 @@ export async function verifyCommand(
           `renamed away (advisory — does not fail the build, but the runtime will):`,
       );
       warnCapped(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (libraryPrefix.length > 0) {
+      log.warn(
+        `meta verify — ${libraryPrefix.length} node(s) declared under "metaobjects::" with ` +
+          `no ejection provenance (advisory — does not fail the build):`,
+      );
+      warnCapped(libraryPrefix.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
   }
 

@@ -76,6 +76,68 @@ public final class LibrarySources {
         return layers;
     }
 
+    /**
+     * The FQNs a generator's ANCHOR declarations name, across every shipped manifest
+     * (FR-043 §6).
+     *
+     * <p>An anchor is the library node a generator keys on. Reading it here is what
+     * retires a hard-coded entity name in the generator: {@code LlmTraceHelperGenerator}
+     * compared a short name, so ANY adopter entity called {@code LlmCallBase}, in any
+     * package, triggered it — and the shipped abstract was never actually what matched.</p>
+     *
+     * <p>Hand-parsed for the reason {@link #parseLayers} is: this module is the metadata
+     * core and does not depend on a JSON binder, and the file is one this repo
+     * generates. Each object in the {@code "generators"} array is read for its own
+     * {@code name} and {@code anchor}, so key ORDER inside it does not matter.</p>
+     *
+     * @param generatorName the cross-port stable name, e.g. {@code "trace-helper"}
+     * @return the anchor FQNs, in manifest order; empty when none declares one
+     */
+    public static List<String> generatorAnchors(String generatorName) {
+        List<String> out = new ArrayList<>();
+        for (String name : new TreeSet<>(EmbeddedLibrary.MANIFESTS.keySet())) {
+            String manifest = EmbeddedLibrary.MANIFESTS.get(name);
+            java.util.regex.Matcher block = java.util.regex.Pattern
+                .compile("\"generators\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL)
+                .matcher(manifest);
+            if (!block.find()) continue;
+            java.util.regex.Matcher obj = java.util.regex.Pattern
+                .compile("\\{([^}]*)\\}").matcher(block.group(1));
+            while (obj.find()) {
+                String body = obj.group(1);
+                String declared = manifestField(body, "name");
+                String anchor = manifestField(body, "anchor");
+                if (generatorName.equals(declared) && anchor != null) out.add(anchor);
+            }
+        }
+        return out;
+    }
+
+    /** One {@code "key": "value"} string field out of a flat JSON object body. */
+    private static String manifestField(String objectBody, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"").matcher(objectBody);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** The prefix every library source id carries. */
+    public static final String LIBRARY_FILE_ID_PREFIX = "library:";
+
+    /**
+     * The source id a library file loads under, in every build —
+     * {@code library:iam/model.yaml}.
+     *
+     * <p>Stable rather than path-derived so a library node's ADR-0009 provenance envelope
+     * reads the same from a checkout and from an installed jar, carries no absolute path,
+     * and cannot be confused with an adopter file sharing a basename.</p>
+     *
+     * @param ref the path under {@code library/} minus {@code .yaml}
+     * @return the stable source id
+     */
+    public static String libraryFileId(String ref) {
+        return LIBRARY_FILE_ID_PREFIX + ref + ".yaml";
+    }
+
     /** Split a selection token into {@code [library, layer]} — {@code "iam"} to
      *  {@code ["iam", ""]}, {@code "iam/db"} to {@code ["iam", "db"]}. Only the FIRST
      *  separator is meaningful, so a typo stays a typo rather than resolving to a prefix. */
@@ -199,7 +261,11 @@ public final class LibrarySources {
                 if (dir != null) {
                     Path path = dir.resolve(ref + ".yaml");
                     if (Files.isRegularFile(path)) {
-                        out.add(new FileSource(path));
+                        // The SAME id the embedded branch below uses. A path-derived id
+                        // would make a library node's error envelope differ between a
+                        // checkout and an installed jar, and would collide with an adopter
+                        // file of the same basename.
+                        out.add(new FileSource(path, libraryFileId(ref)));
                         continue;
                     }
                 }
@@ -211,7 +277,7 @@ public final class LibrarySources {
                             + "scripts/generate-embedded-library.ts");
                 }
                 out.add(new InMemoryStringSource(
-                    embedded, "library:" + ref + ".yaml", MetaDataSource.MetaDataFormat.YAML));
+                    embedded, libraryFileId(ref), MetaDataSource.MetaDataFormat.YAML));
             }
         }
         return out;

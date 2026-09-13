@@ -29,6 +29,8 @@ public final class FileSource implements MetaDataSource {
 
     private final Path path;
     private final MetaDataFormat format;
+    /** Explicit id, or {@code null} to derive it from the file name. */
+    private final String id;
 
     /**
      * Constructs a file source with format inferred from the extension.
@@ -40,19 +42,46 @@ public final class FileSource implements MetaDataSource {
     }
 
     /**
+     * Constructs a file source with an explicit ID, overriding the file-name default.
+     *
+     * <p>For a file whose identity in diagnostics should not depend on where it sits on
+     * disk — a shipped library's YAML, whose envelope must read the same from a checkout
+     * and from an installed jar, and must not collide with an adopter file of the same
+     * basename.</p>
+     *
+     * @param path the filesystem path; must not be {@code null}
+     * @param id   the source id to report; must not be {@code null}
+     */
+    public FileSource(Path path, String id) {
+        this(path, inferFormat(path), id);
+    }
+
+    /**
      * Constructs a file source with an explicit format (overrides extension inference).
      *
      * @param path   the filesystem path; must not be {@code null}
      * @param format the document format; must not be {@code null}
      */
     public FileSource(Path path, MetaDataFormat format) {
+        this(path, format, null);
+    }
+
+    /**
+     * Constructs a file source with an explicit format AND id.
+     *
+     * @param path   the filesystem path; must not be {@code null}
+     * @param format the document format; must not be {@code null}
+     * @param id     the source id to report, or {@code null} to use the file name
+     */
+    public FileSource(Path path, MetaDataFormat format, String id) {
         this.path = Objects.requireNonNull(path, "path");
         this.format = Objects.requireNonNull(format, "format");
+        this.id = id;
     }
 
     @Override
     public String getId() {
-        return path.getFileName().toString();
+        return id != null ? id : path.getFileName().toString();
     }
 
     @Override

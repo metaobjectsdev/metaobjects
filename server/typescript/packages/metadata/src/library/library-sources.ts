@@ -113,6 +113,26 @@ export function knownLibraryPackages(): string[] {
  * embedded one (`library:<ref>.yaml`), so a rule keyed on that would hold here and stop
  * holding in an installed build.
  */
+/**
+ * The source id a library file loads under, in EVERY build — `library:iam/model.yaml`.
+ *
+ * Stable rather than path-derived so a library node's ADR-0009 provenance envelope reads
+ * the same from a checkout and from an installed package, carries no absolute path, and
+ * cannot be confused with an adopter file that happens to share a basename. The
+ * `library:` prefix is the discriminator {@link isLibraryFileId} reads.
+ */
+export function libraryFileId(ref: string): string {
+  return `${LIBRARY_FILE_ID_PREFIX}${ref}.yaml`;
+}
+
+/** The prefix every library source id carries. */
+export const LIBRARY_FILE_ID_PREFIX = "library:";
+
+/** True when a source id names a file a shipped library contributed. */
+export function isLibraryFileId(id: string): boolean {
+  return id.startsWith(LIBRARY_FILE_ID_PREFIX);
+}
+
 export function libraryPackages(): ReadonlySet<string> {
   const out = new Set<string>();
   for (const manifest of Object.values(MANIFESTS)) {
@@ -162,7 +182,6 @@ export function knownLibraryTokens(): string[] {
  * @param selection - Tokens, e.g. `["iam", "iam/db"]`.
  */
 export function librarySources(selection: string[]): MetaDataSource[] {
-  const dir = getLibraryDir();
   const refs: string[] = [];
   const seen = new Set<string>();
 
@@ -190,30 +209,53 @@ export function librarySources(selection: string[]): MetaDataSource[] {
     for (const ref of MANIFESTS[lib]!.layers?.[layer]?.refs ?? []) add(ref);
   }
 
-  const out: MetaDataSource[] = [];
-  for (const ref of refs) {
-    if (dir !== undefined) {
-      const path = join(dir, `${ref}.yaml`);
-      if (existsSync(path)) {
-        out.push(new FileSource(path));
-        continue;
-      }
-    }
-    const embedded = EMBEDDED_LIBRARY[ref];
-    if (embedded !== undefined) {
-      out.push(
-        new InMemoryStringSource(embedded, {
-          id: `library:${ref}.yaml`,
-          format: "yaml",
-        }),
-      );
-    } else {
-      throw new Error(
-        `library ref "${ref}" has no on-disk file and no embedded entry — ` +
-          `the embedded library module is stale; run scripts/generate-embedded-library.ts`,
-      );
+  return refs.map(libraryRefSource);
+}
+
+/**
+ * One library ref as a source — on-disk first, embedded otherwise.
+ *
+ * Factored out of {@link librarySources} because `meta eject <library>` needs the TEXT
+ * of one ref and must resolve it exactly the way a load does: an adopter ejecting from a
+ * checkout must get the file they can see, and from an installed package the embedded
+ * copy, with no third rule to keep in step.
+ */
+export function libraryRefSource(ref: string): MetaDataSource {
+  const dir = getLibraryDir();
+  if (dir !== undefined) {
+    const path = join(dir, `${ref}.yaml`);
+    if (existsSync(path)) {
+      // The SAME id the embedded branch below uses, deliberately. A `FileSource`
+      // defaults its id to the file's BASENAME, which would make a library node's error
+      // envelope read `model.yaml` in a checkout and `library:iam/model.yaml` in an
+      // installed build — and would collide outright with an adopter file of that name.
+      // One stable id makes the two builds report identically and gives anything asking
+      // "did a library declare this node" an unambiguous answer.
+      return new FileSource(path, { id: libraryFileId(ref) });
     }
   }
 
-  return out;
+  const embedded = EMBEDDED_LIBRARY[ref];
+  if (embedded === undefined) {
+    throw new Error(
+      `library ref "${ref}" has no on-disk file and no embedded entry — ` +
+        `the embedded library module is stale; run scripts/generate-embedded-library.ts`,
+    );
+  }
+  return new InMemoryStringSource(embedded, { id: libraryFileId(ref), format: "yaml" });
+}
+
+/** Every ref one library contributes, core layer first — what `meta eject` copies. */
+export function libraryRefs(name: string): string[] {
+  const layers = MANIFESTS[name]?.layers ?? {};
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  for (const token of ["", ...Object.keys(layers).filter((k) => k !== "")]) {
+    for (const ref of layers[token]?.refs ?? []) {
+      if (seen.has(ref)) continue;
+      seen.add(ref);
+      refs.push(ref);
+    }
+  }
+  return refs;
 }

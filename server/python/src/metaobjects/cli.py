@@ -53,7 +53,12 @@ from typing import Callable
 
 from metaobjects import MetaDataLoader
 from metaobjects.errors import ParseError
-from metaobjects.config.dependencies import Collection, imported_from, refuse_unowned_packages
+from metaobjects.config.dependencies import (
+    Collection,
+    imported_from,
+    refuse_library_package_misuse,
+    refuse_unowned_packages,
+)
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -345,6 +350,11 @@ def _load_collection_result(
     result = loader.load([*lib_sources, *sources])
     if not result.errors:
         refuse_unowned_packages(result.root, collection.imported_packages, collection.imported_nodes)
+        # FR-043 §3.4 / §3.5 — the same rule for a shipped LIBRARY's package, where the
+        # two ways to get it wrong are opposite: a node the library also declares (an
+        # ejected copy, still opted in) and one it does not (a new node in someone
+        # else's package).
+        refuse_library_package_misuse(result.root, libraries)
     return result
 
 

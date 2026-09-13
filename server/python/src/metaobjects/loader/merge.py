@@ -235,6 +235,11 @@ def _apply_overlay(
             )
         )
         return
+    # The loader's record that this node was amended BY an `overlay: true` declaration —
+    # mirrors the TS parser's `target.setIsMerge(true)`. Read by the FR-043 library guard
+    # to tell an intentional amendment from an ejected copy that landed in the same
+    # package; both merge, and only the flag separates them.
+    tc.is_merge = True
     _merge_into(tc, node, errors, warnings, envelope_warnings, None)
 
 

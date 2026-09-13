@@ -154,6 +154,15 @@ public enum ErrorCode
     /// metadata, which is the wrong place to send someone looking.
     /// </summary>
     ERR_UNKNOWN_LIBRARY,
+    /// <summary>
+    /// FR-043: a node is declared by BOTH an adopter's own metadata and a shipped library the project opts into — the `meta eject <lib>` copy with the library still in `libraries`. The two merge silently and ASYMMETRICALLY: additions take, deletions do not, because the library still declares what was removed.
+    /// </summary>
+    /// <remarks>Raised by the TypeScript SDK's load path; registered in every port so the shared corpus list stays one set.</remarks>
+    ERR_LIBRARY_PACKAGE_COLLISION,
+    /// <summary>
+    /// FR-043: a NEW top-level node is declared into a package a shipped library owns while that library is opted in — a later release of the library may ship a node of that name and merge into it. `overlay: true` on one of the library's OWN nodes is the documented amendment door and is untouched.
+    /// </summary>
+    ERR_LIBRARY_PACKAGE_NOT_OWNED,
     // FR5c — multi-file overlay merge produced a conflicting attribute value:
     // two contributors set the same @attr to different non-empty values.
     ERR_MERGE_CONFLICT,

@@ -265,6 +265,11 @@ export const ERROR_CODES = [
   // tokens rather than skipped: skipped, it resurfaces as ERR_UNRESOLVED_SUPER against
   // the adopter's own metadata, which is the wrong place to send someone looking.
   "ERR_UNKNOWN_LIBRARY",
+  // FR-043 — a node is declared by BOTH an adopter's own metadata and a shipped library the project opts into — the `meta eject <lib>` copy with the library still in `libraries`. The two merge silently and ASYMMETRICALLY: additions take, deletions do not, because the library still declares what was removed.
+  // Raised by the TypeScript SDK's load path; registered in every port so the shared corpus list stays one set.
+  "ERR_LIBRARY_PACKAGE_COLLISION",
+  // FR-043 — a NEW top-level node is declared into a package a shipped library owns while that library is opted in — a later release of the library may ship a node of that name and merge into it. `overlay: true` on one of the library's OWN nodes is the documented amendment door and is untouched.
+  "ERR_LIBRARY_PACKAGE_NOT_OWNED",
   // FR-023 — a declared dependency's transport could not locate a directory holding
   // metaobjects.pkg.json.
   "ERR_DEPENDENCY_UNRESOLVED",
