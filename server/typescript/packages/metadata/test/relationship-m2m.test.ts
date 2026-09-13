@@ -514,4 +514,51 @@ describe("FR-017 Rule (e) — #368 ambiguous 1:N reference resolution", () => {
     expect(message).toContain("aRef(tenantId, homeTeamId)");
     expect(message).toContain("bRef(tenantId, awayTeamId)");
   });
+
+  // Fix round 2: rule (e) must iterate the EFFECTIVE relationship set
+  // (obj.relationships(), own + inherited via extends), not ownChildren().
+  // A entity declares the relationship + a single reference (clean on its
+  // own); B extends A and adds a SECOND reference onto the same target. The
+  // relationship is only inherited on B, so an own-scoped pass would never
+  // examine it there and this would load clean while codegen/runtime, which
+  // resolve against B's effective children, silently drop the relation.
+  test("an inherited relationship becomes ambiguous when a child entity adds a second reference (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "winner", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+      { "object.entity": { name: "B", "extends": "A", children: [
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("B.winner");
+    expect(message).toContain("homeTeamRef(homeTeamId)");
+    expect(message).toContain("awayTeamRef(awayTeamId)");
+  });
+
+  test("a child entity's added reference that name-pairs with the inherited relationship loads clean (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+      { "object.entity": { name: "B", "extends": "A", children: [
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
 });

@@ -2128,14 +2128,32 @@ export function validateRelationships(root: MetaData): ParseError[] {
 //
 // Registered alongside validateRelationships (the M:N slim-vocabulary pass,
 // above) — same deferred-resolution timing (after all files load + extends
-// resolution), same own-relationships-only scope.
+// resolution).
+//
+// Scope differs deliberately from rule (d): rule (d) validates attrs that
+// travel with the relationship's OWN declaration (@through/@symmetric/
+// @sourceRefField), so own-scoping there is correct — those attrs don't
+// change meaning depending on who inherits the relationship. Rule (e)
+// instead validates whether THIS entity's reference set resolves the
+// relationship uniquely, which is a property of the EFFECTIVE entity, not of
+// wherever the relationship happens to be declared. A child entity that
+// extends a clean parent and adds a second identity.reference onto the same
+// target makes an INHERITED relationship ambiguous on the child even though
+// the parent (and the relationship's own declaration) are untouched — own-
+// scoping this pass would leave that case unchecked, and codegen/runtime
+// (which resolve against the effective entity) would silently drop the
+// relation (#368 fix round 2). If a parent and a child are both genuinely
+// ambiguous, both are reported — two entities are broken, not one error
+// duplicated.
 // ---------------------------------------------------------------------------
 
 export function validateOneSideReferenceResolution(root: MetaRoot): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.objects()) {
-    // ADR-0039: own — a relationship is validated on the entity that DECLARES it.
-    for (const rel of obj.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP)) {
+    // ADR-0039: resolving — see the scope note above: rule (e) checks THIS
+    // entity's effective reference set against every relationship it can see,
+    // including one only inherited via extends.
+    for (const rel of obj.relationships()) {
       // ADR-0039: resolving — @cardinality/@objectRef may be inherited via extends.
       if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_ONE) continue;
       const objectRef = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
