@@ -109,24 +109,26 @@ describe("meta init — ESM package type", () => {
   });
 });
 
-describe("meta init — the scaffold's own dependencies", () => {
-  test("declares what codegen/generators/ imports, so the scaffold typechecks", async () => {
-    // ADR-0034 puts real source in the adopter's repo; installing only the CLI left
-    // those files with unresolvable imports (10x TS2307 on files init had just written).
+describe("meta init — the scaffold declares no dependencies", () => {
+  // ADR-0034 puts real source in the adopter's repo, and init used to declare what that
+  // source imported (@metaobjectsdev/codegen-ts + /metadata) plus what the code it would
+  // GENERATE imported (drizzle-orm, zod, fastify). Both sets existed only because init
+  // WIRED a suite. Under opt-in codegen it wires none, so declaring anything would be a
+  // dependency on code this project may never produce.
+  //
+  // The obligation moved to `meta eject`, which reports the install set for exactly the
+  // generators you take — covered end-to-end in scaffold-output-imports-declared.test.ts,
+  // which ejects a selection, applies its install set and then checks the generated
+  // output against the manifest.
+  test("adds nothing to dependencies or devDependencies", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", type: "commonjs" }, null, 2) + "\n");
-    const result = await init({ cwd: dir, quiet: true });
-    const dev = readPkg().devDependencies as Record<string, string>;
-    // ts-poet is deliberately absent: the scaffolded templates import its combinators
-    // via @metaobjectsdev/codegen-ts so generated-code composition shares ONE ts-poet
-    // instance with the engine (see the gen-split-tree gate), and a project-local
-    // ts-poet is the second physical copy that used to split it.
-    expect(Object.keys(dev).sort()).toEqual(
-      ["@metaobjectsdev/codegen-ts", "@metaobjectsdev/metadata"],
-    );
-    expect(result.warnings.join("\n")).toContain("Run your package manager's install");
+    await init({ cwd: dir, quiet: true });
+    const pkg = readPkg();
+    expect(pkg.devDependencies).toBeUndefined();
+    expect(pkg.dependencies).toBeUndefined();
   });
 
-  test("never overwrites a pin the project already chose", async () => {
+  test("still leaves a pin the project already chose exactly as it was", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({
       name: "x", type: "commonjs",
       devDependencies: { "ts-poet": "6.0.0" },
@@ -136,7 +138,8 @@ describe("meta init — the scaffold's own dependencies", () => {
     const pkg = readPkg();
     expect((pkg.devDependencies as Record<string, string>)["ts-poet"]).toBe("6.0.0");
     expect((pkg.dependencies as Record<string, string>)["@metaobjectsdev/codegen-ts"]).toBe("0.1.0");
-    // …and still adds only the genuinely-missing one.
-    expect((pkg.devDependencies as Record<string, string>)["@metaobjectsdev/metadata"]).toBeDefined();
+    // ...and adds nothing beside them.
+    expect(Object.keys(pkg.devDependencies as Record<string, string>)).toEqual(["ts-poet"]);
+    expect(Object.keys(pkg.dependencies as Record<string, string>)).toEqual(["@metaobjectsdev/codegen-ts"]);
   });
 });

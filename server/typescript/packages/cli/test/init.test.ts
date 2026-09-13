@@ -58,7 +58,7 @@ afterEach(() => {
 
 describe("init() — next-steps message (S1)", () => {
   test("presents `meta gen` and `meta docs` as working steps, not as unshipped 'later sub-projects'", () => {
-    const block = nextStepsBlock(true);
+    const block = nextStepsBlock();
     // gen + docs work TODAY — they must be shown as actionable next steps.
     expect(block).toContain("meta gen");
     expect(block).toContain("meta docs");
@@ -68,19 +68,17 @@ describe("init() — next-steps message (S1)", () => {
     expect(block).not.toMatch(/later sub-projects[\s\S]*meta docs\b/);
   });
 
-  // The block used to be ONE static string, so it claimed the db stub on every run —
-  // including `meta init --force` in a project that keeps its own metaobjects.config.ts,
-  // where the stub is deliberately not written. Asserted on the message rather than on
-  // the run, because it is the message that was lying.
-  test("claims the src/db.ts stub only when this run actually wrote it", () => {
-    expect(nextStepsBlock(true)).toContain("src/db.ts");
-    expect(nextStepsBlock(false)).not.toContain("src/db.ts");
-    // Everything else is unconditional — a run that skipped the stub still gets the
-    // scaffold summary and the numbered steps.
-    for (const written of [true, false]) {
-      expect(nextStepsBlock(written)).toContain("codegen/generators/");
-      expect(nextStepsBlock(written)).toContain("meta gen");
-    }
+  // The block once took a `dbStubWritten` flag, because the scaffold wrote a throwing
+  // `src/db.ts` on some runs and not others while a static string claimed it on every
+  // one. Nothing is wired now, so there is no `dbImport` and no stub — the message is
+  // the same on every path, and must not mention a file init no longer writes.
+  test("mentions no db stub, and routes the reader through the catalog", () => {
+    const block = nextStepsBlock();
+    expect(block).not.toContain("src/db.ts");
+    expect(block).toContain("codegen/generators/");
+    // The two commands that replace the wired-suite scaffold.
+    expect(block).toContain("meta gen --list");
+    expect(block).toContain("meta eject");
   });
 });
 
@@ -206,78 +204,77 @@ describe("init() — happy path", () => {
   });
 });
 
-// FR-040 fix round 1, Finding 1 — writeOwnedGenerators() used to loop over ALL of
-// @metaobjectsdev/codegen-ts's REFERENCE_GENERATOR_NAMES unconditionally, so when an
-// earlier task on this branch registered "routes-hono" there, `meta init` silently
-// started scaffolding a fifth, unwired file: nothing in the scaffolded
-// metaobjects.config.ts imports routesFileHono. This pins the exact set — a future
-// template registered in REFERENCE_GENERATOR_NAMES must NOT silently join init's eager
-// scaffold; it stays reachable only via `meta eject <name>` until a human decides
-// otherwise.
+// ADR-0034 Amendment 2 — `meta init` copies NO generators.
 //
-// "names" is the one deliberate exception, added by spec §A5: TypeScript is opt-in by
-// construction under ADR-0034 (meta gen runs the adopter's copy, so a packaged change
-// can't reach anyone who has ejected), and §A5 rules that the honest maximum for existing
-// projects is a one-line config addition while every NEW `meta init` gets it for free.
-// That is the human decision this comment says the pin defers to — for "names" only. The
-// pin still guards everything else (routes-hono stays eject-only below).
-describe("init() — owned generator scaffold set (FR-040 fix round 1, Finding 1)", () => {
-  test("copies exactly the five generators the scaffolded config wires — not routes-hono", async () => {
+// This block used to pin the exact five it scaffolded, and the pin was load-bearing:
+// looping over the full REFERENCE_GENERATOR_NAMES array had once made init silently
+// start writing an unwired `routes-hono.ts` into every fresh project. Opt-in codegen
+// removes the whole class — there is no eager set to drift — so what is pinned now is
+// that the directory is EMPTY and the door still works.
+describe("init() — the owned-codegen tier is empty on purpose", () => {
+  test("creates codegen/generators/ and copies nothing into it", async () => {
     const result = await init({ cwd });
     const dir = join(cwd, "codegen", "generators");
-    const files = readdirSync(dir).sort();
-    expect(files).toEqual(["barrel.ts", "entity.ts", "names.ts", "queries.ts", "routes.ts"]);
-    expect(existsSync(join(dir, "routes-hono.ts"))).toBe(false);
-
-    for (const rel of [
-      "codegen/generators/entity.ts",
-      "codegen/generators/queries.ts",
-      "codegen/generators/routes.ts",
-      "codegen/generators/barrel.ts",
-      "codegen/generators/names.ts",
-    ]) {
-      expect(result.created).toContain(rel);
-    }
-    expect(result.created).not.toContain("codegen/generators/routes-hono.ts");
+    expect(existsSync(dir), "the directory is part of the promised layout").toBe(true);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(result.created.filter((p) => p.startsWith("codegen/generators/"))).toEqual([]);
   });
 
-  test("--print-only forecasts the same five-file set, not routes-hono", async () => {
-    const result = await init({ cwd, printOnly: true });
-    expect(result.created).toContain("codegen/generators/entity.ts");
-    expect(result.created).toContain("codegen/generators/queries.ts");
-    expect(result.created).toContain("codegen/generators/routes.ts");
-    expect(result.created).toContain("codegen/generators/barrel.ts");
-    expect(result.created).toContain("codegen/generators/names.ts");
-    expect(result.created).not.toContain("codegen/generators/routes-hono.ts");
-  });
-
-  test("routes-hono is still reachable via `meta eject` — not scaffolded eagerly, but not missing", async () => {
-    await init({ cwd });
-    // Not written by init...
-    expect(existsSync(join(cwd, "codegen", "generators", "routes-hono.ts"))).toBe(false);
-    // ...but eject can still copy it on demand (proves it wasn't deregistered, only
-    // moved off the eager path).
-    const { ejectGenerator } = await import("../src/commands/eject.js");
-    const ejectResult = await ejectGenerator({ cwd, name: "routes-hono" });
-    expect(ejectResult.status).toBe("created");
-    expect(existsSync(join(cwd, "codegen", "generators", "routes-hono.ts"))).toBe(true);
-  });
-});
-
-// Spec §A5 — the one deliberate exception to the pin above: every new `meta init` gets
-// the names generator scaffolded AND wired, because that's the only route a packaged
-// change to it can reach an ADR-0034 adopter through at all.
-describe("init() — names generator is scaffolded and wired (spec §A5)", () => {
-  test("scaffolds codegen/generators/names.ts", async () => {
-    const dir = await init({ cwd }).then(() => join(cwd, "codegen", "generators"));
-    expect(existsSync(join(dir, "names.ts"))).toBe(true);
-  });
-
-  test("the scaffolded metaobjects.config.ts imports and wires namesFile()", async () => {
+  test("the scaffolded config wires nothing and points at the catalog", async () => {
     await init({ cwd });
     const configSrc = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
-    expect(configSrc).toContain('import { namesFile } from "./codegen/generators/names.js";');
-    expect(configSrc).toContain("namesFile()");
+    expect(configSrc).toContain("generators: []");
+    // No IMPORT of an owned generator. The comment block deliberately NAMES the
+    // directory (it is where `meta eject` puts things), so the assertion is on the
+    // import statement, not on the string appearing anywhere in the file.
+    expect(configSrc).not.toMatch(/^import .* from "\.\/codegen\/generators\//m);
+    expect(configSrc).toContain("meta gen --list");
+    expect(configSrc).toContain("meta eject");
+  });
+
+  test("--print-only forecasts the same: the tier, not files in it", async () => {
+    const result = await init({ cwd, printOnly: true });
+    expect(result.created).toContain("codegen/generators");
+    expect(result.created.filter((p) => p.startsWith("codegen/generators/"))).toEqual([]);
+  });
+
+  test("every generator is reachable through `meta eject`", async () => {
+    await init({ cwd });
+    const { ejectGenerator } = await import("../src/commands/eject.js");
+    for (const name of ["entity", "names", "routes-hono"]) {
+      const r = await ejectGenerator({ cwd, name });
+      expect(r.status, name).toBe("created");
+      expect(existsSync(join(cwd, "codegen", "generators", `${name}.ts`)), name).toBe(true);
+    }
+  });
+
+  test("adds no dependencies to package.json — nothing is wired, so nothing is needed", async () => {
+    writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "x", version: "0.0.0" }));
+    await init({ cwd });
+    const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const declared = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    for (const d of ["drizzle-orm", "zod", "fastify", "@metaobjectsdev/codegen-ts",
+                     "@metaobjectsdev/metadata", "@metaobjectsdev/runtime-ts"]) {
+      expect(declared, `must not declare ${d}`).not.toContain(d);
+    }
+  });
+
+  test("still sets `type: module` — the ESM rule is unchanged", async () => {
+    writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "x", version: "0.0.0" }));
+    await init({ cwd });
+    const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8")) as { type?: string };
+    expect(pkg.type).toBe("module");
+  });
+
+  test("scaffolds no src/db.ts — there is no dbImport to resolve", async () => {
+    await init({ cwd });
+    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
+    // No dbImport KEY. The comment block names it among the config keys `meta eject`
+    // will tell you about when you take `routes`, which is the point.
+    expect(readFileSync(join(cwd, "metaobjects.config.ts"), "utf8")).not.toMatch(/^\s*dbImport:/m);
   });
 });
 
@@ -570,60 +567,95 @@ describe("init --d1", () => {
     const code = await initCommand(["--d1"], cwd);
     expect(code).toBe(0);
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
-    expect(configTs).toContain('dialect:   "d1"');
+    expect(configTs).toContain('dialect: "d1"');
   });
 
   test("scaffolds metaobjects.config.ts with dialect = 'sqlite' when --d1 is not passed", async () => {
     const code = await initCommand([], cwd);
     expect(code).toBe(0);
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
-    expect(configTs).toContain('dialect:   "sqlite"');
+    expect(configTs).toContain('dialect: "sqlite"');
   });
 
-  test("scaffolds metaobjects.config.ts with outDir = 'src/generated' (not the ambiguous src/db)", async () => {
+  test("scaffolds metaobjects.config.ts with outDir = 'src/generated'", async () => {
     const code = await initCommand([], cwd);
     expect(code).toBe(0);
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
-    expect(configTs).toContain('outDir:    "src/generated"');
-    // "./src/db" as outDir collides with the user-created src/db.ts that the
-    // generated routes import via dbImport "../db" — keep them distinct.
-    expect(configTs).not.toContain('"./src/db"');
+    expect(configTs).toContain('outDir:  "src/generated"');
   });
 });
 
-describe("init() — scaffolded config.ts honesty", () => {
-  // A cold adoption probe found `dbImport: "../db"` scaffolded pointing at a file
-  // `init` never creates, with nothing in the config saying so.
-  //
-  // NOTE: an earlier draft of this fix commented `dbImport` out entirely. That
-  // regresses the default scaffold — verified by running `meta gen` against it:
-  // the default `generators` array wires routesFile() (Fastify), whose emitted
-  // routes DO `import { db } from …` (server/typescript/packages/codegen-ts/src/
-  // templates/routes-file.ts), and the runner demands dbImport at that point of
-  // use (`runner.ts`'s dbImportUndeclaredFor), throwing `codegen config is
-  // missing dbImport` on the very first `meta gen` after a fresh `meta init`.
-  // `queriesFile` genuinely takes `db` as a parameter and never reads dbImport —
-  // but routesFile (what `init` actually scaffolds) does. So dbImport must stay
-  // ACTIVE; the fix is telling the user what to do about the file it names.
-  test("dbImport carries a comment naming the file the user must create", async () => {
-    const code = await initCommand([], cwd);
-    expect(code).toBe(0);
+// A cold adoption probe once found `dbImport: "../db"` scaffolded pointing at a file
+// `init` never created, and the fix at the time was a throwing `src/db.ts` stub plus a
+// comment — because the scaffold WIRED routesFile(), whose emitted routes do
+// `import { db } from …`.
+//
+// Opt-in codegen removes the premise rather than the symptom. Nothing is wired, so
+// nothing emits that import, so there is no `dbImport` to point anywhere and no stub to
+// scaffold. `dbImport` became a declared `configKey` on the `routes` catalog entry:
+// `meta eject routes` reports it, to the adopter who actually chose routes. What these
+// tests pin now is that BOTH artifacts are gone and the config-key path works.
+describe("init() — no dbImport, no db stub, and routes still works once chosen", () => {
+  test("neither the key nor the stub is scaffolded", async () => {
+    const result = await init({ cwd });
+    expect(result.created).not.toContain("src/db.ts");
+    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
-    expect(configTs).toMatch(/dbImport:\s*"\.\.\/db",/);
-    expect(configTs).toContain("src/db.ts");
+    expect(configTs).not.toMatch(/^\s*dbImport:/m);
   });
 
-  test("meta gen still succeeds against the scaffolded config for an entity with a source.rdb", async () => {
-    // Regression pin for the near-miss above: the scaffold's dbImport must stay
-    // functional (routesFile() genuinely needs it), not just present-with-a-comment.
-    // Runs `gen`, so it needs an in-package project dir — see mkGenProjectDir.
+  test("--print-only forecasts no db stub either", async () => {
+    const result = await init({ cwd, printOnly: true });
+    expect(result.created).not.toContain("src/db.ts");
+  });
+
+  test("`meta eject routes` reports dbImport as the key to set", async () => {
+    await init({ cwd });
+    const { ejectCommand } = await import("../src/commands/eject.js");
+    const lines: string[] = [];
+    const origLog = console.log;
+    console.log = (...a: unknown[]) => { lines.push(a.join(" ")); };
+    try {
+      expect(await ejectCommand(["routes"], cwd, "json")).toBe(0);
+    } finally {
+      console.log = origLog;
+    }
+    const payload = JSON.parse(lines.join("\n")) as { config: { keys: string[] } };
+    expect(payload.config.keys).toContain("dbImport");
+  });
+
+  test("a project that wires routes and sets dbImport generates exactly as before", async () => {
+    // The regression pin the old block carried, moved to the path that now reaches it:
+    // routes is CHOSEN, dbImport is SET, and the emitted import resolves.
     const dir = mkGenProjectDir("dbimport-gen-");
     try {
       expect(await initCommand([], dir)).toBe(0);
-      writeFileSync(
-        join(dir, "metaobjects", "meta.common.json"),
-        PROBE_ENTITY,
-      );
+      writeFileSync(join(dir, "metaobjects", "meta.common.json"), PROBE_ENTITY);
+
+      const { ejectCommand } = await import("../src/commands/eject.js");
+      const origLog = console.log;
+      console.log = () => {};
+      try {
+        expect(await ejectCommand(["entity", "routes"], dir, "text")).toBe(0);
+      } finally {
+        console.log = origLog;
+      }
+
+      const configPath = join(dir, "metaobjects.config.ts");
+      writeFileSync(configPath, [
+        'import { defineConfig } from "@metaobjectsdev/cli";',
+        'import { entityFile } from "./codegen/generators/entity.js";',
+        'import { routesFile } from "./codegen/generators/routes.js";',
+        "export default defineConfig({",
+        '  outDir: "src/generated",',
+        '  dialect: "sqlite",',
+        '  extStyle: "js",',
+        '  dbImport: "../db",',
+        "  generators: [entityFile(), routesFile()],",
+        "});",
+        "",
+      ].join("\n"));
+
       const { genCommand } = await import("../src/commands/gen.js");
       expect(await genCommand([], dir)).toBe(0);
       const routes = readFileSync(join(dir, "src", "generated", "Author.routes.ts"), "utf8");
@@ -634,167 +666,6 @@ describe("init() — scaffolded config.ts honesty", () => {
   });
 });
 
-// Task 15 — closes the residue Task 9 (above) made discoverable but did not
-// eliminate: `meta init` declared `dbImport: "../db"` but never created the
-// module, so a fresh project's FIRST `tsc` failed to resolve it. The fix is a
-// scaffolded THROWING STUB: it types clean and satisfies every generated
-// import, choosing no driver and adding no dependency, but throws a clear,
-// actionable error the first time anything actually touches `db` at runtime.
-describe("init() — dbImport throwing stub (Task 15)", () => {
-  test("scaffolds src/db.ts as a throwing stub, typed without `any`, that exports `db`", async () => {
-    const result = await init({ cwd });
-    expect(result.created).toContain("src/db.ts");
-    const body = readFileSync(join(cwd, "src", "db.ts"), "utf8");
-    // Zero live imports — no driver chosen, no dependency added. (Driver names
-    // may appear in the comment's illustrative example line; that's the point.)
-    expect(body).not.toMatch(/^import /m);
-    expect(body).not.toMatch(/\bany\b/);
-    expect(body).toContain("export const db: unknown");
-    // Actually throws on first real use, rather than silently no-op-ing.
-    expect(body).toContain("new Proxy(");
-    expect(body).toContain("throw new Error(");
-  });
-
-  test("the thrown message names the file and shows a concrete replacement line", async () => {
-    await init({ cwd });
-    const body = readFileSync(join(cwd, "src", "db.ts"), "utf8");
-    expect(body).toContain("src/db.ts");
-    expect(body).toContain("export const db = drizzle(");
-  });
-
-  test("does NOT clobber an existing src/db.ts on a re-run with --force", async () => {
-    await init({ cwd });
-    const realDb = 'import { drizzle } from "drizzle-orm/better-sqlite3";\nexport const db = drizzle({} as never);\n';
-    writeFileSync(join(cwd, "src", "db.ts"), realDb, "utf8");
-
-    const result = await init({ cwd, force: true });
-
-    expect(result.preserved).toContain("src/db.ts");
-    expect(result.created).not.toContain("src/db.ts");
-    expect(readFileSync(join(cwd, "src", "db.ts"), "utf8")).toBe(realDb);
-  });
-
-  // Fix round 2. DB_STUB_REL_PATH is derived from the SCAFFOLD's own outDir/dbImport,
-  // so it describes where the SCAFFOLDED config points and nowhere else. Re-running
-  // init in a project that already has its own config preserves that config — and must
-  // not then drop a src/db.ts answering a question the adopter already answered
-  // differently. A stray unreferenced file in application source is exactly the
-  // unilateral host-project touch FR-040 §4.4 lists as a defect.
-  test("writes no db stub when the project keeps its own config", async () => {
-    writeFileSync(
-      join(cwd, "metaobjects.config.ts"),
-      [
-        `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
-        `export default defineConfig({ outDir: "packages/db/src/generated",`,
-        `  dbImport: "../../conn", dialect: "sqlite", generators: [] });`,
-      ].join("\n"),
-      "utf8",
-    );
-
-    const result = await init({ cwd, force: true });
-
-    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
-    expect(result.created).not.toContain("src/db.ts");
-    // Nor may it CLAIM to have preserved one — there is no such file to preserve.
-    expect(result.preserved).not.toContain("src/db.ts");
-    // ...but it must not be SILENT about it either — see the test below.
-    expect(result.warnings.join("\n")).toContain("src/db.ts");
-  });
-
-  // Fix round 3. The rule above ("keeps its own config ⇒ write nothing") is right, but
-  // `wroteScaffoldedConfig` is only "no metaobjects.config.ts existed" — so it is FALSE
-  // for the config `meta init` itself just wrote. A scaffolded project whose src/db.ts
-  // is later deleted or moved therefore hits the same branch: init writes nothing, and
-  // used to report nothing either, while the scaffolded `dbImport: "../db"` and the
-  // generated routes' `import { db } from "../db.js"` still point at it. The adopter met
-  // that as a TS2307 from `tsc`, with no word from the command that could have said so.
-  test("warns rather than going silent when a scaffolded project has lost its src/db.ts", async () => {
-    await init({ cwd });
-    rmSync(join(cwd, "src", "db.ts"));
-
-    const result = await init({ cwd, force: true });
-
-    // Still no write — a project owning its config owns its database module.
-    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
-    expect(result.created).not.toContain("src/db.ts");
-    expect(result.preserved).not.toContain("src/db.ts");
-    // But the run has to SAY so, naming the path and what breaks.
-    const warned = result.warnings.find((w) => w.includes("src/db.ts"));
-    expect(warned).toBeDefined();
-    expect(warned).toContain("dbImport");
-  });
-
-  test("dry run (--print) reports src/db.ts as a would-be-created file", async () => {
-    const result = await init({ cwd, printOnly: true });
-    expect(result.created).toContain("src/db.ts");
-    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
-  });
-
-  // The headline gate: the documented sequence — init, author an entity with a
-  // source.rdb child, gen, tsc — must all succeed with no unresolved-module
-  // error. Mirrors the "meta gen still succeeds..." regression pin above, one
-  // step further: it actually type-checks the generated output + the scaffolded
-  // stub with the real TypeScript compiler this repo depends on, under the same
-  // nodenext options a stock `tsc --init` project resolves relative imports
-  // with. Like the pin above it runs `gen`, so the project dir is in-package —
-  // see mkGenProjectDir for why the OS tmpdir is wrong for both of them.
-  test("end to end: init -> author a source.rdb entity -> gen -> tsc resolves dbImport with no unresolved-module error", async () => {
-    const dir = mkGenProjectDir("dbstub-tsc-");
-    try {
-      expect(await initCommand([], dir)).toBe(0);
-      writeFileSync(
-        join(dir, "metaobjects", "meta.common.json"),
-        PROBE_ENTITY,
-      );
-      const { genCommand } = await import("../src/commands/gen.js");
-      expect(await genCommand([], dir)).toBe(0);
-
-      const generatedDir = join(dir, "src", "generated");
-      const rootFiles = [
-        join(generatedDir, "Author.ts"),
-        join(generatedDir, "Author.queries.ts"),
-        join(generatedDir, "Author.routes.ts"),
-        join(dir, "src", "db.ts"),
-      ];
-      const program = ts.createProgram(rootFiles, {
-        noEmit: true,
-        strict: true,
-        skipLibCheck: true,
-        target: ts.ScriptTarget.ES2022,
-        module: ts.ModuleKind.NodeNext,
-        moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      });
-      const diagnostics = ts.getPreEmitDiagnostics(program);
-      // TS2307 = "Cannot find module" — the exact class of error the missing
-      // src/db.ts used to produce. Scoped to this one code, rather than asserting
-      // zero diagnostics overall, so this gate stays about the dbImport defect it
-      // exists to catch and not about every diagnostic a real compiler could ever
-      // emit here. (This repo's own `cli` devDependency on `fastify` used to skew
-      // against `runtime-ts`'s peer range and surface as an unrelated structural
-      // TS2740 under this exact compile — fixed by aligning the devDependency to
-      // the peer range, FR-040 fix round 1 Item 4; confirmed empirically that this
-      // compile now produces zero diagnostics of any code, not just none at 2307.)
-      const unresolvedModules = diagnostics
-        .filter((d) => d.code === 2307)
-        .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
-      expect(unresolvedModules).toEqual([]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }, 30_000);
-});
-
-// `meta gen` loads metaobjects.config.ts and ./codegen/** through jiti, which
-// TRANSPILES WITHOUT TYPECHECKING — so a generator can import a symbol the engine no
-// longer exports and every gate stays green until the import is evaluated, which for
-// an unwired generator may be never. A project's app tsconfig covers src/ and tests/
-// and not this tier, so without a tsconfig of its own NOTHING compiles the code the
-// build depends on.
-//
-// Reported from an estate that found two real defects the moment one existed: a
-// generator importing `CODEGEN_ATTR_EMIT_ROUTES` (retired with the `@emit*` family,
-// invisible because that generator was not wired), and a WIRED generator carrying
-// five type errors including `ownFields()` on a node with no such method.
 describe("meta init scaffolds a tsconfig for the tier it just handed you", () => {
   test("writes tsconfig.codegen.json and reports it", async () => {
     const result = await init({ cwd });

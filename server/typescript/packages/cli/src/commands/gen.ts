@@ -190,6 +190,21 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   for (const w of result.warnings) { log.warn(w); }
 
+  // A first-run POINTER, not a warning: an empty selection is the designed state of a
+  // fresh `meta init`, so calling it a problem would make every new project start with
+  // one. It says what to do next and disappears the moment anything is wired.
+  if ((forgeConfig.generators?.length ?? 0) === 0) {
+    log.info(
+      "\nNothing is generated until you choose it — `generators: []` is what `meta init` " +
+        "scaffolds, by design.\n" +
+        "  meta gen --list --probe    the catalog, with how many files each generator " +
+        "would emit for YOUR model\n" +
+        "  meta eject <name>...       take the ones you want; it prints the import, the " +
+        "entry to wire, and what to install\n" +
+        "(`meta docs` needs none of this — documentation is on by default.)",
+    );
+  }
+
   // result.files[].path is the absolute full path from decideAndWrite. With
   // per-target output, show each path relative to the project root so files in
   // different targets are distinguishable.

@@ -214,12 +214,14 @@ FLAGS:
                          config keys the ejected generators read.
   --help, -h             Print this help
 
-\`meta init\` copies five generators (entity, queries, routes, barrel, names) into
-codegen/generators/ automatically (ADR-0034 scaffold-and-own). \`meta eject\` is
-the same operation for ANY generator — one you skipped at init time, a UI-tier
-generator like form/hooks/grid, or one a package gains later. It prints the
-import line to paste into metaobjects.config.ts, and it never overwrites a
-file you already own unless you pass --force.
+\`meta init\` copies NO generators — codegen is opt-in, and codegen/generators/
+starts empty on purpose. Everything you run comes through here (ADR-0034
+scaffold-and-own): the file is YOURS to edit, and \`meta gen\` runs your copy, not
+the package's. It prints the import line and the entry to add in
+metaobjects.config.ts, and never overwrites a file you already own without --force.
+
+Find names with \`meta gen --list\` — add --probe to see how many files each would
+emit for your model.
 `,
   deps: `meta deps — sync a declared metadata dependency's committed snapshot
 
