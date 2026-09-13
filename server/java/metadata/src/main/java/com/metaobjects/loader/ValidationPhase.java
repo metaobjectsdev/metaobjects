@@ -52,6 +52,7 @@ import com.metaobjects.origin.FirstOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.relationship.RelationshipReferences;
 import com.metaobjects.requirement.MetaRequirement;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.registry.ChildRequirement;
@@ -195,7 +196,21 @@ public final class ValidationPhase {
         // Sibling of the source-role pass above; must run after it.
         pass(collected, () -> validateSourceEscapes(root, loader));
         pass(collected, () -> validateRelationshipReferentialActions(root));
-        pass(collected, () -> validateRelationshipsM2M(root));
+        // Pass 14 (FR-017): M:N relationship slim-vocabulary validation — collects
+        // EVERY violation across the effective relationship set (own + inherited via
+        // extends), deduped by the relationship node's own identity (#368 / ADR-0039).
+        for (MetaDataException e : validateRelationshipsM2M(root)) {
+            collected.add(e);
+        }
+        // Rule (e) (#368) — registered alongside validateRelationshipsM2M above: a
+        // @cardinality: one relationship must resolve to exactly one identity.reference
+        // candidate on the EFFECTIVE entity; ambiguity is a load error naming the
+        // candidates (ERR_INVALID_RELATIONSHIP). No dedupe — the candidate set is a
+        // property of the effective entity, so a parent and a child can both be
+        // genuinely, independently ambiguous.
+        for (MetaDataException e : validateOneSideReferenceResolution(root)) {
+            collected.add(e);
+        }
         // ADR-0042 — the cross-package ambiguity pass (ERR_AMBIGUOUS_REF) is RETIRED. A bare
         // reference now resolves package-locally (referrer's package, else root-level) at every
         // ref site (SymbolTable / resolveRootObject), so cross-package ambiguity is unreachable;
@@ -1670,44 +1685,76 @@ public final class ValidationPhase {
     //   (c) When @through is present (M:N): the named entity must exist and declare
     //       exactly two identity.reference children; @sourceRefField (if present)
     //       must match one of those references' FK fields → ERR_INVALID_RELATIONSHIP.
-    //   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
-    //       relationship (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+    //   (d) @through / @symmetric are invalid on a non-M:N relationship
+    //       (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+    //       @sourceRefField is also invalid there, EXCEPT on @cardinality: "one"
+    //       (#368: it then names which of several identity.reference nodes onto
+    //       the same target the relationship navigates — rule (e), below, checks
+    //       that it names a real local reference).
     //
-    // Own-relationships only: a relationship is validated on the entity that
-    // declares it (matching the own-attrs policy of the other passes). Eager-throw
-    // on the first violation, like the rest of this phase. The thrown source is the
-    // relationship node's own JsonSource, so the cross-port envelope jsonPath points
-    // at the relationship node — matching the shared error fixtures.
+    // ADR-0039: resolving, not own-only (#368) — every rule above validates a
+    // property of the relationship's OWN declaration (its attrs, plus for rule
+    // (c) the @through target resolved against the root), so a relationship
+    // inherited via extends must be validated wherever it's visible, or a child
+    // entity that only SEES the relationship through inheritance could carry a
+    // violation no pass ever examines. That makes an inherited, UNMODIFIED
+    // relationship visited once per inheriting entity — checked once below
+    // (keyed on the relationship node's own identity via an IdentityHashMap-
+    // backed set, not a plain HashSet — MetaData may override equals/hashCode
+    // and dedup here must be by reference), not once per entity, using the
+    // DECLARING entity (rel.getParent()) rather than whichever entity's
+    // effective view got there first for every piece of context a rule reads
+    // (message text, @through's package per ADR-0042, rule (a)'s self-join
+    // comparison). That keeps each check's result independent of which entity
+    // triggered it, which is what makes "checked once" both sufficient and
+    // correct. An override REPLACES the node in the overriding entity's own
+    // children (a genuinely different object), so it is never skipped against
+    // the node it overrides — a distinct declaration is always independently
+    // checked. This relies on Java's effective-children walk reusing the SAME
+    // physical child object for an unmodified inherited relationship (see
+    // MetaData.addParentChildren, which walks up to the super's own children
+    // collection rather than cloning) — verified against
+    // M2MSlimVocabularyTest#junctionWithInheritedReferencesLoadsCleanly's
+    // sibling mechanism and the new dedupe tests below.
+    //
+    // Collects EVERY violation (not eager-throw-and-stop) so a genuinely
+    // distinct defect on a sibling relationship is never masked by an earlier
+    // one — mirrors the TS/C#/Python ParseError[]/MetaError[] collection.
     // =========================================================================
 
-    static void validateRelationshipsM2M(MetaRoot root) {
-        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
-            walkRelationshipsM2M(root, rootChild);
+    static List<MetaDataException> validateRelationshipsM2M(MetaRoot root) {
+        List<MetaDataException> errors = new java.util.ArrayList<>();
+        java.util.Set<MetaData> checkedRels =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        // ADR-0039: root has no super; root.objects() is the complete top-level set.
+        for (MetaObject obj : root.objects()) {
+            // ADR-0039: resolving — rule (d) (like rule (e)) must see a relationship
+            // inherited via extends, not just this entity's own declarations.
+            // `checkedRels` absorbs the resulting revisits.
+            for (MetaRelationship rel : obj.getRelationships()) {
+                if (!checkedRels.add(rel)) continue;
+                validateRelationshipM2MNode(root, obj, rel, errors);
+            }
         }
-    }
-
-    private static void walkRelationshipsM2M(MetaRoot root, MetaData node) {
-        if (node instanceof MetaObject) {
-            validateObjectRelationshipsM2M(root, (MetaObject) node);
-        }
-        for (MetaData child : node.getChildren(MetaData.class, false)) {
-            walkRelationshipsM2M(root, child);
-        }
-    }
-
-    private static void validateObjectRelationshipsM2M(MetaRoot root, MetaObject obj) {
-        for (MetaData child : obj.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaRelationship)) continue;
-            MetaRelationship rel = (MetaRelationship) child;
-            validateRelationshipM2MNode(root, obj, rel);
-        }
+        return errors;
     }
 
     private static void validateRelationshipM2MNode(MetaRoot root, MetaObject obj,
-                                                    MetaRelationship rel) {
+                                                    MetaRelationship rel,
+                                                    List<MetaDataException> errors) {
+        // Every rule below validates a property of the relationship's OWN
+        // declaration (its attrs, plus for rule (c) the @through target), so
+        // context — the entity name in messages, the package a bare @through
+        // resolves in (ADR-0042), and rule (a)'s self-join comparison — is
+        // always the entity that DECLARES `rel` (rel.getParent()), never `obj`
+        // (the entity whose effective view happened to reach it first). This
+        // keeps the check's result independent of iteration order/inheritance
+        // depth, which is what makes checking each node exactly once correct.
+        MetaData relParent = rel.getParent();
+        MetaObject declaringEntity = (relParent instanceof MetaObject) ? (MetaObject) relParent : obj;
         // ADR-0042 — a bare @through / @objectRef self-join resolves in the declaring
         // entity's package (an FQN resolves exactly).
-        String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
+        String referrerPkg = declaringEntity.getPackage() == null ? "" : declaringEntity.getPackage();
         // ADR-0039: resolving — a relationship may inherit its M:N slim-vocabulary
         // attrs (@through/@sourceRefField/@objectRef/@cardinality/@symmetric) via
         // extends. Mirrors TS validateRelationships (validation-passes.ts:1320-1324),
@@ -1726,6 +1773,7 @@ public final class ValidationPhase {
         boolean hasSourceRefField = sourceRefField != null && !sourceRefField.isEmpty();
         boolean isMany = MetaRelationship.CARDINALITY_MANY.equals(cardinality);
         boolean isM2M = hasThrough && isMany;
+        boolean isCardinalityOne = MetaRelationship.CARDINALITY_ONE.equals(cardinality);
 
         // NOTE: @objectRef existence resolution moved to the validation registry
         // (RegisteredValidation.defaultRegistry → a declarative reference descriptor).
@@ -1734,42 +1782,47 @@ public final class ValidationPhase {
         // Rule (d): M:N-only attrs on a non-M:N relationship.
         if (!isM2M) {
             if (hasThrough) {
-                throw new MetaDataException(
+                errors.add(new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                         + "\" sets @" + MetaRelationship.ATTR_THROUGH
                         + " but is not a M:N relationship (requires @"
                         + MetaRelationship.ATTR_CARDINALITY + ": \""
                         + MetaRelationship.CARDINALITY_MANY + "\").",
-                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
             }
-            if (hasSourceRefField) {
-                throw new MetaDataException(
+            // #368: @sourceRefField also disambiguates a `@cardinality: one`
+            // relationship when the entity holds more than one identity.reference
+            // onto the same target. Only the M:N *junction* reading is rejected
+            // here; rule (e) — validateOneSideReferenceResolution, below — checks
+            // that it names a real local reference.
+            if (hasSourceRefField && !isCardinalityOne) {
+                errors.add(new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                         + "\" sets @" + MetaRelationship.ATTR_SOURCE_REF_FIELD
                         + " but is not a M:N relationship.",
-                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
             }
             if (symmetric) {
-                throw new MetaDataException(
+                errors.add(new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                         + "\" sets @" + MetaRelationship.ATTR_SYMMETRIC
                         + " but is not a M:N relationship.",
-                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
             }
             return;
         }
 
         // Rule (b): @symmetric and @sourceRefField are mutually exclusive.
         if (symmetric && hasSourceRefField) {
-            throw new MetaDataException(
+            errors.add(new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE
-                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                     + "\" sets both @" + MetaRelationship.ATTR_SYMMETRIC + " and @"
                     + MetaRelationship.ATTR_SOURCE_REF_FIELD + "; they are mutually exclusive.",
-                ErrorCode.ERR_BAD_ATTR_VALUE, rel.getSource());
+                ErrorCode.ERR_BAD_ATTR_VALUE, rel.getSource()));
         }
 
         // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
@@ -1777,16 +1830,16 @@ public final class ValidationPhase {
         // package is self, but an FQN "other::Widget" (a different same-short-name entity) is
         // NOT (comparing stripped short names would misclassify it).
         boolean isSelfJoin = objectRef != null
-            && resolveRootObject(root, objectRef, referrerPkg) == obj;
+            && resolveRootObject(root, objectRef, referrerPkg) == declaringEntity;
         if (symmetric && !isSelfJoin) {
-            throw new MetaDataException(
+            errors.add(new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE
-                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                     + "\" sets @" + MetaRelationship.ATTR_SYMMETRIC + " but @"
                     + MetaRelationship.ATTR_OBJECT_REF + " \"" + objectRef
-                    + "\" is not the declaring entity \"" + obj.getShortName()
+                    + "\" is not the declaring entity \"" + declaringEntity.getShortName()
                     + "\"; @" + MetaRelationship.ATTR_SYMMETRIC + " is self-join-only.",
-                ErrorCode.ERR_BAD_ATTR_VALUE, rel.getSource());
+                ErrorCode.ERR_BAD_ATTR_VALUE, rel.getSource()));
         }
 
         // Rule (c): @through must name an entity declaring exactly two identity.reference children.
@@ -1794,51 +1847,164 @@ public final class ValidationPhase {
         // cross-package @through no longer binds a junction in another package.
         MetaObject junction = resolveRootObject(root, through, referrerPkg);
         if (junction == null) {
-            throw new MetaDataException(
+            errors.add(new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                     + "\" @" + MetaRelationship.ATTR_THROUGH + " \"" + through
                     + "\" does not resolve to an entity." + didYouMeanHint(root, through),
                 ErrorCode.ERR_INVALID_RELATIONSHIP,
-                ResolvedSource.from(rel.getSource(), obj.getShortName() + "::" + rel.getShortName(), through));
+                ResolvedSource.from(rel.getSource(), declaringEntity.getShortName() + "::" + rel.getShortName(), through)));
+            return;
         }
         // A junction is a physical join table — it MUST be an object.entity. ADR-0046
         // lets a value carry navigation-only references, so value-purity no longer
         // implicitly guarantees a two-reference junction is an entity; assert it here.
         // (A value/projection has no table to join through.)
         if (!MetaObject.SUBTYPE_ENTITY.equals(junction.getSubType())) {
-            throw new MetaDataException(
+            errors.add(new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                     + "\" @" + MetaRelationship.ATTR_THROUGH + " \"" + through
                     + "\" resolves to " + junction.getType() + "." + junction.getSubType()
                     + ", not an entity — a junction is a persisted join table and must be object.entity.",
-                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
+            return;
         }
         int refCount = countJunctionReferences(junction);
         if (refCount != 2) {
-            throw new MetaDataException(
+            errors.add(new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                     + "\" @" + MetaRelationship.ATTR_THROUGH + " \"" + through
                     + "\" must declare exactly two identity.reference children"
                     + " (one per FK side); found " + refCount + ".",
-                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
+            return;
         }
         // @sourceRefField (if present) must match one of the junction's reference FK fields.
         if (hasSourceRefField) {
             List<String> fkFields = junctionReferenceFkFields(junction);
             if (!fkFields.contains(sourceRefField)) {
-                throw new MetaDataException(
+                errors.add(new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                         + "\" @" + MetaRelationship.ATTR_SOURCE_REF_FIELD + " \"" + sourceRefField
                         + "\" does not match any identity.reference FK field on junction \""
                         + through + "\". Available: "
                         + (fkFields.isEmpty() ? "(none)" : String.join(", ", fkFields)) + ".",
-                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
             }
         }
+    }
+
+    // =========================================================================
+    // Rule (e) — #368: a `@cardinality: one` relationship must resolve to exactly
+    // one identity.reference. Two references onto the same target are
+    // indistinguishable from the relationship's @objectRef alone, so the resolver
+    // would silently emit the first one's FK column. ADR-0029 §5: ambiguity is a
+    // load error naming the candidates.
+    //
+    // Registered alongside validateRelationshipsM2M (the M:N slim-vocabulary pass,
+    // above) — same deferred-resolution timing (after all files load + extends
+    // resolution).
+    //
+    // Scope differs deliberately from rule (d): rule (d) validates attrs that
+    // travel with the relationship's OWN declaration (@through/@symmetric/
+    // @sourceRefField), so own-scoping there is correct — those attrs don't
+    // change meaning depending on who inherits the relationship. Rule (e)
+    // instead validates whether THIS entity's reference set resolves the
+    // relationship uniquely, which is a property of the EFFECTIVE entity, not of
+    // wherever the relationship happens to be declared. A child entity that
+    // extends a clean parent and adds a second identity.reference onto the same
+    // target makes an INHERITED relationship ambiguous on the child even though
+    // the parent (and the relationship's own declaration) are untouched — own-
+    // scoping this pass would leave that case unchecked, and codegen/runtime
+    // (which resolve against the effective entity) would silently drop the
+    // relation. If a parent and a child are both genuinely ambiguous, both are
+    // reported — two entities are broken, not one error duplicated. (No dedupe
+    // here, unlike rule (d): rule (e)'s candidate set genuinely differs per entity.)
+    // =========================================================================
+
+    static List<MetaDataException> validateOneSideReferenceResolution(MetaRoot root) {
+        List<MetaDataException> errors = new java.util.ArrayList<>();
+        for (MetaObject obj : root.objects()) {
+            // ADR-0039: resolving — see the scope note above: rule (e) checks THIS
+            // entity's effective reference set against every relationship it can
+            // see, including one only inherited via extends.
+            for (MetaRelationship rel : obj.getRelationships()) {
+                // ADR-0039: resolving — @cardinality/@objectRef may be inherited via extends.
+                if (!MetaRelationship.CARDINALITY_ONE.equals(rel.getCardinality())) continue;
+                String objectRef = rel.getObjectRef();
+                if (objectRef == null || objectRef.isEmpty()) continue;
+
+                List<ReferenceIdentity> candidates =
+                    RelationshipReferences.referenceCandidatesFor(obj, objectRef);
+
+                String sourceRefField = rel.getSourceRefField();
+                String declared = (sourceRefField != null && !sourceRefField.isEmpty())
+                    ? sourceRefField : null;
+
+                if (declared != null) {
+                    // A declared @sourceRefField short-circuits the ladder at ANY
+                    // candidate count — checked independently of
+                    // RelationshipReferences.resolveRelationshipReference, whose
+                    // step 1 ("exactly one candidate -> that one") would otherwise
+                    // silently return the lone candidate even when it disagrees
+                    // with the declared field. The author named a specific FK; it
+                    // must exist, whether there are zero, one, or many candidates.
+                    boolean matchesDeclared = candidates.stream().anyMatch(c -> {
+                        List<String> fields = c.getFields();
+                        return !fields.isEmpty() && declared.equals(fields.get(0));
+                    });
+                    if (matchesDeclared) continue;
+                    errors.add(new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                            + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                            + "\" sets @" + MetaRelationship.ATTR_SOURCE_REF_FIELD + " \"" + declared
+                            + "\", which names no identity.reference targeting \"" + objectRef
+                            + "\". Candidates: " + formatReferenceCandidates(candidates) + ".",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
+                    continue;
+                }
+
+                // No @sourceRefField declared: ambiguity only exists with 2+
+                // candidates — resolveRelationshipReference's name-pairing step
+                // (ladder step 3) decides.
+                if (candidates.size() <= 1) continue;
+                ReferenceIdentity resolved = RelationshipReferences.resolveRelationshipReference(
+                    obj, rel.getShortName(), objectRef);
+                if (resolved != null) continue;
+
+                errors.add(new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + "\" is ambiguous: \"" + obj.getShortName() + "\" declares " + candidates.size()
+                        + " identity.reference nodes targeting \"" + objectRef + "\" and the relationship"
+                        + " name does not pair with exactly one. Candidates: "
+                        + formatReferenceCandidates(candidates) + ". Set @"
+                        + MetaRelationship.ATTR_SOURCE_REF_FIELD + " to the FK field this relationship navigates.",
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
+            }
+        }
+        return errors;
+    }
+
+    /** Render a candidate reference as {@code name(fkField)}, or {@code name(fieldA, fieldB)}
+     *  for a composite reference — so two composite references sharing a first column still
+     *  print distinguishably.
+     *
+     *  <p>NOTE: this is display only. Matching (both here and in
+     *  {@link RelationshipReferences#resolveRelationshipReference}) still keys on the first
+     *  field alone — a composite reference cannot actually be disambiguated by
+     *  @sourceRefField. That's a documented limitation, not fixed by this rendering.</p> */
+    private static String formatReferenceCandidates(List<ReferenceIdentity> candidates) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < candidates.size(); i++) {
+            if (i > 0) sb.append(", ");
+            ReferenceIdentity c = candidates.get(i);
+            sb.append(c.getShortName()).append('(').append(String.join(", ", c.getFields())).append(')');
+        }
+        return sb.toString();
     }
 
     /** Count a junction's {@code identity.reference} children.
