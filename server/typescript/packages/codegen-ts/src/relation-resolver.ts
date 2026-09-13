@@ -10,9 +10,11 @@ import {
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
   CARDINALITY_ONE,
   CARDINALITY_MANY,
   deriveM2MFields,
+  resolveRelationshipReference,
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity } from "./naming.js";
@@ -89,16 +91,20 @@ export function buildRelationMap(root: MetaRoot): RelationMap {
       if (!targetEntityRaw) continue;
       const targetEntity = stripPackage(targetEntityRaw);
 
-      // Find an identity.reference on `obj` whose @references targets this relationship's target.
-      // Compare against package-stripped names since both relationship @objectRef and
-      // identity.reference @references may carry package-qualified entity names.
-      const refs = obj.referenceIdentities();
-      const matching = refs.find((r) => stripPackage(r.targetEntity ?? "") === targetEntity);
+      // #368: an entity may hold more than one identity.reference onto the same
+      // target, so the target alone does not identify the FK. Resolve through the
+      // shared ladder (unique candidate -> @sourceRefField -> name pairing); the
+      // loader has already refused anything it cannot resolve, so a miss here
+      // means an unloadable model reached codegen — skip rather than guess.
+      // ADR-0039: resolving — @sourceRefField may be inherited via extends.
+      const declaredRefField = child.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
+      const matching = resolveRelationshipReference(
+        obj, child.name, targetEntity, declaredRefField,
+      );
       if (!matching) continue;
 
-      const fkFields = matching.fields;
-      if (fkFields.length === 0) continue;
-      const fkField = fkFields[0]!;
+      const fkField = matching.fields[0];
+      if (!fkField) continue;
 
       ensure(obj.name).push({
         name: child.name,
