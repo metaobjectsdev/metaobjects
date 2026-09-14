@@ -1189,10 +1189,24 @@ function buildSelectSpec(
       // branch to match _validateViaPath/_inferViaSingleHop) — out of scope for #368's
       // silent-first-match fix; the message below reflects the real, narrower remedy.
       const refs = findReferencesBetween(base, childEntity);
-      if (refs.length > 1) {
+      // findReferencesBetween walks BOTH directions ([base,child] then [child,base]),
+      // so ">1 entry" is not by itself #368 ambiguity: a mutual 1:1 —
+      // Customer.primaryAddressRef -> Address PLUS Address.customerRef -> Customer —
+      // returns two entries pointing in OPPOSITE directions. That shape is legal
+      // (findReferenceBetween's own contract calls it "rare, but legal", and the
+      // referenceHolder: "source" | "target" branch below exists to serve it), and
+      // refusing it broke codegen for a model #368 says nothing about. The real
+      // ambiguity is two references declared by the SAME holder onto the other side —
+      // that is what the first-match below cannot choose between.
+      const ambiguousHolder = [base, childEntity].find(
+        (holder) => refs.filter((r) => r.holder === holder).length > 1,
+      );
+      if (ambiguousHolder !== undefined) {
+        const ambiguous = refs.filter((r) => r.holder === ambiguousHolder);
         throw new Error(
           `origin.first correlation from "${base.name}" to "${childEntity.name}" is ambiguous: ` +
-            `${refs.map((r) => r.referenceIdentity.name).join(", ")}. ` +
+            `"${ambiguousHolder.name}" declares ${ambiguous.length} identity.reference nodes ` +
+            `onto the other side (${ambiguous.map((r) => r.referenceIdentity.name).join(", ")}). ` +
             `origin.first's own @via is not consulted for this correlation — reduce to a ` +
             `single identity.reference between these two entities.`,
         );

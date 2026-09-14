@@ -431,10 +431,82 @@ describe("extractViewSpec — reference ambiguity (#368)", () => {
     }
 
     expect(message).toMatch(/origin\.first correlation from "Team" to "Match" is ambiguous:.*homeTeamRef.*awayTeamRef/s);
+    // The refusal names the HOLDER that declares both, because that is the shape it
+    // cannot choose within (see the mutual-1:1 test below for the shape it must not
+    // refuse).
+    expect(message).toContain('"Match" declares 2 identity.reference nodes');
     // #368 round 2 sibling check: origin.first has no relationship node to attach
     // @sourceRefField to at all (the correlation is derived from @of alone), so this
     // message must never suggest it — confirming it stays dead-end-free alongside the
     // buildJoinTree fix above.
     expect(message).not.toContain("@sourceRefField");
+  });
+
+  test("a mutual 1:1 — one reference per holder, pointing opposite ways — is NOT ambiguous", async () => {
+    // findReferencesBetween walks BOTH directions ([a,b] then [b,a]), so a mutual 1:1
+    // returns TWO entries. A bare `refs.length > 1` refusal therefore hard-failed
+    // codegen on a shape #368 says nothing about: the two references point in OPPOSITE
+    // directions, the surrounding code explicitly supports both (`referenceHolder:
+    // "source" | "target"`), and findReferenceBetween's own contract calls mutual 1:1
+    // "rare, but legal". Only a SINGLE holder declaring two-or-more is #368 ambiguity.
+    const root = await load([
+      {
+        "object.entity": {
+          name: "Customer",
+          children: [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.int": { name: "id" } },
+            { "field.int": { name: "primaryAddressId" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            // Customer -> Address
+            { "identity.reference": { name: "primaryAddressRef", "@fields": "primaryAddressId", "@references": "Address" } },
+            // Lets the loader's single-hop-@via inference succeed for origin.first.
+            { "relationship.association": { name: "addresses", "@objectRef": "Address", "@cardinality": "many" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Address",
+          children: [
+            { "source.rdb": { "@table": "addresses" } },
+            { "field.int": { name: "id" } },
+            { "field.int": { name: "customerId" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            // Address -> Customer: the other half of the mutual 1:1.
+            { "identity.reference": { name: "customerRef", "@fields": "customerId", "@references": "Customer" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "CustomerSummary",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_customer_summary" } },
+            { "field.int": { name: "id", extends: "Customer.id" } },
+            { "identity.primary": { name: "id", extends: "Customer.id" } },
+            {
+              "field.int": {
+                name: "latestAddressId",
+                children: [
+                  { "origin.first": { "@of": "Address.id", "@orderBy": ["id:desc"] } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const projection = root.objects().find((o) => o.name === "CustomerSummary")!;
+    // The assertion is that this does NOT throw.
+    const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
+    const col = spec.selectSpec.columns.find((c) => c.fieldName === "latestAddressId");
+    expect(col).toBeDefined();
+    expect(col!.kind).toBe("first");
+    // Documented first-match behaviour is preserved: `a` is walked first, so the
+    // base-side reference wins and the correlation is source-held.
+    expect((col as { referenceHolder: string }).referenceHolder).toBe("source");
+    expect((col as { fkColumn: string }).fkColumn).toBe("primary_address_id");
   });
 });
