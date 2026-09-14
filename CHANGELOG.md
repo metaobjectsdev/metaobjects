@@ -111,7 +111,7 @@ here.**
   else `ERR_INVALID_RELATIONSHIP` at load, naming every candidate
   ([ADR-0029](spec/decisions/ADR-0029-entity-child-extends-and-via-inference.md)
   Amendment 1). `@sourceRefField` is now legal on a `@cardinality: one` relationship —
-  it previously failed to load there as an M:N-only attribute. Two limits are
+  it previously failed to load there as an M:N-only attribute. Three limits are
   documented rather than fixed here: the ladder matches a candidate's first FK field
   only, so two composite references sharing a first column stay indistinguishable (and
   resolve to the first, rather than being refused); the loader gate covers
