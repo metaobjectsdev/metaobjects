@@ -102,6 +102,9 @@ metadata:
 | `@cardinality` | `relationship.composition` | `one` / `many` | Multiplicity on the target side |
 | `@fields` | `identity.reference` | One field name or array | The FK column(s) on this entity |
 | `@references` | `identity.reference` | Entity name | The target entity (PK on the other side) |
+| `@through` | `relationship.*` | Junction entity name | Makes the relationship M:N. With `@cardinality: many`, names the junction entity whose two `identity.reference` children the FK columns are DERIVED from — the relationship never restates them. |
+| `@sourceRefField` | `relationship.*` | FK field name | On an M:N, names the source-side FK field on the junction (a DIRECTED self-join). On a `@cardinality: one` relationship, picks which of several `identity.reference` nodes onto the same target it navigates (see below). Mutually exclusive with `@symmetric`. |
+| `@symmetric` | `relationship.*` | `true` | Marks an UNDIRECTED M:N self-join (union-on-read). Valid only when `@objectRef` is the relationship's own subject. Mutually exclusive with `@sourceRefField`. |
 | `@onDelete` | `relationship.*` and `identity.reference` | `cascade` / `set-null` / `restrict` / `no-action` | RDB referential action. Default derives from the relationship subtype: composition -> `cascade`, aggregation -> `set-null`, association -> `restrict`. |
 | `@onUpdate` | `relationship.*` and `identity.reference` | same as `@onDelete` (default `cascade` when a relationship correlates) | RDB referential action |
 
@@ -240,6 +243,71 @@ See [ADR-0029](../../spec/decisions/ADR-0029-entity-child-extends-and-via-infere
 Amendment 1 for the full ladder specification, including why suffix-stripping applies
 to candidates only.
 
+## Inheriting an M:N relationship through `extends`
+
+An M:N relationship declared on an abstract base is visible on every entity that
+`extends` it — relationship accessors are RESOLVING, so `Post` sees the `tags`
+relationship its `PostBase` declared. The junction's two `identity.reference`
+children are what give the FK direction, and under inheritance there are two
+defensible entities for the source-side reference to name:
+
+- the **declaring base** (`PostBase`) — the entity the relationship is written on, and
+  what `@objectRef` names for a self-join hoisted onto a base; or
+- the **concrete child** (`Post`) — usually what the FK actually references, because
+  an abstract base has no table for a foreign key to point at.
+
+**Both are accepted, and only those two.** The FK derivation treats the declaring
+entity and the entity you are navigating from as the relationship's *subject*: the
+source-side junction reference may name either, and `@objectRef` naming either makes
+the relationship a self-join. Nothing else counts — in particular an entity lying
+strictly *between* the declaring base and the navigating entity in a deeper hierarchy
+is **not** accepted, and a junction reference naming one fails derivation with
+`ERR_INVALID_RELATIONSHIP`.
+
+```yaml
+# PostBase (abstract) declares the M:N; Post extends it. The junction may reference
+# EITHER PostBase or Post — both derive postId/tagId for Post.tags.
+- object.entity:
+    name: PostBase
+    isAbstract: true
+    children:
+      - relationship.association:
+          name: tags
+          objectRef: Tag
+          cardinality: many
+          through: PostTag
+- object.entity:
+    name: Post
+    extends: PostBase
+- object.entity:
+    name: PostTag
+    children:
+      - identity.reference:
+          name: fkPost
+          fields: postId
+          references: Post        # or PostBase — either resolves
+      - identity.reference:
+          name: fkTag
+          fields: tagId
+          references: Tag
+```
+
+The same rule governs an inherited **self-join**: a base declaring
+`@objectRef: <itself>` with `@symmetric` or `@sourceRefField` derives the same two FK
+sides whichever subclass you reach it through. The derivation's answer never depends
+on which entity's effective view got there first — that independence is the point, and
+it is what
+[#368](https://github.com/metaobjectsdev/metaobjects/issues/368)'s loader fix
+established for validation and this rule extends to FK derivation.
+
+**Known gap, documented rather than fixed:** the Java port compares the relationship's
+subject by RESOLVED package-qualified identity; TypeScript, C# and Python compare bare
+short names. So a genuine cross-package hetero M:N whose target's short name collides
+with the subject's — `a::NodeBase` relating to `b::NodeBase` — is misread as a
+self-join on those three ports and fails derivation. Each port carries a test pinning
+its current behaviour; closing it is
+[ADR-0041](../../spec/decisions/ADR-0041-cross-package-reference-resolution.md) work.
+
 ## What each port generates
 
 ### TypeScript
@@ -371,6 +439,17 @@ The following conformance fixtures gate this feature's behavior across ports:
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
 via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
 for the per-port pass/skip ledger.
+
+**Not fixture-gated, and why.** The M:N junction-FK DERIVATION — including the
+inherited-relationship rule above — cannot be expressed in `fixtures/conformance/`:
+that corpus is a load→canonical-serialize round-trip, and the serializer preserves the
+declared `@objectRef` / `@through` / `@sourceRefField` strings without ever surfacing
+which junction column the derivation picked. Two models that derive differently
+serialize identically. It is gated instead by per-port unit tests over the shared
+derivation helper (`relationship-m2m.test.ts`, `M2MSlimVocabularyTest.java`,
+`M2MInheritedDeclaringEntityTests.cs`, `test_derive_m2m_declaring_entity.py`,
+`KotlinM2mCodegenTest.kt`), which is the same call the M:N FQN-collision cases already
+made.
 
 ## See also
 

@@ -10,6 +10,58 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **An M:N relationship inherited through `extends` derived its junction FK columns
+  against the wrong entity — and in codegen the failure was silent.** The derivation
+  classified the self-join, and matched the junction's source-side
+  `identity.reference`, against the entity the CALLER was iterating. Every caller walks
+  a resolving relationship accessor, so for a relationship declared on a base and
+  reached through a subclass that is the INHERITING entity, not the one that declared
+  it. Two failures followed: an inherited self-join compared `@objectRef` (the base)
+  against the child, read as hetero, looked for a junction reference to the child and
+  found none; and an inherited hetero whose junction references the base found nothing
+  either. TypeScript codegen and the docs-site link graph catch the resulting error and
+  return `null`, so the navigation was **dropped from the generated output with no
+  error at all**; C# codegen did the same; the TypeScript, Java, Kotlin and Python
+  runtime and codegen paths let it escape, so the traversal or the generation run
+  failed outright.
+
+  The declaring entity now comes from the relationship's own parent — the same shape as
+  [#368](https://github.com/metaobjectsdev/metaobjects/issues/368)'s loader fix — in all
+  four derivations (TypeScript, Java, C#, Python; Kotlin calls the Java helper). The
+  entity being navigated from is kept alongside it rather than discarded: under
+  inheritance both are legitimate names for the relationship's subject, because a
+  junction FK usually references the concrete child while `@objectRef` on a hoisted
+  self-join names the base. The authoring contract this establishes — **the junction FK
+  may reference either the declaring base or the concrete child, and only those two** —
+  is now written down in
+  [`docs/features/relationships.md`](docs/features/relationships.md).
+
+  C# additionally fixes `M2MNavigation.IsSelfJoin`, which had the same confusion one
+  layer up. It never ran on an inherited self-join before (the derivation threw first),
+  and `DbContextGenerator` uses it to decide whether to emit EF `UsingEntity` wiring —
+  so fixing only the derivation would have turned a silent drop into silently wrong EF
+  configuration.
+
+  **Not a pure widening.** One shape that derived before now refuses: a base declaring
+  `@objectRef: <itself>` + `@through` with neither `@symmetric` nor `@sourceRefField`,
+  reached through a subclass, used to be misread as hetero and returned an arbitrary FK
+  direction; it is now correctly recognised as an ambiguous self-join and refused. That
+  model was already broken — deriving the same relationship from the base itself threw —
+  so codegen emitted for the child and dropped it for the base. The refusal is the
+  correct behaviour, but on Java, Kotlin and Python, whose callers do not catch, it
+  moves from "generates wrongly" to "the generation run fails", and the fix is to add
+  `@symmetric` or `@sourceRefField`. A second shape regresses on TypeScript, C# and
+  Python only: a cross-package hetero M:N whose target's short name collides with the
+  subject's now misreads as a self-join, because those three compare bare names where
+  Java compares resolved package-qualified identity. Each port pins its current
+  behaviour in a test; closing it is
+  [ADR-0041](spec/decisions/ADR-0041-cross-package-reference-resolution.md) work.
+
+  No vocabulary change: `metamodelVersion` stays `1.0` and the registry manifest is
+  untouched.
+
 ### Changed
 
 - **Codegen is OPT-IN: no port ships a default generator suite** (ADR-0034 Amendment 2).
