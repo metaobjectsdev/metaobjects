@@ -52,11 +52,29 @@ here.**
   so codegen emitted for the child and dropped it for the base. The refusal is the
   correct behaviour, but on Java, Kotlin and Python, whose callers do not catch, it
   moves from "generates wrongly" to "the generation run fails", and the fix is to add
-  `@symmetric` or `@sourceRefField`. That is the only behaviour this change takes away.
+  `@symmetric` or `@sourceRefField`.
 
-  **Cross-port divergence goes DOWN, not up.** Deciding whether `@objectRef` names the
-  relationship's subject now resolves the name to an ENTITY and compares identity in all
-  four derivations, which is what the Java port already did. TypeScript, C# and Python
+  Two narrower resolution changes come with moving the junction match onto identity, both
+  matching what the Java port already did. A junction `@references` (or an `@objectRef`)
+  that **is** package-qualified must now resolve **exactly**: a partially-qualified or
+  stale package no longer falls back to matching the bare tail, so a reference that used
+  to bind by luck now does not match the subject. And a **bare** reference whose short
+  name exists in more than one package resolves first-declared-wins, which can pick the
+  wrong-package entity — that is the pre-existing
+  [#174](https://github.com/metaobjectsdev/metaobjects/issues/174) behaviour, now reached
+  by M:N derivation as well. Both are narrow, and both bring the other ports onto Java's
+  semantics rather than away from them.
+
+  **Cross-port divergence goes DOWN, not up.** Both junction matches — "does this
+  reference name the relationship's subject?" and "does this one name the target?" — now
+  resolve the name to an ENTITY and compare identity in all four derivations, which is
+  what the Java port already did on both sides. Matching only one side would be worse
+  than matching neither: the two searches are independent and nothing excludes the
+  source-side reference from the target search, so a cross-package M:N could bind the
+  same junction column as BOTH sides and emit `(srcFk, srcFk)` silently. C#'s
+  `M2MNavigation` descriptor resolves its target the same way for the same reason — its
+  `IsSelfJoin` feeds the EF `UsingEntity` wiring, and a descriptor that disagreed with
+  the derivation would mis-map the relationship. TypeScript, C# and Python
   had been comparing package-stripped short names, so a genuine cross-package hetero M:N
   onto a target whose short name matched the subject's (`a::NodeBase` relating to
   `b::NodeBase`) was misread as a self-join on those three — a regression the two-name

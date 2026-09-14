@@ -230,6 +230,13 @@ def test_runtime_resolver_traverses_an_inherited_self_join() -> None:
 # done — this is the Python half of the pair with
 # M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage, and it REDUCES the
 # cross-port divergence rather than pinning it.
+#
+# The junction's SOURCE reference names the DECLARING BASE ("a::NodeBase") — the shape
+# docs/features/relationships.md blesses, and the one whose short name collides with the
+# target's. That matters: making is_self_join identity-based while the hetero TARGET
+# search was still a bare compare let that search re-match this very reference (nothing
+# excludes source_ref from it, unlike the directed self-join branch) and return
+# (srcId, srcId) silently. Both searches are identity-based now, as in Java.
 XPKG_A = {
     "metadata.root": {
         "package": "a",
@@ -255,7 +262,7 @@ XPKG_A = {
                     {"field.long": {"name": "srcId"}},
                     {"field.long": {"name": "dstId"}},
                     {"identity.primary": {"name": "id", "@fields": ["srcId", "dstId"]}},
-                    _ref("s", "srcId", "a::Node"),
+                    _ref("s", "srcId", "a::NodeBase"),
                     _ref("d", "dstId", "b::NodeBase"),
                 ],
             ),
@@ -289,3 +296,63 @@ def test_cross_package_target_sharing_a_subject_short_name_is_not_a_self_join() 
     fields = derive_m2m_fields(rel, node, index)
     assert fields.source_field == "srcId"
     assert fields.target_field == "dstId"
+
+
+# Java's deriveCrossPackageHeteroBindsCorrectPackage model, ported. No inheritance is
+# needed to reach the same defect: ``a::Account`` relates to ``b::Account`` through a
+# junction holding one reference to each. The two junction searches are INDEPENDENT, so
+# a bare-name target match found ``ownerRef`` a second time and returned
+# (ownerId, ownerId). Measured before the fix; pre-branch it threw loudly instead.
+XPKG_HETERO_A = {
+    "metadata.root": {
+        "package": "a",
+        "children": [
+            _entity(
+                "Account",
+                [
+                    {"field.long": {"name": "id"}},
+                    {
+                        "relationship.association": {
+                            "name": "partners",
+                            "@cardinality": "many",
+                            "@objectRef": "b::Account",
+                            "@through": "AccountLink",
+                        }
+                    },
+                    _pk(),
+                ],
+            ),
+            _entity(
+                "AccountLink",
+                [
+                    {"field.long": {"name": "ownerId"}},
+                    {"field.long": {"name": "partnerId"}},
+                    {"identity.primary": {"name": "id", "@fields": ["ownerId", "partnerId"]}},
+                    _ref("ownerRef", "ownerId", "a::Account"),
+                    _ref("partnerRef", "partnerId", "b::Account"),
+                ],
+            ),
+        ],
+    }
+}
+
+XPKG_HETERO_B = {
+    "metadata.root": {
+        "package": "b",
+        "children": [_entity("Account", [{"field.long": {"name": "id"}}, _pk()])],
+    }
+}
+
+
+def test_cross_package_hetero_matches_each_reference_to_its_own_entity() -> None:
+    result = MetaDataLoader().load([
+        InMemoryStringSource(json.dumps(XPKG_HETERO_A), id="a.json"),
+        InMemoryStringSource(json.dumps(XPKG_HETERO_B), id="b.json"),
+    ])
+    assert result.errors == []
+    objects = [c for c in result.root.children() if isinstance(c, MetaObject)]
+    account = next(o for o in objects if o.resolution_key() == "a::Account")
+    index = {o.name: o for o in objects}
+    fields = derive_m2m_fields(_rel(account, "partners"), account, index)
+    assert fields.source_field == "ownerId"
+    assert fields.target_field == "partnerId"  # was "ownerId"

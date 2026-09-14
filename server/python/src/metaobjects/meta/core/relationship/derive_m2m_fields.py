@@ -119,16 +119,24 @@ def _ref_target_entity(ref: MetaData) -> str | None:
 def _ref_target_raw(ref: MetaData) -> str | None:
     """The @references value of a reference, VERBATIM (package intact).
 
-    Distinct from :func:`_ref_target_entity`, which strips the package for the
-    legacy bare-name compare. Used only by the subject resolution below, which
-    needs the qualified form to tell ``a::NodeBase`` from ``b::NodeBase``. The
-    dotted ``Entity.field`` form is deliberately NOT split here — that is the
-    separate documented gap on :func:`_ref_target_entity`, and splitting would
-    change behaviour beyond this fix. A dotted value simply resolves to nothing,
-    exactly as it matches nothing today.
+    Distinct from :func:`_ref_target_entity`, which strips the PACKAGE for the
+    legacy bare-name compare. This keeps the package — identity resolution needs
+    the qualified form to tell ``a::NodeBase`` from ``b::NodeBase`` — and takes the
+    entity head of the dotted ``Entity.field`` form, since packages use ``::`` and
+    never ``.``, so the first ``.`` splits the entity off. That matches the TS
+    ``MetaIdentity.targetEntity``, the C# ``TargetEntity`` and Java's
+    ``refTargetObject``, so all four resolve a dotted junction reference alike.
+
+    (The dotted blind spot on :func:`_ref_target_entity` is a separate, older gap
+    being closed on its own branch. Splitting HERE removes the seam: without it the
+    two sides of the same ``if`` would disagree about dotted references once that
+    lands.)
     """
     v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving
-    return v if isinstance(v, str) and v else None
+    if not isinstance(v, str) or not v:
+        return None
+    dot = v.find(".")
+    return v if dot < 0 else v[:dot]
 
 
 def _root_objects(node: MetaData) -> list[MetaData]:
@@ -263,9 +271,26 @@ def derive_m2m_fields(
             ),
             None,
         )
-        target_ref = next(
-            (r for r in refs if _ref_target_entity(r) == _strip_package(target_name)),
-            None,
+        # Identity here too. The two searches are INDEPENDENT — nothing excludes
+        # source_ref from this one, unlike the directed self-join branch below — so a
+        # bare compare could match the SOURCE-side reference again whenever the
+        # target's short name equals the source's, and silently return (src_fk, src_fk).
+        # Java matches identity on both sides (findRefToSubject + findRefToObject).
+        target_ref = (
+            next(
+                (
+                    r
+                    for r in refs
+                    if _find_entity(root_objects, _ref_target_raw(r))
+                    is target_entity_node
+                ),
+                None,
+            )
+            if target_entity_node is not None
+            else next(
+                (r for r in refs if _ref_target_entity(r) == _strip_package(target_name)),
+                None,
+            )
         )
         source_field = _ref_fk_field(source_ref) if source_ref is not None else None
         target_field = _ref_fk_field(target_ref) if target_ref is not None else None

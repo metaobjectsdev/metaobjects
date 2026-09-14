@@ -300,15 +300,21 @@ it is what
 [#368](https://github.com/metaobjectsdev/metaobjects/issues/368)'s loader fix
 established for validation and this rule extends to FK derivation.
 
-**Cross-package targets are safe.** All five ports decide "is `@objectRef` the subject?"
-by resolving the name to an ENTITY and comparing identity, not by comparing bare short
-names — so a genuine cross-package hetero M:N whose target's short name happens to match
-the subject's (`a::NodeBase` relating to `b::NodeBase`) stays hetero and derives, rather
-than being misread as a self-join. A package-qualified name resolves exactly
+**Cross-package targets are safe.** All five ports resolve `@objectRef` and each junction
+`identity.reference` to an ENTITY and compare identity — on **both** sides of the
+derivation, the source-side match and the target-side match alike. So a genuine
+cross-package hetero M:N whose target's short name happens to match the source's
+(`a::Account` relating to `b::Account`, or `a::NodeBase` to `b::NodeBase`) binds each
+junction reference to its own entity instead of matching one of them twice. A
+package-qualified name resolves exactly
 ([ADR-0041](../../spec/decisions/ADR-0041-cross-package-reference-resolution.md)); a bare
 name matches a short name, where a collision across packages is the deferred follow-up
 [#174](https://github.com/metaobjectsdev/metaobjects/issues/174), the same as everywhere
-else a bare reference is resolved.
+else a bare reference is resolved. Two consequences worth knowing when authoring: a
+junction `@references` that *is* package-qualified must resolve **exactly** — a
+partially-qualified or stale package no longer falls back to a bare-tail match — and a
+**bare** `@references` whose short name exists in more than one package binds the first
+declared, which is #174 and not specific to M:N.
 
 ## What each port generates
 

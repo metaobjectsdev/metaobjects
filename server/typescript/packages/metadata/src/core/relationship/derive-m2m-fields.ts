@@ -190,7 +190,17 @@ export function deriveM2MFields(
   if (!isSelfJoin) {
     // Hetero: match each reference by the ENTITY OBJECT it resolves to.
     const sourceRef = refs.find((r) => isSubject(findEntity(root, r.targetEntity)));
-    const targetRef = refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === stripPackage(targetName));
+    // Identity here too. The two searches are INDEPENDENT — nothing excludes
+    // sourceRef from this one, unlike the directed self-join branch below — so a
+    // bare compare could match the SOURCE-side reference again whenever the
+    // target's short name equals the source's, and silently return (srcFk, srcFk).
+    // Structurally unreachable while isSelfJoin was also bare (a colliding short
+    // name forced the self-join branch); making only isSelfJoin identity-based
+    // broke that invariant. Java matches identity on both sides (findRefToSubject
+    // + findRefToObject) and never had the hole.
+    const targetRef = targetEntityNode !== undefined
+      ? refs.find((r) => findEntity(root, r.targetEntity) === targetEntityNode)
+      : refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === stripPackage(targetName));
     const sourceField = sourceRef ? refFkField(sourceRef) : undefined;
     const targetField = targetRef ? refFkField(targetRef) : undefined;
     if (sourceField === undefined || targetField === undefined) {

@@ -90,6 +90,16 @@ public static class M2MDerivation
     /// <c>b::NodeBase</c>, which made a genuine cross-package hetero M:N read as a
     /// self-join the moment the subject set held two names.
     /// </summary>
+    /// <summary>
+    /// Public so codegen descriptors can resolve an entity reference by the SAME rule
+    /// the derivation uses. <c>M2MNavigation.IsSelfJoin</c> compares the descriptor's
+    /// target against its source by identity; if the builder resolved the target by a
+    /// package-stripped name while the derivation resolved it exactly, the two could
+    /// disagree about whether a relationship is a self-join — and the EF wiring follows
+    /// the descriptor. Additive: no existing resolution changed.
+    /// </summary>
+    public static MetaObject? ResolveEntity(MetaRoot root, string? name) => FindEntity(root, name);
+
     private static MetaObject? FindEntity(MetaRoot root, string? name)
     {
         if (string.IsNullOrEmpty(name)) return null;
@@ -171,8 +181,15 @@ public static class M2MDerivation
         {
             // Hetero: match each reference by the ENTITY OBJECT it resolves to.
             var sourceRef = refs.FirstOrDefault(r => IsSubject(FindEntity(root, r.TargetEntity)));
-            var targetRef = refs.FirstOrDefault(
-                r => r.TargetEntity is not null && StripPackage(r.TargetEntity) == StripPackage(targetName));
+            // Identity here too. The two searches are INDEPENDENT — nothing excludes
+            // sourceRef from this one, unlike the directed self-join branch below — so a
+            // bare compare could match the SOURCE-side reference again whenever the
+            // target's short name equals the source's, and silently return (srcFk, srcFk).
+            // Java matches identity on both sides (findRefToSubject + findRefToObject).
+            var targetRef = targetEntityNode is not null
+                ? refs.FirstOrDefault(r => ReferenceEquals(FindEntity(root, r.TargetEntity), targetEntityNode))
+                : refs.FirstOrDefault(
+                    r => r.TargetEntity is not null && StripPackage(r.TargetEntity) == StripPackage(targetName));
             var sourceField = sourceRef is not null ? RefFkField(sourceRef) : null;
             var targetField = targetRef is not null ? RefFkField(targetRef) : null;
             if (sourceField is null || targetField is null)

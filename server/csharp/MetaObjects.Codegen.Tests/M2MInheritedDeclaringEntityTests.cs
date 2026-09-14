@@ -172,6 +172,13 @@ public class M2MInheritedDeclaringEntityTests
     // always done — this is the C# half of the pair with
     // M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage, and it
     // REDUCES the cross-port divergence rather than pinning it.
+    //
+    // The junction's SOURCE reference names the DECLARING BASE ("a::NodeBase") — the
+    // shape docs/features/relationships.md blesses, and the one whose short name
+    // collides with the target's. That matters: making isSelfJoin identity-based while
+    // the hetero TARGET search was still a bare compare let that search re-match this
+    // very reference (nothing excludes sourceRef from it, unlike the directed self-join
+    // branch) and return (srcId, srcId) silently. Both searches are identity-based now.
     private const string XpkgAModel = """
     { "metadata.root": { "package": "a", "children": [
       { "object.entity": { "name": "Node", "extends": "a::NodeBase", "children": [
@@ -185,7 +192,7 @@ public class M2MInheritedDeclaringEntityTests
         { "field.long": { "name": "srcId" } },
         { "field.long": { "name": "dstId" } },
         { "identity.primary": { "@fields": ["srcId", "dstId"] } },
-        { "identity.reference": { "name": "s", "@fields": "srcId", "@references": "a::Node" } },
+        { "identity.reference": { "name": "s", "@fields": "srcId", "@references": "a::NodeBase" } },
         { "identity.reference": { "name": "d", "@fields": "dstId", "@references": "b::NodeBase" } }
       ]}}
     ]}}
@@ -199,6 +206,78 @@ public class M2MInheritedDeclaringEntityTests
       ]}}
     ]}}
     """;
+
+    // Java's deriveCrossPackageHeteroBindsCorrectPackage model, ported. No inheritance
+    // is needed to reach the defect: `a::Account` relates to `b::Account` through a
+    // junction holding one reference to each. The two junction searches are
+    // INDEPENDENT and nothing excludes the source ref from the target search, so a
+    // bare-name target match found `ownerRef` a second time and returned
+    // (ownerId, ownerId) — silently. Pre-branch this threw loudly.
+    private const string XpkgHeteroA = """
+    { "metadata.root": { "package": "a", "children": [
+      { "object.entity": { "name": "Account", "children": [
+        { "field.long": { "name": "id" } },
+        { "relationship.association": { "name": "partners", "@cardinality": "many", "@objectRef": "b::Account", "@through": "AccountLink" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "AccountLink", "children": [
+        { "field.long": { "name": "ownerId" } },
+        { "field.long": { "name": "partnerId" } },
+        { "identity.primary": { "@fields": ["ownerId", "partnerId"] } },
+        { "identity.reference": { "name": "ownerRef", "@fields": "ownerId", "@references": "a::Account" } },
+        { "identity.reference": { "name": "partnerRef", "@fields": "partnerId", "@references": "b::Account" } }
+      ]}}
+    ]}}
+    """;
+
+    private const string XpkgHeteroB = """
+    { "metadata.root": { "package": "b", "children": [
+      { "object.entity": { "name": "Account", "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Cross_package_hetero_matches_each_junction_reference_to_its_own_entity()
+    {
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(XpkgHeteroA, id: "a.json"),
+            new InMemoryStringSource(XpkgHeteroB, id: "b.json"),
+        ]);
+        Assert.Empty(r.Errors);
+        var account = r.Root.Objects().First(o => o.ResolutionKey() == "a::Account");
+        var fields = M2MDerivation.DeriveM2MFields(Rel(account, "partners"), account, r.Root);
+        // Was (ownerId, ownerId): the target search re-matched the SOURCE reference.
+        Assert.Equal("ownerId", fields.SourceField);
+        Assert.Equal("partnerId", fields.TargetField);
+    }
+
+    [Fact]
+    public void Navigation_builder_agrees_with_the_derivation_on_a_cross_package_hetero()
+    {
+        // Asserted through M2MNavigationBuilder.For — the path DbContextGenerator,
+        // EntityGenerator, RoutesGenerator and CSharpApiModelBuilder actually take, and
+        // the one nothing covered. IsSelfJoin must agree with the derivation: a
+        // cross-package M:N whose target merely shares a short name with the source is
+        // HETERO, and calling it a self-join would skip its EF UsingEntity wiring and
+        // mark the navigation [NotMapped].
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(XpkgHeteroA, id: "a.json"),
+            new InMemoryStringSource(XpkgHeteroB, id: "b.json"),
+        ]);
+        Assert.Empty(r.Errors);
+        var account = r.Root.Objects().First(o => o.ResolutionKey() == "a::Account");
+
+        var nav = Assert.Single(M2MNavigationBuilder.For(account, r.Root));
+        Assert.Equal("partners", nav.Name);
+        Assert.Equal("ownerId", nav.SourceField);
+        Assert.Equal("partnerId", nav.TargetField);
+        // The target is the OTHER package's Account, not this one.
+        Assert.Equal("b::Account", nav.Target.ResolutionKey());
+        Assert.False(nav.IsSelfJoin);
+    }
 
     [Fact]
     public void Cross_package_target_sharing_a_subject_short_name_is_not_a_self_join()

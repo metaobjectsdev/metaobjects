@@ -867,6 +867,14 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
   // always done — this is the TS half of the pair with
   // M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage, and it
   // REDUCES the cross-port divergence rather than pinning it.
+  //
+  // The junction's SOURCE reference names the DECLARING BASE ("a::NodeBase") — the
+  // shape docs/features/relationships.md blesses, and the one whose short name
+  // collides with the target's. That matters: making isSelfJoin identity-based
+  // while the hetero TARGET search was still a bare compare let that search
+  // re-match this very reference (nothing excludes sourceRef from it, unlike the
+  // directed self-join branch) and return (srcId, srcId) silently. Both searches
+  // are identity-based now, as in Java.
   test("a cross-package hetero target sharing a subject short name is NOT a self-join", async () => {
     const aDoc = { "metadata.root": { package: "a", children: [
       { "object.entity": { name: "Node", "extends": "a::NodeBase", children: [
@@ -879,7 +887,7 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
         { "field.long": { name: "srcId" } },
         { "field.long": { name: "dstId" } },
         { "identity.primary": { "name": "id", "@fields": ["srcId", "dstId"] } },
-        { "identity.reference": { name: "s", "@fields": ["srcId"], "@references": "a::Node" } },
+        { "identity.reference": { name: "s", "@fields": ["srcId"], "@references": "a::NodeBase" } },
         { "identity.reference": { name: "d", "@fields": ["dstId"], "@references": "b::NodeBase" } } ] } },
     ] } };
     const bDoc = { "metadata.root": { package: "b", children: [
@@ -902,6 +910,42 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
     const derived = deriveM2MFields(rel, node, root);
     expect(derived.sourceField).toBe("srcId");
     expect(derived.targetField).toBe("dstId");
+  });
+
+  // Java's deriveCrossPackageHeteroBindsCorrectPackage model, ported. No inheritance
+  // is needed to reach the same defect: `a::Account` relates to `b::Account` through a
+  // junction holding one reference to each. The two junction searches are INDEPENDENT,
+  // so a bare-name target match found `ownerRef` a second time and returned
+  // (ownerId, ownerId). Measured before the fix; pre-branch it threw loudly instead.
+  test("cross-package hetero matches each junction reference to its OWN entity", async () => {
+    const aDoc = { "metadata.root": { package: "a", children: [
+      { "object.entity": { name: "Account", children: [
+        { "field.long": { name: "id" } },
+        { "relationship.association": { name: "partners", "@cardinality": "many",
+            "@objectRef": "b::Account", "@through": "AccountLink" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "AccountLink", children: [
+        { "field.long": { name: "ownerId" } },
+        { "field.long": { name: "partnerId" } },
+        { "identity.primary": { "name": "id", "@fields": ["ownerId", "partnerId"] } },
+        { "identity.reference": { name: "ownerRef", "@fields": ["ownerId"], "@references": "a::Account" } },
+        { "identity.reference": { name: "partnerRef", "@fields": ["partnerId"], "@references": "b::Account" } } ] } },
+    ] } };
+    const bDoc = { "metadata.root": { package: "b", children: [
+      { "object.entity": { name: "Account", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(aDoc), { id: "a.json" }),
+      new InMemoryStringSource(JSON.stringify(bDoc), { id: "b.json" }),
+    ]);
+    expect(errors).toHaveLength(0);
+    const account = root.objects().find((o) => o.resolutionKey() === "a::Account")!;
+    const rel = account.relationships().find((r) => r.name === "partners") as MetaRelationship;
+    const derived = deriveM2MFields(rel, account, root);
+    expect(derived.sourceField).toBe("ownerId");
+    expect(derived.targetField).toBe("partnerId");   // was "ownerId"
   });
 
   test("an OWN relationship still derives against its own entity (no regression)", async () => {
