@@ -38,7 +38,7 @@ public static class RelationshipSchema
             Name: RelationshipConstants.RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
-            Description: "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."),
+            Description: "Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction's source-side reference (mutually exclusive with @symmetric), and on a @cardinality:'one' relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely."),
 
         new AttrSchema(
             Name: RelationshipConstants.RELATIONSHIP_ATTR_SYMMETRIC,

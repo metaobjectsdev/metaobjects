@@ -45,7 +45,7 @@ export const RELATIONSHIP_DEFINITION: ProviderDefinition = {
           "name": "sourceRefField",
           "min": 0,
           "max": 1,
-          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
+          "description": "Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction's source-side reference (mutually exclusive with @symmetric), and on a @cardinality:'one' relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely."
         },
         {
           "type": "attr",
@@ -122,7 +122,7 @@ export const RELATIONSHIP_DEFINITION: ProviderDefinition = {
           "name": "sourceRefField",
           "min": 0,
           "max": 1,
-          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
+          "description": "Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction's source-side reference (mutually exclusive with @symmetric), and on a @cardinality:'one' relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely."
         },
         {
           "type": "attr",
@@ -199,7 +199,7 @@ export const RELATIONSHIP_DEFINITION: ProviderDefinition = {
           "name": "sourceRefField",
           "min": 0,
           "max": 1,
-          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
+          "description": "Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction's source-side reference (mutually exclusive with @symmetric), and on a @cardinality:'one' relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely."
         },
         {
           "type": "attr",
@@ -276,7 +276,7 @@ export const RELATIONSHIP_DEFINITION: ProviderDefinition = {
           "name": "sourceRefField",
           "min": 0,
           "max": 1,
-          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
+          "description": "Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction's source-side reference (mutually exclusive with @symmetric), and on a @cardinality:'one' relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely."
         },
         {
           "type": "attr",

@@ -50,9 +50,12 @@ public abstract class MetaRelationship extends MetaData {
      *  derived from those references (never restated). Renamed from the retired {@code @joinEntity}. */
     public final static String ATTR_THROUGH = "through";
 
-    /** Directed self-join disambiguator: names the source-side FK field on the junction
-     *  (the other reference is the target side). Required only for directed/ambiguous self-join
-     *  M:N. Mutually exclusive with {@code @symmetric}. */
+    /** Disambiguates which reference/FK field a relationship uses when more than one candidate
+     *  exists: on a directed self-join M:N it names the junction's source-side reference
+     *  (mutually exclusive with {@code @symmetric}), and on a {@code @cardinality:'one'}
+     *  relationship it names which of several {@code identity.reference} nodes onto the same
+     *  target the relationship navigates when name-pairing does not resolve it uniquely
+     *  (issue #368). */
     public final static String ATTR_SOURCE_REF_FIELD = "sourceRefField";
 
     /** Undirected self-join flag (union-on-read). Valid only when {@code @objectRef} == the

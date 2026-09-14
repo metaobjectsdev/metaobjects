@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "acme::sport",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Team",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Match",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "alphaFk" } },
+            { "field.long": { "name": "betaFk" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "identity.reference": { "name": "alphaRef", "@fields": "alphaFk", "@references": "acme::sport::Team" } },
+            { "identity.reference": { "name": "betaRef", "@fields": "betaFk", "@references": "acme::sport::Team" } },
+            { "relationship.association": { "name": "winner", "@cardinality": "one", "@objectRef": "acme::sport::Team", "@sourceRefField": "alphaFk" } },
+            { "relationship.association": { "name": "loser", "@cardinality": "one", "@objectRef": "acme::sport::Team", "@sourceRefField": "betaFk" } }
+          ]
+        }
+      }
+    ]
+  }
+}

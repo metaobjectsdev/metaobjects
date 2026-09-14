@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "acme::sport",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Team",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Match",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "homeTeamId" } },
+            { "field.long": { "name": "awayTeamId" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "identity.reference": { "name": "homeTeamRef", "@fields": "homeTeamId", "@references": "acme::sport::Team" } },
+            { "identity.reference": { "name": "awayTeamRef", "@fields": "awayTeamId", "@references": "acme::sport::Team" } },
+            { "relationship.association": { "name": "homeTeam", "@cardinality": "one", "@objectRef": "acme::sport::Team" } },
+            { "relationship.association": { "name": "awayTeam", "@cardinality": "one", "@objectRef": "acme::sport::Team" } }
+          ]
+        }
+      }
+    ]
+  }
+}

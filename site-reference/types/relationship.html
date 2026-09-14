@@ -111,7 +111,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric.</td>
+<td>Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction&#39;s source-side reference (mutually exclusive with @symmetric), and on a @cardinality:&#39;one&#39; relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely.</td>
 </tr>
 <tr>
 <td><code>@symmetric</code></td>
@@ -195,7 +195,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric.</td>
+<td>Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction&#39;s source-side reference (mutually exclusive with @symmetric), and on a @cardinality:&#39;one&#39; relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely.</td>
 </tr>
 <tr>
 <td><code>@symmetric</code></td>
@@ -278,7 +278,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric.</td>
+<td>Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction&#39;s source-side reference (mutually exclusive with @symmetric), and on a @cardinality:&#39;one&#39; relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely.</td>
 </tr>
 <tr>
 <td><code>@symmetric</code></td>
@@ -362,7 +362,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric.</td>
+<td>Disambiguates which reference/FK field a relationship uses when more than one candidate exists: on a directed self-join M:N it names the junction&#39;s source-side reference (mutually exclusive with @symmetric), and on a @cardinality:&#39;one&#39; relationship it names which of several identity.reference nodes onto the same target the relationship navigates when name-pairing does not resolve it uniquely.</td>
 </tr>
 <tr>
 <td><code>@symmetric</code></td>
