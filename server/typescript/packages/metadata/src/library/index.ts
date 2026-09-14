@@ -1,8 +1,9 @@
 // @metaobjectsdev/metadata/library — the shipped-library surface (FR-043).
 //
-// Every other subpath of this package resolves through a directory `index.ts`
-// (`/core`, and the root entry itself). This one pointed straight at
-// `library-sources.ts`, and that inconsistency was not cosmetic: the repo-root
+// The invariant is not "every subpath has an index" — `./constants` is a plain
+// `src/constants.ts` and is fine. It is that the subpath must land on something the
+// `paths` substitution can reach. This one pointed at `library-sources.ts` under a
+// directory, so it reached nothing, and that was not cosmetic: the repo-root
 // `tsconfig.scripts.json` maps `@metaobjectsdev/metadata/*` to
 // `packages/metadata/src/*` so that `scripts/` typechecks against workspace
 // SOURCE rather than a build output. With no `index.ts` here that mapping had
@@ -14,4 +15,7 @@
 //
 // So this file is the subpath's entry, and `package.json` names it. Adding a
 // module under `library/` means re-exporting it here.
+//
+// `cli/test/subpath-resolves-under-scripts-paths.test.ts` now gates the whole class,
+// across every package the scripts typecheck maps.
 export * from "./library-sources.js";
