@@ -158,21 +158,20 @@ public class M2MInheritedDeclaringEntityTests
         Assert.Equal("tagId", fields.TargetField);
     }
 
-    // ADR-0041 DIVERGENCE — pinned, not fixed. Java's M2MFields compares RESOLVED object
-    // identity (FQN-exact); C#, TS and Python compare StripPackage() short names. The
-    // subject set used to hold one short name and now holds two, so the surface on which
-    // a bare-name compare can mis-bind is twice as large. Here a::NodeBase declares a
-    // genuine CROSS-PACKAGE hetero M:N onto b::NodeBase and a::Node extends a::NodeBase:
-    // deriving from a::Node the subject short names are {"NodeBase", "Node"}, and
-    // "b::NodeBase" strips to "NodeBase", so the target reads as the subject and the
-    // relationship is misclassified as an ambiguous self-join. Java's equivalent
-    // (M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage) gets it right.
+    // REGRESSION — a cross-package hetero M:N must not be read as a self-join just
+    // because the target's SHORT name matches one of the subject's.
     //
-    // Honest about severity: this model derived CORRECTLY before this branch (the
-    // one-member subject set did not collide), so the widening regressed it. Accepted
-    // deliberately per the ADR-0041 split. This encodes what C# ACTUALLY does so the
-    // divergence is gated rather than latent; when C# adopts FQN-exactness this test
-    // fails and must be rewritten to assert srcId/dstId.
+    // a::NodeBase declares a genuine cross-package hetero M:N onto b::NodeBase, and
+    // a::Node extends a::NodeBase. Deriving from a::Node the subject is
+    // {a::NodeBase, a::Node}; under the old StripPackage compare "b::NodeBase"
+    // stripped to "NodeBase", landed in the subject set, and the relationship refused
+    // to derive as an ambiguous self-join. It had derived correctly before the subject
+    // set grew to two names, so that was a regression, not a pre-existing gap.
+    //
+    // Fixed by comparing RESOLVED OBJECT IDENTITY, which is what the Java port has
+    // always done — this is the C# half of the pair with
+    // M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage, and it
+    // REDUCES the cross-port divergence rather than pinning it.
     private const string XpkgAModel = """
     { "metadata.root": { "package": "a", "children": [
       { "object.entity": { "name": "Node", "extends": "a::NodeBase", "children": [
@@ -202,7 +201,7 @@ public class M2MInheritedDeclaringEntityTests
     """;
 
     [Fact]
-    public void Adr0041_gap_cross_package_target_sharing_a_subject_short_name()
+    public void Cross_package_target_sharing_a_subject_short_name_is_not_a_self_join()
     {
         var r = new MetaDataLoader().Load([
             new InMemoryStringSource(XpkgAModel, id: "a.json"),
@@ -213,10 +212,11 @@ public class M2MInheritedDeclaringEntityTests
         var node = r.Root.Objects().First(o => o.Name == "Node");
         var rel = Rel(node, "links");
 
-        // CURRENT C# BEHAVIOUR (wrong; Java derives srcId/dstId here):
-        var ex = Assert.Throws<M2MDerivationException>(
-            () => M2MDerivation.DeriveM2MFields(rel, node, r.Root));
-        Assert.Contains("is ambiguous", ex.Message, StringComparison.Ordinal);
+        // Identity resolution binds "b::NodeBase" to the b-package entity, which is
+        // neither subject — so this stays hetero and derives, exactly as Java does.
+        var fields = M2MDerivation.DeriveM2MFields(rel, node, r.Root);
+        Assert.Equal("srcId", fields.SourceField);
+        Assert.Equal("dstId", fields.TargetField);
     }
 
     [Fact]

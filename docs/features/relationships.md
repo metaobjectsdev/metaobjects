@@ -300,13 +300,15 @@ it is what
 [#368](https://github.com/metaobjectsdev/metaobjects/issues/368)'s loader fix
 established for validation and this rule extends to FK derivation.
 
-**Known gap, documented rather than fixed:** the Java port compares the relationship's
-subject by RESOLVED package-qualified identity; TypeScript, C# and Python compare bare
-short names. So a genuine cross-package hetero M:N whose target's short name collides
-with the subject's — `a::NodeBase` relating to `b::NodeBase` — is misread as a
-self-join on those three ports and fails derivation. Each port carries a test pinning
-its current behaviour; closing it is
-[ADR-0041](../../spec/decisions/ADR-0041-cross-package-reference-resolution.md) work.
+**Cross-package targets are safe.** All five ports decide "is `@objectRef` the subject?"
+by resolving the name to an ENTITY and comparing identity, not by comparing bare short
+names — so a genuine cross-package hetero M:N whose target's short name happens to match
+the subject's (`a::NodeBase` relating to `b::NodeBase`) stays hetero and derives, rather
+than being misread as a self-join. A package-qualified name resolves exactly
+([ADR-0041](../../spec/decisions/ADR-0041-cross-package-reference-resolution.md)); a bare
+name matches a short name, where a collision across packages is the deferred follow-up
+[#174](https://github.com/metaobjectsdev/metaobjects/issues/174), the same as everywhere
+else a bare reference is resolved.
 
 ## What each port generates
 

@@ -31,6 +31,13 @@ and the hetero reference match alike. ``source`` is also the fallback when ``rel
 object parent, which keeps the signature unchanged. Not covered: a junction reference
 naming an entity strictly BETWEEN the base and the navigating entity in a deeper
 hierarchy.
+
+The subject comparison is made on RESOLVED OBJECT IDENTITY, not on stripped short
+names, matching the Java reference (``M2MFields.java``). Bare-name equality cannot
+tell ``a::NodeBase`` from ``b::NodeBase``, so once the subject set held two names a
+genuine CROSS-PACKAGE hetero M:N whose target shares a short name with the subject
+read as a self-join and refused to derive. Scoped deliberately to this one predicate
+— every other name comparison in this module is untouched.
 """
 from __future__ import annotations
 
@@ -109,6 +116,55 @@ def _ref_target_entity(ref: MetaData) -> str | None:
     return _strip_package(v) if isinstance(v, str) and v else None
 
 
+def _ref_target_raw(ref: MetaData) -> str | None:
+    """The @references value of a reference, VERBATIM (package intact).
+
+    Distinct from :func:`_ref_target_entity`, which strips the package for the
+    legacy bare-name compare. Used only by the subject resolution below, which
+    needs the qualified form to tell ``a::NodeBase`` from ``b::NodeBase``. The
+    dotted ``Entity.field`` form is deliberately NOT split here — that is the
+    separate documented gap on :func:`_ref_target_entity`, and splitting would
+    change behaviour beyond this fix. A dotted value simply resolves to nothing,
+    exactly as it matches nothing today.
+    """
+    v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving
+    return v if isinstance(v, str) and v else None
+
+
+def _root_objects(node: MetaData) -> list[MetaData]:
+    """Every top-level object of the tree *node* belongs to, in declaration order.
+
+    Walks up to the root rather than taking the caller's ``object_index``: that
+    index is keyed by BARE name, so two same-short-name entities in different
+    packages collapse to one entry and FQN-exact resolution is impossible from it.
+    """
+    root = node
+    while root.parent is not None:
+        root = root.parent
+    return [c for c in root.children() if c.type == TYPE_OBJECT]
+
+
+def _find_entity(objects: list[MetaData], name: str | None) -> MetaData | None:
+    """The root entity a reference name denotes, or ``None``.
+
+    Mirrors the Java reference's ``M2MFields.findObject`` exactly: a FULLY-QUALIFIED
+    name (one containing ``::``) resolves EXACTLY on the object's package-folded key,
+    never a bare-tail fallback; a bare name matches a short name, first match wins
+    (the bare-collision case is the deferred follow-up Java records as issue #174).
+
+    This exists so the SUBJECT comparison can be made on object IDENTITY the way
+    Java's already is. A bare-name compare cannot tell ``a::NodeBase`` from
+    ``b::NodeBase``, which made a genuine cross-package hetero M:N read as a
+    self-join the moment the subject set held two names.
+    """
+    if not name:
+        return None
+    if PACKAGE_SEP in name:
+        return next((o for o in objects if o.resolution_key() == name), None)
+    bare = _strip_package(name)
+    return next((o for o in objects if o.name == bare), None)
+
+
 def derive_m2m_fields(
     rel: MetaRelationship,
     source: MetaData,
@@ -179,12 +235,33 @@ def derive_m2m_fields(
         subject_names.append(source.name)
     subject_label = " or ".join(f'"{n}"' for n in subject_names)
 
-    is_self_join = _strip_package(target_name) in subject_names
+    # Compared by resolved object IDENTITY, matching the Java reference. A
+    # package-stripped compare cannot distinguish ``a::NodeBase`` from
+    # ``b::NodeBase``, so with two names in the set a genuine cross-package hetero
+    # M:N read as a self-join and refused to derive.
+    root_objects = _root_objects(declaring)
+
+    def _is_subject(entity: MetaData | None) -> bool:
+        return entity is not None and (entity is declaring or entity is source)
+
+    # Defensive bare fallback when @objectRef does not resolve — loader validation
+    # normally guarantees it does. Same carve-out the Java reference makes.
+    target_entity_node = _find_entity(root_objects, target_name)
+    is_self_join = (
+        _is_subject(target_entity_node)
+        if target_entity_node is not None
+        else _strip_package(target_name) in subject_names
+    )
 
     if not is_self_join:
-        # Hetero: match each reference by the entity it resolves to.
+        # Hetero: match each reference by the ENTITY OBJECT it resolves to.
         source_ref = next(
-            (r for r in refs if _ref_target_entity(r) in subject_names), None
+            (
+                r
+                for r in refs
+                if _is_subject(_find_entity(root_objects, _ref_target_raw(r)))
+            ),
+            None,
         )
         target_ref = next(
             (r for r in refs if _ref_target_entity(r) == _strip_package(target_name)),

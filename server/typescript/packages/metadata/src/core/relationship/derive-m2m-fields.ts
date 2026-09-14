@@ -31,6 +31,13 @@
 // also the fallback when `rel` has no entity parent, which keeps the exported signature
 // unchanged. Not covered: a junction reference naming an entity strictly BETWEEN the
 // base and the navigating entity in a deeper hierarchy.
+//
+// The subject comparison is made on RESOLVED OBJECT IDENTITY, not on stripped
+// short names, matching the Java reference (M2MFields.java). Bare-name equality
+// cannot tell `a::NodeBase` from `b::NodeBase`, so once the subject set held two
+// names a genuine CROSS-PACKAGE hetero M:N whose target shares a short name with
+// the subject read as a self-join and refused to derive. Scoped deliberately to
+// this one predicate — every other name comparison in this file is untouched.
 
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
@@ -38,6 +45,7 @@ import type { MetaRelationship } from "./meta-relationship.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
 import { stripPackage } from "../../naming.js";
 import { TYPE_OBJECT } from "../../shared/base-types.js";
+import { PACKAGE_SEPARATOR } from "../../shared/structural.js";
 
 /** Thrown when a M:N relationship's junction FK fields cannot be derived. */
 export class M2MDerivationError extends Error {
@@ -58,6 +66,28 @@ export interface M2MFields {
 /** First @fields entry of a reference (the physical FK column on the junction). */
 function refFkField(ref: MetaReferenceIdentity): string | undefined {
   return ref.fields[0];
+}
+
+/**
+ * The root entity a reference name denotes, or undefined. Mirrors the Java
+ * reference's `M2MFields.findObject` exactly: a FULLY-QUALIFIED name (one
+ * containing "::") resolves EXACTLY on the object's package-folded key, never a
+ * bare-tail fallback; a bare name matches a short name, first match wins (the
+ * bare-collision case is the deferred follow-up Java records as issue #174).
+ *
+ * This exists so the SUBJECT comparison below can be made on object IDENTITY the
+ * way Java's already is. A bare-name compare cannot tell `a::NodeBase` from
+ * `b::NodeBase`, which made a genuine cross-package hetero M:N read as a
+ * self-join the moment the subject set held two names.
+ */
+function findEntity(root: MetaRoot, name: string | undefined): MetaObject | undefined {
+  if (name === undefined || name === "") return undefined;
+  const objects = root.objects();
+  if (name.includes(PACKAGE_SEPARATOR)) {
+    return objects.find((o) => o.resolutionKey() === name);
+  }
+  const bare = stripPackage(name);
+  return objects.find((o) => o.name === bare);
 }
 
 /**
@@ -140,15 +170,26 @@ export function deriveM2MFields(
   const subjectNames = declaringEntity.name === source.name
     ? [declaringEntity.name]
     : [declaringEntity.name, source.name];
-  const isSubject = (name: string | undefined): boolean =>
-    name !== undefined && subjectNames.includes(stripPackage(name));
   const subjectLabel = subjectNames.map((n) => `"${n}"`).join(" or ");
+  // Compared by resolved object IDENTITY, matching the Java reference. A
+  // stripPackage() compare cannot distinguish `a::NodeBase` from `b::NodeBase`,
+  // so with two names in the set a genuine cross-package hetero M:N read as a
+  // self-join and refused to derive.
+  const isSubject = (entity: MetaObject | undefined): boolean =>
+    entity !== undefined && (entity === declaringEntity || entity === source);
+  const isSubjectName = (name: string | undefined): boolean =>
+    name !== undefined && subjectNames.includes(stripPackage(name));
 
-  const isSelfJoin = isSubject(targetName);
+  // Defensive bare fallback when @objectRef does not resolve — loader validation
+  // normally guarantees it does. Same carve-out the Java reference makes.
+  const targetEntityNode = findEntity(root, targetName);
+  const isSelfJoin = targetEntityNode !== undefined
+    ? isSubject(targetEntityNode)
+    : isSubjectName(targetName);
 
   if (!isSelfJoin) {
-    // Hetero: match each reference by the entity it resolves to.
-    const sourceRef = refs.find((r) => isSubject(r.targetEntity));
+    // Hetero: match each reference by the ENTITY OBJECT it resolves to.
+    const sourceRef = refs.find((r) => isSubject(findEntity(root, r.targetEntity)));
     const targetRef = refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === stripPackage(targetName));
     const sourceField = sourceRef ? refFkField(sourceRef) : undefined;
     const targetField = targetRef ? refFkField(targetRef) : undefined;

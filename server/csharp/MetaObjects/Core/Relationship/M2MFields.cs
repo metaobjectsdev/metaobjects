@@ -32,6 +32,13 @@
 // classification and the hetero reference match alike. Not covered: a junction
 // reference naming an entity strictly BETWEEN the base and the navigating entity in a
 // deeper hierarchy.
+//
+// The subject comparison is made on RESOLVED OBJECT IDENTITY, not on stripped short
+// names, matching the Java reference (M2MFields.java). Bare-name equality cannot tell
+// `a::NodeBase` from `b::NodeBase`, so once the subject set held two names a genuine
+// CROSS-PACKAGE hetero M:N whose target shares a short name with the subject read as a
+// self-join and refused to derive. Scoped deliberately to this one predicate — every
+// other name comparison in this file is untouched.
 
 using MetaObjects.Meta;
 
@@ -72,6 +79,28 @@ public static class M2MDerivation
     }
 
     /// <summary>
+    /// The root entity a reference name denotes, or <c>null</c>. Mirrors the Java
+    /// reference's <c>M2MFields.findObject</c> exactly: a FULLY-QUALIFIED name (one
+    /// containing <c>::</c>) resolves EXACTLY on the object's package-folded key, never
+    /// a bare-tail fallback; a bare name matches a short name, first match wins (the
+    /// bare-collision case is the deferred follow-up Java records as issue #174).
+    ///
+    /// This exists so the SUBJECT comparison can be made on object IDENTITY the way
+    /// Java's already is. A bare-name compare cannot tell <c>a::NodeBase</c> from
+    /// <c>b::NodeBase</c>, which made a genuine cross-package hetero M:N read as a
+    /// self-join the moment the subject set held two names.
+    /// </summary>
+    private static MetaObject? FindEntity(MetaRoot root, string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        var objects = root.Objects();
+        if (name.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+            return objects.FirstOrDefault(o => string.Equals(o.ResolutionKey(), name, StringComparison.Ordinal));
+        var bare = StripPackage(name);
+        return objects.FirstOrDefault(o => string.Equals(o.Name, bare, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Derive the source/target junction FK fields for a M:N relationship.
     /// </summary>
     /// <param name="rel">the M:N relationship (carries @objectRef + @through + optional @sourceRefField / @symmetric).</param>
@@ -93,8 +122,14 @@ public static class M2MDerivation
         var subjectNames = declaring.Name == source.Name
             ? new[] { declaring.Name }
             : new[] { declaring.Name, source.Name };
-        bool IsSubject(string? name) => name is not null && subjectNames.Contains(StripPackage(name));
         var subjectLabel = string.Join(" or ", subjectNames.Select(n => $"\"{n}\""));
+        // Compared by resolved object IDENTITY, matching the Java reference. A
+        // StripPackage compare cannot distinguish `a::NodeBase` from `b::NodeBase`, so
+        // with two names in the set a genuine cross-package hetero M:N read as a
+        // self-join and refused to derive.
+        bool IsSubject(MetaObject? entity) =>
+            entity is not null && (ReferenceEquals(entity, declaring) || ReferenceEquals(entity, source));
+        bool IsSubjectName(string? name) => name is not null && subjectNames.Contains(StripPackage(name));
 
         string? throughName = rel.Through;
         if (throughName is null)
@@ -125,12 +160,17 @@ public static class M2MDerivation
                 $"identity.reference children (found {refs.Count})");
         }
 
-        bool isSelfJoin = IsSubject(targetName);
+        // Defensive bare fallback when @objectRef does not resolve — loader validation
+        // normally guarantees it does. Same carve-out the Java reference makes.
+        var targetEntityNode = FindEntity(root, targetName);
+        bool isSelfJoin = targetEntityNode is not null
+            ? IsSubject(targetEntityNode)
+            : IsSubjectName(targetName);
 
         if (!isSelfJoin)
         {
-            // Hetero: match each reference by the entity it resolves to.
-            var sourceRef = refs.FirstOrDefault(r => IsSubject(r.TargetEntity));
+            // Hetero: match each reference by the ENTITY OBJECT it resolves to.
+            var sourceRef = refs.FirstOrDefault(r => IsSubject(FindEntity(root, r.TargetEntity)));
             var targetRef = refs.FirstOrDefault(
                 r => r.TargetEntity is not null && StripPackage(r.TargetEntity) == StripPackage(targetName));
             var sourceField = sourceRef is not null ? RefFkField(sourceRef) : null;

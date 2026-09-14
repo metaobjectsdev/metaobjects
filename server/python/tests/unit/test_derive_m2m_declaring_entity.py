@@ -23,14 +23,9 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from metaobjects import InMemoryStringSource, MetaDataLoader, load_string
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.meta.core.relationship.derive_m2m_fields import (
-    M2MDerivationError,
-    derive_m2m_fields,
-)
+from metaobjects.meta.core.relationship.derive_m2m_fields import derive_m2m_fields
 from metaobjects.meta.core.relationship.meta_relationship import MetaRelationship
 from metaobjects.runtime.n2m_resolver import resolve_n2m_descriptor
 
@@ -221,20 +216,20 @@ def test_runtime_resolver_traverses_an_inherited_self_join() -> None:
 # declaring base does not have — a separate concern from the derivation.
 
 
-# ADR-0041 DIVERGENCE — pinned, not fixed. Java's M2MFields compares RESOLVED object
-# identity (FQN-exact); Python, TS and C# compare stripped short names. The subject set
-# used to hold one short name and now holds two, so the surface on which a bare-name
-# compare can mis-bind is twice as large. Here ``a::NodeBase`` declares a genuine
-# CROSS-PACKAGE hetero M:N onto ``b::NodeBase`` and ``a::Node`` extends ``a::NodeBase``:
-# deriving from ``a::Node`` the subject short names are {"NodeBase", "Node"}, and
-# ``b::NodeBase`` strips to "NodeBase", so the target reads as the subject and the
-# relationship is misclassified as an ambiguous self-join. Java's equivalent
-# (M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage) gets it right.
+# REGRESSION — a cross-package hetero M:N must not be read as a self-join just because
+# the target's SHORT name matches one of the subject's.
 #
-# Honest about severity: this model derived CORRECTLY before this branch (the one-member
-# subject set did not collide), so the widening regressed it. Accepted deliberately per
-# the ADR-0041 split; the test encodes what Python ACTUALLY does so the divergence is
-# gated rather than latent, and must be rewritten when Python adopts FQN-exactness.
+# ``a::NodeBase`` declares a genuine cross-package hetero M:N onto ``b::NodeBase``, and
+# ``a::Node`` extends ``a::NodeBase``. Deriving from ``a::Node`` the subject is
+# {a::NodeBase, a::Node}; under the old package-stripped compare "b::NodeBase" stripped
+# to "NodeBase", landed in the subject set, and the relationship refused to derive as an
+# ambiguous self-join. It had derived correctly before the subject set grew to two names,
+# so that was a regression, not a pre-existing gap.
+#
+# Fixed by comparing RESOLVED OBJECT IDENTITY, which is what the Java port has always
+# done — this is the Python half of the pair with
+# M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage, and it REDUCES the
+# cross-port divergence rather than pinning it.
 XPKG_A = {
     "metadata.root": {
         "package": "a",
@@ -276,8 +271,8 @@ XPKG_B = {
 }
 
 
-def test_adr0041_gap_cross_package_target_sharing_a_subject_short_name() -> None:
-    """CURRENT Python behaviour (wrong; Java derives srcId/dstId here)."""
+def test_cross_package_target_sharing_a_subject_short_name_is_not_a_self_join() -> None:
+    """Identity resolution keeps this hetero, exactly as Java does."""
     result = MetaDataLoader().load([
         InMemoryStringSource(json.dumps(XPKG_A), id="a.json"),
         InMemoryStringSource(json.dumps(XPKG_B), id="b.json"),
@@ -291,5 +286,6 @@ def test_adr0041_gap_cross_package_target_sharing_a_subject_short_name() -> None
     index = {o.name: o for o in objects}
     node = objects[0]
     rel = _rel(node, "links")
-    with pytest.raises(M2MDerivationError, match="is ambiguous"):
-        derive_m2m_fields(rel, node, index)
+    fields = derive_m2m_fields(rel, node, index)
+    assert fields.source_field == "srcId"
+    assert fields.target_field == "dstId"

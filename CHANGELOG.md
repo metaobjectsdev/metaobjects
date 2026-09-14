@@ -52,12 +52,17 @@ here.**
   so codegen emitted for the child and dropped it for the base. The refusal is the
   correct behaviour, but on Java, Kotlin and Python, whose callers do not catch, it
   moves from "generates wrongly" to "the generation run fails", and the fix is to add
-  `@symmetric` or `@sourceRefField`. A second shape regresses on TypeScript, C# and
-  Python only: a cross-package hetero M:N whose target's short name collides with the
-  subject's now misreads as a self-join, because those three compare bare names where
-  Java compares resolved package-qualified identity. Each port pins its current
-  behaviour in a test; closing it is
-  [ADR-0041](spec/decisions/ADR-0041-cross-package-reference-resolution.md) work.
+  `@symmetric` or `@sourceRefField`. That is the only behaviour this change takes away.
+
+  **Cross-port divergence goes DOWN, not up.** Deciding whether `@objectRef` names the
+  relationship's subject now resolves the name to an ENTITY and compares identity in all
+  four derivations, which is what the Java port already did. TypeScript, C# and Python
+  had been comparing package-stripped short names, so a genuine cross-package hetero M:N
+  onto a target whose short name matched the subject's (`a::NodeBase` relating to
+  `b::NodeBase`) was misread as a self-join on those three — a regression the two-name
+  subject introduced, caught in review and fixed here rather than documented. Scoped to
+  that one predicate: no other name comparison changed, and this is not a general
+  [ADR-0041](spec/decisions/ADR-0041-cross-package-reference-resolution.md) sweep.
 
   No vocabulary change: `metamodelVersion` stays `1.0` and the registry manifest is
   untouched.
