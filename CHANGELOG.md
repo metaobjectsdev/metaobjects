@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-09-14
+
+_npm `1.0.4` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 **Upgrading: run `meta gen`.** Every generated file's header comment changed ([#367]), and
 generated routes files gain an auth-seam JSDoc block, so `meta verify --codegen` reports
 drift on any project that commits its generated output until it is regenerated. For most
