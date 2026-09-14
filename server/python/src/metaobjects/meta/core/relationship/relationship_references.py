@@ -19,6 +19,7 @@ from __future__ import annotations
 from ...meta_data import MetaData
 from ....naming import strip_package
 from ....shared.base_types import TYPE_IDENTITY
+from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
@@ -53,6 +54,31 @@ def reference_fields(ref: MetaData) -> list[str]:
     return []
 
 
+def reference_target_entity(ref: MetaData) -> str | None:
+    """The TARGET-ENTITY half of an ``identity.reference``'s ``@references``.
+
+    ``@references`` is either a bare entity name (``Team`` / ``acme::sport::Team``,
+    meaning "the target's primary identity") or the dotted ``Entity.field`` /
+    ``Entity.fieldA,fieldB`` form (``Team.id``) naming explicit target fields.
+    Both forms name the same entity, so the entity half is the segment BEFORE the
+    first ``.`` — mirroring the other three ports' ``targetEntity`` accessor
+    (TS ``MetaReferenceIdentity.targetEntity``, C# ``MetaReferenceIdentity.TargetEntity``,
+    Java ``ReferenceIdentity.getTargetEntity()``), which is the authoritative shape.
+    Python has no MetaReferenceIdentity subclass to hang it on, so it lives here.
+
+    The dot is searched only AFTER the last package separator so a ``::``-qualified
+    name can never have a package segment mistaken for the field separator. Returns
+    None when the attr is absent or empty.
+    """
+    raw = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving.
+    if not isinstance(raw, str) or not raw:
+        return None
+    sep = raw.rfind(PACKAGE_SEP)
+    start = sep + len(PACKAGE_SEP) if sep >= 0 else 0
+    dot = raw.find(".", start)
+    return raw if dot == -1 else raw[:dot]
+
+
 def _first_fk_field(ref: MetaData) -> str | None:
     """The FK field a reference is anchored on (first field; composite FKs
     pair on their first column)."""
@@ -80,7 +106,8 @@ def reference_pairing_keys(ref: MetaData) -> set[str]:
 def reference_candidates_for(holder: MetaData, target_entity: str) -> list[MetaData]:
     """Every identity.reference on ``holder`` whose @references targets
     ``target_entity``. Package-insensitive on both sides: @references and
-    @objectRef may each be bare or fully qualified.
+    @objectRef may each be bare or fully qualified, and @references may use the
+    dotted ``Entity.field`` form (see :func:`reference_target_entity`).
     """
     target = strip_package(target_entity)
     candidates: list[MetaData] = []
@@ -88,8 +115,8 @@ def reference_candidates_for(holder: MetaData, target_entity: str) -> list[MetaD
     for child in holder.children():
         if child.type != TYPE_IDENTITY or child.sub_type != IDENTITY_SUBTYPE_REFERENCE:
             continue
-        references = child.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
-        if not isinstance(references, str) or not references:
+        references = reference_target_entity(child)
+        if references is None:
             continue
         if strip_package(references) != target:
             continue

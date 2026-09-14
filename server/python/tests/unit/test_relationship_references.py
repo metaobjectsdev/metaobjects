@@ -137,3 +137,67 @@ def test_suffix_stripping_never_applies_to_the_relationship_name() -> None:
     assert [e.code.value for e in result.errors] == ["ERR_INVALID_RELATIONSHIP"]
     match = _find_object(result.root, "Match")
     assert resolve_relationship_reference(match, "valid", "Team") is None
+
+
+# ---------------------------------------------------------------------------
+# The dotted `@references` form — "Team.id" names the same target entity as a
+# bare "Team" (spec/metamodel/identity.json documents it). This port used to
+# compare the WHOLE attr value, so a dotted reference matched no target: a valid
+# dotted model was refused (zero candidates made a declared @sourceRefField look
+# unsatisfiable) and a genuinely ambiguous dotted model loaded clean. The other
+# three ports head-parse at the first "." and always agreed; only Python did not.
+# ---------------------------------------------------------------------------
+
+def _dotted_model(relationship: dict) -> dict:
+    return {"metadata.root": {"package": "repro", "children": [
+        {"object.entity": {"name": "Team", "children": [
+            {"field.long": {"name": "id"}},
+            {"identity.primary": {"name": "id", "@fields": ["id"]}},
+        ]}},
+        {"object.entity": {"name": "Match", "children": [
+            {"field.long": {"name": "id"}},
+            {"field.long": {"name": "alphaFk"}},
+            {"field.long": {"name": "betaFk"}},
+            {"identity.primary": {"name": "id", "@fields": ["id"]}},
+            {"identity.reference": {"name": "alphaRef", "@fields": ["alphaFk"],
+                                    "@references": "Team.id"}},
+            {"identity.reference": {"name": "betaRef", "@fields": ["betaFk"],
+                                    "@references": "repro::Team.id"}},
+            {"relationship.association": relationship},
+        ]}},
+    ]}}
+
+
+def test_dotted_references_are_enumerated_as_candidates() -> None:
+    doc = _dotted_model({"name": "winner", "@objectRef": "Team",
+                         "@cardinality": "one", "@sourceRefField": "alphaFk"})
+    match = _load_object(doc, "Match")
+    # Both the bare-dotted "Team.id" and the FQN-dotted "repro::Team.id" forms
+    # resolve to the entity "Team" — the package separator is never mistaken
+    # for the field separator.
+    assert [c.name for c in reference_candidates_for(match, "Team")] == ["alphaRef", "betaRef"]
+    assert [c.name for c in reference_candidates_for(match, "repro::Team")] == ["alphaRef", "betaRef"]
+
+
+def test_dotted_references_resolve_through_source_ref_field() -> None:
+    doc = _dotted_model({"name": "winner", "@objectRef": "Team",
+                         "@cardinality": "one", "@sourceRefField": "betaFk"})
+    # Loads clean: the declared FK names a real candidate. Before the head-parse
+    # this raised ERR_INVALID_RELATIONSHIP ("names no identity.reference
+    # targeting Team. Candidates: .") on a model TypeScript accepted.
+    match = _load_object(doc, "Match")
+    resolved = resolve_relationship_reference(match, "winner", "Team", "betaFk")
+    assert resolved is not None and resolved.name == "betaRef"
+
+
+def test_dotted_references_are_still_ambiguous_without_disambiguation() -> None:
+    # The other direction: "winner" pairs with neither candidate, so the load
+    # must FAIL. Before the head-parse there were zero candidates, rule (e)'s
+    # `len(candidates) <= 1` skipped, and the model loaded clean while
+    # TypeScript refused it.
+    doc = _dotted_model({"name": "winner", "@objectRef": "Team", "@cardinality": "one"})
+    result = MetaDataLoader().load([InMemoryStringSource(json.dumps(doc))])
+    assert [e.code.value for e in result.errors] == ["ERR_INVALID_RELATIONSHIP"]
+    assert "alphaRef(alphaFk), betaRef(betaFk)" in result.errors[0].message
+    match = _find_object(result.root, "Match")
+    assert resolve_relationship_reference(match, "winner", "Team") is None
