@@ -465,4 +465,99 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
         assertEquals("postId", f.getSourceField());
         assertEquals("tagId", f.getTargetField());
     }
+
+    // --- 6. Declaring entity vs. visiting entity (the #368 follow-up) ------------------
+    //
+    // Same confusion as the #368 loader passes, one layer down: derive() classified the
+    // self-join, and matched the hetero junction reference, against the `source` entity
+    // its CALLER passed. Every caller walks the RESOLVING getRelationships()
+    // (SpringM2mSupport, KotlinM2mSupport, omdb's M2MResolver) and passes the entity it
+    // is iterating — so for a relationship inherited via `extends` that is the
+    // INHERITING entity, not the one that declared it.
+    //
+    // Unlike the loader passes there is no once-per-node `checked` set here, so the
+    // defect is NOT gated on visit order — it is wrong for every inheriting entity in
+    // any order. The fixtures still declare the child BEFORE the base and pin the root
+    // visit order, matching the #368 convention.
+
+    /** Node extends NodeBase, which declares a @symmetric self-join onto ITSELF. Node
+     *  is declared FIRST so the root's child order is child-before-base. */
+    private static final String INHERITED_SELF_JOIN =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"Node\", \"extends\": \"NodeBase\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"NodeBase\", \"@isAbstract\": true, \"children\": ["
+        + "    { \"relationship.association\": { \"name\": \"peers\", \"@cardinality\": \"many\","
+        + "        \"@objectRef\": \"NodeBase\", \"@through\": \"NodeLink\", \"@symmetric\": true } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"NodeLink\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"aId\" } },"
+        + "    { \"field.long\": { \"name\": \"bId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } },"
+        + "    { \"identity.reference\": { \"name\": \"aRef\", \"@fields\": \"aId\", \"@references\": \"NodeBase\" } },"
+        + "    { \"identity.reference\": { \"name\": \"bRef\", \"@fields\": \"bId\", \"@references\": \"NodeBase\" } } ] } }"
+        + "] } }";
+
+    /** Article extends ArticleBase, which declares a HETERO M:N whose junction references
+     *  the BASE — so a match against the visiting child finds nothing. */
+    private static final String INHERITED_HETERO =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"Article\", \"extends\": \"ArticleBase\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"ArticleBase\", \"@isAbstract\": true, \"children\": ["
+        + "    { \"relationship.association\": { \"name\": \"tags\", \"@cardinality\": \"many\","
+        + "        \"@objectRef\": \"Tag\", \"@through\": \"ArticleTag\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"Tag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"ArticleTag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"articleId\" } },"
+        + "    { \"field.long\": { \"name\": \"tagId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } },"
+        + "    { \"identity.reference\": { \"name\": \"aRef\", \"@fields\": \"articleId\", \"@references\": \"ArticleBase\" } },"
+        + "    { \"identity.reference\": { \"name\": \"tRef\", \"@fields\": \"tagId\", \"@references\": \"Tag\" } } ] } }"
+        + "] } }";
+
+    /** Root-level object order, so a test's child-before-base premise fails loudly if
+     *  the loader ever stops preserving declaration order. */
+    private static List<String> objectOrder(MetaDataLoader loader) {
+        List<String> out = new java.util.ArrayList<>();
+        for (MetaObject mo : loader.getRoot().getChildren(MetaObject.class, false)) out.add(mo.getName());
+        return out;
+    }
+
+    @Test
+    public void deriveInheritedSelfJoinUsesDeclaringEntity() {
+        MetaDataLoader loader = loadThrough(INHERITED_SELF_JOIN, "inherited-self-join.json");
+        assertEquals(List.of("acme::Node", "acme::NodeBase", "acme::NodeLink"), objectOrder(loader));
+        MetaObject node = objExact(loader, "acme::Node");
+        MetaRelationship rel = relOf(node, "peers");
+        // The relationship is INHERITED: it is not one of Node's own children.
+        assertTrue(node.getRelationships(false).isEmpty());
+        assertEquals("acme::NodeBase", ((MetaObject) rel.getParent()).getName());
+        // Pre-fix: @objectRef "NodeBase" vs the visiting "acme::Node" => not a self-join
+        // => hetero branch => no junction reference to Node => M2MDerivationException.
+        M2MFields f = M2MFields.derive(rel, node, loader.getRoot());
+        assertEquals("aId", f.getSourceField());
+        assertEquals("bId", f.getTargetField());
+        // The declaring entity itself must agree — same node, same answer.
+        MetaObject base = objExact(loader, "acme::NodeBase");
+        M2MFields viaBase = M2MFields.derive(rel, base, loader.getRoot());
+        assertEquals(f.getSourceField(), viaBase.getSourceField());
+        assertEquals(f.getTargetField(), viaBase.getTargetField());
+    }
+
+    @Test
+    public void deriveInheritedHeteroMatchesDeclaringEntityReference() {
+        MetaDataLoader loader = loadThrough(INHERITED_HETERO, "inherited-hetero.json");
+        assertEquals(List.of("acme::Article", "acme::ArticleBase", "acme::Tag", "acme::ArticleTag"),
+            objectOrder(loader));
+        MetaObject article = objExact(loader, "acme::Article");
+        M2MFields f = M2MFields.derive(relOf(article, "tags"), article, loader.getRoot());
+        assertEquals("articleId", f.getSourceField());
+        assertEquals("tagId", f.getTargetField());
+    }
 }
