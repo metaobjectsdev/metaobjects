@@ -79,27 +79,40 @@ public static class M2MDerivation
     }
 
     /// <summary>
+    /// <see cref="FindEntity"/>, exposed so a codegen DESCRIPTOR can resolve an entity
+    /// reference by the SAME rule this derivation uses.
+    /// </summary>
+    /// <remarks>
+    /// <para><c>M2MNavigation.IsSelfJoin</c> compares the descriptor's target against
+    /// its source by identity; while <c>M2MNavigationBuilder.Build</c> resolved that
+    /// target by a package-stripped name and the derivation resolved it exactly, the two
+    /// disagreed — <c>b::Account</c> bound to a same-short-named <c>a::Account</c>, which
+    /// then compared identity-equal to the source and reported a cross-package hetero M:N
+    /// as a self-join, and the EF wiring follows the descriptor. Build now calls this.
+    /// So this is additive to the DERIVATION — no derivation behaviour changed — but it
+    /// deliberately DID change resolution at that one call site, which is the point.</para>
+    /// <para>NOT the port's general reference resolver. It is deliberately narrow (see
+    /// <see cref="FindEntity"/>) and has no referrer-package awareness: a bare name is
+    /// resolved against every root object, not against the referrer's package first.
+    /// <c>NamingRefs.ResolveObjectRef</c> is the package-aware resolver the loader uses;
+    /// prefer it anywhere that is not matching a junction reference to an entity, and see
+    /// issue #174 for the bare-collision case both leave open.</para>
+    /// </remarks>
+    public static MetaObject? ResolveEntity(MetaRoot root, string? name) => FindEntity(root, name);
+
+    /// <summary>
     /// The root entity a reference name denotes, or <c>null</c>. Mirrors the Java
     /// reference's <c>M2MFields.findObject</c> exactly: a FULLY-QUALIFIED name (one
     /// containing <c>::</c>) resolves EXACTLY on the object's package-folded key, never
     /// a bare-tail fallback; a bare name matches a short name, first match wins (the
     /// bare-collision case is the deferred follow-up Java records as issue #174).
     ///
-    /// This exists so the SUBJECT comparison can be made on object IDENTITY the way
-    /// Java's already is. A bare-name compare cannot tell <c>a::NodeBase</c> from
+    /// This exists so the junction matches can be made on object IDENTITY the way Java's
+    /// already are. A bare-name compare cannot tell <c>a::NodeBase</c> from
     /// <c>b::NodeBase</c>, which made a genuine cross-package hetero M:N read as a
-    /// self-join the moment the subject set held two names.
+    /// self-join the moment the subject set held two names — and, once the subject side
+    /// alone was fixed, made the target search re-match the source-side reference.
     /// </summary>
-    /// <summary>
-    /// Public so codegen descriptors can resolve an entity reference by the SAME rule
-    /// the derivation uses. <c>M2MNavigation.IsSelfJoin</c> compares the descriptor's
-    /// target against its source by identity; if the builder resolved the target by a
-    /// package-stripped name while the derivation resolved it exactly, the two could
-    /// disagree about whether a relationship is a self-join — and the EF wiring follows
-    /// the descriptor. Additive: no existing resolution changed.
-    /// </summary>
-    public static MetaObject? ResolveEntity(MetaRoot root, string? name) => FindEntity(root, name);
-
     private static MetaObject? FindEntity(MetaRoot root, string? name)
     {
         if (string.IsNullOrEmpty(name)) return null;

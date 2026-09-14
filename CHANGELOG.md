@@ -54,16 +54,20 @@ here.**
   moves from "generates wrongly" to "the generation run fails", and the fix is to add
   `@symmetric` or `@sourceRefField`.
 
-  Two narrower resolution changes come with moving the junction match onto identity, both
-  matching what the Java port already did. A junction `@references` (or an `@objectRef`)
-  that **is** package-qualified must now resolve **exactly**: a partially-qualified or
-  stale package no longer falls back to matching the bare tail, so a reference that used
-  to bind by luck now does not match the subject. And a **bare** reference whose short
-  name exists in more than one package resolves first-declared-wins, which can pick the
-  wrong-package entity — that is the pre-existing
+  Three narrower resolution changes come with moving the junction matches onto identity,
+  all three matching what the Java port already did. A junction `@references` (or an
+  `@objectRef`) that **is** package-qualified must now resolve **exactly**: a
+  partially-qualified or stale package no longer falls back to matching the bare tail, so
+  a reference that used to bind by luck now matches neither the subject **nor** the
+  target — both sides are affected, not just the subject side. A **bare** reference whose
+  short name exists in more than one package resolves first-declared-wins, which can pick
+  the wrong-package entity — the pre-existing
   [#174](https://github.com/metaobjectsdev/metaobjects/issues/174) behaviour, now reached
-  by M:N derivation as well. Both are narrow, and both bring the other ports onto Java's
-  semantics rather than away from them.
+  by M:N derivation as well. And on **Python only**, a junction whose `@references` use
+  the dotted `Entity.field` form now resolves: that port compared the whole attr value, so
+  `Team.id` never matched the entity `Team` and an M:N through such a junction failed
+  derivation outright. Both junction matches now take the entity head through the same
+  canonical parse the loader uses, so those models derive where they previously raised.
 
   **Cross-port divergence goes DOWN, not up.** Both junction matches — "does this
   reference name the relationship's subject?" and "does this one name the target?" — now
@@ -74,13 +78,20 @@ here.**
   same junction column as BOTH sides and emit `(srcFk, srcFk)` silently. C#'s
   `M2MNavigation` descriptor resolves its target the same way for the same reason — its
   `IsSelfJoin` feeds the EF `UsingEntity` wiring, and a descriptor that disagreed with
-  the derivation would mis-map the relationship. TypeScript, C# and Python
-  had been comparing package-stripped short names, so a genuine cross-package hetero M:N
-  onto a target whose short name matched the subject's (`a::NodeBase` relating to
-  `b::NodeBase`) was misread as a self-join on those three — a regression the two-name
-  subject introduced, caught in review and fixed here rather than documented. Scoped to
-  that one predicate: no other name comparison changed, and this is not a general
-  [ADR-0041](spec/decisions/ADR-0041-cross-package-reference-resolution.md) sweep.
+  the derivation would mis-map the relationship. TypeScript, C# and Python had been
+  comparing package-stripped short names, so a genuine cross-package hetero M:N onto a
+  target whose short name matched the subject's (`a::NodeBase` relating to `b::NodeBase`)
+  was misread as a self-join on those three — a regression the two-name subject
+  introduced, caught in review and fixed rather than documented.
+
+  What changed, exactly: both junction matches in the four derivations, the C# navigation
+  builder's own target/junction resolution (so the descriptor cannot disagree with the
+  derivation feeding it), and Python's reference head-parse, which now delegates to the
+  loader's canonical helper instead of keeping a third copy. `@through` resolution and
+  every comparison outside M:N derivation are untouched, and this is **not** a general
+  [ADR-0041](spec/decisions/ADR-0041-cross-package-reference-resolution.md) sweep — the
+  resolver added here is deliberately narrow and is not the port's general reference
+  resolver.
 
   No vocabulary change: `metamodelVersion` stays `1.0` and the registry manifest is
   untouched.

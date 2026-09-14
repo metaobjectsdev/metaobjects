@@ -52,6 +52,7 @@ from ..identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from .meta_relationship import MetaRelationship
+from .relationship_references import reference_target_entity
 
 
 class M2MDerivationError(Exception):
@@ -102,41 +103,39 @@ def _ref_fk_field(ref: MetaData) -> str | None:
 def _ref_target_entity(ref: MetaData) -> str | None:
     """The @references target-entity name of a reference (bare, package-stripped).
 
-    KNOWN GAP (pre-dates #368, deliberately NOT fixed here): this compares the
-    WHOLE @references value, so the dotted ``Entity.field`` form ("Team.id")
-    never matches a bare entity name — a junction whose references are authored
-    dotted derives no M:N fields on this port, where TS's derive-m2m-fields.ts
-    (which reads ``ref.targetEntity``) resolves them. The one-line repair is to
-    delegate to ``relationship_references.reference_target_entity``; it is left
-    alone because it would change M:N derivation behaviour, which is outside the
-    #368 fix. Tracked separately from the rule-(e) ladder, whose copy of this
-    blind spot IS fixed.
+    Compares the WHOLE @references value, so the dotted ``Entity.field`` form
+    ("Team.id") never matches a bare entity name. That blind spot NO LONGER
+    affects M:N derivation: both junction matches now run through
+    :func:`_ref_target_qualified` (which delegates to the canonical
+    ``reference_target_entity``), and this function is reached only on the
+    DEFENSIVE fallback path — when ``@objectRef`` does not resolve to an entity at
+    all, which loader validation normally prevents. It is left package-stripped
+    because that fallback is deliberately the pre-identity behaviour; the
+    remaining copy of the dotted blind spot is being closed on its own branch.
     """
     v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving (identity attr)
     return _strip_package(v) if isinstance(v, str) and v else None
 
 
-def _ref_target_raw(ref: MetaData) -> str | None:
-    """The @references value of a reference, VERBATIM (package intact).
+def _ref_target_qualified(ref: MetaData) -> str | None:
+    """The target-entity half of a reference's ``@references``, PACKAGE INTACT.
 
-    Distinct from :func:`_ref_target_entity`, which strips the PACKAGE for the
-    legacy bare-name compare. This keeps the package — identity resolution needs
-    the qualified form to tell ``a::NodeBase`` from ``b::NodeBase`` — and takes the
-    entity head of the dotted ``Entity.field`` form, since packages use ``::`` and
-    never ``.``, so the first ``.`` splits the entity off. That matches the TS
-    ``MetaIdentity.targetEntity``, the C# ``TargetEntity`` and Java's
-    ``refTargetObject``, so all four resolve a dotted junction reference alike.
+    Distinct from :func:`_ref_target_entity`, which strips the package for the
+    legacy bare-name compare. Identity resolution needs the qualified form to tell
+    ``a::NodeBase`` from ``b::NodeBase``, and needs the dotted ``Entity.field``
+    form reduced to its entity head — which is exactly what the canonical
+    :func:`~metaobjects.meta.core.relationship.relationship_references.reference_target_entity`
+    already computes, so this delegates rather than keeping a third copy of the
+    parse. That helper searches the dot only AFTER the last ``::``, so a package
+    segment can never be mistaken for the field separator; a local ``find(".")``
+    would have assumed packages never contain a dot instead of declining the
+    assumption.
 
-    (The dotted blind spot on :func:`_ref_target_entity` is a separate, older gap
-    being closed on its own branch. Splitting HERE removes the seam: without it the
-    two sides of the same ``if`` would disagree about dotted references once that
-    lands.)
+    Delegating also finishes the seam with the branch that makes
+    :func:`_ref_target_entity` split: one parse, one behaviour, both sides of the
+    same ``if``.
     """
-    v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving
-    if not isinstance(v, str) or not v:
-        return None
-    dot = v.find(".")
-    return v if dot < 0 else v[:dot]
+    return reference_target_entity(ref)
 
 
 def _root_objects(node: MetaData) -> list[MetaData]:
@@ -267,7 +266,7 @@ def derive_m2m_fields(
             (
                 r
                 for r in refs
-                if _is_subject(_find_entity(root_objects, _ref_target_raw(r)))
+                if _is_subject(_find_entity(root_objects, _ref_target_qualified(r)))
             ),
             None,
         )
@@ -281,7 +280,7 @@ def derive_m2m_fields(
                 (
                     r
                     for r in refs
-                    if _find_entity(root_objects, _ref_target_raw(r))
+                    if _find_entity(root_objects, _ref_target_qualified(r))
                     is target_entity_node
                 ),
                 None,
