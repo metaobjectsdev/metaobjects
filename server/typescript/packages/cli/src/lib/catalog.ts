@@ -54,9 +54,23 @@ export function catalogPackages(): string[] {
  * another.
  */
 export function composeCatalog(): Record<string, GeneratorRegistryEntry> {
+  return composeSlices(SLICES);
+}
+
+/**
+ * The composition itself, over any slice list.
+ *
+ * Separate from {@link composeCatalog} so the REFUSAL is reachable from a test. With the
+ * live `SLICES` closed over, the only thing a test could assert is that today's three
+ * packages happen not to collide — which stays true if the check above is deleted, so
+ * the guard that makes a collision a build failure was never covered by anything.
+ */
+export function composeSlices(
+  slices: ReadonlyArray<readonly [string, Record<string, GeneratorRegistryEntry>]>,
+): Record<string, GeneratorRegistryEntry> {
   const out: Record<string, GeneratorRegistryEntry> = {};
   const from: Record<string, string> = {};
-  for (const [pkg, slice] of SLICES) {
+  for (const [pkg, slice] of slices) {
     for (const [name, entry] of Object.entries(slice)) {
       if (name in out) {
         throw new Error(

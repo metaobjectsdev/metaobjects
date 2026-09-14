@@ -14,7 +14,7 @@ import { describe, it, expect } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { GENERATOR_LAYERS, stableNameIndex } from "@metaobjectsdev/codegen-ts";
-import { composeCatalog, listCatalog, packageOf, catalogPackages } from "../src/lib/catalog.js";
+import { composeCatalog, composeSlices, listCatalog, packageOf, catalogPackages } from "../src/lib/catalog.js";
 
 const PORT = "typescript" as const;
 
@@ -93,10 +93,46 @@ describe("the composed TS catalog conforms to the canonical manifest", () => {
     }
   });
 
-  it("composition refuses a duplicate stable name", () => {
-    // The live slices must not collide; the throw path is what makes that a build
-    // failure rather than last-slice-wins.
+  it("the live slices do not collide", () => {
     expect(() => composeCatalog()).not.toThrow();
+  });
+
+  it("composition REFUSES a duplicate stable name, naming both packages", () => {
+    // Asserted over `composeSlices` rather than `composeCatalog`, because the latter
+    // closes over the three live slices and they do not collide. Passing it two slices
+    // that DO is the only way to reach the guard — without this, deleting the throw
+    // would leave every test in this file green while `meta gen --list` described one
+    // generator and `meta gen` ran another.
+    const catalog = composeCatalog();
+    const [name, entry] = Object.entries(catalog)[0]!;
+
+    let thrown: Error | undefined;
+    try {
+      composeSlices([
+        ["@acme/first", { [name]: entry }],
+        ["@acme/second", { [name]: entry }],
+      ]);
+    } catch (e) {
+      thrown = e as Error;
+    }
+
+    expect(thrown, "a duplicate stable name was accepted").toBeDefined();
+    // The message has to name BOTH packages — "there is a collision" is not actionable
+    // when three packages register into one table.
+    expect(thrown!.message).toContain(`"${name}"`);
+    expect(thrown!.message).toContain("@acme/first");
+    expect(thrown!.message).toContain("@acme/second");
+  });
+
+  it("composition keeps a name registered by exactly one slice", () => {
+    // The other half of the guard: it must refuse a COLLISION, not any repeat visit.
+    const catalog = composeCatalog();
+    const [name, entry] = Object.entries(catalog)[0]!;
+    const composed = composeSlices([
+      ["@acme/first", { [name]: entry }],
+      ["@acme/second", {}],
+    ]);
+    expect(Object.keys(composed)).toEqual([name]);
   });
 
   it("listCatalog() is grouped by layer, in the declared layer order", () => {
