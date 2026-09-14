@@ -41,10 +41,13 @@ function findRepoRoot(start: string): string {
  * The pattern matches a key POSITION, not the key text anywhere in the file, and that
  * distinction is the whole point. Every embedded value is the library's own YAML, and
  * that YAML talks about its own ref: `library/ai/db.yaml` opens with "Opted into as
- * `\"ai/db\"`". So a substring search for `"ai/db"` hits the payload and passes even if
- * the key is deleted — which is what this file used to do. A key is line-initial (or
- * follows `.put(`) and contains no backslash; a payload mention is mid-string and
- * escaped. Excluding `\\` from the captured class is what separates them.
+ * `\"ai/db\"`".
+ *
+ * What separates a key from that mention is the ANCHOR, not the escaping. For TypeScript,
+ * C# and Python the pattern is line-initial and every entry is one line, so a mention
+ * inside a value can never be at column zero. Java's `.put("` is unanchored, and there the
+ * `[^"\\]+` class is what does the work, since a payload occurrence carries `.put(\"`.
+ * Both halves are pinned by the fixtures below.
  */
 const EMBEDS: Record<string, { path: string; key: RegExp }> = {
   typescript: {
@@ -168,16 +171,17 @@ describe("every library manifest fact is resolved against the thing it claims", 
     });
 
     test(`${name}: every layer's refs are embedded in EVERY port`, () => {
-      // The row says `ports: [typescript, java, kotlin, csharp, python]`, and the basis
-      // for that claim is that one generator script writes the embed for all of them.
-      // Checked rather than asserted, because "the library is reachable from your port"
-      // is the single fact a polyglot adopter acts on.
+      // The row says `ports: [typescript, java, kotlin, csharp, python]`. Checked rather
+      // than asserted, because "the library is reachable from your port" is the single
+      // fact a polyglot adopter acts on — and because TWO scripts write these five files
+      // (`scripts/generate-embedded-library.ts` and the Python one), so agreement between
+      // them is a result, not a premise.
       const refs = declaredRefs(name);
       expect(refs.length, `${name} declares no refs at all`).toBeGreaterThan(0);
       for (const port of SERVER_LANGS) {
         const embedded = embeddedKeys(port).refs;
         for (const ref of refs) {
-          expect([...embedded].includes(ref), `${port} does not embed ${ref}`).toBe(true);
+          expect(embedded.has(ref), `${port} does not embed ${ref}`).toBe(true);
         }
       }
     });
@@ -189,7 +193,10 @@ describe("every library manifest fact is resolved against the thing it claims", 
     // pattern that silently stops matching would make every containment check above
     // vacuously true, which is the way a gate of this shape stops gating.
     expect(Object.keys(EMBEDS).sort(), "a port with no embed mapping").toEqual([...SERVER_LANGS].sort());
-    const allRefs = NAMES.flatMap(declaredRefs).sort();
+    // De-duplicated: this is the side built from manifests, and it is compared against a
+    // set extracted from each embed — so a ref legitimately declared by two layers of one
+    // library would otherwise fail every port against embeds that are correct.
+    const allRefs = [...new Set(NAMES.flatMap(declaredRefs))].sort();
     expect(allRefs.length, "no library declares any ref").toBeGreaterThan(0);
 
     for (const port of SERVER_LANGS) {
@@ -200,17 +207,21 @@ describe("every library manifest fact is resolved against the thing it claims", 
   });
 
   describe("the key extractor reads a POSITION, not a spelling", () => {
-    // What this replaced was `text.includes(`"${ref}"`)` over the same files. That check
-    // is not currently wrong — every embedded payload escapes its own quotes, so a ref
-    // named in a comment reads as `\\"ai/db\\"` and the bare `"ai/db"` occurs exactly once,
-    // as the key. It is fragile rather than broken: it cannot see an EXTRA key, it cannot
-    // tell the ref record from the manifest record, and it holds only for as long as the
-    // generator keeps escaping payloads the way it does today.
+    // What this replaced was `text.includes(`"${ref}"`)` over the same files, and on ONE
+    // port that check was not weak but VACUOUS. There are two embed generators, not one:
+    // `scripts/generate-embedded-library.ts` writes TS/Java/C# and escapes inner quotes,
+    // so a ref named in a payload reads as `\\"ai/db\\"` and the bare `"ai/db"` occurs once,
+    // as the key. `server/python/scripts/generate_embedded_library.py` emits through
+    // `repr()`, which single-quotes the key and leaves inner `"` RAW — so in
+    // `embedded_library.py` the key is `\'ai/db\'` while the payload carries a bare
+    // `"ai/db"`, and the old assertion was matching the comment and never the key.
+    // Measured, not inferred: with each key line deleted from each real embed, the old
+    // predicate went false on TS/Java/C# and stayed TRUE on Python, for all six refs.
     //
-    // The extractor does not depend on that. A key is a POSITION — line-initial, or after
-    // `.put(` — so a mention anywhere inside a value is not a key however it is spelled.
-    // These fixtures pin that, including the unescaped case a change to the generator
-    // would produce, where a substring check WOULD produce a false positive.
+    // The extractor does not depend on either convention. A key is a POSITION — line-
+    // initial, or after `.put(` — so a mention inside a value is not a key however it is
+    // spelled. The fixtures below pin both the escaped and the unescaped form, the latter
+    // being today's Python output rather than a hypothetical.
     const ESCAPED = JSON.stringify('"ai/db"').slice(1, -1); // \"ai/db\"
 
     /** One line of each record, in that port's syntax, for an arbitrary ref key. */
