@@ -5,12 +5,12 @@
 > step. Locations:
 > - **npm** → `~/.npmrc` (granular token, bypass-2FA). Publish with `bun publish`. It can
 >   publish but **cannot change package access**, so `npm dist-tag rm` 403s — see §4 Cleanup.
-> - **PyPI** → token in `~/Work/Keys/pypi.txt`. **Publish manually with `uv publish`** — the
->   OIDC Trusted Publishing workflow is misconfigured ([#36]), so the keyless path below does
->   NOT work yet; use the manual procedure.
-> - **Maven Central** → `~/.m2/settings.xml` (server ids `central` + `gpg-credentials`) + the
->   local GPG signing key. `mvn -Prelease deploy` from `server/java` (autoPublish — no manual
->   staging promotion).
+> - **PyPI** → the `PYPI_API_TOKEN` repo secret, via `publish-python.yml`: push a
+>   `python-v<version>` tag. Do not also `uv publish` by hand — see the PyPI procedure.
+> - **Maven Central** → push a `java-v<maven-version>` tag (`publish-java.yml` signs and deploys
+>   from repo secrets), or locally `~/.m2/settings.xml` (server ids `central` +
+>   `gpg-credentials`) + the local GPG signing key and `mvn -Prelease deploy` from
+>   `server/java` (autoPublish — no manual staging promotion). One route per version, never both.
 > - **NuGet** → keyless OIDC via the `publish-csharp.yml` workflow: `gh workflow run
 >   publish-csharp.yml` (or push a `csharp-v<version>` tag).
 >
@@ -621,23 +621,29 @@ lock the repo/owner IDs against resurrection attacks.)
 
 # Releasing the Python package to PyPI
 
-How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publishing**
-(OIDC from GitHub Actions) — no API token.
+How to publish the **`metaobjects`** Python package to PyPI: push a `python-v<version>` tag and
+the workflow publishes it with the `PYPI_API_TOKEN` repo secret.
 
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
 currently `1.0.4`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
-## How we publish: Trusted Publishing (OIDC)
+## How we publish: a tag-triggered workflow (API token)
 
 The workflow [`.github/workflows/publish-python.yml`](../.github/workflows/publish-python.yml)
-builds with `uv` and publishes via `pypa/gh-action-pypi-publish` using OIDC.
-Trigger it manually (**Actions → publish-python → Run workflow**) or with a `python-v*` tag.
+builds with `uv` and publishes via `pypa/gh-action-pypi-publish`, authenticating with the
+`PYPI_API_TOKEN` repo secret (already set). Trigger it with a `python-v*` tag or manually
+(**Actions → publish-python → Run workflow**). It published `1.0.1` and `1.0.4` this way.
 
-### One-time setup on PyPI
+**Trusted Publishing (OIDC) is NOT in use.** [#36](https://github.com/metaobjectsdev/metaobjects/issues/36) closed on the token route, not by
+registering a publisher: the action logs "an explicit password was also set, disabling Trusted
+Publishing" on every run. That warning is expected, not a failure.
 
-Project `metaobjects` → **Settings → Publishing → Add a new GitHub publisher**:
+### Switching to OIDC later (optional)
+
+Project `metaobjects` → **Settings → Publishing → Add a new GitHub publisher**, then drop
+`password:` from the workflow and add `permissions: id-token: write`:
 
 | Field | Value |
 |---|---|
@@ -646,8 +652,7 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
 | Workflow | `publish-python.yml` |
 | Environment | *(leave empty)* |
 
-(The initial `0.9.0` was published from a local `uv publish`; this workflow makes
-subsequent releases keyless.)
+(The initial `0.9.0` was published from a local `uv publish`.)
 
 ## Gotchas (the non-obvious ones)
 
@@ -669,15 +674,13 @@ subsequent releases keyless.)
    rm -rf dist && uv build --out-dir dist        # must produce BOTH .tar.gz and .whl
    uvx twine check dist/*                         # metadata + README render
    ```
-3. **Publish — MANUAL (`uv publish`), not the OIDC workflow.** Trusted Publishing is
-   misconfigured ([#36] — `publish-python.yml` fails with `invalid-publisher`), so publish
-   from the local build with the token in `~/Work/Keys/pypi.txt`:
-   ```bash
-   cd server/python   # after the `uv build` above produced dist/
-   # the token is line 4 of the key file, AFTER the "secret: " label — strip it or you get a 403:
-   UV_PUBLISH_TOKEN="$(sed -n '4p' ~/Work/Keys/pypi.txt | sed 's/^secret:[[:space:]]*//')" uv publish dist/*
-   ```
-   (When #36 is fixed, switch to **Actions → publish-python → Run workflow** / a `python-v<version>` tag.)
+3. **Publish — push the tag:** `git tag -a python-v<version> -m "…" && git push origin
+   python-v<version>`. **Do not ALSO publish by hand.** The `1.0.3` cut ran a local
+   `uv publish` and then pushed the tag, so the workflow went red with `400 File already
+   exists` on a release that had shipped — a red run that reads exactly like a failed publish.
+   The local route is the fallback only when the workflow cannot run: `UV_PUBLISH_TOKEN=<a PyPI
+   API token> uv publish dist/*` from `server/python`, and then do not push a `python-v*` tag
+   for that version.
 4. **Verify:** `curl -s https://pypi.org/pypi/metaobjects/json | python3 -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"`.
 
 # Releasing the Java/Kotlin modules to Maven Central
@@ -708,7 +711,10 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
    Then assert the excluded modules are in sync: `scripts/check-pom-versions.sh`
    (also enforced on every push by `.githooks/pre-push` and by `scripts/ci-local.sh`).
 2. **Validate locally:** `cd server/java && mvn -q clean install -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed).
-3. **Deploy:** `mvn -Prelease deploy` from `server/java`. The `central-publishing-maven-plugin`
+3. **Deploy — ONE of two routes, never both** (a second deploy of a published version fails
+   with `Component … already exists`): push a `java-v<maven-version>` tag, and
+   `publish-java.yml` runs the deploy below in CI with the signing secrets (how `8.0.4`
+   shipped); or run `mvn -Prelease deploy` from `server/java`. The `central-publishing-maven-plugin`
    (`<publishingServerId>central</publishingServerId>`, `<autoPublish>true</autoPublish>`) uploads
    the signed bundle and auto-releases — **no manual staging → release promotion**. Auth + the GPG
    passphrase come from `~/.m2/settings.xml` (server ids `central` + `gpg-credentials`); the GPG
