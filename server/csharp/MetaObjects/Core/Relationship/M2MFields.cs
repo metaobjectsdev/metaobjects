@@ -19,6 +19,19 @@
 //      two references are taken in declaration order (sourceField = first,
 //      targetField = second). Resolution unions both at read time.
 // Ambiguous (source == target, neither @sourceRefField nor @symmetric) -> throw.
+//
+// "source" above means the relationship's SUBJECT, and under `extends` there are two
+// legitimate names for it. Every caller walks the RESOLVING Relationships()
+// (M2MNavigationBuilder for codegen, M2MResolver at run time) and passes the entity it
+// is ITERATING, which for an inherited relationship is not the one that declared it.
+// So the DECLARING entity is resolved here from rel.Parent (same shape as the #368
+// loader fix, ValidationPasses' `declaringEntity = rel.Parent ?? obj`), and the passed
+// `source` is kept alongside it rather than discarded: a junction FK usually references
+// the CONCRETE entity, because the abstract base has no table, while @objectRef on an
+// inherited self-join names the base. Both are accepted, for the self-join
+// classification and the hetero reference match alike. Not covered: a junction
+// reference naming an entity strictly BETWEEN the base and the navigating entity in a
+// deeper hierarchy.
 
 using MetaObjects.Meta;
 
@@ -62,49 +75,62 @@ public static class M2MDerivation
     /// Derive the source/target junction FK fields for a M:N relationship.
     /// </summary>
     /// <param name="rel">the M:N relationship (carries @objectRef + @through + optional @sourceRefField / @symmetric).</param>
-    /// <param name="source">the entity declaring <paramref name="rel"/>.</param>
+    /// <param name="source">the entity the caller is navigating from. Accepted alongside
+    /// <c>rel.Parent</c> as a name for the relationship's subject, and used as the
+    /// declaring entity when <paramref name="rel"/> has no <see cref="MetaObject"/> parent.</param>
     /// <param name="root">the loaded model root (to find the junction entity).</param>
     /// <exception cref="M2MDerivationException">
     /// when the junction is missing/malformed or the self-join is ambiguous.
     /// </exception>
     public static M2MFields DeriveM2MFields(MetaRelationship rel, MetaObject source, MetaRoot root)
     {
+        // The entity that DECLARES `rel` — see the header note. Parent is the owning
+        // entity for both an own declaration and an inherited one (an unmodified
+        // inherited child is the SAME node object; an override is a different node
+        // whose parent is the overriding entity, also correct).
+        var declaring = rel.Parent as MetaObject ?? source;
+        // The relationship's subject: either name is valid (see the header note).
+        var subjectNames = declaring.Name == source.Name
+            ? new[] { declaring.Name }
+            : new[] { declaring.Name, source.Name };
+        bool IsSubject(string? name) => name is not null && subjectNames.Contains(StripPackage(name));
+        var subjectLabel = string.Join(" or ", subjectNames.Select(n => $"\"{n}\""));
+
         string? throughName = rel.Through;
         if (throughName is null)
         {
             throw new M2MDerivationException(
-                $"relationship \"{source.Name}.{rel.Name}\" is missing @through (required for M:N derivation)");
+                $"relationship \"{declaring.Name}.{rel.Name}\" is missing @through (required for M:N derivation)");
         }
 
         var junction = root.FindObject(throughName);
         if (junction is null)
         {
             throw new M2MDerivationException(
-                $"relationship \"{source.Name}.{rel.Name}\" @through \"{throughName}\" does not resolve to an entity");
+                $"relationship \"{declaring.Name}.{rel.Name}\" @through \"{throughName}\" does not resolve to an entity");
         }
 
         string? targetName = rel.ObjectRef;
         if (targetName is null)
         {
             throw new M2MDerivationException(
-                $"relationship \"{source.Name}.{rel.Name}\" is missing @objectRef (the M:N target)");
+                $"relationship \"{declaring.Name}.{rel.Name}\" is missing @objectRef (the M:N target)");
         }
 
         var refs = junction.ReferenceIdentities();
         if (refs.Count != 2)
         {
             throw new M2MDerivationException(
-                $"junction \"{throughName}\" for relationship \"{source.Name}.{rel.Name}\" must declare exactly two " +
+                $"junction \"{throughName}\" for relationship \"{declaring.Name}.{rel.Name}\" must declare exactly two " +
                 $"identity.reference children (found {refs.Count})");
         }
 
-        bool isSelfJoin = StripPackage(targetName) == source.Name;
+        bool isSelfJoin = IsSubject(targetName);
 
         if (!isSelfJoin)
         {
             // Hetero: match each reference by the entity it resolves to.
-            var sourceRef = refs.FirstOrDefault(
-                r => r.TargetEntity is not null && StripPackage(r.TargetEntity) == source.Name);
+            var sourceRef = refs.FirstOrDefault(r => IsSubject(r.TargetEntity));
             var targetRef = refs.FirstOrDefault(
                 r => r.TargetEntity is not null && StripPackage(r.TargetEntity) == StripPackage(targetName));
             var sourceField = sourceRef is not null ? RefFkField(sourceRef) : null;
@@ -112,8 +138,8 @@ public static class M2MDerivation
             if (sourceField is null || targetField is null)
             {
                 throw new M2MDerivationException(
-                    $"junction \"{throughName}\" for relationship \"{source.Name}.{rel.Name}\" must declare one " +
-                    $"identity.reference to \"{source.Name}\" and one to \"{StripPackage(targetName)}\"");
+                    $"junction \"{throughName}\" for relationship \"{declaring.Name}.{rel.Name}\" must declare one " +
+                    $"identity.reference to {subjectLabel} and one to \"{StripPackage(targetName)}\"");
             }
             return new M2MFields(sourceField, targetField);
         }
@@ -127,7 +153,7 @@ public static class M2MDerivation
             if (a is null || b is null)
             {
                 throw new M2MDerivationException(
-                    $"symmetric junction \"{throughName}\" for \"{source.Name}.{rel.Name}\" has a reference with no @fields");
+                    $"symmetric junction \"{throughName}\" for \"{declaring.Name}.{rel.Name}\" has a reference with no @fields");
             }
             return new M2MFields(a, b);
         }
@@ -136,7 +162,7 @@ public static class M2MDerivation
         if (sourceRefField is null)
         {
             throw new M2MDerivationException(
-                $"self-join relationship \"{source.Name}.{rel.Name}\" through \"{throughName}\" is ambiguous: " +
+                $"self-join relationship \"{declaring.Name}.{rel.Name}\" through \"{throughName}\" is ambiguous: " +
                 "set @sourceRefField (directed) or @symmetric (undirected)");
         }
 
@@ -145,7 +171,7 @@ public static class M2MDerivation
         if (directedSourceRef is null)
         {
             throw new M2MDerivationException(
-                $"@sourceRefField \"{sourceRefField}\" on \"{source.Name}.{rel.Name}\" does not match any " +
+                $"@sourceRefField \"{sourceRefField}\" on \"{declaring.Name}.{rel.Name}\" does not match any " +
                 $"identity.reference FK field on junction \"{throughName}\"");
         }
         var directedTargetRef = refs.FirstOrDefault(r => !ReferenceEquals(r, directedSourceRef));
@@ -153,7 +179,7 @@ public static class M2MDerivation
         if (directedTargetField is null)
         {
             throw new M2MDerivationException(
-                $"junction \"{throughName}\" for \"{source.Name}.{rel.Name}\" has no distinct target-side reference");
+                $"junction \"{throughName}\" for \"{declaring.Name}.{rel.Name}\" has no distinct target-side reference");
         }
         return new M2MFields(sourceRefField, directedTargetField);
     }

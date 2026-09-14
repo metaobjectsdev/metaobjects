@@ -38,9 +38,31 @@ public sealed record M2MNavigation(
     /// <summary>The navigation member name (the relationship name, e.g. "tags").</summary>
     public string Name => Relationship.Name;
 
-    /// <summary>True when the target entity is the source entity (self-join).</summary>
-    public bool IsSelfJoin => ReferenceEquals(Source, Target) ||
-        string.Equals(Source.Name, Target.Name, StringComparison.Ordinal);
+    /// <summary>
+    /// The entity that DECLARES the relationship. Under <c>extends</c> that is not
+    /// <see cref="Source"/>: the builder walks the RESOLVING <c>Relationships()</c>, so
+    /// <see cref="Source"/> is whichever entity INHERITED the relationship, while
+    /// <c>Relationship.Parent</c> is the one that declared it.
+    /// </summary>
+    public MetaObject DeclaringEntity => Relationship.Parent as MetaObject ?? Source;
+
+    /// <summary>
+    /// True when the target entity is the relationship's subject (self-join) — matched
+    /// against BOTH the navigating <see cref="Source"/> and the
+    /// <see cref="DeclaringEntity"/>, the same pair M2MDerivation accepts.
+    ///
+    /// Load-bearing: DbContextGenerator excludes self-joins from the EF
+    /// <c>UsingEntity</c> wiring and EntityGenerator marks their navigation
+    /// <c>[NotMapped]</c> (it is route-traversed). Before the derivation fix an
+    /// inherited self-join threw and the whole navigation was dropped, so this never
+    /// ran on one; comparing only <see cref="Source"/> would now turn that silent
+    /// drop into silently WRONG EF configuration.
+    /// </summary>
+    public bool IsSelfJoin =>
+        ReferenceEquals(Source, Target) ||
+        string.Equals(Source.Name, Target.Name, StringComparison.Ordinal) ||
+        ReferenceEquals(DeclaringEntity, Target) ||
+        string.Equals(DeclaringEntity.Name, Target.Name, StringComparison.Ordinal);
 }
 
 /// <summary>
