@@ -48,7 +48,6 @@ from ....shared.base_types import TYPE_IDENTITY, TYPE_OBJECT
 from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
-    IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from .meta_relationship import MetaRelationship
@@ -103,18 +102,24 @@ def _ref_fk_field(ref: MetaData) -> str | None:
 def _ref_target_entity(ref: MetaData) -> str | None:
     """The @references target-entity name of a reference (bare, package-stripped).
 
-    Compares the WHOLE @references value, so the dotted ``Entity.field`` form
-    ("Team.id") never matches a bare entity name. That blind spot NO LONGER
-    affects M:N derivation: both junction matches now run through
-    :func:`_ref_target_qualified` (which delegates to the canonical
-    ``reference_target_entity``), and this function is reached only on the
-    DEFENSIVE fallback path — when ``@objectRef`` does not resolve to an entity at
-    all, which loader validation normally prevents. It is left package-stripped
-    because that fallback is deliberately the pre-identity behaviour; the
-    remaining copy of the dotted blind spot is being closed on its own branch.
+    GAP FIXED (was pre-existing, pre-dates #368; parked during that fix because
+    repairing it changes M:N derivation behaviour, which was out of scope there):
+    a junction reference authored with the dotted ``Entity.field`` explicit-fields
+    form ("Team.id") used to compare the WHOLE @references value against a bare
+    entity name and never match, so a M:N relationship through such a junction
+    derived no fields at all. Delegates the dotted-tail split to
+    ``relationship_references.reference_target_entity`` (the #368 fix's canonical
+    head-parse) and then strips any package prefix to keep this function's
+    bare-name contract.
+
+    Note this function is now reached only on the DEFENSIVE fallback path — when
+    ``@objectRef`` does not resolve to an entity at all, which loader validation
+    normally prevents. Both junction matches otherwise run through
+    :func:`_ref_target_qualified`, which keeps the package and compares by
+    resolved entity identity.
     """
-    v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving (identity attr)
-    return _strip_package(v) if isinstance(v, str) and v else None
+    target = reference_target_entity(ref)
+    return _strip_package(target) if target else None
 
 
 def _ref_target_qualified(ref: MetaData) -> str | None:

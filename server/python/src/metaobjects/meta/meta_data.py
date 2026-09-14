@@ -30,6 +30,12 @@ class MetaData:
         self.super_data: Optional[MetaData] = None
         self.is_abstract = False
         self.is_overlay = False
+        # Set on a node an `overlay: true` declaration MERGED INTO (never on the
+        # overlay, which is discarded once applied). The loader's own record that the
+        # flag was honoured — read by the FR-043 library guard to tell an intentional
+        # amendment from a copy that landed in the same package, a distinction no
+        # comparison of the merged trees could make. Mirrors TS `MetaData.isMerge`.
+        self.is_merge = False
         self.is_array = False
         self.parent: Optional[MetaData] = None
         self._attr_nodes: dict[str, MetaData] = {}  # name -> MetaAttr instance

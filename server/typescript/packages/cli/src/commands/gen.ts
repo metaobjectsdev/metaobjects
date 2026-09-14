@@ -181,6 +181,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // snapshot artifact), so sharedModelFile() defaults its `files` selection
       // to exactly what this project itself declares.
       sourceFiles: genCollection.ownFiles,
+      // FR-043 §6 — the shipped-library selection. Always passed, including as `[]`:
+      // that is what tells the post-selection audit "this project opted into none",
+      // which is a different statement from a programmatic caller that never said.
+      libraries: genCollection.libraries,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {
@@ -403,6 +407,10 @@ async function listCatalogCommand(
         wiredNames: wiredGeneratorNames(forgeConfig),
         ownedNames: ownedGeneratorNames(projectRoot),
         declaredDeps: declaredDepsOf(projectRoot),
+        // FR-043 — the library rows read the selection from the COLLECTION, which is
+        // where `libraries` lives now (`.metaobjects/config.json`), not from the
+        // codegen config it was moved out of.
+        libraries: genCollection.libraries,
       },
       probe: { metadata, scope: genCollection.inScope },
     };
@@ -421,6 +429,7 @@ async function listCatalogCommand(
           wiredNames: wiredGeneratorNames(forgeConfig),
           ownedNames: ownedGeneratorNames(projectRoot),
           declaredDeps: declaredDepsOf(projectRoot),
+          libraries: collection.libraries,
         },
       };
     } catch {

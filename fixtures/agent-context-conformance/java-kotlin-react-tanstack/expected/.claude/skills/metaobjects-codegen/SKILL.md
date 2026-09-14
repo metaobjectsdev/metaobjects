@@ -143,17 +143,30 @@ they emit.
    `layer`, `framework`, what it emits, what it requires, what it costs to install,
    and — with `--probe`, which constructs each generator and dry-runs it against YOUR
    model — how many files each would actually emit.
-3. **Choose by `layer`.** Satisfy every `requires`. Take what `wouldEmit > 0` says your
+3. **Check the libraries before you choose generators.** The same catalog carries
+   `kind: "library"` rows — declared design MetaObjects ships, each with a `useWhen`.
+   If one matches a capability you are about to model, **opt in and adapt rather than
+   author**: you inherit its entities, its requirements, and the rulings recorded with
+   them. Layers are how much of it you take. The bare name is the CORE layer — the
+   model and its ledger, sourceless, so it adds **no tables and no generated code**;
+   `<lib>/db` is the separate opt-in that proposes the schema. Opt in with
+   `"libraries": ["iam", "iam/db"]` in `.metaobjects/config.json`.
+4. **Choose by `layer`.** Satisfy every `requires`. Take what `wouldEmit > 0` says your
    model is already asking for.
    - Pick **ONE** framework on the `api` layer: `routes` and `routes-hono` are
      alternatives, and wiring both silently produces two complete HTTP surfaces.
    - Do **NOT** apply that rule to `client`. `@metaobjectsdev/tanstack` peers on
      `react`, so a form generator plus the TanStack hook/grid generators is the
      intended composition, not a conflict.
-4. **`meta eject <names...> --format json`** — copies each into `codegen/generators/`
+5. **`meta eject <names...> --format json`** — copies each into `codegen/generators/`
    (yours to edit), and reports the import line, the entry to add to `generators`, one
    consolidated install command, and any config keys those generators read.
-5. **`meta gen`** — read its warnings, then typecheck.
+6. **`meta gen`** — read its warnings, then typecheck.
+
+A library row also carries `provides` (what is in the box) and, under `--probe`, a
+`project` block: which layers you selected, how many tables and requirements they
+added here, which of your entities `extends` into it, and any generator the library
+implies that you have not wired.
 
 ### The six layers, and what picks them
 
@@ -476,7 +489,8 @@ generator sets are **closed built-in registries** — `--generators` *selects* f
 ships, and there is no seam to register a `Generator` of your own. (Python's
 `--provider module:symbol` registers **metamodel vocabulary**, not a generator; do not
 reach for it here.) Use `--template-spec <json>` — plus `--templates <dir>` on Python or
-`--template-root <dir>` on C# — and your entries are appended to the default suite. Worked
+`--template-root <dir>` on C# — and your entries are appended to your `--generators`
+selection. Worked
 examples with the full JSON: `docs/ports/python.md` and `docs/ports/csharp.md`.
 
 **The spec is auto-discovered, and that is load-bearing.** With no `--template-spec`, both
@@ -531,21 +545,21 @@ everywhere — **each physical name is spelled once, and generated code referenc
 | Kotlin | `<Entity>Names.kt` | `ProgramNames.CREATED_AT_COLUMN` |
 | Python | `<entity_snake>_names.py` | `PROGRAM_CREATED_AT_COLUMN` |
 
-**Check that it is actually wired before you reference it — on three of five ports an
-EXISTING project emits none.** "In the default suite" and "what a fresh scaffold writes"
-are different facts, and only C# and Python have the first:
+**Check that it is actually wired before you reference it — on ALL FIVE ports a project
+emits none until it asks for it.** ADR-0034 Amendment 2 made codegen opt-in everywhere: no
+port ships a default suite, so there is no port on which upgrading the package starts
+emitting this artifact. "Wired" is the only fact there is.
 
-| Port | Where the suite is decided | An existing project upgrading gets it? |
+| Port | Where the selection is declared | An existing project upgrading gets it? |
 |---|---|---|
-| C# | `GenCommand.DefaultGeneratorNames` — a real default | **Yes**, with no edit |
-| Python | `cli.py` `_default_generators()` — a real default | **Yes**, with no edit |
-| TypeScript | `metaobjects.config.ts` `generators: [...]` — **the complete list; there is no default suite** | **No** — add `namesFile()` |
+| C# | `--generators <names>` on `dotnet meta gen` — required, no default | **No** — name `names` |
+| Python | `--generators <names>` on `metaobjects gen` — required, no default | **No** — name `names` |
+| TypeScript | `metaobjects.config.ts` `generators: [...]` — the complete list | **No** — add `namesFile()` |
 | Java / Kotlin | the pom's `<generators>` — the complete list | **No** — add `SpringNamesGenerator` / `KotlinNamesGenerator` |
 
-TypeScript's `meta init` scaffolds `namesFile()`, so a project *initialized* at 1.0 has it;
-a project initialized earlier has the config `meta init` wrote then, and upgrading the
-package never edits a config. So on TypeScript the artifact is opt-in exactly as it is on
-the JVM — the scaffold is not a default. To wire it into an existing TS project:
+`meta init` scaffolds `generators: []` and an empty `codegen/generators/`, so even a
+project *initialized* at 1.0 has to choose this one — the scaffold is deliberately not a
+default by another name. To wire it into a TS project:
 
 ```ts
 import { namesFile } from "./codegen/generators/names.js";   // after `meta eject names`

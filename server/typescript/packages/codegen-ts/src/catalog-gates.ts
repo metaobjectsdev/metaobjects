@@ -1,11 +1,13 @@
-// Two post-selection audits `meta gen` runs over the wired suite.
+// The post-selection audits `meta gen` runs over the wired suite.
 //
 // Codegen is opt-in, so the selection is the adopter's (increasingly their agent's).
 // That makes `meta gen` the place the selection is CHECKED — not by refusing it, but by
-// naming the two ways a legal selection still surprises you:
+// naming the ways a legal selection still surprises you:
 //
 //   1. a generator whose output imports a module nothing in the run emits;
-//   2. two `api`-layer generators bringing two different HTTP frameworks.
+//   2. two `api`-layer generators bringing two different HTTP frameworks;
+//   3. (FR-043) a library opted into whose implied generator is not wired, or a
+//      generator wired whose library is not opted into — the two halves of one choice.
 //
 // Both are WARNINGS, self-extinguishing, never a build failure. An adopter may
 // legitimately have hand-written the other half, and serving Node and edge from one
@@ -138,5 +140,83 @@ export function warnMixedApiFrameworks(
       "so nothing conflicts and nothing fails; this run produces two complete HTTP " +
       "surfaces over the same entities. That is legitimate when you are migrating " +
       "between them or serving Node and edge from one model — otherwise wire one.",
+  );
+}
+
+/**
+ * Warn on the two halves of a library/generator selection that do not agree.
+ *
+ * A library ships metadata; a generator that keys on that metadata is a separate
+ * choice, and FR-043 §6 deliberately wires neither for you. What it does instead is
+ * refuse to let either half be silently half-done:
+ *
+ *   - **opted in, not wired** — the design is in your model and the code it implies is
+ *     not being generated.
+ *   - **wired, not opted in** — the generator's anchor is a node only that library
+ *     declares, so it will match nothing and emit zero files. Without this line that is
+ *     indistinguishable from "my model has no trace entities yet".
+ *
+ * Both self-extinguish: wire it, or opt in, or remove one. Neither ever fails a build —
+ * an adopter who ejected the library and owns the metadata is in a legitimate state
+ * this cannot see, and a gate that cries wolf gets switched off.
+ *
+ * `optedIn` is the project's selection TOKENS (`["ai", "ai/db"]`); a layer token names
+ * the same library as its bare form.
+ */
+export function warnLibrarySelectionMismatch(
+  generators: readonly Generator[],
+  catalog: Record<string, GeneratorRegistryEntry>,
+  manifests: Readonly<Record<string, { generators?: ReadonlyArray<{ name: string }> }>>,
+  optedIn: readonly string[],
+  warn: (message: string) => void,
+): void {
+  const index = stableNameIndex(catalog);
+  const wired = new Set(
+    generators.map((g) => index.get(g.name)).filter((n): n is string => n !== undefined),
+  );
+  const selected = new Set(optedIn.map((t) => t.split("/")[0]!));
+
+  for (const [library, manifest] of Object.entries(manifests)) {
+    const implied = (manifest.generators ?? []).map((g) => g.name);
+    if (implied.length === 0) continue;
+
+    if (selected.has(library)) {
+      const notWired = implied.filter((n) => !wired.has(n));
+      if (notWired.length > 0) {
+        warn(
+          `library "${library}" is opted in and implies ${notWired.map((n) => `"${n}"`).join(", ")}, ` +
+            `which ${notWired.length === 1 ? "is" : "are"} not wired. The design is in your model; ` +
+            `the code it implies is not being generated. Wire it, or ignore this if you are ` +
+            `taking the metadata alone.`,
+        );
+      }
+      continue;
+    }
+
+    // Not opted in: name any of its generators that ARE wired. Checked per library
+    // rather than per generator so a name two libraries imply is not reported twice
+    // when one of them is selected.
+    const orphaned = implied.filter(
+      (n) => wired.has(n) && !impliedByAnySelected(n, manifests, selected),
+    );
+    if (orphaned.length > 0) {
+      warn(
+        `${orphaned.map((n) => `"${n}"`).join(", ")} ${orphaned.length === 1 ? "is" : "are"} wired, ` +
+          `but library "${library}" — which declares the node ${orphaned.length === 1 ? "it keys" : "they key"} ` +
+          `on — is not opted in, so ${orphaned.length === 1 ? "it will" : "they will"} match nothing and emit ` +
+          `no files. Add "${library}" to \`libraries\` in .metaobjects/config.json, or unwire ` +
+          `${orphaned.length === 1 ? "it" : "them"}.`,
+      );
+    }
+  }
+}
+
+function impliedByAnySelected(
+  generator: string,
+  manifests: Readonly<Record<string, { generators?: ReadonlyArray<{ name: string }> }>>,
+  selected: ReadonlySet<string>,
+): boolean {
+  return [...selected].some((lib) =>
+    (manifests[lib]?.generators ?? []).some((g) => g.name === generator),
   );
 }

@@ -27,6 +27,10 @@ import { compareOwnedCopy, type OwnedComparison } from "../lib/owned-copy.js";
 import { composeCatalog } from "../lib/catalog.js";
 import { installSetFor, type InstallSet } from "../lib/install-set.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
+import {
+  ejectLibrary, ejectableLibraryNames, isLibraryName, libraryStaleness,
+  type LibraryEjectResult,
+} from "../lib/library-eject.js";
 
 // Mirrors `OWNED_GENERATORS_DIR` in init.ts's `writeOwnedGenerators` — same directory,
 // same never-clobber-without-consent contract. Kept as its own local constant rather
@@ -305,6 +309,44 @@ async function listOutput(cwd: string): Promise<string> {
     );
     lines.push("");
   }
+  // FR-043 — the shipped libraries, and how far this project's copies have drifted.
+  lines.push("Shipped libraries (copy one into your own sources and own it):");
+  for (const name of ejectableLibraryNames()) lines.push(`  ${name}`);
+  lines.push("");
+  const staleness = await libraryStaleness(cwd);
+  if (staleness.length > 0) {
+    lines.push("Libraries this project has already ejected:");
+    for (const row of staleness) {
+      if (row.verdict === "unreadable") {
+        lines.push(`  ${row.library}  [ejected — NOT COMPARED: ${row.reason}]`);
+      } else if (row.verdict === "identical") {
+        lines.push(`  ${row.library}  [ejected — identical to the shipped library]`);
+      } else {
+        lines.push(
+          `  ${row.library}  [ejected — DIFFERS: ${row.changed} node(s) changed, ` +
+            `${row.upstreamOnly} only upstream, ${row.localOnly} only yours]`,
+        );
+      }
+      lines.push(`      ${row.files.join(", ")}`);
+      if (row.stillOptedIn) {
+        lines.push(
+          `      STILL OPTED IN — remove "${row.library}" from \`libraries\`; the shipped ` +
+            "tree and your copy both load, and deletions in yours do nothing.",
+        );
+      }
+    }
+    lines.push("");
+    lines.push(
+      "  Compared through the canonical serializer in OWN mode, so re-indentation and " +
+        "key order never show up — only a declaration that actually changed. Nodes are " +
+        "matched by NAME, so renaming the package (which you may) does not read as drift.",
+    );
+    lines.push(
+      "  \"only upstream\" — the library gained or you deleted. \"only yours\" — you added.",
+    );
+    lines.push("");
+  }
+
   lines.push("Run: meta eject <name>");
   return lines.join("\n");
 }
@@ -328,6 +370,43 @@ interface EjectPayload {
   install: InstallSet;
   /** Config keys the ejected generators read — what to set beside `generators`. */
   config: { keys: string[] };
+  /** FR-043 — libraries ejected in this call. Absent when none were. */
+  libraries?: LibraryEjectResult[];
+}
+
+/** The text report for one ejected library. */
+function reportLibrary(result: LibraryEjectResult): void {
+  const created = result.files.filter((f) => f.status !== "preserved");
+  const kept = result.files.filter((f) => f.status === "preserved");
+  if (created.length > 0) {
+    log.info(
+      `Ejected library "${result.library}" -> ${result.root}:`,
+    );
+    for (const f of created) log.info(`  ${f.path}  [${f.status}]`);
+  }
+  if (kept.length > 0) {
+    // Never clobber without consent — the same contract the generator path keeps, and
+    // the stakes are higher here: these files are the adopter's MODEL.
+    for (const f of kept) {
+      log.info(`  ${f.path} already exists — left untouched (--force replaces it).`);
+    }
+  }
+  log.info(
+    `You own this metadata now (FR-043 §3.4): rename the package, delete what you do ` +
+      `not need, change anything. Nothing regenerates it.`,
+  );
+  if (result.stillOptedIn.length > 0) {
+    // The one step that makes the eject complete. Said here AND stamped in every file,
+    // because the failure it prevents is silent in a way an adopter cannot diagnose.
+    log.info(
+      `NEXT: remove ${result.stillOptedIn.map((t) => `"${t}"`).join(", ")} from ` +
+        `\`libraries\` in .metaobjects/config.json. Left there, the shipped tree and your ` +
+        `copy BOTH load: additions take effect and deletions do NOT, because the library ` +
+        `still declares what you removed. The loader refuses it outright ` +
+        `(ERR_LIBRARY_PACKAGE_COLLISION) — your next command will fail until you do.`,
+    );
+  }
+  log.info("`meta eject --list` reports how far your copy has drifted from the shipped one.");
 }
 
 /**
@@ -339,7 +418,7 @@ interface EjectPayload {
  * Returns the unknown names, or an empty array.
  */
 function unknownNames(names: readonly string[]): string[] {
-  return names.filter((n) => resolveSource(n) === undefined);
+  return names.filter((n) => resolveSource(n) === undefined && !isLibraryName(n));
 }
 
 /** Print the per-name text report — every branch below predates this command taking
@@ -459,17 +538,25 @@ export async function ejectCommand(
   const unknown = unknownNames(flags.names);
   if (unknown.length > 0) {
     log.error(
-      `unknown generator(s): ${unknown.join(", ")}. Nothing was ejected. ` +
-        `Ejectable: ${ejectableNames().join(", ")}. ` +
-        "Run `meta eject --list` to see them grouped by package.",
+      `unknown name(s): ${unknown.join(", ")}. Nothing was ejected. ` +
+        `Ejectable generators: ${ejectableNames().join(", ")}. ` +
+        `Shipped libraries: ${ejectableLibraryNames().join(", ")}. ` +
+        "Run `meta eject --list` to see them grouped.",
     );
     return 2;
   }
 
   const catalog = composeCatalog();
   const rows: EjectedRow[] = [];
+  const libraries: LibraryEjectResult[] = [];
   try {
     for (const name of flags.names) {
+      if (isLibraryName(name)) {
+        const lib = await ejectLibrary({ cwd, name, force: flags.force });
+        libraries.push(lib);
+        if (fmt === "text") reportLibrary(lib);
+        continue;
+      }
       const result = await ejectGenerator({ cwd, name, force: flags.force });
       rows.push({
         name,
@@ -488,7 +575,10 @@ export async function ejectCommand(
   // ONE install set for the whole call, not one per name: ejecting `hooks` and `grid`
   // needs @metaobjectsdev/codegen-ts-tanstack once, and an adopter handed the same
   // package twice reasonably wonders which line to run.
-  const entries = flags.names.map((n) => catalog[n]).filter((e) => e !== undefined);
+  const entries = flags.names
+    .filter((n) => !isLibraryName(n))
+    .map((n) => catalog[n])
+    .filter((e) => e !== undefined);
   const install = installSetFor(entries);
   const configKeys = [...new Set(entries.flatMap((e) => e.configKeys ?? []))].sort();
 
@@ -517,7 +607,12 @@ export async function ejectCommand(
       );
     }
   } else {
-    const payload: EjectPayload = { ejected: rows, install, config: { keys: configKeys } };
+    const payload: EjectPayload = {
+      ejected: rows,
+      install,
+      config: { keys: configKeys },
+      ...(libraries.length > 0 ? { libraries } : {}),
+    };
     emitStructured(payload, fmt);
   }
 

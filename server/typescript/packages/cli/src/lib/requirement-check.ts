@@ -42,6 +42,10 @@ import {
   type MetaRequirement,
   type RequirementStatus,
 } from "@metaobjectsdev/metadata";
+// FR-043 §5.4 — the provenance key for coverage activation. A node-only subpath, which
+// is why it is a second import rather than a name on the barrel above: the library
+// module reaches the filesystem and the root barrel stays browser-safe.
+import { libraryPackages } from "@metaobjectsdev/metadata/library";
 
 export type Severity = "error" | "warn";
 
@@ -82,8 +86,11 @@ export interface RequirementSummary {
   undecided: number;
   /** deferred entries naming no ticket, so nobody will be reminded. */
   deferredUntracked: number;
-  entitiesTotal: number;
-  entitiesClaimed: number;
+  /** ABSENT when coverage was not measured — FR-043 §5.4. A number here is a
+   *  ratio the project is held to; absence is the honest reading of "this project
+   *  has authored no requirement of its own, so it asked to be held to none". */
+  entitiesTotal?: number;
+  entitiesClaimed?: number;
 }
 
 /** Severity of the object-coverage gate. Promotion to `"error"` is a one-line
@@ -255,16 +262,61 @@ export interface RequirementScan {
    *  Threaded through so BOTH `coverableEntities` call sites (the gate and the
    *  summary) inherit the same narrowing — see `coverableEntities`. */
   readonly coverable?: (fqn: string) => boolean;
+  /** FR-043 §5.4 — whether object coverage applies at all on this run. See
+   *  {@link projectAuthoredRequirements}. Read by BOTH the gate and the summary from
+   *  this one scan, for the same reason `claimedObjects` is shared: a summary that
+   *  printed a ratio the gate had not enforced would be a measurement nobody could
+   *  reconcile with the diagnostics beneath it. */
+  readonly measureCoverage: boolean;
+}
+
+/**
+ * Did the ADOPTER author any of these requirements?
+ *
+ * FR-043 §5.4, and the rule exists because `checkRequirements` activates object
+ * coverage on the presence of any requirement at all. A library ships its own ledger
+ * — `iam` ships eleven entries — so without this, opting into a library would switch
+ * the unclaimed-entity gate on across a project that has never written a requirement,
+ * and report every entity in it. The gate would then be measuring the LIBRARY's
+ * decision to ship a ledger rather than anything the adopter did.
+ *
+ * Provenance is the library's declared PACKAGE. That is a manifest fact the standalone
+ * library gate resolves against the library loaded alone, whereas a node's source id
+ * differs between the on-disk dev layout (an absolute path) and the embedded one
+ * (`library:<ref>.yaml`) — a rule keyed on source would hold in this repo and stop
+ * holding in an installed build.
+ *
+ * An adopter OVERLAYING a library requirement (§5.5) is deliberately not authoring one:
+ * the overlay merges into the library's node, in the library's package, and disagreeing
+ * with a shipped verdict is a statement about the library's design rather than about
+ * what the adopter's own model is for. Treating it as activation would mean correcting
+ * one library entry silently acquired a coverage gate over the whole estate.
+ */
+function projectAuthoredRequirements(addressed: readonly AddressedRequirement[]): boolean {
+  const libPkgs = libraryPackages();
+  return addressed.some((r) => {
+    const pkg = r.node.package ?? r.node.fileDefaultPackage ?? "";
+    return !libPkgs.has(pkg);
+  });
 }
 
 export function scanRequirements(
   root: MetaData,
-  opts?: { coverable?: (fqn: string) => boolean },
+  opts?: {
+    coverable?: (fqn: string) => boolean;
+    /** Force coverage on or off instead of deriving it. The one caller that legitimately
+     *  knows better is the gate over a SHIPPED library loaded standalone: there the
+     *  library IS the project under test, and "every entity this library ships is claimed
+     *  by its own ledger" is exactly what is being asserted — so the derivation would
+     *  switch the check off precisely where it is the point. */
+    measureCoverage?: boolean;
+  },
 ): RequirementScan {
   const addressed = collectAddressedRequirements(root);
   return {
     addressed,
     claimedObjects: claimedObjectKeys(root, addressed.map((r) => r.node)),
+    measureCoverage: opts?.measureCoverage ?? projectAuthoredRequirements(addressed),
     // `exactOptionalPropertyTypes` — an omitted key, never an explicit `undefined`.
     ...(opts?.coverable !== undefined ? { coverable: opts.coverable } : {}),
   };
@@ -350,7 +402,7 @@ function coverableEntities(root: MetaData, coverable?: (fqn: string) => boolean)
  */
 export function checkRequirements(root: MetaData, scan: RequirementScan = scanRequirements(root)): Diagnostic[] {
   const out: Diagnostic[] = [];
-  const { addressed, claimedObjects, coverable } = scan;
+  const { addressed, claimedObjects, coverable, measureCoverage } = scan;
   if (addressed.length === 0) return out; // opt-in by declaration — no requirements, nothing to say
 
   for (const { node: req, path: reqPath } of addressed) {
@@ -564,7 +616,9 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
   //
   // So a green run means "every entity is claimed by something", not "every node is
   // described". The stronger reading would be false.
-  for (const ent of coverableEntities(root, coverable)) {
+  //   ADOPTER-AUTHORED ONLY. FR-043 §5.4 — see `projectAuthoredRequirements`. A library's
+  //   ledger is counted and checked, but it cannot volunteer you for coverage.
+  for (const ent of measureCoverage ? coverableEntities(root, coverable) : []) {
     const key = ent.resolutionKey();
     if (!claimedObjects.has(key)) {
       out.push({
@@ -601,8 +655,8 @@ export function summariseRequirements(
     byStatus: {},
     undecided: 0,
     deferredUntracked: 0,
-    entitiesTotal: 0,
-    entitiesClaimed: 0,
+    // The coverage pair is filled in below only when the run measures coverage —
+    // `exactOptionalPropertyTypes`, so the keys are absent rather than undefined.
   };
 
   for (const req of reqs) {
@@ -621,10 +675,16 @@ export function summariseRequirements(
   // Both sides of the ratio come from the SAME scan the gate read, so the printed
   // summary cannot disagree with the diagnostics printed beneath it — previously
   // the same helper, now literally the same result.
-  const claimed = scan.claimedObjects;
-  for (const ent of coverableEntities(root, scan.coverable)) {
-    summary.entitiesTotal++;
-    if (claimed.has(ent.resolutionKey())) summary.entitiesClaimed++;
+  if (scan.measureCoverage) {
+    const claimed = scan.claimedObjects;
+    let total = 0;
+    let claimedCount = 0;
+    for (const ent of coverableEntities(root, scan.coverable)) {
+      total++;
+      if (claimed.has(ent.resolutionKey())) claimedCount++;
+    }
+    summary.entitiesTotal = total;
+    summary.entitiesClaimed = claimedCount;
   }
 
   return summary;

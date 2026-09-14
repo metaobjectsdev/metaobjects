@@ -9,6 +9,7 @@
 // read that yields Format.JSON; only reading @responseFormat yields Format.XML.
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { librarySources } from "@metaobjectsdev/metadata/library";
 import { traceHelperFile } from "../../src/generators/trace-helper-file.js";
 import type { GenContext } from "../../src/generator.js";
 
@@ -31,19 +32,8 @@ async function loadRoot(promptAttrs: Record<string, unknown>) {
         },
         {
           "object.entity": {
-            name: "LlmCallBase",
-            abstract: true,
-            children: [
-              { "field.uuid": { name: "traceId" } },
-              { "field.string": { name: "callType" } },
-              { "field.string": { name: "llmRequest", "@dbColumnType": "jsonb" } },
-            ],
-          },
-        },
-        {
-          "object.entity": {
             name: "ApiCall",
-            extends: "LlmCallBase",
+            extends: "metaobjects::ai::LlmCallBase",
             children: [
               { "source.rdb": { "@table": "api_call", "@role": "primary" } },
               { "identity.primary": { name: "id", "@fields": ["traceId"] } },
@@ -61,7 +51,10 @@ async function loadRoot(promptAttrs: Record<string, unknown>) {
       ],
     },
   };
+  // The shipped base, not a local one wearing its name: `trace-helper` keys on the
+  // `ai` manifest's anchor and compares by node identity (FR-043 §6).
   const res = await new MetaDataLoader().load([
+    ...librarySources(["ai"]),
     new InMemoryStringSource(JSON.stringify(doc), { id: "meta.json", format: "json" }),
   ]);
   expect(res.errors).toEqual([]);

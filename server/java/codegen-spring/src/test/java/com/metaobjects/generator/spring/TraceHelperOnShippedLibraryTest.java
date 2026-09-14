@@ -138,6 +138,66 @@ public class TraceHelperOnShippedLibraryTest {
             new TreeSet<>(baseFields), new TreeSet<>(callFields));
     }
 
+    /**
+     * FR-043 §6 — the generator keys on the manifest's ANCHOR, not on a name compiled
+     * into this class.
+     *
+     * <p>The floor the design names for a port whose plumbing slips is exactly this:
+     * the port's constant equals the manifest anchor. Here the constant IS the manifest
+     * read, so the assertion is that the read produced the thing the library declares —
+     * a manifest whose {@code generators} block was renamed or emptied leaves the
+     * generator matching nothing, and it should fail here rather than in silence.</p>
+     */
+    @Test
+    public void theAnchorComesFromTheManifest() {
+        assertEquals("the generator's anchors ARE the manifest's, for its own stable name",
+            LibrarySources.generatorAnchors(LlmTraceHelperGenerator.STABLE_NAME),
+            LlmTraceHelperGenerator.ANCHOR_FQNS);
+        assertTrue("the ai manifest must declare the trace-helper anchor",
+            LlmTraceHelperGenerator.ANCHOR_FQNS.contains("metaobjects::ai::LlmCallBase"));
+    }
+
+    /**
+     * The latent bug the anchor removes: an adopter's own abstract of the same NAME.
+     *
+     * <p>The old predicate compared {@code getShortName()}, so any entity called
+     * {@code LlmCallBase} in any package triggered a helper — one that writes the
+     * shipped base's columns, which that entity does not declare.</p>
+     */
+    @Test
+    public void anAdoptersOwnBaseOfTheSameNameDoesNotMatch() {
+        String meta = "{\"metadata.root\": {"
+            + "  \"package\": \"acme::app\","
+            + "  \"children\": ["
+            + "    { \"object.value\": { \"name\": \"GreetResponse\", \"children\": ["
+            + "      { \"field.string\": { \"name\": \"greeting\", \"@required\": true } }"
+            + "    ]}},"
+            + "    { \"object.entity\": { \"name\": \"LlmCallBase\", \"abstract\": true, \"children\": ["
+            + "      { \"field.uuid\": { \"name\": \"spanId\" } }"
+            + "    ]}},"
+            + "    { \"object.entity\": { \"name\": \"ImpostorCall\","
+            + "      \"extends\": \"acme::app::LlmCallBase\", \"children\": ["
+            + "        { \"source.rdb\": { \"@table\": \"impostor\", \"@role\": \"primary\" } },"
+            + "        { \"identity.primary\": { \"name\": \"pk\", \"@fields\": [\"spanId\"] } },"
+            + "        { \"template.prompt\": { \"name\": \"p\","
+            + "            \"@payloadRef\": \"acme::app::GreetResponse\","
+            + "            \"@responseRef\": \"acme::app::GreetResponse\" } }"
+            + "      ]}}"
+            + "  ]"
+            + "}}";
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "trace-impostor");
+        loader.init();
+        loader.load(List.of(new InMemoryStringSource(meta, "trace-impostor/meta.json")));
+
+        MetaObject impostor = loader.getMetaObjectByName("acme::app::ImpostorCall");
+        assertNotNull(impostor);
+        org.junit.Assert.assertFalse(
+            "an entity extending an adopter's OWN LlmCallBase must not emit a trace helper",
+            LlmTraceHelperGenerator.appliesTo(impostor));
+    }
+
     @Test
     public void theLibraryIsNotLoadedUnlessAskedFor() {
         // The negative arm for the generator path specifically: without the opt-in there is

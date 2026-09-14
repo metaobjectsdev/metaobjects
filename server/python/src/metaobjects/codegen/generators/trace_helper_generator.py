@@ -54,13 +54,31 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.meta.template.meta_template import MetaTemplate
 from metaobjects.shared.base_types import TYPE_TEMPLATE
+from metaobjects.library.library_sources import LIBRARY_MANIFESTS
 from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "trace-helper"
 
-#: The abstract base entity a trace entity must (transitively) ``extends``.
-#: Cross-port constant — mirrors TS ``LLM_CALL_BASE`` / Java ``LLM_CALL_BASE``.
-LLM_CALL_BASE = "LlmCallBase"
+def _anchor_fqns() -> frozenset[str]:
+    """FQNs of the library nodes this generator keys on, read from the shipped
+    ``library.json`` manifests (FR-043 §6) rather than hard-coded here.
+
+    What it replaces: ``LLM_CALL_BASE = "LlmCallBase"``, compared against
+    ``MetaData.name`` (the SHORT name) anywhere in the super chain — so any adopter
+    entity of that name, in any package, triggered a helper that writes the shipped
+    base's columns. An anchor is fully qualified and is resolved to a node below.
+    """
+    out: set[str] = set()
+    for manifest in LIBRARY_MANIFESTS.values():
+        for gen in manifest.get("generators", []):
+            if gen.get("name") == _GENERATOR_NAME and gen.get("anchor"):
+                out.add(gen["anchor"])
+    return frozenset(out)
+
+
+#: The anchor FQNs, resolved once per process from the embedded manifests.
+#: Mirrors TS ``anchorFqns()`` / Java ``LlmTraceHelperGenerator.ANCHOR_FQNS``.
+ANCHOR_FQNS = _anchor_fqns()
 
 
 def _pkg_of(node: MetaData) -> str:
@@ -88,15 +106,18 @@ def _snake_case(name: str) -> str:
 
 
 def _extends_base(entity: MetaObject) -> bool:
-    """Walk the resolved super chain looking for a node SHORT-named
-    :data:`LLM_CALL_BASE`. ``MetaData.name`` holds the short name only (the package
-    lives on ``MetaData.package``), so a plain ``name`` compare is the short-name
-    test — mirrors the Java ``getShortName()`` walk and the TS ``superResolved``
-    walk."""
+    """Walk the resolved super chain looking for one of :data:`ANCHOR_FQNS`.
+
+    The FULLY-QUALIFIED name, via ``resolution_key()``: within one loaded root an FQN
+    identifies exactly one node (a same-name redeclaration merges), so this is the
+    node-identity compare the TypeScript port makes against the resolved anchor node,
+    and the Java port makes against ``getName()``."""
+    if not ANCHOR_FQNS:
+        return False
     cur = entity.super_data
     visited: set[int] = set()
     while cur is not None and id(cur) not in visited:
-        if cur.name == LLM_CALL_BASE:
+        if cur.resolution_key() in ANCHOR_FQNS:
             return True
         visited.add(id(cur))
         cur = cur.super_data
@@ -125,7 +146,7 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     """Render one ``record_<entity>.py`` for a concrete trace ``object.entity``.
 
     Returns ``None`` when the entity is not a trace-helper target (abstract, not
-    ``LlmCallBase``-derived, no nested ``template.prompt``, or that prompt carries
+    derived from a library anchor, no nested ``template.prompt``, or that prompt carries
     neither ``@responseRef`` nor ``@payloadRef``).
 
     Raises ``ValueError`` when the prompt's ``@responseRef`` does not resolve to an

@@ -51,7 +51,7 @@ rejected (exit 2).
 | `FromSqlInterpolated(` outside `.g.cs` | stored-proc call — candidate for the `callable` generator |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `HasPrecision(` hand-coded | `field.decimal` with `@precision`/`@scale` drives this from the `entity` generator |
-| a table/column string in raw-SQL EF calls, or `nameof(Entity.Prop)` standing in for a column | second spelling of a declared physical name — reference `<Entity>Names.g.cs` (`AuthorNames.SourcePrimaryTable` / `<Field>Column`, default suite — `Names.Name` is the OBJECT's name, not the table); an EF property inside LINQ is the typed handle — correct |
+| a table/column string in raw-SQL EF calls, or `nameof(Entity.Prop)` standing in for a column | second spelling of a declared physical name — reference `<Entity>Names.g.cs` (`AuthorNames.SourcePrimaryTable` / `<Field>Column`, emitted when `names` is named in `--generators` — `Names.Name` is the OBJECT's name, not the table); an EF property inside LINQ is the typed handle — correct |
 
 ---
 
@@ -66,7 +66,7 @@ selection uses stable names via `dotnet meta gen --generators <names>`, over a
 **So do not score a C# project down for "not owning its generators", and do not
 recommend writing one.** The customization path here is the **declarative template**:
 `dotnet meta gen --template-spec <json> --template-root <dir>`, whose entries append to
-the default suite. A finding of the form "the built-ins do not emit the shape this
+your `--generators` selection. A finding of the form "the built-ins do not emit the shape this
 project needs" resolves to a template-spec, not to generator code. Worked example with
 the full JSON: `docs/ports/csharp.md`.
 

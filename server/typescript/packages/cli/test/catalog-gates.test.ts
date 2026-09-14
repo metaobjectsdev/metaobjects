@@ -1,4 +1,4 @@
-// The two post-selection audits `meta gen` runs over a wired suite.
+// The post-selection audits `meta gen` runs over a wired suite.
 //
 // In the CLI rather than in codegen-ts, because both need the COMPOSED catalog: three
 // of the four cases below involve `form` / `hooks` / `grid-hook`, which live in the
@@ -16,8 +16,11 @@ import { composeCatalog } from "../src/lib/catalog.js";
 
 const FIXTURE = join(import.meta.dir, "fixtures", "catalog-probe");
 
-async function warningsFor(generators: Generator[]): Promise<string[]> {
-  const metadata = await loadMemory(FIXTURE, {});
+async function warningsFor(
+  generators: Generator[],
+  libraries?: string[],
+): Promise<string[]> {
+  const metadata = await loadMemory(FIXTURE, libraries === undefined ? {} : { libraries });
   const root = mkdtempSync(join(tmpdir(), "catalog-gates-"));
   const config: MetaobjectsGenConfig = {
     outDir: "src/generated",
@@ -33,6 +36,7 @@ async function warningsFor(generators: Generator[]): Promise<string[]> {
       projectRoot: root,
       dryRun: true,
       catalog: composeCatalog(),
+      ...(libraries === undefined ? {} : { libraries }),
     });
     return result.warnings;
   } finally {
@@ -119,5 +123,38 @@ describe("the api-framework advisory", () => {
       gen("entity"), formFile(), tanstackQuery(), tanstackGrid(),
     ]);
     expect(warnings.filter((w) => w.includes("frameworks"))).toEqual([]);
+  });
+});
+
+describe("the library gate (FR-043 §6)", () => {
+  test("opted in, not wired: the design is in the model and its code is not generated", async () => {
+    const warnings = (await warningsFor([gen("entity")], ["ai"])).join("\n");
+    expect(warnings).toContain('library "ai" is opted in and implies "trace-helper"');
+  });
+
+  test("wired, not opted in: it will match nothing, and says so", async () => {
+    // The failure this removes is a SILENT one: a wired generator emitting zero files
+    // reads exactly like "my model has no trace entities yet".
+    const warnings = (await warningsFor([gen("entity"), gen("trace-helper")], [])).join("\n");
+    expect(warnings).toContain('"trace-helper" is wired');
+    expect(warnings).toContain('library "ai"');
+    expect(warnings).toContain("emit");
+  });
+
+  test("both halves together: silence", async () => {
+    const warnings = await warningsFor([gen("entity"), gen("trace-helper")], ["ai"]);
+    expect(warnings.filter((w) => w.includes("library"))).toEqual([]);
+  });
+
+  test("neither half: silence — a library nobody mentioned is not a finding", async () => {
+    const warnings = await warningsFor([gen("entity")], []);
+    expect(warnings.filter((w) => w.includes("library"))).toEqual([]);
+  });
+
+  test("a caller that never threads `libraries` gets no library warnings at all", async () => {
+    // Undefined is "nobody told me", which is a different statement from `[]`. Claiming
+    // "you opted into nothing" on a programmatic run would be a claim we cannot support.
+    const warnings = await warningsFor([gen("entity"), gen("trace-helper")]);
+    expect(warnings.filter((w) => w.includes("opted in"))).toEqual([]);
   });
 });

@@ -82,15 +82,11 @@ public class SpringAppliesToTest {
                 "@responseRef": "SummaryPayload",
                 "@textRef": "responding/prompt"
             } },
-            { "object.entity": { "name": "LlmCallBase", "abstract": true, "children": [
-                { "field.uuid":   { "name": "traceId" } },
-                { "field.string": { "name": "status" } }
-            ] } },
             { "object.value": { "name": "GreetResponse", "children": [
                 { "field.string": { "name": "greeting", "@required": true } }
             ] } },
             { "object.entity": { "name": "GreetingCall",
-              "extends": "acme::shop::LlmCallBase", "children": [
+              "extends": "metaobjects::ai::LlmCallBase", "children": [
                 { "source.rdb":   { "@table": "llm_call" } },
                 { "identity.primary": { "name": "pk", "@fields": ["traceId"] } },
                 { "template.prompt": {
@@ -111,9 +107,14 @@ public class SpringAppliesToTest {
      * needs is registered by loading the template classes, which this path does.)
      */
     private MetaDataLoader loader() {
+        // The SHIPPED base, via the `libraries` opt-in: `trace-helper` keys on the `ai`
+        // manifest's ANCHOR now (FR-043 §6) and compares the full name, so a bespoke
+        // `acme::shop::LlmCallBase` no longer matches — which is the latent bug that
+        // change removes, and which this fixture used to depend on.
         MetaDataLoader loader = new MetaDataLoader(
                 LoaderOptions.create(false, false, true),
                 MetaDataLoader.SUBTYPE_MANUAL, "spring-applies-to");
+        loader.setLibraries(java.util.Collections.singletonList("ai"));
         loader.init();
         loader.load(List.of(new InMemoryStringSource(FIXTURE, "applies-to/meta.json")));
         return loader;
@@ -196,7 +197,7 @@ public class SpringAppliesToTest {
         MetaDataLoader loader = loader();
         MetaObject greetingCall = loader.getMetaObjectByName("acme::shop::GreetingCall");
         MetaObject author = loader.getMetaObjectByName("acme::shop::Author");
-        MetaObject base = loader.getMetaObjectByName("acme::shop::LlmCallBase");
+        MetaObject base = loader.getMetaObjectByName("metaobjects::ai::LlmCallBase");
 
         assertTrue("concrete LlmCallBase subclass with prompt @responseRef emits a trace helper",
             LlmTraceHelperGenerator.appliesTo(greetingCall));

@@ -146,6 +146,23 @@ public enum ErrorCode
     ERR_SCOPE_PATTERN_INVALID,
     // Phase-1 metadata-source-resolution: no metadata collection was discovered — no config declaring sources, and no default metaobjects/ directory.
     ERR_COLLECTION_NOT_FOUND,
+
+    /// <summary>
+    /// FR-043 — <c>.metaobjects/config.json</c>'s <c>libraries</c> names a shipped library or
+    /// layer this build does not have. Refused with the available tokens rather than skipped:
+    /// skipped, it resurfaces as <c>ERR_UNRESOLVED_SUPER</c> against the adopter's own
+    /// metadata, which is the wrong place to send someone looking.
+    /// </summary>
+    ERR_UNKNOWN_LIBRARY,
+    /// <summary>
+    /// FR-043: a node is declared by BOTH an adopter's own metadata and a shipped library the project opts into — the `meta eject <lib>` copy with the library still in `libraries`. The two merge silently and ASYMMETRICALLY: additions take, deletions do not, because the library still declares what was removed.
+    /// </summary>
+    /// <remarks>Raised by the TypeScript SDK's load path; registered in every port so the shared corpus list stays one set.</remarks>
+    ERR_LIBRARY_PACKAGE_COLLISION,
+    /// <summary>
+    /// FR-043: a NEW top-level node is declared into a package a shipped library owns while that library is opted in — a later release of the library may ship a node of that name and merge into it. `overlay: true` on one of the library's OWN nodes is the documented amendment door and is untouched.
+    /// </summary>
+    ERR_LIBRARY_PACKAGE_NOT_OWNED,
     // FR5c — multi-file overlay merge produced a conflicting attribute value:
     // two contributors set the same @attr to different non-empty values.
     ERR_MERGE_CONFLICT,

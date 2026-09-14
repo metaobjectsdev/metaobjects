@@ -67,10 +67,14 @@ def _value_object(name: str, fields: list[MetaField]) -> MetaObject:
 
 
 def _llm_call_base() -> MetaObject:
-    """A minimal abstract ``LlmCallBase`` — only the fields ``build_llm_call_row``
-    reads via the input matter at codegen time; the abstract flag + name drive the
-    ``_extends_base`` short-name walk."""
+    """A minimal abstract stand-in for the shipped ``metaobjects::ai::LlmCallBase``.
+
+    The PACKAGE is load-bearing now: ``_extends_base`` compares ``resolution_key()``
+    against the anchor FQNs the ``ai`` manifest declares (FR-043 §6), not the short
+    name, so a base built here without it is an adopter's own entity that happens to
+    share a name — which is exactly what no longer matches, on purpose."""
     base = MetaObject(TYPE_OBJECT, "entity", "LlmCallBase")
+    base.package = "metaobjects::ai"
     base.is_abstract = True
     return base
 
@@ -101,7 +105,7 @@ def _prompt(
 
 def _greeting_call(base: MetaObject, prompt: MetaTemplate | None = None) -> MetaObject:
     entity = MetaObject(TYPE_OBJECT, "entity", "GreetingCall")
-    entity.super_data = base  # resolved super chain → _extends_base sees LlmCallBase
+    entity.super_data = base  # resolved super chain → _extends_base sees the anchor FQN
 
     source = MetaSource(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, "primary")
     source.set_attr("table", "llm_call")
@@ -337,3 +341,42 @@ def test_generated_record_reports_error_on_lost_required(tmp_path, monkeypatch) 
     assert result.status == "error"
     assert result.error_detail is not None
     assert "greeting" in result.error_detail
+
+
+# ---------------------------------------------------------------------------
+# FR-043 §6 — the anchor comes from the manifest, not from a constant here
+# ---------------------------------------------------------------------------
+
+
+def test_the_anchor_comes_from_the_shipped_manifest() -> None:
+    """The floor the design names for a port: the port's constant equals the manifest
+    anchor. Here the constant IS the manifest read, so this asserts the read produced
+    what the library declares — an emptied or renamed ``generators`` block would
+    otherwise leave the generator matching nothing, in silence."""
+    from metaobjects.codegen.generators.trace_helper_generator import ANCHOR_FQNS
+    from metaobjects.library.library_sources import LIBRARY_MANIFESTS
+
+    declared = {
+        gen["anchor"]
+        for manifest in LIBRARY_MANIFESTS.values()
+        for gen in manifest.get("generators", [])
+        if gen.get("name") == "trace-helper" and gen.get("anchor")
+    }
+    assert ANCHOR_FQNS == frozenset(declared)
+    assert "metaobjects::ai::LlmCallBase" in ANCHOR_FQNS
+
+
+def test_an_adopters_own_base_of_the_same_name_does_not_match() -> None:
+    """The latent bug the anchor removes: the old walk compared the SHORT name, so any
+    entity called ``LlmCallBase`` in any package emitted a helper writing the shipped
+    base's columns — which that entity does not declare."""
+    impostor = MetaObject(TYPE_OBJECT, "entity", "LlmCallBase")
+    impostor.package = "acme::app"
+    impostor.is_abstract = True
+
+    entity = _greeting_call(impostor)
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
+    for child in (impostor, entity, _greeting_response()):
+        root.add_child(child)
+
+    assert render_trace_helper(entity, root) is None

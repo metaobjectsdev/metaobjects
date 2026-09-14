@@ -95,6 +95,25 @@ def _drop_source(data: dict[str, Any], entity_name: str) -> None:
     raise AssertionError(f"fixture has no object.entity named {entity_name!r}")
 
 
+def _dot_the_junction_references(data: dict[str, Any]) -> None:
+    """Rewrite PostTag's two identity.reference @references from a bare entity
+    name to the normative dotted ``Entity.field`` explicit-fields form (spec/
+    metamodel/identity.json) naming the SAME target — a no-op semantically,
+    proving only that the dotted spelling itself must not change resolution."""
+    for child in data["metadata.root"]["children"]:
+        obj = child.get("object.entity")
+        if obj is None or obj.get("name") != "PostTag":
+            continue
+        for c in obj["children"]:
+            ref = c.get("identity.reference")
+            if ref is not None and ref.get("name") == "fkPost":
+                ref["@references"] = "Post.id"
+            if ref is not None and ref.get("name") == "fkTag":
+                ref["@references"] = "Tag.id"
+        return
+    raise AssertionError("fixture has no object.entity named 'PostTag'")
+
+
 _ENTITIES = _load_entities()
 _INDEX = build_object_index(list(_ENTITIES.values()))
 
@@ -275,6 +294,28 @@ def test_sourced_junction_still_resolves_correctly() -> None:
     assert len(descs) == 1
     assert descs[0].junction_table == "post_tags"
     assert descs[0].target_table == "tags"
+
+
+def test_dotted_junction_reference_still_derives_m2m_fields() -> None:
+    """#368 fallout, previously a parked KNOWN GAP: a junction's
+    identity.reference may be authored with the dotted ``Entity.field`` /
+    ``Entity.fieldA,fieldB`` explicit-fields form. Before the fix,
+    ``_ref_target_entity`` compared the WHOLE @references value ("Post.id")
+    against the bare entity name ("Post") and never matched, so
+    resolve_m2m_descriptors raised M2MDerivationError for a junction that
+    should resolve exactly like the bare-name fixture. This is the newly-
+    correct behaviour: same shape, same descriptor, dotted spelling."""
+    entities = _load_entities_edited(_dot_the_junction_references)
+    index = build_object_index(list(entities.values()))
+    descs = resolve_m2m_descriptors(entities["Post"], index)
+    assert len(descs) == 1
+    d = descs[0]
+    assert d.target_entity == "Tag"
+    assert d.junction_table == "post_tags"
+    assert d.target_table == "tags"
+    assert d.source_column == "postId"
+    assert d.target_column == "tagId"
+    assert d.symmetric is False
 
 
 # ---------------------------------------------------------------------------

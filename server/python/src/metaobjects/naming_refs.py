@@ -101,6 +101,17 @@ def _split_child_tail(raw: str) -> tuple[str, str]:
     (package separators never follow a child dot), so the owner ends at the
     first ``.`` AFTER the last ``::``. Returns ``(owner, tail)`` where *tail*
     includes the leading ``.`` (or is "" when there is no child suffix).
+
+    Coincidentally the same character-level algorithm as
+    ``meta.core.relationship.relationship_references.reference_target_entity``'s
+    dot search (#368) — deliberately NOT merged with it: this one is private to
+    the desugar pass (runs pre-resolution, over raw authored strings, across five
+    different ref-bearing attribute kinds, keeping the tail for reattachment);
+    that one is a public accessor over a resolved ``identity.reference`` MetaData
+    node, specific to ``@references``, discarding the tail. Unifying them would
+    mean promoting a desugar-internal to public API (or inverting the layering —
+    this module has no runtime dependency on ``meta.core.relationship`` today) for
+    a one-line coincidence, not a shared contract.
     """
     last_sep = raw.rfind(PACKAGE_SEP)
     seg_start = 0 if last_sep < 0 else last_sep + len(PACKAGE_SEP)

@@ -28,9 +28,11 @@ import {
   TEMPLATE_ATTR_TEXT_REF,
 } from "@metaobjectsdev/metadata";
 import { responseFormatOf } from "../templates/find-inbound.js";
-import type { MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
+import { libraryManifests } from "@metaobjectsdev/metadata/library";
 import {
   type EmittedFile,
+  type GenContext,
   type Generator,
   type GeneratorFactory,
   perEntity,
@@ -39,8 +41,40 @@ import { generatePayloadInterfacesBatch } from "../payload-codegen.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { tphDiscriminatorPin } from "../templates/zod-validators.js";
 
-/** Short name of the shipped abstract base every trace entity extends. */
-const LLM_CALL_BASE = "LlmCallBase";
+/** This generator's stable name — the key a library manifest declares its anchor under. */
+const STABLE_NAME = "trace-helper";
+
+/**
+ * The FQNs this generator keys on, from the LIBRARY MANIFESTS rather than a constant
+ * here (FR-043 §6).
+ *
+ * What it replaces: `const LLM_CALL_BASE = "LlmCallBase"`, compared against `.name`
+ * anywhere in the super chain — so any adopter entity called `LlmCallBase`, in any
+ * package, triggered the generator. An anchor is a fully-qualified node the library
+ * declares, and it is resolved to a node and compared by identity below.
+ *
+ * `ctx.libraries` undefined means the caller never said which libraries are selected
+ * (a programmatic `runGen()`); every shipped manifest's anchor is then a candidate,
+ * which is still FQN-anchored. An EMPTY array is the opposite and is honoured: the
+ * caller looked, this project opted into none, and the generator matches nothing.
+ */
+function anchorFqns(ctx: GenContext): string[] {
+  const manifests = ctx.libraries ?? Object.values(libraryManifests());
+  const out: string[] = [];
+  for (const manifest of manifests) {
+    for (const g of manifest.generators ?? []) {
+      if (g.name === STABLE_NAME && g.anchor !== undefined) out.push(g.anchor);
+    }
+  }
+  return out;
+}
+
+/** Resolve each anchor FQN to the node it names, skipping any the model does not hold. */
+function anchorNodes(ctx: GenContext): MetaData[] {
+  const wanted = new Set(anchorFqns(ctx));
+  if (wanted.size === 0) return [];
+  return ctx.loadedRoot.children().filter((n) => wanted.has(n.resolutionKey()));
+}
 
 export interface TraceHelperOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */
@@ -49,12 +83,17 @@ export interface TraceHelperOpts {
   target?: string;
 }
 
-/** Walk the super chain looking for a node named LLM_CALL_BASE. */
-function extendsBase(obj: MetaObject): boolean {
-  let cur = obj.superResolved;
-  while (cur !== undefined) {
-    if (cur.name === LLM_CALL_BASE) return true;
-    cur = cur.superResolved;
+/**
+ * Walk the super chain looking for one of the anchor NODES.
+ *
+ * Node identity, not `.name` and not even the FQN string: the anchors were resolved
+ * against this run's own loaded root, so an entity whose chain reaches one reaches
+ * exactly the node the library declared.
+ */
+function extendsAnchor(obj: MetaObject, anchors: readonly MetaData[]): boolean {
+  if (anchors.length === 0) return false;
+  for (let cur = obj.superResolved; cur !== undefined; cur = cur.superResolved) {
+    if (anchors.includes(cur)) return true;
   }
   return false;
 }
@@ -66,12 +105,16 @@ function pascal(s: string): string {
 
 export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts): Generator {
   const dirPrefix = opts?.outDir ? `${opts.outDir.replace(/\/$/, "")}/` : "";
+  // Resolved once per run, on first use: `perEntity` calls back per entity and the
+  // anchor set is a property of the run, not of the entity.
+  let anchors: MetaData[] | undefined;
   const generator: Generator = {
-    name: "trace-helper",
+    name: STABLE_NAME,
     generate: perEntity((entity, ctx) => {
-      // Only concrete entities derived from LlmCallBase.
+      anchors ??= anchorNodes(ctx);
+      // Only concrete entities derived from a library's declared anchor.
       if (entity.isAbstract) return [];
-      if (!extendsBase(entity)) return [];
+      if (!extendsAnchor(entity, anchors)) return [];
 
       // Find the nested template.prompt.
       // ADR-0039: resolving — a concrete trace entity may inherit its

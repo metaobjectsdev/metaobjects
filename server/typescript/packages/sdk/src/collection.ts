@@ -72,6 +72,10 @@ export interface Collection {
    *  config's declaration order), each verified against `.metaobjects/deps.lock.json`
    *  before this resolves. Empty for a project that declares none. */
   readonly dependencies: readonly ResolvedDependency[];
+  /** FR-043 — the shipped-library selection this project declares, as authored.
+   *  Path-like tokens (`"iam"`, `"iam/db"`). Empty for a project that names none,
+   *  which is every project that has not asked for one. */
+  readonly libraries: readonly string[];
   /** FR-023 — the `FileSource` id each file loads under, for the dependency
    *  ARTIFACTS only (`dep:<name>/<artifact>`); own files are absent and keep the
    *  default `basename(path)`. Threaded to `loadMemory` so every node an artifact
@@ -249,6 +253,7 @@ export async function resolveCollection(
   let scopeSpec: Config["scope"];
   let migrateSpec: string[] | undefined;
   let dependencySpecs: readonly DependencySpec[] = [];
+  let libraries: readonly string[] = [];
 
   if (hasConfig) {
     // No try/catch here: a config.json that EXISTS but fails to load
@@ -262,6 +267,30 @@ export async function resolveCollection(
     scopeSpec = cfg.scope;
     migrateSpec = cfg.migrate?.scope;
     dependencySpecs = cfg.dependencies;
+    libraries = cfg.libraries;
+    // An unknown token is a hard config error naming the valid ones, while
+    // `librarySources` keeps skipping one silently for a programmatic caller. The two
+    // are deliberately different: an API caller asking for a library this version does
+    // not ship should still be able to load its own metadata, but a token a HUMAN typed
+    // into a config file is a mistake worth failing on — skipped, it resurfaces later as
+    // ERR_UNRESOLVED_SUPER pointing at the adopter's own metadata, which is the wrong
+    // place to send someone looking.
+    //
+    // The available list is TOKENS, not library names, so an adopter who typed
+    // `iam/database` is shown `iam/db` rather than only the half they got right.
+    if (libraries.length > 0) {
+      const { knownLibraryTokens } = await import("@metaobjectsdev/metadata/library");
+      const available = knownLibraryTokens();
+      const unknown = libraries.filter((n) => !available.includes(n));
+      if (unknown.length > 0) {
+        throw new ParseError(
+          `.metaobjects/config.json in ${configDir}: 'libraries' names unknown ` +
+            `librar${unknown.length === 1 ? "y" : "ies"} ${JSON.stringify(unknown)}; ` +
+            `available: ${JSON.stringify(available)}.`,
+          { code: "ERR_UNKNOWN_LIBRARY", source: { format: "code", caller: "resolveCollection" } },
+        );
+      }
+    }
   }
 
   // Only the DEFAULT is allowed to be absent — an explicitly declared source
@@ -346,6 +375,7 @@ export async function resolveCollection(
     ownFiles,
     sources: [...dependencySources, ...ownSources],
     dependencies,
+    libraries,
     fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
     importedPackages: [...importedPackages].sort(),
     importedNodes,

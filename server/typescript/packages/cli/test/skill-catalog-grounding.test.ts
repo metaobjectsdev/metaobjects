@@ -21,9 +21,12 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { GENERATOR_LAYERS } from "@metaobjectsdev/codegen-ts";
+import { knownLibraryTokens } from "@metaobjectsdev/metadata/library";
 
 const REPO_ROOT = join(import.meta.dir, "../../../../..");
 const SKILL_ROOT = join(REPO_ROOT, "agent-context/skills/metaobjects-codegen");
+/** FR-043 §4 puts the mirror of the library step here, so its tokens are gated too. */
+const AUTHORING_ROOT = join(REPO_ROOT, "agent-context/skills/metaobjects-authoring");
 
 /** Every stable name, in every port — the manifest, not one port's slice. */
 const MANIFEST_NAMES: ReadonlySet<string> = new Set(
@@ -161,6 +164,41 @@ describe("the codegen skill is grounded in the live catalog", () => {
       `A layer token that is not one of the six (${[...layers].join(", ")}):\n  ` +
         offenders.join("\n  "),
     ).toEqual([]);
+  });
+
+  test("every library token the skill tells a reader to configure is real", () => {
+    // STRUCTURAL, like the two checks above: a token inside a `libraries` ARRAY, which
+    // is a config value a reader copies, not prose. The same rule the layer check
+    // follows — a sweep over backticked words near the word "library" would flag
+    // ordinary English and then get ignored.
+    const tokens = new Set(knownLibraryTokens());
+    const offenders: string[] = [];
+    for (const file of [...files, ...markdownFiles(AUTHORING_ROOT)]) {
+      for (const line of readFileSync(file, "utf8").split("\n")) {
+        const m = /"?libraries"?\s*:\s*\[([^\]]*)\]/.exec(line);
+        if (m === null) continue;
+        for (const raw of m[1]!.split(",")) {
+          const token = raw.trim().replace(/^["'`]|["'`]$/g, "");
+          if (token === "" || tokens.has(token)) continue;
+          offenders.push(`${file.slice(REPO_ROOT.length + 1)}: "${token}" — ${line.trim()}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `A \`libraries\` example naming a token this build does not ship ` +
+        `(${[...tokens].join(", ")}):\n  ` + offenders.join("\n  "),
+    ).toEqual([]);
+  });
+
+  test("the library step is actually in both skills", () => {
+    // The inverse: the check above passes trivially on prose that mentions no library.
+    // FR-043 §4 puts the step in the codegen procedure AND its mirror where authoring
+    // teaches declaring an entity, so both are asserted.
+    for (const root of [SKILL_ROOT, AUTHORING_ROOT]) {
+      const prose = markdownFiles(root).map((f) => readFileSync(f, "utf8")).join("\n");
+      expect(prose, `${root} teaches the library rows`).toContain('kind: "library"');
+    }
   });
 
   test("the skill actually documents the six layers", () => {

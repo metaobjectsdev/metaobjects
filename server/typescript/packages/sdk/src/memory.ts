@@ -6,10 +6,18 @@ import {
   packageOfResolutionKey,
   ParseError,
   TYPE_OBJECT,
+  type ErrorSource,
   type MetaDataTypeProvider,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+// FR-043 — a node-only subpath (it reaches the filesystem), which is why it is imported
+// separately from the browser-safe barrel above. Static here rather than the dynamic
+// import the library SOURCES use: this module already resolves it on every load that
+// names a library, and the guard runs after the load either way.
+import {
+  isLibraryFileId, libraryManifests, splitLayerToken,
+} from "@metaobjectsdev/metadata/library";
 import { resolveCollection } from "./collection.js";
 
 /**
@@ -223,8 +231,96 @@ export async function loadMemory(
   // overlay flag, so this walk cannot tell an overlay from a new declaration.
   // Only an UNFLAGGED new declaration survives to here.
   refuseUnownedPackages(result.root, importedPackages, importedNodes);
+  // FR-043 §3.4 / §3.5 — the same rule for a shipped LIBRARY's package, where the two
+  // ways to get it wrong are opposite: a node the library also declares (an ejected
+  // copy, still opted in) and one it does not (a new node in someone else's package).
+  refuseLibraryPackageMisuse(result.root, options?.libraries);
 
   return result.root;
+}
+
+/** Every source file that contributed to a node, across the envelope variants that
+ *  name files at all (`code` and `database` name none). */
+function contributingFiles(source: ErrorSource): readonly string[] {
+  return "files" in source ? source.files : [];
+}
+
+/**
+ * FR-043 — refuse the two ways an adopter's own file lands in a shipped library's
+ * package while that library is opted in.
+ *
+ * Both are SILENT today, and they fail in opposite directions:
+ *
+ *   **The ejected copy.** `meta eject iam` hands you the library's YAML to own, and the
+ *   next step it prints is to remove `iam` from `libraries`. Skip that and both trees
+ *   load: the copy merges into the shipped node, so ADDITIONS take and DELETIONS do not
+ *   — you delete a field from your copy and it is still there, because the library still
+ *   declares it. Nothing says so. That is `ERR_LIBRARY_PACKAGE_COLLISION`.
+ *
+ *   **The new node.** Declaring something of your own into `metaobjects::iam` makes the
+ *   library's package yours to break: the next release of the library may ship a node of
+ *   that name and merge into it. Own a package and `extends`, or say `overlay: true` and
+ *   mean it.
+ *
+ * An `overlay: true` redeclaration is the documented adaptation door (§3.4) and is
+ * deliberately untouched — `isMerge` is the loader's own record that the flag was
+ * honoured, so this cannot mistake the two.
+ *
+ * No-op for a project that opts into no library, which is every project today.
+ */
+function refuseLibraryPackageMisuse(
+  root: MetaRoot,
+  selection: readonly string[] | undefined,
+): void {
+  if (selection === undefined || selection.length === 0) return;
+  const manifests = libraryManifests();
+  const owner = new Map<string, string>();
+  for (const token of selection) {
+    const library = splitLayerToken(token)[0];
+    for (const pkg of manifests[library]?.packages ?? []) owner.set(pkg, library);
+  }
+  if (owner.size === 0) return;
+
+  // ADR-0039 SANCTIONED own-accessor case: a root-level scan, exactly as
+  // `refuseUnownedPackages` does — `MetaRoot` has no super, and the question is
+  // "what did this tree declare at the top level".
+  for (const node of root.ownChildren()) {
+    const key = node.resolutionKey();
+    const library = owner.get(packageOfResolutionKey(key));
+    if (library === undefined) continue;
+
+    const files = contributingFiles(node.source);
+    if (!files.some((f) => !isLibraryFileId(f))) continue; // library's own, untouched
+    if (node.isMerge) continue;                            // a marked overlay — the door
+
+    const collision = files.some(isLibraryFileId);
+    throw new ParseError(
+      collision
+        ? `"${key}" is declared by your own metadata AND by the shipped library ` +
+          `"${library}", which this project opts into. The two merge silently: ` +
+          `additions in your copy take effect and DELETIONS do not, because the library ` +
+          `still declares what you removed.`
+        : `"${key}" is declared here, but the package "${packageOfResolutionKey(key)}" ` +
+          `belongs to the shipped library "${library}", which this project opts into. ` +
+          `The next release of that library may ship a node of this name and merge into ` +
+          `yours.`,
+      {
+        code: collision ? "ERR_LIBRARY_PACKAGE_COLLISION" : "ERR_LIBRARY_PACKAGE_NOT_OWNED",
+        source: node.source,
+        node: { type: node.type, subtype: node.subType, name: node.name, fqn: key },
+        suggestions: collision
+          ? [
+              `Remove "${library}" from 'libraries' in .metaobjects/config.json — you own the metadata now, which is what 'meta eject ${library}' told you to do.`,
+              `Or delete your copy and keep tracking the library, amending it with 'overlay: true' on the nodes you want to change.`,
+            ]
+          : [
+              `Declare it in a package this project owns, and 'extends' the library's node if it needs its shape.`,
+              `If it was meant to AMEND a library node, give it that node's name and 'overlay: true'.`,
+              `If you want to own this design outright, run 'meta eject ${library}' and remove "${library}" from 'libraries'.`,
+            ],
+      },
+    );
+  }
 }
 
 /**

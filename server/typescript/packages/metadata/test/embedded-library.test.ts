@@ -8,7 +8,8 @@
 //      the .yaml suffix).
 //   2. EXACT COVERAGE — the embedded map keys are exactly the canonical set
 //      (no missing, no extra).
-//   3. Content sanity — the known "ai/llm-call" entry contains expected text.
+//   3. Content sanity — the known refs contain expected text, and every library
+//      directory contributes a manifest.
 
 import { describe, test, expect } from "bun:test";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
@@ -56,7 +57,9 @@ describe("EMBEDDED_LIBRARY — exact coverage", () => {
 });
 
 describe("EMBEDDED_LIBRARY — content sanity", () => {
-  test("ai/llm-call entry contains the LlmCallBase definition", () => {
-    expect(EMBEDDED_LIBRARY["ai/llm-call"]).toContain("LlmCallBase");
+  test("ai/model entry contains the LlmCallBase definition", () => {
+    // Was `ai/llm-call`, before FR-043 Amendment 1 split every library into a sourceless
+    // CORE layer and a db layer. The abstract envelope is core; the table is not.
+    expect(EMBEDDED_LIBRARY["ai/model"]).toContain("LlmCallBase");
   });
 });

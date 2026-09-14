@@ -26,6 +26,22 @@ public sealed class FileSource : IMetaDataSource
     }
 
     /// <summary>
+    /// A file source with an explicit ID, overriding the file-name default.
+    /// </summary>
+    /// <remarks>
+    /// For a file whose identity in diagnostics should not depend on where it sits on
+    /// disk — a shipped library's YAML, whose envelope must read the same from a
+    /// checkout and from an installed package, and must not collide with an adopter
+    /// file of the same basename.
+    /// </remarks>
+    public FileSource(string path, string id)
+    {
+        FilePath = path;
+        Id = id;
+        Format = MetaDataFormats.InferFromExtension(path);
+    }
+
+    /// <summary>
     /// Read the file content. BOM stripping is handled by the parser, not here.
     /// </summary>
     public string Read() => System.IO.File.ReadAllText(FilePath);

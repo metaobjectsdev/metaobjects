@@ -1,6 +1,9 @@
 /**
  * #333 — a project opts into a MetaObjects-shipped library with `libraries` in
- * `metaobjects.config.ts`, and `extends: "metaobjects::ai::LlmCallBase"` resolves.
+ * `.metaobjects/config.json`, and `extends: "metaobjects::ai::LlmCallBase"` resolves.
+ *
+ * The key moved there from `metaobjects.config.ts` in FR-043: which designs a project
+ * adopts is a fact about the PROJECT, not about how one port generates code from it.
  *
  * `librarySources` was reachable only from `MetaDataLoader.fromDirectory`, which the CLI
  * does not use, so a generator that consumes a library was registered FOR the command
@@ -43,7 +46,16 @@ function setup(libraries: string[] | undefined): { root: string; outDir: string 
   mkdirSync(WORKSPACE_TMP, { recursive: true });
   const root = mkdtempSync(join(WORKSPACE_TMP, "forge-libraries-"));
   mkdirSync(join(root, "metaobjects"), { recursive: true });
+  mkdirSync(join(root, ".metaobjects"), { recursive: true });
   writeFileSync(join(root, "metaobjects", "trace.json"), MODEL, "utf8");
+  writeFileSync(
+    join(root, ".metaobjects", "config.json"),
+    `${JSON.stringify(
+      { schema_version: 1, sources: [], ...(libraries === undefined ? {} : { libraries }) },
+      null,
+      2,
+    )}\n`,
+  );
   const outDir = join(root, "generated");
   writeFileSync(
     join(root, "metaobjects.config.ts"),
@@ -54,7 +66,7 @@ export default defineConfig({
   dialect: "postgres",
   dbImport: "~/db",
   extStyle: "none",
-${libraries === undefined ? "" : `  libraries: ${JSON.stringify(libraries)},\n`}  generators: ["entity"],
+  generators: ["entity"],
 });
 `,
   );

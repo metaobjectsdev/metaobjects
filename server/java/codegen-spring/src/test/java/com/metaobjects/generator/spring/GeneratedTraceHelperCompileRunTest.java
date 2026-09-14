@@ -47,33 +47,13 @@ public class GeneratedTraceHelperCompileRunTest {
     private static final String PKG = "acme::ai";
 
     /**
-     * Model: LlmCallBase (18 base fields, abstract) + GreetRequest/GreetResponse VOs
-     * + a concrete GreetingCall extending LlmCallBase with a nested template.prompt
+     * Model: GreetRequest/GreetResponse VOs + a concrete GreetingCall extending the
+     * SHIPPED metaobjects::ai::LlmCallBase, with a nested template.prompt
      * carrying @responseRef + typed voRequest/voResponse object columns.
      */
     private static final String META = "{ \"metadata.root\": {"
         + "  \"package\": \"" + PKG + "\","
         + "  \"children\": ["
-        + "    { \"object.entity\": { \"name\": \"LlmCallBase\", \"abstract\": true, \"children\": ["
-        + "      { \"field.uuid\":      { \"name\": \"traceId\" } },"
-        + "      { \"field.uuid\":      { \"name\": \"spanId\" } },"
-        + "      { \"field.uuid\":      { \"name\": \"parentSpanId\" } },"
-        + "      { \"field.string\":    { \"name\": \"sessionId\" } },"
-        + "      { \"field.string\":    { \"name\": \"callType\" } },"
-        + "      { \"field.string\":    { \"name\": \"system\" } },"
-        + "      { \"field.string\":    { \"name\": \"requestModel\" } },"
-        + "      { \"field.string\":    { \"name\": \"responseModel\" } },"
-        + "      { \"field.int\":       { \"name\": \"inputTokens\" } },"
-        + "      { \"field.int\":       { \"name\": \"outputTokens\" } },"
-        + "      { \"field.currency\":  { \"name\": \"costMinor\", \"@currency\": \"USD\" } },"
-        + "      { \"field.int\":       { \"name\": \"latencyMs\" } },"
-        + "      { \"field.string\":    { \"name\": \"finishReason\" } },"
-        + "      { \"field.string\":    { \"name\": \"status\" } },"
-        + "      { \"field.string\":    { \"name\": \"errorDetail\" } },"
-        + "      { \"field.timestamp\": { \"name\": \"startedAt\" } },"
-        + "      { \"field.string\":    { \"name\": \"llmRequest\",  \"@dbColumnType\": \"jsonb\" } },"
-        + "      { \"field.string\":    { \"name\": \"llmResponse\", \"@dbColumnType\": \"jsonb\" } }"
-        + "    ]}},"
         + "    { \"object.value\": { \"name\": \"GreetRequest\", \"children\": ["
         + "      { \"field.string\": { \"name\": \"name\", \"@required\": true } }"
         + "    ]}},"
@@ -82,7 +62,7 @@ public class GeneratedTraceHelperCompileRunTest {
         + "      { \"field.int\":    { \"name\": \"score\" } }"
         + "    ]}},"
         + "    { \"object.entity\": { \"name\": \"GreetingCall\","
-        + "      \"extends\": \"" + PKG + "::LlmCallBase\", \"children\": ["
+        + "      \"extends\": \"metaobjects::ai::LlmCallBase\", \"children\": ["
         + "      { \"source.rdb\":      { \"@table\": \"llm_call\", \"@role\": \"primary\" } },"
         + "      { \"identity.primary\": { \"name\": \"primary\", \"@fields\": [\"spanId\"] } },"
         + "      { \"field.object\": { \"name\": \"voRequest\",  \"@column\": \"voRequest\","
@@ -306,6 +286,7 @@ public class GeneratedTraceHelperCompileRunTest {
         MetaDataLoader loader = new MetaDataLoader(
                 LoaderOptions.create(false, false, true),
                 MetaDataLoader.SUBTYPE_MANUAL, "trace-responseref-fqn");
+        loader.setLibraries(java.util.Collections.singletonList("ai"));
         loader.init();
         // Decoy loads FIRST — under the pre-fix bare-tail-fallback bug this would win.
         loader.load(List.of(
@@ -345,6 +326,11 @@ public class GeneratedTraceHelperCompileRunTest {
         MetaDataLoader loader = new MetaDataLoader(
                 LoaderOptions.create(false, false, true),
                 MetaDataLoader.SUBTYPE_MANUAL, name);
+        // The SHIPPED base, through the opt-in. `trace-helper` keys on the `ai`
+        // manifest's ANCHOR and compares the FULL name (FR-043 §6), so a hand-copied
+        // base in the fixture's own package no longer matches — and a copy could drift
+        // from the real one silently, which is the bypass ADR-0024 named.
+        loader.setLibraries(java.util.Collections.singletonList("ai"));
         loader.init();
         loader.load(List.of(new InMemoryStringSource(meta, name + "/meta.json")));
         return loader;

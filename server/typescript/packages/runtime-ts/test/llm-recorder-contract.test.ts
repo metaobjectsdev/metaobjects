@@ -2,7 +2,7 @@
 // effective field set.
 //
 // This is the regression guard for the headline bug — recordLlmCall once wrote a
-// `voResponse` key that the shipped abstract base (`library/ai/llm-call.yaml`,
+// `voResponse` key that the shipped abstract base (`library/ai/model.yaml`,
 // `metaobjects::ai::LlmCallBase`) does not declare, so the documented adoption
 // path (`extends metaobjects::ai::LlmCallBase` → generated `record<Entity>`)
 // threw `Unknown field 'voResponse'`. By loading the REAL shipped base via the

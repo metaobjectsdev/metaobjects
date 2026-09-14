@@ -69,6 +69,13 @@ def reference_target_entity(ref: MetaData) -> str | None:
     The dot is searched only AFTER the last package separator so a ``::``-qualified
     name can never have a package segment mistaken for the field separator. Returns
     None when the attr is absent or empty.
+
+    Reused (not reimplemented) by ``codegen.generators.router_generator.reverse_fks_for``
+    and ``derive_m2m_fields._ref_target_entity`` — both had their own copy of this exact
+    blind spot before #368's follow-up fixed them onto this one. ``naming_refs.
+    _split_child_tail`` runs the same character-level search but stays a separate,
+    private implementation (desugar-phase, over raw pre-resolution strings, five
+    attribute kinds, keeps the tail) — see its docstring for why it isn't merged here.
     """
     raw = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving.
     if not isinstance(raw, str) or not raw:

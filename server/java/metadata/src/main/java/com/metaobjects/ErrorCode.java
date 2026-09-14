@@ -310,6 +310,33 @@ public enum ErrorCode {
     ERR_COLLECTION_NOT_FOUND,
 
     /**
+     * FR-043 — {@code .metaobjects/config.json}'s {@code libraries} names a shipped library
+     * or layer this build does not have. Refused with the available tokens rather than
+     * skipped: skipped, it resurfaces as {@code ERR_UNRESOLVED_SUPER} against the adopter's
+     * own metadata, which is the wrong place to send someone looking.
+     */
+    ERR_UNKNOWN_LIBRARY,
+
+    /**
+     * FR-043: a node is declared by BOTH an adopter's own metadata and a shipped library
+     * the project opts into — the {@code meta eject} copy with the library still named in
+     * {@code libraries}. The two merge silently and ASYMMETRICALLY: additions take,
+     * deletions do not, because the library still declares what was removed.
+     *
+     * <p>Raised by the TypeScript SDK's load path; registered in every port so the shared
+     * corpus list stays one set.</p>
+     */
+    ERR_LIBRARY_PACKAGE_COLLISION,
+
+    /**
+     * FR-043: a NEW top-level node is declared into a package a shipped library owns while
+     * that library is opted in — a later release of the library may ship a node of that
+     * name and merge into it. {@code overlay: true} on one of the library's OWN nodes is
+     * the documented amendment door and is untouched.
+     */
+    ERR_LIBRARY_PACKAGE_NOT_OWNED,
+
+    /**
      * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name
      * alias ({@code @view} / {@code @materializedView} / {@code @proc} /
      * {@code @function}) that does not match its {@code @kind}. The legacy

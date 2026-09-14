@@ -1,6 +1,16 @@
-# library/ai/llm-call.yaml
-# MetaObjects-shipped standard metadata. Adopters opt in via the loader's
-# `libraries: ["ai"]` option, then `extends: "metaobjects::ai::LlmCallBase"`.
+# library/ai/model.yaml — the CORE layer: the LLM-call trace envelope.
+#
+# Adopters opt in via `libraries: ["ai"]`, then `extends: "metaobjects::ai::LlmCallBase"`.
+#
+# This layer declares NO `source.rdb`, so opting into `"ai"` alone adds zero tables and
+# zero generated code — the design is present and resolvable, and nothing else happens
+# until the adopter adds `"ai/db"`. See library/iam/model.yaml for the full rationale.
+#
+# This file was split out of the former `library/ai/llm-call.yaml`, which shipped the
+# abstract base and a concrete `LlmCall` carrying `source.rdb` together. That was
+# recorded as an accepted wart on the grounds that splitting would change what existing
+# `ai` adopters get; a sweep of the estate found there are none, so it was closed rather
+# than documented (FR-043 Amendment 1).
 metadata:
   package: metaobjects::ai
   children:
@@ -29,6 +39,6 @@ metadata:
     - object.entity:
         name: LlmCall
         extends: metaobjects::ai::LlmCallBase
+        description: The concrete trace row. Its `source.rdb` lives in db.yaml, so opting into the core layer alone declares the shape without proposing a table.
         children:
-          - source.rdb:      { table: llm_call, role: primary }
           - identity.primary: { name: id, fields: ["spanId"] }

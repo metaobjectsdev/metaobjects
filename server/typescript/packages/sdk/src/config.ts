@@ -149,6 +149,22 @@ export const ConfigSchema = z.object({
     .refine((a) => new Set(a.map((d) => d.name)).size === a.length, {
       message: "dependencies: names must be unique",
     }),
+  /**
+   * MetaObjects-shipped libraries this project opts into (FR-043).
+   *
+   * Path-like tokens: `"iam"` is the core layer, `"iam/db"` adds its persistence layer
+   * and IMPLIES the core. A library's CORE layer declares no `source.rdb`, so naming one
+   * adds zero tables and zero generated code — the design is present and resolvable, and
+   * nothing else happens until a layer is named.
+   *
+   * Declared HERE, beside `dependencies`, and no longer in `metaobjects.config.ts`
+   * (FR-043 Amendment 1, §12 Q4). Two reasons: which designs a project adopts is a fact
+   * about the PROJECT, not about how one port generates code from it, and this file is
+   * the port-neutral one every port already reads. Moved outright with no dual-read,
+   * because a sweep of the estate found zero configs using the old key — there is no
+   * installed base to be compatible with.
+   */
+  libraries: z.array(z.string()).default([]),
   /** Output filter applied across every command — see `./scope.ts`. Absent
    *  means "everything" (no filtering), matching `Scope`'s own contract. */
   scope: ScopeSchema.optional(),

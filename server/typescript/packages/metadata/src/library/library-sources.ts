@@ -11,19 +11,56 @@ import { fileURLToPath } from "node:url";
 import { FileSource } from "../loader/sources/file-source.js";
 import { InMemoryStringSource } from "../loader/meta-data-source.js";
 import type { MetaDataSource } from "../loader/meta-data-source.js";
-import { EMBEDDED_LIBRARY } from "./embedded-library.generated.js";
+import { EMBEDDED_LIBRARY, EMBEDDED_LIBRARY_MANIFESTS } from "./embedded-library.generated.js";
 
-// Package → ordered refs, derived from the generated embedded module so adding a
-// library file (which regenerates EMBEDDED_LIBRARY) needs no edit here.
-const REFS_BY_PACKAGE: Readonly<Record<string, readonly string[]>> = (() => {
-  const map: Record<string, string[]> = {};
-  for (const ref of Object.keys(EMBEDDED_LIBRARY).sort()) {
-    const pkg = ref.split("/")[0];
-    if (pkg === undefined || pkg === "") continue;
-    (map[pkg] ??= []).push(ref);
+/** One layer of a library, as its manifest declares it. */
+export interface LibraryLayer {
+  /** Refs (path under `library/` minus `.yaml`) this layer contributes, in order. */
+  readonly refs: readonly string[];
+  readonly description?: string;
+}
+
+/** A library's `library.json`, parsed. Only the fields this module reads are typed;
+ *  the catalog reads the rest off the same text. */
+export interface LibraryManifest {
+  readonly name: string;
+  readonly kind?: string;
+  readonly stability?: string;
+  readonly since?: string;
+  readonly description?: string;
+  readonly useWhen?: string;
+  readonly packages?: readonly string[];
+  /** Layer token → layer. The CORE layer's token is the empty string. */
+  readonly layers?: Readonly<Record<string, LibraryLayer>>;
+  readonly generators?: ReadonlyArray<{ readonly name: string; readonly anchor?: string }>;
+  readonly runtime?: Readonly<Record<string, readonly string[]>>;
+}
+
+const MANIFESTS: Readonly<Record<string, LibraryManifest>> = (() => {
+  const out: Record<string, LibraryManifest> = {};
+  for (const [name, text] of Object.entries(EMBEDDED_LIBRARY_MANIFESTS)) {
+    out[name] = JSON.parse(text) as LibraryManifest;
   }
-  return map;
+  return out;
 })();
+
+/** Every shipped library's parsed manifest, keyed by name. */
+export function libraryManifests(): Readonly<Record<string, LibraryManifest>> {
+  return MANIFESTS;
+}
+
+/**
+ * Split a selection token into `[library, layer]` — `"iam"` → `["iam", ""]`,
+ * `"iam/db"` → `["iam", "db"]`.
+ *
+ * Path-like, so `libraries` stays `string[]` and no config schema moves. Only ONE
+ * separator is meaningful; anything after a second is part of the layer token, which
+ * keeps a typo failing loudly rather than resolving to a prefix.
+ */
+export function splitLayerToken(token: string): [string, string] {
+  const i = token.indexOf("/");
+  return i === -1 ? [token, ""] : [token.slice(0, i), token.slice(i + 1)];
+}
 
 /**
  * Locate the repo-root `library/` directory by walking up from this module's
@@ -62,50 +99,163 @@ function getLibraryDir(): string | undefined {
  * available (Python's `project_config` draws the same line, in the same place).
  */
 export function knownLibraryPackages(): string[] {
-  return Object.keys(REFS_BY_PACKAGE).sort();
+  return Object.keys(MANIFESTS).sort();
 }
 
 /**
- * Returns a list of `MetaDataSource` instances for the requested library packages.
+ * Every package name a shipped library OWNS, across every library and layer.
  *
- * - Recognized packages: `"ai"` (others contribute no sources).
- * - Per ref: if the on-disk `library/<ref>.yaml` exists, returns a `FileSource`;
- *   otherwise falls back to an `InMemoryStringSource` built from the embedded content.
- *
- * @param packages - Package names to include (e.g. `["ai"]`).
+ * The provenance key for FR-043 §5.4 — object coverage activates on adopter-authored
+ * requirements only, and "adopter-authored" means "declared outside every library
+ * package". It reads the manifests rather than node source ids deliberately: `packages`
+ * is a manifest fact the standalone gate resolves against the library loaded alone,
+ * while a source id differs between the on-disk dev layout (an absolute path) and the
+ * embedded one (`library:<ref>.yaml`), so a rule keyed on that would hold here and stop
+ * holding in an installed build.
  */
-export function librarySources(packages: string[]): MetaDataSource[] {
+/**
+ * The source id a library file loads under, in EVERY build — `library:iam/model.yaml`.
+ *
+ * Stable rather than path-derived so a library node's ADR-0009 provenance envelope reads
+ * the same from a checkout and from an installed package, carries no absolute path, and
+ * cannot be confused with an adopter file that happens to share a basename. The
+ * `library:` prefix is the discriminator {@link isLibraryFileId} reads.
+ */
+export function libraryFileId(ref: string): string {
+  return `${LIBRARY_FILE_ID_PREFIX}${ref}.yaml`;
+}
+
+/** The prefix every library source id carries. */
+export const LIBRARY_FILE_ID_PREFIX = "library:";
+
+/** True when a source id names a file a shipped library contributed. */
+export function isLibraryFileId(id: string): boolean {
+  return id.startsWith(LIBRARY_FILE_ID_PREFIX);
+}
+
+export function libraryPackages(): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const manifest of Object.values(MANIFESTS)) {
+    for (const pkg of manifest.packages ?? []) out.add(pkg);
+  }
+  return out;
+}
+
+/**
+ * Every selection token this build accepts, sorted — `["ai", "ai/db", "iam", "iam/db"]`.
+ *
+ * What a config error message should print, so an adopter who typed `iam/database` is
+ * shown the layer they meant rather than only the library they got right.
+ */
+export function knownLibraryTokens(): string[] {
+  const out: string[] = [];
+  for (const [name, manifest] of Object.entries(MANIFESTS)) {
+    for (const layer of Object.keys(manifest.layers ?? { "": { refs: [] } })) {
+      out.push(layer === "" ? name : `${name}/${layer}`);
+    }
+  }
+  return out.sort();
+}
+
+/**
+ * `MetaDataSource` instances for the requested library selection.
+ *
+ * **Layer-granular.** A token is `<library>` or `<library>/<layer>`; the CORE layer is
+ * the bare name. This used to be package-granular — every ref under a library came back
+ * for a bare `"iam"` — which under the layered design would have handed an adopter the
+ * db and ui layers they did not ask for, and with them a migration proposing nine tables.
+ *
+ * **`"iam/db"` IMPLIES `"iam"`**, and the implication is not a convenience: a db layer is
+ * nothing but `overlay: true` redeclarations, and an overlay whose target was never
+ * declared is `ERR_OVERLAY_NO_TARGET`. Resolving the layer without its core would produce
+ * exactly that error, so implying it is the only coherent reading.
+ *
+ * Refs are de-duplicated and returned in a stable order — core first, then each requested
+ * layer in the manifest's own order — because an overlay must be parsed after its base
+ * even though ADR-0055 applies overlays in a deferred pass.
+ *
+ * An unrecognised token contributes nothing and is skipped silently: that is right for a
+ * programmatic caller asking for something a given version may not ship. A name a HUMAN
+ * typed is a different case and is refused by the config readers, which call
+ * {@link knownLibraryTokens} to say what is available.
+ *
+ * @param selection - Tokens, e.g. `["iam", "iam/db"]`.
+ */
+export function librarySources(selection: string[]): MetaDataSource[] {
+  const refs: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (ref: string): void => {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    refs.push(ref);
+  };
+
+  // Core layers first, across every requested library, so a db layer named before its
+  // core in the config still parses after it.
+  //
+  // A token whose LAYER is unknown is dropped whole, not reduced to its core. The core is
+  // implied by a VALID layer token; implying it from an invalid one would answer a
+  // mistyped `iam/database` with an inert core and no tables — "I asked for the db layer
+  // and got nothing" with no diagnostic, which is the worst of the available outcomes.
+  const wanted = selection
+    .map(splitLayerToken)
+    .filter(([lib, layer]) => lib in MANIFESTS && (MANIFESTS[lib]!.layers ?? {})[layer] !== undefined);
+  for (const [lib] of wanted) {
+    for (const ref of MANIFESTS[lib]!.layers?.[""]?.refs ?? []) add(ref);
+  }
+  for (const [lib, layer] of wanted) {
+    if (layer === "") continue;
+    for (const ref of MANIFESTS[lib]!.layers?.[layer]?.refs ?? []) add(ref);
+  }
+
+  return refs.map(libraryRefSource);
+}
+
+/**
+ * One library ref as a source — on-disk first, embedded otherwise.
+ *
+ * Factored out of {@link librarySources} because `meta eject <library>` needs the TEXT
+ * of one ref and must resolve it exactly the way a load does: an adopter ejecting from a
+ * checkout must get the file they can see, and from an installed package the embedded
+ * copy, with no third rule to keep in step.
+ */
+export function libraryRefSource(ref: string): MetaDataSource {
   const dir = getLibraryDir();
-  const out: MetaDataSource[] = [];
-
-  for (const pkg of packages) {
-    const refs = REFS_BY_PACKAGE[pkg];
-    if (refs === undefined) continue; // unknown package — no sources
-
-    for (const ref of refs) {
-      if (dir !== undefined) {
-        const path = join(dir, `${ref}.yaml`);
-        if (existsSync(path)) {
-          out.push(new FileSource(path));
-          continue;
-        }
-      }
-      const embedded = EMBEDDED_LIBRARY[ref];
-      if (embedded !== undefined) {
-        out.push(
-          new InMemoryStringSource(embedded, {
-            id: `library:${ref}.yaml`,
-            format: "yaml",
-          }),
-        );
-      } else {
-        throw new Error(
-          `library ref "${ref}" (package "${pkg}") has no on-disk file and no embedded entry — ` +
-            `the embedded library module is stale; run scripts/generate-embedded-library.ts`,
-        );
-      }
+  if (dir !== undefined) {
+    const path = join(dir, `${ref}.yaml`);
+    if (existsSync(path)) {
+      // The SAME id the embedded branch below uses, deliberately. A `FileSource`
+      // defaults its id to the file's BASENAME, which would make a library node's error
+      // envelope read `model.yaml` in a checkout and `library:iam/model.yaml` in an
+      // installed build — and would collide outright with an adopter file of that name.
+      // One stable id makes the two builds report identically and gives anything asking
+      // "did a library declare this node" an unambiguous answer.
+      return new FileSource(path, { id: libraryFileId(ref) });
     }
   }
 
-  return out;
+  const embedded = EMBEDDED_LIBRARY[ref];
+  if (embedded === undefined) {
+    throw new Error(
+      `library ref "${ref}" has no on-disk file and no embedded entry — ` +
+        `the embedded library module is stale; run scripts/generate-embedded-library.ts`,
+    );
+  }
+  return new InMemoryStringSource(embedded, { id: libraryFileId(ref), format: "yaml" });
+}
+
+/** Every ref one library contributes, core layer first — what `meta eject` copies. */
+export function libraryRefs(name: string): string[] {
+  const layers = MANIFESTS[name]?.layers ?? {};
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  for (const token of ["", ...Object.keys(layers).filter((k) => k !== "")]) {
+    for (const ref of layers[token]?.refs ?? []) {
+      if (seen.has(ref)) continue;
+      seen.add(ref);
+      refs.push(ref);
+    }
+  }
+  return refs;
 }

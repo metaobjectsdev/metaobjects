@@ -26,11 +26,17 @@ import type { Collection, LoadMemoryOptions } from "@metaobjectsdev/sdk";
  */
 export function collectionLoadOptions(
   collection: Collection,
-): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes">> {
+): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries">> {
   return {
     files: collection.files,
     fileIds: collection.fileIds,
     importedPackages: collection.importedPackages,
     importedNodes: collection.importedNodes,
+    // FR-043 — the shipped-library selection moved here from metaobjects.config.ts, so
+    // it now rides the same helper as everything else the collection contributes. That
+    // is the point of the move as much as the neutrality is: `libraries` used to be
+    // threaded by `loadMemoryOptionsFrom`, a SECOND helper, and #333 is on record as the
+    // bug where one of the two reached every command and the other reached none.
+    libraries: collection.libraries,
   };
 }

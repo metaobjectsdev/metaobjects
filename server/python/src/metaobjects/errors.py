@@ -127,6 +127,15 @@ class ErrorCode(str, Enum):
     ERR_COLLECTION_NOT_FOUND = "ERR_COLLECTION_NOT_FOUND"
     # FR-023 — a declared dependency's transport could not locate a directory holding
     # metaobjects.pkg.json.
+    # FR-043: .metaobjects/config.json's `libraries` names a shipped library or layer
+    # this build does not have. Refused with the available tokens rather than skipped —
+    # skipped, it resurfaces as ERR_UNRESOLVED_SUPER against the adopter's own metadata.
+    ERR_UNKNOWN_LIBRARY = "ERR_UNKNOWN_LIBRARY"
+    # FR-043: a node is declared by BOTH an adopter's own metadata and a shipped library the project opts into — the `meta eject <lib>` copy with the library still in `libraries`. The two merge silently and ASYMMETRICALLY: additions take, deletions do not, because the library still declares what was removed.
+    # Raised by the TypeScript SDK's load path; registered in every port so the shared corpus list stays one set.
+    ERR_LIBRARY_PACKAGE_COLLISION = "ERR_LIBRARY_PACKAGE_COLLISION"
+    # FR-043: a NEW top-level node is declared into a package a shipped library owns while that library is opted in — a later release of the library may ship a node of that name and merge into it. `overlay: true` on one of the library's OWN nodes is the documented amendment door and is untouched.
+    ERR_LIBRARY_PACKAGE_NOT_OWNED = "ERR_LIBRARY_PACKAGE_NOT_OWNED"
     ERR_DEPENDENCY_UNRESOLVED = "ERR_DEPENDENCY_UNRESOLVED"
     # FR-023 — a dependency's metaobjects.pkg.json fails its schema, names a different
     # dependency, points at a missing/hash-mismatched artifact, or the artifact does not

@@ -1,4 +1,5 @@
 import type { MetaObject, MetaRoot, TypeRegistry } from "@metaobjectsdev/metadata";
+import type { LibraryManifest } from "@metaobjectsdev/metadata/library";
 import type { RenderContext } from "./render-context.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
 import type { OrphanPolicy } from "./reconcile-orphans.js";
@@ -65,6 +66,22 @@ export interface GenContext {
    * own `files` option does).
    */
   sourceFiles?: readonly string[];
+  /**
+   * FR-043 §6 — the manifests of the libraries this project opted into, filled by the
+   * runner from `RunGenOpts.libraries`.
+   *
+   * What a generator reads it FOR is the `anchor`: the library node it keys on. That
+   * retires the hard-coded entity name a library-aware generator would otherwise carry
+   * (`trace-helper` compared `.name === "LlmCallBase"`, so ANY adopter entity of that
+   * name in ANY package triggered it) in favour of resolving the manifest's anchor to a
+   * node and comparing by node identity.
+   *
+   * Undefined means the caller never said — a programmatic `runGen()` rather than
+   * `meta gen`. A generator reading it should fall back to every SHIPPED manifest's
+   * anchors, which is still FQN-anchored and still not a bare name. An empty array is
+   * the opposite and is meaningful: the caller looked, and this project opted into none.
+   */
+  libraries?: readonly LibraryManifest[];
   warn: (msg: string) => void;
 }
 

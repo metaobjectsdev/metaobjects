@@ -30,22 +30,132 @@ public final class LibrarySources {
 
     private LibrarySources() {}
 
-    /** Package to ordered refs, derived from the generated embed so that adding a library
-     *  file (which regenerates {@link EmbeddedLibrary}) needs no edit here. */
-    private static final Map<String, List<String>> REFS_BY_PACKAGE = buildRefsByPackage();
+    /**
+     * Library name to its manifest's LAYERS: layer token to that layer's ordered refs. The
+     * CORE layer's token is the empty string.
+     *
+     * <p>Read from the embedded {@code library.json} manifests, not derived from the ref
+     * names. This used to be package-granular — every ref under a library came back for a
+     * bare {@code "ai"} — which under the layered design (FR-043 Amendment 1) would hand an
+     * adopter the db layer they did not ask for, and with it a migration proposing tables.</p>
+     */
+    private static final Map<String, Map<String, List<String>>> LAYERS_BY_LIBRARY = buildLayers();
 
     /** Resolved once per process; {@code null} value means "looked, not present". */
     private static volatile Path cachedDir;
     private static volatile boolean dirResolved;
 
-    private static Map<String, List<String>> buildRefsByPackage() {
-        Map<String, List<String>> map = new LinkedHashMap<>();
-        for (String ref : new TreeSet<>(EmbeddedLibrary.CONTENT.keySet())) {
-            int slash = ref.indexOf('/');
-            if (slash <= 0) continue;
-            map.computeIfAbsent(ref.substring(0, slash), k -> new ArrayList<>()).add(ref);
+    private static Map<String, Map<String, List<String>>> buildLayers() {
+        Map<String, Map<String, List<String>>> map = new LinkedHashMap<>();
+        for (String name : new TreeSet<>(EmbeddedLibrary.MANIFESTS.keySet())) {
+            // Hand-parsed rather than pulled through Jackson: this module is the metadata
+            // core and does not depend on a JSON binder, and the shape read here is four
+            // keys deep in a file this repo generates. A binder would be a dependency
+            // added for a manifest we also write.
+            map.put(name, parseLayers(EmbeddedLibrary.MANIFESTS.get(name)));
         }
         return map;
+    }
+
+    /** The {@code "layers"} object of a manifest: token to refs, in declaration order. */
+    private static Map<String, List<String>> parseLayers(String manifestJson) {
+        Map<String, List<String>> layers = new LinkedHashMap<>();
+        java.util.regex.Matcher block = java.util.regex.Pattern
+            .compile("\"layers\"\\s*:\\s*\\{(.*?)\\n  \\}", java.util.regex.Pattern.DOTALL)
+            .matcher(manifestJson);
+        if (!block.find()) return layers;
+        java.util.regex.Matcher entry = java.util.regex.Pattern
+            .compile("\"([^\"]*)\"\\s*:\\s*\\{[^}]*?\"refs\"\\s*:\\s*\\[([^\\]]*)\\]", java.util.regex.Pattern.DOTALL)
+            .matcher(block.group(1));
+        while (entry.find()) {
+            List<String> refs = new ArrayList<>();
+            java.util.regex.Matcher ref = java.util.regex.Pattern.compile("\"([^\"]+)\"").matcher(entry.group(2));
+            while (ref.find()) refs.add(ref.group(1));
+            layers.put(entry.group(1), refs);
+        }
+        return layers;
+    }
+
+    /**
+     * The FQNs a generator's ANCHOR declarations name, across every shipped manifest
+     * (FR-043 §6).
+     *
+     * <p>An anchor is the library node a generator keys on. Reading it here is what
+     * retires a hard-coded entity name in the generator: {@code LlmTraceHelperGenerator}
+     * compared a short name, so ANY adopter entity called {@code LlmCallBase}, in any
+     * package, triggered it — and the shipped abstract was never actually what matched.</p>
+     *
+     * <p>Hand-parsed for the reason {@link #parseLayers} is: this module is the metadata
+     * core and does not depend on a JSON binder, and the file is one this repo
+     * generates. Each object in the {@code "generators"} array is read for its own
+     * {@code name} and {@code anchor}, so key ORDER inside it does not matter.</p>
+     *
+     * @param generatorName the cross-port stable name, e.g. {@code "trace-helper"}
+     * @return the anchor FQNs, in manifest order; empty when none declares one
+     */
+    public static List<String> generatorAnchors(String generatorName) {
+        List<String> out = new ArrayList<>();
+        for (String name : new TreeSet<>(EmbeddedLibrary.MANIFESTS.keySet())) {
+            String manifest = EmbeddedLibrary.MANIFESTS.get(name);
+            java.util.regex.Matcher block = java.util.regex.Pattern
+                .compile("\"generators\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL)
+                .matcher(manifest);
+            if (!block.find()) continue;
+            java.util.regex.Matcher obj = java.util.regex.Pattern
+                .compile("\\{([^}]*)\\}").matcher(block.group(1));
+            while (obj.find()) {
+                String body = obj.group(1);
+                String declared = manifestField(body, "name");
+                String anchor = manifestField(body, "anchor");
+                if (generatorName.equals(declared) && anchor != null) out.add(anchor);
+            }
+        }
+        return out;
+    }
+
+    /** One {@code "key": "value"} string field out of a flat JSON object body. */
+    private static String manifestField(String objectBody, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"").matcher(objectBody);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** The prefix every library source id carries. */
+    public static final String LIBRARY_FILE_ID_PREFIX = "library:";
+
+    /**
+     * The source id a library file loads under, in every build —
+     * {@code library:iam/model.yaml}.
+     *
+     * <p>Stable rather than path-derived so a library node's ADR-0009 provenance envelope
+     * reads the same from a checkout and from an installed jar, carries no absolute path,
+     * and cannot be confused with an adopter file sharing a basename.</p>
+     *
+     * @param ref the path under {@code library/} minus {@code .yaml}
+     * @return the stable source id
+     */
+    public static String libraryFileId(String ref) {
+        return LIBRARY_FILE_ID_PREFIX + ref + ".yaml";
+    }
+
+    /** Split a selection token into {@code [library, layer]} — {@code "iam"} to
+     *  {@code ["iam", ""]}, {@code "iam/db"} to {@code ["iam", "db"]}. Only the FIRST
+     *  separator is meaningful, so a typo stays a typo rather than resolving to a prefix. */
+    public static String[] splitToken(String token) {
+        int i = token.indexOf('/');
+        return i == -1 ? new String[] { token, "" }
+                       : new String[] { token.substring(0, i), token.substring(i + 1) };
+    }
+
+    /** Every selection token this build accepts, sorted — what a config error prints. */
+    public static List<String> knownTokens() {
+        TreeSet<String> out = new TreeSet<>();
+        for (Map.Entry<String, Map<String, List<String>>> e : LAYERS_BY_LIBRARY.entrySet()) {
+            for (String layer : e.getValue().keySet()) {
+                out.add(layer.isEmpty() ? e.getKey() : e.getKey() + "/" + layer);
+            }
+        }
+        return new ArrayList<>(out);
     }
 
     /**
@@ -59,7 +169,7 @@ public final class LibrarySources {
      * @return the shipped package names, sorted
      */
     public static List<String> knownPackages() {
-        return new ArrayList<>(new TreeSet<>(REFS_BY_PACKAGE.keySet()));
+        return new ArrayList<>(new TreeSet<>(LAYERS_BY_LIBRARY.keySet()));
     }
 
     /**
@@ -117,28 +227,57 @@ public final class LibrarySources {
         List<MetaDataSource> out = new ArrayList<>();
         if (packages == null) return out;
 
-        Path dir = getLibraryDir();
-        for (String pkg : packages) {
-            List<String> refs = REFS_BY_PACKAGE.get(pkg);
-            if (refs == null) continue; // unknown package — no sources
+        // A token whose LAYER is unknown is dropped whole, not reduced to its core: implying
+        // the core from an invalid layer would answer a mistyped "iam/database" with an inert
+        // core and no tables, which is the worst of the available outcomes.
+        List<String[]> wanted = new ArrayList<>();
+        for (String token : packages) {
+            String[] parts = splitToken(token);
+            Map<String, List<String>> layers = LAYERS_BY_LIBRARY.get(parts[0]);
+            if (layers != null && layers.containsKey(parts[1])) wanted.add(parts);
+        }
 
+        // Core layers FIRST, across every requested library, so a db layer named before its
+        // core still parses after it. "iam/db" IMPLIES "iam": a db layer is nothing but
+        // overlay:true redeclarations, and an overlay whose target was never declared is
+        // ERR_OVERLAY_NO_TARGET.
+        List<String> refs = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (String[] parts : wanted) {
+            for (String ref : LAYERS_BY_LIBRARY.get(parts[0]).get("")) {
+                if (seen.add(ref)) refs.add(ref);
+            }
+        }
+        for (String[] parts : wanted) {
+            if (parts[1].isEmpty()) continue;
+            for (String ref : LAYERS_BY_LIBRARY.get(parts[0]).get(parts[1])) {
+                if (seen.add(ref)) refs.add(ref);
+            }
+        }
+
+        Path dir = getLibraryDir();
+        {
             for (String ref : refs) {
                 if (dir != null) {
                     Path path = dir.resolve(ref + ".yaml");
                     if (Files.isRegularFile(path)) {
-                        out.add(new FileSource(path));
+                        // The SAME id the embedded branch below uses. A path-derived id
+                        // would make a library node's error envelope differ between a
+                        // checkout and an installed jar, and would collide with an adopter
+                        // file of the same basename.
+                        out.add(new FileSource(path, libraryFileId(ref)));
                         continue;
                     }
                 }
                 String embedded = EmbeddedLibrary.CONTENT.get(ref);
                 if (embedded == null) {
                     throw new IllegalStateException(
-                        "library ref \"" + ref + "\" (package \"" + pkg + "\") has no on-disk file "
+                        "library ref \"" + ref + "\" has no on-disk file "
                             + "and no embedded entry — the embedded library class is stale; run "
                             + "scripts/generate-embedded-library.ts");
                 }
                 out.add(new InMemoryStringSource(
-                    embedded, "library:" + ref + ".yaml", MetaDataSource.MetaDataFormat.YAML));
+                    embedded, libraryFileId(ref), MetaDataSource.MetaDataFormat.YAML));
             }
         }
         return out;

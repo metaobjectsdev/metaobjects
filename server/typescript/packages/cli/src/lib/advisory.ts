@@ -150,6 +150,19 @@ export function removedPropRows(findings: readonly RemovedPropFinding[]): Adviso
   }));
 }
 
+/** FR-043 §3.5 findings in the same row shape. */
+export function libraryPrefixRows(
+  findings: readonly { file: string; fqn: string; message: string }[],
+): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: 0,
+    rule: "library-prefix-unprovenanced",
+    construct: f.fqn,
+    message: f.message,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // text output
 // ---------------------------------------------------------------------------

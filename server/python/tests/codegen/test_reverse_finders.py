@@ -20,6 +20,7 @@ so there is no lazy reverse 1:N collection to remove; M:N traversal is unchanged
 """
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -128,6 +129,94 @@ def test_reverse_fks_for_game_session() -> None:
 def test_scene_has_no_reverse_fks() -> None:
     # The finders live on E (the FK holder), not on the referenced T.
     assert reverse_fks_for(_ENTITIES["Scene"]) == []
+
+
+# ---------------------------------------------------------------------------
+# #368 fallout — a dotted @references ("Entity.field" / "Entity.a,b", the
+# normative explicit-fields form per spec/metamodel/identity.json) must still
+# resolve target_entity to the BARE entity name, not the raw dotted tail.
+# Deliberately not the shared reverse-finders-same-pair fixture — this shape
+# is narrow enough to inline and doesn't need a new cross-port corpus entry.
+# ---------------------------------------------------------------------------
+
+
+def _load_dotted_reference_entities() -> dict[str, MetaObject]:
+    data = {
+        "metadata.root": {
+            "package": "acme::sport",
+            "children": [
+                {
+                    "object.entity": {
+                        "name": "Team",
+                        "children": [
+                            {"source.rdb": {"@table": "teams"}},
+                            {"field.long": {"name": "id"}},
+                            {"identity.primary": {"name": "id", "@fields": "id"}},
+                        ],
+                    }
+                },
+                {
+                    "object.entity": {
+                        "name": "Match",
+                        "children": [
+                            {"source.rdb": {"@table": "matches"}},
+                            {"field.long": {"name": "id"}},
+                            {"field.long": {"name": "teamFk"}},
+                            {"identity.primary": {"name": "id", "@fields": "id"}},
+                            {
+                                "identity.reference": {
+                                    "name": "teamRef",
+                                    "@fields": "teamFk",
+                                    "@references": "acme::sport::Team.id",
+                                }
+                            },
+                        ],
+                    }
+                },
+            ],
+        }
+    }
+    tmp = Path(tempfile.mkdtemp(prefix="reverse-finders-dotted-"))
+    try:
+        (tmp / "meta.json").write_text(json.dumps(data))
+        result = MetaDataLoader.from_directory(str(tmp))
+        assert not result.errors, [f"{e.code}: {e.message}" for e in result.errors]
+        return {
+            c.name: c
+            for c in result.root.children()
+            if c.type == TYPE_OBJECT and isinstance(c, MetaObject)
+        }
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_reverse_fks_for_resolves_bare_target_entity_from_dotted_references() -> None:
+    """The USER-VISIBLE symptom this guards: ``reverse_fks_for()`` is a public,
+    documented function (its ``ReverseFk.target_entity`` is asserted directly by
+    ``test_reverse_fks_for_game_session`` above) whose docstring promises "the bare
+    target entity (T)". A dotted ``@references`` used to leak the raw tail
+    ("Team.id") into that field instead of bareing it to "Team" -- a correctness
+    bug in a tested return value, independent of whether any current caller
+    happens to consume the field (see the next test: today, none does)."""
+    entities = _load_dotted_reference_entities()
+    fks = reverse_fks_for(entities["Match"])
+    assert [(f.fk_field, f.target_entity) for f in fks] == [("teamFk", "Team")]
+
+
+def test_router_reverse_finder_name_unaffected_by_dotted_references() -> None:
+    """The generated finder METHOD NAME derives only from the FK-holding entity's
+    own name + FK field (never from target_entity), so it was already correct
+    with a dotted @references even before the fix above -- the router_generator.py
+    bug corrupted a returned data field, not the emitted router source."""
+    entities = _load_dotted_reference_entities()
+    index = build_object_index(list(entities.values()))
+    src = render_router(entities["Match"], index)
+    assert src is not None
+    assert "def find_matches_by_team_fk(self, team_fk: Any) -> list[Any]: ..." in src
+    assert (
+        "def find_matches_by_team_fk_in(self, team_fk_values: list[Any]) -> list[Any]: ..."
+        in src
+    )
 
 
 # ---------------------------------------------------------------------------

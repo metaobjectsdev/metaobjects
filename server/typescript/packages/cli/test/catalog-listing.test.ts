@@ -12,7 +12,10 @@ import { join } from "node:path";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { genCommand } from "../src/commands/gen.js";
-import { buildCatalogListing, wiredGeneratorNames } from "../src/lib/catalog-listing.js";
+import {
+  buildCatalogListing, wiredGeneratorNames,
+  type GeneratorCatalogRow, type LibraryCatalogRow,
+} from "../src/lib/catalog-listing.js";
 import { composeCatalog } from "../src/lib/catalog.js";
 
 const FIXTURE = join(import.meta.dir, "fixtures", "catalog-probe");
@@ -44,8 +47,8 @@ const baseConfig: MetaobjectsGenConfig = {
   generators: [],
 };
 
-async function probeRows(config: MetaobjectsGenConfig = baseConfig) {
-  const metadata = await loadMemory(FIXTURE, {});
+async function allProbeRows(config: MetaobjectsGenConfig = baseConfig, libraries: string[] = []) {
+  const metadata = await loadMemory(FIXTURE, { libraries });
   const tmp = mkdtempSync(join(tmpdir(), "catalog-probe-"));
   try {
     return await buildCatalogListing({
@@ -55,12 +58,19 @@ async function probeRows(config: MetaobjectsGenConfig = baseConfig) {
         wiredNames: wiredGeneratorNames(config),
         ownedNames: new Set(),
         declaredDeps: undefined,
+        libraries,
       },
       probe: { metadata },
     });
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/** The GENERATOR rows alone — the catalog is one table with two kinds in it since
+ *  FR-043, and every assertion below is about the generator half. */
+async function probeRows(config: MetaobjectsGenConfig = baseConfig) {
+  return (await allProbeRows(config)).filter((r): r is GeneratorCatalogRow => r.kind === "generator");
 }
 
 describe("meta gen --list — the catalog", () => {
@@ -70,9 +80,13 @@ describe("meta gen --list — the catalog", () => {
       const code = await genCommand(["--list"], tmp, "json");
       expect(code).toBe(0);
       const rows = JSON.parse(logged.join("\n")) as Array<Record<string, unknown>>;
-      expect(rows.length).toBe(Object.keys(composeCatalog()).length);
-      for (const r of rows) {
-        expect(r.kind, String(r.name)).toBe("generator");
+      const generators = rows.filter((r) => r.kind === "generator");
+      const libraries = rows.filter((r) => r.kind === "library");
+      // ONE table, two kinds (FR-043 §4) — and nothing else in it.
+      expect(generators.length + libraries.length).toBe(rows.length);
+      expect(generators.length).toBe(Object.keys(composeCatalog()).length);
+      expect(libraries.length).toBeGreaterThan(0);
+      for (const r of generators) {
         expect(typeof r.layer, String(r.name)).toBe("string");
         expect(String(r.package), String(r.name)).toStartWith("@metaobjectsdev/");
         expect(typeof r.description, String(r.name)).toBe("string");
@@ -211,5 +225,81 @@ describe("--probe — what would this emit for MY model", () => {
   test("`wired` reflects the config's own generator list", async () => {
     const rows = await probeRows();
     expect(rows.find((r) => r.name === "entity")!.project!.wired).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FR-043 §4 — the library rows
+// ---------------------------------------------------------------------------
+
+async function libraryRows(libraries: string[] = []): Promise<LibraryCatalogRow[]> {
+  return (await allProbeRows(baseConfig, libraries)).filter(
+    (r): r is LibraryCatalogRow => r.kind === "library",
+  );
+}
+
+describe("meta gen --list — the library rows", () => {
+  test("a library describes what is IN THE BOX, across every layer", async () => {
+    const iam = (await libraryRows()).find((r) => r.name === "iam")!;
+    expect(iam.libraryKind).toBe("feature");
+    expect(iam.stability).toBe("preview");
+    expect(iam.packages).toEqual(["metaobjects::iam"]);
+    // `provides` is the whole library, not the selection — an adopter reading it is
+    // deciding whether to opt in at all.
+    expect(iam.provides.entities).toBe(9);
+    expect(iam.provides.abstracts).toBeGreaterThan(0);
+    expect(iam.provides.requirements).toBeGreaterThan(0);
+    // The layer tokens are the field an adopter ACTS on: under Amendment 1 you do not
+    // opt into a library, you opt into its layers.
+    expect(iam.layers.map((l) => l.token)).toEqual(["iam", "iam/db"]);
+    expect(iam.ports).toContain("java");
+  });
+
+  test("not opted in: the project block says so without pretending to measure", async () => {
+    const iam = (await libraryRows([])).find((r) => r.name === "iam")!;
+    expect(iam.project!.optedIn).toBe(false);
+    expect(iam.project!.selectedLayers).toEqual([]);
+    // Probed, with no library in the model: nothing extends it, nothing was added.
+    expect(iam.project!.tablesAdded).toBe(0);
+    expect(iam.project!.requirementsAdded).toBe(0);
+    expect(iam.project!.extendedBy).toEqual([]);
+  });
+
+  test("the CORE layer adds requirements and NO tables — the inertness promise, as a number", async () => {
+    const iam = (await libraryRows(["iam"])).find((r) => r.name === "iam")!;
+    expect(iam.project!.optedIn).toBe(true);
+    expect(iam.project!.selectedLayers).toEqual(["iam"]);
+    expect(iam.project!.tablesAdded).toBe(0);
+    expect(iam.project!.requirementsAdded).toBe(iam.provides.requirements);
+  });
+
+  test("...and the db layer is what puts tables on the table", async () => {
+    const iam = (await libraryRows(["iam", "iam/db"])).find((r) => r.name === "iam")!;
+    expect(iam.project!.selectedLayers).toEqual(["iam", "iam/db"]);
+    expect(iam.project!.tablesAdded).toBe(9);
+  });
+
+  test("an implied generator nobody wired is reported, not enforced", async () => {
+    // `ai` declares `trace-helper`; the fixture config wires nothing. A library is
+    // metadata — wiring the generator it implies stays the adopter's call, so this is
+    // a fact on the row rather than a warning here.
+    const ai = (await libraryRows(["ai"])).find((r) => r.name === "ai")!;
+    expect(ai.project!.impliedGeneratorsNotWired).toEqual(["trace-helper"]);
+    expect(ai.provides.generators).toEqual(["trace-helper"]);
+  });
+
+  test("`extendedBy` names the project entities that would break if you opted out", async () => {
+    // The catalog-probe fixture has no entity extending a library base, so the
+    // interesting arm is the one that finds one — see gen-libraries.test.ts for the
+    // end-to-end path. Here: the field exists and is a real answer, not a null.
+    const ai = (await libraryRows(["ai"])).find((r) => r.name === "ai")!;
+    expect(Array.isArray(ai.project!.extendedBy)).toBe(true);
+  });
+
+  test("with no project there is no project block at all", async () => {
+    const { buildLibraryRows } = await import("../src/lib/library-listing.js");
+    const rows = await buildLibraryRows();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.project).toBeUndefined();
   });
 });
