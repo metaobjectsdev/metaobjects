@@ -1,0 +1,25 @@
+# #368 fixture — an entity with TWO identity.reference declarations onto the
+# SAME target, one backed by a named relationship and one bare. Used only by
+# link-graph.test.ts's own-fixture ambiguity test; deliberately kept out of
+# the acme/ fixture tree so it never has to be reconciled against golden.test.ts's
+# full-site snapshot.
+metadata:
+  package: repro368
+  children:
+    - object.entity:
+        name: Team
+        children:
+          - field.int: { name: id }
+          - field.string: { name: name }
+          - identity.primary: { name: id, "@fields": id }
+    - object.entity:
+        name: Match
+        children:
+          - field.int: { name: id }
+          - field.int: { name: homeTeamId }
+          - field.int: { name: awayTeamId }
+          - identity.primary: { name: id, "@fields": id }
+          - identity.reference: { name: homeTeamRef, fields: homeTeamId, references: Team }
+          - identity.reference: { name: awayTeamRef, fields: awayTeamId, references: Team }
+          - relationship.association: { name: homeTeam, "@objectRef": Team, cardinality: one }
+          - relationship.association: { name: awayTeam, "@objectRef": Team, cardinality: one }

@@ -42,16 +42,19 @@ import {
   SORT_ORDER_DESC,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
   CARDINALITY_ONE,
   IDENTITY_SUBTYPE_REFERENCE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   FIELD_ATTR_COLUMN,
   OBJECT_PROJECTION_ATTR_FILTER,
-  findReferenceBetween,
+  findReferencesBetween,
+  resolveRelationshipReference,
   resolveObjectRef,
   type AggregateFunction,
+  type ReferenceLookup,
 } from "@metaobjectsdev/metadata";
-import { type MetaData, type MetaField, type MetaRoot, type MetaSource, MetaObject } from "@metaobjectsdev/metadata";
+import { type MetaData, type MetaField, type MetaReferenceIdentity, type MetaRoot, type MetaSource, MetaObject } from "@metaobjectsdev/metadata";
 import { intValueMapOf } from "../enum-meta.js";
 import {
   columnNameFromField,
@@ -328,6 +331,43 @@ function resolveHop(
     return { hop: ref, targetName, cardinality: "one" };
   }
   return undefined;
+}
+
+/**
+ * #368: which identity.reference does a resolved `@via` hop actually mean?
+ *
+ * `resolveHop` already found the EXACT node the hop segment named — a
+ * reference hop names the reference itself (nothing to disambiguate: two
+ * references onto the same target can coexist, but the hop picked one of them
+ * by name), and a relationship hop names a relationship whose backing
+ * reference `resolveRelationshipReference` resolves via the same SSOT ladder
+ * (unique candidate -> @sourceRefField -> unique name-pairing) that
+ * relation-resolver.ts already uses for the identical question elsewhere.
+ * Discarding `hop` and re-deriving purely from `holder`/`target` — as this
+ * file did before — throws away that specificity and reintroduces the exact
+ * ambiguity a named hop exists to resolve.
+ *
+ * Returns a single `ReferenceLookup` once resolved unambiguously, or the full
+ * candidate list when even the ladder cannot choose (a relationship hop whose
+ * name pairs with none of its candidates and no `@sourceRefField`) — the
+ * caller reports that list as a genuine ambiguity.
+ */
+function resolveHopReference(
+  holder: MetaObject,
+  hop: MetaData,
+  hopName: string,
+  target: MetaObject,
+): ReferenceLookup | ReferenceLookup[] {
+  if (hop.type === TYPE_IDENTITY && hop.subType === IDENTITY_SUBTYPE_REFERENCE) {
+    return { holder, other: target, referenceIdentity: hop as unknown as MetaReferenceIdentity };
+  }
+  // ADR-0039: resolving — @sourceRefField may be inherited via extends.
+  const sourceRefField = hop.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
+  const matching = resolveRelationshipReference(holder, hopName, target.name, sourceRefField);
+  if (matching) {
+    return { holder, other: target, referenceIdentity: matching };
+  }
+  return findReferencesBetween(holder, target);
 }
 
 function viewName(projection: MetaObject, ctx: ExtractContext): string {
@@ -750,14 +790,62 @@ function buildJoinTree(
         // a traversed relationship/reference may inherit its target via extends.
         const resolved = resolveHop(currentObj, relName);
         if (!resolved) break;
-        const { targetName, cardinality } = resolved;
+        const { hop, targetName, cardinality } = resolved;
         // @objectRef/@references may be package-qualified ("pkg::Entity"); resolve it
         // package-aware relative to the hop's source entity (the loader qualifies a
         // same-package ref even when authored bare), so the join binds the exact target.
         const target = resolveEntityRef(root, targetName, packageOf(currentObj));
         if (!target) break;
 
-        const ref = findReferenceBetween(currentObj as MetaObject, target);
+        // #368: two identity.reference declarations onto the same target are legal
+        // (e.g. Match.homeTeamRef/awayTeamRef -> Team) — resolveHopReference prefers
+        // the SPECIFIC reference/relationship the hop already named over re-deriving
+        // one from the target alone, so an explicit `@via: "Match.homeTeamRef"` (or a
+        // relationship disambiguated by @sourceRefField/name-pairing) resolves cleanly.
+        // Only a relationship hop that even the ladder cannot choose reaches the throw.
+        const resolvedRef = resolveHopReference(currentObj as MetaObject, hop, relName, target);
+        let ref: ReferenceLookup | undefined;
+        if (Array.isArray(resolvedRef)) {
+          if (resolvedRef.length > 1) {
+            // #368 round 2: @sourceRefField cannot fix this, but WHY differs by shape, and
+            // asserting the wrong reason for a given shape is itself a bug (fix round 1 of
+            // this cleanup caught exactly that). resolveRelationshipReference's ladder reads
+            // ONLY the hop's own entity's candidates (referenceCandidatesFor(currentObj, ...));
+            // it never even looks at `target`'s references. So:
+            //  - If `currentObj` itself holds one of the ambiguous candidates, resolution
+            //    already tried @sourceRefField/name-pairing against it and failed — and that
+            //    is only reachable at all when @cardinality isn't "one": a @cardinality "one"
+            //    relationship with 2+ own-side candidates is rejected at LOAD by rule (e)
+            //    (validateOneSideReferenceResolution) using this exact same ladder, so if we
+            //    got this far with an own-side candidate, @cardinality is provably not "one",
+            //    and @sourceRefField is provably illegal here (rule (d)).
+            //  - If NONE of the candidates are `currentObj`'s own, @sourceRefField could not
+            //    have mattered regardless of @cardinality — it only ever consults the hop's
+            //    OWN identity.reference children, and it has none targeting `target`. This is
+            //    rule (e)'s zero-candidate gap (validation-passes.ts:2226, `<= 1` skips 0 too):
+            //    a @cardinality "one" relationship can reach here with the FK entirely on the
+            //    far side, so @cardinality itself must NOT be asserted in this branch.
+            const holderName = (currentObj as MetaObject).name;
+            const holderOwnsACandidate = resolvedRef.some((r) => r.holder.name === holderName);
+            const whySourceRefFieldCannotHelp = holderOwnsACandidate
+              ? `it only disambiguates a @cardinality "${CARDINALITY_ONE}" relationship, and this ` +
+                `relationship's @cardinality is not "${CARDINALITY_ONE}" (declaring @sourceRefField on it ` +
+                `is itself a load error)`
+              : `it only consults "${holderName}"'s own identity.reference children, and "${holderName}" ` +
+                `declares none targeting "${target.name}" -- every candidate above belongs to the other side ` +
+                `of this join`;
+            throw new Error(
+              `projection join hop "${relName}" from "${holderName}" to "${target.name}" is ambiguous: ` +
+                `${resolvedRef.map((r) => r.referenceIdentity.name).join(", ")}. ` +
+                `@sourceRefField cannot resolve this: ${whySourceRefFieldCannotHelp}. There is no attribute ` +
+                `that disambiguates a hop like this -- remove the extra identity.reference between these two ` +
+                `entities, or restructure the model so only one remains.`,
+            );
+          }
+          ref = resolvedRef[0];
+        } else {
+          ref = resolvedRef;
+        }
         if (!ref) break;
 
         const fkField = ref.referenceIdentity.fields[0];
@@ -1090,7 +1178,40 @@ function buildSelectSpec(
       // The base↔child correlation FK — resolved exactly as buildJoinTree resolves a
       // single hop (the identity.reference is the FK-direction SSOT). Single-hop @via;
       // a multi-hop @via on origin.first is not lowered here (rare, and validated away).
-      const ref = findReferenceBetween(base, childEntity);
+      // #368: two identity.reference declarations onto the same target are legal, so
+      // this correlation cannot silently take the first — refuse rather than guess.
+      // Unlike buildJoinTree's @via hop (a named relationship/reference this file can
+      // resolve via resolveHopReference), origin.first's OWN @via (ORIGIN_FIRST_ATTR_VIA)
+      // is never read anywhere in this file — buildJoinTree explicitly skips it
+      // (ORIGIN_SUBTYPE_FIRST falls through to `continue` there) and this branch derives
+      // childEntity from @of alone, so there is no hop name here to prefer. Fixing that is
+      // a separate, larger change (wiring @via/single-hop-unique inference into this
+      // branch to match _validateViaPath/_inferViaSingleHop) — out of scope for #368's
+      // silent-first-match fix; the message below reflects the real, narrower remedy.
+      const refs = findReferencesBetween(base, childEntity);
+      // findReferencesBetween walks BOTH directions ([base,child] then [child,base]),
+      // so ">1 entry" is not by itself #368 ambiguity: a mutual 1:1 —
+      // Customer.primaryAddressRef -> Address PLUS Address.customerRef -> Customer —
+      // returns two entries pointing in OPPOSITE directions. That shape is legal
+      // (findReferenceBetween's own contract calls it "rare, but legal", and the
+      // referenceHolder: "source" | "target" branch below exists to serve it), and
+      // refusing it broke codegen for a model #368 says nothing about. The real
+      // ambiguity is two references declared by the SAME holder onto the other side —
+      // that is what the first-match below cannot choose between.
+      const ambiguousHolder = [base, childEntity].find(
+        (holder) => refs.filter((r) => r.holder === holder).length > 1,
+      );
+      if (ambiguousHolder !== undefined) {
+        const ambiguous = refs.filter((r) => r.holder === ambiguousHolder);
+        throw new Error(
+          `origin.first correlation from "${base.name}" to "${childEntity.name}" is ambiguous: ` +
+            `"${ambiguousHolder.name}" declares ${ambiguous.length} identity.reference nodes ` +
+            `onto the other side (${ambiguous.map((r) => r.referenceIdentity.name).join(", ")}). ` +
+            `origin.first's own @via is not consulted for this correlation — reduce to a ` +
+            `single identity.reference between these two entities.`,
+        );
+      }
+      const ref = refs[0];
       if (!ref) continue;
       const fkField = ref.referenceIdentity.fields[0];
       if (!fkField) continue;

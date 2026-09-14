@@ -7,6 +7,7 @@
 // EF Core model can agree with that DDL instead of falling back to EF's own convention
 // (#294). Any change to the precedence belongs in BOTH files.
 
+using MetaObjects.Core.Relationship;
 using MetaObjects.Meta;
 
 namespace MetaObjects.Persistence.Db;
@@ -50,7 +51,12 @@ public static class ReferentialActions
     /// would add a clause that changes nothing (and, on the TS side, would dirty
     /// introspection round-trips).</para>
     ///
-    /// <para>If multiple relationships target the same entity (rare), the first is used.</para>
+    /// <para>When more than one relationship targets the same entity (Match.homeTeam /
+    /// awayTeam both -> Team), each is correlated to its OWN identity.reference via the
+    /// shared relationship&lt;-&gt;reference ladder (#368 round 2) — never the first
+    /// match. When the correlation is genuinely ambiguous, it contributes nothing rather
+    /// than an arbitrary — possibly wrong — action (see the tier-2/tier-3 bodies below for
+    /// the exact rules).</para>
     /// </summary>
     public static ResolvedReferentialActions Resolve(MetaObject entity, MetaReferenceIdentity reference)
     {
@@ -76,14 +82,30 @@ public static class ReferentialActions
         //     direct FK. When the target does not resolve (dangling @references — normally
         //     a load error), fall back to an exact-string match so behavior on
         //     partially-valid trees is unchanged.
+        //
+        //     #368 (round 2): `entity` may declare MORE THAN ONE relationship to this
+        //     SAME target (Match.homeTeam / awayTeam both -> Team). Matching `r` on the
+        //     target alone can't say which FK `r` supplies actions FOR — every FK past
+        //     the first silently inherited the first relationship's actions. Resolve it
+        //     with the INVERSE of the relationship->reference ladder
+        //     (RelationshipReferences.ResolveRelationshipReference): `r` belongs to
+        //     `reference` iff the ladder, applied to `r`, resolves back to `reference`
+        //     itself — not merely "resolves to *some* reference on this target". `r` and
+        //     `reference` are always declared on the same `entity`, the exact shape the
+        //     ladder is built for, so this is a direct inversion, not a second parallel
+        //     rule.
         var rel = entity.Relationships().FirstOrDefault(r =>
         {
             if (r.Through is not null) return false;
             var objectRef = r.ObjectRef;
             if (objectRef is null) return false;
             if (targetObj is null) return objectRef == target;
-            return NamingRefs.RefMatchesObject(
-                targetObj, objectRef, NamingRefs.EffectivePackage(r.Parent ?? entity));
+            if (!NamingRefs.RefMatchesObject(
+                    targetObj, objectRef, NamingRefs.EffectivePackage(r.Parent ?? entity)))
+                return false;
+            return ReferenceEquals(
+                RelationshipReferences.ResolveRelationshipReference(entity, r.Name, objectRef, r.SourceRefField),
+                reference);
         });
 
         // (3) Failing that, the REVERSE relationship declared on the TARGET entity.
@@ -137,6 +159,20 @@ public static class ReferentialActions
     ///     target, the reverse relationship cannot say WHICH FK carries the ownership edge,
     ///     so it contributes to none of them (arming every FK could cascade through an edge
     ///     the author never designated).</item>
+    ///   <item>When the TARGET entity declares more than one non-<c>@through</c>
+    ///     relationship back at <paramref name="entity"/> (rare — e.g. a "posts"
+    ///     composition and a separate "latestPost" association both <c>@objectRef</c>-ing
+    ///     Post), no candidate is preferred: this is the tier-2 ambiguity's mirror image
+    ///     (multiple RELATIONSHIPS rather than multiple REFERENCES), and it cannot be
+    ///     resolved by the relationship-&gt;reference ladder — that ladder picks among
+    ///     references declared on the SAME object as the relationship, whereas here the
+    ///     candidate relationships live on <c>targetObj</c> while <paramref name="reference"/>
+    ///     lives on <paramref name="entity"/>, a different object, so the ladder has no
+    ///     candidates to apply to. Previously this used the FIRST match (the same
+    ///     silently-wrong-schema defect as tier 2); it now fails closed like the guard
+    ///     above, once the ambiguity guard above has already established
+    ///     <paramref name="reference"/> is the entity's only candidate reference to this
+    ///     target.</item>
     /// </list>
     /// </summary>
     private static MetaRelationship? FindReverseRelationship(
@@ -160,14 +196,19 @@ public static class ReferentialActions
 
         // The reverse relationship's bare @objectRef resolves in ITS declaring owner's
         // package (normally the target entity's own package).
-        return targetObj.Relationships().FirstOrDefault(r =>
+        //
+        // Fail closed on ambiguity rather than taking the first match: if more than one
+        // non-@through relationship on targetObj resolves back to `entity`, none of them
+        // is preferred (see the class doc above).
+        var reverseCandidates = targetObj.Relationships().Where(r =>
         {
             if (r.Through is not null) return false; // M:N — junction path, not this FK
             var objectRef = r.ObjectRef;
             if (objectRef is null) return false;
             return NamingRefs.RefMatchesObject(
                 entity, objectRef, NamingRefs.EffectivePackage(r.Parent ?? targetObj));
-        });
+        }).ToList();
+        return reverseCandidates.Count == 1 ? reverseCandidates[0] : null;
     }
 
     /// <summary>

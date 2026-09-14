@@ -7,6 +7,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED,
   refMatchesObject,
   resolveObjectRef,
+  resolveRelationshipReference,
   type MetaObject,
   type MetaRelationship,
   type MetaReferenceIdentity,
@@ -76,7 +77,12 @@ export function isRequired(field: MetaData): boolean {
  *   omits actions when the DB value is "no-action", so the expected side does the same
  *   to keep round-trip diffs clean.
  *
- * If multiple relationships target the same entity (rare), the first one is used.
+ * When more than one relationship targets the same entity (Match.homeTeam /
+ * awayTeam both -> Team), each is correlated to its OWN identity.reference via
+ * the shared relationship<->reference ladder (#368 round 2) — never the first
+ * match. When the correlation is genuinely ambiguous, it contributes nothing
+ * rather than an arbitrary — possibly wrong — action (see the tier-2/tier-3
+ * bodies below for the exact rules).
  *
  * The single `as FkAction` cast in normalize() is safe because REFERENTIAL_ACTIONS
  * (metadata package) and FkAction (migrate-ts/src/types.ts) are the same four-value
@@ -116,6 +122,18 @@ export function resolveReferentialActions(
   //     When the target does not resolve (dangling @references — normally a
   //     load error), fall back to the legacy exact-string match so behavior on
   //     partially-valid trees is unchanged.
+  //
+  //     #368 (round 2): `entity` may declare MORE THAN ONE identity.reference
+  //     onto this same target (Match.homeTeamRef / awayTeamRef both -> Team).
+  //     Matching `r` on the target alone can't say which of those references
+  //     `r` supplies actions FOR — every FK past the first silently inherited
+  //     the first relationship's actions. Resolve it with the INVERSE of the
+  //     relationship->reference ladder (resolveRelationshipReference): `r`
+  //     belongs to `ref` iff the ladder, applied to `r`, resolves back to
+  //     `ref` itself — not merely "resolves to *some* reference on this
+  //     target". `r` and `ref` are always declared on the same `entity`, the
+  //     exact shape the ladder is built for, so this is a direct inversion,
+  //     not a second parallel rule.
   // (3) Failing that, correlate the REVERSE relationship declared on the
   //     TARGET entity (the documented parent-side authoring shape).
   let rel = entity.relationships().find((r) => {
@@ -125,7 +143,8 @@ export function resolveReferentialActions(
     if (targetObj === undefined) return objectRef === target;
     const relOwner = r.parent ?? entity;
     const relOwnerPkg = relOwner.package ?? relOwner.fileDefaultPackage ?? "";
-    return refMatchesObject(targetObj, objectRef, relOwnerPkg);
+    if (!refMatchesObject(targetObj, objectRef, relOwnerPkg)) return false;
+    return resolveRelationshipReference(entity, r.name, objectRef, r.sourceRefField) === ref;
   });
   // When the tier-3 satisfiability guard fires, the reverse relationship's
   // AUTHORED @onUpdate still applies (only the inferred contributions drop).
@@ -185,9 +204,19 @@ export function resolveReferentialActions(
  *   same target, the reverse relationship cannot say WHICH FK carries the
  *   ownership edge, so it contributes to none of them (arming every FK could
  *   cascade through an edge the author never designated).
- *
- * If multiple reverse relationships point back at the entity (rare), the first
- * one is used — mirroring the tier-2 sibling-relationship rule.
+ * - When the TARGET entity declares more than one non-@through relationship
+ *   back at `entity` (rare — e.g. a "posts" composition and a separate
+ *   "latestPost" association both @objectRef-ing Post), no candidate is
+ *   preferred: this is the tier-2 ambiguity's mirror image (multiple
+ *   RELATIONSHIPS rather than multiple REFERENCES), and it cannot be
+ *   resolved by the relationship->reference ladder — that ladder picks among
+ *   references declared on the SAME object as the relationship, whereas here
+ *   the candidate relationships live on `targetObj` while `ref` lives on
+ *   `entity`, a different object, so the ladder has no candidates to apply
+ *   to. Previously this used the FIRST match (the same silently-wrong-schema
+ *   defect as tier 2); it now fails closed like the guard above, once the
+ *   ambiguity guard above has already established `ref` is the entity's only
+ *   candidate reference to this target.
  */
 function findReverseRelationship(
   entity: MetaObject,
@@ -211,7 +240,11 @@ function findReverseRelationship(
 
   // The reverse relationship's bare @objectRef resolves in ITS declaring
   // owner's package (normally the target entity's own package).
-  return targetObj.relationships().find((r) => {
+  //
+  // Fail closed on ambiguity rather than taking the first match: if more than
+  // one non-@through relationship on targetObj resolves back to `entity`,
+  // none of them is preferred (see the class doc above).
+  const reverseCandidates = targetObj.relationships().filter((r) => {
     if (r.through !== undefined) return false; // M:N — junction path, not this FK
     const objectRef = r.objectRef;
     if (objectRef === undefined) return false;
@@ -219,6 +252,7 @@ function findReverseRelationship(
     const relOwnerPkg = relOwner.package ?? relOwner.fileDefaultPackage ?? "";
     return refMatchesObject(entity, objectRef, relOwnerPkg);
   });
+  return reverseCandidates.length === 1 ? reverseCandidates[0] : undefined;
 }
 
 function normalize(a: string | undefined): FkAction | undefined {

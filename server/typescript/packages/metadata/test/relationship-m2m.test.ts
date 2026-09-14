@@ -325,6 +325,41 @@ describe("FR-017 M:N validation rules", () => {
     expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
   });
 
+  // Rule (d) exception (#368): @sourceRefField also disambiguates a
+  // @cardinality:one relationship — which of several identity.reference nodes
+  // onto the same target it navigates (see resolve-relationship-reference.test.ts).
+  // Only the M:N *junction* reading of @sourceRefField still requires @cardinality:many.
+  test("sourceRefField on a cardinality:one relationship loads cleanly (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "homeTeamId" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "awayTeamId" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("sourceRefField on a @cardinality:many relationship without @through still errors", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "relationship.association": { name: "teams", "@objectRef": "Team", "@cardinality": "many", "@sourceRefField": "whatever" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+  });
+
   test("valid hetero M:N produces no relationship errors", async () => {
     const { errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Post", children: [
@@ -342,5 +377,321 @@ describe("FR-017 M:N validation rules", () => {
     ] } });
     expect(codesOf(errors)).not.toContain("ERR_INVALID_RELATIONSHIP");
     expect(codesOf(errors)).not.toContain("ERR_BAD_ATTR_VALUE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rule (e) (#368): a `@cardinality: one` relationship must resolve to exactly
+// one identity.reference. Two references onto the same target are
+// indistinguishable from @objectRef alone — the resolver used to silently
+// emit the first one's FK column, so ambiguity is now a load error naming
+// the candidates instead.
+// ---------------------------------------------------------------------------
+
+describe("FR-017 Rule (e) — #368 ambiguous 1:N reference resolution", () => {
+  test("two references to one target with an unpairable relationship name is a load error (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "alphaFk" } },
+        { "field.long": { name: "betaFk" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "alphaRef", "@fields": ["alphaFk"], "@references": "Team" } },
+        { "identity.reference": { name: "betaRef", "@fields": ["betaFk"], "@references": "Team" } },
+        { "relationship.association": { name: "winner", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("Match.winner");
+    expect(message).toContain("alphaRef(alphaFk)");
+    expect(message).toContain("betaRef(betaFk)");
+  });
+
+  test("the issue #368 repro loads clean via name pairing", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("sourceRefField naming no local reference is a load error (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "nonesuch" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "awayTeamId" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("Match.homeTeam");
+    expect(message).toContain('"nonesuch"');
+    // awayTeam's @sourceRefField correctly names awayTeamRef's FK field — no error for it.
+    expect(message).not.toContain("Match.awayTeam");
+  });
+
+  // Fix round 1: a declared @sourceRefField naming nothing must error even
+  // with exactly one candidate — resolveRelationshipReference's ladder step 1
+  // ("exactly one candidate -> that one") would otherwise silently return
+  // that lone candidate regardless of whether it matches the declared field,
+  // emitting a join on the wrong column with no error at all.
+  test("sourceRefField naming nothing with a single candidate is a load error (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "awayTeamId" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("Match.awayTeam");
+    expect(message).toContain('"awayTeamId"');
+  });
+
+  test("sourceRefField correctly naming the single candidate loads clean (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "homeTeamId" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
+
+  // Fix round 1: two composite references sharing a first column must still
+  // print distinguishably in the candidate list (previously rendered as
+  // `fields[0]` only, so both showed as e.g. "aRef(tenantId), bRef(tenantId)").
+  // Matching still keys on fields[0] alone (documented limitation) — this is
+  // a message-rendering fix only.
+  test("composite reference candidates render their full field tuple (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "tenantId" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "aRef", "@fields": ["tenantId", "homeTeamId"], "@references": "Team" } },
+        { "identity.reference": { name: "bRef", "@fields": ["tenantId", "awayTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "winner", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("aRef(tenantId, homeTeamId)");
+    expect(message).toContain("bRef(tenantId, awayTeamId)");
+  });
+
+  // Fix round 2: rule (e) must iterate the EFFECTIVE relationship set
+  // (obj.relationships(), own + inherited via extends), not ownChildren().
+  // A entity declares the relationship + a single reference (clean on its
+  // own); B extends A and adds a SECOND reference onto the same target. The
+  // relationship is only inherited on B, so an own-scoped pass would never
+  // examine it there and this would load clean while codegen/runtime, which
+  // resolve against B's effective children, silently drop the relation.
+  test("an inherited relationship becomes ambiguous when a child entity adds a second reference (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "winner", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+      { "object.entity": { name: "B", "extends": "A", children: [
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } } ] } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+    const message = errors.map((e) => e.message).join("\n");
+    expect(message).toContain("B.winner");
+    expect(message).toContain("homeTeamRef(homeTeamId)");
+    expect(message).toContain("awayTeamRef(awayTeamId)");
+  });
+
+  test("a child entity's added reference that name-pairs with the inherited relationship loads clean (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "homeTeamId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+        { "relationship.association": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one" } } ] } },
+      { "object.entity": { name: "B", "extends": "A", children: [
+        { "field.long": { name: "awayTeamId" } },
+        { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+  });
+
+  // Fix round 3: validateRelationships (rule (d), the M:N slim-vocabulary
+  // pass) also switched to the resolving relationship set for ADR-0039
+  // compliance. Unlike rule (e), rule (d)'s checks read only the
+  // relationship's own attrs, so an inherited, UNMODIFIED relationship must
+  // be reported exactly once no matter how many entities inherit it — this
+  // is the dedup guard, not a "different entity, different finding" case.
+  test("an inherited rule-(d) violation is reported once, not once per inheriting entity (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Program", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "relationship.composition": { name: "program", "@objectRef": "Program",
+            "@cardinality": "one", "@through": "X" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "B", "extends": "A" } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+  });
+
+  test("an inherited rule-(d) violation stays a single error across several inheriting children (#368)", async () => {
+    const { errors } = await loadDoc({ "metadata.root": { package: "repro", children: [
+      { "object.entity": { name: "Program", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "A", children: [
+        { "field.long": { name: "id" } },
+        { "relationship.composition": { name: "program", "@objectRef": "Program",
+            "@cardinality": "one", "@through": "X" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "B", "extends": "A" } },
+      { "object.entity": { name: "C", "extends": "A" } },
+      { "object.entity": { name: "D", "extends": "A" } },
+    ] } });
+    expect(codesOf(errors)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two latent "obj vs. declaring entity" bugs, backfilled from the C#/Java
+// ports (see Issue368RelationshipReferenceValidationTests.cs and
+// Issue368RelationshipReferenceValidationTest.java). Both bugs are
+// ORDER-DEPENDENT: they only manifest when an inheriting entity is visited
+// by validateRelationships's outer loop BEFORE its declaring base — which is
+// why neither was caught by the tests above when the #368 fix landed here
+// (`const declaringEntity = rel.parent ?? obj;` in validation-passes.ts).
+// Each fixture pins the visit-order invariant it depends on via
+// `objectVisitOrder`, so a future change to iteration order fails loudly
+// instead of silently making the test pass for the wrong reason.
+// ---------------------------------------------------------------------------
+
+describe("FR-017 #368 order-dependence regressions (declaring entity vs. visiting entity)", () => {
+  function objectVisitOrder(root: { children(): readonly { type: string; resolutionKey(): string }[] }): string[] {
+    return root.children().filter((c) => c.type === TYPE_OBJECT).map((o) => o.resolutionKey());
+  }
+
+  test("inherited self-join relationship is not misflagged as non-self-join", async () => {
+    // Node extends NodeBase, which declares a @symmetric self-join relationship
+    // onto NodeBase itself (@objectRef: "NodeBase"). Node is declared BEFORE
+    // NodeBase (extends is resolved order-independently by a deferred pass, so
+    // this is legal) so that the outer validation loop visits `obj = Node`
+    // FIRST — if rule (a)'s self-join comparison used the visiting `obj`
+    // instead of the relationship's DECLARING entity (NodeBase, via rel.parent),
+    // it would wrongly conclude @objectRef "NodeBase" is not the (visiting)
+    // declaring entity "Node" and misfire ERR_BAD_ATTR_VALUE.
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Node", "extends": "NodeBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "NodeBase",
+            "@through": "NodeLink", "@symmetric": true } } ] } },
+      { "object.entity": { name: "NodeLink", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "aId" } },
+        { "field.long": { name: "bId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "a", "@fields": ["aId"], "@references": "NodeBase" } },
+        { "identity.reference": { name: "b", "@fields": ["bId"], "@references": "NodeBase" } } ] } },
+    ] } });
+    // Pin the iteration-order invariant this test's premise depends on: if
+    // root.children() ever stopped iterating in declaration order (e.g. started
+    // sorting alphabetically), "Node" would no longer be visited before
+    // "NodeBase" and this test would keep passing for the wrong reason —
+    // silently no longer exercising the bug at all. Fail loudly instead.
+    expect(objectVisitOrder(root)).toEqual(["acme::Node", "acme::NodeBase", "acme::NodeLink"]);
+    expect(codesOf(errors)).not.toContain("ERR_BAD_ATTR_VALUE");
+    expect(codesOf(errors)).not.toContain("ERR_INVALID_RELATIONSHIP");
+  });
+
+  test("inherited bare @through resolves in the declaring entity's package, not the visiting one", async () => {
+    // WeekBase (package "base") declares a M:N relationship with a BARE
+    // @through "Tag" — ADR-0042 says a bare ref resolves in the DECLARING
+    // entity's package ("base::Tag"), never the package of whichever entity
+    // inherits and visits it. Week extends WeekBase from a DIFFERENT package
+    // ("acme") that also happens to declare its own unrelated "Tag" entity.
+    // The acme source is loaded FIRST so the outer validation loop visits
+    // `obj = Week` before `obj = WeekBase` — if @through resolution used
+    // the visiting entity's package it would wrongly bind to "acme::Tag"
+    // (which has zero identity.reference children) instead of "base::Tag"
+    // (which correctly has two).
+    const acmeDoc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Week", "extends": "base::WeekBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Tag", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+    ] } };
+    const baseDoc = { "metadata.root": { package: "base", children: [
+      { "object.entity": { name: "WeekBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "Tag" } } ] } },
+      { "object.entity": { name: "Tag", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "weekId" } },
+        { "field.long": { name: "labelId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "w", "@fields": ["weekId"], "@references": "base::WeekBase" } },
+        { "identity.reference": { name: "l", "@fields": ["labelId"], "@references": "base::Tag" } } ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(acmeDoc), { id: "acme.json" }),
+      new InMemoryStringSource(JSON.stringify(baseDoc), { id: "base.json" }),
+    ]);
+    // Pin the iteration-order invariant: the acme source must be fully visited
+    // (Week, then acme::Tag) before base's WeekBase/Tag, or this test's premise
+    // (obj = Week visited before obj = WeekBase) silently stops holding and the
+    // test would keep passing without ever exercising the bug.
+    expect(objectVisitOrder(root)).toEqual(["acme::Week", "acme::Tag", "base::WeekBase", "base::Tag"]);
+    expect(codesOf(errors)).not.toContain("ERR_INVALID_RELATIONSHIP");
   });
 });

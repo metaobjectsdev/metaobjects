@@ -78,7 +78,18 @@ def _ref_fk_field(ref: MetaData) -> str | None:
 
 
 def _ref_target_entity(ref: MetaData) -> str | None:
-    """The @references target-entity name of a reference (bare, package-stripped)."""
+    """The @references target-entity name of a reference (bare, package-stripped).
+
+    KNOWN GAP (pre-dates #368, deliberately NOT fixed here): this compares the
+    WHOLE @references value, so the dotted ``Entity.field`` form ("Team.id")
+    never matches a bare entity name — a junction whose references are authored
+    dotted derives no M:N fields on this port, where TS's derive-m2m-fields.ts
+    (which reads ``ref.targetEntity``) resolves them. The one-line repair is to
+    delegate to ``relationship_references.reference_target_entity``; it is left
+    alone because it would change M:N derivation behaviour, which is outside the
+    #368 fix. Tracked separately from the rule-(e) ladder, whose copy of this
+    blind spot IS fixed.
+    """
     v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving (identity attr)
     return _strip_package(v) if isinstance(v, str) and v else None
 

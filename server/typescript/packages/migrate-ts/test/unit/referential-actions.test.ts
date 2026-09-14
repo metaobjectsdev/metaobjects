@@ -89,6 +89,137 @@ describe("resolveReferentialActions", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #368 round 2: an entity declaring MORE THAN ONE relationship to the SAME
+// target (Match.homeTeam / Match.awayTeam, both -> Team). Matching on the
+// target alone can't say which FK a relationship supplies actions for, so
+// resolveReferentialActions must correlate each relationship to its OWN
+// identity.reference via the same relationship<->reference ladder used
+// elsewhere in the repo (issue #368 round 1), not the first match.
+//
+// REGRESSION: against the pre-fix code, "each FK gets its own relationship's
+// action" FAILED — awayTeamRef resolved to { onDelete: "restrict" } (homeTeam's
+// action, matched first in declaration order) instead of its own "cascade".
+// ---------------------------------------------------------------------------
+
+function matchTeamDoc(rels: Record<string, unknown>[]) {
+  return { "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Team", children: [
+      { "source.rdb": {} },
+      { "field.long": { name: "id" } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
+    ] } },
+    { "object.entity": { name: "Match", children: [
+      { "source.rdb": {} },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "homeTeamId" } },
+      { "field.long": { name: "awayTeamId" } },
+      { "identity.reference": { name: "homeTeamRef", "@fields": ["homeTeamId"], "@references": "Team" } },
+      { "identity.reference": { name: "awayTeamRef", "@fields": ["awayTeamId"], "@references": "Team" } },
+      ...rels,
+      { "identity.primary": { "name": "id", "@fields": "id" } },
+    ] } },
+  ] } };
+}
+
+async function loadMatchTeam(rels: Record<string, unknown>[]) {
+  const { root, errors } = await loadDoc(matchTeamDoc(rels));
+  expect(errors).toHaveLength(0);
+  const match = root.objects().find((o) => o.name === "Match")!;
+  const homeTeamRef = match.referenceIdentities().find((r) => r.name === "homeTeamRef")!;
+  const awayTeamRef = match.referenceIdentities().find((r) => r.name === "awayTeamRef")!;
+  return { root, match, homeTeamRef, awayTeamRef };
+}
+
+describe("#368 round 2: two relationships to the same target correlate to their OWN reference", () => {
+  test("REGRESSION: name-pairing — each FK gets its own relationship's action, not the first relationship's", async () => {
+    const { match, homeTeamRef, awayTeamRef } = await loadMatchTeam([
+      { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "restrict" } },
+      { "relationship.composition": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "cascade" } },
+    ]);
+    expect(resolveReferentialActions(match, homeTeamRef)).toEqual({ onDelete: "restrict", onUpdate: "cascade" });
+    expect(resolveReferentialActions(match, awayTeamRef)).toEqual({ onDelete: "cascade", onUpdate: "cascade" });
+  });
+
+  test("end-to-end: each FK's own ON DELETE lands in the emitted DDL (Postgres)", async () => {
+    const { root } = await loadMatchTeam([
+      { "relationship.association": { name: "homeTeam", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "restrict" } },
+      { "relationship.composition": { name: "awayTeam", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "cascade" } },
+    ]);
+    const snapshot = buildExpectedSchema(root);
+    const { changes } = await diff(snapshot, EMPTY_SCHEMA);
+    const { up } = emit(changes, { dialect: "postgres" });
+    expect(up).toContain('ADD CONSTRAINT "matches_home_team_id_fk"');
+    expect(up).toMatch(/matches_home_team_id_fk[^;]*ON DELETE RESTRICT/);
+    expect(up).toContain('ADD CONSTRAINT "matches_away_team_id_fk"');
+    expect(up).toMatch(/matches_away_team_id_fk[^;]*ON DELETE CASCADE/);
+  });
+
+  test("REGRESSION: @sourceRefField — each FK gets its own relationship's action even when names don't pair", async () => {
+    // Relationship names deliberately don't name-pair with either reference —
+    // only @sourceRefField can route these correctly.
+    const { match, homeTeamRef, awayTeamRef } = await loadMatchTeam([
+      { "relationship.association": { name: "primary", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "restrict", "@sourceRefField": "homeTeamId" } },
+      { "relationship.composition": { name: "secondary", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "cascade", "@sourceRefField": "awayTeamId" } },
+    ]);
+    expect(resolveReferentialActions(match, homeTeamRef)).toEqual({ onDelete: "restrict", onUpdate: "cascade" });
+    expect(resolveReferentialActions(match, awayTeamRef)).toEqual({ onDelete: "cascade", onUpdate: "cascade" });
+  });
+
+  test("no regression: a single relationship to a target still resolves regardless of its name", async () => {
+    // Only one reference to Team exists here (homeTeamRef) — the relationship
+    // name "champion" pairs with neither reference's name, but the ladder's
+    // "exactly one candidate" tier means naming never mattered for this,
+    // by far the most common, shape.
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Team", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+      ] } },
+      { "object.entity": { name: "Match", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "winnerId" } },
+        { "identity.reference": { name: "winnerRef", "@fields": ["winnerId"], "@references": "Team" } },
+        { "relationship.composition": { name: "champion", "@objectRef": "Team", "@cardinality": "one" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+      ] } },
+    ] } };
+    const { root, errors } = await loadDoc(doc);
+    expect(errors).toHaveLength(0);
+    const match = root.objects().find((o) => o.name === "Match")!;
+    const ref = match.referenceIdentities()[0]!;
+    expect(resolveReferentialActions(match, ref)).toEqual({ onDelete: "cascade", onUpdate: "cascade" });
+  });
+
+  test("unresolvable correlation emits the default, not the first relationship's action", async () => {
+    // Neither relationship name pairs with either reference and no
+    // @sourceRefField disambiguates — the ladder can't choose. This is the
+    // SAME ambiguity rule (e) (validateOneSideReferenceResolution) already
+    // refuses at load time (ADR-0029 §5), so — mirroring how the ladder's own
+    // suite tests this (resolve-relationship-reference.test.ts,
+    // "unpairable names return undefined rather than guessing") — assert the
+    // load error directly instead of requiring a clean load, then assert
+    // resolveReferentialActions still fails closed (no action on either FK)
+    // as defense in depth, rather than either one inheriting the first
+    // relationship's action.
+    const { root, errors } = await loadDoc(matchTeamDoc([
+      { "relationship.association": { name: "primary", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "restrict" } },
+      { "relationship.composition": { name: "secondary", "@objectRef": "Team", "@cardinality": "one", "@onDelete": "cascade" } },
+    ]));
+    expect(errors.map((e) => (e as { code?: string }).code)).toEqual([
+      "ERR_INVALID_RELATIONSHIP",
+      "ERR_INVALID_RELATIONSHIP",
+    ]);
+    const match = root.objects().find((o) => o.name === "Match")!;
+    const homeTeamRef = match.referenceIdentities().find((r) => r.name === "homeTeamRef")!;
+    const awayTeamRef = match.referenceIdentities().find((r) => r.name === "awayTeamRef")!;
+    expect(resolveReferentialActions(match, homeTeamRef)).toEqual({ onDelete: undefined, onUpdate: undefined });
+    expect(resolveReferentialActions(match, awayTeamRef)).toEqual({ onDelete: undefined, onUpdate: undefined });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Round-trip: buildExpectedSchema → diff (against empty) → emit
 //
 // Asserts that the relationship-derived defaults (and explicit overrides)
