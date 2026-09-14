@@ -16,13 +16,30 @@ Three modes (see the FR-018 design + the TS reference ``derive-m2m-fields.ts``):
      two references are taken in declaration order (source_field = first,
      target_field = second). Resolution unions both at read time.
 Ambiguous (source == target, neither @sourceRefField nor @symmetric) → raise.
+
+"source" above always means the entity that DECLARES the relationship — never
+whichever entity's effective view reached it. Every caller walks the RESOLVING
+``children()`` / ``m2m_relationships()``, so for a relationship inherited via
+``extends`` the entity it is iterating is the INHERITING one, and both the
+self-join classification and the hetero reference match would then be made
+against the wrong entity (an inherited self-join reads as hetero and derivation
+raises; an inherited hetero finds no junction reference to the inheriting entity
+and raises too). The declaring entity is resolved HERE, from ``rel.parent``,
+rather than asked of each caller — same shape as the #368 loader fix
+(``declaring_entity = rel.parent if rel.parent is not None else obj`` in
+``validation_passes.py``), and for the same reason: the answer must not depend on
+who asked. The passed ``source`` is NOT discarded: under ``extends`` the declaring
+base and the navigating entity are two legitimate names for the relationship's
+subject (a junction FK usually references the concrete entity, which is the one
+with a table), so BOTH are accepted. It is also the fallback when ``rel`` has no
+object parent, which keeps the signature unchanged.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from ...meta_data import MetaData
-from ....shared.base_types import TYPE_IDENTITY
+from ....shared.base_types import TYPE_IDENTITY, TYPE_OBJECT
 from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
@@ -103,43 +120,73 @@ def derive_m2m_fields(
 
     *object_index* is a bare-name → object map of the loaded model's top-level
     objects (the Python loader's resolution surface; mirrors the TS
-    ``root.findObject``). Raises :class:`M2MDerivationError` when the junction is
-    missing/malformed or the self-join is ambiguous.
+    ``root.findObject``). *source* is the entity the caller is navigating from;
+    it is accepted alongside ``rel.parent`` as a name for the relationship's
+    subject, and used as the declaring entity when *rel* has no object parent —
+    see the module docstring. Raises
+    :class:`M2MDerivationError` when the junction is missing/malformed or the
+    self-join is ambiguous.
     """
+    # The entity that DECLARES ``rel`` — see the module docstring. ``parent`` is
+    # the owning entity for both an own declaration and an inherited one (an
+    # unmodified inherited child is the SAME node object; an override is a
+    # different node whose parent is the overriding entity, also correct).
+    rel_parent = rel.parent
+    declaring = (
+        rel_parent
+        if rel_parent is not None and rel_parent.type == TYPE_OBJECT
+        else source
+    )
+
     through_name = rel.through()
     if through_name is None:
         raise M2MDerivationError(
-            f'relationship "{source.name}.{rel.name}" is missing @through '
+            f'relationship "{declaring.name}.{rel.name}" is missing @through '
             f"(required for M:N derivation)"
         )
     junction = object_index.get(_strip_package(through_name))
     if junction is None:
         raise M2MDerivationError(
-            f'relationship "{source.name}.{rel.name}" @through "{through_name}" '
+            f'relationship "{declaring.name}.{rel.name}" @through "{through_name}" '
             f"does not resolve to an entity"
         )
 
     target_name = rel.object_ref()
     if target_name is None:
         raise M2MDerivationError(
-            f'relationship "{source.name}.{rel.name}" is missing @objectRef '
+            f'relationship "{declaring.name}.{rel.name}" is missing @objectRef '
             f"(the M:N target)"
         )
 
     refs = _reference_children(junction)
     if len(refs) != 2:
         raise M2MDerivationError(
-            f'junction "{through_name}" for relationship "{source.name}.{rel.name}" '
+            f'junction "{through_name}" for relationship "{declaring.name}.{rel.name}" '
             f"must declare exactly two identity.reference children "
             f"(found {len(refs)})"
         )
 
-    is_self_join = _strip_package(target_name) == source.name
+    # The relationship's SUBJECT — the entity the M:N hangs off. Under ``extends``
+    # there are two legitimate names for it and BOTH occur in real models: the
+    # DECLARING entity (what @objectRef names for a self-join declared on an
+    # abstract base, and what a junction reference names when the FK points at the
+    # base type), and the NAVIGATING entity (*source*, the concrete entity the
+    # caller is iterating — usually what a junction FK references, because that is
+    # the entity with the physical table). Accepting either is what makes the
+    # derivation independent of which entity's effective view reached the
+    # relationship. Not covered: a junction reference naming an entity strictly
+    # BETWEEN the base and the navigating entity in a deeper hierarchy.
+    subject_names = [declaring.name]
+    if source.name != declaring.name:
+        subject_names.append(source.name)
+    subject_label = " or ".join(f'"{n}"' for n in subject_names)
+
+    is_self_join = _strip_package(target_name) in subject_names
 
     if not is_self_join:
         # Hetero: match each reference by the entity it resolves to.
         source_ref = next(
-            (r for r in refs if _ref_target_entity(r) == source.name), None
+            (r for r in refs if _ref_target_entity(r) in subject_names), None
         )
         target_ref = next(
             (r for r in refs if _ref_target_entity(r) == _strip_package(target_name)),
@@ -150,8 +197,8 @@ def derive_m2m_fields(
         if source_field is None or target_field is None:
             raise M2MDerivationError(
                 f'junction "{through_name}" for relationship '
-                f'"{source.name}.{rel.name}" must declare one identity.reference '
-                f'to "{source.name}" and one to "{_strip_package(target_name)}"'
+                f'"{declaring.name}.{rel.name}" must declare one identity.reference '
+                f'to {subject_label} and one to "{_strip_package(target_name)}"'
             )
         return M2MFields(source_field=source_field, target_field=target_field)
 
@@ -163,14 +210,14 @@ def derive_m2m_fields(
         if a is None or b is None:
             raise M2MDerivationError(
                 f'symmetric junction "{through_name}" for '
-                f'"{source.name}.{rel.name}" has a reference with no @fields'
+                f'"{declaring.name}.{rel.name}" has a reference with no @fields'
             )
         return M2MFields(source_field=a, target_field=b)
 
     source_ref_field = rel.source_ref_field()
     if source_ref_field is None:
         raise M2MDerivationError(
-            f'self-join relationship "{source.name}.{rel.name}" through '
+            f'self-join relationship "{declaring.name}.{rel.name}" through '
             f'"{through_name}" is ambiguous: set @sourceRefField (directed) or '
             f"@symmetric (undirected)"
         )
@@ -182,7 +229,7 @@ def derive_m2m_fields(
     )
     if source_ref is None:
         raise M2MDerivationError(
-            f'@sourceRefField "{source_ref_field}" on "{source.name}.{rel.name}" '
+            f'@sourceRefField "{source_ref_field}" on "{declaring.name}.{rel.name}" '
             f"does not match any identity.reference FK field on junction "
             f'"{through_name}"'
         )
@@ -190,7 +237,7 @@ def derive_m2m_fields(
     target_field = _ref_fk_field(target_ref) if target_ref is not None else None
     if target_field is None:
         raise M2MDerivationError(
-            f'junction "{through_name}" for "{source.name}.{rel.name}" has no '
+            f'junction "{through_name}" for "{declaring.name}.{rel.name}" has no '
             f"distinct target-side reference"
         )
     return M2MFields(source_field=source_ref_field, target_field=target_field)
