@@ -243,3 +243,79 @@ describe("symmetric self-join — User.friends via Friendship (union on read)", 
     expect((targetSpec!.where as { values: unknown[] }).values).toEqual([5]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Inherited M:N — the runtime resolver reaches a relationship declared on a
+// base entity (sourceEntity.children() is RESOLVING) and used to hand the
+// derivation the VISITING entity. For a self-join declared on the base that
+// read as hetero and threw; the runtime surfaced it as a MetadataError, so an
+// inherited self-join was untraversable at run time, not just at codegen time.
+//
+// The child is declared BEFORE the base so the model's visit order is
+// child-first — the shape the #368 loader regressions established.
+// ---------------------------------------------------------------------------
+
+const INHERITED_SELF_JOIN = {
+  "metadata.root": {
+    package: "demo",
+    children: [
+      { "object.entity": { name: "Node", extends: "NodeBase", children: [
+        { "field.long": { name: "id" } },
+        primary("id"),
+      ] } },
+      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+        relMany("peers", "NodeBase", "NodeLink", { "@symmetric": true }),
+      ] } },
+      entity("NodeLink", ["aId", "bId"], [
+        primary("aId", "bId"),
+        reference("a", "aId", "NodeBase"),
+        reference("b", "bId", "NodeBase"),
+      ]),
+    ],
+  },
+};
+
+const INHERITED_HETERO = {
+  "metadata.root": {
+    package: "demo",
+    children: [
+      { "object.entity": { name: "Article", extends: "ArticleBase", children: [
+        { "field.long": { name: "id" } },
+        primary("id"),
+      ] } },
+      { "object.entity": { name: "ArticleBase", "@isAbstract": true, children: [
+        relMany("tags", "Tag", "ArticleTag"),
+      ] } },
+      entity("Tag", ["id", "name"], [primary("id")]),
+      entity("ArticleTag", ["articleId", "tagId"], [
+        primary("articleId", "tagId"),
+        reference("articleRef", "articleId", "ArticleBase"),
+        reference("tagRef", "tagId", "Tag"),
+      ]),
+    ],
+  },
+};
+
+describe("inherited M:N — derivation follows the DECLARING entity", () => {
+  test("self-join inherited via extends resolves on the child (was: MetadataError)", async () => {
+    const root = await load(INHERITED_SELF_JOIN);
+    // Pin the premise: Node is reached before NodeBase.
+    expect(root.ownChildren().filter((c) => c.type === "object").map((c) => c.name))
+      .toEqual(["Node", "NodeBase", "NodeLink"]);
+    const node = root.ownChildByName("Node")!;
+    const desc = resolveN2mDescriptor(node, "peers", root)!;
+    expect(desc.sourceJoinField).toBe("aId");
+    expect(desc.targetJoinField).toBe("bId");
+    expect(desc.symmetric).toBe(true);
+    // The descriptor still names the entity actually being queried.
+    expect(desc.sourceEntityName).toBe("Node");
+  });
+
+  test("hetero inherited via extends matches the base's junction reference", async () => {
+    const root = await load(INHERITED_HETERO);
+    const article = root.ownChildByName("Article")!;
+    const desc = resolveN2mDescriptor(article, "tags", root)!;
+    expect(desc.sourceJoinField).toBe("articleId");
+    expect(desc.targetJoinField).toBe("tagId");
+  });
+});

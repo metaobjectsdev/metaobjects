@@ -17,12 +17,26 @@
 //      two references are taken in declaration order (sourceField = first,
 //      targetField = second). Resolution unions both at read time.
 // Ambiguous (source == target, neither @sourceRefField nor @symmetric) → throw.
+//
+// "source" above always means the entity that DECLARES the relationship — never
+// whichever entity's effective view reached it. Every caller walks the RESOLVING
+// `obj.relationships()`, so for a relationship inherited via `extends` the entity
+// it is iterating is the INHERITING one, and both the self-join classification and
+// the hetero reference match would then be made against the wrong entity (an
+// inherited self-join reads as hetero and derivation throws; an inherited hetero
+// finds no junction reference to the inheriting entity and throws too). The
+// declaring entity is resolved HERE, from `rel.parent`, rather than asked of each
+// caller — same shape as the #368 loader fix (`declaringEntity = rel.parent ?? obj`
+// in validation-passes.ts), and for the same reason: the answer must not depend on
+// who asked. The `source` parameter is kept as the fallback for a synthetic
+// relationship with no parent (and as a non-breaking signature).
 
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
 import type { MetaRelationship } from "./meta-relationship.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
 import { stripPackage } from "../../naming.js";
+import { TYPE_OBJECT } from "../../shared/base-types.js";
 
 /** Thrown when a M:N relationship's junction FK fields cannot be derived. */
 export class M2MDerivationError extends Error {
@@ -50,7 +64,8 @@ function refFkField(ref: MetaReferenceIdentity): string | undefined {
  *
  * @param rel     the M:N relationship (carries @objectRef + @through + optional
  *                @sourceRefField / @symmetric)
- * @param source  the entity declaring `rel`
+ * @param source  fallback declaring entity, used only when `rel` has no parent
+ *                (the declaring entity is normally read from `rel.parent`)
  * @param root    the loaded model root (to find the junction entity)
  * @throws M2MDerivationError when the junction is missing/malformed or the
  *         self-join is ambiguous.
@@ -60,10 +75,21 @@ export function deriveM2MFields(
   source: MetaObject,
   root: MetaRoot,
 ): M2MFields {
+  // The entity that DECLARES `rel` — see the header note. `rel.parent` is the
+  // owning entity for both an own declaration and an inherited one (an unmodified
+  // inherited child is the SAME node object, reused in place by
+  // MetaData._effectiveChildren; an override is a genuinely different node whose
+  // parent is the overriding entity, which is also correct).
+  const relParent = rel.parent;
+  const declaringEntity: MetaObject =
+    relParent !== undefined && relParent.type === TYPE_OBJECT
+      ? (relParent as MetaObject)
+      : source;
+
   const throughName = rel.through;
   if (throughName === undefined) {
     throw new M2MDerivationError(
-      `relationship "${source.name}.${rel.name}" is missing @through (required for M:N derivation)`,
+      `relationship "${declaringEntity.name}.${rel.name}" is missing @through (required for M:N derivation)`,
     );
   }
   // @through may be package-qualified (FQN); findObject is keyed by bare name,
@@ -76,37 +102,37 @@ export function deriveM2MFields(
       : undefined);
   if (junction === undefined) {
     throw new M2MDerivationError(
-      `relationship "${source.name}.${rel.name}" @through "${throughName}" does not resolve to an entity`,
+      `relationship "${declaringEntity.name}.${rel.name}" @through "${throughName}" does not resolve to an entity`,
     );
   }
 
   const targetName = rel.objectRef;
   if (targetName === undefined) {
     throw new M2MDerivationError(
-      `relationship "${source.name}.${rel.name}" is missing @objectRef (the M:N target)`,
+      `relationship "${declaringEntity.name}.${rel.name}" is missing @objectRef (the M:N target)`,
     );
   }
 
   const refs = junction.referenceIdentities();
   if (refs.length !== 2) {
     throw new M2MDerivationError(
-      `junction "${throughName}" for relationship "${source.name}.${rel.name}" must declare exactly two ` +
+      `junction "${throughName}" for relationship "${declaringEntity.name}.${rel.name}" must declare exactly two ` +
         `identity.reference children (found ${refs.length})`,
     );
   }
 
-  const isSelfJoin = stripPackage(targetName) === source.name;
+  const isSelfJoin = stripPackage(targetName) === declaringEntity.name;
 
   if (!isSelfJoin) {
     // Hetero: match each reference by the entity it resolves to.
-    const sourceRef = refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === source.name);
+    const sourceRef = refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === declaringEntity.name);
     const targetRef = refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === stripPackage(targetName));
     const sourceField = sourceRef ? refFkField(sourceRef) : undefined;
     const targetField = targetRef ? refFkField(targetRef) : undefined;
     if (sourceField === undefined || targetField === undefined) {
       throw new M2MDerivationError(
-        `junction "${throughName}" for relationship "${source.name}.${rel.name}" must declare one ` +
-          `identity.reference to "${source.name}" and one to "${stripPackage(targetName)}"`,
+        `junction "${throughName}" for relationship "${declaringEntity.name}.${rel.name}" must declare one ` +
+          `identity.reference to "${declaringEntity.name}" and one to "${stripPackage(targetName)}"`,
       );
     }
     return { sourceField, targetField };
@@ -119,7 +145,7 @@ export function deriveM2MFields(
     const b = refFkField(refs[1]!);
     if (a === undefined || b === undefined) {
       throw new M2MDerivationError(
-        `symmetric junction "${throughName}" for "${source.name}.${rel.name}" has a reference with no @fields`,
+        `symmetric junction "${throughName}" for "${declaringEntity.name}.${rel.name}" has a reference with no @fields`,
       );
     }
     return { sourceField: a, targetField: b };
@@ -128,7 +154,7 @@ export function deriveM2MFields(
   const sourceRefField = rel.sourceRefField;
   if (sourceRefField === undefined) {
     throw new M2MDerivationError(
-      `self-join relationship "${source.name}.${rel.name}" through "${throughName}" is ambiguous: ` +
+      `self-join relationship "${declaringEntity.name}.${rel.name}" through "${throughName}" is ambiguous: ` +
         `set @sourceRefField (directed) or @symmetric (undirected)`,
     );
   }
@@ -137,7 +163,7 @@ export function deriveM2MFields(
   const sourceRef = refs.find((r) => refFkField(r) === sourceRefField);
   if (sourceRef === undefined) {
     throw new M2MDerivationError(
-      `@sourceRefField "${sourceRefField}" on "${source.name}.${rel.name}" does not match any ` +
+      `@sourceRefField "${sourceRefField}" on "${declaringEntity.name}.${rel.name}" does not match any ` +
         `identity.reference FK field on junction "${throughName}"`,
     );
   }
@@ -145,7 +171,7 @@ export function deriveM2MFields(
   const targetField = targetRef ? refFkField(targetRef) : undefined;
   if (targetField === undefined) {
     throw new M2MDerivationError(
-      `junction "${throughName}" for "${source.name}.${rel.name}" has no distinct target-side reference`,
+      `junction "${throughName}" for "${declaringEntity.name}.${rel.name}" has no distinct target-side reference`,
     );
   }
   return { sourceField: sourceRefField, targetField };

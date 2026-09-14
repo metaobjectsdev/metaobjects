@@ -695,3 +695,162 @@ describe("FR-017 #368 order-dependence regressions (declaring entity vs. visitin
     expect(codesOf(errors)).not.toContain("ERR_INVALID_RELATIONSHIP");
   });
 });
+
+// ---------------------------------------------------------------------------
+// deriveM2MFields — declaring entity vs. visiting entity (the #368 follow-up).
+//
+// Same confusion as the two regressions above, one layer down: the derivation
+// classified the self-join, and matched the hetero junction reference, against
+// the `source` entity its CALLER passed. Every caller walks the RESOLVING
+// `obj.relationships()` (codegen-ts's relation-resolver, runtime-ts's
+// n2m-resolver, docs-site's link-graph, and their Java/C#/Python twins) and
+// passes the entity it is iterating — so for a relationship inherited via
+// `extends` that is the INHERITING entity, not the one that declared it.
+//
+// Unlike the loader-pass regressions above, this defect is NOT gated on visit
+// order: there is no once-per-node `checked` set here, so the derivation is
+// simply wrong for every inheriting entity, whichever order they are reached
+// in. The fixtures still declare the child BEFORE the base and pin the visit
+// order, matching the #368 convention and covering the order-sensitive shape
+// for free.
+// ---------------------------------------------------------------------------
+
+describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one", () => {
+  function objectVisitOrder(root: { children(): readonly { type: string; resolutionKey(): string }[] }): string[] {
+    return root.children().filter((c) => c.type === TYPE_OBJECT).map((o) => o.resolutionKey());
+  }
+
+  test("inherited symmetric self-join derives both FK sides (was: read as hetero, threw)", async () => {
+    // NodeBase declares a @symmetric self-join onto itself; Node extends it and
+    // is declared FIRST. Reached through Node's effective view, the derivation
+    // used to compare @objectRef "NodeBase" against the VISITING "Node",
+    // conclude "not a self-join", take the hetero branch, look for a junction
+    // reference to "Node" (there is none — both point at NodeBase) and throw
+    // M2MDerivationError. Codegen swallows that throw, so the navigation just
+    // vanished from the generated output.
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Node", "extends": "NodeBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "NodeBase",
+            "@through": "NodeLink", "@symmetric": true } } ] } },
+      { "object.entity": { name: "NodeLink", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "aId" } },
+        { "field.long": { name: "bId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "a", "@fields": ["aId"], "@references": "NodeBase" } },
+        { "identity.reference": { name: "b", "@fields": ["bId"], "@references": "NodeBase" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+    expect(objectVisitOrder(root)).toEqual(["acme::Node", "acme::NodeBase", "acme::NodeLink"]);
+
+    const node = findObj(root, "Node");
+    // RESOLVING accessor — this is exactly what every caller walks, and it is
+    // what surfaces the inherited relationship on the child.
+    const rel = node.relationships().find((r) => r.name === "peers") as MetaRelationship;
+    expect(node.ownRelationships()).toHaveLength(0);
+    expect(rel.parent?.name).toBe("NodeBase");
+
+    const derived = deriveM2MFields(rel, node, root);
+    expect(derived.sourceField).toBe("aId");
+    expect(derived.targetField).toBe("bId");
+    // And the declaring entity itself must still agree — same node, same answer.
+    expect(deriveM2MFields(rel, findObj(root, "NodeBase"), root)).toEqual(derived);
+  });
+
+  test("inherited directed self-join honours @sourceRefField through the child's view", async () => {
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Person", "extends": "PartyBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "PartyBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "follows", "@cardinality": "many", "@objectRef": "PartyBase",
+            "@through": "Follow", "@sourceRefField": "followerId" } } ] } },
+      { "object.entity": { name: "Follow", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "followerId" } },
+        { "field.long": { name: "followeeId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "followerRef", "@fields": ["followerId"], "@references": "PartyBase" } },
+        { "identity.reference": { name: "followeeRef", "@fields": ["followeeId"], "@references": "PartyBase" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+    expect(objectVisitOrder(root)).toEqual(["acme::Person", "acme::PartyBase", "acme::Follow"]);
+
+    const person = findObj(root, "Person");
+    const rel = person.relationships().find((r) => r.name === "follows") as MetaRelationship;
+    const derived = deriveM2MFields(rel, person, root);
+    expect(derived.sourceField).toBe("followerId");
+    expect(derived.targetField).toBe("followeeId");
+  });
+
+  test("inherited HETERO M:N matches the junction reference to the declaring base", async () => {
+    // The mirror image: the junction references the DECLARING base (ArticleBase),
+    // so a hetero match against the visiting child (Article) found nothing and
+    // threw the "must declare one identity.reference to ..." error.
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Article", "extends": "ArticleBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "ArticleBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag",
+            "@through": "ArticleTag" } } ] } },
+      { "object.entity": { name: "Tag", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "ArticleTag", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "articleId" } },
+        { "field.long": { name: "tagId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "articleRef", "@fields": ["articleId"], "@references": "ArticleBase" } },
+        { "identity.reference": { name: "tagRef", "@fields": ["tagId"], "@references": "Tag" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+    expect(objectVisitOrder(root)).toEqual(["acme::Article", "acme::ArticleBase", "acme::Tag", "acme::ArticleTag"]);
+
+    const article = findObj(root, "Article");
+    const rel = article.relationships().find((r) => r.name === "tags") as MetaRelationship;
+    const derived = deriveM2MFields(rel, article, root);
+    expect(derived.sourceField).toBe("articleId");
+    expect(derived.targetField).toBe("tagId");
+  });
+
+  test("an OWN relationship still derives against its own entity (no regression)", async () => {
+    // The override case: Sub re-declares `peers` itself, so rel.parent IS Sub and
+    // the self-join must be classified against Sub, not the base it shadows.
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Sub", "extends": "Base", children: [
+        { "field.long": { name: "id" } },
+        { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "Sub",
+            "@through": "SubLink", "@symmetric": true } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Base", "@isAbstract": true, children: [
+        { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "Base",
+            "@through": "BaseLink", "@symmetric": true } } ] } },
+      { "object.entity": { name: "SubLink", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "leftId" } },
+        { "field.long": { name: "rightId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "l", "@fields": ["leftId"], "@references": "Sub" } },
+        { "identity.reference": { name: "r", "@fields": ["rightId"], "@references": "Sub" } } ] } },
+      { "object.entity": { name: "BaseLink", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "aId" } },
+        { "field.long": { name: "bId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "a", "@fields": ["aId"], "@references": "Base" } },
+        { "identity.reference": { name: "b", "@fields": ["bId"], "@references": "Base" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+    const sub = findObj(root, "Sub");
+    const rel = sub.relationships().find((r) => r.name === "peers") as MetaRelationship;
+    expect(rel.parent?.name).toBe("Sub");
+    const derived = deriveM2MFields(rel, sub, root);
+    expect(derived.sourceField).toBe("leftId");
+    expect(derived.targetField).toBe("rightId");
+  });
+});
