@@ -226,8 +226,10 @@ artifact for a person or a file and generates **no parser**.
 
 The only axis here whose hunt is not "hand-written code the metadata describes" but
 **hand-written PROSE that claims something about the code and nothing checks.** Two
-subtypes with opposite polarity: `requirement.functional` fails when NOTHING implements it
-(existence); `requirement.architectural` fails when something VIOLATES it (universality).
+subtypes with opposite polarity: `requirement.functional` is checked for existence (`meta verify`
+warns when nothing implements it, and fails when a node it names is gone);
+`requirement.architectural` is checked for universality (`meta verify` fails a live policy applied
+to nothing, and does not check that each claimed node complies).
 
 - `requirement.functional` — `@statement`, `@status`, `@level`, `@counterexample` — hunt a
   `CAPABILITIES.md`, a features table in a README, a `docs/status/` tree, or a spreadsheet

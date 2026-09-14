@@ -160,10 +160,10 @@ cleanly. `verify` warns about them.
 
 ## Two kinds, opposite checks
 
-| | check | fails when |
+| | check | what `meta verify` does |
 |---|---|---|
-| `requirement.functional` (levelled) | **existence** | nothing implements it |
-| `requirement.architectural` (flat by default) | **universality** | something violates it |
+| `requirement.functional` (levelled) | **existence** | **warns** when nothing in a live/partial node's subtree implements it; **fails** when a node it names no longer exists |
+| `requirement.architectural` (flat by default) | **universality** | **fails** a live/partial policy applied to nothing, or one naming a node that no longer exists; it does not check that each claimed node complies |
 
 Architectural requirements are how plumbing stays out of the ledger: one uuid-primary-key
 rule claimed by every entity, rather than thousands of per-field entries.

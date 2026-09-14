@@ -25,7 +25,9 @@ import com.metaobjects.registry.MetaDataRegistry;
  * What the product does for a user, stated as one violable claim
  * ({@code requirement.functional}).
  *
- * <p>Its check is EXISTENCE: it fails when NOTHING implements it. Hierarchy is NESTING —
+ * <p>Its check is EXISTENCE, run by the Node {@code meta verify}: a live or partial claim
+ * with no implementing node anywhere in its subtree is a warning, and a named node that no
+ * longer exists is an error. Hierarchy is NESTING —
  * an L1 solution contains its L2 segments, which contain L3 services, and so on down to
  * the levels that reference the model. Only L4 (an object) and L5 (a member) carry
  * {@code @implementedBy}; L1-L3 are organisational and never reference the model.</p>

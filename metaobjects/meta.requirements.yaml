@@ -1644,8 +1644,9 @@ metadata.root:
                           status: live
                           statement: >-
                             A functional requirement states a capability that
-                            must EXIST, and its check is existence: it fails
-                            when nothing implements it.
+                            must EXIST, and its check is existence: verify
+                            warns when nothing in its subtree implements it,
+                            and fails when a node it names no longer exists.
                           counterexample: >-
                             A capability everyone believes is there, that
                             nothing builds and no check misses.
@@ -1684,9 +1685,8 @@ metadata.root:
                           status: live
                           statement: >-
                             An architectural requirement states a policy that
-                            must hold UNIVERSALLY, and its check is
-                            universality: it fails when something is outside
-                            it.
+                            must hold UNIVERSALLY, and verify fails one that is
+                            live yet applied to nothing.
                           counterexample: >-
                             A rule declared once, applied to nothing, with
                             every gate reporting green.

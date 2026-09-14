@@ -19,12 +19,13 @@ supposed to do — that your agent reads and writes. Two things happen to it:
 - **Generate.** The boring parts are derived from it, in TypeScript, Java, Kotlin, C#
   and Python — at build time as code you own, or at runtime from the live model.
   Nothing proprietary in the output.
-- **Verify.** The build fails when generated code drifts from the model, when a
-  prompt's payload no longer matches what it's told, and when a feature someone marked
-  done has nothing implementing it.
+- **Verify.** The build fails when generated code drifts from the model and when a
+  prompt's payload no longer matches what it's told — and it fails or warns when a
+  feature someone marked done has nothing implementing it.
 
 That last one has no equivalent in a test suite: a test exercises code that exists, so
-nothing fails when a claimed capability was never built.
+nothing flags a claimed capability that was never built. It checks that the claim points
+at something real, not that the something is correct.
 
 > **Scope.** It protects what the model declares; your hand-written logic is still
 > yours.
@@ -37,7 +38,7 @@ vendor or fork. If the package ecosystem disappears tomorrow, you keep working c
 
 Ships today for **TypeScript, Java, Kotlin, C# and Python** — the same gate in each,
 byte-checked against the others. Per-port depth is in the
-[capability matrix](#capability-matrix); the [five pillars](#five-pillars) are what is
+[capability matrix](#capability-matrix); the [six pillars](#six-pillars) are what is
 underneath.
 
 > **Maintainer note.** MetaObjects is primarily a one-person, part-time project.
@@ -140,6 +141,8 @@ first-week wedge plan — and `meta init` picks up from there.
 | Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Capability requirements (`requirement.*`) | Registered + `meta verify` gate | Registered (loads + validates) | Registered (via Java) | Registered (loads + validates) | Registered (loads + validates) |
+| Libraries (`libraries: [...]`) | Yes | Yes | Yes (via Java) | Yes | Yes |
+| Metadata dependencies (`dependencies`) | Yes (`meta deps sync`, `path` transport) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
 | React / Angular UI client (browser) | React: **published** (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`), codegen + runtime. Angular 18: **source-only by decision** ([ADR-0048](spec/decisions/ADR-0048-angular-tier-source-only.md)) — `@metaobjectsdev/angular` + `@metaobjectsdev/codegen-ts-angular` build in-repo on their own `0.6.x` line but are deliberately not on npm (`npm i @metaobjectsdev/angular` will 404) until they meet the ADR's promotion bar. Consume them from source. | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
 | Cross-port REST routes for the client | Generated (`routesFile()` → Fastify) | Generated (`SpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`KotlinSpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Generated (`router_generator` → FastAPI `APIRouter`, incl. filter/sort) |
@@ -157,15 +160,16 @@ URL grammar + wire format the client speaks, and
 the consumer-side wiring (React + TanStack, and the
 [Angular 18 tier](docs/ports/typescript-client.md#angular-18)).
 
-## Five pillars
+## Six pillars
 
-The first four ship per-language today — but they are not uniformly deep. See the
-[capability matrix](#capability-matrix) for per-port coverage; in field
-materialization the ranking is **drift > codegen > prompts > runtime metadata**
-(the youngest of the four). The prompt pillar's library-side building blocks are
-complete in all five ports; MCP exposure of declared prompts/tools is the one
-remaining roadmap item. The fifth pillar ships its vocabulary and its `verify`
-checks in every port, and its test scaffolding in TypeScript only:
+Each pillar says what ships, in which ports, at what maturity — not how new it is. The
+first four ship per-language in all five ports, gated by the cross-port conformance
+corpora, but they are not uniformly deep. See the [capability matrix](#capability-matrix)
+for per-port coverage; in field materialization the ranking is **drift > codegen >
+prompts > runtime metadata** (the youngest of the four). The prompt pillar's library-side building blocks are
+complete in all five ports; MCP exposure of declared prompts/tools is the one remaining
+roadmap item. The fifth has been dogfooded on maintainer-owned projects only, and the
+sixth ships two libraries at their own stability labels:
 
 1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
    Spring REST + DTO + repository for Java, `data class` + Exposed for Kotlin, EF Core
@@ -183,15 +187,32 @@ checks in every port, and its test scaffolding in TypeScript only:
    deterministically (snapshot-testable, cache-stable, drift-checked at build
    time, conformance-gated cross-language). See
    [`docs/features/templates-and-payloads.md`](docs/features/templates-and-payloads.md).
-5. **Requirements and testing** *(vocabulary + `verify` checks in all five ports;
-   `requirementTests()` scaffolding is TypeScript-only)* — declare what the software
-   is supposed to *do* in the same model as the entities. The other four pillars keep
-   the code honest about the model; this one asks whether a claimed capability is
-   actually built. `@implementedBy` is **resolved, not trusted** — it names a real
-   member of the real model, so a claim whose implementation was renamed or deleted
-   fails the build rather than going quietly stale, and `meta verify` reports the
-   ledger on every run. A project that declares no `requirement.*` nodes sees no
+5. **Requirements and testing** *(vocabulary loads and validates in all five ports;
+   the `meta verify` checks run in the Node `meta` CLI; `requirementTests()` scaffolding
+   is TypeScript-only; dogfooded on maintainer-owned projects, no outside adopter yet)* —
+   declare what the software is supposed to *do* in the same model as the entities. The
+   other four pillars keep the code honest about the model; this one asks whether a
+   claimed capability is actually built. `@implementedBy` is **resolved, not trusted** —
+   it names a real member of the real model, so a claim whose implementation was renamed
+   or deleted fails the build rather than going quietly stale; a live claim naming
+   nothing is a warning. A green run proves those references resolve, not that an
+   implementation is correct. A project that declares no `requirement.*` nodes sees no
    change at all. See [`docs/features/requirements.md`](docs/features/requirements.md).
+6. **Libraries** *(since 1.0.4, in all five ports: `ai` stable, `iam` preview)* —
+   reusable declared design you opt into by name (`"libraries": ["iam"]`): entities,
+   the requirements they promise, and the generators they imply, as one drift-gated
+   artifact. The core layer declares no source, so it adds no tables until you also opt
+   into its `/db` layer (`["iam", "iam/db"]`). Copy one into your repo with
+   `meta eject <library>`. See [`docs/features/libraries.md`](docs/features/libraries.md).
+
+**Sharing a model across your own projects** *(the TypeScript toolchain publishes;
+TypeScript and Python projects consume, over a `path` dependency such as a sibling
+checkout or submodule; Java, Kotlin and C# arrive in Phase 2)* — one project publishes
+part of its model (a common `Customer`, an audited base, a set of enums) with
+`sharedModelFile()`, and another declares it in `dependencies`, syncs it into a
+committed, hash-locked snapshot and builds on it with `extends` and references. When the
+publisher's model moves, `meta verify --deps` says so, instead of two copies drifting
+apart. See [`docs/features/metadata-dependencies.md`](docs/features/metadata-dependencies.md).
 
 ## Repo layout
 
@@ -220,8 +241,9 @@ metaobjects/
 │   └── RELEASING.md                # npm publish procedure
 ├── examples/
 │   └── advanced-modeling/          # a worked, runnable non-toy model
-├── library/                        # shipped standard-library metadata, opt-in per project
-│   └── ai/                         #   via `libraries: ["ai"]` (e.g. the LLM-call trace base)
+├── library/                        # shipped libraries, opt-in per project via `libraries: [...]`
+│   ├── ai/                         #   the LLM-call trace envelope (stable)
+│   └── iam/                        #   users, groups, roles, grants (preview)
 ├── templates/                      # canonical api/docs Mustache templates (the SSOT the
 │                                   #   ports embed; byte-gated so copies cannot drift)
 ├── agent-context/                  # the shared source the per-port AI-assistant context

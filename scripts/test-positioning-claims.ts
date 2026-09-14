@@ -32,6 +32,8 @@ const REAL_VIOLATIONS: [string, string][] = [
   ["The metadata is the topology of requirements and implementation", "topology"],
   ["Nobody else has built this.", "nobody else has built this"],
   ["It is simply the best way to code with AI.", "best way to code with AI"],
+  ["MetaObjects pillars are capabilities of the same metadata spine. **All five ship today.**", "all-five-ship-today"],
+  ["Newest of the five; a project that declares no requirement nodes sees no change.", "newest of the five"],
 ];
 for (const [text, label] of REAL_VIOLATIONS) {
   one(text).hits.length === 1
@@ -55,6 +57,8 @@ for (const text of [
   "one declaration instead of N restatements, and the build fails when any copy disagrees",
   "No one combines these.",
   "now fails the build instead of reaching production",
+  "Libraries *(since 1.0.4, in all five ports: `ai` stable, `iam` preview)*",
+  "the prompt pillar ships in all five ports today",
 ]) {
   one(text).hits.length === 0
     ? ok(`allows: ${text.slice(0, 52)}…`)

@@ -10,8 +10,10 @@ export const REQUIREMENT = "requirement";
 // ---------------------------------------------------------------------------
 // Subtypes — the axis is the CHECK POLARITY, which is a genuine behaviour
 // difference and therefore a subtype under ADR-0037 §2:
-//   functional    -> EXISTENCE:    fails when nothing implements it
-//   architectural -> UNIVERSALITY: fails when something violates it
+//   functional    -> EXISTENCE:    `meta verify` warns when nothing implements it,
+//                                    and fails when a node it names is gone
+//   architectural -> UNIVERSALITY: `meta verify` fails a live policy applied to nothing
+//                                    (it does not check that each claimed node complies)
 // ---------------------------------------------------------------------------
 
 export const REQUIREMENT_SUBTYPE_FUNCTIONAL = "functional";

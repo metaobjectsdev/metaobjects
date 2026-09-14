@@ -25,8 +25,9 @@ import com.metaobjects.registry.MetaDataRegistry;
  * How the system is built, applied uniformly across the model
  * ({@code requirement.architectural}).
  *
- * <p>Its check is UNIVERSALITY: it fails when something VIOLATES it — the opposite
- * polarity to {@link FunctionalRequirement}. It carries NO {@code @level} and no parent:
+ * <p>Its check is UNIVERSALITY, the opposite polarity to {@link FunctionalRequirement}.
+ * What the Node {@code meta verify} enforces is that a live or partial policy is applied
+ * at all — one claiming nothing is an error — not that each node it claims complies. It carries NO {@code @level} and no parent:
  * levels come from object-in-focus decomposition, and an architectural requirement is
  * object-independent by definition. It therefore also admits no nested requirement
  * children.</p>

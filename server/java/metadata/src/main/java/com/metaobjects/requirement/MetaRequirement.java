@@ -37,9 +37,11 @@ import java.util.List;
  * a subtype under ADR-0037 §2:</p>
  * <ul>
  *   <li>{@link FunctionalRequirement} ({@code requirement.functional}) — EXISTENCE:
- *       it fails when NOTHING implements it.</li>
+ *       {@code meta verify} warns when NOTHING implements it, and fails when a node it
+ *       names is gone.</li>
  *   <li>{@link ArchitecturalRequirement} ({@code requirement.architectural}) —
- *       UNIVERSALITY: it fails when something VIOLATES it (the opposite polarity).</li>
+ *       UNIVERSALITY, the opposite polarity: {@code meta verify} fails a live policy
+ *       applied to nothing (it does not check that each claimed node complies).</li>
  * </ul>
  *
  * <p>Hierarchy is NESTING, not a parent attr: an L1 solution CONTAINS its L2 segments as

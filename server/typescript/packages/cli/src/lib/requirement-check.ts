@@ -16,9 +16,10 @@
 //                            YET — declaring it there would make every recorded
 //                            intention fail to load.
 //
-// Two kinds, opposite checks: `functional` fails when NOTHING implements it;
-// `architectural` fails when something VIOLATES it (v1: an empty claim set on a
-// live policy — claim-set arithmetic, deliberately not a predicate DSL).
+// Two kinds, opposite checks: `functional` WARNS when nothing implements it (and a
+// named implementor that is gone is an error); `architectural` is meant to fail
+// when something VIOLATES it, and v1 enforces only an empty claim set on a live
+// policy — claim-set arithmetic, deliberately not a predicate DSL.
 
 import {
   TYPE_OBJECT,
@@ -571,8 +572,9 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
       });
     }
     // -- functional existence, SUBTREE-scoped ---------------------------------
-    // A functional requirement's check is EXISTENCE: it fails when nothing
-    // implements it. But an organisational tier legitimately implements nothing
+    // A functional requirement's check is EXISTENCE: it is flagged when nothing
+    // implements it — a WARNING, deliberately (a ledger authored ahead of its links
+    // is the normal incremental state). But an organisational tier legitimately implements nothing
     // ITSELF — it delegates to children, and that is the whole shape of the
     // tree. So the question is not "does this node claim anything" but "does
     // anything in this subtree claim anything". A live L1 whose entire subtree

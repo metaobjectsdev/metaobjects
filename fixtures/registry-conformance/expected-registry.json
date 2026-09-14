@@ -3799,7 +3799,7 @@
     {
       "type": "requirement",
       "subType": "architectural",
-      "description": "How the system is built, applied uniformly across the model. Its check is UNIVERSALITY: it fails when something VIOLATES it, which is the opposite polarity to a functional requirement. Flat by default and object-independent; it may optionally sit in a levelled tree when a quality taxonomy is being used to organise non-functional requirements.",
+      "description": "How the system is built, applied uniformly across the model. Its check is UNIVERSALITY, the opposite polarity to a functional requirement. What `meta verify` enforces is that a live or partial policy is applied at all — one claiming nothing is an error — not that each node it claims complies. Flat by default and object-independent; it may optionally sit in a levelled tree when a quality taxonomy is being used to organise non-functional requirements.",
       "whenToUse": "Something exists because every entity here looks like this — a uuid primary key, an @autoSet createdAt, a change-attribution column, tenant scoping. The discriminator is mechanical: did this exist because someone asked for something, or because it is the architecture? For a non-functional tree, an established quality taxonomy makes a good fixed upper structure (e.g. an ISO/IEC 25010 characteristic at L1, its sub-characteristic or a control-catalogue category at L2), with the model-binding claims at L4 and L5 as usual.",
       "attrs": [
         {
@@ -3882,7 +3882,7 @@
     {
       "type": "requirement",
       "subType": "functional",
-      "description": "What the product does for a user, stated as one violable claim. Its check is EXISTENCE: it fails when nothing implements it. Hierarchy is nesting — an L1 solution contains its L2 segments, which contain L3 services, and so on down to the levels that reference the model.",
+      "description": "What the product does for a user, stated as one violable claim. Its check is EXISTENCE, run by `meta verify`: a live or partial claim with no implementing node anywhere in its subtree is a warning, and a named node that no longer exists is an error. Hierarchy is nesting — an L1 solution contains its L2 segments, which contain L3 services, and so on down to the levels that reference the model.",
       "whenToUse": "Something exists because someone asked for it. L1-L3 are levels of ABSTRACTION AND OWNERSHIP in the problem domain — whose need is this, and at what altitude — and are never a directory, package, deployable or module. Binding to technical constructs happens only at L4 (an object) and L5 (a member), which is the allocation step. Test every node: if a refactor that changes no behaviour would force it to move, its level is wrong.",
       "attrs": [
         {

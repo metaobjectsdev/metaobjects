@@ -59,8 +59,22 @@ export const BANNED: Banned[] = [
   },
   {
     pattern: /four pillars\.\s*all shipping\./i,
-    because: "there are five, and they are not equally deep (the fifth ships test scaffolding in TypeScript only)",
+    because: "there are six, and they are not equally deep (the fifth ships test scaffolding in TypeScript only)",
     instead: 'name the depth: "the first four ship per-language across all five ports; the fifth …"',
+  },
+  {
+    // FR-042 §4 maturity-label rule (2026-09-14): a blanket shipping claim is true of
+    // every pillar at a different depth, so it tells a reader nothing about any of them.
+    pattern: /\ball (five|six|seven) (pillars )?ship today\b/i,
+    because: "a blanket claim hides each pillar's real maturity — ports, stability, what it does not do yet",
+    instead: "a per-pillar maturity label: what ships, in which ports, at what stability",
+  },
+  {
+    // Same rule, other half: "new" is a relative-time claim that goes false silently,
+    // the same failure class as the UNRELEASED hedges the release checklist hunts.
+    pattern: /\bnewest of the (five|six|seven)\b|\bnew pillars?\b/i,
+    because: "a relative-time claim: it silently goes false, and says nothing about what the pillar does not do yet",
+    instead: 'a maturity label ("since 1.0.4", "preview", "dogfooded on maintainer-owned projects only")',
   },
   {
     pattern: /guardrails?\b/i,

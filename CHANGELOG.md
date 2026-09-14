@@ -10,6 +10,24 @@ here.**
 
 ## [Unreleased]
 
+_`metamodelVersion` stays `1.0`. The `requirement.*` change below is a prose-only manifest
+edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was._
+
+### Changed
+
+- **The registered `requirement.functional` and `requirement.architectural` descriptions
+  now say what `meta verify` enforces.** They said a functional requirement "fails when
+  nothing implements it" and an architectural one "fails when something VIOLATES it". In
+  fact a `live`/`partial` functional claim that names nothing is a **warning**
+  (`WARN_REQUIREMENT_NOTHING_IMPLEMENTS`, exit 0), and only a named node that no longer
+  exists fails (`ERR_REQUIREMENT_DANGLING_REF`). The architectural check fails a live policy
+  applied to nothing (`ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS`) and never checks that a claimed
+  node complies. Every port's embedded copy, the registry-conformance manifest, the
+  metamodel-docs fixture, the requirement harness and the published reference pages carry
+  the corrected text. Behaviour is unchanged. The README, `llms.txt` and the audit skill
+  also stop saying the `verify` checks run in every port: the vocabulary loads and
+  validates in all five, and the checks run in the Node `meta` CLI.
+
 ### Fixed
 
 - **`meta eject` and `meta gen --list` print an install command you can paste.** The line

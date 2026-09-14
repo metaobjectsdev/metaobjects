@@ -267,7 +267,7 @@ Then wire it into `metaobjects.config.ts`:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { barrel } from "./codegen/generators/barrel";

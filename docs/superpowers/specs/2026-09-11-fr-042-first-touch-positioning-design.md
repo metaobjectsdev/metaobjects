@@ -1,6 +1,6 @@
 # FR-042 — First-touch positioning: one typed model, two verbs
 
-_Design. 2026-09-11, revised 2026-09-12. Status: **Approved** — the headline (§6) and the verb
+_Design. 2026-09-11, revised 2026-09-12, amended 2026-09-14. Status: **Shipped** (text surfaces; the §8 hero recording and drift-demo page remain) — the headline (§6) and the verb
 structure (§3) are signed off by the maintainer. The third verb was rejected outright; requirements
 fold into Verify._
 
@@ -78,8 +78,17 @@ declares; your hand-written logic is still yours."*
 > **Generate.** The boring parts are derived from it, in TypeScript, Java, Kotlin, C# and Python —
 > at build time as code you own, or at runtime from the live model. Nothing proprietary in the output.
 >
-> **Verify.** The build fails when generated code drifts from the model, when a prompt's payload no
-> longer matches what it's told, and when a feature someone marked done has nothing implementing it.
+> **Verify.** The build fails when generated code drifts from the model and when a prompt's payload
+> no longer matches what it's told — and it fails or warns when a feature someone marked done has
+> nothing implementing it.
+
+_Amended 2026-09-14, wording signed off by the maintainer._ The locked clause read *"and when a
+feature someone marked done has nothing implementing it"* as a build failure. Measured on 1.0.4: a
+`live` requirement naming no implementation is `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` (exit 0), and
+only a named implementation that was renamed or deleted fails (`ERR_REQUIREMENT_DANGLING_REF`,
+exit 1). The written surfaces add, after the test-suite contrast: *"It checks that the claim points
+at something real, not that the something is correct."* The spoken version in §2 still says the
+build fails on it, and has not been amended.
 
 - **There is no third verb — requirements fold into Verify.** Ruled 2026-09-12. `meta verify`
   already runs the requirements ledger on every run, so a third verb would invent public vocabulary
@@ -94,8 +103,9 @@ declares; your hand-written logic is still yours."*
 - **Runtime metadata is a mode of Generate**, not a first-screen pillar.
 - **Five languages is a proof line below the fold**, not the hook: *"Ships today for TypeScript,
   Java, Kotlin, C# and Python — the same gate, byte-checked against each other."*
-- **"The five pillars" remains the what-is-underneath section** (and stays in `AGENTS.md`). The
-  verbs are what the pillars do; no public vocabulary is renamed.
+- **"The six pillars" is the what-is-underneath section** (and stays in `AGENTS.md`; FR-043 added
+  Libraries as the sixth in 1.0.4). The verbs are what the pillars do; no public vocabulary is
+  renamed.
 
 ## 4. Claims discipline
 
@@ -106,11 +116,17 @@ declares; your hand-written logic is still yours."*
 - "no one combines these" — about the combination, never about any single capability
 - "a proven approach, twenty-five years; a unified standard, new"
 - the scope clause, next to every gate claim
+- **a maturity label on every pillar, never "new"** (maintainer, 2026-09-14: *"so we don't oversell
+  where they are"*). Each pillar says what ships, in which ports, at what stability, using the
+  product's own vocabulary (`stable`/`preview`, port coverage) so the site cannot disagree with
+  `meta gen --list`. "New" is a relative-time claim that goes false silently and says nothing
+  about what a pillar does not do yet.
 
 **Do not say:**
 - "Zero drift" or "structurally impossible"
 - "compile-time error"
-- "Four pillars. All shipping."
+- "Four pillars. All shipping.", or any blanket "all five/six ship today"
+- "new" or "newest" about a pillar — use the maturity label
 - "less code" as a number
 - **"guardrails"** — burned 2026-09-12: in 2026 it means AI *security* scanning (secrets,
   vulnerabilities, gated merges). Our gate is semantic coherence.
@@ -164,12 +180,14 @@ CI-time, and "enforces" drifts toward "structurally impossible", already on the 
 
 ## 7. Acceptance criteria
 
-- [ ] The README, both llms mirrors, the .dev hero and the company-site hero carry the §2/§3 message.
-- [ ] A grep for the §4 do-not-say list comes back clean across `README.md`, `docs/llms/`, the site's
-  `www/` and `agent-context/`. Consider making it a `gates`-lane check, so the list cannot leak back.
-- [ ] The llms gates are green: `finish-release` gate 5 and `scripts/site/llms.test.ts`.
-- [ ] The scope clause appears wherever the gate claim does.
-- [ ] No surface claims more than FR-041 has earned.
+- [x] The README, both llms mirrors, the .dev hero and the company-site hero carry the §2/§3 message.
+- [x] A grep for the §4 do-not-say list comes back clean across `README.md`, `docs/llms/`, the site's
+  `www/` and `agent-context/`. It is a `gates`-lane check for the in-repo surfaces
+  (`scripts/check-positioning-claims.ts`, with a self-test); the two site repos are grepped by hand.
+- [x] The llms gates are green: `finish-release` gate 5 and `scripts/site/llms.test.ts`.
+- [x] The scope clause appears wherever the gate claim does.
+- [x] No surface claims more than has shipped — including the requirements check itself (§3
+  amendment) and each pillar's port coverage (§4 maturity labels).
 
 ## 8. What shipped, and the one piece that did not
 
@@ -192,6 +210,24 @@ one. Consequences, handled rather than hidden:
 - The hero's primary CTA is "See what breaks the build" → `#drift`. §5 asks for "Run the
   two-minute drift demo"; there is no such page yet, and the CTA will not link to a 404. Point it
   at the demo page when one exists.
+
+### 2026-09-14 — claims brought down to what shipped
+
+- **The Verify clause** now says "fails or warns" (§3 amendment), on the README, both llms mirrors,
+  the .dev hero and the .com requirements pillar. The same overclaim was in the registered
+  `requirement.functional` / `requirement.architectural` descriptions, byte-gated across all five
+  ports. They were corrected too, as a prose-only manifest change with `metamodelVersion` held.
+- **Six pillars with maturity labels** on every surface that listed pillars. Checking the labels
+  found a second overclaim: the README, llms and .com said the requirements `verify` checks ship in
+  every port. They run in the Node `meta` CLI only, and the other ports load and validate
+  (`docs/CONFORMANCE.md` "Split coverage" already said so).
+- **Cross-project sharing (FR-023)** is claimed below the fold with its scope clause: the TypeScript
+  toolchain publishes, TypeScript and Python consume, `path` transport only, and Java, Kotlin and
+  C# arrive in Phase 2. It stays out of the locked pitch. No estate uses it yet, so no surface cites
+  one.
+- **metaobjects.dev's getting-started page** was rewritten from a real 1.0.4 run
+  (`init` → `gen --list --probe` → `eject` → `gen` → `migrate` → curl). Since ADR-0034 Amendment 2
+  it had shown a scaffold 1.0.4 no longer writes.
 
 ## 9. Out of scope
 

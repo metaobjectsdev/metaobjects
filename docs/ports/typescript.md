@@ -49,16 +49,20 @@ Two config files, by design:
 - **`.metaobjects/config.json`** — JSON, static project state, parseable by
   non-TS tooling.
 
-`meta init` scaffolds both, the `metaobjects/` source directory, the owned
-codegen generators at `codegen/generators/{entity,queries,routes,barrel}.ts`
-(ADR-0034 scaffold-and-own — copied from the reference templates, yours to edit),
-and the `.gitignore` entries for `.metaobjects/.gen-state/`. The scaffolded config
-imports those local copies; `meta gen` runs from them, not from the package.
+`meta init` scaffolds both, the `metaobjects/` source directory, an EMPTY
+`codegen/generators/` with `generators: []` (nothing is generated until you choose —
+ADR-0034 Amendment 2), and the `.gitignore` entries for `.metaobjects/.gen-state/`.
+Choose from the catalog with `meta gen --list --probe`, which reports how many files
+each generator would emit for your model, then take the ones you want:
+`meta eject entity queries routes barrel` copies each reference template into
+`codegen/generators/` (ADR-0034 scaffold-and-own — yours to edit) and prints the import,
+the entry to wire, what to install and the config keys it reads. `meta gen` runs those
+local copies, not the package's.
 
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` — yours to edit (ADR-0034).
+// Owned generators, copied in by `meta eject` — yours to edit (ADR-0034).
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { routesFile } from "./codegen/generators/routes.js";
@@ -69,6 +73,7 @@ export default defineConfig({
   dialect: "postgres",                 // "postgres" | "sqlite" | "d1"
   extStyle: "js",                      // ".js"-extensioned imports — nodenext- AND bundler-safe ("none" to opt out)
   apiPrefix: "/api",
+  dbImport: "../db",                   // the module routesFile() imports `db` from — yours to write
   columnNamingStrategy: "snake_case",  // "snake_case" | "literal" | "kebab-case"
   generators: [entityFile(), queriesFile(), routesFile(), barrel()],
   // providers: [yourProvider],        // optional — add custom metamodel subtypes/attrs
@@ -217,7 +222,7 @@ meta gen                  # codegen → format → 3-way merge → write
 meta gen --dry-run        # preview without writing
 meta gen Author Post      # scope to named entities
 
-meta verify               # report DB-vs-metadata drift
+meta verify --db <url>    # live DB schema vs metadata
 ```
 
 ### Schema — first migration on a brand-new database
@@ -274,13 +279,11 @@ npm install --save-dev typescript      # `npx tsc` without it hits npm's guard
                                        # installs brings a compiler.
 ```
 
-The default `routesFile()` generator emits `import { db } from "../db.js"` — the
-module named by `dbImport` in `metaobjects.config.ts`. `meta init` scaffolds that
-module too, at `src/db.ts`, so this typechecks on a fresh project with no extra
-step. It is a *throwing stub*, not a real connection: it satisfies the import and
-picks no driver, but calling anything on `db` at runtime throws a clear error
-naming what to do. Typecheck first, wire the real connection before you run the
-app (see the "Use" section below) — `npx tsc` doesn't need it in order.
+The `routesFile()` generator emits `import { db } from "../db.js"` — the module
+named by `dbImport` in `metaobjects.config.ts`. MetaObjects does not scaffold that
+module, because writing it means picking a driver: write `src/db.ts` first (the
+"Use" section below shows a libsql one), or `npx tsc` reports `TS2307` on the
+generated routes. The generated queries take `db` as a parameter and need nothing.
 
 With that, `npx tsc` (the hint every `meta gen`/`meta migrate` prints)
 works out of the box with a stock `tsc --init` tsconfig: the generated code emits
@@ -424,15 +427,15 @@ with the literal types intact.
 
 ## Use
 
-The generated code runs without any MetaObjects runtime dependency — Drizzle +
-Zod + Fastify are direct user-app deps. With the default (flat)
+The entity module imports only Drizzle and Zod; the generated routes mount through
+`@metaobjectsdev/runtime-ts`, an ordinary Apache-2.0 package, and Drizzle, Zod and
+Fastify are direct user-app deps. With the default (flat)
 `outputLayout`, entity output lands directly under `outDir` — `src/generated/Author.ts`,
 `Author.queries.ts`, `Author.routes.ts` — with no per-package subdirectory.
 
-The generated `Author.routes.ts` and `Author.queries.ts` files import a
-module-level `db` singleton from the path configured by `dbImport` in
-`metaobjects.config.ts` (`meta init` scaffolds `dbImport: "../db"`); replace the
-scaffolded throwing stub at `src/db.ts` with a real connection — see
+The generated `Author.routes.ts` imports a module-level `db` singleton from the
+path configured by `dbImport` in `metaobjects.config.ts` (the generated queries take
+`db` as a parameter instead). Write that module with a real connection — see
 [`docs/recipes/wiring-generated-queries.md`](../recipes/wiring-generated-queries.md)
 for the per-dialect setup (SQLite/libsql, Cloudflare D1, Postgres, multi-tenant):
 

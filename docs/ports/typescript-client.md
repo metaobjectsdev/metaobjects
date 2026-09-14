@@ -79,7 +79,7 @@ fetch URLs (browser-side):
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { routesFile } from "./codegen/generators/routes.js";
@@ -432,7 +432,7 @@ importBase?, outputLayout?, dbImport? }`.
 ```ts
 // metaobjects.config.ts (multi-target)
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";
@@ -728,7 +728,7 @@ Metadata (same `Author` entity as the React examples above):
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";

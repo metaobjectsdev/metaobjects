@@ -23,7 +23,7 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
   `com.metaobjects:*` / `metaobjects` / `MetaObjects.*` deps).
 - [ ] Count metadata source lines + all `@generated` / `DO NOT EDIT` files repo-wide.
 - [ ] **Owned-generators check:** does the project own generators at `codegen/generators/*`
-  (scaffold-and-own via `meta init`), or still import `entityFile` / `queriesFile` /
+  (scaffold-and-own via `meta eject`, or `meta init` on a CLI before 1.0.4), or still import `entityFile` / `queriesFile` /
   `routesFile` / `barrel` from `@metaobjectsdev/codegen-ts/generators`? Those four were
   REMOVED at 1.0, so an import of them is an upgrade blocker, not just a style finding.
   **Match the four NAMES, never the subpath alone** — that subpath is the supported home of

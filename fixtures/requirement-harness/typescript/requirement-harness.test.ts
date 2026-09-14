@@ -187,12 +187,12 @@ test.skip("metaobjects.declare.derivation.originPassthrough.from", () => {
   // unfilled slot — write an assertion that fails when: A field that looks like a copy and is a re- implementation, so the two drift apart and nothing compares them.
 });
 
-// Architectural requirement — An architectural requirement states a policy that must hold UNIVERSALLY, and its check is universality: it fails when something is outside it.
+// Architectural requirement — An architectural requirement states a policy that must hold UNIVERSALLY, and verify fails one that is live yet applied to nothing.
 test.skip("metaobjects.declare.governanceVocabulary.requirementArchitectural", () => {
   // unfilled slot — write an assertion that fails when: A rule declared once, applied to nothing, with every gate reporting green.
 });
 
-// Functional requirement — A functional requirement states a capability that must EXIST, and its check is existence: it fails when nothing implements it.
+// Functional requirement — A functional requirement states a capability that must EXIST, and its check is existence: verify warns when nothing in its subtree implements it, and fails when a node it names no longer exists.
 test.skip("metaobjects.declare.governanceVocabulary.requirementFunctional", () => {
   // unfilled slot — write an assertion that fails when: A capability everyone believes is there, that nothing builds and no check misses.
 });

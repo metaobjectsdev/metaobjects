@@ -68,9 +68,10 @@ here — the table is its second pass, not its definition.
 
 ## Owned generators — scaffold-and-own (ADR-0034)
 
-`meta init` copies the reference generator templates into the project at
-`codegen/generators/*.ts`. The scaffolded `metaobjects.config.ts` imports the
-**owned** local copies:
+`meta eject <name>...` copies the reference generator templates a project chooses into
+`codegen/generators/*.ts`. Since 1.0.4 `meta init` scaffolds that directory EMPTY with
+`generators: []` (a project initialised on an earlier CLI got four wired copies, so both
+shapes are normal). `metaobjects.config.ts` imports the **owned** local copies:
 
 ```ts
 import { entityFile } from "./codegen/generators/entity";

@@ -9,8 +9,10 @@ the loader like everything else — never hand-parsed from a side file.
 # ---------------------------------------------------------------------------
 # Subtypes — the axis is the CHECK POLARITY, a genuine behaviour difference and
 # therefore a subtype under ADR-0037 §2:
-#   functional    -> EXISTENCE:    fails when nothing implements it
-#   architectural -> UNIVERSALITY: fails when something violates it
+#   functional    -> EXISTENCE:    `meta verify` warns when nothing implements it,
+#                                    and fails when a node it names is gone
+#   architectural -> UNIVERSALITY: `meta verify` fails a live policy applied to nothing
+#                                    (it does not check that each claimed node complies)
 # ---------------------------------------------------------------------------
 REQUIREMENT_SUBTYPE_FUNCTIONAL = "functional"
 REQUIREMENT_SUBTYPE_ARCHITECTURAL = "architectural"

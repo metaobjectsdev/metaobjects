@@ -29,8 +29,7 @@ config and none of them is metadata.
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators. `meta init` scaffolds entity/queries/routes/barrel/names;
-// routes-hono and the UI tier are reached with `meta eject` (§6).
+// Owned generators, copied in by `meta eject` (§6) — `meta init` wires none.
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { routesFileHono } from "./codegen/generators/routes-hono.js";
@@ -215,15 +214,13 @@ meta eject hooks            # → codegen/generators/hooks.ts
 line to put in `metaobjects.config.ts` **in place of** the package import, and never
 clobbers a file you already own.
 
-**It reports two of the three dependency tiers; the third is on you.** `meta init`
-declares the `@metaobjectsdev/*` packages its four scaffolded generators import
-(`codegen-ts`, `metadata`), and `eject` names any further `@metaobjectsdev/*` package the
-template you just took imports — `codegen-ts-react` for `form`, `codegen-ts-tanstack` for
-`hooks`/`grid`/`grid-hook`. Neither says anything about what the *emitted* code imports,
-because that is not visible in the generator's own import list. For `routes-hono` that
-means **`hono` and `@metaobjectsdev/runtime-ts`** (the emitted file imports
-`mountCrudRoutes` from its `/hono` subpath) — add both yourself, or the first `tsc` after
-`meta gen` reports TS2307 on the generated routes rather than on anything eject touched.
+**It prints one install set covering both tiers.** That is the `@metaobjectsdev/*`
+codegen package the template imports (`codegen-ts`; `codegen-ts-react` for `form`;
+`codegen-ts-tanstack` for `hooks`/`grid`/`grid-hook`) and what the *emitted* code imports.
+For `routes-hono` that is **`@metaobjectsdev/runtime-ts`** (the emitted file imports
+`mountCrudRoutes` from its `/hono` subpath) and **`hono`**, at the range `runtime-ts`
+declares. Install them before the first `tsc` after `meta gen`, or it reports TS2307 on the
+generated routes rather than on anything eject touched.
 
 An ejected generator is ordinary TypeScript you maintain. The metadata walk at the top of
 each template is framework-neutral and usually stays as-is; the emit at the bottom is the

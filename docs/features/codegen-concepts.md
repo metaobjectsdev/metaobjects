@@ -32,13 +32,14 @@ per-project. Don't fight a black-box generator; own a starting point and edit it
 Choosing and adapting a starting template is a **human/Claude judgment call**, not a
 CLI flag. (See ADR-0034.)
 
-For a running start, `meta init` scaffolds a sensible default set —
-`codegen/generators/{entity,queries,routes,barrel}.ts`, copied from the reference
-templates — and wires `metaobjects.config.ts` to import them locally, so `meta gen`
-runs from generators you own from the first run. Each file is written only if absent,
-so re-running `meta init --force` never clobbers a hand-edited generator. Importing
-those factories from `@metaobjectsdev/codegen-ts/generators` instead is **deprecated**
-and slated for removal in a future major — own the local copy.
+There is no default set to start from, by design (ADR-0034 Amendment 2): `meta init`
+scaffolds `codegen/generators/` empty with `generators: []`. `meta gen --list --probe` is
+the catalog — every generator, with how many files it would emit for your model — and
+`meta eject <name>...` copies the ones you choose from the reference templates into
+`codegen/generators/`, printing the import and entry to wire, so `meta gen` runs from
+generators you own from the first run. `eject` never clobbers a file you already own. The
+old `@metaobjectsdev/codegen-ts/generators` import of `entityFile` / `queriesFile` /
+`routesFile` / `barrel` was **removed at 1.0** — own the local copy.
 
 ## 3. Authoring mechanisms — and their tradeoffs
 
