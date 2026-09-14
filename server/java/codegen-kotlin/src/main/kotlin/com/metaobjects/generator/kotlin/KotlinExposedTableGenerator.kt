@@ -16,6 +16,7 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
+import com.metaobjects.relationship.RelationshipReferences
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import com.squareup.kotlinpoet.ClassName
@@ -1576,9 +1577,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // parent-side authoring shape) — a relationship contributes its explicit
                 // action, else its subtype default (composition→cascade,
                 // aggregation→set-null, association→restrict; onUpdate default cascade).
-                // Guards: @through (M:N) relationships never correlate with a direct FK,
-                // and the reverse relationship contributes nothing when this entity holds
-                // more than one enforced reference to the same target.
+                // Guards: @through (M:N) relationships never correlate with a direct FK;
+                // the child-side tier correlates by INVERTING the #368 relationship->
+                // reference ladder (not by target alone, which let a second FK inherit
+                // the first relationship's actions); and the reverse relationship
+                // contributes nothing when this entity holds more than one enforced
+                // reference to the same target, or when the target declares more than
+                // one relationship back at this entity.
                 val (resolvedOnDelete, resolvedOnUpdate) =
                     resolveDecorationActions(loader, entity, child, target)
                 val refSuffix = referentialActionSuffix(resolvedOnDelete, resolvedOnUpdate)
@@ -1609,9 +1614,24 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         // (2) child-side correlation, then (3) parent-side reverse correlation.
         // ADR-0039: relationships are inheritable — RESOLVE via getRelationships(true).
+        //
+        // #368: [entity] may declare MORE THAN ONE identity.reference onto this same
+        // target (Match.homeTeamRef / awayTeamRef both -> Team). Matching `rel` on the
+        // target ALONE cannot say which of those references `rel` supplies actions FOR,
+        // so every FK past the first silently inherited the FIRST relationship's
+        // @onDelete / @onUpdate — homeTeamRef's `restrict` landing on awayTeamRef's
+        // `cascade` FK, in a table Exposed compiles and the database accepts. Resolve it
+        // with the INVERSE of the relationship->reference ladder: `rel` belongs to `ref`
+        // iff the ladder, applied to `rel`, resolves back to `ref` ITSELF — not merely
+        // "to some reference on this target". `rel` and `ref` are both declared on (or
+        // inherited into) `entity`, the exact shape the ladder is built for, so this is
+        // a direct inversion rather than a second parallel rule. Mirrors the TS migrate
+        // engine's resolveReferentialActions and the C# ReferentialActions port.
         val childSide = entity.relationships.firstOrNull { rel ->
             rel.through == null && rel.objectRef != null &&
-                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target
+                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target &&
+                RelationshipReferences.resolveRelationshipReference(
+                    entity, rel.shortName, rel.objectRef, rel.sourceRefField) === ref
         }
         var rel = childSide
         // When the tier-3 satisfiability guard fires, the reverse relationship's
@@ -1651,10 +1671,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     /**
      * ADR-0047 tier-3 correlation — the relationship declared on the TARGET (parent)
      * entity pointing back at the FK-owning entity. Fails closed (null) when the
-     * relationship is M:N (`@through`), or when [entity] does not hold exactly one
+     * relationship is M:N (`@through`), when [entity] does not hold exactly one
      * enforced reference to [target] that is [ref] itself (the reverse relationship
      * cannot say which FK carries the ownership edge; a soft `@enforce: false` ref
-     * never correlates). Mirrors the TS migrate engine's findReverseRelationship.
+     * never correlates), or when [target] declares more than one relationship back at
+     * [entity]. Mirrors the TS migrate engine's findReverseRelationship.
      */
     private fun findReverseRelationship(
         loader: MetaDataLoader,
@@ -1670,10 +1691,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     KotlinGenUtil.resolveObjectByShortOrFqn(loader, r.targetEntity) === target
             }
         if (enforcedRefsToTarget.singleOrNull() !== ref) return null
-        return target.relationships.firstOrNull { rel ->
+        // #368: fail closed on ambiguity rather than taking the first match — when more
+        // than one non-@through relationship on [target] resolves back to [entity] (e.g.
+        // a "posts" composition and a separate "latestPost" association both pointing at
+        // Post), none of them is preferred. This is the tier-2 ambiguity's mirror image
+        // (multiple RELATIONSHIPS rather than multiple REFERENCES) and the ladder cannot
+        // resolve it: the ladder picks among references declared on the SAME object as
+        // the relationship, whereas here the candidates live on [target] while [ref]
+        // lives on [entity]. Mirrors the TS findReverseRelationship.
+        return target.relationships.filter { rel ->
             rel.through == null && rel.objectRef != null &&
                 KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === entity
-        }
+        }.singleOrNull()
     }
 
     /**
