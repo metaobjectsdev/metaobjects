@@ -146,14 +146,16 @@ describe("extractViewSpec — reference ambiguity (#368)", () => {
   });
 
   test("the ambiguity message never recommends @sourceRefField as a fix (it is a dead end for this hop)", async () => {
-    // #368 round 2: the only relationship hop that reaches this throw is
-    // @cardinality "many" and non-M:N (see the previous test's comment) —
-    // and validateRelationships rule (d) rejects @sourceRefField on exactly
-    // that shape (validation-passes.ts, "sets @sourceRefField but is not a
-    // M:N relationship"). So the message must not tell the author to declare
-    // an attribute the loader will refuse. It must instead say plainly that
-    // there is no attribute fix, and name the two remedies that ARE legal:
-    // remove the extra identity.reference, or restructure the model.
+    // #368 round 2 (fix round 1): Team owns ZERO identity.reference children of
+    // its own here, so resolveRelationshipReference's ladder (which only ever
+    // consults the HOP'S OWN entity's candidates) had nothing to work with —
+    // @sourceRefField could not have mattered regardless of @cardinality, since
+    // it also only ever consults the same own-side candidate set. The message
+    // must say THAT (not assert a @cardinality value it can't guarantee is the
+    // reason in every shape reaching this throw — see the "reverse @cardinality
+    // one" test below for a shape where the @cardinality *is* "one"), and name
+    // the two remedies that ARE legal: remove the extra identity.reference, or
+    // restructure the model.
     const root = await load([
       TEAM,
       matchEntity(),
@@ -188,14 +190,206 @@ describe("extractViewSpec — reference ambiguity (#368)", () => {
 
     // The dead-end advice from before this fix must never come back.
     expect(message).not.toContain("Declare @sourceRefField on the relationship");
-    // The message explains WHY @sourceRefField cannot help (illegal on a
-    // non-"one" @cardinality relationship) rather than silently omitting it.
-    expect(message).toContain('@sourceRefField cannot resolve this: it only disambiguates a @cardinality "one"');
+    // Fix round 1: nor may the message claim a @cardinality value as the reason
+    // -- Team owns no candidates, so the real reason is scope (whose references
+    // @sourceRefField consults), independent of @cardinality.
+    expect(message).not.toContain("@cardinality");
+    expect(message).toContain(
+      "@sourceRefField cannot resolve this: it only consults \"Team\"'s own identity.reference " +
+        'children, and "Team" declares none targeting "Match" -- every candidate above belongs ' +
+        "to the other side of this join",
+    );
     // And states the two remedies that are actually legal.
     expect(message).toContain(
       "There is no attribute that disambiguates a hop like this -- remove the extra identity.reference " +
         "between these two entities, or restructure the model so only one remains.",
     );
+  });
+
+  test("fix round 1: a reverse @cardinality \"one\" relationship (rule (e)'s zero-candidate gap) gets the same honest, cardinality-free message", async () => {
+    // Rule (e) (validateOneSideReferenceResolution, validation-passes.ts:2226)
+    // only fires when the HOLDER declares 2+ candidates of its own
+    // (`if (candidates.length <= 1) continue;` -- zero is silent, not just one).
+    // So a @cardinality "one" relationship whose FK is entirely on the FAR side
+    // (the holder itself declares no identity.reference at all) loads clean,
+    // and reaches this exact codegen throw exactly like the @cardinality "many"
+    // case above -- via findReferencesBetween's bidirectional walk finding the
+    // far side's 2 candidates. This is a DOCUMENTED, parked gap (not fixed here
+    // -- rule (e) is implemented in four language ports and broadening it in
+    // TypeScript alone would create cross-port divergence); this test only
+    // pins that the MESSAGE stays honest about it: @cardinality really is
+    // "one" here, so the message must not claim otherwise, or claim @cardinality
+    // is the reason @sourceRefField can't help.
+    const root = await load([
+      {
+        "object.entity": {
+          name: "Owner",
+          children: [
+            { "source.rdb": { "@table": "owners" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            // No identity.reference on Owner itself -- the FK lives on Pet.
+            {
+              "relationship.association": {
+                name: "primaryPet",
+                "@objectRef": "Pet",
+                "@cardinality": "one",
+              },
+            },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Pet",
+          children: [
+            { "source.rdb": { "@table": "pets" } },
+            { "field.int": { name: "id" } },
+            { "field.string": { name: "name" } },
+            { "field.int": { name: "primaryOwnerId" } },
+            { "field.int": { name: "backupOwnerId" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            {
+              "identity.reference": {
+                name: "primaryOwnerRef",
+                "@fields": "primaryOwnerId",
+                "@references": "Owner",
+              },
+            },
+            {
+              "identity.reference": {
+                name: "backupOwnerRef",
+                "@fields": "backupOwnerId",
+                "@references": "Owner",
+              },
+            },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "OwnerSummary",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_owner_summary" } },
+            { "field.int": { name: "id", extends: "Owner.id" } },
+            { "identity.primary": { name: "id", extends: "Owner.id" } },
+            {
+              "field.string": {
+                name: "primary_pet_name",
+                children: [
+                  { "origin.passthrough": { "@from": "Pet.name", "@via": "Owner.primaryPet" } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const projection = root.objects().find((o) => o.name === "OwnerSummary")!;
+    let message = "";
+    try {
+      extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
+      throw new Error("expected extractViewSpec to throw the ambiguity error");
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    expect(message).toMatch(
+      /projection join hop "primaryPet" from "Owner" to "Pet" is ambiguous:.*primaryOwnerRef.*backupOwnerRef/s,
+    );
+    // The bug this test guards against: claiming @cardinality is not "one" when it IS "one".
+    expect(message).not.toContain("@cardinality");
+    expect(message).not.toContain("Declare @sourceRefField on the relationship");
+    expect(message).toContain(
+      '@sourceRefField cannot resolve this: it only consults "Owner"\'s own identity.reference ' +
+        'children, and "Owner" declares none targeting "Pet" -- every candidate above belongs ' +
+        "to the other side of this join",
+    );
+  });
+
+  test("fix round 1: a @cardinality \"many\" hop whose OWN entity holds the ambiguous candidates still gets a true message (this one MAY name @cardinality)", async () => {
+    // The mirror case: here Team itself declares two references onto Match, so
+    // resolveRelationshipReference's ladder DID look at Team's own candidates
+    // and failed to narrow them (name-pairing doesn't match "matches" to either).
+    // A @cardinality "one" relationship could never reach this throw in this
+    // shape -- rule (e) uses the identical own-side candidate ladder and would
+    // reject it at load first -- so @cardinality is PROVABLY not "one" whenever
+    // the hop's own entity owns one of the ambiguous candidates, and the message
+    // may safely say so (unlike the two tests above, where the candidates are
+    // on the far side and @cardinality could be either value).
+    const root = await load([
+      {
+        "object.entity": {
+          name: "Team",
+          children: [
+            { "source.rdb": { "@table": "teams" } },
+            { "field.int": { name: "id" } },
+            { "field.int": { name: "featuredMatchId" } },
+            { "field.int": { name: "backupMatchId" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            {
+              "identity.reference": {
+                name: "featuredMatchRef",
+                "@fields": "featuredMatchId",
+                "@references": "Match",
+              },
+            },
+            {
+              "identity.reference": {
+                name: "backupMatchRef",
+                "@fields": "backupMatchId",
+                "@references": "Match",
+              },
+            },
+            { "relationship.association": { name: "matches", "@objectRef": "Match", "@cardinality": "many" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Match",
+          children: [
+            { "source.rdb": { "@table": "matches" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "TeamSummary",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_team_summary" } },
+            { "field.int": { name: "id", extends: "Team.id" } },
+            { "identity.primary": { name: "id", extends: "Team.id" } },
+            {
+              "field.int": {
+                name: "matchCount",
+                children: [
+                  { "origin.aggregate": { "@agg": "count", "@of": "Match.id", "@via": "Team.matches" } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const projection = root.objects().find((o) => o.name === "TeamSummary")!;
+    let message = "";
+    try {
+      extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
+      throw new Error("expected extractViewSpec to throw the ambiguity error");
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    expect(message).toMatch(
+      /projection join hop "matches" from "Team" to "Match" is ambiguous:.*featuredMatchRef.*backupMatchRef/s,
+    );
+    expect(message).toContain('@sourceRefField cannot resolve this: it only disambiguates a @cardinality "one"');
+    expect(message).toContain('this relationship\'s @cardinality is not "one"');
   });
 
   test("origin.first correlation with two references and no relationship throws naming both", async () => {

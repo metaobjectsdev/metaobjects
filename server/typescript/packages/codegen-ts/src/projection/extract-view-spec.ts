@@ -807,22 +807,39 @@ function buildJoinTree(
         let ref: ReferenceLookup | undefined;
         if (Array.isArray(resolvedRef)) {
           if (resolvedRef.length > 1) {
-            // #368 round 2: @sourceRefField cannot fix this. It only disambiguates a
-            // @cardinality "one" relationship (validation-passes.ts rule (d) rejects it
-            // on any other non-M:N relationship) — and rule (e) already rejects, at
-            // load time, any @cardinality "one" relationship whose reference set this
-            // same ladder (resolveRelationshipReference) cannot resolve. So a relationship
-            // hop can only reach this throw with a @cardinality other than "one", for
-            // which declaring @sourceRefField is itself a load error. There genuinely is
-            // no attribute that resolves it — say so, rather than pointing at a dead end.
+            // #368 round 2: @sourceRefField cannot fix this, but WHY differs by shape, and
+            // asserting the wrong reason for a given shape is itself a bug (fix round 1 of
+            // this cleanup caught exactly that). resolveRelationshipReference's ladder reads
+            // ONLY the hop's own entity's candidates (referenceCandidatesFor(currentObj, ...));
+            // it never even looks at `target`'s references. So:
+            //  - If `currentObj` itself holds one of the ambiguous candidates, resolution
+            //    already tried @sourceRefField/name-pairing against it and failed — and that
+            //    is only reachable at all when @cardinality isn't "one": a @cardinality "one"
+            //    relationship with 2+ own-side candidates is rejected at LOAD by rule (e)
+            //    (validateOneSideReferenceResolution) using this exact same ladder, so if we
+            //    got this far with an own-side candidate, @cardinality is provably not "one",
+            //    and @sourceRefField is provably illegal here (rule (d)).
+            //  - If NONE of the candidates are `currentObj`'s own, @sourceRefField could not
+            //    have mattered regardless of @cardinality — it only ever consults the hop's
+            //    OWN identity.reference children, and it has none targeting `target`. This is
+            //    rule (e)'s zero-candidate gap (validation-passes.ts:2226, `<= 1` skips 0 too):
+            //    a @cardinality "one" relationship can reach here with the FK entirely on the
+            //    far side, so @cardinality itself must NOT be asserted in this branch.
+            const holderName = (currentObj as MetaObject).name;
+            const holderOwnsACandidate = resolvedRef.some((r) => r.holder.name === holderName);
+            const whySourceRefFieldCannotHelp = holderOwnsACandidate
+              ? `it only disambiguates a @cardinality "${CARDINALITY_ONE}" relationship, and this ` +
+                `relationship's @cardinality is not "${CARDINALITY_ONE}" (declaring @sourceRefField on it ` +
+                `is itself a load error)`
+              : `it only consults "${holderName}"'s own identity.reference children, and "${holderName}" ` +
+                `declares none targeting "${target.name}" -- every candidate above belongs to the other side ` +
+                `of this join`;
             throw new Error(
-              `projection join hop "${relName}" from "${(currentObj as MetaObject).name}" to "${target.name}" is ambiguous: ` +
+              `projection join hop "${relName}" from "${holderName}" to "${target.name}" is ambiguous: ` +
                 `${resolvedRef.map((r) => r.referenceIdentity.name).join(", ")}. ` +
-                `@sourceRefField cannot resolve this: it only disambiguates a @cardinality "${CARDINALITY_ONE}" ` +
-                `relationship, and this relationship's @cardinality is not "${CARDINALITY_ONE}" (declaring ` +
-                `@sourceRefField on it is itself a load error). There is no attribute that disambiguates a hop ` +
-                `like this -- remove the extra identity.reference between these two entities, or restructure ` +
-                `the model so only one remains.`,
+                `@sourceRefField cannot resolve this: ${whySourceRefFieldCannotHelp}. There is no attribute ` +
+                `that disambiguates a hop like this -- remove the extra identity.reference between these two ` +
+                `entities, or restructure the model so only one remains.`,
             );
           }
           ref = resolvedRef[0];
