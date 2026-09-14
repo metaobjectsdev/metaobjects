@@ -26,10 +26,10 @@ from ....shared.base_types import TYPE_IDENTITY
 from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
-    IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from .meta_relationship import MetaRelationship
+from .relationship_references import reference_target_entity
 
 
 class M2MDerivationError(Exception):
@@ -80,18 +80,18 @@ def _ref_fk_field(ref: MetaData) -> str | None:
 def _ref_target_entity(ref: MetaData) -> str | None:
     """The @references target-entity name of a reference (bare, package-stripped).
 
-    KNOWN GAP (pre-dates #368, deliberately NOT fixed here): this compares the
-    WHOLE @references value, so the dotted ``Entity.field`` form ("Team.id")
-    never matches a bare entity name — a junction whose references are authored
-    dotted derives no M:N fields on this port, where TS's derive-m2m-fields.ts
-    (which reads ``ref.targetEntity``) resolves them. The one-line repair is to
-    delegate to ``relationship_references.reference_target_entity``; it is left
-    alone because it would change M:N derivation behaviour, which is outside the
-    #368 fix. Tracked separately from the rule-(e) ladder, whose copy of this
-    blind spot IS fixed.
+    GAP FIXED (was pre-existing, pre-dates #368; parked during that fix because
+    repairing it changes M:N derivation behaviour, which was out of scope there):
+    a junction reference authored with the dotted ``Entity.field`` explicit-fields
+    form ("Team.id") used to compare the WHOLE @references value against a bare
+    entity name and never match, so a M:N relationship through such a junction
+    derived no fields at all. Delegates the dotted-tail split to
+    ``relationship_references.reference_target_entity`` (the #368 fix's canonical
+    head-parse) and then strips any package prefix to keep this function's
+    bare-name contract.
     """
-    v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving (identity attr)
-    return _strip_package(v) if isinstance(v, str) and v else None
+    target = reference_target_entity(ref)
+    return _strip_package(target) if target else None
 
 
 def derive_m2m_fields(
