@@ -807,10 +807,22 @@ function buildJoinTree(
         let ref: ReferenceLookup | undefined;
         if (Array.isArray(resolvedRef)) {
           if (resolvedRef.length > 1) {
+            // #368 round 2: @sourceRefField cannot fix this. It only disambiguates a
+            // @cardinality "one" relationship (validation-passes.ts rule (d) rejects it
+            // on any other non-M:N relationship) — and rule (e) already rejects, at
+            // load time, any @cardinality "one" relationship whose reference set this
+            // same ladder (resolveRelationshipReference) cannot resolve. So a relationship
+            // hop can only reach this throw with a @cardinality other than "one", for
+            // which declaring @sourceRefField is itself a load error. There genuinely is
+            // no attribute that resolves it — say so, rather than pointing at a dead end.
             throw new Error(
               `projection join hop "${relName}" from "${(currentObj as MetaObject).name}" to "${target.name}" is ambiguous: ` +
                 `${resolvedRef.map((r) => r.referenceIdentity.name).join(", ")}. ` +
-                `Declare @sourceRefField on the relationship, or name the identity.reference directly in @via.`,
+                `@sourceRefField cannot resolve this: it only disambiguates a @cardinality "${CARDINALITY_ONE}" ` +
+                `relationship, and this relationship's @cardinality is not "${CARDINALITY_ONE}" (declaring ` +
+                `@sourceRefField on it is itself a load error). There is no attribute that disambiguates a hop ` +
+                `like this -- remove the extra identity.reference between these two entities, or restructure ` +
+                `the model so only one remains.`,
             );
           }
           ref = resolvedRef[0];

@@ -145,6 +145,59 @@ describe("extractViewSpec — reference ambiguity (#368)", () => {
     );
   });
 
+  test("the ambiguity message never recommends @sourceRefField as a fix (it is a dead end for this hop)", async () => {
+    // #368 round 2: the only relationship hop that reaches this throw is
+    // @cardinality "many" and non-M:N (see the previous test's comment) —
+    // and validateRelationships rule (d) rejects @sourceRefField on exactly
+    // that shape (validation-passes.ts, "sets @sourceRefField but is not a
+    // M:N relationship"). So the message must not tell the author to declare
+    // an attribute the loader will refuse. It must instead say plainly that
+    // there is no attribute fix, and name the two remedies that ARE legal:
+    // remove the extra identity.reference, or restructure the model.
+    const root = await load([
+      TEAM,
+      matchEntity(),
+      {
+        "object.projection": {
+          name: "TeamSummary",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_team_summary" } },
+            { "field.int": { name: "id", extends: "Team.id" } },
+            { "identity.primary": { name: "id", extends: "Team.id" } },
+            {
+              "field.int": {
+                name: "matchCount",
+                children: [
+                  { "origin.aggregate": { "@agg": "count", "@of": "Match.id", "@via": "Team.matches" } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const projection = root.objects().find((o) => o.name === "TeamSummary")!;
+    let message = "";
+    try {
+      extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
+      throw new Error("expected extractViewSpec to throw the ambiguity error");
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    // The dead-end advice from before this fix must never come back.
+    expect(message).not.toContain("Declare @sourceRefField on the relationship");
+    // The message explains WHY @sourceRefField cannot help (illegal on a
+    // non-"one" @cardinality relationship) rather than silently omitting it.
+    expect(message).toContain('@sourceRefField cannot resolve this: it only disambiguates a @cardinality "one"');
+    // And states the two remedies that are actually legal.
+    expect(message).toContain(
+      "There is no attribute that disambiguates a hop like this -- remove the extra identity.reference " +
+        "between these two entities, or restructure the model so only one remains.",
+    );
+  });
+
   test("origin.first correlation with two references and no relationship throws naming both", async () => {
     const root = await load([
       TEAM,
@@ -175,8 +228,19 @@ describe("extractViewSpec — reference ambiguity (#368)", () => {
     ]);
 
     const projection = root.objects().find((o) => o.name === "TeamSummary")!;
-    expect(() => extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" })).toThrow(
-      /origin\.first correlation from "Team" to "Match" is ambiguous:.*homeTeamRef.*awayTeamRef/s,
-    );
+    let message = "";
+    try {
+      extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
+      throw new Error("expected extractViewSpec to throw the ambiguity error");
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    expect(message).toMatch(/origin\.first correlation from "Team" to "Match" is ambiguous:.*homeTeamRef.*awayTeamRef/s);
+    // #368 round 2 sibling check: origin.first has no relationship node to attach
+    // @sourceRefField to at all (the correlation is derived from @of alone), so this
+    // message must never suggest it — confirming it stays dead-end-free alongside the
+    // buildJoinTree fix above.
+    expect(message).not.toContain("@sourceRefField");
   });
 });
