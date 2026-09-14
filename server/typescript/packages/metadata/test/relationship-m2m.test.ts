@@ -818,6 +818,40 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
     expect(derived.targetField).toBe("tagId");
   });
 
+  test("inherited HETERO whose junction references the CONCRETE child still derives", async () => {
+    // The other legitimate authoring shape, and the common one: the base is
+    // abstract (no table), so the junction FK references the CONCRETE entity.
+    // Both names — the declaring base and the navigating child — must be
+    // accepted as the relationship's subject, or fixing the base-referencing
+    // shape would break this one. Pinned by
+    // python/tests/unit/test_n2m_resolver_inherited.py, which is authored this way.
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Post", "extends": "PostBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "PostBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag",
+            "@through": "PostTag" } } ] } },
+      { "object.entity": { name: "Tag", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "PostTag", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "postId" } },
+        { "field.long": { name: "tagId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "postRef", "@fields": ["postId"], "@references": "Post" } },
+        { "identity.reference": { name: "tagRef", "@fields": ["tagId"], "@references": "Tag" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+    const post = findObj(root, "Post");
+    const rel = post.relationships().find((r) => r.name === "tags") as MetaRelationship;
+    expect(rel.parent?.name).toBe("PostBase");
+    const derived = deriveM2MFields(rel, post, root);
+    expect(derived.sourceField).toBe("postId");
+    expect(derived.targetField).toBe("tagId");
+  });
+
   test("an OWN relationship still derives against its own entity (no regression)", async () => {
     // The override case: Sub re-declares `peers` itself, so rel.parent IS Sub and
     // the self-join must be classified against Sub, not the base it shadows.

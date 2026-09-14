@@ -28,8 +28,12 @@
 // declaring entity is resolved HERE, from `rel.parent`, rather than asked of each
 // caller — same shape as the #368 loader fix (`declaringEntity = rel.parent ?? obj`
 // in validation-passes.ts), and for the same reason: the answer must not depend on
-// who asked. The `source` parameter is kept as the fallback for a synthetic
-// relationship with no parent (and as a non-breaking signature).
+// who asked. The passed `source` is NOT discarded: under `extends` the declaring
+// base and the navigating entity are two legitimate names for the relationship's
+// subject (a junction FK usually references the concrete entity, which is the one
+// with a table; @objectRef on an inherited self-join names the base), so both are
+// accepted — see `subjectNames` below. It is also the fallback when `rel` has no
+// entity parent, which keeps the exported signature unchanged.
 
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
@@ -64,8 +68,9 @@ function refFkField(ref: MetaReferenceIdentity): string | undefined {
  *
  * @param rel     the M:N relationship (carries @objectRef + @through + optional
  *                @sourceRefField / @symmetric)
- * @param source  fallback declaring entity, used only when `rel` has no parent
- *                (the declaring entity is normally read from `rel.parent`)
+ * @param source  the entity the caller is navigating from. Accepted alongside
+ *                `rel.parent` as a name for the relationship's subject, and used
+ *                as the declaring entity when `rel` has no entity parent.
  * @param root    the loaded model root (to find the junction entity)
  * @throws M2MDerivationError when the junction is missing/malformed or the
  *         self-join is ambiguous.
@@ -121,18 +126,39 @@ export function deriveM2MFields(
     );
   }
 
-  const isSelfJoin = stripPackage(targetName) === declaringEntity.name;
+  // The relationship's SUBJECT — the entity the M:N hangs off. Under `extends`
+  // there are two legitimate names for it and BOTH occur in real models:
+  //   * the DECLARING entity (rel.parent) — what @objectRef names for a self-join
+  //     declared on an abstract base, and what a junction reference names when the
+  //     author points the FK at the base type;
+  //   * the NAVIGATING entity (`source`) — the concrete entity the caller is
+  //     iterating, which is what a junction FK usually references, because that is
+  //     the entity with the physical table.
+  // Accepting either is what makes the derivation independent of which entity's
+  // effective view reached the relationship. (Not covered: a junction reference
+  // naming an entity strictly BETWEEN the declaring base and the navigating
+  // entity in a deeper hierarchy — no model does that, and widening to the whole
+  // super chain would make the "must declare one identity.reference to ..." error
+  // unfalsifiable.)
+  const subjectNames = declaringEntity.name === source.name
+    ? [declaringEntity.name]
+    : [declaringEntity.name, source.name];
+  const isSubject = (name: string | undefined): boolean =>
+    name !== undefined && subjectNames.includes(stripPackage(name));
+  const subjectLabel = subjectNames.map((n) => `"${n}"`).join(" or ");
+
+  const isSelfJoin = isSubject(targetName);
 
   if (!isSelfJoin) {
     // Hetero: match each reference by the entity it resolves to.
-    const sourceRef = refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === declaringEntity.name);
+    const sourceRef = refs.find((r) => isSubject(r.targetEntity));
     const targetRef = refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === stripPackage(targetName));
     const sourceField = sourceRef ? refFkField(sourceRef) : undefined;
     const targetField = targetRef ? refFkField(targetRef) : undefined;
     if (sourceField === undefined || targetField === undefined) {
       throw new M2MDerivationError(
         `junction "${throughName}" for relationship "${declaringEntity.name}.${rel.name}" must declare one ` +
-          `identity.reference to "${declaringEntity.name}" and one to "${stripPackage(targetName)}"`,
+          `identity.reference to ${subjectLabel} and one to "${stripPackage(targetName)}"`,
       );
     }
     return { sourceField, targetField };
