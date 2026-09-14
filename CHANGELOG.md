@@ -10,6 +10,15 @@ here.**
 
 ## [Unreleased]
 
+**Upgrading: run `meta gen`.** Every generated file's header comment changed ([#367]), and
+generated routes files gain an auth-seam JSDoc block, so `meta verify --codegen` reports
+drift on any project that commits its generated output until it is regenerated. For most
+projects that regen diff is **comments only — zero non-comment lines**. Two shapes change
+for real: a model with two `identity.reference` nodes onto the same target gets corrected
+FK wiring and referential actions ([#368] — including an `ON DELETE` / `ON UPDATE` diff on
+the next `meta migrate`), and an M:N relationship inherited through `extends` now derives
+navigation that was previously dropped from the output with no error.
+
 ### Added
 
 - **Libraries: reusable declared design you opt into** (FR-043, the sixth pillar).
@@ -46,6 +55,37 @@ here.**
   with a library's shipped requirement without ejecting the whole ledger. All four loaders
   (Kotlin inherits the JVM's); one new conformance fixture takes over the unmarked-conflict
   error branch, so the coverage moved rather than being deleted.
+
+- **`layer` joins the cross-port generator manifest** — `model` / `persistence` / `api` /
+  `client` / `docs` / `capability` — gated by all five ports' registry-conformance tests
+  exactly as `tier` is. Five TypeScript generators that were in no manifest at all (`form`,
+  `hooks`, `grid`, `grid-hook`, `requirement-tests`) join it too, so the catalog describes
+  34 generators where the manifest described 29.
+
+- **`meta gen` audits the selection.** Two self-extinguishing warnings, neither a build
+  failure: a wired generator whose `requires` are not wired (its output will import a
+  module nothing emits), and two `api`-layer generators declaring different frameworks
+  (`routes` + `routes-hono` emit to different paths, so nothing conflicts and two complete
+  HTTP surfaces appear silently). There is deliberately no equivalent rule on the `client`
+  layer: `@metaobjectsdev/tanstack` peers on `react`, so a form generator plus the TanStack
+  hook/grid generators is the intended composition.
+
+- **The auth seam is printed in the generated routes handler's JSDoc ([#367]).** Stock
+  CRUD is unauthenticated and no metadata attribute should change that — authentication
+  is not derivable from a model (ADR-0023). Both frameworks already compose a guard
+  around the generated mount; only the generated output never said so. Fastify hooks are
+  encapsulated per plugin scope and inherited by child scopes, so wrapping the call
+  reaches through the handler's own `register(..., { prefix })`; Hono's trailing wildcard
+  matches the collection path itself, so one `app.use` covers list, get and every write.
+  Both recipes are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather
+  than asserted in prose, and each names the generator that emitted the file
+  (`routesFile` / `routesFileHono`) for narrowing with `expose`. The JSDoc also states
+  what no mount can express: a row-ownership rule is not a property of a route, so those
+  verbs are hand-written and the generated file narrowed around them.
+- **`mountReadOnlyCrudRoutes` accepts `routeOptions`** (`@metaobjectsdev/runtime-ts`,
+  Fastify), the option `mountCrudRoutes` and `mountM2mRoute` already took. A projection's
+  generated routes could not carry a route-level hook the way an entity's could — an
+  inconsistency, not a policy. Read-only is not public.
 
 ### Changed
 
@@ -85,6 +125,48 @@ here.**
   build.** It was the file's basename in a checkout and `library:…` when embedded, so one
   node's error envelope read differently depending on how the library was resolved — and
   collided with an adopter file of that name.
+
+- **Codegen is OPT-IN: no port ships a default generator suite** (ADR-0034 Amendment 2).
+  A new project got code it never asked for — TypeScript's `meta init` copied and wired
+  five generators, C# ran nine for a caller who named none, Python eight; Java never had
+  a default set and has been right all along. Deciding which code an application needs
+  belongs to whoever is building it, increasingly an LLM in the repo, which is well able
+  to make that call given a truthful catalog and is badly served by a default that
+  pre-empts it.
+
+  **This is a PATCH and no existing project changes by one byte.** An adopter already has
+  their owned copies on disk and their selection committed in their own config; `meta gen`
+  keeps running exactly that list, `verify --codegen` keeps checking exactly that output,
+  and re-running `init` never clobbers a file that exists. What changes is what a *new*
+  project starts with. `docs/compatibility-policy.md` is narrowed in the same change: the
+  scaffold-and-own promise is the LAYOUT and the INTERFACES, not which generators a fresh
+  scaffold wires.
+
+  What this means per port:
+  - **TypeScript** — `meta init` scaffolds `codegen/generators/` **empty**, a config with
+    `generators: []`, and no dependencies. `dbImport` and the throwing `src/db.ts` stub are
+    gone with it: both existed only because the scaffold wired `routesFile()`, whose output
+    emits `import { db } from …`. `dbImport` is now a declared `configKey` on the `routes`
+    catalog entry, reported by `meta eject routes` to the adopter who chose routes.
+  - **C# / Python** — `--generators` is REQUIRED; a run that names none is a usage error
+    and writes nothing. `verify --codegen` re-runs the SELECTION, so with none named it
+    reports that there is nothing to check rather than regenerating a suite the project
+    never ran. Python's `verify` gains `--generators`, matching C#.
+
+- **`meta gen --list` is now the generator CATALOG, and `--probe` answers it against your
+  own model.** `--list --format json` emits one document per generator: its `layer`,
+  `framework`, what it emits, what it `requires`, the consolidated install set, the config
+  keys it reads, and whether this project already owns a copy. `--probe` constructs every
+  generator and dry-runs it against the loaded model, reporting how many files each would
+  emit — so `output-parser: 3, callable: 0, requirement-tests: 7` replaces a category
+  label, and cannot go stale, because it runs the generators rather than describing them.
+
+- **`meta eject` takes many names and reports one consolidated install set.** A real
+  selection is several generators, and three separate invocations produced three separate
+  install lines for the same package. `--format json` carries, per file, the import line
+  and the entry to wire, plus one install set with third-party ranges read from the runtime
+  package's own `peerDependencies`. An unknown name refuses the whole call before writing
+  anything.
 
 ### Fixed
 
@@ -172,8 +254,6 @@ here.**
   No vocabulary change: `metamodelVersion` stays `1.0` and the registry manifest is
   untouched.
 
-||||||| 7dafb055e
-
 - **Both shipped libraries failed `meta verify`'s requirement gate**, in metadata an
   adopter cannot fix: every L4 in `ai` claimed FIELDS (`ERR_REQUIREMENT_L4_NOT_OBJECT`),
   and both libraries wrote their concerns as SIBLINGS of the L2 segment their own comments
@@ -184,68 +264,6 @@ here.**
   holds every shipped library, and every future one, to zero loader errors, zero loader
   warnings, zero gate findings, zero lint findings, no unruled gaps, and every entity
   claimed by its own ledger.
-
-### Changed
-
-- **Codegen is OPT-IN: no port ships a default generator suite** (ADR-0034 Amendment 2).
-  A new project got code it never asked for — TypeScript's `meta init` copied and wired
-  five generators, C# ran nine for a caller who named none, Python eight; Java never had
-  a default set and has been right all along. Deciding which code an application needs
-  belongs to whoever is building it, increasingly an LLM in the repo, which is well able
-  to make that call given a truthful catalog and is badly served by a default that
-  pre-empts it.
-
-  **This is a PATCH and no existing project changes by one byte.** An adopter already has
-  their owned copies on disk and their selection committed in their own config; `meta gen`
-  keeps running exactly that list, `verify --codegen` keeps checking exactly that output,
-  and re-running `init` never clobbers a file that exists. What changes is what a *new*
-  project starts with. `docs/compatibility-policy.md` is narrowed in the same change: the
-  scaffold-and-own promise is the LAYOUT and the INTERFACES, not which generators a fresh
-  scaffold wires.
-
-  What this means per port:
-  - **TypeScript** — `meta init` scaffolds `codegen/generators/` **empty**, a config with
-    `generators: []`, and no dependencies. `dbImport` and the throwing `src/db.ts` stub are
-    gone with it: both existed only because the scaffold wired `routesFile()`, whose output
-    emits `import { db } from …`. `dbImport` is now a declared `configKey` on the `routes`
-    catalog entry, reported by `meta eject routes` to the adopter who chose routes.
-  - **C# / Python** — `--generators` is REQUIRED; a run that names none is a usage error
-    and writes nothing. `verify --codegen` re-runs the SELECTION, so with none named it
-    reports that there is nothing to check rather than regenerating a suite the project
-    never ran. Python's `verify` gains `--generators`, matching C#.
-
-- **`meta gen --list` is now the generator CATALOG, and `--probe` answers it against your
-  own model.** `--list --format json` emits one document per generator: its `layer`,
-  `framework`, what it emits, what it `requires`, the consolidated install set, the config
-  keys it reads, and whether this project already owns a copy. `--probe` constructs every
-  generator and dry-runs it against the loaded model, reporting how many files each would
-  emit — so `output-parser: 3, callable: 0, requirement-tests: 7` replaces a category
-  label, and cannot go stale, because it runs the generators rather than describing them.
-
-- **`meta eject` takes many names and reports one consolidated install set.** A real
-  selection is several generators, and three separate invocations produced three separate
-  install lines for the same package. `--format json` carries, per file, the import line
-  and the entry to wire, plus one install set with third-party ranges read from the runtime
-  package's own `peerDependencies`. An unknown name refuses the whole call before writing
-  anything.
-
-### Added
-
-- **`layer` joins the cross-port generator manifest** — `model` / `persistence` / `api` /
-  `client` / `docs` / `capability` — gated by all five ports' registry-conformance tests
-  exactly as `tier` is. Five TypeScript generators that were in no manifest at all (`form`,
-  `hooks`, `grid`, `grid-hook`, `requirement-tests`) join it too, so the catalog describes
-  34 generators where the manifest described 29.
-
-- **`meta gen` audits the selection.** Two self-extinguishing warnings, neither a build
-  failure: a wired generator whose `requires` are not wired (its output will import a
-  module nothing emits), and two `api`-layer generators declaring different frameworks
-  (`routes` + `routes-hono` emit to different paths, so nothing conflicts and two complete
-  HTTP surfaces appear silently). There is deliberately no equivalent rule on the `client`
-  layer: `@metaobjectsdev/tanstack` peers on `react`, so a form generator plus the TanStack
-  hook/grid generators is the intended composition.
-
-### Fixed
 
 - **Generated files no longer point at a plugin point that does not exist ([#367]).**
   Every emitted header carried `Customize via <Entity>.extra.ts in this directory`, and
@@ -315,25 +333,6 @@ here.**
   registries (npm / PyPI / NuGet / Maven) to publish together at the next release,
   changed product files or not — that consequence is recorded here so it isn't a
   surprise at release time. `metamodelVersion` stays `1.0`.
-
-### Added
-
-- **The auth seam is printed in the generated routes handler's JSDoc ([#367]).** Stock
-  CRUD is unauthenticated and no metadata attribute should change that — authentication
-  is not derivable from a model (ADR-0023). Both frameworks already compose a guard
-  around the generated mount; only the generated output never said so. Fastify hooks are
-  encapsulated per plugin scope and inherited by child scopes, so wrapping the call
-  reaches through the handler's own `register(..., { prefix })`; Hono's trailing wildcard
-  matches the collection path itself, so one `app.use` covers list, get and every write.
-  Both recipes are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather
-  than asserted in prose, and each names the generator that emitted the file
-  (`routesFile` / `routesFileHono`) for narrowing with `expose`. The JSDoc also states
-  what no mount can express: a row-ownership rule is not a property of a route, so those
-  verbs are hand-written and the generated file narrowed around them.
-- **`mountReadOnlyCrudRoutes` accepts `routeOptions`** (`@metaobjectsdev/runtime-ts`,
-  Fastify), the option `mountCrudRoutes` and `mountM2mRoute` already took. A projection's
-  generated routes could not carry a route-level hook the way an entity's could — an
-  inconsistency, not a policy. Read-only is not public.
 
 [#367]: https://github.com/metaobjectsdev/metaobjects/issues/367
 [#368]: https://github.com/metaobjectsdev/metaobjects/issues/368
