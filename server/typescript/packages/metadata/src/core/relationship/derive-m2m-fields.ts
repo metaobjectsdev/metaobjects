@@ -18,22 +18,19 @@
 //      targetField = second). Resolution unions both at read time.
 // Ambiguous (source == target, neither @sourceRefField nor @symmetric) → throw.
 //
-// "source" above always means the entity that DECLARES the relationship — never
-// whichever entity's effective view reached it. Every caller walks the RESOLVING
-// `obj.relationships()`, so for a relationship inherited via `extends` the entity
-// it is iterating is the INHERITING one, and both the self-join classification and
-// the hetero reference match would then be made against the wrong entity (an
-// inherited self-join reads as hetero and derivation throws; an inherited hetero
-// finds no junction reference to the inheriting entity and throws too). The
-// declaring entity is resolved HERE, from `rel.parent`, rather than asked of each
-// caller — same shape as the #368 loader fix (`declaringEntity = rel.parent ?? obj`
-// in validation-passes.ts), and for the same reason: the answer must not depend on
-// who asked. The passed `source` is NOT discarded: under `extends` the declaring
-// base and the navigating entity are two legitimate names for the relationship's
-// subject (a junction FK usually references the concrete entity, which is the one
-// with a table; @objectRef on an inherited self-join names the base), so both are
-// accepted — see `subjectNames` below. It is also the fallback when `rel` has no
-// entity parent, which keeps the exported signature unchanged.
+// "source" above means the relationship's SUBJECT, and under `extends` there are two
+// legitimate names for it. Every caller walks the RESOLVING `obj.relationships()`
+// (codegen-ts's relation-resolver, runtime-ts's n2m-resolver, docs-site's link-graph)
+// and passes the entity it is ITERATING, which for an inherited relationship is not
+// the one that declared it. So the DECLARING entity is resolved here from `rel.parent`
+// (same shape as the #368 loader fix, validation-passes' `declaringEntity = rel.parent
+// ?? obj`), and the passed `source` is kept alongside it rather than discarded: a
+// junction FK usually references the CONCRETE entity, because the abstract base has no
+// table, while @objectRef on an inherited self-join names the base. Both are accepted,
+// for the self-join classification and the hetero reference match alike. `source` is
+// also the fallback when `rel` has no entity parent, which keeps the exported signature
+// unchanged. Not covered: a junction reference naming an entity strictly BETWEEN the
+// base and the navigating entity in a deeper hierarchy.
 
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaRoot } from "../../shared/meta-root.js";

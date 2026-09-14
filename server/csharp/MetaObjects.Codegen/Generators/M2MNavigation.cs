@@ -73,10 +73,13 @@ public sealed record M2MNavigation(
 public static class M2MNavigationBuilder
 {
     /// <summary>
-    /// All M:N navigations declared on <paramref name="entity"/> (own relationships
-    /// with <c>@cardinality: "many"</c> + <c>@through</c>). Returns an empty list for
-    /// an entity with no M:N relationships. A relationship whose junction FK columns
-    /// cannot be derived is skipped (the loader validation surfaces the error).
+    /// All M:N navigations VISIBLE on <paramref name="entity"/> — every relationship in
+    /// its EFFECTIVE view (<c>Relationships()</c> is resolving: own + inherited via
+    /// <c>extends</c>) carrying <c>@cardinality: "many"</c> + <c>@through</c>. NOT own-only:
+    /// believing otherwise is what produced the declaring-vs-visiting bug this class's
+    /// <see cref="M2MNavigation.DeclaringEntity"/> now guards. Returns an empty list for an
+    /// entity with no M:N relationships. A relationship whose junction FK columns cannot be
+    /// derived is skipped (the loader validation surfaces the error).
     /// </summary>
     public static IReadOnlyList<M2MNavigation> For(MetaObject entity, MetaRoot root)
     {

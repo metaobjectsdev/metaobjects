@@ -46,20 +46,19 @@ import java.util.List;
  * </ol>
  * Ambiguous (source == target, neither {@code @sourceRefField} nor {@code @symmetric}) → throw.
  *
- * <p>"source" above always means the entity that DECLARES the relationship — never
- * whichever entity's effective view reached it. Every caller walks the RESOLVING
- * {@code getRelationships()}, so for a relationship inherited via {@code extends} the
- * entity it is iterating is the INHERITING one, and both the self-join classification
- * and the hetero reference match would then be made against the wrong entity (an
- * inherited self-join reads as hetero and derivation throws; an inherited hetero finds
- * no junction reference to the inheriting entity and throws too). The declaring entity
- * is resolved HERE, from {@code rel.getParent()}, rather than asked of each caller —
- * same shape as the #368 loader fix in {@code ValidationPhase}, and for the same reason:
- * the answer must not depend on who asked. The passed {@code source} is NOT discarded:
- * under {@code extends} the declaring base and the navigating entity are two legitimate
- * names for the relationship's subject (a junction FK usually references the concrete
- * entity, which is the one with a table), so BOTH are accepted. It is also the fallback
- * when {@code rel} has no entity parent, which keeps the signature unchanged.</p>
+ * <p>"source" above means the relationship's SUBJECT, and under {@code extends} there are
+ * two legitimate names for it. Every caller walks the RESOLVING {@code getRelationships()}
+ * (SpringM2mSupport and KotlinM2mSupport for codegen, omdb's M2MResolver at run time) and
+ * passes the entity it is ITERATING, which for an inherited relationship is not the one
+ * that declared it. So the DECLARING entity is resolved here from {@code rel.getParent()}
+ * (same shape as the #368 loader fix in {@code ValidationPhase}), and the passed
+ * {@code source} is kept alongside it rather than discarded: a junction FK usually
+ * references the CONCRETE entity, because the abstract base has no table, while
+ * {@code @objectRef} on an inherited self-join names the base. Both are accepted, for the
+ * self-join classification and the hetero reference match alike. {@code source} is also the
+ * fallback when {@code rel} has no entity parent, which keeps the signature unchanged. Not
+ * covered: a junction reference naming an entity strictly BETWEEN the base and the
+ * navigating entity in a deeper hierarchy.</p>
  *
  * <p>This carries the same semantics as the loader-phase M:N validation
  * ({@code ValidationPhase.validateRelationshipsM2M}); the validation pass guarantees a

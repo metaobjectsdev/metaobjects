@@ -17,22 +17,20 @@ Three modes (see the FR-018 design + the TS reference ``derive-m2m-fields.ts``):
      target_field = second). Resolution unions both at read time.
 Ambiguous (source == target, neither @sourceRefField nor @symmetric) → raise.
 
-"source" above always means the entity that DECLARES the relationship — never
-whichever entity's effective view reached it. Every caller walks the RESOLVING
-``children()`` / ``m2m_relationships()``, so for a relationship inherited via
-``extends`` the entity it is iterating is the INHERITING one, and both the
-self-join classification and the hetero reference match would then be made
-against the wrong entity (an inherited self-join reads as hetero and derivation
-raises; an inherited hetero finds no junction reference to the inheriting entity
-and raises too). The declaring entity is resolved HERE, from ``rel.parent``,
-rather than asked of each caller — same shape as the #368 loader fix
-(``declaring_entity = rel.parent if rel.parent is not None else obj`` in
-``validation_passes.py``), and for the same reason: the answer must not depend on
-who asked. The passed ``source`` is NOT discarded: under ``extends`` the declaring
-base and the navigating entity are two legitimate names for the relationship's
-subject (a junction FK usually references the concrete entity, which is the one
-with a table), so BOTH are accepted. It is also the fallback when ``rel`` has no
-object parent, which keeps the signature unchanged.
+"source" above means the relationship's SUBJECT, and under ``extends`` there are two
+legitimate names for it. Every caller walks a RESOLVING accessor —
+``resolve_n2m_descriptor`` over ``children()``, ``m2m_codegen.m2m_relationships`` over
+``entity.children()`` — and passes the entity it is ITERATING, which for an inherited
+relationship is not the one that declared it. So the DECLARING entity is resolved here
+from ``rel.parent`` (same shape as the #368 loader fix, ``validation_passes``'
+``declaring_entity = rel.parent if rel.parent is not None else obj``), and the passed
+``source`` is kept alongside it rather than discarded: a junction FK usually references
+the CONCRETE entity, because the abstract base has no table, while ``@objectRef`` on an
+inherited self-join names the base. Both are accepted, for the self-join classification
+and the hetero reference match alike. ``source`` is also the fallback when ``rel`` has no
+object parent, which keeps the signature unchanged. Not covered: a junction reference
+naming an entity strictly BETWEEN the base and the navigating entity in a deeper
+hierarchy.
 """
 from __future__ import annotations
 

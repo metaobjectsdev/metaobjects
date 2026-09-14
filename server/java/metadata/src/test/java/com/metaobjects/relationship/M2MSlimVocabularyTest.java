@@ -403,6 +403,14 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
         + "    { \"identity.reference\": { \"name\": \"partnerRef\", \"@fields\": \"partnerId\", \"@references\": \"xpkg::partner::Account\" } } ] } }"
         + "] } }";
 
+    // CROSS-PORT NOTE: Java is the only port whose derive() resolves @objectRef and the
+    // junction references to OBJECTS and compares FQN identity. TS, C# and Python compare
+    // stripped short names, so the shape below — a cross-package hetero target whose bare
+    // name collides with the subject's — misreads as an ambiguous self-join there. That
+    // divergence is now PINNED on all three (relationship-m2m.test.ts,
+    // M2MInheritedDeclaringEntityTests.cs, test_derive_m2m_declaring_entity.py, each
+    // named "ADR-0041 GAP"), so adopting FQN-exactness elsewhere fails those tests loudly
+    // instead of silently changing behaviour. This test is the correct-behaviour side.
     @Test
     public void deriveCrossPackageHeteroBindsCorrectPackage() {
         // ADR-0041: same-bare-name entities/junctions in different packages. Under the

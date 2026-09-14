@@ -23,9 +23,14 @@ from __future__ import annotations
 
 import json
 
-from metaobjects import load_string
+import pytest
+
+from metaobjects import InMemoryStringSource, MetaDataLoader, load_string
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.meta.core.relationship.derive_m2m_fields import derive_m2m_fields
+from metaobjects.meta.core.relationship.derive_m2m_fields import (
+    M2MDerivationError,
+    derive_m2m_fields,
+)
 from metaobjects.meta.core.relationship.meta_relationship import MetaRelationship
 from metaobjects.runtime.n2m_resolver import resolve_n2m_descriptor
 
@@ -214,3 +219,77 @@ def test_runtime_resolver_traverses_an_inherited_self_join() -> None:
 # SSOT and so is fixed transitively; it is not exercised here because it additionally
 # requires a physical ``source.rdb`` on the junction and target, which an abstract
 # declaring base does not have — a separate concern from the derivation.
+
+
+# ADR-0041 DIVERGENCE — pinned, not fixed. Java's M2MFields compares RESOLVED object
+# identity (FQN-exact); Python, TS and C# compare stripped short names. The subject set
+# used to hold one short name and now holds two, so the surface on which a bare-name
+# compare can mis-bind is twice as large. Here ``a::NodeBase`` declares a genuine
+# CROSS-PACKAGE hetero M:N onto ``b::NodeBase`` and ``a::Node`` extends ``a::NodeBase``:
+# deriving from ``a::Node`` the subject short names are {"NodeBase", "Node"}, and
+# ``b::NodeBase`` strips to "NodeBase", so the target reads as the subject and the
+# relationship is misclassified as an ambiguous self-join. Java's equivalent
+# (M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage) gets it right.
+#
+# Honest about severity: this model derived CORRECTLY before this branch (the one-member
+# subject set did not collide), so the widening regressed it. Accepted deliberately per
+# the ADR-0041 split; the test encodes what Python ACTUALLY does so the divergence is
+# gated rather than latent, and must be rewritten when Python adopts FQN-exactness.
+XPKG_A = {
+    "metadata.root": {
+        "package": "a",
+        "children": [
+            _entity("Node", [{"field.long": {"name": "id"}}, _pk()], extends="a::NodeBase"),
+            _entity(
+                "NodeBase",
+                [
+                    {
+                        "relationship.association": {
+                            "name": "links",
+                            "@cardinality": "many",
+                            "@objectRef": "b::NodeBase",
+                            "@through": "L",
+                        }
+                    }
+                ],
+                **{"@isAbstract": True},
+            ),
+            _entity(
+                "L",
+                [
+                    {"field.long": {"name": "srcId"}},
+                    {"field.long": {"name": "dstId"}},
+                    {"identity.primary": {"name": "id", "@fields": ["srcId", "dstId"]}},
+                    _ref("s", "srcId", "a::Node"),
+                    _ref("d", "dstId", "b::NodeBase"),
+                ],
+            ),
+        ],
+    }
+}
+
+XPKG_B = {
+    "metadata.root": {
+        "package": "b",
+        "children": [_entity("NodeBase", [{"field.long": {"name": "id"}}, _pk()])],
+    }
+}
+
+
+def test_adr0041_gap_cross_package_target_sharing_a_subject_short_name() -> None:
+    """CURRENT Python behaviour (wrong; Java derives srcId/dstId here)."""
+    result = MetaDataLoader().load([
+        InMemoryStringSource(json.dumps(XPKG_A), id="a.json"),
+        InMemoryStringSource(json.dumps(XPKG_B), id="b.json"),
+    ])
+    # The model itself is perfectly legal — the loader raises nothing.
+    assert result.errors == []
+    root = result.root
+    objects = [c for c in root.children() if isinstance(c, MetaObject)]
+    # Pin the premise: the child is reached before the base it inherits from.
+    assert [o.name for o in objects] == ["Node", "NodeBase", "L", "NodeBase"]
+    index = {o.name: o for o in objects}
+    node = objects[0]
+    rel = _rel(node, "links")
+    with pytest.raises(M2MDerivationError, match="is ambiguous"):
+        derive_m2m_fields(rel, node, index)

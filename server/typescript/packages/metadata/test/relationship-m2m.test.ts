@@ -852,6 +852,61 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
     expect(derived.targetField).toBe("tagId");
   });
 
+  // ADR-0041 DIVERGENCE — pinned, not fixed. Java's M2MFields compares RESOLVED
+  // object identity (FQN-exact); TS, C# and Python compare stripPackage() short
+  // names. The subject set used to hold one short name and now holds two, so the
+  // surface on which a bare-name compare can mis-bind is twice as large. This
+  // fixture is the concrete case: a::NodeBase declares a genuine CROSS-PACKAGE
+  // hetero M:N onto b::NodeBase, and a::Node extends a::NodeBase. Deriving from
+  // a::Node, the subject short names are {"NodeBase", "Node"}; stripPackage
+  // ("b::NodeBase") is "NodeBase", which is IN that set, so the target reads as
+  // the subject and the relationship is misclassified as an ambiguous self-join.
+  //
+  // Java's equivalent (M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage)
+  // gets this right. This test encodes what TS ACTUALLY does today, not what it
+  // ought to do, so the divergence is gated rather than latent: the day TS adopts
+  // FQN-exact resolution (ADR-0041 work, a separate branch), this test fails and
+  // must be rewritten to assert srcId/dstId.
+  //
+  // Honest about severity: this model DERIVED CORRECTLY before this branch
+  // (the one-member subject set {"Node"} did not collide), so the widening
+  // regressed it. Accepted deliberately, per the ADR-0041 split.
+  test("ADR-0041 GAP: a cross-package hetero target sharing a subject short name misreads as a self-join", async () => {
+    const aDoc = { "metadata.root": { package: "a", children: [
+      { "object.entity": { name: "Node", "extends": "a::NodeBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+        { "relationship.association": { name: "links", "@cardinality": "many",
+            "@objectRef": "b::NodeBase", "@through": "L" } } ] } },
+      { "object.entity": { name: "L", children: [
+        { "field.long": { name: "srcId" } },
+        { "field.long": { name: "dstId" } },
+        { "identity.primary": { "name": "id", "@fields": ["srcId", "dstId"] } },
+        { "identity.reference": { name: "s", "@fields": ["srcId"], "@references": "a::Node" } },
+        { "identity.reference": { name: "d", "@fields": ["dstId"], "@references": "b::NodeBase" } } ] } },
+    ] } };
+    const bDoc = { "metadata.root": { package: "b", children: [
+      { "object.entity": { name: "NodeBase", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(aDoc), { id: "a.json" }),
+      new InMemoryStringSource(JSON.stringify(bDoc), { id: "b.json" }),
+    ]);
+    // The model itself is perfectly legal — the loader raises nothing.
+    expect(errors).toHaveLength(0);
+    expect(objectVisitOrder(root)).toEqual(["a::Node", "a::NodeBase", "a::L", "b::NodeBase"]);
+
+    const node = findObj(root, "Node");
+    const rel = node.relationships().find((r) => r.name === "links") as MetaRelationship;
+    // CURRENT TS BEHAVIOUR (wrong; Java derives srcId/dstId here):
+    expect(() => deriveM2MFields(rel, node, root)).toThrow(
+      /is ambiguous: set @sourceRefField \(directed\) or @symmetric \(undirected\)/,
+    );
+  });
+
   test("an OWN relationship still derives against its own entity (no regression)", async () => {
     // The override case: Sub re-declares `peers` itself, so rel.parent IS Sub and
     // the self-join must be classified against Sub, not the base it shadows.

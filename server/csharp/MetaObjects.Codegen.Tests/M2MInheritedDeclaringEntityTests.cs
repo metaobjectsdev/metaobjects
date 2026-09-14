@@ -158,6 +158,67 @@ public class M2MInheritedDeclaringEntityTests
         Assert.Equal("tagId", fields.TargetField);
     }
 
+    // ADR-0041 DIVERGENCE — pinned, not fixed. Java's M2MFields compares RESOLVED object
+    // identity (FQN-exact); C#, TS and Python compare StripPackage() short names. The
+    // subject set used to hold one short name and now holds two, so the surface on which
+    // a bare-name compare can mis-bind is twice as large. Here a::NodeBase declares a
+    // genuine CROSS-PACKAGE hetero M:N onto b::NodeBase and a::Node extends a::NodeBase:
+    // deriving from a::Node the subject short names are {"NodeBase", "Node"}, and
+    // "b::NodeBase" strips to "NodeBase", so the target reads as the subject and the
+    // relationship is misclassified as an ambiguous self-join. Java's equivalent
+    // (M2MSlimVocabularyTest.deriveCrossPackageHeteroBindsCorrectPackage) gets it right.
+    //
+    // Honest about severity: this model derived CORRECTLY before this branch (the
+    // one-member subject set did not collide), so the widening regressed it. Accepted
+    // deliberately per the ADR-0041 split. This encodes what C# ACTUALLY does so the
+    // divergence is gated rather than latent; when C# adopts FQN-exactness this test
+    // fails and must be rewritten to assert srcId/dstId.
+    private const string XpkgAModel = """
+    { "metadata.root": { "package": "a", "children": [
+      { "object.entity": { "name": "Node", "extends": "a::NodeBase", "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "NodeBase", "@isAbstract": true, "children": [
+        { "relationship.association": { "name": "links", "@cardinality": "many", "@objectRef": "b::NodeBase", "@through": "L" } }
+      ]}},
+      { "object.entity": { "name": "L", "children": [
+        { "field.long": { "name": "srcId" } },
+        { "field.long": { "name": "dstId" } },
+        { "identity.primary": { "@fields": ["srcId", "dstId"] } },
+        { "identity.reference": { "name": "s", "@fields": "srcId", "@references": "a::Node" } },
+        { "identity.reference": { "name": "d", "@fields": "dstId", "@references": "b::NodeBase" } }
+      ]}}
+    ]}}
+    """;
+
+    private const string XpkgBModel = """
+    { "metadata.root": { "package": "b", "children": [
+      { "object.entity": { "name": "NodeBase", "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Adr0041_gap_cross_package_target_sharing_a_subject_short_name()
+    {
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(XpkgAModel, id: "a.json"),
+            new InMemoryStringSource(XpkgBModel, id: "b.json"),
+        ]);
+        // The model itself is perfectly legal — the loader raises nothing.
+        Assert.Empty(r.Errors);
+        var node = r.Root.Objects().First(o => o.Name == "Node");
+        var rel = Rel(node, "links");
+
+        // CURRENT C# BEHAVIOUR (wrong; Java derives srcId/dstId here):
+        var ex = Assert.Throws<M2MDerivationException>(
+            () => M2MDerivation.DeriveM2MFields(rel, node, r.Root));
+        Assert.Contains("is ambiguous", ex.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Navigation_builder_emits_the_inherited_self_join_and_flags_it()
     {
