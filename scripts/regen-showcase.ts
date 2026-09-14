@@ -130,6 +130,7 @@ const PORTS: Port[] = [
         "uv", "run", "--project", resolve(REPO, "server/python"),
         "metaobjects", "gen", join(project, "metaobjects"),
         "--out", join(project, "generated", "python"),
+        "--generators", PYTHON_SUITE,
       ]),
   },
   {
@@ -145,6 +146,7 @@ const PORTS: Port[] = [
         "-v", "q", "--",
         "gen", join(project, "metaobjects"),
         "--out", join(project, "generated", "csharp"),
+        "--generators", CSHARP_SUITE,
       ]),
   },
   {
@@ -198,6 +200,25 @@ const PORTS: Port[] = [
       run(["mvn", "-q", "metaobjects:generate"], { cwd: join(project, "jvm") }),
   },
 ];
+
+/**
+ * The generators whose output is COMMITTED under `examples/showcase/generated/<port>/`.
+ *
+ * Spelled out because ADR-0034 Amendment 2 removed the default suite: `--generators` is
+ * required on the C# and Python CLIs, and a run that names none generates nothing and
+ * exits 2. This script is the only caller of those two CLIs outside their own tests, and
+ * it runs ONLY at a release cut (`regen-showcase --check`), which is why the omission
+ * reached a cut rather than a lane — it surfaced as `gen: no generators selected` in the
+ * 1.0.4 dry run.
+ *
+ * These sets are not a default by the back door. They are exactly the generators that
+ * produce the files committed here, so changing one means the committed tree changes too
+ * — which is the diff this gate exists to show. The ports' own test suites spell the same
+ * lists for the same reason (`server/python/tests/codegen/gen_suite.py`,
+ * `server/csharp/MetaObjects.Cli.Tests/GenSuiteForTests.cs`).
+ */
+const PYTHON_SUITE = "entity,routes,filter-allowlist,names,payload,output-parser,output-prompt,extractor";
+const CSHARP_SUITE = "entity,names,db-context,routes,filter-allowlist,payload,output-parser,output-prompt,extractor";
 
 function selectPorts(): Port[] {
   if (BUN_ONLY) {
