@@ -55,8 +55,11 @@ import java.util.List;
  * no junction reference to the inheriting entity and throws too). The declaring entity
  * is resolved HERE, from {@code rel.getParent()}, rather than asked of each caller —
  * same shape as the #368 loader fix in {@code ValidationPhase}, and for the same reason:
- * the answer must not depend on who asked. The {@code source} parameter is kept as the
- * fallback for a relationship with no entity parent (and as a non-breaking signature).</p>
+ * the answer must not depend on who asked. The passed {@code source} is NOT discarded:
+ * under {@code extends} the declaring base and the navigating entity are two legitimate
+ * names for the relationship's subject (a junction FK usually references the concrete
+ * entity, which is the one with a table), so BOTH are accepted. It is also the fallback
+ * when {@code rel} has no entity parent, which keeps the signature unchanged.</p>
  *
  * <p>This carries the same semantics as the loader-phase M:N validation
  * ({@code ValidationPhase.validateRelationshipsM2M}); the validation pass guarantees a
@@ -95,8 +98,9 @@ public final class M2MFields {
      *
      * @param rel    the M:N relationship (carries {@code @objectRef} + {@code @through}
      *               + optional {@code @sourceRefField} / {@code @symmetric})
-     * @param source fallback declaring entity, used only when {@code rel} has no
-     *               {@link MetaObject} parent (normally read from {@code rel.getParent()})
+     * @param source the entity the caller is navigating from. Accepted alongside
+     *               {@code rel.getParent()} as a name for the relationship's subject,
+     *               and used as the declaring entity when {@code rel} has no parent
      * @param root   the loaded model root (to find the junction entity)
      * @return the derived source/target junction FK fields
      * @throws M2MDerivationException when the junction is missing/malformed or the
@@ -139,29 +143,44 @@ public final class M2MFields {
                     + " identity.reference children (found " + refs.size() + ")");
         }
 
-        // ADR-0041: classify the self-join by RESOLVED object identity (FQN-exact),
-        // never a stripped bare tail. A cross-package hetero M:N whose target shares
-        // a bare name with the source (or an unrelated entity) must NOT be mis-read
-        // as a self-join, and an FQN @objectRef must bind the correct package. Falls
-        // back to a bare-name compare only when @objectRef is unresolvable (defensive
-        // — loader validation normally guarantees resolution before derive runs).
+        // The relationship's SUBJECT — the entity the M:N hangs off. Under `extends`
+        // there are two legitimate names for it and BOTH occur in real models: the
+        // DECLARING entity (what @objectRef names for a self-join declared on an
+        // abstract base, and what a junction reference names when the FK points at
+        // the base type), and the NAVIGATING entity (`source`, the concrete entity
+        // the caller is iterating — usually what a junction FK references, because
+        // that is the entity with the physical table). Accepting either is what
+        // makes derivation independent of which entity's effective view reached the
+        // relationship. Not covered: a junction reference naming an entity strictly
+        // BETWEEN the base and the navigating entity in a deeper hierarchy.
+        //
+        // ADR-0041: classify by RESOLVED object identity (FQN-exact), never a
+        // stripped bare tail. A cross-package hetero M:N whose target shares a bare
+        // name with the subject must NOT be mis-read as a self-join, and an FQN
+        // @objectRef must bind the correct package. Falls back to a bare-name
+        // compare only when @objectRef is unresolvable (defensive — loader
+        // validation normally guarantees resolution before derive runs).
         boolean isSelfJoin = (target != null)
-            ? target.getName().equals(declaring.getName())
-            : stripPackage(targetName).equals(declaring.getShortName());
+            ? isSubject(target, declaring, source)
+            : (stripPackage(targetName).equals(declaring.getShortName())
+                || stripPackage(targetName).equals(source.getShortName()));
 
         if (!isSelfJoin) {
             // Hetero: match each reference by the ENTITY OBJECT its @references
             // resolves to (FQN-exact), so a same-bare-name cross-package reference
             // binds the correct package rather than the first bare-tail match.
-            MetaIdentity sourceRef = findRefToObject(root, refs, declaring);
+            MetaIdentity sourceRef = findRefToSubject(root, refs, declaring, source);
             MetaIdentity targetRef = findRefToObject(root, refs, target);
             String sourceField = sourceRef != null ? refFkField(sourceRef) : null;
             String targetField = targetRef != null ? refFkField(targetRef) : null;
             if (sourceField == null || targetField == null) {
+                String subjectLabel = declaring.getName().equals(source.getName())
+                    ? "\"" + declaring.getShortName() + "\""
+                    : "\"" + declaring.getShortName() + "\" or \"" + source.getShortName() + "\"";
                 throw new M2MDerivationException(
                     "junction \"" + throughName + "\" for relationship \"" + declaring.getShortName()
-                        + "." + rel.getShortName() + "\" must declare one identity.reference to \""
-                        + declaring.getShortName() + "\" and one to \"" + stripPackage(targetName) + "\"");
+                        + "." + rel.getShortName() + "\" must declare one identity.reference to "
+                        + subjectLabel + " and one to \"" + stripPackage(targetName) + "\"");
             }
             return new M2MFields(sourceField, targetField);
         }
@@ -269,6 +288,26 @@ public final class M2MFields {
      * bare tail — two junction references to same-bare-name entities in different
      * packages must be distinguished by their full package-qualified name.
      */
+    /**
+     * True when {@code candidate} is one of the relationship's SUBJECT entities —
+     * the declaring entity or the entity the caller is navigating from. Compared by
+     * package-qualified name (ADR-0041 identity), never a bare tail.
+     */
+    private static boolean isSubject(MetaObject candidate, MetaObject declaring, MetaObject source) {
+        if (candidate == null) return false;
+        return candidate.getName().equals(declaring.getName())
+            || candidate.getName().equals(source.getName());
+    }
+
+    /** The junction reference resolving to either subject entity, or {@code null}. */
+    private static MetaIdentity findRefToSubject(MetaRoot root, List<MetaIdentity> refs,
+                                                 MetaObject declaring, MetaObject source) {
+        for (MetaIdentity ref : refs) {
+            if (isSubject(refTargetObject(root, ref), declaring, source)) return ref;
+        }
+        return null;
+    }
+
     private static MetaIdentity findRefToObject(MetaRoot root, List<MetaIdentity> refs, MetaObject entity) {
         if (entity == null) return null;
         for (MetaIdentity ref : refs) {

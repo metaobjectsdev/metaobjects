@@ -529,6 +529,40 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
         return out;
     }
 
+    /** The OTHER legitimate shape, and the common one: the base is abstract (no table),
+     *  so the junction FK references the CONCRETE child. Both names of the subject must
+     *  be accepted, or fixing the base-referencing shape breaks this one. */
+    private static final String INHERITED_HETERO_CONCRETE_REF =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"Post\", \"extends\": \"PostBase\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"PostBase\", \"@isAbstract\": true, \"children\": ["
+        + "    { \"relationship.association\": { \"name\": \"tags\", \"@cardinality\": \"many\","
+        + "        \"@objectRef\": \"Tag\", \"@through\": \"PostTag\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"Tag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"PostTag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"postId\" } },"
+        + "    { \"field.long\": { \"name\": \"tagId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } },"
+        + "    { \"identity.reference\": { \"name\": \"pRef\", \"@fields\": \"postId\", \"@references\": \"Post\" } },"
+        + "    { \"identity.reference\": { \"name\": \"tRef\", \"@fields\": \"tagId\", \"@references\": \"Tag\" } } ] } }"
+        + "] } }";
+
+    @Test
+    public void deriveInheritedHeteroWithConcreteJunctionReference() {
+        MetaDataLoader loader = loadThrough(INHERITED_HETERO_CONCRETE_REF, "inherited-hetero-concrete.json");
+        MetaObject post = objExact(loader, "acme::Post");
+        MetaRelationship rel = relOf(post, "tags");
+        assertEquals("acme::PostBase", ((MetaObject) rel.getParent()).getName());
+        M2MFields f = M2MFields.derive(rel, post, loader.getRoot());
+        assertEquals("postId", f.getSourceField());
+        assertEquals("tagId", f.getTargetField());
+    }
+
     @Test
     public void deriveInheritedSelfJoinUsesDeclaringEntity() {
         MetaDataLoader loader = loadThrough(INHERITED_SELF_JOIN, "inherited-self-join.json");
