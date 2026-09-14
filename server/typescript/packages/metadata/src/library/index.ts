@@ -1,9 +1,11 @@
 // @metaobjectsdev/metadata/library — the shipped-library surface (FR-043).
 //
 // The invariant is not "every subpath has an index" — `./constants` is a plain
-// `src/constants.ts` and is fine. It is that the subpath must land on something the
-// `paths` substitution can reach. This one pointed at `library-sources.ts` under a
-// directory, so it reached nothing, and that was not cosmetic: the repo-root
+// `src/constants.ts` and is fine — nor is it "no nesting", since the `paths` `*` matches
+// across `/`. It is that the subpath NAME must mirror the layout under `src/`. A subpath
+// named `library` substitutes to `src/library`, so the module has to be `src/library.ts`
+// or `src/library/index.ts`; it was `src/library/library-sources.ts`, which the
+// substitution never reaches. That was not cosmetic: the repo-root
 // `tsconfig.scripts.json` maps `@metaobjectsdev/metadata/*` to
 // `packages/metadata/src/*` so that `scripts/` typechecks against workspace
 // SOURCE rather than a build output. With no `index.ts` here that mapping had

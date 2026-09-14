@@ -193,9 +193,9 @@ describe("every library manifest fact is resolved against the thing it claims", 
     // pattern that silently stops matching would make every containment check above
     // vacuously true, which is the way a gate of this shape stops gating.
     expect(Object.keys(EMBEDS).sort(), "a port with no embed mapping").toEqual([...SERVER_LANGS].sort());
-    // De-duplicated: the right-hand side comes from a Set, so a ref legitimately declared
-    // by two layers of one library would otherwise fail every port on a set the embeds
-    // carry correctly.
+    // De-duplicated: this is the side built from manifests, and it is compared against a
+    // set extracted from each embed — so a ref legitimately declared by two layers of one
+    // library would otherwise fail every port against embeds that are correct.
     const allRefs = [...new Set(NAMES.flatMap(declaredRefs))].sort();
     expect(allRefs.length, "no library declares any ref").toBeGreaterThan(0);
 
