@@ -74,6 +74,33 @@ const MANY_SIDE_MODEL = {
   },
 };
 
+// @sourceRefField model: neither relationship name pairs with either reference
+// ("winner"/"loser" vs alphaRef(alphaFk)/betaRef(betaFk)), so ladder step 3 cannot
+// resolve them and only the declared @sourceRefField (step 2) can. Declaration
+// order is deliberate: alphaRef comes first, so a lookup that ignored
+// @sourceRefField would return alphaFk for BOTH relations.
+const SOURCE_REF_FIELD_MODEL = {
+  "metadata.root": {
+    package: "repro",
+    children: [
+      { "object.entity": { name: "Team", children: [
+        { "field.int": { name: "id" } },
+        { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+      ] } },
+      { "object.entity": { name: "Match", children: [
+        { "field.int": { name: "id" } },
+        { "field.int": { name: "alphaFk" } },
+        { "field.int": { name: "betaFk" } },
+        { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+        { "identity.reference": { name: "alphaRef", "@fields": ["alphaFk"], "@references": "Team" } },
+        { "identity.reference": { name: "betaRef", "@fields": ["betaFk"], "@references": "Team" } },
+        { "relationship.association": { name: "winner", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "betaFk" } },
+        { "relationship.association": { name: "loser", "@objectRef": "Team", "@cardinality": "one", "@sourceRefField": "alphaFk" } },
+      ] } },
+    ],
+  },
+};
+
 async function load(model: unknown): Promise<MetaRoot> {
   const { root, errors } = await new MetaDataLoader().load([
     new InMemoryStringSource(JSON.stringify(model), { id: "meta.repro.json" }),
@@ -103,5 +130,35 @@ describe("resolveRelationDescriptor with two references onto one target (#368)",
     expect(desc.cardinality).toBe("many");
     expect(desc.targetEntityName).toBe("Match");
     expect(desc.targetField).toBe("homeTeamId"); // was "awayTeamId"
+  });
+
+  // Both tests above resolve by NAME PAIRING (ladder step 3), so they stay green if
+  // the @sourceRefField argument is dropped at either call site — nothing proved it
+  // was ever read here. These two models name the relationships so they pair with
+  // NOTHING ("winner" / "loser" against alphaRef / betaRef), which makes a declared
+  // @sourceRefField (ladder step 2) the only thing that can resolve them: drop the
+  // 4th argument at either call site and the resolver throws "has no
+  // identity.reference targeting 'Team'".
+
+  test("one-side: @sourceRefField reaches the resolver when the name pairs with nothing", async () => {
+    const root = await load(SOURCE_REF_FIELD_MODEL);
+    const match = root.findObject("Match")!;
+    // Deliberately crossed against declaration order: winner -> betaFk (the SECOND
+    // reference), loser -> alphaFk.
+    expect(resolveRelationDescriptor(match, "winner", root).sourceField).toBe("betaFk");
+    expect(resolveRelationDescriptor(match, "loser", root).sourceField).toBe("alphaFk");
+  });
+
+  test("many-side: @sourceRefField reaches the inverse resolver too", async () => {
+    const root = await load(SOURCE_REF_FIELD_MODEL);
+    const team = root.findObject("Team")!;
+    // Team's only reachable inverse name is "matches", which resolves to Match's
+    // FIRST cardinality:one relationship targeting Team — "winner", whose
+    // @sourceRefField names betaFk here. alphaRef is declared FIRST, so a resolver
+    // that ignored @sourceRefField would answer "alphaFk".
+    const desc = resolveRelationDescriptor(team, "matches", root);
+    expect(desc.cardinality).toBe("many");
+    expect(desc.targetEntityName).toBe("Match");
+    expect(desc.targetField).toBe("betaFk");
   });
 });
