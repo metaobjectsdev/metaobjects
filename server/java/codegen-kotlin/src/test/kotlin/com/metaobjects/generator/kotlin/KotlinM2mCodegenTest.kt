@@ -1,8 +1,10 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.`object`.MetaObject
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -173,5 +175,58 @@ class KotlinM2mCodegenTest {
         val src = generate(controllerGen, "acme/social/PostTagController.kt")
         assertFalse("/{id}/" in src && "Query(id)" in src,
             "junction controller must not emit an M:N traversal endpoint; saw:\n$src")
+    }
+
+    // --- Inherited M:N — the declaring-entity follow-up to #368 ---------------------
+    //
+    // codegen-kotlin reaches the SAME cross-port SSOT (com.metaobjects.relationship
+    // .M2MFields.derive) as codegen-spring and omdb, so it carried the same defect:
+    // KotlinM2mSupport.resolve walks the RESOLVING `entity.relationships` and passed
+    // the entity it was iterating, so a M:N declared on an abstract base and reached
+    // through a concrete child was derived against the CHILD. An inherited self-join
+    // then read as hetero and threw — and resolve() does NOT catch, so the whole
+    // Kotlin generation run failed rather than silently dropping the navigation.
+    //
+    // This test pins that codegen-kotlin genuinely reaches the fixed helper; the
+    // derivation logic itself is gated by the Java M2MSlimVocabularyTest. The child
+    // is declared BEFORE the base, the #368 order convention.
+    private val inheritedSelfJoinFixture = """{
+      "metadata.root": { "package": "acme::graph", "children": [
+        { "object.entity": { "name": "Node", "extends": "NodeBase", "children": [
+            { "source.rdb":   { "@table": "nodes" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "NodeBase", "@isAbstract": true, "children": [
+            { "relationship.association": { "name": "peers", "@cardinality": "many",
+                "@objectRef": "NodeBase", "@through": "NodeLink", "@symmetric": true } }
+        ] } },
+        { "object.entity": { "name": "NodeLink", "children": [
+            { "source.rdb":         { "@table": "node_links" } },
+            { "field.long":         { "name": "aId", "@required": true } },
+            { "field.long":         { "name": "bId", "@required": true } },
+            { "identity.primary":   { "@fields": ["aId", "bId"] } },
+            { "identity.reference": { "name": "fkA", "@fields": "aId", "@references": "NodeBase" } },
+            { "identity.reference": { "name": "fkB", "@fields": "bId", "@references": "NodeBase" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun inheritedSelfJoinResolvesThroughTheSharedDerivation() {
+        val loader = loadString("km2m-inherited", inheritedSelfJoinFixture)
+        val node = loader.root.getChildren(MetaObject::class.java, false)
+            .first { it.name == "acme::graph::Node" }
+        // Pin the premise: the child is reached before the base it inherits from.
+        assertEquals(
+            listOf("acme::graph::Node", "acme::graph::NodeBase", "acme::graph::NodeLink"),
+            loader.root.getChildren(MetaObject::class.java, false).map { it.name },
+        )
+        val navs = KotlinM2mSupport.resolve(node, loader)
+        assertEquals(1, navs.size, "expected the inherited peers navigation; saw $navs")
+        assertEquals("peers", navs[0].relationName)
+        assertEquals("aId", navs[0].sourceField)
+        assertEquals("bId", navs[0].targetField)
+        assertTrue(navs[0].symmetric)
     }
 }

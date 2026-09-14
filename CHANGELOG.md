@@ -88,6 +88,92 @@ here.**
 
 ### Fixed
 
+- **An M:N relationship inherited through `extends` derived its junction FK columns
+  against the wrong entity — and in codegen the failure was silent.** The derivation
+  classified the self-join, and matched the junction's source-side
+  `identity.reference`, against the entity the CALLER was iterating. Every caller walks
+  a resolving relationship accessor, so for a relationship declared on a base and
+  reached through a subclass that is the INHERITING entity, not the one that declared
+  it. Two failures followed: an inherited self-join compared `@objectRef` (the base)
+  against the child, read as hetero, looked for a junction reference to the child and
+  found none; and an inherited hetero whose junction references the base found nothing
+  either. TypeScript codegen and the docs-site link graph catch the resulting error and
+  return `null`, so the navigation was **dropped from the generated output with no
+  error at all**; C# codegen did the same; the TypeScript, Java, Kotlin and Python
+  runtime and codegen paths let it escape, so the traversal or the generation run
+  failed outright.
+
+  The declaring entity now comes from the relationship's own parent — the same shape as
+  [#368](https://github.com/metaobjectsdev/metaobjects/issues/368)'s loader fix — in all
+  four derivations (TypeScript, Java, C#, Python; Kotlin calls the Java helper). The
+  entity being navigated from is kept alongside it rather than discarded: under
+  inheritance both are legitimate names for the relationship's subject, because a
+  junction FK usually references the concrete child while `@objectRef` on a hoisted
+  self-join names the base. The authoring contract this establishes — **the junction FK
+  may reference either the declaring base or the concrete child, and only those two** —
+  is now written down in
+  [`docs/features/relationships.md`](docs/features/relationships.md).
+
+  C# additionally fixes `M2MNavigation.IsSelfJoin`, which had the same confusion one
+  layer up. It never ran on an inherited self-join before (the derivation threw first),
+  and `DbContextGenerator` uses it to decide whether to emit EF `UsingEntity` wiring —
+  so fixing only the derivation would have turned a silent drop into silently wrong EF
+  configuration.
+
+  **Not a pure widening.** One shape that derived before now refuses: a base declaring
+  `@objectRef: <itself>` + `@through` with neither `@symmetric` nor `@sourceRefField`,
+  reached through a subclass, used to be misread as hetero and returned an arbitrary FK
+  direction; it is now correctly recognised as an ambiguous self-join and refused. That
+  model was already broken — deriving the same relationship from the base itself threw —
+  so codegen emitted for the child and dropped it for the base. The refusal is the
+  correct behaviour, but on Java, Kotlin and Python, whose callers do not catch, it
+  moves from "generates wrongly" to "the generation run fails", and the fix is to add
+  `@symmetric` or `@sourceRefField`.
+
+  Three narrower resolution changes come with moving the junction matches onto identity,
+  all three matching what the Java port already did. A junction `@references` (or an
+  `@objectRef`) that **is** package-qualified must now resolve **exactly**: a
+  partially-qualified or stale package no longer falls back to matching the bare tail, so
+  a reference that used to bind by luck now matches neither the subject **nor** the
+  target — both sides are affected, not just the subject side. A **bare** reference whose
+  short name exists in more than one package resolves first-declared-wins, which can pick
+  the wrong-package entity — the pre-existing
+  [#174](https://github.com/metaobjectsdev/metaobjects/issues/174) behaviour, now reached
+  by M:N derivation as well. And on **Python only**, a junction whose `@references` use
+  the dotted `Entity.field` form now resolves: that port compared the whole attr value, so
+  `Team.id` never matched the entity `Team` and an M:N through such a junction failed
+  derivation outright. Both junction matches now take the entity head through the same
+  canonical parse the loader uses, so those models derive where they previously raised.
+
+  **Cross-port divergence goes DOWN, not up.** Both junction matches — "does this
+  reference name the relationship's subject?" and "does this one name the target?" — now
+  resolve the name to an ENTITY and compare identity in all four derivations, which is
+  what the Java port already did on both sides. Matching only one side would be worse
+  than matching neither: the two searches are independent and nothing excludes the
+  source-side reference from the target search, so a cross-package M:N could bind the
+  same junction column as BOTH sides and emit `(srcFk, srcFk)` silently. C#'s
+  `M2MNavigation` descriptor resolves its target the same way for the same reason — its
+  `IsSelfJoin` feeds the EF `UsingEntity` wiring, and a descriptor that disagreed with
+  the derivation would mis-map the relationship. TypeScript, C# and Python had been
+  comparing package-stripped short names, so a genuine cross-package hetero M:N onto a
+  target whose short name matched the subject's (`a::NodeBase` relating to `b::NodeBase`)
+  was misread as a self-join on those three — a regression the two-name subject
+  introduced, caught in review and fixed rather than documented.
+
+  What changed, exactly: both junction matches in the four derivations, the C# navigation
+  builder's own target/junction resolution (so the descriptor cannot disagree with the
+  derivation feeding it), and Python's reference head-parse, which now delegates to the
+  loader's canonical helper instead of keeping a third copy. `@through` resolution and
+  every comparison outside M:N derivation are untouched, and this is **not** a general
+  [ADR-0041](spec/decisions/ADR-0041-cross-package-reference-resolution.md) sweep — the
+  resolver added here is deliberately narrow and is not the port's general reference
+  resolver.
+
+  No vocabulary change: `metamodelVersion` stays `1.0` and the registry manifest is
+  untouched.
+
+||||||| 7dafb055e
+
 - **Both shipped libraries failed `meta verify`'s requirement gate**, in metadata an
   adopter cannot fix: every L4 in `ai` claimed FIELDS (`ERR_REQUIREMENT_L4_NOT_OBJECT`),
   and both libraries wrote their concerns as SIBLINGS of the L2 segment their own comments
