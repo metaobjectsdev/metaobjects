@@ -209,13 +209,23 @@ Resolution follows a ladder, checked in order:
 **Limitations, documented rather than fixed:**
 
 - The ladder matches a candidate's **first** FK field only, so two composite
-  references sharing a first column are indistinguishable from each other. The load
-  error still renders each candidate's full field tuple (`name(fieldA, fieldB)`) so the
-  ambiguity is visible even where `@sourceRefField` cannot resolve it.
+  references sharing a first column are indistinguishable from each other — and this
+  does **not** refuse. Rule (e) accepts a `@sourceRefField` that matches *any*
+  candidate's first column (`candidates.some(c => c.fields[0] === declared)`), and the
+  ladder's `.find()` then returns the **first** such candidate. The model loads clean
+  and resolves to whichever composite reference is declared first, which may not be the
+  one meant. Where an error *is* raised, it still renders each candidate's full field
+  tuple (`name(fieldA, fieldB)`) so the collision is at least visible.
 - The load-time gate covers `@cardinality: one` relationships only. A
   `many`-cardinality relationship, and a bare `identity.reference` pair with no
   relationship wrapper at all, reach codegen unvalidated — an ambiguous reference set
   in either shape is not caught at load.
+- The load-time gate covers a `@cardinality: one` relationship only when its **holder
+  declares at least one `identity.reference` at the target**. Rule (e)'s
+  `candidates.length <= 1` skip (`validation-passes.ts`, and its three ports) skips
+  **zero** as well as one, so an inverted shape — the relationship on one entity, both
+  FKs on the far side — loads clean, and codegen then **silently drops the relation**:
+  no join, no error, no diagnostic.
 - A projection's `@via` hop (above) resolves the identical ambiguity for the hop it
   names, but `origin.first`'s own `@via` is never consulted for its base↔child
   correlation — an ambiguous target there has no `@via`-based fix; the only escape is

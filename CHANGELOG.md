@@ -96,12 +96,13 @@ here.**
   even when the hop explicitly named the other reference, and the docs-site link graph
   drew the wrong edge. All four produce a join that typechecks, emits correct DDL, and
   passes `meta verify` — the only symptom is wrong rows. The referential-actions
-  correlation (TypeScript's `migrate-ts` and the C# port; Python and Java do not
-  implement this correlation and are untouched) had the same defect one level over:
-  every FK past the first silently inherited the *first* relationship's `@onDelete` /
-  `@onUpdate` instead of its own, so a model mixing `restrict` and `cascade` across two
-  references to the same target emitted the wrong action on whichever FK wasn't
-  examined first.
+  correlation (TypeScript's `migrate-ts`, the C# port, and the JVM tree's Kotlin
+  Exposed table generator; Python does not implement this correlation) had the same
+  defect one level over: every FK past the first silently inherited the *first*
+  relationship's `@onDelete` / `@onUpdate` instead of its own, so a model mixing
+  `restrict` and `cascade` across two references to the same target emitted the wrong
+  action on whichever FK wasn't examined first. All three are now correlated by
+  inverting the same ladder, and fail closed rather than guessing.
 
   Resolution is now explicit and identical across TypeScript, Python, C# and Java: an
   ambiguous `@cardinality: one` reference set resolves by a ladder — the sole
@@ -112,11 +113,25 @@ here.**
   Amendment 1). `@sourceRefField` is now legal on a `@cardinality: one` relationship —
   it previously failed to load there as an M:N-only attribute. Two limits are
   documented rather than fixed here: the ladder matches a candidate's first FK field
-  only, so two composite references sharing a first column stay indistinguishable, and
-  the loader gate covers `@cardinality: one` relationships only — a `many`-cardinality
-  relationship, or a bare `identity.reference` pair with no relationship wrapper, still
-  reaches codegen unvalidated. See
-  [`docs/features/relationships.md`](docs/features/relationships.md).
+  only, so two composite references sharing a first column stay indistinguishable (and
+  resolve to the first, rather than being refused); the loader gate covers
+  `@cardinality: one` relationships only — a `many`-cardinality relationship, or a bare
+  `identity.reference` pair with no relationship wrapper, still reaches codegen
+  unvalidated; and the gate needs at least one candidate on the holder, so an inverted
+  shape with both FKs on the far side loads clean and codegen then silently drops the
+  relation. See [`docs/features/relationships.md`](docs/features/relationships.md).
+
+  Two consequences worth stating outright. **Java's relationship validation changed
+  from eager-throw-on-first-violation to collect-all-findings** —
+  `validateRelationshipsM2M` now returns a `List<MetaDataException>` rather than
+  throwing, and the new rule-(e) pass collects the same way, so a Java loader run
+  reports every broken relationship where it previously reported only the first; that
+  is a change to Java loader OUTPUT, not an internal refactor. And **adopters with the
+  affected shapes will see FK referential-action diffs on their next `meta migrate`**:
+  a second FK to the same target now resolves its OWN `@onDelete` / `@onUpdate`
+  instead of inheriting the first relationship's, so the generated `ON DELETE` /
+  `ON UPDATE` (and a Kotlin Exposed table's `ReferenceOption` arguments) legitimately
+  change.
 
   No vocabulary was added, removed or retyped — the only change to
   `expected-registry.json` corrects `@sourceRefField`'s own description, which no
