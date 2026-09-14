@@ -25,6 +25,7 @@ import * as coreTpl from "@metaobjectsdev/codegen-ts";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackTpl from "@metaobjectsdev/codegen-ts-tanstack";
 import { composeCatalog } from "../src/lib/catalog.js";
+import { buildCatalogListing, type GeneratorCatalogRow } from "../src/lib/catalog-listing.js";
 
 const FIXTURE = join(import.meta.dir, "fixtures", "catalog-probe");
 const OUT_DIR = "src/generated";
@@ -257,20 +258,23 @@ describe("catalog declarations are resolved against what the generators emit", (
     ).toEqual([]);
   });
 
-  test("every ejectable entry's template header carries the facets `--list` reports", () => {
-    const roots: ReadonlyArray<readonly [readonly string[], () => string]> = [
-      [coreTpl.REFERENCE_GENERATOR_NAMES, coreTpl.resolveReferenceRoot],
-      [reactTpl.REFERENCE_GENERATOR_NAMES, reactTpl.resolveReferenceRoot],
-      [tanstackTpl.REFERENCE_GENERATOR_NAMES, tanstackTpl.resolveReferenceRoot],
-    ];
+  test("every ejectable entry's facets actually REACH `--list`", async () => {
+    // Asserted through the consumer rather than over the template source. A
+    // `// use-when:` line being PRESENT and the facet arriving on the row a reader sees
+    // are different claims: the header parser takes continuation lines, stops at the
+    // next facet, and returns undefined for an empty body, so a marker with nothing
+    // after it satisfies a substring check and still reports nothing.
+    const rows = await buildCatalogListing();
+    const generators = rows.filter(
+      (r): r is GeneratorCatalogRow => r.kind === "generator" && r.source.ejectable,
+    );
+    // Guards the loop below from passing over an empty list.
+    expect(generators.length, "no ejectable generator rows to check").toBeGreaterThan(0);
+
     const missing: string[] = [];
-    for (const [names, root] of roots) {
-      for (const name of names) {
-        const source = readFileSync(join(root(), `${name}.ts`), "utf8");
-        for (const facet of ["use-when", "emits"]) {
-          if (!source.includes(`// ${facet}:`)) missing.push(`${name} has no "${facet}:" header line`);
-        }
-      }
+    for (const row of generators) {
+      if ((row.useWhen ?? "").trim() === "") missing.push(`${row.name}: no use-when reaches --list`);
+      if ((row.emits ?? "").trim() === "") missing.push(`${row.name}: no emits reaches --list`);
     }
     expect(missing, missing.join("\n  ")).toEqual([]);
   });
