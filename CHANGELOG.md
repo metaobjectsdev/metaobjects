@@ -85,6 +85,47 @@ here.**
   you."*, spelled once in `sidecarLine` (TypeScript) and `generated_header` (Python)
   rather than copy-pasted to eleven emitters.
 
+- **Two `identity.reference` nodes onto the same entity no longer make every
+  `@cardinality: one` relationship join the first one's FK column ([#368]).** An entity
+  may legitimately declare more than one FK to the same target — `Match.homeTeamRef`
+  and `Match.awayTeamRef` both `-> Team` — but a relationship names only its target via
+  `@objectRef`, never which reference it means. Four call sites took the first matching
+  reference and never noticed the second: the TypeScript codegen `relations()` block
+  wired the relationship to one FK column regardless, the runtime relation traversal
+  resolved every such navigation through it, a projection's `@via` join hop picked it
+  even when the hop explicitly named the other reference, and the docs-site link graph
+  drew the wrong edge. All four produce a join that typechecks, emits correct DDL, and
+  passes `meta verify` — the only symptom is wrong rows. The referential-actions
+  correlation (TypeScript's `migrate-ts` and the C# port; Python and Java do not
+  implement this correlation and are untouched) had the same defect one level over:
+  every FK past the first silently inherited the *first* relationship's `@onDelete` /
+  `@onUpdate` instead of its own, so a model mixing `restrict` and `cascade` across two
+  references to the same target emitted the wrong action on whichever FK wasn't
+  examined first.
+
+  Resolution is now explicit and identical across TypeScript, Python, C# and Java: an
+  ambiguous `@cardinality: one` reference set resolves by a ladder — the sole
+  candidate, else a declared `@sourceRefField` naming the candidate's FK field, else a
+  name-pairing match between the relationship's name and a candidate's name/FK field,
+  else `ERR_INVALID_RELATIONSHIP` at load, naming every candidate
+  ([ADR-0029](spec/decisions/ADR-0029-entity-child-extends-and-via-inference.md)
+  Amendment 1). `@sourceRefField` is now legal on a `@cardinality: one` relationship —
+  it previously failed to load there as an M:N-only attribute. Two limits are
+  documented rather than fixed here: the ladder matches a candidate's first FK field
+  only, so two composite references sharing a first column stay indistinguishable, and
+  the loader gate covers `@cardinality: one` relationships only — a `many`-cardinality
+  relationship, or a bare `identity.reference` pair with no relationship wrapper, still
+  reaches codegen unvalidated. See
+  [`docs/features/relationships.md`](docs/features/relationships.md).
+
+  No vocabulary was added, removed or retyped — the only change to
+  `expected-registry.json` corrects `@sourceRefField`'s own description, which no
+  longer claims the attribute is M:N-only. Per
+  [`docs/RELEASING.md`](docs/RELEASING.md), any change to that file forces all four
+  registries (npm / PyPI / NuGet / Maven) to publish together at the next release,
+  changed product files or not — that consequence is recorded here so it isn't a
+  surprise at release time. `metamodelVersion` stays `1.0`.
+
 ### Added
 
 - **The auth seam is printed in the generated routes handler's JSDoc ([#367]).** Stock
@@ -105,6 +146,7 @@ here.**
   inconsistency, not a policy. Read-only is not public.
 
 [#367]: https://github.com/metaobjectsdev/metaobjects/issues/367
+[#368]: https://github.com/metaobjectsdev/metaobjects/issues/368
 
 ## [1.0.3] — 2026-09-12
 

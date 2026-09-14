@@ -163,6 +163,73 @@ is valid in a `passthrough` and rejected in an `aggregate`. Inverse navigation
 FK has no inverse edge. Explicit `@via` resolves either kind; single-hop-unique
 inference stays relationship-only.
 
+## When one entity has two references to the same target
+
+An entity may legitimately declare more than one `identity.reference` onto the same
+target — a `Match` entity with both `alphaRef` and `betaRef` pointing at `Team`. A
+`@cardinality: one` relationship names only the target, via `@objectRef`; it does not
+say which reference it means. With two candidates, the target alone is not enough to
+pick the FK ([#368](https://github.com/metaobjectsdev/metaobjects/issues/368)).
+
+Resolution follows a ladder, checked in order:
+
+1. **Exactly one candidate** `identity.reference` targeting the relationship's
+   `@objectRef` → that one. This is the common case (one reference per target) and
+   needs no extra authoring.
+2. **`@sourceRefField` declared** on the relationship → the candidate whose first FK
+   field it names. This is a short-circuit: a declared value that names no candidate's
+   FK field is a load error regardless of how many candidates exist — it never falls
+   through to name-pairing.
+3. **Exactly one candidate name-pairs with the relationship** → that one. A candidate
+   pairs when its own name or its FK field — lowercased, with one trailing suffix from
+   `reference` / `ref` / `id` / `key` optionally stripped — equals the relationship's
+   name (lowercased, never stripped). A relationship named `awayTeam` pairs with a
+   reference named `awayTeamRef` or with one whose FK field is `awayTeamId`, with no
+   extra authoring.
+4. **Otherwise** → `ERR_INVALID_RELATIONSHIP` at load, naming every candidate. Fix it
+   by declaring `@sourceRefField` with the FK field this relationship means, or by
+   naming the relationship so it pairs with exactly one candidate.
+
+```yaml
+# Match declares TWO references onto Team: alphaRef (alphaFk) and betaRef (betaFk).
+# "winner" pairs with neither name, so it must be disambiguated explicitly.
+- relationship.association:
+    name: winner
+    objectRef: Team
+    cardinality: one
+    sourceRefField: alphaFk   # picks alphaRef; drop this and the load fails,
+                              # naming alphaRef(alphaFk) and betaRef(betaFk)
+- relationship.association:
+    name: loser
+    objectRef: Team
+    cardinality: one
+    sourceRefField: betaFk
+```
+
+**Limitations, documented rather than fixed:**
+
+- The ladder matches a candidate's **first** FK field only, so two composite
+  references sharing a first column are indistinguishable from each other. The load
+  error still renders each candidate's full field tuple (`name(fieldA, fieldB)`) so the
+  ambiguity is visible even where `@sourceRefField` cannot resolve it.
+- The load-time gate covers `@cardinality: one` relationships only. A
+  `many`-cardinality relationship, and a bare `identity.reference` pair with no
+  relationship wrapper at all, reach codegen unvalidated — an ambiguous reference set
+  in either shape is not caught at load.
+- A projection's `@via` hop (above) resolves the identical ambiguity for the hop it
+  names, but `origin.first`'s own `@via` is never consulted for its base↔child
+  correlation — an ambiguous target there has no `@via`-based fix; the only escape is
+  removing the second reference.
+- `@via` and `@sourceRefField` are different mechanisms on different node types:
+  `@via` lives on `origin.*` and names a projection join hop; `@sourceRefField` lives
+  on `relationship.*` and names an FK field. A projection ambiguity error points you at
+  `@via`; a relationship ambiguity error points you at `@sourceRefField` — don't reach
+  for one to fix the other.
+
+See [ADR-0029](../../spec/decisions/ADR-0029-entity-child-extends-and-via-inference.md)
+Amendment 1 for the full ladder specification, including why suffix-stripping applies
+to candidates only.
+
 ## What each port generates
 
 ### TypeScript
@@ -286,6 +353,9 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/source-rdb-referential-actions/`](../../fixtures/conformance/source-rdb-referential-actions/) — `@onDelete` / `@onUpdate` on relationships
 - [`fixtures/conformance/identity-reference-referential-actions/`](../../fixtures/conformance/identity-reference-referential-actions/) — the parent-side `@cardinality: many` composition (subtype-default cascade) + `@onDelete` / `@onUpdate` declared directly on `identity.reference` (ADR-0047)
 - [`fixtures/conformance/error-unknown-relationship-subtype/`](../../fixtures/conformance/error-unknown-relationship-subtype/) — unknown `relationship.<subtype>` rejected
+- [`fixtures/conformance/relationship-one-two-refs-sourcerefield/`](../../fixtures/conformance/relationship-one-two-refs-sourcerefield/) — two `identity.reference` nodes onto the same target, disambiguated by `@sourceRefField` (ladder stage 2)
+- [`fixtures/conformance/relationship-one-two-refs-name-pairing/`](../../fixtures/conformance/relationship-one-two-refs-name-pairing/) — the same shape resolved by name-pairing alone (ladder stage 3)
+- [`fixtures/conformance/error-relationship-one-refs-ambiguous/`](../../fixtures/conformance/error-relationship-one-refs-ambiguous/) — neither `@sourceRefField` nor a pairing name given: `ERR_INVALID_RELATIONSHIP` at load (#368, ADR-0029 Amendment 1)
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
 via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
