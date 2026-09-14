@@ -366,6 +366,7 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/relationship-one-two-refs-sourcerefield/`](../../fixtures/conformance/relationship-one-two-refs-sourcerefield/) — two `identity.reference` nodes onto the same target, disambiguated by `@sourceRefField` (ladder stage 2)
 - [`fixtures/conformance/relationship-one-two-refs-name-pairing/`](../../fixtures/conformance/relationship-one-two-refs-name-pairing/) — the same shape resolved by name-pairing alone (ladder stage 3)
 - [`fixtures/conformance/error-relationship-one-refs-ambiguous/`](../../fixtures/conformance/error-relationship-one-refs-ambiguous/) — neither `@sourceRefField` nor a pairing name given: `ERR_INVALID_RELATIONSHIP` at load (#368, ADR-0029 Amendment 1)
+- [`fixtures/conformance/relationship-one-two-refs-dotted-references/`](../../fixtures/conformance/relationship-one-two-refs-dotted-references/) — the same two-reference shape with `@references` in the dotted `Entity.field` form: the entity half is the segment before the first `.`, so the ladder resolves identically to the bare form
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
 via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
