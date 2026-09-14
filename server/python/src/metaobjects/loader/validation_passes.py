@@ -2698,7 +2698,10 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                 if has_source_ref_field and not is_cardinality_one:
                     errors.append(MetaError(
                         f'relationship "{declaring_entity.name}.{rel.name}" sets '
-                        f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.',
+                        f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is neither a M:N '
+                        f'relationship (requires @{RELATIONSHIP_ATTR_THROUGH} with '
+                        f'@{RELATIONSHIP_ATTR_CARDINALITY}: "{CARDINALITY_MANY}") nor a '
+                        f'@{RELATIONSHIP_ATTR_CARDINALITY}: "{CARDINALITY_ONE}" relationship.',
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         envelope=rel.source,
                     ))
@@ -2807,9 +2810,13 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
 # above) — same deferred-resolution timing (after all files load + extends
 # resolution).
 #
-# Scope differs deliberately from rule (d): rule (d) validates attrs that
-# travel with the relationship's OWN declaration (@through/@symmetric/
-# @sourceRefField), so own-scoping there is correct — those attrs don't
+# Scope differs deliberately from rule (d) — in SUBJECT, not in which
+# relationships each pass walks (both walk the EFFECTIVE set; rule (d) is
+# no longer own-scoped, or an M:N declaration reached only via extends
+# would go unchecked). Rule (d) validates attrs that travel with the
+# relationship's OWN declaration (@through/@symmetric/@sourceRefField), so
+# it checks each declaration EXACTLY ONCE — deduped by node identity, and
+# reported against the entity that declares it — because those attrs don't
 # change meaning depending on who inherits the relationship. Rule (e)
 # instead validates whether THIS entity's reference set resolves the
 # relationship uniquely, which is a property of the EFFECTIVE entity, not of

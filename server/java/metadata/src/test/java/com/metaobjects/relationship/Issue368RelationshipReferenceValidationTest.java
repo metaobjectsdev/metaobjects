@@ -224,7 +224,11 @@ public class Issue368RelationshipReferenceValidationTest extends SharedRegistryT
         assertHasError(outcome, ErrorCode.ERR_INVALID_RELATIONSHIP);
         assertTrue(outcome.joinedMessages(), outcome.joinedMessages().contains("Week.program"));
         assertTrue(outcome.joinedMessages(), outcome.joinedMessages()
-            .contains("sets @sourceRefField but is not a M:N relationship"));
+            .contains("sets @sourceRefField but is neither a M:N relationship"));
+        // The message names BOTH legal homes for the attribute -- M:N and
+        // @cardinality: "one" -- so it can't read as "never allowed here".
+        assertTrue(outcome.joinedMessages(), outcome.joinedMessages()
+            .contains("nor a @cardinality: \"one\" relationship"));
     }
 
     @Test

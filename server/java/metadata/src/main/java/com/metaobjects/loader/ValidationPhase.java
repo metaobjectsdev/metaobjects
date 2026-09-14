@@ -1819,7 +1819,12 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
                         + ": relationship \"" + declaringEntity.getShortName() + "." + rel.getShortName()
                         + "\" sets @" + MetaRelationship.ATTR_SOURCE_REF_FIELD
-                        + " but is not a M:N relationship.",
+                        + " but is neither a M:N relationship (requires @"
+                        + MetaRelationship.ATTR_THROUGH + " with @"
+                        + MetaRelationship.ATTR_CARDINALITY + ": \""
+                        + MetaRelationship.CARDINALITY_MANY + "\") nor a @"
+                        + MetaRelationship.ATTR_CARDINALITY + ": \""
+                        + MetaRelationship.CARDINALITY_ONE + "\" relationship.",
                     ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
             }
             if (symmetric) {
@@ -1926,9 +1931,13 @@ public final class ValidationPhase {
     // above) — same deferred-resolution timing (after all files load + extends
     // resolution).
     //
-    // Scope differs deliberately from rule (d): rule (d) validates attrs that
-    // travel with the relationship's OWN declaration (@through/@symmetric/
-    // @sourceRefField), so own-scoping there is correct — those attrs don't
+    // Scope differs deliberately from rule (d) — in SUBJECT, not in which
+    // relationships each pass walks (both walk the EFFECTIVE set; rule (d) is
+    // no longer own-scoped, or an M:N declaration reached only via extends
+    // would go unchecked). Rule (d) validates attrs that travel with the
+    // relationship's OWN declaration (@through/@symmetric/@sourceRefField), so
+    // it checks each declaration EXACTLY ONCE — deduped by node identity, and
+    // reported against the entity that declares it — because those attrs don't
     // change meaning depending on who inherits the relationship. Rule (e)
     // instead validates whether THIS entity's reference set resolves the
     // relationship uniquely, which is a property of the EFFECTIVE entity, not of
