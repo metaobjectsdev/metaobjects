@@ -10,6 +10,18 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **`meta eject` and `meta gen --list` print an install command you can paste.** The line
+  was documented as paste-ready and was not, on the most common selection
+  (`meta eject entity queries routes names barrel`):
+  - a peer range such as `drizzle-orm@>=0.36.0 <1.0.0` was unquoted, so a shell read it as
+    a redirect. The pasted line exited 1 and left a file named `=0.36.0` behind. Ranges are
+    now single-quoted.
+  - a package two selected generators need was listed twice when only one of them knew its
+    range (`drizzle-orm` and `drizzle-orm@>=0.36.0 <1.0.0`). The set is keyed by package,
+    and the ranged spec wins.
+
 ## [1.0.4] — 2026-09-14
 
 _All four registries publish: npm `1.0.4` (full lockstep across all 14 `@metaobjectsdev/*`

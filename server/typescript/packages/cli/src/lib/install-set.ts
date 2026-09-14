@@ -77,6 +77,31 @@ function spec(name: string, range: string | undefined): string {
 }
 
 /**
+ * Record `name` at `range`, keyed by PACKAGE rather than by spec. A known range replaces
+ * an unknown one: `queries` names `drizzle-orm` unpinned (it has no runtime package to
+ * read a range from) while `entity` names it with the range `runtime-ts` declares, and
+ * keying by spec put both in the set, so an adopter saw the package twice.
+ *
+ * Two DIFFERENT known ranges for one package keep the first recorded. That cannot happen
+ * today (every third-party range is read from `runtime-ts`, and the ranges declared in
+ * both `react` and `tanstack` are identical); if it ever can, it needs a diagnostic here.
+ */
+function addPackage(into: Map<string, string | undefined>, name: string, range: string | undefined): void {
+  if (into.get(name) === undefined) into.set(name, range);
+}
+
+/** A spec as one shell word. A peer range carries `>=`, `<` and a space, and unquoted
+ *  those are a redirect and a word break — the pasted line exits 1 and leaves a file
+ *  named `=0.36.0` behind. Single quotes are safe here: no spec contains one. */
+function shellWord(s: string): string {
+  return /^[\w@/.^~:+-]+$/.test(s) ? s : `'${s}'`;
+}
+
+function specs(from: Map<string, string | undefined>): string[] {
+  return [...from].map(([name, range]) => spec(name, range)).sort();
+}
+
+/**
  * The consolidated install set for a group of catalog entries.
  *
  * Consolidated, not per-entry: ejecting `hooks` and `grid` needs
@@ -85,14 +110,14 @@ function spec(name: string, range: string | undefined): string {
  */
 export function installSetFor(entries: readonly GeneratorRegistryEntry[]): InstallSet {
   const version = cliVersion();
-  const dev = new Set<string>();
-  const runtime = new Set<string>();
+  const dev = new Map<string, string | undefined>();
+  const runtime = new Map<string, string | undefined>();
 
   for (const entry of entries) {
     const pkg = packageOf(entry.name);
-    if (pkg !== undefined) dev.add(spec(pkg, `^${version}`));
+    if (pkg !== undefined) addPackage(dev, pkg, `^${version}`);
 
-    for (const rt of entry.runtimePackages ?? []) runtime.add(spec(rt, `^${version}`));
+    for (const rt of entry.runtimePackages ?? []) addPackage(runtime, rt, `^${version}`);
 
     if (entry.runtimePeers !== undefined && entry.runtimePeers.length > 0) {
       // Ranges come from whichever runtime package declares these as peers — the union
@@ -102,15 +127,15 @@ export function installSetFor(entries: readonly GeneratorRegistryEntry[]): Insta
       // and better than a made-up bound.
       const ranges: Record<string, string> = {};
       for (const rt of entry.runtimePackages ?? []) Object.assign(ranges, peerRangesOf(rt));
-      for (const peer of entry.runtimePeers) runtime.add(spec(peer, ranges[peer]));
+      for (const peer of entry.runtimePeers) addPackage(runtime, peer, ranges[peer]);
     }
   }
 
-  const devList = [...dev].sort();
-  const runtimeList = [...runtime].sort();
+  const devList = specs(dev);
+  const runtimeList = specs(runtime);
   const parts: string[] = [];
-  if (devList.length > 0) parts.push(`npm i -D ${devList.join(" ")}`);
-  if (runtimeList.length > 0) parts.push(`npm i ${runtimeList.join(" ")}`);
+  if (devList.length > 0) parts.push(`npm i -D ${devList.map(shellWord).join(" ")}`);
+  if (runtimeList.length > 0) parts.push(`npm i ${runtimeList.map(shellWord).join(" ")}`);
 
   return { dev: devList, runtime: runtimeList, command: parts.join(" && ") };
 }
