@@ -131,6 +131,16 @@ export function splitMemberRef(ref: string): { owner: string; path: string[] } {
   return { owner: ref.slice(0, dot), path: ref.slice(dot + 1).split(".") };
 }
 
+/** Names the FIRST segment of a non-empty, unresolvable `path` under `obj`, and the node it
+ *  was looked for under: `acme::shop::Order.reference.display` with `reference` still present
+ *  reads "'acme::shop::Order.reference' has no member 'display'", not the whole tail. */
+function missingMemberHint(obj: MetaData, path: string[]): string {
+  let found = 0;
+  while (found < path.length - 1 && resolveMember(obj, path.slice(0, found + 1)) !== undefined) found++;
+  const parent = [obj.resolutionKey(), ...path.slice(0, found)].join(".");
+  return ` '${parent}' has no member '${path[found]}'.`;
+}
+
 /** Resolution keys of every root-level object whose `extends` chain reaches
  *  `ancestor`. Walks the RESOLVED super pointer rather than the raw string, so a
  *  cross-package or dotted reference resolves the same way the loader resolved
@@ -501,9 +511,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
           // The did-you-mean hint answers an OBJECT that failed to resolve. When the object
           // resolved and only the member is gone, it listed that same object back and said
           // to qualify it: name the member instead.
-          const hint = node === undefined
-            ? didYouMeanHint(root, owner)
-            : ` '${node.resolutionKey()}' has no member '${path.join(".")}'.`;
+          const hint = node === undefined ? didYouMeanHint(root, owner) : missingMemberHint(node, path);
           out.push({
             severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, path: reqPath,
             message: `'${ref}' does not resolve in the loaded model (status '${String(req.status())}' — ` +

@@ -475,6 +475,25 @@ describe("requirement.* — reference resolution", () => {
     expect(dangling[0]!.message).toContain("'acme::shop::Order' has no member 'referenceCode'");
   });
 
+  test("a gone member under a member that DOES resolve names the first segment that failed", async () => {
+    // `reference` still exists; only `display` under it does not. Reporting the whole
+    // tail against the object ("'Order' has no member 'reference.display'") would not
+    // say which hop broke.
+    const r = await run(caps(COVER + `
+          - requirement.functional:
+              name: ReadableReference
+              level: 5
+              status: live
+              statement: "An order reference renders for a human"
+              counterexample: "A reference shown as a raw string"
+              implementedBy: ["acme::shop::Order.reference.display"]
+`), OTHER);
+    expect(r.loadError).toBeUndefined();
+    const dangling = r.diags.filter((x) => x.code === ERR_REQUIREMENT_DANGLING_REF);
+    expect(dangling.length).toBe(1);
+    expect(dangling[0]!.message).toContain("'acme::shop::Order.reference' has no member 'display'");
+  });
+
   test("splitMemberRef splits at the first dot after the package", () => {
     expect(splitMemberRef("acme::shop::Order")).toEqual({ owner: "acme::shop::Order", path: [] });
     expect(splitMemberRef("acme::shop::Order.total")).toEqual({

@@ -52,7 +52,8 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   Rename `dueDate` in the model and a live claim on `app::Task.dueDate` failed with
   `ERR_REQUIREMENT_DANGLING_REF`, then added *"An object named "Task" exists in: app::Task.
   Qualify it with its package (FQN)."* The ref was already qualified and the object resolved;
-  only the member was gone. The error now ends *"'app::Task' has no member 'dueDate'."* The
+  only the member was gone. The error now ends *"'app::Task' has no member 'dueDate'."*, and a
+  nested ref names the hop that broke (*"'app::Task.title' has no member 'display'."*). The
   did-you-mean hint still appears when the object itself does not resolve.
 
 ## [1.0.4] — 2026-09-14
