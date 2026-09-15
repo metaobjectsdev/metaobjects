@@ -498,10 +498,16 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
         // On `planned` the nodes do not exist YET — that is the entry doing its
         // job, and the reason this check cannot live in the loader.
         if (req.requiresLiveNodes()) {
+          // The did-you-mean hint answers an OBJECT that failed to resolve. When the object
+          // resolved and only the member is gone, it listed that same object back and said
+          // to qualify it: name the member instead.
+          const hint = node === undefined
+            ? didYouMeanHint(root, owner)
+            : ` '${node.resolutionKey()}' has no member '${path.join(".")}'.`;
           out.push({
             severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, path: reqPath,
             message: `'${ref}' does not resolve in the loaded model (status '${String(req.status())}' — ` +
-              `the model moved and the requirement is stale).` + didYouMeanHint(root, owner),
+              `the model moved and the requirement is stale).` + hint,
           });
         }
       }

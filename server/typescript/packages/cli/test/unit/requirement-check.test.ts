@@ -455,6 +455,26 @@ describe("requirement.* — reference resolution", () => {
     expect(dangling[0]!.message).toContain("acme::billing::Order");
   });
 
+  test("a gone member of an object that DOES resolve names the member, not a package", async () => {
+    // The object half is fully qualified and resolves; only the member was renamed.
+    // Appending the did-you-mean hint here told the author to "qualify it with its
+    // package" and listed the very object the ref already names.
+    const r = await run(caps(COVER + `
+          - requirement.functional:
+              name: Quotable
+              level: 5
+              status: live
+              statement: "An order carries a reference the customer can quote"
+              counterexample: "An order nobody can quote back"
+              implementedBy: ["acme::shop::Order.referenceCode"]
+`), OTHER);
+    expect(r.loadError).toBeUndefined();
+    const dangling = r.diags.filter((x) => x.code === ERR_REQUIREMENT_DANGLING_REF);
+    expect(dangling.length).toBe(1);
+    expect(dangling[0]!.message).not.toContain("Qualify it");
+    expect(dangling[0]!.message).toContain("'acme::shop::Order' has no member 'referenceCode'");
+  });
+
   test("splitMemberRef splits at the first dot after the package", () => {
     expect(splitMemberRef("acme::shop::Order")).toEqual({ owner: "acme::shop::Order", path: [] });
     expect(splitMemberRef("acme::shop::Order.total")).toEqual({
