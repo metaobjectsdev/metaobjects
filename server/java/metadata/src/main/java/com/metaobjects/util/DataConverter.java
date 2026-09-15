@@ -50,6 +50,7 @@ public final class DataConverter
 				return unsupported(dataType,val);
 
 			case DATE_ARRAY: return toDateArray( val );
+			case DECIMAL_ARRAY: return toBigDecimalArray( val );
 			case STRING_ARRAY: return toStringArray( val );
 			case OBJECT_ARRAY: return toObjectArray( val );
 
@@ -337,7 +338,13 @@ public final class DataConverter
 	    if ( val instanceof String ) {
 	        String s = ((String) val).trim();
 	        if ( s.isEmpty() ) return null;
-	        try { return new java.math.BigDecimal( s ); } catch ( NumberFormatException ignored ) { return java.math.BigDecimal.ZERO; }
+	        // Let NumberFormatException propagate, exactly as toInt/toLong/toDouble/toFloat do
+	        // for the same input. This used to swallow it and return ZERO, which is the one
+	        // wrong answer available: 0 is a PLAUSIBLE amount, so unreadable input became a
+	        // real-looking money value with nothing to distinguish it from a genuine zero.
+	        // Callers that must not fail — the lenient extract tier — already treat a throw
+	        // here as "component lost" (MetaObjectExtractor.assemble), which yields null.
+	        return new java.math.BigDecimal( s );
 	    }
 	    if ( val instanceof Boolean ) return ((Boolean) val) ? java.math.BigDecimal.ONE : java.math.BigDecimal.ZERO;
 	    if ( val instanceof java.math.BigInteger ) return new java.math.BigDecimal( (java.math.BigInteger) val );
@@ -351,8 +358,9 @@ public final class DataConverter
 	    }
 	    if ( val instanceof Date ) return java.math.BigDecimal.valueOf( ((Date) val).getTime() );
 
-	    try { return new java.math.BigDecimal( val.toString().trim() ); } catch ( NumberFormatException ignored ) {}
-	    return java.math.BigDecimal.ZERO;
+	    // Same contract as the String arm above and as every sibling converter's tail: parse,
+	    // and throw if it is not a number. No ZERO fallback.
+	    return new java.math.BigDecimal( val.toString().trim() );
 	} // toBigDecimal
 
 	/**
@@ -833,6 +841,41 @@ public final class DataConverter
 	/**
 	 * Convert value to Double array (List&lt;Double&gt;)
 	 */
+	/**
+	 * Convert the object value to a List of BigDecimal.
+	 *
+	 * <p>Element-converts through {@link #toBigDecimal(Object)} rather than a double, so a
+	 * decimal array stays precision-exact — the reason {@code field.decimal} exists at all.
+	 * Shape mirrors {@link #toDoubleArray(Object)} exactly, including the comma-split for a
+	 * single delimited String.</p>
+	 *
+	 * @param val Value
+	 * @return List of BigDecimal
+	 */
+	public static List<java.math.BigDecimal> toBigDecimalArray(Object val) {
+		if (val == null) return null;
+
+		if (val instanceof List<?>) {
+			List<?> list = (List<?>) val;
+			return list.stream()
+				.map(DataConverter::toBigDecimal)
+				.collect(java.util.stream.Collectors.toList());
+		} else if (val instanceof String) {
+			String s = (String) val;
+			if (s.trim().isEmpty()) return new java.util.ArrayList<>();
+
+			if (s.contains(",")) {
+				return java.util.Arrays.stream(s.split(","))
+					.map(item -> toBigDecimal(item.trim()))
+					.collect(java.util.stream.Collectors.toList());
+			} else {
+				return java.util.Arrays.asList(toBigDecimal(s.trim()));
+			}
+		} else {
+			return java.util.Arrays.asList(toBigDecimal(val));
+		}
+	}
+
 	public static List<Double> toDoubleArray(Object val) {
 		if (val == null) return null;
 

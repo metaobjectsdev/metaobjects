@@ -150,31 +150,31 @@ public class GeneratedScalarExtractRoundTripTest extends SharedRegistryTestBase 
             List<?> counts = (List<?>) get(p, "counts");
             assertEquals("int array is element-typed, not List<String>", List.of(3, 4), counts);
 
-            // A decimal ARRAY is deliberately NOT a metamodel shape: DataTypes has no
-            // DECIMAL_ARRAY ("arrays-of-decimal aren't in the metamodel" — the same position
-            // C# records as SP-A "decimal is single-only"), so DataTypes.arrayTypeFor maps
-            // field.decimal @isArray to DECIMAL and the assembled value cannot be populated.
-            // What matters is the FAILURE MODE: the component is lost, and the rest of the
-            // payload still parses. Before the never-throws fix in MetaObjectExtractor.assemble
-            // this threw out of the whole extract. It still COMPILES (see
-            // GeneratedScalarExtractLockStepTest) — a declared shape must never emit broken code
-            // even when the runtime cannot fill it.
-            assertNull("decimal array is unsupported by the object model — lost, not fatal",
-                    get(p, "rates"));
+            // A decimal ARRAY now populates, element-typed and precision-exact. It used to be
+            // dropped silently: DataTypes had no DECIMAL_ARRAY, so arrayTypeFor(DECIMAL)
+            // returned DECIMAL, the conversion failed, and the component came back null with
+            // no error — while the loader accepted the declaration and every port generated
+            // code for it. C# populated the same shape correctly, so this was a JVM port
+            // divergence rather than a metamodel position.
+            List<?> rates = (List<?>) get(p, "rates");
+            assertNotNull("decimal array must populate", rates);
+            assertEquals("rates size", 2, rates.size());
+            assertTrue("rates element is BigDecimal, not String", rates.get(0) instanceof BigDecimal);
+            assertEquals("rates[0] precision", 0, ((BigDecimal) rates.get(0)).compareTo(new BigDecimal("1.25")));
+            assertEquals("rates[1] precision", 0, ((BigDecimal) rates.get(1)).compareTo(new BigDecimal("2.5")));
 
             // --- NEVER-THROWS: a malformed component does not cost the whole extract ---
             assertNull("malformed date degrades to null", get(p, "badDate"));
             assertEquals("a bad field must not cost the good ones", "W-1", get(p, "ref"));
 
-            // KNOWN HAZARD, asserted as-is so it is visible rather than silently relied on:
-            // DataConverter.toBigDecimal returns BigDecimal.ZERO for an unparseable string
-            // instead of null, so "not-a-number" reaches the record as 0 — a plausible-looking
-            // money value standing in for "we could not read this". Null would be the honest
-            // answer. NOT changed here: toBigDecimal is a core converter the OMDB persistence
-            // path also uses, so flipping its contract is a decision with its own blast radius,
-            // not a drive-by. When it is fixed, this assertion flips to assertNull.
-            assertEquals("unparseable decimal currently becomes ZERO, not null",
-                    BigDecimal.ZERO, get(p, "bad"));
+            // An unreadable decimal is NULL, not zero. DataConverter.toBigDecimal used to
+            // swallow the NumberFormatException and return BigDecimal.ZERO, which is the one
+            // wrong answer available: 0 is a plausible amount, so unreadable input became a
+            // real-looking money value indistinguishable from a genuine zero. It now throws
+            // like every sibling converter does for the same input, and assemble's
+            // never-throws guard turns that into a lost component.
+            assertNull("unparseable decimal must be null, never a plausible-looking 0",
+                    get(p, "bad"));
         }
     }
 

@@ -162,6 +162,38 @@ public sealed class Fr010DelegatingMirrorLockStepTests
         Assert.Equal(7m, many[1].GetType().GetProperty("v")!.GetValue(many[1]));
     }
 
+    [Fact]
+    public void Generated_delegating_extract_populates_a_nested_decimal_ARRAY()
+    {
+        // The compile gates above prove a decimal ARRAY emits code that builds. They do not
+        // prove the VALUES arrive: DlgList(..., DlgDecimal) could return an empty list, or
+        // round every element through a double, and still compile. Java cannot do this at all
+        // (its object model has no DECIMAL_ARRAY conversion, so the component is dropped), so
+        // whether C# genuinely supports the shape is a fact worth pinning rather than assuming.
+        var root = Load(NestedScalarModel(FIELD_SUBTYPE_DECIMAL, true));
+        var asm = Compile(root);
+
+        var parserType = asm.GetType("Acme.Generated.ProbeParser")!;
+        var extract = parserType.GetMethod("ExtractLenient",
+            new[] { typeof(MetaObject), typeof(string), typeof(MetaObjects.Render.Extract.ExtractOptions) })!;
+
+        const string dirty = "```json\n{ \"id\": \"A-1\", \"single\": { \"v\": [1.25, 2.5, 7] } }\n```";
+
+        var result = extract.Invoke(null, new object?[] { root.FindObject("Probe")!, dirty, null })!;
+        var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
+
+        var single = data.GetType().GetProperty("single")!.GetValue(data);
+        Assert.NotNull(single);
+        var v = (IEnumerable)single!.GetType().GetProperty("v")!.GetValue(single)!;
+        var elems = v.Cast<object?>().ToList();
+
+        Assert.Equal(3, elems.Count);
+        // decimal?, element-typed — NOT string, and precision preserved.
+        Assert.Equal(1.25m, elems[0]);
+        Assert.Equal(2.5m, elems[1]);
+        Assert.Equal(7m, elems[2]);
+    }
+
     // ---- harness ----
 
     private static void AssertGeneratedCompiles(string subType, bool isArray)

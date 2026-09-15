@@ -119,6 +119,28 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   for one date should cost you that date, not the twenty fields beside it that parsed. The
   component is now left unset, which is what "lost" already means everywhere else in that pass.
 
+- **Java: an unparseable decimal became `0` instead of null.** `DataConverter.toBigDecimal`
+  caught the `NumberFormatException` and returned `BigDecimal.ZERO` — the one wrong answer
+  available, because `0` is a plausible amount, so unreadable input reached a money field as a
+  real-looking value with nothing to distinguish it from a genuine zero. Every sibling
+  converter (`toInt` / `toLong` / `toDouble` / `toFloat`) throws for the same input; decimal
+  was the lone exception. It now throws too, and the lenient extract tier's never-throws guard
+  turns that into a lost component — so the answer there is `null`, which is the honest one.
+
+- **Java/Kotlin: a declared `field.decimal @isArray` was silently dropped.** `DataTypes` had no
+  `DECIMAL_ARRAY`, and `arrayTypeFor(DECIMAL)` mapped decimal to ITSELF with a comment saying
+  arrays-of-decimal "aren't in the metamodel" so the declaration would "degrade gracefully". It
+  did not degrade gracefully: the loader accepts the declaration, all five ports generate code
+  for it, and C# populates it correctly (now pinned by value in
+  `Fr010DelegatingMirrorLockStepTests`) — so this was a JVM gap presented as a design position,
+  not a metamodel rule. Added `DECIMAL_ARRAY` plus a `toBigDecimalArray` that element-converts
+  through `toBigDecimal` rather than a double, so precision survives the round trip. The new
+  member takes id 22 rather than a slot beside `DECIMAL=10`: those ids are persisted
+  identifiers, and renumbering the existing members to keep the enum tidy would silently
+  repoint stored data. Kotlin inherits the fix — it consumes the same `metadata` module — and
+  C#, TypeScript and Python needed no change (that conversion table is JVM-only; TS binds
+  `field.decimal` to `string` and Python to `Decimal`).
+
 - **Java: `DataConverter.toDate` could not parse an ISO-8601 date.** The `String` arm was a bare
   `Long.parseLong`, so it accepted epoch milliseconds and nothing else — a plain `"2026-03-04"`
   threw `NumberFormatException`. Since that is the form `normalization.md` puts on the wire, no
