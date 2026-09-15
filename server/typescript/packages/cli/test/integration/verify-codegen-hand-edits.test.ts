@@ -282,6 +282,37 @@ describe("meta verify --codegen — hand-edited generated output", () => {
     }
   });
 
+  test("a STALE names artifact nobody edited is ordinary drift, and meta gen fixes it", async () => {
+    // A model change moves a physical name, so the names artifact differs from a fresh
+    // regen with no hand edit anywhere. Convicting it as hand-edited told the user that
+    // `meta gen` would NOT help, when `meta gen` is exactly the fix. The file is still
+    // what we recorded writing, and that is the evidence that separates the two.
+    const root = setupRepoWithNames();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      const metaPath = join(root, "metaobjects", "myapp.json");
+      writeFileSync(
+        metaPath,
+        readFileSync(metaPath, "utf8").replace('"@column": "display_name"', '"@column": "display_label"'),
+      );
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      const report = all();
+      expect(report).toContain("User.names.ts");
+      expect(report).not.toContain("hand-edited");
+      expect(report).not.toContain("will NOT help");
+      expect(report).toContain("Run 'meta gen' to regenerate");
+
+      // ...and the remedy it printed terminates.
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("fails closed when there is no recorded hash to judge by", async () => {
     const root = setupRepo();
     try {

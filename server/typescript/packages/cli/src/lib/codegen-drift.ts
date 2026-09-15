@@ -262,7 +262,16 @@ export async function computeCodegenDrift(
             // one constant. An adopter who owns the generator and RENAMES the artifact
             // opts out of this — stated rather than hidden; the gate cannot recognise a
             // file shape it was never told about.
-            if (rel.endsWith(NAMES_FILE_SUFFIX)) {
+            //
+            // A names file that is still exactly what we recorded writing was not edited:
+            // the MODEL moved a physical name and nobody re-ran gen. That is ordinary stale
+            // output, and `meta gen` is its fix — convicting it as hand-edited printed
+            // "'meta gen' will NOT help" as the only remedy for a column rename. Fails
+            // closed: with no recorded hash, the hand-edit verdict stands.
+            if (
+              rel.endsWith(NAMES_FILE_SUFFIX) &&
+              readGeneratedHash(projectGenStateDir, relKey) !== contentHash(a)
+            ) {
               driftedFiles.add(relKey);
               handEditedNames.add(relKey);
               lines.push(

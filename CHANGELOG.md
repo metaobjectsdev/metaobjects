@@ -39,6 +39,15 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   - a package two selected generators need was listed twice when only one of them knew its
     range (`drizzle-orm` and `drizzle-orm@>=0.36.0 <1.0.0`). The set is keyed by package,
     and the ranged spec wins.
+- **`meta verify --codegen` no longer calls a stale `<Entity>.names.ts` hand-edited.** Rename
+  a column in the model and skip `meta gen`, and the gate convicted the names artifact as
+  *"hand-edited"*. Its only remedy was *"'meta gen' will NOT help"*. Nobody had edited the
+  file, and `meta gen` was exactly the fix. The entity module reads its column names from
+  that artifact, so for a column rename the names file was often the only file reported,
+  and the right remedy never printed. A names file still byte-identical to what `meta gen`
+  recorded writing (`.gen-state/.hashes.json`) is now reported as ordinary stale output with
+  the `meta gen` remedy. An edited one, or one with no recorded hash, is still convicted as
+  before.
 
 ## [1.0.4] — 2026-09-14
 
