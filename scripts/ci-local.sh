@@ -575,8 +575,8 @@ gate_conf_java() {
       && mvn -pl metadata,render,codegen-base,codegen-spring -am install -DskipTests -q \
       && mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest,RegistryManifestConformanceTest' -q \
       && mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q \
-      && mvn -pl codegen-base test -Dtest='GeneratedFileWriterTest,JavaCodegenWriteGuardTest' -q \
-      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,IllegalRecordComponentNameTest' -q )
+      && mvn -pl codegen-base test -Dtest='GeneratedFileWriterTest,JavaCodegenWriteGuardTest,JavaAccessorNameCollisionTest' -q \
+      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,IllegalRecordComponentNameTest,SpringIllegalNameCompileRunTest' -q )
 }
 gate_conf_python() {
   # FULL suite, not cherry-picked paths. Until 2026-07-19 this ran only

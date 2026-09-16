@@ -3,6 +3,7 @@ package com.metaobjects.generator.spring;
 import com.metaobjects.MetaData;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.generator.spring.runtime.RecordComponentNames;
 import com.metaobjects.source.RdbSource;
 
 /**
@@ -310,37 +311,31 @@ public final class SpringNaming {
     }
 
     /**
-     * The eight names a record component may not have (JLS 8.10.3).
+     * Whether a record component named {@code fieldName} would fail to compile (JLS 8.10.3).
      *
-     * <p>A record component generates an accessor of the same name, so a component called
-     * {@code notify} would have to override {@code Object.notify()} — which is {@code final}.
-     * javac rejects the record outright: <i>illegal record component name notify</i>.
-     * {@code equals} is absent deliberately: it takes a parameter, so {@code equals()} does
-     * not override it and the name is legal.
-     *
-     * <p>This is a JAVA restriction, not a metamodel one. {@code notify} is a legal field
-     * name in every port — the shared fitness corpus declares one — and it is not the
-     * metamodel's business that one target language reserves it.
+     * <p>The set itself lives in {@link RecordComponentNames}, in the runtime package, because
+     * the generated PATCH handler needs the same rule at RUN time to name a Bean Validation
+     * property. One definition, so the two times cannot disagree.
      */
-    private static final java.util.Set<String> ILLEGAL_RECORD_COMPONENTS = java.util.Set.of(
-        "clone", "finalize", "getClass", "hashCode", "notify", "notifyAll", "toString", "wait");
-
-    /** Whether a record component named {@code fieldName} would fail to compile. */
     public static boolean isIllegalRecordComponent(String fieldName) {
-        return ILLEGAL_RECORD_COMPONENTS.contains(fieldName);
+        return RecordComponentNames.isReserved(fieldName);
     }
 
     /**
      * The Java name a record component must use for a field called {@code fieldName}.
      *
-     * <p>Escapes with a trailing underscore, which is the one transformation that cannot
-     * turn one legal metadata name into another port's identifier convention and reads at
-     * the call site as deliberate rather than as a typo. The WIRE name is unaffected:
-     * every caller pairs this with {@link #jsonPropertyAnnotation(String)} so the field
-     * still serializes and deserializes under its declared name.
+     * <p>The WIRE name is unaffected: every caller pairs this with
+     * {@link #jsonPropertyAnnotation(String)} so the field still serializes and deserializes
+     * under its declared name.
+     *
+     * <p>Applies to every place the name becomes a Java METHOD, not only the component that
+     * declares it — accessor CALL sites, a plain class's accessor, an interface's method, and
+     * the property-name STRING handed to {@code Validator#validateValue}. Missing one of those
+     * does not always break the build: a {@code String}-typed {@code toString()} on the
+     * generated Patch compiles and silently overrides {@code Object.toString()}.
      */
     public static String recordComponentName(String fieldName) {
-        return isIllegalRecordComponent(fieldName) ? fieldName + "_" : fieldName;
+        return RecordComponentNames.escape(fieldName);
     }
 
     /**

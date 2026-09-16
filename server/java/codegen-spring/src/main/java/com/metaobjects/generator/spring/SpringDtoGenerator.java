@@ -267,13 +267,21 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
            .append("(Map<String, Object> assigned) { this.assigned = assigned; }\n\n");
 
         // Per settable field: has<Field>() (presence, incl. explicit null) + <field>() (value).
+        //
+        // The ACCESSOR takes the escaped name; the map KEY keeps the declared one. A Patch is a
+        // plain class rather than a record, so javac does not reject an illegal name here — it
+        // resolves it against Object. `notify` fails loudly (the Boolean accessor cannot override
+        // the final void one), but `toString` compiles CLEANLY and silently overrides
+        // Object.toString(), so every log line and debugger view of the patch returns a field
+        // value instead. has<Cap>() needs no escape: capitalisation already clears the collision.
         for (MetaField field : settable) {
             String name = field.getName();
+            String accessor = SpringNaming.recordComponentName(name);
             String cap = SpringNaming.capitalize(name);
             String type = patchComponentType(field, entity, dtoName);
             src.append("    public boolean has").append(cap)
                .append("() { return assigned.containsKey(\"").append(name).append("\"); }\n");
-            src.append("    public ").append(type).append(' ').append(name).append("() { return (")
+            src.append("    public ").append(type).append(' ').append(accessor).append("() { return (")
                .append(type).append(") assigned.get(\"").append(name).append("\"); }\n");
         }
         src.append("\n    /** The field names ASSIGNED by this patch (present in the body), in order. */\n");
@@ -631,9 +639,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         for (int i = 0; i < fields.size(); i++) {
             MetaField field = fields.get(i);
             String name = field.getName();
+            // A CALL site, so it takes the escaped component name: `dto.notify()` binds to
+            // Object.notify() — a real void method — where a value is required.
             String value = stampNames.contains(name)
                 ? typeToVar.get(SpringTypeMapper.javaTypeName(field))
-                : "dto." + name + "()";
+                : "dto." + SpringNaming.recordComponentName(name) + "()";
             b.append("            ").append(value);
             if (i < fields.size() - 1) b.append(',');
             b.append('\n');
@@ -665,7 +675,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         src.append("public interface ").append(typeName).append(" {\n");
         for (MetaField field : scalarFields(entity)) {
             String type = SpringTypeMapper.javaTypeName(field);
-            src.append("    ").append(type).append(' ').append(field.getName()).append("();\n");
+            // JLS 9.2: an interface method override-equivalent to a public Object method but
+            // with a different return type is a compile error, so the shape escapes too — and
+            // it must agree with the record that implements it.
+            src.append("    ").append(type).append(' ')
+               .append(SpringNaming.recordComponentName(field.getName())).append("();\n");
         }
         src.append("}\n");
 

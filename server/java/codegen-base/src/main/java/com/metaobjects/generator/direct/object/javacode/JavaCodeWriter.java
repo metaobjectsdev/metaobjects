@@ -5,6 +5,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.generator.util.JavaIdentifiers;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 
@@ -80,7 +81,14 @@ public class JavaCodeWriter extends BaseObjectCodeWriter {
             prefix = "is";
         }
 
-        return prefix + GeneratorUtil.toCamelCase(name, true);
+        // The get/is/set prefix already clears the eight names JLS 8.10.3 forbids a RECORD
+        // component (a field called `notify` becomes getNotify()), so no escape is needed for
+        // those here. It manufactures exactly one collision of its own: a field named `class`
+        // capitalizes to getClass(), which is final on Object and cannot be re-declared — the
+        // generated type does not compile, on the class flavor or the interface flavor. The
+        // setter is unaffected (setClass collides with nothing), and no bean pairing is lost:
+        // a `getClass` bean property cannot exist in Java under any spelling.
+        return JavaIdentifiers.escapeMember(prefix + GeneratorUtil.toCamelCase(name, true));
     }
 
     @Override
@@ -96,7 +104,11 @@ public class JavaCodeWriter extends BaseObjectCodeWriter {
 
     @Override
     protected String getParameterName(MetaField field) {
-        return GeneratorUtil.toCamelCase(field.getName(), false);
+        // Unlike the accessor NAMES, a parameter carries the field name with no prefix — so any
+        // field whose name is a Java keyword (`class`, `int`, `for`, `new`, …) emits
+        // `setClass(String class)`, a syntax error. Every port reserves a different set, which
+        // is why this is escaped at the Java emitter rather than rejected by the metamodel.
+        return JavaIdentifiers.escapeIdentifier(GeneratorUtil.toCamelCase(field.getName(), false));
     }
 
     @Override
