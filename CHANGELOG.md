@@ -15,6 +15,16 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Changed
 
+- **`meta types <construct> --detail` no longer drops rows from a query that has already
+  narrowed.** `meta types field.enum --detail` printed "20 of 22 shown — narrow with
+  QUERY/--type/--kind or raise --limit", having dropped `@values` and `@xmlText`. Both halves
+  were wrong: the rows were lost, and the advice named three ways to narrow a query that
+  already names one construct and cannot narrow further. The cap is a BROWSE control — it
+  exists so a bare `meta types` does not dump 518 rows — and a query resolving to a single
+  construct is the drill-in the command exists for, bounded by that construct's own attr list.
+  The DEFAULT cap now yields there; an explicit `--limit` is an instruction and is still
+  obeyed exactly.
+
 - **The registered `requirement.functional` and `requirement.architectural` descriptions
   now say what `meta verify` enforces.** They said a functional requirement "fails when
   nothing implements it" and an architectural one "fails when something VIOLATES it". In
@@ -38,10 +48,87 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   both dialects. The existing corpora gate BEHAVIOR; none of them asked whether the emitted
   code builds, which is why four separate "generated code does not compile" defects shipped
   in 1.0.4 with every gate green. It found three more on its first run — all three are fixed
-  below. Peer lanes for the other ports are still to come; a port without this gate keeps
-  exactly the bug class it closes.
+  below.
+
+- **Codegen-compile conformance in the four remaining ports.** The same gate, the same
+  corpus, the same question, now asked by C#, Java, Kotlin and Python — so all five ports
+  compile what they emit. Each uses its real compiler rather than a shared one: Roslyn
+  (zero `DiagnosticSeverity.Error`), `javac` via `ToolProvider`, `KotlinCompilation`, and —
+  Python having no static compiler — importing the generated package, which is what resolves
+  the package-relative imports BETWEEN modules, plus `ruff` F821 for the branches importing
+  never executes. C# and Java each run two selections rather than one, because a single
+  selection is not a coherent build in either (C#'s `IncludeNames` has a recorded CS0103;
+  Java's `entity` and `value-object` both emit a type for an `object.value`). **Every port
+  excludes its framework-bound route tier** — TS `routesFile`, C# `RoutesGenerator`, Java
+  `SpringControllerGenerator`, Kotlin `KotlinSpringControllerGenerator`: those imports are
+  not on an in-memory compile's classpath and stubbing them drowns the signal, so that tier
+  is compiled and booted over real HTTP in the api-contract lane instead. One cross-port
+  rule, not four local concessions. The fan-out found five further real defects, fixed below.
 
 ### Fixed
+
+- **Java: a field name that is legal metadata could not be a record component.** The JLS
+  forbids a record component named after a no-argument `Object` method
+  (`clone`/`finalize`/`getClass`/`hashCode`/`notify`/`notifyAll`/`toString`/`wait`) — its
+  accessor would have to override a final method. The shared fitness corpus has declared
+  `object.value Settings { field.boolean notify }` all along; nothing had ever COMPILED a
+  record emitter's output over it. The name is now escaped with a trailing underscore and
+  pinned back with `@JsonProperty`, so the Java identifier changes and **the wire does not**.
+  The escape reaches every place the name becomes a Java METHOD, not only the component that
+  declares it: the accessor CALL sites in the `@autoSet` stamping helpers, the `<Entity>Patch`
+  (a plain class, where a `String`-typed `toString()` COMPILED and silently overrode
+  `Object.toString()`), the abstract-shape interface, and — at run time — the property-name
+  string the generated PATCH handler passes to `Validator#validateValue`, which resolves a
+  record's property by its component and threw `IllegalArgumentException` on the declared
+  name. This is a Java restriction and it stops at Java: `notify` stays a legal field name in
+  all five ports, and no other port and no payload changes.
+
+- **Java: a field named after a Java keyword generated code that could not compile, on both
+  emitters.** A keyword is a different restriction from the `Object`-method names above — it
+  is illegal as ANY identifier, so it is a parse error rather than an override problem, and
+  each emitter hit it differently. The `entity` generator prefixes its accessors
+  (`getX`/`isX`/`setX`), which shields the method NAME but not the setter's parameter, so a
+  field named `class` emitted `setClass(String class)`, plus a `getClass()` that is final on
+  `Object`. The record emitters have no prefix at all — the field name IS the identifier — so
+  the same field emitted a record component declared `String class`. Both are now escaped with
+  the same trailing underscore, inert for every name that does not need it, and the wire name
+  is pinned with `@JsonProperty` exactly as for the `Object`-method names. **The two emitters
+  now share one reserved-name set** (`JavaIdentifiers`): they previously answered the question
+  separately, which is how fixing one left the other still generating uncompilable code. Not
+  reachable from the codegen-compile gate — a shared corpus cannot carry every illegal name in
+  every target language — so each emitter carries its own fixture.
+
+- **Java: per-object `.java` was written unguarded, and was then mistaken for hand-written
+  work.** `MultiFileDirectGeneratorBase` streamed straight to a `FileOutputStream`, which
+  cannot be guarded at all — opening the stream truncates the file, so by the time there is
+  content to compare the user's work is already gone. It also wrote no `GENERATED` marker, so
+  a sibling generator that DOES go through the guard read the output as somebody's own and
+  declined. `own-your-codegen.md` promised the opposite on this port for the bulk of its
+  output. Now buffered and routed through `GeneratedFileWriter`, with the marker leading the
+  header — that order is not incidental: guarding an emitter that does not write the marker
+  makes run 1 write and every run after refuse, which is the silent staleness the guard exists
+  to prevent.
+
+- **Java: two generators could claim one output path and one silently won.** TypeScript's
+  `runGen` and Python's `run_gen` both refuse a conflicting duplicate path; Java has no runner,
+  so nothing was in a position to notice. This was live: `entity` and `value-object` both emit
+  a Java type for an `object.value` at the same path — a POJO class and a record, not variants
+  of one thing — so the selection's output depended on generator order and the DTO tier could
+  end up bound to a type carrying none of the jakarta constraints it was built to validate.
+  The only signal was a WARN. The check now raises, with the TypeScript rule (byte-identical
+  re-emission is one file; differing content is an error naming both generators). **Ownership
+  still wins over it**: the marker question is asked first, so two generators colliding on a
+  path the adopter hand-owns produce two warnings and a green build rather than a failed
+  reactor — neither write could reach disk, so there is no order-dependent output to report.
+
+- **Kotlin: a package containing a `field.inet` column emitted a support file that never
+  type-checked.** `MetaInetUriColumnType.kt`'s `setParameter` assigned
+  `if (value is InetAddress) value.hostAddress else value` — an `Any?` — into `stmt[index]`,
+  which takes a non-null `Any`. Every such package emitted a file that cannot compile, and the
+  null path it was reaching for was the one thing it could not express. A non-`InetAddress`
+  value (a null for a nullable column above all) now delegates to `super.setParameter`, which
+  knows how to bind it. Nothing caught it because the existing text-matching test passes on a
+  file that cannot compile.
 
 - **A TPH subtype's declared type and its read schema disagreed, so `parse<Base>()` did not
   compile.** The generated `<Sub>` interface and the `<Sub>Schema` the polymorphic

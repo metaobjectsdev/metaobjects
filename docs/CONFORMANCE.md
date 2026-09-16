@@ -79,6 +79,35 @@ Stated as mechanisms rather than as a list of attribute names on purpose — the
 requirement vocabulary has a breaking change scheduled (FR-038), which moves what the
 manifest contains without moving the boundary between the two halves.
 
+**Does the generated code compile** (`codegen-compile-conformance`, all five ports):
+
+- *Not a corpus, so it has no row.* It reuses
+  `fixtures/persistence-conformance/canonical/meta.fitness.json` rather than adding a
+  kitchen sink beside the one that already exists — 16 entities, two view-backed
+  projections, two M:N junctions including a self-join, a 4-entity TPH hierarchy, jsonb,
+  isArray, currency, decimal, and `AllTypes` carrying every persistable field subtype.
+  A second such model would drift from the first, and this one is maintained by the
+  other corpora already.
+- *Why it exists.* Every corpus above gates BEHAVIOUR. None asks whether the emitted
+  code builds — so four "generated code does not compile" defects shipped in 1.0.4 with
+  the whole matrix green, because `gen` exits 0 in all four cases and the adopter's
+  build is the first thing that disagrees. The gate found five more across the ports on
+  its first runs.
+- *Each port uses its own compiler*, so it is the same question rather than the same
+  code: `ts.createProgram`, Roslyn, `javac` via `ToolProvider`, `KotlinCompilation`, and
+  — Python having no static compiler — importing the generated package (which is what
+  resolves the imports BETWEEN modules) plus `ruff` F821 for the branches importing
+  never executes.
+- *Every port excludes its framework-bound route tier* — TS `routesFile`, C#
+  `RoutesGenerator`, Java `SpringControllerGenerator`, Kotlin
+  `KotlinSpringControllerGenerator`. Those imports are not on an in-memory compile's
+  classpath and stubbing them drowns the signal; that tier is compiled and booted over
+  real HTTP in the api-contract integration lane instead. The boundary is one
+  cross-port rule, not four local concessions.
+- *The prompt tier is out of scope here* because the fitness corpus declares no
+  `template.*` nodes. Including those generators would emit nothing and read as
+  coverage that is not there.
+
 **How to tell a deliberate split from a real parity gap**, since the two look identical
 in the matrix — both show one port covered and four blank. Ask what the uncovered ports
 *claim*. Here they claim nothing: they load requirement vocabulary and stop, exactly as the
