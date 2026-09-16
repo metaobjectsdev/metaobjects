@@ -468,6 +468,19 @@ export function mapColumnType(
       // SQLite has no native array type; serialize as JSON in a text column.
       fnName = "text";
       fnOptions = { mode: "json" };
+    } else if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
+      // `@dbColumnType: jsonb` — the open JSON bag. SQLite has no native jsonb, but
+      // the attribute is not merely physical here: the wire contract says the value
+      // round-trips as a PARSED JSON value on every dialect (the api-contract jsonb
+      // corpus: "POST a JSON object, read it back as an object — never a
+      // JSON-encoded string"), and the generated Zod/TS type is `unknown` for that
+      // reason. Falling through to a plain `text()` gave that column a `string` type
+      // while the entity type stayed `unknown`, so the generated queries did not
+      // compile — and had they compiled, the value would have come back as a string.
+      // text(..., { mode: "json" }) is the same idiomatic form field.object and
+      // field.map already take on this dialect, and it keeps both halves agreeing.
+      fnName = "text";
+      fnOptions = { mode: "json" };
     } else {
       switch (subType) {
         case FIELD_SUBTYPE_BOOLEAN:

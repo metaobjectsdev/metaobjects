@@ -39,6 +39,7 @@ import { stripPackage } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
 import { renderDocsFor } from "./jsdoc.js";
+import { isTphReadNullTolerant } from "./zod-validators.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "../enum-import.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
@@ -387,7 +388,12 @@ export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderConte
     const required = field.attr(FIELD_ATTR_REQUIRED) === true;
     const optional = required ? "" : "?";
     const tsType = valueObjectFieldType(entity, field, ctx);
-    lines.push(code`  ${field.name}${optional}: ${tsType};`);
+    // A TPH subtype's read schema accepts `null` for a column that is NULL on a
+    // sibling subtype's row; the declared type has to admit the same values, or
+    // `parse<Base>()` returns something this interface rejects. One predicate
+    // answers it for both emitters (ADR-style single source, see its docblock).
+    const nullable = isTphReadNullTolerant(entity, field) ? " | null" : "";
+    lines.push(code`  ${field.name}${optional}: ${tsType}${nullable};`);
   }
 
   // joinCode with "\n" interpolates each Code segment on its own line and

@@ -127,6 +127,28 @@ export function hasAutoSetFields(obj: MetaObject): boolean {
 }
 
 /**
+ * Is this field NULL-tolerant in a TPH subtype's READ shape?
+ *
+ * A TPH subtype shares one physical table with its siblings, so a column only one
+ * subtype declares is NULL on every other subtype's row, and a non-`@required` column
+ * of this subtype's own is NULL when unset. Either way the value read back is `null`,
+ * not `undefined`. The PRIMARY KEY is the exception — it is the shared base table's
+ * key and is present on every row.
+ *
+ * ONE predicate, because TWO emitters answer this question about the same field: the
+ * Zod read schema (`renderTphSubtypeReadSchema`) and the declared TS type
+ * (`renderValueObjectInterface`). They answered it differently, so the value
+ * `parse<Base>()` returns was not assignable to the base union and the generated
+ * module did not compile (TS2322). A second answer to one question is the defect;
+ * keeping the two call sites pointed here is the fix.
+ */
+export function isTphReadNullTolerant(obj: MetaObject, field: MetaField): boolean {
+  if (!isTphSubtype(obj)) return false;
+  if (!fieldWillBeOptional(field)) return false;
+  return !primaryIdentityFieldNames(obj).includes(field.name);
+}
+
+/**
  * FR-017 Tier 2 — the per-subtype FULL read schema `<Sub>Schema`. Unlike the
  * insert schema, this includes every effective field (PK included) so a raw DB
  * row parses through it. The discriminator field is pinned to its literal value
@@ -149,10 +171,12 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
     }
     const expr = zodFieldExpr(child, obj, ctx);
     // zodFieldExpr already appends `.optional()` for non-required fields; add
-    // `.nullable()` on top so a NULL column value (the TPH default for any
-    // subtype-only column) parses cleanly.
+    // `.nullable()` on top so a NULL column value parses cleanly. The declared
+    // interface widens the SAME fields — see isTphReadNullTolerant.
     fieldLines.push(
-      fieldWillBeOptional(child) ? code`  ${child.name}: ${expr}.nullable()` : code`  ${child.name}: ${expr}`,
+      isTphReadNullTolerant(obj, child)
+        ? code`  ${child.name}: ${expr}.nullable()`
+        : code`  ${child.name}: ${expr}`,
     );
   }
 

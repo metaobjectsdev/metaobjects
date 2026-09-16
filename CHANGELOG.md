@@ -28,8 +28,38 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   also stop saying the `verify` checks run in every port: the vocabulary loads and
   validates in all five, and the checks run in the Node `meta` CLI.
 
+### Added
+
+- **Codegen-compile conformance (TypeScript lane).** A new gate generates from the shared
+  cross-port corpus (`fixtures/persistence-conformance/canonical/meta.fitness.json` — 16
+  entities, 2 view-backed projections, two M:N through-junctions, a 4-entity TPH hierarchy,
+  jsonb storage, `isArray`, currency, decimal, and an `AllTypes` entity carrying every
+  persistable field subtype) and compiles every emitted module with the real TS compiler, on
+  both dialects. The existing corpora gate BEHAVIOR; none of them asked whether the emitted
+  code builds, which is why four separate "generated code does not compile" defects shipped
+  in 1.0.4 with every gate green. It found three more on its first run — all three are fixed
+  below. Peer lanes for the other ports are still to come; a port without this gate keeps
+  exactly the bug class it closes.
+
 ### Fixed
 
+- **A TPH subtype's declared type and its read schema disagreed, so `parse<Base>()` did not
+  compile.** The generated `<Sub>` interface and the `<Sub>Schema` the polymorphic
+  dispatcher parses through were emitted by two rules that answered the same question
+  differently. The schema made the PRIMARY KEY `.nullable()` — it is the shared base table's
+  key and is present on every row — while the interface did not admit `null` for a
+  subtype-only column, which genuinely is NULL on a sibling's row. Either way the value
+  `parse<Base>()` returns was not assignable to the base union (`TS2322`). Both emitters now
+  route through one predicate, `isTphReadNullTolerant`. **Generated output changes**: a TPH
+  subtype's interface widens its null-tolerant fields to `| null`, and its read schema stops
+  widening the PK.
+- **`@dbColumnType: jsonb` emitted a SQLite column that did not match its own type.** The
+  open-JSON-bag escape hatch types the field `unknown` in Zod and TS, because the value
+  round-trips as a PARSED JSON value on every dialect. On SQLite the attribute fell through
+  to a plain `text()` column typed `string`, so the generated queries did not compile — and
+  had they compiled, the value would have come back as a JSON-encoded string. It now emits
+  `text(..., { mode: "json" })`, the same idiomatic form `field.object` and `field.map`
+  already take on that dialect. Postgres is unchanged. **Generated output changes** on SQLite.
 - **A view-backed read model carrying an int-backed `field.enum` generated a module that did
   not compile.** A `@intValueMap` enum persists as an integer column, and the entity table
   emits a module-local Drizzle `customType` codec to encode and decode it. The view path
