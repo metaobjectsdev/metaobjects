@@ -1251,9 +1251,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |    override fun nonNullValueToString(value: InetAddress): String = "'${'$'}{value.hostAddress}'"
             |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
             |        // Bind as a string and let the Postgres JDBC driver coerce it to the native
-            |        // `inet` column.
-            |        val v = if (value is InetAddress) value.hostAddress else value
-            |        stmt[index] = v
+            |        // `inet` column. Anything else — a null for a nullable column above all —
+            |        // goes to the base implementation, which knows how to bind it: `stmt[index]`
+            |        // takes a non-null Any, so widening the local to Any? did not compile.
+            |        if (value is InetAddress) stmt[index] = value.hostAddress
+            |        else super.setParameter(stmt, index, value)
             |    }
             |}
             |

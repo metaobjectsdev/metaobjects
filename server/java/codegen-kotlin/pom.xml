@@ -163,6 +163,18 @@
       <version>0.55.0</version>
       <scope>test</scope>
     </dependency>
+
+    <!-- Same contract again for exposed-json: CodegenCompileConformanceTest compiles the
+         generated Exposed tables for the shared fitness corpus, which carries field.object
+         @storage:jsonb columns — those emit `jsonb(name, encode, decode)`, which lives here
+         and nowhere else. Without it the whole corpus failed to compile on `Unresolved
+         reference: jsonb`, which reads exactly like a codegen defect and is not one. -->
+    <dependency>
+      <groupId>org.jetbrains.exposed</groupId>
+      <artifactId>exposed-json</artifactId>
+      <version>0.55.0</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

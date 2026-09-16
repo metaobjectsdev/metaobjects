@@ -599,7 +599,7 @@ gate_conf_python() {
 gate_conf_kotlin() {
   ( cd server/java \
       && mvn -pl codegen-kotlin -am install -DskipTests -q \
-      && mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest,NoMagicPhysicalNamesTest' -q )
+      && mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest' -q )
 }
 
 # ── conformance.yml — full reactor + drift/mutation gates ─────────────────────
