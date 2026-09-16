@@ -7,7 +7,12 @@
 //     off-vocab enum alias + missing optional) — asserts the @enumAlias fold, classification,
 //     and lost-optional. This is the single, loader-delegating extract path.
 //   • render<Name>Format() — asserts the comment-free guide fragment.
-// Also typechecks the emitted source via `tsc --noEmit` when available.
+// It does NOT typecheck. The header claimed a `tsc --noEmit` pass for several releases and
+// no such call was ever here — bun's dynamic import transpiles per file, so this catches a
+// syntax error or a wrong runtime value and is blind to a type error. Static compile coverage
+// of generated output lives in `codegen-compile-conformance.test.ts`, which runs the real
+// compiler over the shared fitness corpus; that corpus declares no `template.*`, so the
+// parser/prompt emit exercised HERE is the one tier that gate does not reach.
 
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";

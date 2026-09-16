@@ -12,7 +12,10 @@
 // So: run the whole pipeline over a model containing exactly the shapes that
 // tempt the bug — an `object.value`, a sourceless entity, a sourceless
 // projection, and a view-backed projection that MUST keep its read-only hooks —
-// write the real emitted files to disk, and typecheck them together with tsc.
+// write the real emitted files to disk, and reconcile every sibling import against
+// what the imported module actually exports — using tsc's PARSER, not its checker.
+// That is deliberate, not a shortfall; the second test below states why a full
+// typecheck here would measure the third-party stubs instead of the emit.
 // Any future generator whose filter admits an object its sibling tier refuses
 // fails here immediately, whatever the mechanism.
 import { describe, test, expect } from "bun:test";

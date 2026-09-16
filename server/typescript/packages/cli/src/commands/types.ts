@@ -33,6 +33,8 @@ interface TypesFlags {
   detail: boolean;
   noHeaders: boolean;
   limit: number; // 0 = unlimited
+  /** The user typed --limit. A default cap yields to a single-construct query; an asked-for one never does. */
+  limitExplicit: boolean;
   help: boolean;
 }
 
@@ -52,7 +54,10 @@ Add --desc (or --all) to also match descriptions + when-to-use guidance.
   --kind <k>        filter by category: type | subtype | attr (comma-list ok)
   --type <name>     scope to one top-level type (e.g. --type field)
   --detail          drill in: full description, when-to-use, and valid @attrs
-  --limit <N>       cap results (default 20; 0 = unlimited)
+  --limit <N>       cap results (default 20; 0 = unlimited). The default cap does NOT
+                    apply when the query resolves to a single construct: "meta types
+                    field.enum" shows all of its attrs, never 20 of them. Passing
+                    --limit explicitly caps that too.
   --no-headers      omit headers (parse-friendly)
   --format <toon|json|text>   Output format (global flag). Defaults to TEXT here, even
                     off a TTY — unlike gen/verify/migrate, whose default is TOON off a TTY.
@@ -70,7 +75,7 @@ allowedValues, and no match is an empty matches list rather than a prose hint.`;
 function parse(args: string[]): TypesFlags {
   const f: TypesFlags = {
     query: null, desc: false, kind: new Set(), type: null,
-    detail: false, noHeaders: false, limit: 20, help: false,
+    detail: false, noHeaders: false, limit: 20, limitExplicit: false, help: false,
   };
   for (let i = 0; i < args.length; i++) {
     const a = args[i] as string;
@@ -85,7 +90,7 @@ function parse(args: string[]): TypesFlags {
     // one the removed `--json` broke.
     else if (a === "--format") i++;
     else if (a.startsWith("--format=")) { /* value is inline; nothing to consume */ }
-    else if (a === "--limit") f.limit = Math.max(0, Number(args[++i] ?? "20") || 0);
+    else if (a === "--limit") { f.limit = Math.max(0, Number(args[++i] ?? "20") || 0); f.limitExplicit = true; }
     else if (a === "--type") f.type = (args[++i] ?? "").toLowerCase() || null;
     else if (a === "--kind") {
       for (const k of (args[++i] ?? "").split(","))
@@ -301,7 +306,15 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   }
 
   const total = matches.length;
-  const shown = f.limit > 0 ? matches.slice(0, f.limit) : matches;
+  // A query that has already resolved to ONE construct is not a browse — it is the
+  // drill-in this command exists for, and its rows are bounded by that construct's own
+  // attr list. The default cap is a BROWSE control, so it yields here: applied to
+  // `field.enum` it dropped @values and @xmlText (22 attrs, cap 20) and then advised
+  // narrowing a query with nothing left to narrow. An explicit --limit is an instruction
+  // and is still obeyed.
+  const oneConstruct = new Set(matches.map((e) => e.owner)).size === 1;
+  const capped = f.limit > 0 && !(oneConstruct && !f.limitExplicit);
+  const shown = capped ? matches.slice(0, f.limit) : matches;
 
   if (f.detail) {
     for (const e of shown) {
@@ -334,7 +347,12 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   }
   if (!f.noHeaders && !f.detail && shown.some((e) => marks(e) !== "")) log.info(`\n${LEGEND}`);
   if (!f.noHeaders && shown.length < total)
-    log.info(`\n${shown.length} of ${total} shown — narrow with QUERY/--type/--kind or raise --limit.`);
+    log.info(
+      `\n${shown.length} of ${total} shown — ` +
+        // Telling someone to narrow a query that already names one construct is advice
+        // they cannot act on; there, raising the cap is the only move.
+        (oneConstruct ? "raise --limit." : "narrow with QUERY/--type/--kind or raise --limit."),
+    );
   else if (!f.noHeaders)
     log.info(`\n${total} match${total === 1 ? "" : "es"}.`);
   return 0;
