@@ -173,6 +173,56 @@ public class GeneratedFileWriterTest {
     }
 
     @Test
+    public void aPathNobodyCanWriteIsNotACollision() throws Exception {
+        // Refusing is a WARNING, never a build failure — this class says so twice. The
+        // collision check used to claim the path BEFORE asking the marker question, so two
+        // generators colliding on a path the adopter HAND-OWNS killed the reactor over an
+        // ordering that could not affect the output: neither write would reach disk.
+        Path out = tmp.newFolder().toPath().resolve("Settings.java");
+        String mine = "// my own Settings, written by hand\npublic class Settings {}\n";
+        Files.writeString(out, mine);
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.attributeTo("JavaObjectCodeGenerator");
+            assertEquals(GeneratedFileWriter.Outcome.REFUSED,
+                GeneratedFileWriter.write(out, "/** GENERATED */\npublic class Settings {}\n"));
+
+            run.attributeTo("SpringValueObjectGenerator");
+            assertEquals(GeneratedFileWriter.Outcome.REFUSED,
+                GeneratedFileWriter.write(out, "/** GENERATED */\npublic record Settings() {}\n"));
+        }
+        assertEquals(mine, Files.readString(out));
+    }
+
+    @Test
+    public void aRefusedPathDoesNotPoisonALaterRealCollision() throws Exception {
+        // The other half: moving the claim after the refusal must not make a refused path
+        // swallow a genuine conflict that follows it. Once the adopter takes the file back
+        // (marker restored), the two differing emissions are order-dependent again.
+        Path out = tmp.newFolder().toPath().resolve("Settings.java");
+        Files.writeString(out, "// hand-owned\npublic class Settings {}\n");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.attributeTo("JavaObjectCodeGenerator");
+            assertEquals(GeneratedFileWriter.Outcome.REFUSED,
+                GeneratedFileWriter.write(out, "/** GENERATED */\npublic class Settings {}\n"));
+        }
+
+        Files.delete(out);
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.attributeTo("JavaObjectCodeGenerator");
+            GeneratedFileWriter.write(out, "/** GENERATED */\npublic class Settings {}\n");
+            run.attributeTo("SpringValueObjectGenerator");
+            try {
+                GeneratedFileWriter.write(out, "/** GENERATED */\npublic record Settings() {}\n");
+                fail("expected the collision to be raised once both writes can reach disk");
+            } catch (GeneratorException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("Settings.java"));
+            }
+        }
+    }
+
+    @Test
     public void withNoRunOpenTheCheckIsInert() throws Exception {
         // An embedder or a single-generator test never opens a run and must behave exactly
         // as before — last write wins, no exception.

@@ -110,6 +110,26 @@ Two consequences to hold on to, because they invert the TypeScript answer:
   would punish the person the guard exists to protect. So a JVM build stays green while a
   refused file goes stale — watch the log. (On TypeScript a refusal exits 1.)
 
+**One thing here IS a build failure: two generators claiming the same output path.** If a
+selection emits one path twice with differing content, `mvn metaobjects:generate` fails
+with `Output path collision`, naming both generators and the file. That is deliberately
+harsher than a refusal, because it is not a decision the user made about a file they own
+— it is a build whose output depends on which generator ran last, and no log line lets
+them act on that. The rule matches TypeScript's `runGen` and Python's `run_gen`:
+byte-identical re-emission is one file and fine; differing content is the error. The
+remedy is to select one of the two generators, or give one its own `outputDir`.
+
+The selection that actually hits this today is `entity` together with `value-object`:
+both emit a Java type for an `object.value` at the same path — a POJO class and a record,
+which are not two spellings of one thing. Pick the one your tier needs.
+
+**Ownership still wins over the collision error.** The marker question is asked first, so
+a path you hand-own is refused before it is ever claimed: two generators colliding on a
+file you took ownership of produce two warnings and a green build, not a failed reactor.
+Neither write could reach disk, so there is no order-dependent output to report — and
+failing the build there would punish exactly the person the refusal exists to protect.
+Restore the file to generated output and the collision is raised again on the next run.
+
 Two write paths deliberately **bypass** the guard, and the reason is the same in both:
 the guard is sound only where our own emitter always writes the marker. `DocsMojo`'s API
 pages render from `templates/api/*.mustache`, and `TemplateScopeGenerator` emits whatever

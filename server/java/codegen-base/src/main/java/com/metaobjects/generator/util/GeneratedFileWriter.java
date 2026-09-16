@@ -194,18 +194,25 @@ public final class GeneratedFileWriter {
      * @return {@link Outcome#WRITTEN} or {@link Outcome#REFUSED}
      */
     public static Outcome write(Path outFile, String content) throws IOException {
-        // Before the marker question, the ordering question: did a sibling generator in
-        // this run already claim this path with different content? That is a defect in the
-        // generator SELECTION, not in the file on disk, so it is raised rather than warned
-        // — an order-dependent output is not something the user can act on from a log line.
-        Run run = ACTIVE_RUN.get();
-        if (run != null) {
-            run.claim(outFile, content);
-        }
+        // The marker question comes FIRST, and a refusal returns before anything is
+        // claimed. A path the adopter hand-owns is a path NO generator can write, so two
+        // generators emitting different content there is not an order-dependent output —
+        // there is no output. Claiming first threw a GeneratorException and killed the
+        // build over a conflict that could not reach disk, contradicting this class's own
+        // rule that refusing is a WARNING and never a build failure.
         if (Files.exists(outFile)
             && !looksGenerated(Files.readString(outFile, StandardCharsets.UTF_8))) {
             LOG.warn(refusedMessage(outFile));
             return Outcome.REFUSED;
+        }
+        // Now the ordering question, asked only of writes that will actually land: did a
+        // sibling generator in this run already claim this path with different content?
+        // That is a defect in the generator SELECTION, not in the file on disk, so it is
+        // raised rather than warned — an order-dependent output is not something the user
+        // can act on from a log line.
+        Run run = ACTIVE_RUN.get();
+        if (run != null) {
+            run.claim(outFile, content);
         }
         if (outFile.getParent() != null) {
             Files.createDirectories(outFile.getParent());
