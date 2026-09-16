@@ -567,12 +567,16 @@ gate_conf_csharp() {
       && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet \
       && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet )
 }
+# NOTE: these -Dtest= lists are a CHERRY-PICK, so a new test class that is not named here
+# runs in NO per-push lane and reports green. Adding a test to this module means adding its
+# class name here too — that is not a convention, it is the only thing that makes it run.
 gate_conf_java() {
   ( cd server/java \
-      && mvn -pl metadata,render,codegen-spring -am install -DskipTests -q \
+      && mvn -pl metadata,render,codegen-base,codegen-spring -am install -DskipTests -q \
       && mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest,RegistryManifestConformanceTest' -q \
       && mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q \
-      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest' -q )
+      && mvn -pl codegen-base test -Dtest='GeneratedFileWriterTest,JavaCodegenWriteGuardTest' -q \
+      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,IllegalRecordComponentNameTest' -q )
 }
 gate_conf_python() {
   # FULL suite, not cherry-picked paths. Until 2026-07-19 this ran only
