@@ -571,6 +571,50 @@ function sourceColumnNameFor(
 }
 
 /**
+ * The BASE table's column an extends-bound passthrough field SELECTS.
+ *
+ * A projection field may RENAME what it exposes
+ * (`{ field.string: { name: bookingRef, extends: "Shipment.reference" } }`). The view's
+ * OUTPUT alias is the projection field's own; the column it reads from the base table is
+ * the extends TARGET's. Deriving both from the projection field emits
+ * `SELECT s.booking_ref` against a table whose column is `reference` — SQL that SQLite
+ * accepts at CREATE VIEW and only fails at the first SELECT, and that Postgres rejects
+ * outright at migrate time.
+ *
+ * Caller contract: this is for a PLAIN projection only. A read-view HOST (`base ===
+ * projection`) reads its own table, so its passthrough source is always the field's own
+ * column and there is no rename to resolve — and a host field may legally `extends` a
+ * SIBLING field of the same entity for shape reuse, which this would otherwise read as a
+ * rename and silently serve the sibling's data under this field's name.
+ *
+ * Only a DOTTED extends naming the BASE entity redirects the source column:
+ *
+ *   - `extends: "Shipment.reference"` — binds a base column; the target's column wins.
+ *   - `extends: "Code24"` (bare, a package-level abstract) — SHAPE REUSE, not a binding.
+ *     `refNamedOwner` returns undefined, so the field's own name stays the source.
+ *   - `extends: "Other.foo"` — names an entity that is not the base. The caller emits this
+ *     column against `joinTree.baseAlias`, so borrowing another entity's column name would
+ *     be a second wrong answer; keep the field's own.
+ *
+ * The alias is not always the projection's spelling: `sourceColumnNameFor` reads `@column`
+ * with the RESOLVING accessor, so a renaming field whose base carries an explicit `@column`
+ * inherits it and both sides land on that physical name. The rename then holds on the TS /
+ * wire tier only. That is pre-existing and self-consistent — the Drizzle view decl binds
+ * the same column — but it is not a promise this function makes.
+ */
+function baseColumnNameFor(
+  field: MetaField,
+  base: MetaObject,
+  root: MetaRoot,
+  ctx: ExtractContext,
+): string {
+  const target = field.superData;
+  if (target === undefined) return sourceColumnNameFor(field, ctx);
+  if (refNamedOwner(field, root) !== base) return sourceColumnNameFor(field, ctx);
+  return sourceColumnNameFor(target, ctx);
+}
+
+/**
  * Physical column for a join FK/PK field — resolves @column + naming strategy the
  * same way passthrough columns do (EFFECTIVE fields, so inherited PKs resolve).
  * The JOIN ON clause must use the real column, not a hardcoded snake_case guess,
@@ -976,22 +1020,27 @@ function buildSelectSpec(
   // fields — the declared set IS the exposure (FR-024/ADR-0028). Either way, each
   // field's own origin decides passthrough-from-base vs derived-from-join. origin.*
   // NEVER inherits (ADR-0029), so the origin reads below are own (category 4).
-  const declaredFields: MetaField[] =
-    base === projection
-      ? base.fields()
-      : projection.ownChildren().filter((c): c is MetaField => c.type === TYPE_FIELD);
+  // A read-view HOST reads its OWN table (base === projection), so every passthrough
+  // sources from the field's own column; a plain projection reads the base's, which an
+  // extends-bound field may rename. The flag decides both the field set and the source.
+  const isReadViewHost = base === projection;
+  const declaredFields: MetaField[] = isReadViewHost
+    ? base.fields()
+    : projection.ownChildren().filter((c): c is MetaField => c.type === TYPE_FIELD);
   for (const field of declaredFields) {
     const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     const dbCol = sourceColumnNameFor(field, ctx);
 
     if (!origin) {
-      // Declared on projection but no origin — passthrough from base table.
+      // Declared on projection but no origin — passthrough from base table. The alias is
+      // this field's own column; the SOURCE is the extends target's, which differs
+      // whenever the projection renames the base field.
       columns.push({
         kind: "passthrough",
         fieldName: field.name,
         dbColAlias: dbCol,
         sourceAlias: joinTree.baseAlias,
-        sourceColumn: dbCol,
+        sourceColumn: isReadViewHost ? dbCol : baseColumnNameFor(field, base, root, ctx),
       });
       continue;
     }

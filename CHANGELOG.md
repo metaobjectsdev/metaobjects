@@ -41,6 +41,20 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   This covered BOTH view hosts — an `object.projection` and a write-through entity's replica
   view render through the same function, and the read-view is the shape the authoring
   guidance recommends over a projection.
+- **A projection field that RENAMED the base field built a view over a column that does not
+  exist.** `{ field.string: { name: bookingRef, extends: "Shipment.reference" } }` emitted
+  `SELECT s.booking_ref` against a table whose column is `reference`: the view's output alias
+  and the column it selects were both derived from the projection's field, and the `extends`
+  target was never consulted. SQLite does not resolve a view body at `CREATE VIEW`, so
+  `meta migrate --apply` reported success and the view failed at the first `SELECT`;
+  Postgres rejected the migration outright. The source column now comes from the `extends`
+  target, and only when that target names the BASE entity — a bare `extends` onto a
+  package-level abstract is shape reuse, not a column binding, and a read-view HOST reads
+  its own table, where a dotted `extends` onto a sibling field is shape reuse too. Both
+  still resolve to the field's own name. Renaming a base column is one of the two things the
+  authoring guidance names as genuinely forcing a projection. **An adopter whose view had a
+  renamed passthrough will see a view-replace in the next `meta migrate` diff** — that is the
+  corrected SQL, and the view it replaces could not be queried.
 - **`meta eject` and `meta gen --list` print an install command you can paste.** The line
   was documented as paste-ready and was not, on the most common selection
   (`meta eject entity queries routes names barrel`):
