@@ -5,6 +5,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.MetaDataFilters;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 
@@ -60,11 +61,17 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
                 String fn = getSingleOutputFilename( md );
                 File f = new File( fp, fn );
                 filename = f.getPath();
-                f.createNewFile();
 
-                // Get the printwriter
-                out = new FileOutputStream(f);
-                PrintWriter pw = new PrintWriter(new OutputStreamWriter(out));
+                // Buffer the emit, then hand the finished source to the write guard.
+                //
+                // This streamed straight to a FileOutputStream, which cannot be guarded at
+                // all: opening the stream truncates the file, so by the time there is any
+                // content to compare, whatever the user had there is already gone. Every
+                // per-object .java this port emits — the bulk of its output — was therefore
+                // written unconditionally, while own-your-codegen.md promised the opposite.
+                // Buffering first is what makes the existing file readable before we decide.
+                StringWriter buffer = new StringWriter();
+                PrintWriter pw = new PrintWriter(buffer);
 
                 writer = getSingleWriter(loader, md, pw);
                 writer.withFilters(MetaDataFilters.create( getFilters() ))
@@ -72,8 +79,10 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
 
                 writeSingleFile( md, writer);
                 writer.close();
-
                 writer = null;
+
+                GeneratedFileWriter.write( f.toPath(), buffer.toString() );
+
                 pw = null;
             }
 

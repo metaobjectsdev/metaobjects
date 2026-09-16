@@ -208,8 +208,16 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
             // Merge context imports with local imports
             importList.addAll(context.getImports());
             
-            // Generate header documentation
+            // Generate header documentation.
+            //
+            // The GENERATED marker leads, and is load-bearing rather than decorative: it is
+            // the token GeneratedFileWriter reads to tell this toolchain's output from a
+            // file somebody owns. Without it the per-object classes were indistinguishable
+            // from hand-written code, so a sibling generator emitting at the same path
+            // declined to overwrite them and the adopter silently kept the wrong type.
+            // Deleting this line is the documented gesture for taking ownership of the file.
             List<String> docs = Arrays.asList(
+                    "GENERATED — regenerated from metadata. Delete this line to own this file.",
                     "ObjectCodeWriter:         " + getClass().getName(),
                     "MetaObject:               " + mo.getName(),
                     "SuperObject:              " + (superObject != null ? superObject.getName() : ""),

@@ -308,4 +308,51 @@ public final class SpringNaming {
     public static String reverseFinderInName(String fkFieldName) {
         return reverseFinderName(fkFieldName) + "In";
     }
+
+    /**
+     * The eight names a record component may not have (JLS 8.10.3).
+     *
+     * <p>A record component generates an accessor of the same name, so a component called
+     * {@code notify} would have to override {@code Object.notify()} — which is {@code final}.
+     * javac rejects the record outright: <i>illegal record component name notify</i>.
+     * {@code equals} is absent deliberately: it takes a parameter, so {@code equals()} does
+     * not override it and the name is legal.
+     *
+     * <p>This is a JAVA restriction, not a metamodel one. {@code notify} is a legal field
+     * name in every port — the shared fitness corpus declares one — and it is not the
+     * metamodel's business that one target language reserves it.
+     */
+    private static final java.util.Set<String> ILLEGAL_RECORD_COMPONENTS = java.util.Set.of(
+        "clone", "finalize", "getClass", "hashCode", "notify", "notifyAll", "toString", "wait");
+
+    /** Whether a record component named {@code fieldName} would fail to compile. */
+    public static boolean isIllegalRecordComponent(String fieldName) {
+        return ILLEGAL_RECORD_COMPONENTS.contains(fieldName);
+    }
+
+    /**
+     * The Java name a record component must use for a field called {@code fieldName}.
+     *
+     * <p>Escapes with a trailing underscore, which is the one transformation that cannot
+     * turn one legal metadata name into another port's identifier convention and reads at
+     * the call site as deliberate rather than as a typo. The WIRE name is unaffected:
+     * every caller pairs this with {@link #jsonPropertyAnnotation(String)} so the field
+     * still serializes and deserializes under its declared name.
+     */
+    public static String recordComponentName(String fieldName) {
+        return isIllegalRecordComponent(fieldName) ? fieldName + "_" : fieldName;
+    }
+
+    /**
+     * {@code @JsonProperty("<fieldName>") } when the component had to be renamed, else empty.
+     *
+     * <p>Without it the escape would leak to the wire: Jackson names a record's JSON
+     * property after the component, so an escaped {@code notify_} would serialize as
+     * {@code notify_} and this port would disagree with the other four about the payload.
+     */
+    public static String jsonPropertyAnnotation(String fieldName) {
+        return isIllegalRecordComponent(fieldName)
+            ? "@com.fasterxml.jackson.annotation.JsonProperty(\"" + fieldName + "\")"
+            : "";
+    }
 }

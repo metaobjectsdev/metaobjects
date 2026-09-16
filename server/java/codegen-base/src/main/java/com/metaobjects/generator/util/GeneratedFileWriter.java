@@ -1,5 +1,6 @@
 package com.metaobjects.generator.util;
 
+import com.metaobjects.generator.GeneratorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,6 +8,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -91,6 +94,85 @@ public final class GeneratedFileWriter {
         return GENERATED_HEADER.matcher(content).find();
     }
 
+    /**
+     * A multi-generator run, within which no output path may be claimed twice with
+     * differing content.
+     *
+     * <p><b>Why this exists.</b> TypeScript and Python both refuse a conflicting duplicate
+     * output path — {@code runner.ts} errors when two generators emit the same full path
+     * with different content, and {@code run_gen} raises {@code Output path collision}.
+     * Java has no runner: {@code MetaDataGeneratorMojo} simply calls {@code execute(loader)}
+     * on each generator in turn, and each writes straight to disk, so nothing was in a
+     * position to notice. The result was not theoretical. {@code entity} and
+     * {@code value-object} both emit a Java type for an {@code object.value} at the same
+     * path — a POJO class and a record, not variants of one thing — and whichever ran
+     * second lost, leaving the adopter's DTO tier bound to a type that carries none of the
+     * jakarta constraints it was built to validate. The only signal was a WARN.
+     *
+     * <p>Byte-identical re-emission is allowed, matching the TypeScript rule: a shared
+     * artifact rendered once per entity is one file, not a conflict. Only DIFFERING content
+     * at one path is a defect, because only then does the output depend on generator order.
+     *
+     * <p>Opt-in and thread-scoped. A caller that never opens a run — a test driving one
+     * generator, an embedder — behaves exactly as before.
+     */
+    public static final class Run implements AutoCloseable {
+        private final Map<Path, String> contentByPath = new HashMap<>();
+        private final Map<Path, String> writerByPath = new HashMap<>();
+        private String current = "(unattributed generator)";
+
+        private Run() {}
+
+        /** Name the generator whose writes follow. Called once per generator by the runner. */
+        public Run attributeTo(String generatorName) {
+            this.current = generatorName;
+            return this;
+        }
+
+        private void claim(Path outFile, String content) {
+            Path key = outFile.toAbsolutePath().normalize();
+            String previous = contentByPath.get(key);
+            if (previous == null) {
+                contentByPath.put(key, content);
+                writerByPath.put(key, current);
+                return;
+            }
+            if (previous.equals(content)) {
+                return; // same artifact, emitted twice — one file, no conflict
+            }
+            throw new GeneratorException(
+                "Output path collision: " + key + " emitted by both '" + writerByPath.get(key)
+                    + "' and '" + current + "' with different content. One of them would "
+                    + "silently win depending on generator order, so neither is written. "
+                    + "Select only one of these generators, or give one of them a different "
+                    + "output directory.");
+        }
+
+        @Override
+        public void close() {
+            ACTIVE_RUN.remove();
+        }
+    }
+
+    private static final ThreadLocal<Run> ACTIVE_RUN = new ThreadLocal<>();
+
+    /**
+     * Open a collision-checked run on this thread. Close it (try-with-resources) to end it.
+     *
+     * <p>Nesting is not supported and is not needed: the one caller that spans generators
+     * is the runner, and a nested run would silently narrow the very scope the check needs.
+     */
+    public static Run beginRun() {
+        Run run = new Run();
+        ACTIVE_RUN.set(run);
+        return run;
+    }
+
+    /** The open run on this thread, or {@code null}. */
+    public static Run currentRun() {
+        return ACTIVE_RUN.get();
+    }
+
     /** What happened to one file. */
     public enum Outcome {
         /** Written — the path was new, or held this toolchain's own output. */
@@ -112,6 +194,14 @@ public final class GeneratedFileWriter {
      * @return {@link Outcome#WRITTEN} or {@link Outcome#REFUSED}
      */
     public static Outcome write(Path outFile, String content) throws IOException {
+        // Before the marker question, the ordering question: did a sibling generator in
+        // this run already claim this path with different content? That is a defect in the
+        // generator SELECTION, not in the file on disk, so it is raised rather than warned
+        // — an order-dependent output is not something the user can act on from a log line.
+        Run run = ACTIVE_RUN.get();
+        if (run != null) {
+            run.claim(outFile, content);
+        }
         if (Files.exists(outFile)
             && !looksGenerated(Files.readString(outFile, StandardCharsets.UTF_8))) {
             LOG.warn(refusedMessage(outFile));

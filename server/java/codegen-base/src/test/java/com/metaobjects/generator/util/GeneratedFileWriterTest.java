@@ -1,5 +1,6 @@
 package com.metaobjects.generator.util;
 
+import com.metaobjects.generator.GeneratorException;
 import org.junit.Test;
 import org.junit.Rule;
 import org.junit.rules.TemporaryFolder;
@@ -8,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * The marker floor: codegen-concepts §7's "the generator will not silently eat your work",
@@ -127,5 +130,67 @@ public class GeneratedFileWriterTest {
         // An unexplained refusal gets the file deleted by hand — the outcome refusing
         // exists to prevent — so the message must say how to get the generated version.
         assertTrue(msg.contains("delete"));
+    }
+
+    // === the output-path collision check ====================================
+
+    @Test
+    public void twoGeneratorsClaimingOnePathWithDifferentContentIsAnError() throws Exception {
+        // The real case: `entity` and `value-object` both emit a Java type for an
+        // object.value at the same path — a POJO class and a record. Whichever ran second
+        // lost, silently, and the DTO tier ended up bound to whichever won.
+        Path out = tmp.newFolder().toPath().resolve("Settings.java");
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.attributeTo("JavaObjectCodeGenerator");
+            GeneratedFileWriter.write(out, "/** GENERATED */\npublic class Settings {}\n");
+
+            run.attributeTo("SpringValueObjectGenerator");
+            try {
+                GeneratedFileWriter.write(out, "/** GENERATED */\npublic record Settings() {}\n");
+                fail("expected a collision to be raised, not resolved by generator order");
+            } catch (GeneratorException expected) {
+                String m = expected.getMessage();
+                // Both names, or the reader cannot tell which pair to stop selecting.
+                assertTrue(m, m.contains("JavaObjectCodeGenerator"));
+                assertTrue(m, m.contains("SpringValueObjectGenerator"));
+                assertTrue(m, m.contains("Settings.java"));
+            }
+        }
+    }
+
+    @Test
+    public void byteIdenticalReEmissionIsNotACollision() throws Exception {
+        // Matches the TypeScript rule: a shared artifact rendered once per entity is one
+        // file. Only DIFFERING content makes the result depend on generator order.
+        Path out = tmp.newFolder().toPath().resolve("Shared.java");
+        String same = "/** GENERATED */\npublic final class Shared {}\n";
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.attributeTo("GeneratorA");
+            GeneratedFileWriter.write(out, same);
+            run.attributeTo("GeneratorB");
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, same));
+        }
+    }
+
+    @Test
+    public void withNoRunOpenTheCheckIsInert() throws Exception {
+        // An embedder or a single-generator test never opens a run and must behave exactly
+        // as before — last write wins, no exception.
+        Path out = tmp.newFolder().toPath().resolve("Solo.java");
+        GeneratedFileWriter.write(out, "/** GENERATED */\npublic class Solo { int a; }\n");
+        assertEquals(GeneratedFileWriter.Outcome.WRITTEN,
+            GeneratedFileWriter.write(out, "/** GENERATED */\npublic class Solo { int b; }\n"));
+    }
+
+    @Test
+    public void closingARunEndsItsScope() throws Exception {
+        Path out = tmp.newFolder().toPath().resolve("Scoped.java");
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.attributeTo("GeneratorA");
+            GeneratedFileWriter.write(out, "/** GENERATED */\nclass Scoped { int a; }\n");
+        }
+        assertNull("a closed run must not leak onto the next one", GeneratedFileWriter.currentRun());
+        // The same path, different content, is now free again — a new build, not a collision.
+        GeneratedFileWriter.write(out, "/** GENERATED */\nclass Scoped { int b; }\n");
     }
 }

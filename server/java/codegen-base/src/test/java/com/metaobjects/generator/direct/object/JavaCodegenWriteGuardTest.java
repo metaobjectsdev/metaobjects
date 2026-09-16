@@ -184,4 +184,69 @@ public class JavaCodegenWriteGuardTest {
         assertEquals("a marker-less file at a generated path must be left untouched",
             mine, Files.readString(file));
     }
+
+    // === the per-object class file ==========================================
+    //
+    // The two cases above cover the files JavaObjectCodeGenerator builds as a
+    // StringBuilder. They are NOT the files it mostly emits: one .java per object, written
+    // by MultiFileDirectGeneratorBase's loop straight to a FileOutputStream. That loop
+    // neither wrote the marker nor consulted it, so own-your-codegen.md's claim that on
+    // Java "every generator writes through one guard" was still false for the bulk of this
+    // generator's output — and the omission was not inert. A sibling generator that DOES
+    // go through the guard (SpringValueObjectGenerator, which emits its own record at the
+    // same path for an object.value) read the unmarked file as somebody's hand-written
+    // work and declined, so the adopter silently kept the wrong type and got a WARN.
+
+    /** The per-object class emitted for the fixture's one object.value. */
+    private Path emitObjectClass(Path outDir) {
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        args.put("type", "class");
+        args.put("flavor", "pojoAware");
+
+        JavaObjectCodeGenerator generator = new JavaObjectCodeGenerator();
+        generator.setArgs(args);
+        generator.execute(loadMeta());
+        return outDir.resolve("acme/payload/Answer.java");
+    }
+
+    @Test
+    public void objectClassMarksItsOutput() throws Exception {
+        Path out = tmp.newFolder("obj-marker").toPath();
+        Path file = emitObjectClass(out);
+        assertTrue("expected a generated object class at " + file, Files.exists(file));
+
+        String generated = Files.readString(file);
+        assertTrue(
+            "the per-object class must carry the GENERATED marker, or the guard below "
+                + "would freeze it after the first run:\n" + generated,
+            MARKER_LINE.matcher(generated).find()
+                || generated.lines().anyMatch(l -> MARKER_LINE.matcher(l).find()));
+    }
+
+    @Test
+    public void objectClassNeverClobbersAHandWrittenFile() throws Exception {
+        Path out = tmp.newFolder("obj-handwritten").toPath();
+        Path file = out.resolve("acme/payload/Answer.java");
+        Files.createDirectories(file.getParent());
+        String mine = "package acme.payload;\n\n// written by hand, never generated\npublic final class Answer {}\n";
+        Files.writeString(file, mine);
+
+        emitObjectClass(out);
+        assertEquals("a marker-less file at a generated path must be left untouched",
+            mine, Files.readString(file));
+    }
+
+    @Test
+    public void objectClassRewritesItsOwnOutputOnASecondRun() throws Exception {
+        // The freeze guard, stated as the failure it prevents: marking output without
+        // being able to rewrite it would make run 1 write and every run after refuse.
+        Path out = tmp.newFolder("obj-rewrite").toPath();
+        Path file = emitObjectClass(out);
+        Files.writeString(file, Files.readString(file) + "\n// stale line from an earlier run\n");
+
+        emitObjectClass(out);
+        assertTrue("a second run must overwrite this toolchain's own output",
+            !Files.readString(file).contains("stale line from an earlier run"));
+    }
 }

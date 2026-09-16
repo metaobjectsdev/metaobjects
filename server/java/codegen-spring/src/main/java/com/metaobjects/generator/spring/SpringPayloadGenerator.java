@@ -398,10 +398,16 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         while (it.hasNext()) {
             MetaField field = it.next();
             String type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns, nameMap);
-            src.append("    ").append(type).append(' ').append(field.getName());
+            // A field named notify/wait/toString/… cannot BE a record component (JLS 8.10.3),
+            // so it is escaped here and pinned back to its declared name on the wire.
+            String component = SpringNaming.recordComponentName(field.getName());
+            String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
+            src.append("    ");
+            if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
+            src.append(type).append(' ').append(component);
             if (it.hasNext()) src.append(',');
             src.append('\n');
-            components.add(new String[] { type, field.getName() });
+            components.add(new String[] { type, component });
         }
 
         // Emit hasFoo() instance methods for nullable, possibly-empty fields

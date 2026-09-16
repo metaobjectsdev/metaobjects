@@ -538,12 +538,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             MetaField field = fields.get(i);
             String annotations = annotationsPerField.get(i);
             String type = componentTypeFr019(field, entity);
+            // A field named notify/wait/toString/… cannot BE a record component (JLS 8.10.3),
+            // so it is escaped here and pinned back to its declared name on the wire.
+            String component = SpringNaming.recordComponentName(field.getName());
+            String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
             src.append("    ");
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
-            src.append(type).append(' ').append(field.getName());
+            if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
+            src.append(type).append(' ').append(component);
             if (i < fields.size() - 1) src.append(',');
             src.append('\n');
-            components.add(new String[] { type, field.getName() });
+            components.add(new String[] { type, component });
         }
 
         // Nested `public enum <Name> { <members> }` declarations for this record's INLINE enum
