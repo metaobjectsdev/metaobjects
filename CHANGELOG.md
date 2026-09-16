@@ -90,6 +90,133 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   nested ref names the hop that broke (*"'app::Task.title' has no member 'display'."*). The
   did-you-mean hint still appears when the object itself does not resolve.
 
+- **C#: a `field.decimal` reached through a nested object generated code that did not
+  compile.** `ExtractDelegateEmitter.ScalarReader` — the reader map for the runtime-DELEGATING
+  extract mirror — had no `Decimal` branch, so a decimal fell through to the `DlgString`
+  default while `Fr010FieldMapping.ScalarMirrorType` typed the same mirror property `decimal?`:
+  `error CS0029: Cannot implicitly convert type 'string' to 'decimal?'`. A decimal **array**
+  broke the same way with `CS0266` (`IReadOnlyList<string?>` → `IReadOnlyList<decimal?>`),
+  because the delegating mirror kind-types array elements through `ScalarMirrorType` too. Only
+  the delegating path was affected — that is the path for a field reached through a nested
+  object or an array-of-objects, so a flat top-level payload went through the self-contained
+  reader, which always had its Decimal branch. Fixed by adding the branch plus a `DlgDecimal`
+  helper mirroring `ExtractMap.AsDecimal`'s never-throws contract (an out-of-range double
+  degrades to null rather than throwing `OverflowException` mid-parse, which is the point of a
+  *lenient* extract). `ScalarMirrorType`'s doc-comment had claimed the self-contained and
+  delegating mirrors were "in lock-step" with nothing testing it; a new gate now compiles
+  generated output for **every** scalar subtype in `FIELD_SUBTYPES`, in both the single and the
+  array position, so a newly registered subtype cannot quietly take a mismatched default.
+
+- **C#: the generated `AppDbContext` failed to compile when an entity name collided with a
+  `DbSet` property name.** The reference-FK configuration named its column through
+  `nameof(<Owner>.<Prop>)`, an expression sitting inside the `DbContext` class body — where C#
+  simple-name lookup binds `<Owner>` to a *member* of the context before it considers a type of
+  the same name, and the context declares one `DbSet` per entity. Reachable from stock
+  metadata, not just exotic input: `Pluralize("Address") == "Addresses"`, so a model carrying
+  both an `Address` and an `Addresses` entity emitted `nameof(Addresses.AddressId)`, bound
+  `Addresses` to `DbSet<Address>`, and failed with `CS1061`. Now emitted as a typed lambda —
+  `.HasForeignKey(e => e.AddressId)`, or `.HasForeignKey(e => new { e.OrgId, e.SiteId })` for a
+  composite — whose parameter is local and therefore unshadowable, and which unlike a bare
+  string literal keeps the property name compile-checked. The M:N `UsingEntity<Through>(...)`
+  sides carried the identical hazard and were converted too.
+
+- **`meta init --refresh-docs` no longer reports a scaffold it did not perform.** On an
+  established project the refresh-only path did the right thing — agent context refreshed in
+  place, metadata, `.metaobjects/config.json`, `codegen/generators/` and
+  `metaobjects.config.ts` all left alone, nothing created — but then printed the full first-run
+  banner: "Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts", "Codegen
+  generators copied to codegen/generators/", and next-steps telling you to set
+  `"type": "module"`. It read as though the command had just scaffolded over your project. The
+  output now reports the refresh and states what was left untouched. `--refresh-docs` on a
+  repo that is *not* yet initialized still falls through to a full init and still prints the
+  scaffold banner, so the branch keys off what actually happened rather than off the flag.
+
+- **Java: the generated extract mapper did not compile for most scalar subtypes.** A
+  responding `template.prompt` types its `<Template>Response` record through
+  `SpringTypeMapper.javaTypeName`, which is richly kind-typed (`BigDecimal`, `LocalDate`,
+  `LocalTime`, `Instant`, `UUID`, `URI`, `InetAddress`, `Float`, `Long` for currency) — while
+  `SpringOutputParserGenerator`'s mapper recognised only Integer/Long/Double/Boolean and fell
+  through to `ExtractMap.asString` for everything else, with **every** scalar array going to
+  `asStringList`. Each mismatch is `incompatible types` at compile time: **9 of 15 scalar
+  subtypes as a single component, 13 of 15 as an array**. It shipped because no test payload in
+  the module carried a decimal, date, time, timestamp, currency, uuid, uri or inet — and
+  because javac reports only the FIRST bad argument of a constructor call, so even a fixture
+  with several would have looked like one defect (which is exactly how it was first reported,
+  as a decimal-only bug). The record stays strictly typed per ADR-0052; the generated parser now
+  coerces on the way in, with never-throws helpers emitted only where used. A new per-subtype
+  gate compiles generated output for every subtype in both positions.
+
+- **Java: `MetaObjectExtractor.assemble` violated its own documented never-throws contract.**
+  Its javadoc promises the assembled object comes back with malformed data already classified
+  into the report and no exception — but the per-field write goes through `DataConverter`, which
+  throws on a value it cannot convert. One unconvertible component therefore destroyed the
+  entire extract, the opposite of the lenient tier's purpose: a model answering `"31/12/2026"`
+  for one date should cost you that date, not the twenty fields beside it that parsed. The
+  component is now left unset, which is what "lost" already means everywhere else in that pass.
+
+- **Java: an unparseable decimal became `0` instead of null.** `DataConverter.toBigDecimal`
+  caught the `NumberFormatException` and returned `BigDecimal.ZERO` — the one wrong answer
+  available, because `0` is a plausible amount, so unreadable input reached a money field as a
+  real-looking value with nothing to distinguish it from a genuine zero. Every sibling
+  converter (`toInt` / `toLong` / `toDouble` / `toFloat`) throws for the same input; decimal
+  was the lone exception. It now throws too, and the lenient extract tier's never-throws guard
+  turns that into a lost component — so the answer there is `null`, which is the honest one.
+
+- **Java/Kotlin: a declared `field.decimal @isArray` was silently dropped.** `DataTypes` had no
+  `DECIMAL_ARRAY`, and `arrayTypeFor(DECIMAL)` mapped decimal to ITSELF with a comment saying
+  arrays-of-decimal "aren't in the metamodel" so the declaration would "degrade gracefully". It
+  did not degrade gracefully: the loader accepts the declaration, all five ports generate code
+  for it, and C# populates it correctly (now pinned by value in
+  `Fr010DelegatingMirrorLockStepTests`) — so this was a JVM gap presented as a design position,
+  not a metamodel rule. Added `DECIMAL_ARRAY` plus a `toBigDecimalArray` that element-converts
+  through `toBigDecimal` rather than a double, so precision survives the round trip. The new
+  member takes id 22 rather than a slot beside `DECIMAL=10`: those ids are persisted
+  identifiers, and renumbering the existing members to keep the enum tidy would silently
+  repoint stored data. Kotlin inherits the fix — it consumes the same `metadata` module — and
+  C#, TypeScript and Python needed no change (that conversion table is JVM-only; TS binds
+  `field.decimal` to `string` and Python to `Decimal`).
+
+- **Java: `DataConverter.toDate` could not parse an ISO-8601 date.** The `String` arm was a bare
+  `Long.parseLong`, so it accepted epoch milliseconds and nothing else — a plain `"2026-03-04"`
+  threw `NumberFormatException`. Since that is the form `normalization.md` puts on the wire, no
+  `field.date` or `field.timestamp` could be assembled from its own wire representation. It now
+  accepts epoch millis (tried first, and only for an all-digit string, so every value that
+  parsed before still parses identically) plus ISO instant, zone-less date-time, and date-only
+  forms. Unparseable input still throws, preserving the failure mode for callers outside the
+  lenient tier.
+
+### Added
+
+- **C#: `DbContextGenerator.EmitsReferenceForeignKeys`, an opt-out for the reference-FK
+  configuration.** The navigation-less `HasOne<Target>()` overload that configuration uses is
+  correct *because* the stock entity generator emits no reference navigations (ADR-0038
+  replaced reverse navigation with explicit FK finders) — a premise this generator cannot
+  detect, and one that does not hold for an adopter who substitutes their own entity generator
+  and emits navigations. There, EF's conventions discover those navigations and build their own
+  relationship over the same FK column, and a navigation-less config claiming that column
+  leaves the convention-built one unable to identify its dependent ("The dependent side could
+  not be determined for the one-to-one relationship between 'X.Y' and 'Y.X'") — failing model
+  validation, which takes down every query in the application rather than just that
+  relationship. Override the property to `false` and configure those relationships yourself;
+  nothing else the generator emits changes. Documented in
+  [`relationships.md`](docs/features/relationships.md).
+
+- **The extract engine's `FieldKind` vocabulary is now gated across ports**
+  (`scripts/check-extract-field-kinds.mjs`, `gates` lane). Every port's extract engine runs
+  `fixtures/extract-conformance/`, and that corpus's `schema.json` `kind` values ARE this
+  vocabulary — so a port that adds or drops a kind changes what the shared corpus can express
+  while every existing fixture keeps passing. The drift is invisible by construction, and it had
+  already happened: C# carries a `Decimal` kind no other port has and no fixture exercises. The
+  gate reads each port's real definition rather than a copied list (an unrecognised declaration
+  shape fails loudly instead of reporting an empty set, which would read as "no drift"), and it
+  fails if Kotlin ever grows its own `FieldKind` — it ships no extract engine, driving the shared
+  Java one. Deviations pass only when
+  [`expected-field-kinds.json`](fixtures/extract-conformance/expected-field-kinds.json) records
+  them with a reason; the C# one is recorded there, including why deleting it is not the
+  one-liner it looks like (`ExtractMap.AsDecimal` has no string arm, so an engine that stopped
+  producing `decimal` would silently return null for every decimal). A recorded deviation that
+  is no longer true also fails, so the record cannot go stale.
+
 ## [1.0.4] — 2026-09-14
 
 _All four registries publish: npm `1.0.4` (full lockstep across all 14 `@metaobjectsdev/*`

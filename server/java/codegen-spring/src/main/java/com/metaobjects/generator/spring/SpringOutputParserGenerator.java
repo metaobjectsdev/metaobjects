@@ -173,6 +173,13 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         // `NpcTurnResponse`. Pairs with SpringPayloadGenerator's matching
         // capitalisation so the parser's record reference stays consistent.
         String parserClass = SpringNaming.parserName(templateShort);
+        // Per-template coercion state. Carried as fields rather than added parameters so every
+        // protected seam here (emitMapperMethods / emitMapper / mapperArgForField — ADR-0002
+        // extension points) keeps its signature: a subclass overriding mapperArgForField still
+        // participates, which a new overload would have quietly bypassed. Reset per template
+        // because one loader run emits a parser per responding prompt.
+        this.usedCoercions = new java.util.LinkedHashSet<>();
+        this.currentParserClass = parserClass;
         // ADR-0052: the shape parsed INTO is @responseRef — the reply — never @payloadRef,
         // which types the request this prompt renders outbound.
         String payloadClass = SpringNaming.responseName(templateShort);
@@ -254,7 +261,8 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
             // ---- Generated ValueObject(Map) -> typed-record mappers (payload + nested, deduped) ----
             emitMapperMethods(src, payloadVo, loader, payloadClass, nameMap);
-            appendMapperHelpers(src);
+            // AFTER the mappers: emitting them is what populates usedCoercions.
+            appendMapperHelpers(src, usedCoercions);
         }
         src.append("}\n");
 
@@ -382,17 +390,106 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
                 + ".map(" + enumType + "::valueOf).orElse(null)";
         }
 
-        // Scalar arrays.
+        // Scalar arrays: coerce each element to the record's DECLARED element type. The
+        // element coercion is chosen by the same function that chose the declared type
+        // (coercerFor <-> SpringTypeMapper.javaTypeName), so the two cannot drift.
         if (field.isArrayType()) {
-            return "ExtractMap.asStringList(d, \"" + name + "\")";
+            String coercer = coercerFor(field);
+            // A String-typed element needs no coercion — keep the long-standing asStringList
+            // call so output for string (and enum-as-string) arrays is byte-identical.
+            if (COERCE_STRING.equals(coercer)) return "ExtractMap.asStringList(d, \"" + name + "\")";
+            usedCoercions.add(coercer);
+            usedCoercions.add(COERCE_LIST);
+            return "coerceList(d, \"" + name + "\", " + currentParserClass + "::" + coercer + ")";
         }
 
-        // Scalars.
+        // Scalars: the four kinds the extract ENGINE itself produces (FieldKind INT/LONG/
+        // DOUBLE/BOOLEAN) read straight through ExtractMap; everything else the engine hands
+        // back as a String while the record declares a richer type, so it needs a coercion.
         if (field instanceof com.metaobjects.field.IntegerField) return "ExtractMap.asInt(d, \"" + name + "\")";
-        if (field instanceof com.metaobjects.field.LongField)    return "ExtractMap.asLong(d, \"" + name + "\")";
+        if (field instanceof com.metaobjects.field.LongField && !(field instanceof com.metaobjects.field.CurrencyField))
+            return "ExtractMap.asLong(d, \"" + name + "\")";
         if (field instanceof com.metaobjects.field.DoubleField)  return "ExtractMap.asDouble(d, \"" + name + "\")";
         if (field instanceof com.metaobjects.field.BooleanField) return "ExtractMap.asBool(d, \"" + name + "\")";
-        return "ExtractMap.asString(d, \"" + name + "\")";
+
+        String coercer = coercerFor(field);
+        // String-typed component: read straight through, so output stays byte-identical for
+        // field.string / field.enum and for the @lenient uri/inet degradations.
+        if (COERCE_STRING.equals(coercer)) return "ExtractMap.asString(d, \"" + name + "\")";
+        usedCoercions.add(coercer);
+        return coercer + "(d.get(\"" + name + "\"))";
+    }
+
+    // -------------------------------------------------------------------------
+    // Scalar coercion — pairing the reader to the record's DECLARED component type
+    // -------------------------------------------------------------------------
+    //
+    // The extract ENGINE is deliberately narrow: FieldKind is
+    // {STRING, INT, LONG, DOUBLE, BOOLEAN, ENUM, OBJECT}, and MetaObjectExtractor.scalarKind
+    // maps every other subtype to STRING. So for a field.decimal / date / time / timestamp /
+    // currency / uuid / uri / inet / float the assembled value is a String — while the
+    // generated record declares BigDecimal / LocalDate / LocalTime / Instant / Long / UUID /
+    // URI / InetAddress / Float via SpringTypeMapper.javaTypeName.
+    //
+    // That mismatch was a COMPILE failure, not a silent one: 9 of 15 scalar subtypes as a
+    // single component and 13 of 15 as an array emitted `incompatible types`. It went
+    // unnoticed because no test payload in this module carried any of them, and because javac
+    // reports only the FIRST bad argument of a constructor invocation — so even a fixture with
+    // several would have looked like one defect.
+    //
+    // The fix keeps the record STRICTLY typed (ADR-0052: a responding prompt's
+    // <Template>Response is a strict record, and a caller asking for a declared decimal should
+    // get a BigDecimal) and coerces on the way in, in the generated parser. Deliberately NOT
+    // by widening ExtractMap: these coercions are parser-local, and the lenient tier's
+    // never-throws contract is easier to keep honest next to the mappers that depend on it.
+    //
+    // coercerFor() below MUST stay in lock-step with SpringTypeMapper.javaTypeName — it is the
+    // same instanceof chain, in the same order, answering "what reader produces that type".
+    // GeneratedScalarExtractLockStepTest compiles generated output for every scalar subtype in
+    // both positions, so a new subtype cannot silently take a reader that does not match.
+
+    private static final String COERCE_STRING   = "coerceString";
+    private static final String COERCE_LIST     = "coerceList";
+
+    /** Coercion helpers the CURRENT template's mappers referenced; only these are emitted. */
+    private java.util.Set<String> usedCoercions = new java.util.LinkedHashSet<>();
+    /** The current template's parser class name — the qualifier for a {@code ::coerceX} method ref. */
+    private String currentParserClass = "";
+
+    /**
+     * The generated coercion-helper name producing the Java type
+     * {@link SpringTypeMapper#javaTypeName} declares for {@code field} — or
+     * {@link #COERCE_STRING} when the declared type is already {@code String} (no coercion
+     * needed; the caller reads straight through {@code ExtractMap.asString}).
+     *
+     * <p>For an ARRAY field this answers for the ELEMENT: {@code javaTypeName} returns the
+     * element type and {@code SpringPayloadGenerator} does the {@code List<...>} wrap.</p>
+     */
+    private static String coercerFor(MetaField<?> field) {
+        if (field instanceof EnumField) return COERCE_STRING;              // string-backed wire form
+        if (field instanceof com.metaobjects.field.IntegerField)  return "coerceInt";
+        if (field instanceof com.metaobjects.field.CurrencyField)                       return "coerceLong"; // minor units
+        if (field instanceof com.metaobjects.field.LongField)     return "coerceLong";
+        if (field instanceof com.metaobjects.field.DoubleField)   return "coerceDouble";
+        if (field instanceof com.metaobjects.field.FloatField)                          return "coerceFloat";
+        if (field instanceof com.metaobjects.field.DecimalField)                        return "coerceDecimal";
+        if (field instanceof com.metaobjects.field.BooleanField)  return "coerceBool";
+        if (field instanceof com.metaobjects.field.DateField)                           return "coerceDate";
+        if (field instanceof com.metaobjects.field.TimeField)                           return "coerceTime";
+        if (field instanceof com.metaobjects.field.TimestampField)
+            // Mirrors javaTypeName's split: plain timestamp is an absolute Instant; the
+            // @localTime opt-out is a zone-less LocalDateTime, which Instant cannot parse.
+            return SpringTypeMapper.javaTypeName(field).endsWith("LocalDateTime")
+                ? "coerceLocalDateTime" : "coerceInstant";
+        if (field instanceof com.metaobjects.field.UuidField)                           return "coerceUuid";
+        // #234: a @lenient uri/inet degrades to a plain String in the record — ask
+        // javaTypeName rather than re-deriving that rule here.
+        if (field instanceof com.metaobjects.field.UriField)
+            return SpringTypeMapper.javaTypeName(field).endsWith("URI") ? "coerceUri" : COERCE_STRING;
+        if (field instanceof com.metaobjects.field.InetField)
+            return SpringTypeMapper.javaTypeName(field).endsWith("InetAddress")
+                ? "coerceInet" : COERCE_STRING;
+        return COERCE_STRING;
     }
 
     /**
@@ -421,6 +518,16 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      * function, skipping non-Map elements). Emitted once per parser class.
      */
     protected static void appendMapperHelpers(StringBuilder src) {
+        appendMapperHelpers(src, java.util.Set.of());
+    }
+
+    /**
+     * As {@link #appendMapperHelpers(StringBuilder)}, plus the scalar coercion helpers named in
+     * {@code usedCoercions}. Only the ones the mappers actually call are emitted: an unused
+     * private static method is dead weight in every generated parser and trips the
+     * unused-private lint some adopters build with.
+     */
+    protected static void appendMapperHelpers(StringBuilder src, java.util.Set<String> usedCoercions) {
         src.append("\n");
         src.append("    /** Null-tolerant cast of an assembled value to a Map (a ValueObject IS a Map). */\n");
         src.append("    @SuppressWarnings(\"unchecked\")\n");
@@ -440,6 +547,144 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         src.append("            if (m != null) out.add(fn.apply(m));\n");
         src.append("        }\n");
         src.append("        return out;\n");
+        src.append("    }\n");
+        appendCoercionHelpers(src, usedCoercions);
+    }
+
+    /**
+     * Emit the scalar coercion helpers named in {@code used}. Every one is NEVER-THROWS: the
+     * lenient tier's whole contract is that one malformed component becomes null rather than
+     * losing the entire extract, so a bad date string must not take the other twenty fields
+     * with it.
+     */
+    private static void appendCoercionHelpers(StringBuilder src, java.util.Set<String> used) {
+        if (used.isEmpty()) return;
+        src.append("\n");
+        src.append("    // ---- scalar coercions (generated; never throw — a malformed value becomes null) ----\n");
+
+        if (used.contains(COERCE_LIST)) {
+            src.append("\n");
+            src.append("    /** Coerce each element of an assembled List via {@code fn}; null/absent -> null. */\n");
+            src.append("    private static <T> java.util.List<T> coerceList(\n");
+            src.append("            java.util.Map<String, Object> d, String key, java.util.function.Function<Object, T> fn) {\n");
+            src.append("        Object v = d == null ? null : d.get(key);\n");
+            src.append("        if (!(v instanceof java.util.List<?> list)) return null;\n");
+            src.append("        java.util.List<T> out = new java.util.ArrayList<>(list.size());\n");
+            src.append("        for (Object elem : list) out.add(fn.apply(elem));\n");
+            src.append("        return out;\n");
+            src.append("    }\n");
+        }
+        // A number arrives either already-typed (a JSON number the engine boxed) or as the
+        // String the engine produces for a STRING-kind field — both are accepted.
+        emitNumeric(src, used, "coerceInt",    "Integer", "intValue",    "Integer.parseInt");
+        emitNumeric(src, used, "coerceLong",   "Long",    "longValue",   "Long.parseLong");
+        emitNumeric(src, used, "coerceDouble", "Double",  "doubleValue", "Double.parseDouble");
+        emitNumeric(src, used, "coerceFloat",  "Float",   "floatValue",  "Float.parseFloat");
+
+        if (used.contains("coerceDecimal")) {
+            src.append("\n");
+            src.append("    private static java.math.BigDecimal coerceDecimal(Object v) {\n");
+            src.append("        if (v instanceof java.math.BigDecimal b) return b;\n");
+            src.append("        if (v == null) return null;\n");
+            src.append("        try {\n");
+            // Via toString(), never doubleValue(): new BigDecimal(0.1d) is
+            // 0.1000000000000000055511151231257827, and precision is the entire reason the
+            // model said `decimal` instead of `double`.
+            src.append("            return new java.math.BigDecimal(v.toString().trim());\n");
+            src.append("        } catch (NumberFormatException e) { return null; }\n");
+            src.append("    }\n");
+        }
+        if (used.contains("coerceBool")) {
+            src.append("\n");
+            src.append("    private static Boolean coerceBool(Object v) {\n");
+            src.append("        if (v instanceof Boolean b) return b;\n");
+            src.append("        if (v == null) return null;\n");
+            src.append("        String s = v.toString().trim();\n");
+            src.append("        if (\"true\".equalsIgnoreCase(s)) return Boolean.TRUE;\n");
+            src.append("        if (\"false\".equalsIgnoreCase(s)) return Boolean.FALSE;\n");
+            src.append("        return null;\n");
+            src.append("    }\n");
+        }
+        // The temporal coercions take an extra `java.util.Date` arm: MetaField.setObject routes
+        // through DataConverter, so by the time the assembled ValueObject reaches these the value
+        // is ALREADY a java.util.Date — not the wire String. The String arm still matters for a
+        // value that arrived through some other path, and costs one instanceof.
+        emitTemporal(src, used, "coerceDate",          "java.time.LocalDate",     "java.time.LocalDate.parse",     ".atZone(java.time.ZoneId.systemDefault()).toLocalDate()");
+        emitTemporal(src, used, "coerceTime",          "java.time.LocalTime",     "java.time.LocalTime.parse",     ".atZone(java.time.ZoneId.systemDefault()).toLocalTime()");
+        emitTemporal(src, used, "coerceInstant",       "java.time.Instant",       "java.time.Instant.parse",       "");
+        emitTemporal(src, used, "coerceLocalDateTime", "java.time.LocalDateTime", "java.time.LocalDateTime.parse", ".atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()");
+        emitParsed(src, used, "coerceUuid", "java.util.UUID", "java.util.UUID.fromString", "IllegalArgumentException");
+
+        if (used.contains("coerceUri")) {
+            src.append("\n");
+            src.append("    private static java.net.URI coerceUri(Object v) {\n");
+            src.append("        if (v instanceof java.net.URI u) return u;\n");
+            src.append("        if (v == null) return null;\n");
+            src.append("        try { return new java.net.URI(v.toString().trim()); }\n");
+            src.append("        catch (java.net.URISyntaxException e) { return null; }\n");
+            src.append("    }\n");
+        }
+        if (used.contains("coerceInet")) {
+            src.append("\n");
+            src.append("    /** IP LITERALS only — see the guard below. */\n");
+            src.append("    private static java.net.InetAddress coerceInet(Object v) {\n");
+            src.append("        if (v instanceof java.net.InetAddress a) return a;\n");
+            src.append("        if (v == null) return null;\n");
+            src.append("        String s = v.toString().trim();\n");
+            // InetAddress.getByName() performs a DNS LOOKUP for anything that is not an IP
+            // literal. A parser reading untrusted model output must never make a network call
+            // (latency, and an attacker-chosen hostname becomes an outbound request), so a
+            // non-literal is rejected outright rather than resolved. Java 21 has no
+            // literal-only parser — InetAddress.ofLiteral is 22+ — hence the shape guard.
+            src.append("        if (!s.matches(\"[0-9.]+|[0-9A-Fa-f:.%\\\\[\\\\]]+\")) return null;\n");
+            src.append("        try { return java.net.InetAddress.getByName(s); }\n");
+            src.append("        catch (java.net.UnknownHostException e) { return null; }\n");
+            src.append("    }\n");
+        }
+    }
+
+    /** A Number-or-String numeric coercion: {@code <boxed> <name>(Object)}. */
+    private static void emitNumeric(StringBuilder src, java.util.Set<String> used,
+                                    String name, String boxed, String numberAccessor, String parser) {
+        if (!used.contains(name)) return;
+        src.append("\n");
+        src.append("    private static ").append(boxed).append(" ").append(name).append("(Object v) {\n");
+        src.append("        if (v instanceof Number n) return n.").append(numberAccessor).append("();\n");
+        src.append("        if (v == null) return null;\n");
+        src.append("        try { return ").append(parser).append("(v.toString().trim()); }\n");
+        src.append("        catch (NumberFormatException e) { return null; }\n");
+        src.append("    }\n");
+    }
+
+    /**
+     * A temporal coercion: already-typed value straight through, a {@code java.util.Date} (what
+     * DataConverter produced during assembly) converted via its instant, else parsed from the
+     * wire String. {@code fromInstant} is the suffix applied to {@code d.toInstant()} — empty
+     * when the target IS an Instant.
+     */
+    private static void emitTemporal(StringBuilder src, java.util.Set<String> used,
+                                      String name, String type, String parser, String fromInstant) {
+        if (!used.contains(name)) return;
+        src.append("\n");
+        src.append("    private static ").append(type).append(" ").append(name).append("(Object v) {\n");
+        src.append("        if (v instanceof ").append(type).append(" t) return t;\n");
+        src.append("        if (v == null) return null;\n");
+        src.append("        if (v instanceof java.util.Date d) return d.toInstant()").append(fromInstant).append(";\n");
+        src.append("        try { return ").append(parser).append("(v.toString().trim()); }\n");
+        src.append("        catch (java.time.format.DateTimeParseException e) { return null; }\n");
+        src.append("    }\n");
+    }
+
+    /** A parse-from-String coercion that passes an already-typed value straight through. */
+    private static void emitParsed(StringBuilder src, java.util.Set<String> used,
+                                   String name, String type, String parser, String thrown) {
+        if (!used.contains(name)) return;
+        src.append("\n");
+        src.append("    private static ").append(type).append(" ").append(name).append("(Object v) {\n");
+        src.append("        if (").append(type).append(".class.isInstance(v)) return ").append(type).append(".class.cast(v);\n");
+        src.append("        if (v == null) return null;\n");
+        src.append("        try { return ").append(parser).append("(v.toString().trim()); }\n");
+        src.append("        catch (").append(thrown).append(" e) { return null; }\n");
         src.append("    }\n");
     }
 

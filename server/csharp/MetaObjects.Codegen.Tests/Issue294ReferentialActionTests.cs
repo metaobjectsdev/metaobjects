@@ -81,9 +81,13 @@ public class Issue294ReferentialActionTests
         var (source, _) = Generate(TwoEntityModel());
         // The FK must be established by the config call itself — never a later
         // GetForeignKeys() mutation, which TPH finalization can silently discard (#294).
+        // The FK property is named by a typed lambda, not nameof(Week.ProgramId): this line
+        // lands inside the DbContext class body, where nameof's simple-name lookup binds `Week`
+        // to a same-named DbSet property in preference to the type (see
+        // DbContextForeignKeyConfigTests / ForeignKeyExpression).
         Assert.Equal(
             "modelBuilder.Entity<Week>().HasOne<Program>().WithMany()"
-            + ".HasForeignKey(nameof(Week.ProgramId)).OnDelete(DeleteBehavior.Cascade);",
+            + ".HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);",
             WeekFkLine(source));
         Assert.DoesNotContain("GetForeignKeys", source);
     }

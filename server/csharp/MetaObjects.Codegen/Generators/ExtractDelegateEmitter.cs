@@ -353,12 +353,27 @@ internal static class ExtractDelegateEmitter
         return $"{ScalarReader(field.SubType)}(ReadProp(o, {key}))";
     }
 
-    /// <summary>The per-kind <c>Dlg*</c> nullable-scalar reader name for a (non-enum) scalar subtype.</summary>
+    /// <summary>
+    /// The per-kind <c>Dlg*</c> nullable-scalar reader name for a (non-enum) scalar subtype.
+    ///
+    /// <para>MUST stay exhaustive over every kind <see cref="Fr010FieldMapping.ScalarKind"/> can
+    /// return, because this reader is assigned into a mirror property typed by
+    /// <see cref="Fr010FieldMapping.ScalarMirrorType"/> — and the delegating mirror types a scalar
+    /// ARRAY's element the same way (<see cref="NestedMirrorType"/>), so a missing kind breaks both
+    /// positions. A kind that falls through to the <c>DlgString</c> default while
+    /// <c>ScalarMirrorType</c> gives it a value type emits code that does not compile: <c>Decimal</c>
+    /// was missing here, producing <c>CS0029 string -> decimal?</c> on a single field and
+    /// <c>CS0266 IReadOnlyList&lt;string?&gt; -> IReadOnlyList&lt;decimal?&gt;</c> on an array.
+    /// Only the DELEGATING path was affected (a nested / array-of-object reach); a flat top-level
+    /// payload goes through <see cref="Fr010FieldMapping.ExtractMapCall"/>, which always had its
+    /// Decimal branch. Gated per-subtype by Fr010DelegatingMirrorLockStepTests.</para>
+    /// </summary>
     private static string ScalarReader(string subType) => Fr010FieldMapping.ScalarKind(subType) switch
     {
         "Int" => "DlgInt",
         "Long" => "DlgLong",
         "Double" => "DlgDouble",
+        "Decimal" => "DlgDecimal",
         "Boolean" => "DlgBool",
         _ => "DlgString",
     };
@@ -415,6 +430,27 @@ internal static class ExtractDelegateEmitter
         sb.AppendLine("        double d => d,");
         sb.AppendLine("        global::System.IConvertible => global::System.Convert.ToDouble(v, global::System.Globalization.CultureInfo.InvariantCulture),");
         sb.AppendLine("        _ => double.TryParse(v.ToString(), global::System.Globalization.NumberStyles.Any, global::System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : (double?)null,");
+        sb.AppendLine("    };");
+        sb.AppendLine();
+        // Mirrors ExtractMap.AsDecimal's never-throws contract (the self-contained path's reader):
+        // integer kinds widen losslessly, a boxed double/float converts (lossy by nature of the
+        // source), anything non-numeric is null. The explicit range guard is what keeps the cast
+        // from throwing OverflowException — `(decimal)db` does, and a LENIENT extract must degrade
+        // an out-of-range number to null rather than blow up the whole parse. The bound is a
+        // conservative literal below decimal.MaxValue (7.9228e28) because (double)decimal.MaxValue
+        // rounds UP, so comparing against it would admit values that still overflow the cast.
+        // NaN / +-Infinity fail the range test and fall to null for free.
+        sb.AppendLine("    private static decimal? DlgDecimal(object? v) => v switch");
+        sb.AppendLine("    {");
+        sb.AppendLine("        null => null,");
+        sb.AppendLine("        decimal m => m,");
+        sb.AppendLine("        long l => l,");
+        sb.AppendLine("        int i => i,");
+        sb.AppendLine("        short s => s,");
+        sb.AppendLine("        byte b => b,");
+        sb.AppendLine("        double db => db is >= -7.9e28 and <= 7.9e28 ? (decimal)db : (decimal?)null,");
+        sb.AppendLine("        float f => f is >= -7.9e28f and <= 7.9e28f ? (decimal)f : (decimal?)null,");
+        sb.AppendLine("        _ => decimal.TryParse(v.ToString(), global::System.Globalization.NumberStyles.Float | global::System.Globalization.NumberStyles.AllowThousands, global::System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null,");
         sb.AppendLine("    };");
         sb.AppendLine();
         sb.AppendLine("    private static bool? DlgBool(object? v) => v switch");

@@ -50,6 +50,7 @@ public final class DataConverter
 				return unsupported(dataType,val);
 
 			case DATE_ARRAY: return toDateArray( val );
+			case DECIMAL_ARRAY: return toBigDecimalArray( val );
 			case STRING_ARRAY: return toStringArray( val );
 			case OBJECT_ARRAY: return toObjectArray( val );
 
@@ -337,7 +338,13 @@ public final class DataConverter
 	    if ( val instanceof String ) {
 	        String s = ((String) val).trim();
 	        if ( s.isEmpty() ) return null;
-	        try { return new java.math.BigDecimal( s ); } catch ( NumberFormatException ignored ) { return java.math.BigDecimal.ZERO; }
+	        // Let NumberFormatException propagate, exactly as toInt/toLong/toDouble/toFloat do
+	        // for the same input. This used to swallow it and return ZERO, which is the one
+	        // wrong answer available: 0 is a PLAUSIBLE amount, so unreadable input became a
+	        // real-looking money value with nothing to distinguish it from a genuine zero.
+	        // Callers that must not fail — the lenient extract tier — already treat a throw
+	        // here as "component lost" (MetaObjectExtractor.assemble), which yields null.
+	        return new java.math.BigDecimal( s );
 	    }
 	    if ( val instanceof Boolean ) return ((Boolean) val) ? java.math.BigDecimal.ONE : java.math.BigDecimal.ZERO;
 	    if ( val instanceof java.math.BigInteger ) return new java.math.BigDecimal( (java.math.BigInteger) val );
@@ -351,8 +358,9 @@ public final class DataConverter
 	    }
 	    if ( val instanceof Date ) return java.math.BigDecimal.valueOf( ((Date) val).getTime() );
 
-	    try { return new java.math.BigDecimal( val.toString().trim() ); } catch ( NumberFormatException ignored ) {}
-	    return java.math.BigDecimal.ZERO;
+	    // Same contract as the String arm above and as every sibling converter's tail: parse,
+	    // and throw if it is not a number. No ZERO fallback.
+	    return new java.math.BigDecimal( val.toString().trim() );
 	} // toBigDecimal
 
 	/**
@@ -625,8 +633,9 @@ public final class DataConverter
 			return (Date) val;
 	    }
 		else if ( val instanceof String ) {
-			if (((String)val).isEmpty()) return null;
-			else return new Date(Long.parseLong((String) val));
+			String s = ((String) val).trim();
+			if (s.isEmpty()) return null;
+			return parseDateString(s);
 		}
 	    else if ( val instanceof Boolean ) {
 	        if ((Boolean) val) return new Date();
@@ -654,6 +663,53 @@ public final class DataConverter
 	    // Catch anything else
 		return new Date( Long.parseLong( val.toString() ));
 	} // toDate
+
+	/**
+	 * Parse a date STRING into a {@link Date}: epoch milliseconds, or an ISO-8601 date /
+	 * date-time.
+	 *
+	 * <p>Epoch millis is tried first, and only for an all-digit string, so every value that
+	 * parsed before this method existed still parses to the same instant.</p>
+	 *
+	 * <p>The ISO forms are the ones normalization.md puts on the wire, and they could not be
+	 * read at all before: this arm was a bare {@code Long.parseLong}, so a perfectly valid
+	 * {@code "2026-03-04"} threw {@link NumberFormatException}. That made every
+	 * {@code field.date} / {@code field.timestamp} unassemblable from its own wire form —
+	 * including through {@code MetaObjectExtractor}, whose contract says it never throws.</p>
+	 *
+	 * <p>A zone-less form is resolved in the SYSTEM default zone, matching what
+	 * {@code new Date(y, m, d)} has always meant for a {@code java.util.Date} (which has no
+	 * zone of its own). An offset/Z-bearing form uses the offset it carries.</p>
+	 *
+	 * @throws NumberFormatException when the string is neither — preserving the previous
+	 *         failure MODE (callers outside the lenient tier still fail loudly on garbage)
+	 *         while widening what counts as valid.
+	 */
+	private static Date parseDateString( String s )
+	{
+		if ( EPOCH_MILLIS.matcher(s).matches() ) {
+			return new Date(Long.parseLong(s));
+		}
+		try {
+			// Offset/Z-bearing instant: "2026-03-04T05:06:07Z", "...+01:00".
+			return Date.from(java.time.Instant.parse(s));
+		} catch ( java.time.format.DateTimeParseException ignored ) { /* try the next form */ }
+		try {
+			// Zone-less date-time: "2026-03-04T05:06:07".
+			return Date.from(java.time.LocalDateTime.parse(s)
+					.atZone(java.time.ZoneId.systemDefault()).toInstant());
+		} catch ( java.time.format.DateTimeParseException ignored ) { /* try the next form */ }
+		try {
+			// Date only: "2026-03-04" -> start of that day.
+			return Date.from(java.time.LocalDate.parse(s)
+					.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant());
+		} catch ( java.time.format.DateTimeParseException ignored ) { /* fall through */ }
+		throw new NumberFormatException("For input string: \"" + s + "\"");
+	}
+
+	/** An optionally-negative run of digits — the only shape read as epoch milliseconds. */
+	private static final java.util.regex.Pattern EPOCH_MILLIS =
+			java.util.regex.Pattern.compile("-?\\d+");
 
 	/** Check down scaling for decimals */
 	private static double downScaleCheck( String from, String to, double val, double min, double max ) {
@@ -785,6 +841,41 @@ public final class DataConverter
 	/**
 	 * Convert value to Double array (List&lt;Double&gt;)
 	 */
+	/**
+	 * Convert the object value to a List of BigDecimal.
+	 *
+	 * <p>Element-converts through {@link #toBigDecimal(Object)} rather than a double, so a
+	 * decimal array stays precision-exact — the reason {@code field.decimal} exists at all.
+	 * Shape mirrors {@link #toDoubleArray(Object)} exactly, including the comma-split for a
+	 * single delimited String.</p>
+	 *
+	 * @param val Value
+	 * @return List of BigDecimal
+	 */
+	public static List<java.math.BigDecimal> toBigDecimalArray(Object val) {
+		if (val == null) return null;
+
+		if (val instanceof List<?>) {
+			List<?> list = (List<?>) val;
+			return list.stream()
+				.map(DataConverter::toBigDecimal)
+				.collect(java.util.stream.Collectors.toList());
+		} else if (val instanceof String) {
+			String s = (String) val;
+			if (s.trim().isEmpty()) return new java.util.ArrayList<>();
+
+			if (s.contains(",")) {
+				return java.util.Arrays.stream(s.split(","))
+					.map(item -> toBigDecimal(item.trim()))
+					.collect(java.util.stream.Collectors.toList());
+			} else {
+				return java.util.Arrays.asList(toBigDecimal(s.trim()));
+			}
+		} else {
+			return java.util.Arrays.asList(toBigDecimal(val));
+		}
+	}
+
 	public static List<Double> toDoubleArray(Object val) {
 		if (val == null) return null;
 

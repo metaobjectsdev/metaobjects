@@ -701,3 +701,58 @@ describe("meta init scaffolds a tsconfig for the tier it just handed you", () =>
     expect(existsSync(join(cwd, "tsconfig.codegen.json"))).toBe(false);
   });
 });
+
+describe("initCommand --refresh-docs output (does what it says)", () => {
+  /** Run `initCommand` capturing everything it writes through `log` (which is console.log). */
+  async function runCapturing(args: string[]): Promise<{ code: number; out: string }> {
+    const lines: string[] = [];
+    const realLog = console.log;
+    const realWarn = console.warn;
+    const realErr = console.error;
+    console.log = (...a: unknown[]) => { lines.push(a.join(" ")); };
+    console.warn = (...a: unknown[]) => { lines.push(a.join(" ")); };
+    console.error = (...a: unknown[]) => { lines.push(a.join(" ")); };
+    try {
+      const code = await initCommand(args, cwd);
+      return { code, out: lines.join("\n") };
+    } finally {
+      console.log = realLog;
+      console.warn = realWarn;
+      console.error = realErr;
+    }
+  }
+
+  test("on an established project, reports the docs refresh — not the first-run scaffold banner", async () => {
+    // Establish the project first, so --refresh-docs takes the refresh-ONLY branch.
+    expect(await initCommand([], cwd)).toBe(0);
+    const configBefore = readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8");
+
+    const { code, out } = await runCapturing(["--refresh-docs"]);
+    expect(code).toBe(0);
+
+    // The refresh path writes agent-context docs and NOTHING else. Saying otherwise reads
+    // as though it just scaffolded over an established project — the output described
+    // actions it had not taken.
+    expect(out).not.toContain("Initialized metaobjects/");
+    expect(out).not.toContain("Codegen generators copied");
+    expect(out).not.toContain("Next steps:");
+    expect(out).not.toContain('"type": "module"');
+    expect(out).not.toContain("meta migrate --from-db");
+
+    // It should say what it DID do.
+    expect(out).toContain("Refreshed");
+    expect(out).toContain(".metaobjects/AGENTS.md");
+
+    // And the claim has to be true: nothing else moved.
+    expect(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8")).toBe(configBefore);
+  });
+
+  test("a first run is still a first run — the scaffold banner is unchanged by --refresh-docs", async () => {
+    // --refresh-docs on a not-yet-initialized repo deliberately falls through to a full
+    // init (init.ts), so it must still print the scaffold banner.
+    const { code, out } = await runCapturing(["--refresh-docs"]);
+    expect(code).toBe(0);
+    expect(out).toContain("Initialized metaobjects/");
+    expect(out).toContain("Next steps:");
+  });
+});

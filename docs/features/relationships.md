@@ -393,8 +393,18 @@ KEY ... ON DELETE CASCADE` in the Postgres DDL.
 ```csharp
 // generated/AppDbContext.cs (excerpt)
 modelBuilder.Entity<Post>().HasOne<Author>().WithMany()
-    .HasForeignKey(nameof(Post.AuthorId)).OnDelete(DeleteBehavior.Cascade);
+    .HasForeignKey(e => e.AuthorId).OnDelete(DeleteBehavior.Cascade);
 ```
+
+The FK property is named by a typed lambda, not `nameof(Post.AuthorId)`. This line sits
+inside the generated `DbContext` class body, where C# simple-name lookup binds `Post` to a
+*member* of the context before it considers the type — and the context declares one `DbSet`
+property per entity. So an entity whose type name equals any `DbSet` property name made
+`nameof` read the `DbSet` and fail to compile (`CS1061`), which stock metadata can reach:
+`Pluralize("Address") == "Addresses"`, so a model with both an `Address` and an `Addresses`
+entity broke. A lambda parameter is local, so nothing can shadow it, and unlike a bare string
+literal it keeps the property name compile-checked. A composite reference emits
+`.HasForeignKey(e => new { e.OrgId, e.SiteId })`.
 
 The action rides on the call that establishes the foreign key, never a later
 `GetForeignKeys(...)` mutation: EF Core reconciles TPH relationships *after*
@@ -402,6 +412,26 @@ The action rides on the call that establishes the foreign key, never a later
 silently discards a post-hoc assignment ([#294](https://github.com/metaobjectsdev/metaobjects/issues/294)).
 `WithMany()` is inverse-less because the port emits no reverse collection
 navigations at all — reverse traversal is the explicit FK finders of ADR-0038.
+
+That premise is load-bearing, and it is worth stating as a premise: the
+navigation-**less** `HasOne<Target>()` overload is correct *because* the stock entity
+generator emits no reference navigations. If you substitute your own entity generator and it
+**does** emit navigation properties, EF's conventions discover them and build their own
+relationship over the same FK column — and this navigation-less configuration claiming that
+column leaves the convention-built one unable to identify its dependent
+(`The dependent side could not be determined for the one-to-one relationship between 'X.Y'
+and 'Y.X'`). That fails model validation, and a failed model takes down every query in the
+application, not just the one relationship. The generator cannot detect the situation, so it
+is an opt-out: override `EmitsReferenceForeignKeys` to `false` on `DbContextGenerator` and
+configure those relationships yourself against the navigations only you know about. Nothing
+else the generator emits is affected.
+
+```csharp
+sealed class AppDbContextGenerator : DbContextGenerator
+{
+    protected override bool EmitsReferenceForeignKeys => false;
+}
+```
 
 `@onUpdate` has no EF Core representation (`DeleteBehavior` covers deletes only),
 so it stays a DDL-level fact emitted by the TypeScript-owned migration engine.

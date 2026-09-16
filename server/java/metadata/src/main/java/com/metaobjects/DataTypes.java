@@ -16,8 +16,7 @@ public enum DataTypes {
     STRING(8), DATE(9),
 
     // Exact decimal (BigDecimal-backed; field.decimal). Slot 10 (between DATE=9
-    // and BOOLEAN_ARRAY=11). No DECIMAL_ARRAY — arrays-of-decimal are not a thing
-    // in the metamodel; getArrayEquivalent maps DECIMAL to itself (see below).
+    // and BOOLEAN_ARRAY=11).
     DECIMAL(10),
 
     // Numeric  Arrays
@@ -29,6 +28,18 @@ public enum DataTypes {
 
     // Object and Object Array
     OBJECT(20), OBJECT_ARRAY(21),
+
+    // Exact-decimal array (field.decimal @isArray). Added at 22 rather than beside
+    // DECIMAL=10 because the ids are PERSISTED identifiers — renumbering the existing
+    // members to keep the enum tidy would silently repoint stored data.
+    //
+    // This used to be absent, with getArrayEquivalent mapping DECIMAL to ITSELF so the
+    // declaration "degraded gracefully". It did not degrade gracefully: the loader accepts
+    // field.decimal @isArray, every port generates code for it, and the conversion then
+    // failed and the component was dropped with no error. C# populates the shape correctly
+    // (proven by value in Fr010DelegatingMirrorLockStepTests), so the JVM being unable to
+    // hold it was a port divergence, not a metamodel position.
+    DECIMAL_ARRAY(22),
 
     // Custom
     CUSTOM(99);
@@ -79,6 +90,7 @@ public enum DataTypes {
             case 18: valueClass=List.class; isArray=true; itemClass=String.class;  isStringArray=true;  break;
             case 19: valueClass=List.class; isArray=true; itemClass=Date.class;    isDateArray=true;    break;
             case 21: valueClass=List.class; isArray=true; itemClass=Object.class;  isObjectArray=true;  break;
+            case 22: valueClass=List.class; isArray=true; itemClass=java.math.BigDecimal.class; isNumericArray=true; break;
 
             case 99: valueClass=Object.class; isCustom=true; break;
 
@@ -182,10 +194,7 @@ public enum DataTypes {
             case OBJECT: return OBJECT_ARRAY;
             case CUSTOM: return OBJECT_ARRAY; // Custom objects become object arrays
 
-            // No DECIMAL_ARRAY exists (arrays-of-decimal aren't in the metamodel);
-            // map to itself so @isArray on a decimal degrades gracefully rather
-            // than throwing. Matches the "no array form" intent of slot 10.
-            case DECIMAL: return DECIMAL;
+            case DECIMAL: return DECIMAL_ARRAY;
 
             // Already arrays - return as-is
             case BOOLEAN_ARRAY:
@@ -198,6 +207,7 @@ public enum DataTypes {
             case STRING_ARRAY:
             case DATE_ARRAY:
             case OBJECT_ARRAY:
+            case DECIMAL_ARRAY:
                 return this;
 
             default:

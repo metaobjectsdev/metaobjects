@@ -18,6 +18,19 @@ is byte-identical across ports; raw coercion is not required to be.
 Each `fields[]` entry: `name`, `kind` (`STRING|INT|LONG|DOUBLE|BOOLEAN|ENUM|OBJECT`),
 `required` (bool). Kind-specific keys:
 
+> **The `kind` vocabulary is a cross-port contract, and it is now gated.** Those seven values
+> are the coercion targets every port's extract engine understands, so a port that adds or
+> drops one changes what this corpus can express while every existing case keeps passing —
+> invisible drift by construction. It had already happened: C# carries a `Decimal` kind no
+> other port has and no fixture exercises. The machine-readable set lives in
+> [`expected-field-kinds.json`](expected-field-kinds.json), checked by
+> `scripts/check-extract-field-kinds.mjs` in `ci-local.sh`'s `gates` lane, which reads each
+> port's real definition rather than a copied list. Deviations pass only when that file
+> records them with a stated reason; the C# one is recorded there along with why it was not
+> simply deleted. Kotlin has no entry on purpose — it ships no extract engine, driving the
+> shared Java one through `metadata-ktx`, so a Kotlin `FieldKind` would itself be the drift,
+> and the gate fails if one appears.
+
 - `INT|LONG|DOUBLE` — optional `min` / `max` (clamp range).
 - `ENUM` — `enumValues` (member symbols) plus the FR-011 coercion-pipeline keys:
   - `enumAlias` — `{ synonym: MEMBER }` (FR-010); keys matched under the field's mode.
