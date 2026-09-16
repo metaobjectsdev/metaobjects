@@ -313,7 +313,7 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   // narrowing a query with nothing left to narrow. An explicit --limit is an instruction
   // and is still obeyed.
   const oneConstruct = new Set(matches.map((e) => e.owner)).size === 1;
-  const capped = f.limit > 0 && !(oneConstruct && !f.limitExplicit);
+  const capped = f.limit > 0 && (!oneConstruct || f.limitExplicit);
   const shown = capped ? matches.slice(0, f.limit) : matches;
 
   if (f.detail) {

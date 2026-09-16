@@ -12,7 +12,6 @@ import org.junit.rules.TemporaryFolder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -74,18 +73,6 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
     @Rule
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
-    /** Walk up from cwd to find the shared corpus, regardless of which module Maven ran from. */
-    private static Path findCorpusRoot() {
-        Path cur = Paths.get("").toAbsolutePath();
-        while (cur != null) {
-            Path candidate = cur.resolve("fixtures/persistence-conformance");
-            if (Files.isDirectory(candidate)) return candidate;
-            cur = cur.getParent();
-        }
-        throw new IllegalStateException(
-            "Could not locate fixtures/persistence-conformance from " + Paths.get("").toAbsolutePath());
-    }
-
     /**
      * Generate one selection into one output dir and compile the whole tree as a single
      * program. Compiling the fan-out TOGETHER is the point: emitting each generator into
@@ -99,7 +86,7 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
     private void generateAndCompile(String label, Map<String, Map<String, String>> selection)
             throws Exception {
         String canonicalMeta = Files.readString(
-            findCorpusRoot().resolve("canonical/meta.fitness.json"), StandardCharsets.UTF_8);
+            SpringTestFixtures.findCorpusRoot().resolve("canonical/meta.fitness.json"), StandardCharsets.UTF_8);
 
         Path outDir = tempFolder.newFolder("gen-" + label).toPath();
         Path workspace = tempFolder.newFolder("ws-" + label).toPath();

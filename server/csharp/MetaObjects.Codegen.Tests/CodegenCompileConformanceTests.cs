@@ -60,28 +60,7 @@ public class CodegenCompileConformanceTests
 {
     private const string GeneratedNamespace = "MetaObjects.CompileConformance.Generated";
 
-    /// <summary>
-    /// Walk up from the test assembly to the repo root (the directory holding the shared
-    /// <c>fixtures/</c> corpus). Same walk as IntegrationFixtureDriftTests — no hardcoded
-    /// depth, so it survives a change to the build output path.
-    /// </summary>
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            if (Directory.Exists(Path.Combine(dir.FullName, "fixtures", "persistence-conformance")) &&
-                Directory.Exists(Path.Combine(dir.FullName, "server")))
-                return dir.FullName;
-            dir = dir.Parent;
-        }
-        throw new InvalidOperationException(
-            "Could not locate the repo root (a parent dir containing fixtures/persistence-conformance + server/) " +
-            "from " + AppContext.BaseDirectory);
-    }
-
-    private static string CorpusMetadata =>
-        Path.Combine(RepoRoot(), "fixtures", "persistence-conformance", "canonical", "meta.fitness.json");
+    private static string CorpusMetadata => CorpusPaths.FitnessMetadata;
 
     private static MetaRoot LoadCorpus()
     {

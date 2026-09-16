@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 /**
@@ -313,6 +314,23 @@ public final class SpringTestFixtures {
               .append(Files.readString(f.toPath())).append('\n');
         }
         throw new AssertionError(sb.toString());
+    }
+
+    /**
+     * Walk up from cwd to find the shared cross-port persistence-conformance corpus,
+     * regardless of which module Maven ran from. One copy for every test in this module
+     * that generates from the corpus; the Kotlin runner keeps its own because test
+     * sources are not shared across Maven modules.
+     */
+    static Path findCorpusRoot() {
+        Path cur = Paths.get("").toAbsolutePath();
+        while (cur != null) {
+            Path candidate = cur.resolve("fixtures/persistence-conformance");
+            if (Files.isDirectory(candidate)) return candidate;
+            cur = cur.getParent();
+        }
+        throw new IllegalStateException(
+            "Could not locate fixtures/persistence-conformance from " + Paths.get("").toAbsolutePath());
     }
 
     /**

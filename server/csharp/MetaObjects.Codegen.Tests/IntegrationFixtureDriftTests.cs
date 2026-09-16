@@ -42,27 +42,7 @@ public class IntegrationFixtureDriftTests
         EmitAbstractShapes = false,
     };
 
-    /// <summary>
-    /// Walk up from the test assembly to the repo root (the directory containing
-    /// the shared <c>fixtures/</c> corpus). Mirrors the relative-discovery approach
-    /// in MetaObjects.IntegrationTests/Runner/CorpusPaths.cs without hardcoding a path.
-    /// </summary>
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            if (Directory.Exists(Path.Combine(dir.FullName, "fixtures", "persistence-conformance")) &&
-                Directory.Exists(Path.Combine(dir.FullName, "server")))
-                return dir.FullName;
-            dir = dir.Parent;
-        }
-        throw new InvalidOperationException(
-            "Could not locate the repo root (a parent dir containing fixtures/persistence-conformance + server/) " +
-            $"starting from {AppContext.BaseDirectory}.");
-    }
-
-    private static readonly string Repo = RepoRoot();
+    private static readonly string Repo = CorpusPaths.RepoRoot();
 
     private static string CorpusMetadata =>
         Path.Combine(Repo, "fixtures", "persistence-conformance", "canonical", "meta.fitness.json");

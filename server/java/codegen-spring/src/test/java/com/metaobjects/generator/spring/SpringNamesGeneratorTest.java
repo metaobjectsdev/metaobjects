@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -530,7 +529,7 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
 
     @Test
     public void everyEmittedColumnConstantExistsInTheCanonicalSchema() throws IOException {
-        Path corpusRoot = findCorpusRoot();
+        Path corpusRoot = SpringTestFixtures.findCorpusRoot();
         String canonicalMeta = Files.readString(
             corpusRoot.resolve("canonical/meta.fitness.json"), StandardCharsets.UTF_8);
         String canonicalSchema = Files.readString(
@@ -589,18 +588,6 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         return columns;
     }
 
-    /** Walk up from cwd to find the persistence-conformance corpus, regardless of module cwd. */
-    private static Path findCorpusRoot() {
-        Path cur = Paths.get("").toAbsolutePath();
-        while (cur != null) {
-            Path candidate = cur.resolve("fixtures/persistence-conformance");
-            if (Files.isDirectory(candidate)) return candidate;
-            cur = cur.getParent();
-        }
-        throw new IllegalStateException(
-            "Could not locate fixtures/persistence-conformance from " + Paths.get("").toAbsolutePath());
-    }
-
     // -------------------------------------------------------------------------
     // Program-A task 7 -- java.util.Map.of(...) has overloads for 0-10 pairs only.
     // COLUMNS_BY_FIELD emitted one pair per field with NO ceiling, so an object with
@@ -614,7 +601,7 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
 
     @Test
     public void anObjectWithMoreThanTenFieldsCompiles() throws Exception {
-        Path corpusRoot = findCorpusRoot();
+        Path corpusRoot = SpringTestFixtures.findCorpusRoot();
         String canonicalMeta = Files.readString(
             corpusRoot.resolve("canonical/meta.fitness.json"), StandardCharsets.UTF_8);
 
