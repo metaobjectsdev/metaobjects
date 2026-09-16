@@ -136,6 +136,12 @@ export function renderEntityFile(
   // compile error). A base+write-through combo keeps the TPH polymorphic read path (reads
   // the base table); routing its reads through a replica view is a documented non-goal.
   const writeThrough = isWriteThrough(entity) && !tphBase;
+  // Rendered BEFORE the replica view below, for two reasons that both matter: the table
+  // DECLARES the int-backed-enum codecs (a `const` the view's declaration would duplicate,
+  // and a duplicate module-scope const is a parse error), and those consts must precede the
+  // view's use of them in the emitted file or the view hits a TDZ ReferenceError at import.
+  const declaredEnumIntCodecs = new Set<string>();
+  const schemaBlock = renderDrizzleSchema(entity, ctx, declaredEnumIntCodecs);
   const viewSections: Code[] = [];
   if (writeThrough) {
     const camel = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
@@ -168,6 +174,8 @@ export function renderEntityFile(
       // is passed separately below and stays a literal — the artifact holds the primary
       // (table) source's name, not this one.
       names: entityNames,
+      // The table above already declared these; the view references them by name.
+      declaredEnumIntCodecs,
       // The replica view's OWN @schema, from the same source node projectionViewName picks
       // — never the entity's, which is the WRITE TABLE's and would qualify this view with a
       // schema that belongs to something else. A view and the table it replicates need not
@@ -206,7 +214,7 @@ ${docsPrefix}export type ${entity.name} = ${z}.infer<typeof ${entity.name}Schema
   const constantsNames = namesRef(entity, ctx);
 
   const sections: Code[] = [
-    renderDrizzleSchema(entity, ctx),
+    schemaBlock,
     ...viewSections,
     renderInferredTypes(entity, tphBase, ctx, writeThrough /* skipRow — read type is the view schema */),
     ...(enumAliases !== null ? [enumAliases] : []),

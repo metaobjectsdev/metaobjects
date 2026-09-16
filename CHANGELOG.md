@@ -30,6 +30,17 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **A view-backed read model carrying an int-backed `field.enum` generated a module that did
+  not compile.** A `@intValueMap` enum persists as an integer column, and the entity table
+  emits a module-local Drizzle `customType` codec to encode and decode it. The view path
+  emitted the CALL SITE and let the codec's name fall through to the drizzle core import, so
+  the file opened with `import { statusIntEnum } from "drizzle-orm/sqlite-core"` — a member
+  that package does not export. `meta gen` exited 0 and only a typecheck caught it
+  (`TS2305`). The codec emitter is now shared (`templates/enum-int-codec.ts`) and the view
+  declares the codecs it references, sorted by const name so output stays deterministic.
+  This covered BOTH view hosts — an `object.projection` and a write-through entity's replica
+  view render through the same function, and the read-view is the shape the authoring
+  guidance recommends over a projection.
 - **`meta eject` and `meta gen --list` print an install command you can paste.** The line
   was documented as paste-ready and was not, on the most common selection
   (`meta eject entity queries routes names barrel`):

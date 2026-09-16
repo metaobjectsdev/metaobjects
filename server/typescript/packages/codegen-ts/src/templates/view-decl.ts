@@ -12,7 +12,8 @@ import {
   type MetaField, FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
-import { mapColumnType } from "../column-mapper.js";
+import { mapColumnType, type EnumIntCustomType } from "../column-mapper.js";
+import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { zodTypeFor } from "./field-meta.js";
 import { columnExpr, type ObjectNames } from "../names.js";
 
@@ -21,6 +22,14 @@ export interface ViewDeclOpts {
   readonly columnNamingStrategy: ColumnNamingStrategy;
   /** Drives the timestamp column TS type (Date vs string) in the view declaration. */
   readonly timestampMode: "date" | "string";
+  /**
+   * Int-backed-enum codec const names ALREADY declared in the module this view lands in.
+   * A write-through entity's table and its replica view share one file, and both reference
+   * the same codecs — so the view references these by name and declares only what the table
+   * did not (a derived field's codec, which the write table omits). Absent = the view owns
+   * every codec it needs, which is the projection case.
+   */
+  readonly declaredEnumIntCodecs?: ReadonlySet<string>;
   /**
    * ADR-0044/#228 — resolve a `field.object` / `field.map`'s `@objectRef` to the
    * value object's EMITTED name (bare when unique in the run, package-qualified on
@@ -72,10 +81,26 @@ export interface ViewDeclOpts {
  * so `db.select().from(<view>)` is typed. Honors `@dbColumnType`; `.existing()`
  * views carry type + physical name only (no PK/default/notNull DDL modifiers).
  */
-function viewColumnLine(f: MetaField, opts: ViewDeclOpts): Code {
+function viewColumnLine(
+  f: MetaField,
+  opts: ViewDeclOpts,
+  /** Codecs this view needs, collected for the caller to DECLARE — see below. */
+  enumIntTypes: Map<string, EnumIntCustomType>,
+): Code {
   const { dialect, columnNamingStrategy, timestampMode } = opts;
   const spec = mapColumnType(f, dialect, columnNamingStrategy, timestampMode);
-  const colSym = imp(`${spec.fnName}@${spec.importModule}`);
+  // An int-backed field.enum's column function is a LOCAL generated const (the
+  // customType helper the caller emits into this same file), so it must not be
+  // imported from drizzle-orm/*-core like a built-in column type would be. Same
+  // rule the table template applies in `renderColumn`; a view reads the very same
+  // integer column and needs the very same decode on the way out.
+  if (spec.enumIntCustomType !== undefined) {
+    enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
+  }
+  const colSym =
+    spec.enumIntCustomType !== undefined
+      ? spec.enumIntCustomType.fnConstName
+      : imp(`${spec.fnName}@${spec.importModule}`);
   const optsArg =
     spec.fnOptions && Object.keys(spec.fnOptions).length > 0
       ? `, ${JSON.stringify(spec.fnOptions)}`
@@ -137,7 +162,8 @@ export function renderExistingViewDecl(
   const viewFn = opts.dialect === "postgres" ? "pgView" : "sqliteView";
   const viewModule = opts.dialect === "postgres" ? "drizzle-orm/pg-core" : "drizzle-orm/sqlite-core";
   const viewSym = imp(`${viewFn}@${viewModule}`);
-  const viewColumnLines = fields.map((f) => viewColumnLine(f, opts));
+  const enumIntTypes = new Map<string, EnumIntCustomType>();
+  const viewColumnLines = fields.map((f) => viewColumnLine(f, opts, enumIntTypes));
   const viewNameExpr = typeof viewName === "string" ? code`${JSON.stringify(viewName)}` : viewName;
 
   // @schema — a view lands in a schema exactly as a table does, and migrate qualifies the
@@ -153,7 +179,16 @@ export function renderExistingViewDecl(
   const viewCall: Code = viewSchemaExpr === undefined
     ? code`${viewSym}`
     : code`${imp(`pgSchema@${viewModule}`)}(${viewSchemaExpr}).view`;
-  return code`
+  // Int-backed enum codecs are declared BEFORE the view that references them, sorted
+  // by const name so output is deterministic regardless of field order — the same
+  // contract the table template holds.
+  const alreadyDeclared = opts.declaredEnumIntCodecs;
+  const enumIntBlocks = [...enumIntTypes.values()]
+    .filter((t) => alreadyDeclared === undefined || !alreadyDeclared.has(t.fnConstName))
+    .sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))
+    .map((t) => renderEnumIntCustomType(t, viewModule));
+
+  const viewBlock = code`
 // View declaration — Drizzle uses this for typed SELECT queries.
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
 // not to attempt DDL for this declaration.
@@ -161,6 +196,9 @@ export const ${viewVar} = ${viewCall}(${viewNameExpr}, {
 ${joinCode(viewColumnLines, { on: ",\n" })}
 }).existing();
 `;
+  return enumIntBlocks.length === 0
+    ? viewBlock
+    : joinCode([...enumIntBlocks, viewBlock], { on: "\n" });
 }
 
 /**

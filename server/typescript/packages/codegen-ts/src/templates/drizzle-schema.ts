@@ -22,6 +22,7 @@ import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "../names.js";
 import { resolveTableSchema } from "@metaobjectsdev/metadata";
+import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
@@ -35,7 +36,18 @@ import { effectivePackage } from "../docs-paths.js";
  * Returns a Code object so ts-poet can deduplicate imports when this composes
  * with the rest of the entity file. Biome formatting runs after composition.
  */
-export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
+export function renderDrizzleSchema(
+  obj: MetaObject,
+  ctx: RenderContext,
+  /**
+   * OUT param: the int-backed-enum codec const names this table DECLARES. A caller that
+   * emits another artifact referencing the same codecs into the SAME module — entity-file's
+   * write-through replica view — passes a set here and hands it to that emitter, which then
+   * references the consts instead of re-declaring them. A duplicate module-scope `const` is
+   * a JS parse error, so the module would not even load.
+   */
+  declaredEnumIntCodecs?: Set<string>,
+): Code {
   const dialect = ctx.dialect;
   const tableFn = dialect === "sqlite" ? "sqliteTable" : "pgTable";
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
@@ -381,55 +393,13 @@ ${joinCode(columnLines, { on: ",\n", trim: false })}
   const enumIntBlocks = [...enumIntTypes.values()]
     .sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))
     .map((t) => renderEnumIntCustomType(t, importModule));
+  if (declaredEnumIntCodecs !== undefined) {
+    for (const name of enumIntTypes.keys()) declaredEnumIntCodecs.add(name);
+  }
 
   const blocks: Code[] = [...enumIntBlocks, tableBlock];
   if (relationsBlock !== null) blocks.push(relationsBlock);
   return blocks.length === 1 ? blocks[0]! : joinCode(blocks, { on: "\n" });
-}
-
-/**
- * Render an int-backed `field.enum`'s Drizzle `customType` helper plus its two
- * lookup maps.
- *
- * The codec lives HERE, in the column definition, so nothing downstream needs to
- * know about it: `db.insert().values()` encodes on bind, a selected row decodes on
- * read, and a filter comparison encodes because Drizzle binds through the column
- * type. That is why this shape was chosen over a Zod write-transform plus a
- * generated read-decode — TS's generated queries return raw Drizzle rows and have
- * no decode seam, so the query-layer approach meant inventing one and wrapping
- * every generated read. It is also the direct analogue of what the other four
- * ports already do (EF Core `HasConversion`, OMDB `JdbcFieldCodec`, Exposed
- * `customEnumeration`, Python `ObjectManager` coercion).
- *
- * `fromDriver` throws on an unmapped integer rather than returning undefined: a
- * value outside the map means the DB holds data the model says is impossible
- * (a hand-written INSERT, or a member removed without a migration), and silently
- * yielding `undefined` for a non-nullable field would surface far from the cause.
- */
-function renderEnumIntCustomType(t: EnumIntCustomType, importModule: string): Code {
-  const customTypeSym = imp(`customType@${importModule}`);
-  const union = t.members.map((m) => JSON.stringify(m)).join(" | ");
-  const toEntries = t.members
-    .map((m) => `${JSON.stringify(m)}: ${t.intByMember[m]}`)
-    .join(", ");
-  const fromEntries = t.members
-    .map((m) => `${t.intByMember[m]}: ${JSON.stringify(m)}`)
-    .join(", ");
-  return code`
-const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, number>;
-const ${t.fromIntConstName}: Record<number, ${union}> = { ${fromEntries} };
-const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }>({
-  dataType: () => ${JSON.stringify(t.dataType)},
-  toDriver: (value) => ${t.toIntConstName}[value],
-  fromDriver: (value) => {
-    const member = ${t.fromIntConstName}[value];
-    if (member === undefined) {
-      throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
-    }
-    return member;
-  },
-});
-`;
 }
 
 interface FkInfo {
