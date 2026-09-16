@@ -23,6 +23,7 @@ import {
   checkRequirements, summariseRequirements, scanRequirements,
 } from "../src/lib/requirement-check.js";
 import { lintRequirements } from "../src/lib/requirement-lint.js";
+import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
 
 const TOKENS = knownLibraryTokens();
 
@@ -82,5 +83,36 @@ describe("every shipped library verifies standalone (FR-043 §8 item 2)", () => 
         `${token} authoring lint`,
       ).toEqual([]);
     });
+  }
+});
+
+// A library's DB layer has to produce a SCHEMA, not just load and verify. `iam/db`
+// shipped in 1.0.4 naming four `identity.secondary` nodes `uqKey` — legal metadata,
+// and legal per-entity — but index names are unique per DATABASE, so the first
+// `meta migrate` in any project that opted in died on ERR_DUPLICATE_SQL_NAME before
+// writing a table. The gates above could not see it: loading and verifying never
+// build a schema. Both dialects, because the collision is in the shared naming pass.
+describe("every shipped library's db layer builds a schema (both dialects)", () => {
+  const DB_TOKENS = TOKENS.filter((t) => t.includes("/db"));
+
+  test("there is a db layer to gate", () => {
+    expect(DB_TOKENS.length).toBeGreaterThan(0);
+    expect(DB_TOKENS).toContain("iam/db");
+  });
+
+  for (const token of DB_TOKENS) {
+    for (const dialect of ["sqlite", "postgres"] as const) {
+      test(`\`${token}\` builds a ${dialect} schema with no duplicate SQL name`, async () => {
+        const result = await new MetaDataLoader({ strict: true }).load(librarySources([token]));
+        expect(result.errors, `${token} errors`).toEqual([]);
+        const snapshot = buildExpectedSchema(result.root, { dialect });
+        expect(snapshot.tables.length).toBeGreaterThan(0);
+        // State the invariant the engine enforces, so a regression names itself here
+        // rather than in an adopter's first migrate.
+        const indexNames = snapshot.tables.flatMap((t) => (t.indexes ?? []).map((i) => i.name));
+        expect(new Set(indexNames).size, `duplicate index name in ${token}: ${indexNames.join(", ")}`)
+          .toBe(indexNames.length);
+      });
+    }
   }
 });

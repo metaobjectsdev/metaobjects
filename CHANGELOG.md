@@ -48,6 +48,15 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   recorded writing (`.gen-state/.hashes.json`) is now reported as ordinary stale output with
   the `meta gen` remedy. An edited one, or one with no recorded hash, is still convicted as
   before.
+- **`libraries: ["iam/db"]` could not migrate at all.** The library named four
+  `identity.secondary` nodes `uqKey` — legal metadata, and unambiguous per entity, but
+  index names are unique per DATABASE, so the first `meta migrate` in any project that
+  opted in died on `ERR_DUPLICATE_SQL_NAME` before writing a table. They are now
+  `uqGroupTypeKey`, `uqGroupKey`, `uqRoleKey` and `uqPermissionKey`. Nobody can have
+  applied the old schema, because the migrate that would have created it is the one
+  that failed. The shipped-library gate now builds a sqlite AND a postgres schema for
+  every library db layer and asserts index names are distinct — loading and verifying,
+  which is all it did before, never build a schema.
 - **A requirement whose implementing member was renamed no longer says to qualify the object.**
   Rename `dueDate` in the model and a live claim on `app::Task.dueDate` failed with
   `ERR_REQUIREMENT_DANGLING_REF`, then added *"An object named "Task" exists in: app::Task.

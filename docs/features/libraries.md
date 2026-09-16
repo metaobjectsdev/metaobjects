@@ -31,8 +31,10 @@ A library ships its **core model**, its **DB persistence** and (where it has one
 contract that already shipped.** `meta migrate` skips an object with no writable source
 and codegen emits no route, queries, hooks, grid or form for one (both citing #248:
 persistability derives from source presence, never from the object subtype). So
-`libraries: ["iam"]` adds **zero tables and zero generated code**. The design is
-present and resolvable; the schema is a second, separate decision.
+`libraries: ["iam"]` adds **zero tables, and no persistence, API or client code**. The
+design is present and resolvable; the schema is a second, separate decision. The entity
+generator, if you have wired it, does emit one type-only module per library entity —
+which is the next paragraph, and the whole of what the core layer costs you.
 
 A sourceless object still gets a type-only interface, so `extends` and references work
 against it from day one.

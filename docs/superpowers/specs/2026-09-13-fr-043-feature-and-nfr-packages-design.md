@@ -589,7 +589,7 @@ metadata:
           - field.string: { name: name, required: true, maxLength: 120 }
           - field.string: { name: description, maxLength: 500 }
           - identity.primary:   { name: pk, fields: [id], generation: uuid }
-          - identity.secondary: { name: uqKey, fields: [key] }
+          - identity.secondary: { name: uqGroupTypeKey, fields: [key] }
 
     - object.entity:
         name: Group
@@ -602,7 +602,7 @@ metadata:
           - field.string: { name: name, required: true, maxLength: 120, filterable: true }
           - field.string: { name: description, maxLength: 500 }
           - identity.primary:   { name: pk, fields: [id], generation: uuid }
-          - identity.secondary: { name: uqKey, fields: [key] }
+          - identity.secondary: { name: uqGroupKey, fields: [key] }
           - identity.reference: { name: fkGroupType, fields: [groupTypeId], references: GroupType, onDelete: restrict }
           - identity.reference: { name: fkParent,    fields: [parentId],    references: Group,     onDelete: restrict }
           - index.lookup: { name: ixParent, fields: [parentId] }
@@ -617,7 +617,7 @@ metadata:
           - field.string: { name: description, maxLength: 500 }
           - field.uuid:   { name: groupTypeId, description: "When set, this role may be held only within groups of this type; absent means grantable anywhere." }
           - identity.primary:   { name: pk, fields: [id], generation: uuid }
-          - identity.secondary: { name: uqKey, fields: [key] }
+          - identity.secondary: { name: uqRoleKey, fields: [key] }
           - identity.reference: { name: fkGroupType, fields: [groupTypeId], references: GroupType, onDelete: restrict }
           - relationship.association: { name: permissions, objectRef: Permission, cardinality: many, through: RolePermission }
 
@@ -629,7 +629,7 @@ metadata:
           - field.string: { name: key, required: true, maxLength: 128, description: "Stable <resource>:<action> key the application checks against." }
           - field.string: { name: description, maxLength: 500 }
           - identity.primary:   { name: pk, fields: [id], generation: uuid }
-          - identity.secondary: { name: uqKey, fields: [key] }
+          - identity.secondary: { name: uqPermissionKey, fields: [key] }
 
     # ---- grant surface: every grant is a row, addressed by its participants ----
 
