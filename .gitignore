@@ -70,3 +70,11 @@ server/java/.claude/
 # Private pre-release registry address + token (docs/features/prerelease.md).
 # Never committed: this repository is PUBLIC.
 tools/prerelease/registry.env
+
+# JVM crash artifacts. A C2 compiler SIGSEGV (the JDT language server's, under load, is the
+# one that actually happens here) drops these in whatever directory the JVM was started in,
+# which is the repo root. hs_err_*.log embeds the full command line — absolute home paths
+# included — so an untracked one is a leak waiting for a careless `git add -A`.
+hs_err_pid*.log
+replay_pid*.log
+core.[0-9]*
