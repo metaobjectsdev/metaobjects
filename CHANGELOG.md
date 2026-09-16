@@ -81,7 +81,11 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   string the generated PATCH handler passes to `Validator#validateValue`, which resolves a
   record's property by its component and threw `IllegalArgumentException` on the declared
   name. This is a Java restriction and it stops at Java: `notify` stays a legal field name in
-  all five ports, and no other port and no payload changes.
+  all five ports, and no other port and no payload changes. **It changes generated Java
+  output**: a generated Spring controller gains one import and wraps its PATCH loop's property
+  lookup, whether or not the entity has a reserved name, so Java adopters with committed
+  generated code must re-run codegen — for almost all of them that is the whole diff. The
+  record/DTO tier changes only for an entity that actually declares such a field.
 
 - **Java: a field named after a Java keyword generated code that could not compile, on both
   emitters.** A keyword is a different restriction from the `Object`-method names above — it
