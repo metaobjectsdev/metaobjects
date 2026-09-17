@@ -26,8 +26,6 @@ export interface GeneratedApp {
   dir: string;
   /** Emitted paths, relative to `dir`. */
   files: string[];
-  /** `tsc --strict` diagnostics over every emitted module, as `file:line message`. */
-  compile(): string[];
   /** Create the schema the TypeScript toolchain derives, on `connectionUri`. */
   migrate(connectionUri: string): Promise<void>;
   /** Import one emitted module by entity-relative path (e.g. `Party.ts`). */
@@ -73,7 +71,6 @@ export const db = drizzle(pool);
   return {
     dir,
     files,
-    compile: () => compileTree(dir, files),
     migrate: async (uri) => {
       const expected = buildExpectedSchema(root, { dialect: "postgres" });
       const planned = await diff({ expected, actual: { tables: [], views: [] }, dialect: "postgres" });
@@ -99,10 +96,6 @@ export const db = drizzle(pool);
       rmSync(dir, { recursive: true, force: true });
     },
   };
-}
-
-function compileTree(dir: string, files: string[]): string[] {
-  return compileTrees([{ dir, files }]).get(dir) ?? [];
 }
 
 /**
