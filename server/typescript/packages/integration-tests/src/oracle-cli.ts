@@ -17,12 +17,19 @@ import {
   actualColumns, actualForeignKeys, expectedColumns, expectedForeignKeys, fkKey, missingColumns,
 } from "./independent-oracle.ts";
 
+const USAGE = "usage: oracle-cli.ts <project-dir> <postgres-url> [--naming snake_case|literal|kebab-case]";
+const NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case"];
+
 const args = process.argv.slice(2);
 const namingAt = args.indexOf("--naming");
-const naming = (namingAt >= 0 ? args.splice(namingAt, 2)[1] : "snake_case") as ColumnNamingStrategy;
+const namingArg = namingAt >= 0 ? args.splice(namingAt, 2)[1] : "snake_case";
+// Refuse an unknown strategy: the naming helpers would turn every column name into
+// `undefined`, and a release gate reporting a flood of bogus misses — or none — is worse
+// than one that stops.
+const naming = NAMING_STRATEGIES.find((s) => s === namingArg);
 const [projectDir, dbUrl] = args;
-if (projectDir === undefined || dbUrl === undefined) {
-  console.error("usage: oracle-cli.ts <project-dir> <postgres-url> [--naming snake_case|literal|kebab-case]");
+if (naming === undefined || projectDir === undefined || dbUrl === undefined) {
+  console.error(naming === undefined ? `unknown --naming "${namingArg}"\n${USAGE}` : USAGE);
   process.exit(2);
 }
 
