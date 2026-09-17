@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "gen:schema": "bun run src/gen-canonical-schema.ts"
+    "gen:schema": "bun run src/gen-canonical-schema.ts",
+    "oracle": "bun run src/oracle-cli.ts"
   },
   "dependencies": {
     "@metaobjectsdev/ai-runtime": "workspace:*",
@@ -14,6 +15,7 @@
     "@metaobjectsdev/metadata": "workspace:*",
     "@metaobjectsdev/migrate-ts": "workspace:*",
     "@metaobjectsdev/runtime-ts": "workspace:*",
+    "@metaobjectsdev/sdk": "workspace:*",
     "@metaobjectsdev/test-generators": "workspace:*",
     "@testcontainers/postgresql": "^10.13.2",
     "drizzle-orm": "^0.45.1",

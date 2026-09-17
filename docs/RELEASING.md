@@ -472,6 +472,28 @@ The corpus lives at [`fixtures/persistence-conformance/`](../fixtures/persistenc
 A red run here has caught real cross-port divergence (view-DDL identifier quoting, column-naming
 strategy mismatches) that the unit suites missed.
 
+### 2c. Run an adopter estate against the RC (1.0 gate G3d)
+
+Every corpus in this repo can be green while a real application built on the release is
+broken — the defects live where features meet, in models no fixture composes. Before
+promoting, run at least one adopter estate against the candidate, end to end, and treat a
+red run as a blocker:
+
+1. **Pin** every `@metaobjectsdev/*` dependency to the RC, install clean, and **read the
+   resolved versions back** — a declared range is not proof of the version that ran.
+2. **`meta gen`, then `meta verify --codegen`.** If the RC changes the estate's generated
+   output, the estate regenerates and commits before the run counts.
+3. **Compile** the estate's owned codegen tier and every app that consumes generated code.
+4. On a **fresh** database: replay the estate's committed migrations, re-diff (must report
+   no changes), and `meta verify --db`.
+5. **The independent oracle**, which re-derives FKs and columns from the metadata alone and
+   reads them from `pg_catalog` — `verify --db` shares its expected schema with `migrate`, so
+   it cannot see a constraint both of them omit:
+   ```bash
+   bun run --cwd server/typescript/packages/integration-tests oracle <estate-dir> <postgres-url>
+   ```
+6. **Boot** the app on that database and exercise its API.
+
 ### 3. Promote to `latest`
 
 **Before `bun publish`: confirm the `local-ci` run for the release commit is green.**

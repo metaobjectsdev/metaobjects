@@ -300,6 +300,7 @@
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/runtime-ts": "workspace:*",
+        "@metaobjectsdev/sdk": "workspace:*",
         "@metaobjectsdev/test-generators": "workspace:*",
         "@testcontainers/postgresql": "^10.13.2",
         "drizzle-orm": "^0.45.1",

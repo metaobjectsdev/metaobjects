@@ -179,21 +179,25 @@ export async function loadMemory(
   let fileIds: ReadonlyMap<string, string> | undefined;
   let importedPackages: readonly string[] | undefined;
   let importedNodes: ReadonlySet<string> | undefined;
+  let libraries: readonly string[] | undefined = options?.libraries;
   if (options?.files !== undefined) {
     paths = [...options.files];
     fileIds = options.fileIds;
     importedPackages = options.importedPackages;
     importedNodes = options.importedNodes;
   } else {
-    // FR-023: on this arm the COLLECTION is the authority for all four, never
+    // FR-023: on this arm the COLLECTION is the authority for all of these, never
     // the caller — an embedder calling `loadMemory(repoRoot)` with no `files`
     // passes none of them, and must still get the dependency artifacts' source
-    // ids and the ownership refusal that the routed CLI commands get.
+    // ids and the ownership refusal that the routed CLI commands get. FR-043 moved
+    // the library selection into the same config, so it comes from here too: without
+    // it every reference into an opted-in library failed to resolve on this arm alone.
     const collection = await resolveCollection(repoRoot);
     paths = [...collection.files];
     fileIds = collection.fileIds;
     importedPackages = collection.importedPackages;
     importedNodes = collection.importedNodes;
+    libraries ??= collection.libraries;
   }
 
   const loader = new MetaDataLoader({
@@ -209,8 +213,8 @@ export async function loadMemory(
   // library-shipped abstract base resolves — super resolution is order-independent, but
   // prepending is the deterministic choice and matches `fromDirectory`.
   const libSources =
-    options?.libraries !== undefined && options.libraries.length > 0
-      ? (await import("@metaobjectsdev/metadata/library")).librarySources([...options.libraries])
+    libraries !== undefined && libraries.length > 0
+      ? (await import("@metaobjectsdev/metadata/library")).librarySources([...libraries])
       : [];
   const result = await loader.load([
     ...libSources,
@@ -234,7 +238,7 @@ export async function loadMemory(
   // FR-043 §3.4 / §3.5 — the same rule for a shipped LIBRARY's package, where the two
   // ways to get it wrong are opposite: a node the library also declares (an ejected
   // copy, still opted in) and one it does not (a new node in someone else's package).
-  refuseLibraryPackageMisuse(result.root, options?.libraries);
+  refuseLibraryPackageMisuse(result.root, libraries);
 
   return result.root;
 }
