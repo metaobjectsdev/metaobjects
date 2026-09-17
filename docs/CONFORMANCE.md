@@ -108,6 +108,31 @@ manifest contains without moving the boundary between the two halves.
   `template.*` nodes. Including those generators would emit nothing and read as
   coverage that is not there.
 
+**Do features work in combination, judged independently** (TypeScript only, the
+`integration-tests` package, real Postgres):
+
+- *Why it exists.* Every corpus above exercises each feature on its own, and every one was
+  green while the first real application found nine defects in an afternoon — each where
+  two features meet (a reference onto a TPH subtype, a required default on one, an M:N
+  declared on one). Two of them were invisible for a structural reason as well: `meta
+  verify --db` diffs a database against the same `buildExpectedSchema` that wrote its
+  migration, so a dropped FK looked in sync; and a dropped `.references()` compiles.
+- *The independent oracle* (`src/independent-oracle.ts`) restates, from the metadata alone,
+  which table stores each object's rows, which columns and FKs that table has, and which
+  routes the API serves — and reads the answer from `pg_catalog`, from Drizzle's own
+  `getTableConfig`, and from the booted Fastify app, never through migrate-ts or codegen.
+  `independent-oracle-pg.test.ts` asks it of a hand-written TPH model, including an M:N
+  traversal against real rows, and of the committed `canonical/schema.postgres.sql` every
+  port's query runner executes.
+- *The feature-combination gate* (`feature-combinations-pg.test.ts`) enumerates feature
+  axes — hierarchy shape, where a link is declared, what it points at, link kind, link-table
+  key, a required or defaulted field — and runs a pairwise covering set of models (23 today)
+  through generate, `tsc` with routes included, migrate, and boot, judged by the oracle.
+  It found three defects on its first run that no other gate could see.
+- *Known defects are a ledger, not a skip.* A check that fails for a recorded defect passes
+  only if every failure line matches that defect's signature, and a recorded defect that
+  stops reproducing fails its case. The ledger can only shrink.
+
 **How to tell a deliberate split from a real parity gap**, since the two look identical
 in the matrix — both show one port covered and four blank. Ask what the uncovered ports
 *claim*. Here they claim nothing: they load requirement vocabulary and stop, exactly as the

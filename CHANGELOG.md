@@ -40,6 +40,17 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Added
 
+- **Independent checks and a feature-combination gate (TypeScript, real Postgres).** Every
+  corpus was green while the first real application found nine defects, each where two
+  features meet, and two of them were invisible by construction: `meta verify --db` diffs
+  against the same builder that wrote the migration, and a dropped `.references()`
+  compiles. A new oracle in `integration-tests` restates from the metadata alone which
+  table stores each object's rows, its columns and FKs, and the routes served, and reads
+  the answer from `pg_catalog`, Drizzle's own table config and the booted app. A pairwise
+  covering set of 23 models across six feature axes runs through generate, `tsc` (routes
+  included), migrate and boot under it. Recorded defects are a signature-matched ledger
+  that fails when an entry stops reproducing. See `docs/CONFORMANCE.md`.
+
 - **Codegen-compile conformance (TypeScript lane).** A new gate generates from the shared
   cross-port corpus (`fixtures/persistence-conformance/canonical/meta.fitness.json` — 16
   entities, 2 view-backed projections, two M:N through-junctions, a 4-entity TPH hierarchy,
@@ -167,6 +178,15 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   `routes-hono.ts`**, change `hasAnyRdbSource(e)` to `servesReadApi(e)` in its `filter` (both
   are exported from `@metaobjectsdev/codegen-ts`) or re-eject, then delete the stale
   `<Abstract>.queries.ts` / `.routes.ts` files the old generator left behind.
+- **Three more reference shapes generated code that did not compile**, found by the new
+  feature-combination gate (below). An M:N **self-join**'s route mount imported the source
+  table a second time beside the entity-module import (`TS2300`, and a `SyntaxError` when
+  Node loads the file) — every directed and symmetric self-join. A cardinality-one
+  relationship onto the **declaring entity itself** (`Order.parent`), or from a TPH base onto
+  one of its subtypes, imported the entity's own table into its own module (`TS2440`). And a
+  reference onto an **abstract level** of a TPH hierarchy imported a table const that module
+  does not have, while `meta migrate` dropped its FK: the rows live in the discriminator
+  base's table, and both now bind there. **Generated output changes** for all three.
 - **A TPH subtype's declared type and its read schema disagreed, so `parse<Base>()` did not
   compile.** The generated `<Sub>` interface and the `<Sub>Schema` the polymorphic
   dispatcher parses through were emitted by two rules that answered the same question

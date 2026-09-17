@@ -182,21 +182,23 @@ export function buildExpectedSchemaWithProvenance(
   // legal and needs the target's physical name; only the table's own create/alter/drop
   // is suppressed (migration ORDERING vs the external tool is a documented adopter caveat).
   const fkTargetOnly: { entity: MetaObject; tableName: string }[] = [];
-  // FR-017 TPH subtypes: no table of their own, but still FK TARGETS — an FK onto a
-  // subtype lands on its discriminator base's table. Registered once the bases are
-  // known (below); skipping them outright dropped every such FK from the expected
-  // schema, and `meta verify --db` diffs against this builder, so the drop was silent.
-  const tphSubtypes: { entity: MetaObject; base: MetaData }[] = [];
+  // FR-017 TPH: everything beneath a discriminator base — a concrete subtype, or an
+  // abstract level in between — has no table of its own, but is still an FK TARGET: its
+  // rows are in the base's table. Registered once the bases are known (below); skipping
+  // them outright dropped every such FK from the expected schema, and `meta verify --db`
+  // diffs against this builder, so the drop was silent.
+  const tphMembers: { entity: MetaObject; base: MetaData }[] = [];
   // ADR-0039: effective children — resolve rather than rely on root being unextended.
   for (const child of root.children()) {
     if (child.type !== TYPE_OBJECT) continue;
-    if (child.isAbstract) continue;
     // FR-017 TPH: a subtype shares its discriminator base's single table, so it
     // emits no table of its own. Its own columns are folded into the base below.
-    if (isTphSubtype(child)) {
-      tphSubtypes.push({ entity: child as MetaObject, base: discriminatorBaseOf(child)! });
+    const tphBase = discriminatorBaseOf(child);
+    if (tphBase !== undefined && (child.isAbstract || isTphSubtype(child))) {
+      tphMembers.push({ entity: child as MetaObject, base: tphBase });
       continue;
     }
+    if (child.isAbstract) continue;
     // #248 — persistability derives from source presence, never subtype (loader
     // contract: zero sources ⇒ not persisted — metadata validate-source-roles).
     // Table iff a WRITABLE source is declared or inherited (ADR-0039 resolving).
@@ -233,7 +235,7 @@ export function buildExpectedSchemaWithProvenance(
   const byBare = new Map<string, string | typeof AMBIGUOUS>();
   const tableOwners = [...entities, ...fkTargetOnly];
   const baseTables = new Map(tableOwners.map((e) => [e.entity.resolutionKey(), e.tableName]));
-  const subtypeTargets = tphSubtypes.flatMap(({ entity, base }) => {
+  const subtypeTargets = tphMembers.flatMap(({ entity, base }) => {
     // A base that emits no table (itself sourceless) gives its subtypes nothing to target.
     const tableName = baseTables.get(base.resolutionKey());
     return tableName === undefined ? [] : [{ entity, tableName }];

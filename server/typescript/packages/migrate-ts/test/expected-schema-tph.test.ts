@@ -136,6 +136,14 @@ async function loadTphReferenceTarget() {
               { "identity.reference": { name: "fkShipment", "@fields": "shipmentId", "@references": "Shipment" } },
               { "identity.reference": { name: "fkCarrier", "@fields": "carrierId", "@references": "Carrier" } },
             ]}},
+            // A reference onto the ABSTRACT level: its rows are in `parties` too.
+            { "object.entity": { name: "Contract", children: [
+              { "source.rdb": { "@table": "contracts" } },
+              { "field.long": { name: "id" } },
+              { "field.long": { name: "organizationId", "@required": true } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+              { "identity.reference": { name: "fkOrganization", "@fields": "organizationId", "@references": "Organization" } },
+            ]}},
             // Self-join junction onto the subtype; one side is package-qualified so the
             // FQN lookup is exercised as well as the bare one.
             { "object.entity": { name: "CarrierPartnership", children: [
@@ -195,10 +203,18 @@ describe("buildExpectedSchema — FK targeting a TPH subtype", () => {
       ]);
     });
 
+    test(`${dialect}: an FK onto an abstract level references the discriminator base's table`, async () => {
+      const snap = buildExpectedSchema(await loadTphReferenceTarget(), { dialect });
+      const contracts = snap.tables.find((t) => t.name === "contracts")!;
+      expect(contracts.foreignKeys.map((fk) => [fk.columns.join(","), fk.refTable, fk.refColumns.join(",")])).toEqual([
+        ["organization_id", "parties", "id"],
+      ]);
+    });
+
     test(`${dialect}: a subtype still emits no table of its own`, async () => {
       const snap = buildExpectedSchema(await loadTphReferenceTarget(), { dialect });
       expect(snap.tables.map((t) => t.name).sort()).toEqual(
-        ["carrier_partnerships", "depots", "legs", "parties", "shipments"],
+        ["carrier_partnerships", "contracts", "depots", "legs", "parties", "shipments"],
       );
     });
   }
