@@ -49,7 +49,9 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   the answer from `pg_catalog`, Drizzle's own table config and the booted app. A pairwise
   covering set of 23 models across six feature axes runs through generate, `tsc` (routes
   included), migrate and boot under it. Recorded defects are a signature-matched ledger
-  that fails when an entry stops reproducing. See `docs/CONFORMANCE.md`.
+  that fails when an entry stops reproducing. See `docs/CONFORMANCE.md`. `bun run --cwd server/typescript/packages/integration-tests oracle <project-dir>
+  <postgres-url>` asks the same oracle of any project and database; run against an adopter
+  estate migrated by `1.0.5-rc.1`, it named the three FKs that release dropped.
 
 - **Codegen-compile conformance (TypeScript lane).** A new gate generates from the shared
   cross-port corpus (`fixtures/persistence-conformance/canonical/meta.fitness.json` — 16
@@ -178,6 +180,13 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   `routes-hono.ts`**, change `hasAnyRdbSource(e)` to `servesReadApi(e)` in its `filter` (both
   are exported from `@metaobjectsdev/codegen-ts`) or re-eject, then delete the stale
   `<Abstract>.queries.ts` / `.routes.ts` files the old generator left behind.
+- **`loadMemory(repoRoot)` did not load the libraries a project opts into.** When called
+  with no `files`, it took the files, file ids and dependency imports from
+  `.metaobjects/config.json` through `resolveCollection`, but not `libraries`, which FR-043
+  moved into the same file. A project opting into `iam` loaded through `meta` and failed
+  through the SDK: every reference into the library was `ERR_INVALID_REFERENCE`, and the
+  library-package guard never ran. It now takes the selection from the collection too;
+  an explicit `libraries` option still wins.
 - **Three more reference shapes generated code that did not compile**, found by the new
   feature-combination gate (below). An M:N **self-join**'s route mount imported the source
   table a second time beside the entity-module import (`TS2300`, and a `SyntaxError` when
