@@ -123,7 +123,6 @@ function compile(dir: string, paths: string[]): string[] {
       module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
       skipLibCheck: true,
-      baseUrl: join(import.meta.dir, "../../node_modules"),
     },
   );
   return ts.getPreEmitDiagnostics(program).map((d) => {
