@@ -134,6 +134,39 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   knows how to bind it. Nothing caught it because the existing text-matching test passes on a
   file that cannot compile.
 
+- **`meta migrate` dropped every foreign key onto a TPH subtype, and `meta verify --db` could
+  not see it.** A subtype has no table of its own, so the expected-schema builder skipped it
+  before registering it as an FK target; an `identity.reference` onto `Carrier` (a subtype of
+  `Party`) resolved to nothing and the constraint was silently left out of the migration.
+  `verify --db` diffs against the same builder, so expected and actual agreed and it reported
+  the schema in sync. The FK now references the discriminator base's table. The same fold lost
+  two more things on the base table itself: the FK of a reference **declared on** a subtype
+  (its column was folded, its constraint was not), and every field and reference declared on
+  an **abstract level between** the base and a concrete subtype (`Party` → abstract
+  `Organization` → `Carrier`), which the Drizzle schema did declare. **An adopter with such a
+  model will see `add-fk` (and possibly `add-column`) changes in the next `meta migrate`
+  diff** — those are the constraints and columns the metadata always declared.
+- **A reference or M:N relationship onto a TPH subtype generated code that did not compile.**
+  The subtype's module exports no table const, but the FK's `.references()`, the `relations()`
+  entry and the M:N traversal all imported `carriers` from `Carrier.ts` (`TS2724`). They now
+  bind the discriminator base's table (`parties` from `Party.ts`). An M:N onto a subtype also
+  **filters the related rows to that subtype**: the junction FK can only point at the base
+  table, so it can hold a sibling subtype's id, and the traversal used to return that row too.
+  `mountM2mRoute` takes a new optional `targetDiscriminator: { column, value }`, which the
+  generated mount passes; omitting it keeps the old behaviour. The generated Drizzle table of
+  a discriminator base also gains the `.references()` of subtype-declared references, matching
+  the migration. New helpers `tphStorageObject` / `tphStorageName` answer "which object's
+  table stores these rows" for owned generators. **Generated output changes**: re-run
+  `meta gen`.
+- **An abstract object that inherits a source got a queries and a routes file that did not
+  compile.** An abstract level has no table of its own, only a type-only shape, yet the
+  queries and routes generators gated on "has a source" alone, so `Organization.queries.ts`
+  imported an `organizations` table that does not exist. They now gate on `servesReadApi`,
+  the predicate the TanStack hooks already used, so routes, queries and hooks exist for the
+  same objects again; the API docs follow. **If you ejected `queries.ts`, `routes.ts` or
+  `routes-hono.ts`**, change `hasAnyRdbSource(e)` to `servesReadApi(e)` in its `filter` (both
+  are exported from `@metaobjectsdev/codegen-ts`) or re-eject, then delete the stale
+  `<Abstract>.queries.ts` / `.routes.ts` files the old generator left behind.
 - **A TPH subtype's declared type and its read schema disagreed, so `parse<Base>()` did not
   compile.** The generated `<Sub>` interface and the `<Sub>Schema` the polymorphic
   dispatcher parses through were emitted by two rules that answered the same question

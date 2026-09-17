@@ -138,7 +138,7 @@ export { renderEntityMetaFile, entityMetaFileName, entityMetaSpecifier } from ".
 // react) to dispatch polymorphic/per-subtype emission and skip subtype files.
 export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
 export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
-export { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "./templates/zod-validators.js";
+export { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin, tphStorageName, tphStorageObject } from "./templates/zod-validators.js";
 
 // The ONE sortability rule. It builds the server-side `<Entity>SortAllowlist` and the
 // client-side sort union, and it is public so a UI-tier generator (a data-grid column

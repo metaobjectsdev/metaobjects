@@ -8,6 +8,7 @@ import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier } from "../import-path.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { effectivePackage } from "../docs-paths.js";
+import { tphStorageName } from "./zod-validators.js";
 
 /**
  * Render the relations() block for one entity.
@@ -63,18 +64,21 @@ function renderRelationEntry(
     return code`  ${entry.name}: many(${junctionVarSym})`;
   }
 
+  // Bind to the table that stores the target's rows: a TPH subtype's module has no
+  // table const, so a navigation onto `Carrier` binds `parties` from `Party`.
+  const targetTableEntity = tphStorageName(entry.targetEntity, ctx.loadedRoot);
   // Use imp() for cross-entity references so ts-poet tracks and emits the import.
   const targetSpec = crossEntitySpecifier(
     ctx.outputLayout,
     thisEntityPackage,
-    ctx.packageOf.get(entry.targetEntity),
-    entry.targetEntity,
+    ctx.packageOf.get(targetTableEntity),
+    targetTableEntity,
     ctx.extStyle,
   );
-  const targetVarSym = imp(`${ctx.collectionName(entry.targetEntity)}@${targetSpec}`);
+  const targetVarSym = imp(`${ctx.collectionName(targetTableEntity)}@${targetSpec}`);
 
   if (entry.cardinality === CARDINALITY_ONE) {
-    const pkInfo = ctx.pkMap.get(entry.targetEntity);
+    const pkInfo = ctx.pkMap.get(targetTableEntity);
     const targetPkField = pkInfo?.fieldName ?? "id";
     return code`  ${entry.name}: one(${targetVarSym}, { fields: [${thisVarName}.${entry.fkField ?? "id"}], references: [${targetVarSym}.${targetPkField}] })`;
   }

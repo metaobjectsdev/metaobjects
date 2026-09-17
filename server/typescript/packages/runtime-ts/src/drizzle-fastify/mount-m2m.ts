@@ -18,9 +18,14 @@
 //      the source side (via @sourceRefField) → sourceColumn/targetColumn.
 //   3. Symmetric self-join: junction WHERE sourceCol = :id OR targetCol = :id;
 //      per row the related id is whichever column is NOT the source id.
+//
+// A target that is a TPH SUBTYPE lives in its discriminator base's table, and the
+// junction FK can only point at that base table — so it can hold the id of a row of
+// another subtype. `targetDiscriminator` ANDs the subtype predicate into stage 2 so
+// only rows of the declared target come back.
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
-import { eq, or, inArray } from "drizzle-orm";
+import { and, eq, or, inArray } from "drizzle-orm";
 import { coerceIdForColumn } from "./util.js";
 
 // Loose Drizzle types — the helper works across libsql / better-sqlite3 / pg.
@@ -49,6 +54,12 @@ export interface M2mRouteOptions {
   targetPkColumn?: string;
   /** Undirected self-join: union both junction FK columns on read. */
   symmetric: boolean;
+  /**
+   * The target is a TPH subtype: `targetTable` is its discriminator base's table, and
+   * stage 2 keeps only rows whose discriminator `column` (physical name) equals `value`.
+   * Absent → every related row is returned, behaviour unchanged.
+   */
+  targetDiscriminator?: { column: string; value: string };
   /** Fastify route-level hooks (auth, etc.). */
   routeOptions?: RouteShorthandOptions;
 }
@@ -101,10 +112,12 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
 
     // Stage 2 — load the target rows.
     const pkCol = columnRef(opts.targetTable, targetPk);
+    const byPk = inArray(pkCol, [...relatedIds]);
+    const disc = opts.targetDiscriminator;
     return await opts.db
       .select()
       .from(opts.targetTable)
-      .where(inArray(pkCol, [...relatedIds]));
+      .where(disc ? and(byPk, eq(columnRef(opts.targetTable, disc.column), disc.value)) : byPk);
   });
 }
 

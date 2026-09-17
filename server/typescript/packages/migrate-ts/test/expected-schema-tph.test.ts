@@ -78,3 +78,128 @@ describe("buildExpectedSchema — TPH single table", () => {
     expect(reference.nullable).toBe(false);
   });
 });
+
+// FK targeting a TPH SUBTYPE. A subtype has no table of its own — it lives in its
+// discriminator base's — so every FK onto it must land on the BASE table. Pass 1
+// skipped subtypes before registering them as FK targets, so `resolveTargetTable`
+// returned undefined and `buildForeignKeys` dropped the constraint without a word.
+// `meta verify --db` diffs against this same builder, so the drop was invisible to
+// the drift gate too: expected and actual agreed because both lacked the FK.
+async function loadTphReferenceTarget() {
+  const result = await new MetaDataLoader().load([
+    new InMemoryStringSource(
+      JSON.stringify({
+        "metadata.root": {
+          package: "demo",
+          children: [
+            { "object.entity": { name: "Depot", children: [
+              { "source.rdb": { "@table": "depots" } },
+              { "field.long": { name: "id" } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+            ]}},
+            { "object.entity": { name: "Party", "@discriminator": "partyType", children: [
+              { "source.rdb": { "@table": "parties" } },
+              { "field.long": { name: "id" } },
+              { "field.enum": { name: "partyType", "@values": ["Carrier", "Broker"] } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+            ]}},
+            // An ABSTRACT intermediate level: its field and reference belong to `parties`
+            // just as much as a concrete subtype's own do.
+            { "object.entity": { name: "Organization", extends: "Party", abstract: true, children: [
+              { "field.long": { name: "hqDepotId" } },
+              { "identity.reference": { name: "fkHqDepot", "@fields": "hqDepotId", "@references": "Depot" } },
+            ]}},
+            // A subtype declaring its OWN reference: the FK column folds into `parties`,
+            // so the constraint must come with it.
+            { "object.entity": { name: "Carrier", extends: "Organization", "@discriminatorValue": "Carrier", children: [
+              { "field.long": { name: "homeDepotId" } },
+              { "identity.reference": { name: "fkHomeDepot", "@fields": "homeDepotId", "@references": "Depot" } },
+            ]}},
+            // A second subtype declaring the SAME reference: one folded column, so one constraint.
+            { "object.entity": { name: "Broker", extends: "Party", "@discriminatorValue": "Broker", children: [
+              { "field.string": { name: "mcNumber", "@maxLength": 20 } },
+              { "field.long": { name: "homeDepotId" } },
+              { "identity.reference": { name: "fkHomeDepot", "@fields": "homeDepotId", "@references": "Depot" } },
+            ]}},
+            { "object.entity": { name: "Shipment", children: [
+              { "source.rdb": { "@table": "shipments" } },
+              { "field.long": { name: "id" } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+              { "relationship.association": { name: "carriers", "@cardinality": "many", "@objectRef": "Carrier", "@through": "Leg" } },
+            ]}},
+            { "object.entity": { name: "Leg", children: [
+              { "source.rdb": { "@table": "legs" } },
+              { "field.long": { name: "id" } },
+              { "field.long": { name: "shipmentId", "@required": true } },
+              { "field.long": { name: "carrierId", "@required": true } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+              { "identity.reference": { name: "fkShipment", "@fields": "shipmentId", "@references": "Shipment" } },
+              { "identity.reference": { name: "fkCarrier", "@fields": "carrierId", "@references": "Carrier" } },
+            ]}},
+            // Self-join junction onto the subtype; one side is package-qualified so the
+            // FQN lookup is exercised as well as the bare one.
+            { "object.entity": { name: "CarrierPartnership", children: [
+              { "source.rdb": { "@table": "carrier_partnerships" } },
+              { "field.long": { name: "id" } },
+              { "field.long": { name: "fromCarrierId", "@required": true } },
+              { "field.long": { name: "toCarrierId", "@required": true } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+              { "identity.reference": { name: "fkFromCarrier", "@fields": "fromCarrierId", "@references": "Carrier" } },
+              { "identity.reference": { name: "fkToCarrier", "@fields": "toCarrierId", "@references": "demo::Carrier" } },
+            ]}},
+          ],
+        },
+      }),
+    ),
+  ]);
+  if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("; "));
+  return result.root;
+}
+
+describe("buildExpectedSchema — FK targeting a TPH subtype", () => {
+  for (const dialect of ["postgres", "sqlite"] as const) {
+    test(`${dialect}: an FK onto a subtype references the discriminator base's table`, async () => {
+      const snap = buildExpectedSchema(await loadTphReferenceTarget(), { dialect });
+      const legs = snap.tables.find((t) => t.name === "legs")!;
+      const byCol = new Map(legs.foreignKeys.map((fk) => [fk.columns.join(","), fk]));
+      expect(byCol.get("shipment_id")?.refTable).toBe("shipments");
+      expect(byCol.get("carrier_id")).toEqual({
+        name: "legs_carrier_id_fk",
+        columns: ["carrier_id"],
+        refTable: "parties",
+        refColumns: ["id"],
+      });
+    });
+
+    test(`${dialect}: both sides of a self-join junction onto a subtype, bare and qualified`, async () => {
+      const snap = buildExpectedSchema(await loadTphReferenceTarget(), { dialect });
+      const junction = snap.tables.find((t) => t.name === "carrier_partnerships")!;
+      expect(
+        junction.foreignKeys.map((fk) => [fk.columns.join(","), fk.refTable, fk.refColumns.join(",")]).sort(),
+      ).toEqual([
+        ["from_carrier_id", "parties", "id"],
+        ["to_carrier_id", "parties", "id"],
+      ]);
+    });
+
+    test(`${dialect}: references declared ON a subtype keep their FKs on the base table`, async () => {
+      const snap = buildExpectedSchema(await loadTphReferenceTarget(), { dialect });
+      const parties = snap.tables.find((t) => t.name === "parties")!;
+      expect(parties.columns.map((c) => c.name).sort()).toEqual(
+        ["home_depot_id", "hq_depot_id", "id", "mc_number", "party_type"],
+      );
+      // One constraint per folded column, however many subtypes declare it.
+      expect(parties.foreignKeys.map((fk) => [fk.columns.join(","), fk.refTable]).sort()).toEqual([
+        ["home_depot_id", "depots"],
+        ["hq_depot_id", "depots"],
+      ]);
+    });
+
+    test(`${dialect}: a subtype still emits no table of its own`, async () => {
+      const snap = buildExpectedSchema(await loadTphReferenceTarget(), { dialect });
+      expect(snap.tables.map((t) => t.name).sort()).toEqual(
+        ["carrier_partnerships", "depots", "legs", "parties", "shipments"],
+      );
+    });
+  }
+});

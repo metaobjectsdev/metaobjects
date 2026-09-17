@@ -40,6 +40,19 @@ const friendships = sqliteTable("friendships", {
   personBId: integer("person_b_id").notNull(),
 });
 
+// --- TPH target: Shipment —carriers→ Carrier via Leg, Carrier a subtype of Party ---
+// The junction FK can only point at the base table, so it can hold a Broker's id too;
+// the traversal must return Carriers only. Physical column differs from the TS key.
+const parties = sqliteTable("parties", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  partyType: text("party_type").notNull(),
+  name: text("name").notNull(),
+});
+const legs = sqliteTable("legs", {
+  shipmentId: integer("shipment_id").notNull(),
+  carrierId: integer("carrier_id").notNull(),
+});
+
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -58,6 +71,11 @@ beforeAll(async () => {
   await client.execute(`INSERT INTO people (id, name) VALUES (1,'Alice'),(2,'Bob'),(3,'Carol'),(4,'Dave')`);
   await client.execute(`INSERT INTO follows (follower_id, followee_id) VALUES (1,2),(1,3),(2,1)`);
   await client.execute(`INSERT INTO friendships (person_a_id, person_b_id) VALUES (1,2),(3,1),(2,4)`);
+
+  await client.execute(`CREATE TABLE parties (id INTEGER PRIMARY KEY AUTOINCREMENT, party_type TEXT NOT NULL, name TEXT NOT NULL)`);
+  await client.execute(`CREATE TABLE legs (shipment_id INTEGER NOT NULL, carrier_id INTEGER NOT NULL)`);
+  await client.execute(`INSERT INTO parties (id, party_type, name) VALUES (1,'Carrier','Acme Freight'),(2,'Broker','Middleman'),(3,'Carrier','Bolt Lines')`);
+  await client.execute(`INSERT INTO legs (shipment_id, carrier_id) VALUES (1,1),(1,2),(1,3),(2,2)`);
 
   const db = drizzle(client);
   app = Fastify();
@@ -79,6 +97,13 @@ beforeAll(async () => {
     junctionTable: friendships, targetTable: people,
     sourceColumn: "person_a_id", targetColumn: "person_b_id", targetPkColumn: "id",
     symmetric: true,
+  });
+  mountM2mRoute({
+    fastify: app, path: "/shipments", relationName: "carriers", db,
+    junctionTable: legs, targetTable: parties,
+    sourceColumn: "shipment_id", targetColumn: "carrier_id", targetPkColumn: "id",
+    symmetric: false,
+    targetDiscriminator: { column: "party_type", value: "Carrier" },
   });
   await app.ready();
 });
@@ -128,5 +153,18 @@ describe("mountM2mRoute — symmetric self-join (Person.friends via Friendship)"
   test("dave single friend", async () => {
     const r = await app.inject({ method: "GET", url: "/people/4/friends" });
     expect(JSON.parse(r.body).map((x: { name: string }) => x.name)).toEqual(["Bob"]);
+  });
+});
+
+describe("mountM2mRoute — target is a TPH subtype (Shipment.carriers via Leg)", () => {
+  test("returns only rows of the target subtype, though the junction also names a Broker", async () => {
+    const r = await app.inject({ method: "GET", url: "/shipments/1/carriers" });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body).map((x: { name: string }) => x.name).sort()).toEqual(["Acme Freight", "Bolt Lines"]);
+  });
+  test("a source whose junction rows name only another subtype gets an empty array", async () => {
+    const r = await app.inject({ method: "GET", url: "/shipments/2/carriers" });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body)).toEqual([]);
   });
 });
