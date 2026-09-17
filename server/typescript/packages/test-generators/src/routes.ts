@@ -43,7 +43,7 @@ import {
   resolveExpose,
   type ExposeOption,
   isTphSubtype,
-  hasAnyRdbSource,
+  servesReadApi,
   formatTs,
   entityOutputPath,
   effectivePackage,
@@ -72,9 +72,10 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     // base's); AND-composed with your filter.
     // #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't
     // backed by any store — routes against it would import Drizzle table/allowlist
-    // exports the entity file never emits. Gated by hasAnyRdbSource.
+    // exports the entity file never emits. Gated by servesReadApi, which also skips
+    // abstract objects: an abstract level has no table of its own to mount.
     filter: (e: MetaObject) =>
-      hasAnyRdbSource(e) && !isTphSubtype(e) && userFilter(e),
+      servesReadApi(e) && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file: renderContext is required (provided by runGen)");

@@ -1,7 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderRoutesFileHono } from "../templates/routes-file-hono.js";
-import { hasAnyRdbSource } from "../source-detect.js";
+import { servesReadApi } from "../api-surface.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
@@ -41,7 +41,8 @@ export interface RoutesFileHonoOpts {
  * them (ERR_UNKNOWN_ATTR).
  *
  * #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't
- * backed by any store — gated by `hasAnyRdbSource` (does NOT add TPH handling;
+ * backed by any store — gated by `servesReadApi`, which also excludes abstract objects
+ * (no table of their own to mount) (does NOT add TPH handling;
  * that gap is pre-existing and out of scope here).
  */
 export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts): Generator {
@@ -51,7 +52,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
   // written out twice a later edit to one silently makes an entity either stop emitting
   // without being named as held back, or get warned about while still emitting.
   const passesOtherGates = (e: MetaObject): boolean =>
-    hasAnyRdbSource(e) && userFilter(e);
+    servesReadApi(e) && userFilter(e);
   const generator: Generator = {
     name: "routes-file-hono",
     // Marks this as the Hono routes generator so the runner can aggregate

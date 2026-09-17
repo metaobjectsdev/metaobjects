@@ -31,6 +31,7 @@ import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
+import { tphDiscriminatorPin, tphStorageObject } from "./zod-validators.js";
 
 export function renderRoutesFile(
   entity: MetaObject,
@@ -288,18 +289,25 @@ function renderM2mMount(
       ctx.extStyle,
     )}`,
   );
+  // An M:N onto a TPH subtype traverses into its discriminator BASE's table — the
+  // subtype has no table const, and the junction FK can only point at the base table —
+  // and filters the rows to the subtype, because a Broker id in that FK column is not a
+  // Carrier. Every other target binds to itself, and emits no filter.
+  const declaredTarget = ctx.loadedRoot.findObject(entry.targetEntity);
+  const target = declaredTarget === undefined ? undefined : tphStorageObject(declaredTarget);
+  const targetTableEntity = target?.name ?? entry.targetEntity;
+  const pin = declaredTarget === undefined ? undefined : tphDiscriminatorPin(declaredTarget);
   const targetVarSym = imp(
-    `${ctx.collectionName(entry.targetEntity)}@${crossEntitySpecifier(
+    `${ctx.collectionName(targetTableEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
       sourcePkg,
-      ctx.packageOf.get(entry.targetEntity),
-      entry.targetEntity,
+      ctx.packageOf.get(targetTableEntity),
+      targetTableEntity,
       ctx.extStyle,
     )}`,
   );
   const mountM2mRouteSym = imp("mountM2mRoute@@metaobjectsdev/runtime-ts/drizzle-fastify");
   const junction = ctx.loadedRoot.findObject(entry.junctionEntity);
-  const target = ctx.loadedRoot.findObject(entry.targetEntity);
   // fromPackage = source.package: this routes file is SOURCE's own module, never the
   // junction's or the target's — see resolveJunctionColumn's doc comment (B1).
   const sourceColumn: Code = junction
@@ -309,8 +317,12 @@ function renderM2mMount(
     ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx, sourcePkg)
     : code`${JSON.stringify(entry.targetJoinField!)}`;
   const targetPkColumn: Code = target
-    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx, sourcePkg)
+    ? resolveJunctionColumn(target, ctx.pkMap.get(targetTableEntity)?.fieldName ?? "id", ctx, sourcePkg)
     : code`${JSON.stringify("id")}`;
+  const discriminatorLine: Code | string = pin !== undefined && target !== undefined
+    ? code`
+    targetDiscriminator: { column: ${resolveJunctionColumn(target, pin.fieldName, ctx, sourcePkg)}, value: ${JSON.stringify(pin.value)} },`
+    : "";
 
   return code`  ${mountM2mRouteSym}({
     fastify: ${fastifyVar},
@@ -322,7 +334,7 @@ function renderM2mMount(
     sourceColumn: ${sourceColumn},
     targetColumn: ${targetColumn},
     targetPkColumn: ${targetPkColumn},
-    symmetric: ${entry.symmetric ? "true" : "false"},
+    symmetric: ${entry.symmetric ? "true" : "false"},${discriminatorLine}
   });`;
 }
 

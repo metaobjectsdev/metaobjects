@@ -2,7 +2,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderRoutesFile } from "../templates/routes-file.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
-import { hasAnyRdbSource } from "../source-detect.js";
+import { servesReadApi } from "../api-surface.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
@@ -33,7 +33,8 @@ export interface RoutesFileOpts {
  *
  * #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't
  * backed by any store — routes against it would import Drizzle table/allowlist
- * exports the entity-file generator never emits. Gated by `hasAnyRdbSource`.
+ * exports the entity-file generator never emits. Gated by `servesReadApi`, which also
+ * excludes abstract objects: an abstract level has no table of its own to mount.
  *
  * FR-017 Tier 2: TPH subtypes get no standalone routes file — their per-subtype
  * route set lives in the discriminator base's routes file.
@@ -44,7 +45,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     name: "routes-file",
     // Always set: AND-composes the built-in gates with the optional user filter.
     filter: (e: MetaObject) =>
-      hasAnyRdbSource(e) && !isTphSubtype(e) && userFilter(e),
+      servesReadApi(e) && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file: renderContext is required (provided by runGen)");

@@ -25,7 +25,8 @@ import { resolveTableSchema } from "@metaobjectsdev/metadata";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
-import { collectTphSubtypeFields } from "./tph-discriminator.js";
+import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminator.js";
+import { tphStorageObject } from "./zod-validators.js";
 import { effectivePackage } from "../docs-paths.js";
 
 /**
@@ -411,7 +412,19 @@ interface FkInfo {
 /** Pre-pass: map fkFieldName → FkInfo for this entity's effective (own + inherited) identity.reference children. */
 function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, FkInfo> {
   const result = new Map<string, FkInfo>();
-  for (const ref of obj.referenceIdentities()) {
+  // FR-017 TPH: a discriminator base's table carries every concrete subtype's folded
+  // columns (collectTphSubtypeFields), so it carries their FKs too — otherwise a reference
+  // declared on a subtype, or on an abstract level between it and the base, lands as a
+  // plain column. Same effective, not-already-on-the-base rule as the column fold.
+  // A copy: referenceIdentities() is the node's cached array, and loaded metadata is read-only.
+  const refs = [...obj.referenceIdentities()];
+  const baseRefNames = new Set(refs.map((r) => r.name));
+  for (const sub of tphConcreteSubtypes(obj, ctx.loadedRoot)) {
+    for (const ref of sub.referenceIdentities()) {
+      if (!baseRefNames.has(ref.name)) refs.push(ref);
+    }
+  }
+  for (const ref of refs) {
     // @enforce: false → logical-only reference. Skip the .references() emission;
     // the column stays plain. Drizzle's relations() block (driven by
     // relation-resolver) still includes the relationship for query navigation.
@@ -419,6 +432,8 @@ function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, F
     const fkFieldNames = ref.fields;
     if (fkFieldNames.length === 0) continue;
     const fkField = fkFieldNames[0]!;
+    // Two subtypes declaring the same reference fold to one column with one FK.
+    if (result.has(fkField)) continue;
     const targetName = ref.targetEntity;
     if (!targetName) continue;
     // @references may be authored bare OR package-qualified, and the loader can
@@ -427,10 +442,12 @@ function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, F
     // relation-resolver, which already does this.
     const targetObj = ctx.loadedRoot.findObject(stripPackage(targetName));
     if (!targetObj) continue;
+    // A TPH subtype has no table const of its own; its rows live in the base's table.
+    const storage = tphStorageObject(targetObj);
     const targetPkField = ref.resolvedTargetPkField(ctx.loadedRoot) ?? "id";
     result.set(fkField, {
-      targetVarName: ctx.collectionName(targetObj.name),
-      targetEntityName: targetObj.name,
+      targetVarName: ctx.collectionName(storage.name),
+      targetEntityName: storage.name,
       targetPkField,
     });
   }

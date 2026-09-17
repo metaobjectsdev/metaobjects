@@ -1,4 +1,6 @@
-import type { ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaRoot, MetaValidator } from "@metaobjectsdev/metadata";
+import type {
+  ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
+} from "@metaobjectsdev/metadata";
 import {
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
@@ -7,7 +9,6 @@ import {
   VALIDATOR_ATTR_LEFT, VALIDATOR_ATTR_OP, VALIDATOR_ATTR_RIGHT,
   VALIDATOR_ATTR_FIELD, VALIDATOR_ATTR_WHEN, VALIDATOR_ATTR_EQUALS, VALIDATOR_ATTR_FIELDS,
   TYPE_OBJECT,
-  TYPE_FIELD,
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
   isWritableSource,
@@ -181,13 +182,21 @@ export function buildExpectedSchemaWithProvenance(
   // legal and needs the target's physical name; only the table's own create/alter/drop
   // is suppressed (migration ORDERING vs the external tool is a documented adopter caveat).
   const fkTargetOnly: { entity: MetaObject; tableName: string }[] = [];
+  // FR-017 TPH subtypes: no table of their own, but still FK TARGETS — an FK onto a
+  // subtype lands on its discriminator base's table. Registered once the bases are
+  // known (below); skipping them outright dropped every such FK from the expected
+  // schema, and `meta verify --db` diffs against this builder, so the drop was silent.
+  const tphSubtypes: { entity: MetaObject; base: MetaData }[] = [];
   // ADR-0039: effective children — resolve rather than rely on root being unextended.
   for (const child of root.children()) {
     if (child.type !== TYPE_OBJECT) continue;
     if (child.isAbstract) continue;
     // FR-017 TPH: a subtype shares its discriminator base's single table, so it
     // emits no table of its own. Its own columns are folded into the base below.
-    if (isTphSubtype(child)) continue;
+    if (isTphSubtype(child)) {
+      tphSubtypes.push({ entity: child as MetaObject, base: discriminatorBaseOf(child)! });
+      continue;
+    }
     // #248 — persistability derives from source presence, never subtype (loader
     // contract: zero sources ⇒ not persisted — metadata validate-source-roles).
     // Table iff a WRITABLE source is declared or inherited (ADR-0039 resolving).
@@ -222,7 +231,14 @@ export function buildExpectedSchemaWithProvenance(
   const AMBIGUOUS = Symbol("ambiguous-bare-name");
   const byFqn = new Map<string, string>();
   const byBare = new Map<string, string | typeof AMBIGUOUS>();
-  for (const e of [...entities, ...fkTargetOnly]) {
+  const tableOwners = [...entities, ...fkTargetOnly];
+  const baseTables = new Map(tableOwners.map((e) => [e.entity.resolutionKey(), e.tableName]));
+  const subtypeTargets = tphSubtypes.flatMap(({ entity, base }) => {
+    // A base that emits no table (itself sourceless) gives its subtypes nothing to target.
+    const tableName = baseTables.get(base.resolutionKey());
+    return tableName === undefined ? [] : [{ entity, tableName }];
+  });
+  for (const e of [...tableOwners, ...subtypeTargets]) {
     byFqn.set(e.entity.resolutionKey(), e.tableName);
     const bare = e.entity.name;
     byBare.set(bare, byBare.has(bare) ? AMBIGUOUS : e.tableName);
@@ -546,13 +562,17 @@ function buildTable(
   // ADR-0039: effective attr — @discriminator may be inherited (deep TPH base).
   if (entity.attr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) {
     const existing = new Set(columns.map((c) => c.name));
+    const baseFieldNames = new Set(entity.fields().map((f) => f.name));
     for (const sub of tphConcreteSubtypes(entity, root)) {
-      // ADR-0039 category 1: emit-declared-here — fold ONLY the subtype's OWN
-      // fields (inherited base fields are already emitted on the base table).
-      for (const field of sub.ownChildren()) {
-        if (field.type !== TYPE_FIELD) continue;
+      // ADR-0039: effective fields — a field declared on an ABSTRACT intermediate level
+      // (Party → abstract Organization → Carrier) is a column of this table too, and
+      // only the resolving view reaches it. Reading the subtype's own children dropped
+      // it, while codegen's `collectTphSubtypeFields` folds it: a Drizzle column with no
+      // DDL behind it. Base fields are already emitted above, so they are skipped.
+      for (const field of sub.fields()) {
+        if (baseFieldNames.has(field.name)) continue;
         // #213 — a TPH subtype's derived field is read-only too; never a column.
-        if ((field as MetaField).isDerived()) continue;
+        if (field.isDerived()) continue;
         const col = buildColumn(field, false, undefined, strategy);
         if (existing.has(col.name)) continue;
         col.nullable = true; // subtype-only columns are always nullable in TPH
@@ -925,19 +945,37 @@ function buildForeignKeys(
   strategy: ColumnNamingStrategy,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
-  for (const refChild of entity.referenceIdentities()) {
+  // FR-017 TPH: a discriminator base's table also carries every concrete subtype's
+  // folded columns, so it carries their FKs too. Without this a reference declared
+  // ON a subtype got its column and silently lost its constraint.
+  const refs: { holder: MetaObject; refChild: MetaReferenceIdentity }[] = entity
+    .referenceIdentities()
+    .map((refChild) => ({ holder: entity, refChild }));
+  // ADR-0039: effective attr — @discriminator may be inherited (deep TPH base).
+  if (entity.attr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) {
+    const baseRefNames = new Set(refs.map((r) => r.refChild.name));
+    for (const sub of tphConcreteSubtypes(entity, root)) {
+      // ADR-0039: effective — same rule as the column fold in buildTable: a reference on
+      // an abstract intermediate level belongs to this table; the base's own are above.
+      for (const refChild of sub.referenceIdentities()) {
+        if (baseRefNames.has(refChild.name)) continue;
+        refs.push({ holder: sub, refChild });
+      }
+    }
+  }
+  for (const { holder, refChild } of refs) {
     // @enforce: false → logical-only reference; not a physical FK constraint.
     if (!refChild.enforce) continue;
     const targetEntity = refChild.targetEntity;
     if (targetEntity === undefined) continue;
-    const refTable = resolveTargetTable(targetEntity, entity.resolutionKey());
+    const refTable = resolveTargetTable(targetEntity, holder.resolutionKey());
     if (!refTable) continue;
 
     const fkFieldJsNames = readIdentityFields(refChild);
     if (fkFieldJsNames.length === 0) continue;
 
     const fkCols = fkFieldJsNames.map((jsName) => {
-      const fkField = findField(entity, jsName);
+      const fkField = findField(holder, jsName);
       return fkField ? resolveColumnName(fkField, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
 
@@ -965,7 +1003,7 @@ function buildForeignKeys(
         : applyColumnNamingStrategy(jsName, strategy);
     });
 
-    const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
+    const { onDelete, onUpdate } = resolveReferentialActions(holder, refChild);
     // An explicit @constraintName adopts an existing FK name (e.g. a database
     // created by another toolchain); absent → the auto-derived default.
     // ADR-0039: effective attr — @constraintName may be inherited via the identity's extends.
@@ -976,7 +1014,7 @@ function buildForeignKeys(
         : `${tableName}_${fkCols[0]}_fk`;
 
     // Guard: ON DELETE SET NULL requires nullable FK columns.
-    validateSetNullNullability(entity, refChild, onDelete, constraintName);
+    validateSetNullNullability(holder, refChild, onDelete, constraintName);
 
     const fk: FkDescriptor = {
       name: constraintName,
@@ -986,6 +1024,8 @@ function buildForeignKeys(
     };
     if (onDelete !== undefined) fk.onDelete = onDelete;
     if (onUpdate !== undefined) fk.onUpdate = onUpdate;
+    // Two subtypes may declare the same FK column; it folds to ONE column, so ONE constraint.
+    if (fks.some((existing) => existing.name === fk.name)) continue;
     fks.push(fk);
   }
   return fks;

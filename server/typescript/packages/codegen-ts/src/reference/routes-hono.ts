@@ -35,7 +35,7 @@ import {
   resolveExpose,
   type ExposeOption,
   isTphSubtype,
-  hasAnyRdbSource,
+  servesReadApi,
   formatTs,
   entityOutputPath,
   effectivePackage,
@@ -64,7 +64,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
   // without being named as held back, or get warned about while still emitting.
   // (Same shape as tanstack's grid generator, which factors it the same way.)
   const passesOtherGates = (e: MetaObject): boolean =>
-    hasAnyRdbSource(e) && userFilter(e);
+    servesReadApi(e) && userFilter(e);
   const generator: Generator = {
     name: "routes-file-hono",
     // Marks this as the Hono routes generator so the runner can aggregate

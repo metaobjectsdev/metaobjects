@@ -221,6 +221,16 @@ it is dropped on the folded column; an enum `CHECK` still passes because `NULL I
 (...)` is `NULL`, not false). The base row shape is the **union** of all subtype
 columns. Subtype entities emit **no** table of their own.
 
+A reference **onto** a subtype (`@references: BridgeAuth`) is a foreign key into the
+base's table, `auths`. An M:N relationship onto a subtype traverses that same table and
+returns only rows of the subtype: the junction's FK can only point at the base table,
+so it can hold a sibling subtype's id, and that row is not a `BridgeAuth`. A reference
+declared **on** a subtype, or on an abstract level between the base and a subtype, is
+folded onto the base table with its FK, the same way its column is. These three rules
+are what the TypeScript toolchain (`meta migrate`, `meta verify --db` and the generated
+Drizzle schema and routes) enforces; the other ports' codegen is being brought to the
+same contract.
+
 ### What codegen emits (all five ports)
 
 TPH is supported and conformance-gated in **all five ports** — codegen lowers it to

@@ -118,8 +118,7 @@ import { responseShape } from "../templates/find-inbound.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
-import { hasAnyRdbSource } from "../source-detect.js";
-import { servedPath } from "../api-surface.js";
+import { servedPath, servesReadApi } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
 import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
@@ -356,8 +355,9 @@ function stripTs(path: string): string {
 // ---------------------------------------------------------------------------
 
 /** Mirror of the queries generator's filter (queries-file.ts `skipNonQueryable`
- *  = `hasAnyRdbSource(e) && !isTphSubtype(e)`, #248 R2). A queryable object is
- *  any source-backed, non-TPH-subtype object:
+ *  = `servesReadApi(e) && !isTphSubtype(e)`, #248 R2). A queryable object is
+ *  any source-backed, non-abstract, non-TPH-subtype object:
+ *   • An abstract object has no table of its own, only a type-only shape.
  *   • An object with no declared/inherited source.rdb (of ANY kind) isn't
  *     backed by any store → the queries/routes/validation generators emit no
  *     CRUD for it. Value objects are subsumed here: value purity (ADR-0028)
@@ -370,7 +370,7 @@ function stripTs(path: string): string {
  *  per-subtype polymorphic helpers + subpaths are a documented deferral — see
  *  the module header.) */
 function isQueryable(obj: MetaObject): boolean {
-  return hasAnyRdbSource(obj) && !isTphSubtype(obj);
+  return servesReadApi(obj) && !isTphSubtype(obj);
 }
 
 function buildEntityUnit(
@@ -405,7 +405,7 @@ function buildEntityUnit(
     symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
     symbols.push(...validationSymbols(obj, entityMod));
     // REST needs no gate of its own: the routes generator's built-in filter is
-    // `hasAnyRdbSource && !isTphSubtype` — exactly isQueryable — so every queryable
+    // `servesReadApi && !isTphSubtype` — exactly isQueryable — so every queryable
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)

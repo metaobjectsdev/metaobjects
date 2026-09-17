@@ -10,7 +10,7 @@
 // downstream (e.g. to LLM tool_use input_schema) lost the nested object shape.
 
 import { code, joinCode, imp, type Code } from "ts-poet";
-import { MetaObject, MetaField, stripPackage } from "@metaobjectsdev/metadata";
+import { MetaObject, MetaField, type MetaRoot, stripPackage } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
@@ -73,6 +73,26 @@ export function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value
  */
 export function tphDiscriminatorBase(obj: MetaObject): MetaObject | undefined {
   return tphDiscriminatorLevel(obj)?.base;
+}
+
+/**
+ * The object whose TABLE stores `obj`'s rows: the discriminator base for a TPH subtype,
+ * otherwise `obj` itself.
+ *
+ * A subtype's module emits no table const, so anything that binds to "the other side" of
+ * a reference or relationship — an FK's `.references()`, a `relations()` entry, an M:N
+ * traversal's target table — must bind here and never to the target's own name. Binding
+ * to the subtype imported `carriers` from a `Carrier.ts` that does not export it.
+ */
+export function tphStorageObject(obj: MetaObject): MetaObject {
+  return isTphSubtype(obj) ? tphDiscriminatorBase(obj)! : obj;
+}
+
+/** {@link tphStorageObject} by entity name, for the name-keyed relation map. A name the
+ *  root does not resolve is returned unchanged. */
+export function tphStorageName(entityName: string, root: MetaRoot): string {
+  const obj = root.findObject(entityName);
+  return obj === undefined ? entityName : tphStorageObject(obj).name;
 }
 
 /**

@@ -2,7 +2,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderQueriesFile } from "../templates/queries-file.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
-import { hasAnyRdbSource } from "../source-detect.js";
+import { servesReadApi } from "../api-surface.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -25,7 +25,12 @@ export interface QueriesFileOpts {
 // FR-017 Tier 2: TPH subtypes are ALSO skipped — they emit no standalone
 // queries file. Their per-subtype CRUD helpers live in the discriminator
 // base's queries file (which targets the single shared table).
-const skipNonQueryable = (e: MetaObject): boolean => hasAnyRdbSource(e) && !isTphSubtype(e);
+//
+// Abstract objects are skipped as well (`servesReadApi`): an abstract level inherits its
+// base's source but has no table of its own — only a type-only shape — so its queries
+// module imported a table and schemas that do not exist. The hooks tier already gated on
+// this predicate; the queries and routes tiers now agree with it.
+const skipNonQueryable = (e: MetaObject): boolean => servesReadApi(e) && !isTphSubtype(e);
 
 export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generator {
   const userFilter = opts?.filter;

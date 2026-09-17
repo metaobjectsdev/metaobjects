@@ -50,7 +50,7 @@ import {
   isProjection,
   isWriteThrough,
   isTphSubtype,
-  hasAnyRdbSource,
+  servesReadApi,
   hasAutoSetFields,
   renderQueriesFile, // engine composer — used for the delegated variants
   formatTs,
@@ -146,7 +146,9 @@ export interface QueriesFileOpts {
 // loadable value ever has hasAnyRdbSource === true). TPH subtypes emit no
 // standalone queries file either — their per-subtype CRUD helpers live in the
 // discriminator base's queries file (which targets the single shared table).
-const skipNonQueryable = (e: MetaObject): boolean => hasAnyRdbSource(e) && !isTphSubtype(e);
+// Abstract objects are skipped too (`servesReadApi`): an abstract level has no table of
+// its own, only a type-only shape, so a queries module for it cannot compile.
+const skipNonQueryable = (e: MetaObject): boolean => servesReadApi(e) && !isTphSubtype(e);
 
 export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generator {
   const userFilter = opts?.filter;
