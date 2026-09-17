@@ -32,7 +32,7 @@ export function renderRelationsBlock(entity: MetaObject, ctx: RenderContext): Co
 
   const thisEntityPackage = effectivePackage(entity);
   const lines: Code[] = entries.map((entry) =>
-    renderRelationEntry(entry, ctx, varName, thisEntityPackage),
+    renderRelationEntry(entry, ctx, entity.name, varName, thisEntityPackage),
   );
 
   return code`export const ${relationsVarName} = ${relationsFn}(${varName}, (${params}) => ({
@@ -44,6 +44,7 @@ ${joinCode(lines, { on: ",\n", trim: false })}
 function renderRelationEntry(
   entry: RelationEntry,
   ctx: RenderContext,
+  thisEntityName: string,
   thisVarName: string,
   thisEntityPackage: string | undefined,
 ): Code {
@@ -67,15 +68,18 @@ function renderRelationEntry(
   // Bind to the table that stores the target's rows: a TPH subtype's module has no
   // table const, so a navigation onto `Carrier` binds `parties` from `Party`.
   const targetTableEntity = tphStorageName(entry.targetEntity, ctx.loadedRoot);
-  // Use imp() for cross-entity references so ts-poet tracks and emits the import.
-  const targetSpec = crossEntitySpecifier(
-    ctx.outputLayout,
-    thisEntityPackage,
-    ctx.packageOf.get(targetTableEntity),
-    targetTableEntity,
-    ctx.extStyle,
-  );
-  const targetVarSym = imp(`${ctx.collectionName(targetTableEntity)}@${targetSpec}`);
+  // A navigation onto this entity's OWN table (`Order.parent`, or a TPH base onto one of
+  // its subtypes) names the local const: importing it from this very module clashes with
+  // its declaration (TS2440). Otherwise imp() tracks and emits the cross-entity import.
+  const targetVarSym = targetTableEntity === thisEntityName
+    ? thisVarName
+    : imp(`${ctx.collectionName(targetTableEntity)}@${crossEntitySpecifier(
+      ctx.outputLayout,
+      thisEntityPackage,
+      ctx.packageOf.get(targetTableEntity),
+      targetTableEntity,
+      ctx.extStyle,
+    )}`);
 
   if (entry.cardinality === CARDINALITY_ONE) {
     const pkInfo = ctx.pkMap.get(targetTableEntity);

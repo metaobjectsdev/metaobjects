@@ -297,15 +297,20 @@ function renderM2mMount(
   const target = declaredTarget === undefined ? undefined : tphStorageObject(declaredTarget);
   const targetTableEntity = target?.name ?? entry.targetEntity;
   const pin = declaredTarget === undefined ? undefined : tphDiscriminatorPin(declaredTarget);
-  const targetVarSym = imp(
-    `${ctx.collectionName(targetTableEntity)}@${crossEntitySpecifier(
-      ctx.outputLayout,
-      sourcePkg,
-      ctx.packageOf.get(targetTableEntity),
-      targetTableEntity,
-      ctx.extStyle,
-    )}`,
-  );
+  // A self-join's target table IS the source table, which this file already imports from
+  // the entity module; a second import of the same binding is TS2300, and a SyntaxError
+  // when Node loads the module.
+  const targetVarSym = targetTableEntity === source.name
+    ? ctx.collectionName(source.name)
+    : imp(
+      `${ctx.collectionName(targetTableEntity)}@${crossEntitySpecifier(
+        ctx.outputLayout,
+        sourcePkg,
+        ctx.packageOf.get(targetTableEntity),
+        targetTableEntity,
+        ctx.extStyle,
+      )}`,
+    );
   const mountM2mRouteSym = imp("mountM2mRoute@@metaobjectsdev/runtime-ts/drizzle-fastify");
   const junction = ctx.loadedRoot.findObject(entry.junctionEntity);
   // fromPackage = source.package: this routes file is SOURCE's own module, never the

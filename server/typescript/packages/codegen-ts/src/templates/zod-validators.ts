@@ -76,16 +76,18 @@ export function tphDiscriminatorBase(obj: MetaObject): MetaObject | undefined {
 }
 
 /**
- * The object whose TABLE stores `obj`'s rows: the discriminator base for a TPH subtype,
- * otherwise `obj` itself.
+ * The object whose TABLE stores `obj`'s rows: the discriminator base for anything beneath
+ * a TPH base — a concrete subtype or an abstract level in between — otherwise `obj`.
  *
- * A subtype's module emits no table const, so anything that binds to "the other side" of
- * a reference or relationship — an FK's `.references()`, a `relations()` entry, an M:N
- * traversal's target table — must bind here and never to the target's own name. Binding
- * to the subtype imported `carriers` from a `Carrier.ts` that does not export it.
+ * Neither a subtype's module nor an abstract level's emits a table const, so anything
+ * that binds to "the other side" of a reference or relationship — an FK's `.references()`,
+ * a `relations()` entry, an M:N traversal's target table — must bind here and never to the
+ * target's own name. Binding to the subtype imported `carriers` from a `Carrier.ts` that
+ * does not export it.
  */
 export function tphStorageObject(obj: MetaObject): MetaObject {
-  return isTphSubtype(obj) ? tphDiscriminatorBase(obj)! : obj;
+  if (declaresTphDiscriminator(obj)) return obj;
+  return tphDiscriminatorBase(obj) ?? obj;
 }
 
 /** {@link tphStorageObject} by entity name, for the name-keyed relation map. A name the
