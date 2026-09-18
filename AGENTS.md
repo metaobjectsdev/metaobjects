@@ -122,6 +122,15 @@ running it. The no-mistakes validation gate runs the script for you — see `.no
 whose `lint` and `test` commands partition `--quick` between the two steps. That file is read
 from the **default branch**, so it does nothing until it is merged to `main`.
 
+**A green `leak-scan` check on a PR is a LOCAL scan, not a hosted one.** `main`'s protection
+requires that one status, and `hygiene.yml` was the only thing that ever published it — so with
+Actions off, nothing could merge. Rather than weaken the rule, `scripts/publish-leak-scan-status.sh`
+runs `.githooks/leak-scan.sh` and reports that exact result as the `leak-scan` commit status,
+bound to the SHA it scanned. Run it after pushing, once per head you want mergeable. It publishes
+the real verdict only — a failed scan publishes `failure` — and refuses outright on a dirty tree,
+on a HEAD that moved mid-scan, or with no credential. The status description repeats the caveat,
+so the PR page carries it too. No hosted scan runs while Actions is off, on any branch.
+
 **Lane selection is "not known-green", not "affected"** (`scripts/ci-ports-to-run.sh`).
 This is how `local-ci.yml` chooses its lanes, so it is dormant while Actions is off — but
 it is still committed and still gated, and it is what resumes if Actions comes back.
