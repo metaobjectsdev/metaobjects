@@ -17,22 +17,21 @@ conformance corpora. This guide covers how to propose changes.
 - MetaObjects is a **public** repository. Never include private/other-project names,
   client names, personal information, or absolute local paths in code, docs, fixtures,
   **or commit messages**. Use generic terms ("a downstream consumer", "a sibling
-  project") and repo-relative paths (`<repo-root>`). A CI `leak-scan` job and a local
-  pre-commit hook enforce this.
+  project") and repo-relative paths (`<repo-root>`). A local pre-commit hook enforces
+  this, and `scripts/ci-local.sh` re-runs the same leak scan over your branch.
 
 ## How to contribute a change
 
 1. **Fork** the repo and create a branch from `main`.
 2. Make your change following the discipline below — **tests first (TDD)**.
-3. Run the gates locally with **`scripts/ci-local.sh`** (or `--quick` to skip the
-   docker integration suite) and make sure it's green. **This matters:** to keep CI
-   costs down, the heavy correctness gates (the cross-port conformance matrix, the
-   full Java reactor, the drift/mutation gates, and the integration-tests
-   testcontainers matrix) **no longer run automatically on PRs** — they are release
-   gate (`v*`) + on-demand only. Local CI is now the primary correctness gate.
+3. Run the gates locally with **`scripts/ci-local.sh --quick`** (or the flagless
+   `scripts/ci-local.sh` for full parity) and make sure it's green. **This matters:**
+   GitHub Actions is disabled on this repository, so *nothing* in `.github/workflows/`
+   runs on a push or a PR — not the cross-port conformance matrix, not the Java
+   reactor, not the testcontainers suite, and not even the `leak-scan`. The script is
+   the only thing that runs them.
 4. Open a **pull request** against `main` and fill out the PR template.
-5. The public-repo `leak-scan` gate still runs on every PR; a maintainer runs the
-   full gates (locally or via the on-demand workflow) and approves before merge.
+5. A maintainer runs the full gates locally and approves before merge.
 
 ## The cardinal rule: the metamodel is the spine
 
@@ -75,22 +74,33 @@ cd server/python     && pytest            # Python (in its .venv)
 Cross-language persistence / api-contract corpora (Docker + Testcontainers) run via
 `scripts/integration-test.sh`.
 
-### Local CI (run this before opening/merging a PR)
+### Local CI (this IS the CI — run it before opening/merging a PR)
 
-Because the heavy gates no longer auto-run on PRs (cost), reproduce the full CI
-locally with one command:
+GitHub Actions is disabled on this repository, so the files in `.github/workflows/`
+still describe the checks but no longer run them. They are kept because the switch is
+reversible; meanwhile `scripts/ci-local.sh` is what runs them, and it mirrors all three
+check workflows:
 
 ```bash
-scripts/ci-local.sh            # full parity: leak-scan, all-port conformance,
-                               # java reactor, drift/mutation gates, + docker
-                               # integration suite
-scripts/ci-local.sh --quick    # everything except the docker integration suite
+scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port
+                               # conformance, the java reactor, the drift/mutation
+                               # gates, + integration-tests.yml's docker suite
+scripts/ci-local.sh --quick    # hygiene.yml in full + the TypeScript half of
+                               # conformance.yml; skips the C#/Java/Kotlin/Python
+                               # ports, the java reactor and the docker suite
+MO_CI_LIST_ONLY=1 scripts/ci-local.sh --quick   # print the steps, run nothing
 ```
 
 It SKIPS (loudly, not silently) any port whose toolchain (bun/dotnet/uv/mvn) isn't
 installed. The `.githooks/pre-push` hook additionally runs the TS build+typecheck
 gate and a Java pom-version drift guard on every push (activate hooks once per
 clone: `git config core.hooksPath .githooks`).
+
+If you drive changes through the no-mistakes validation gate, `.no-mistakes.yaml` pins
+its `lint` step to `scripts/ci-local.sh --only gates` and its `test` step to
+`scripts/ci-local.sh --only ts-fast --only ts-unit` — together exactly `--quick`, split
+so neither step repeats the other's work. Those commands are read from the **default
+branch**, so editing them on a feature branch has no effect until it merges.
 
 ## Releasing
 

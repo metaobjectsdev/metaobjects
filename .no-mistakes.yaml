@@ -1,0 +1,67 @@
+# no-mistakes gate configuration — metaobjects
+#
+# WHY THIS EXISTS. With no commands declared, the gate's test step is an AGENT choosing
+# "the smallest relevant tests" to run. This repository already has the answer committed:
+# `scripts/ci-local.sh`, which mirrors `.github/workflows/` — hygiene.yml's leak scan,
+# conformance.yml's eight jobs, and integration-tests.yml's Testcontainers matrix. Since
+# GitHub Actions was disabled on this repository (2026-09-16) that script is the ONLY thing
+# that runs those checks at all, so pinning the gate to it is what keeps them running.
+# The workflow files stay in place and unchanged, because the switch is reversible.
+#
+# THE SPLIT. These two commands together are exactly `scripts/ci-local.sh --quick`, cut
+# along the script's own `--only` section boundaries so neither step repeats the other:
+#
+#   test -> --only ts-fast + --only ts-unit   build + workspace typecheck, the TypeScript
+#                                             conformance corpora, the mutation
+#                                             completeness gate, every per-package TS
+#                                             unit suite.                256s, 406 KB output
+#   lint -> --only gates                      32 static / hygiene / drift gates: leak-scan,
+#                                             version + publish-set parity, positioning and
+#                                             shipped-doc-example checks, the requirements
+#                                             ledger, fixture-lint, doc-template and
+#                                             embedded-library drift.      23s, 27 KB output
+#
+# Both measured green on a warm tree (2026-09-18). `MO_CI_LIST_ONLY=1 scripts/ci-local.sh
+# --only <section>` prints the exact step list for either.
+#
+# ORDER IS LOAD-BEARING, and it is why the work is split this way round rather than one
+# `--quick` in `test`. The pipeline runs test BEFORE lint. The `gates` section contains
+# `site payload is true`, which spawns the `meta` CLI — and the CLI prefers a package's
+# compiled `dist/` over its source, so on a tree whose dist is stale that gate regenerates
+# with the OLD emitter and fails. `--quick` runs the gates before the build and hits exactly
+# that: measured here, `meta gen` died on `sidecarLine is not a function` and the gate went
+# red on a tree that is green. Building first in `test` and running the gates after in
+# `lint` removes it — the same run that failed under `--quick` passed as `--only gates`.
+# The script says so itself, on `gate_site_payload`: "--only gates does NOT imply it —
+# build before trusting a green here."
+#
+# --strict-toolchains: every step these two selections run is guarded on `bun`
+# (`step_if bun`), and the handful that are not are deliberately toolchain-free (grep/sed).
+# Without the flag, a gate host with no bun on PATH SKIPS all of them and the step reports
+# GREEN. Strict turns that false green into a loud failure. It cannot misfire on a missing
+# dotnet/mvn/uv, because no step in `gates`, `ts-fast` or `ts-unit` invokes them.
+#
+# WHAT IS DELIBERATELY NOT HERE — the rest of the flagless `scripts/ci-local.sh`:
+#   * the C#, Java, Kotlin and Python conformance lanes
+#   * the full Java reactor (`mvn clean install`)
+#   * integration-tests.yml's five-port Testcontainers matrix, and the migrate-ts /
+#     runtime-ts real-Postgres suites (`--only ts-slow`)
+# They are dropped from the per-change tier for two reasons, not one. Cost: they multiply a
+# ~4.5 minute step into a far longer one on every validation round. And dependence: they
+# need dotnet, mvn, uv and a live Docker daemon, which a gate host is not guaranteed to
+# have — under --strict-toolchains a missing one FAILS the step, and without it a down
+# Docker SKIPS silently, so neither setting gives an honest per-change signal. Run the
+# flagless `scripts/ci-local.sh` before a release tag; CONTRIBUTING.md says so too.
+#
+# NOTE: this file must be at the repo ROOT as `.no-mistakes.yaml` (NOT under
+# .no-mistakes/), and repo commands are read from the DEFAULT BRANCH — so nothing here
+# takes effect until it is merged to `main`.
+#
+# There is deliberately no `ci` section. With Actions disabled a PR triggers ZERO
+# workflows, so the gate's `ci` step waits for checks that never arrive and burns its
+# ci_timeout before parking. Pass `--skip=ci`, or merge the PR once the gate opens it.
+# If Actions is ever re-enabled, drop the skip and this file needs no other change.
+
+commands:
+  test: "scripts/ci-local.sh --only ts-fast --only ts-unit --strict-toolchains"
+  lint: "scripts/ci-local.sh --only gates --strict-toolchains"

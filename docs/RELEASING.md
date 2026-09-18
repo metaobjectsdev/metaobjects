@@ -146,12 +146,13 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
 6. **Any commit that bumps a version must regenerate the site payload: `bun run site:payload`.**
    `examples/showcase/site-payload.json` embeds all five coordinates — npm, PyPI, NuGet, Maven
    and `metamodelVersion` — so a bump changes it, and `gate_site_payload` in the `gates` lane
-   compares the committed bytes against a fresh build on every push to `main`. A coordinated cut
-   lands as **two** commits and both touch coordinates: `scripts/release.mjs` regenerates and
-   stages the payload for the TypeScript one automatically, but the
+   compares the committed bytes against a fresh build on every `scripts/ci-local.sh` run
+   (`--quick` included). A coordinated cut lands as **two** commits and both touch
+   coordinates: `scripts/release.mjs` regenerates and stages the payload for the
+   TypeScript one automatically, but the
    `chore(release): … PyPI, NuGet and Maven Central` commit is written by hand and must do it
-   too. Forget it and `main` goes red on the next push; once the site injection lands, the page
-   would publish the previous release's versions.
+   too. Forget it and the next `scripts/ci-local.sh` run goes red; once the site injection
+   lands, the page would publish the previous release's versions.
 
 7. **`v<version>` is cut LAST, and it is not just a marker — the website deploys from it.**
    metaobjects.dev's Pages workflow resolves the newest `v0.x` tag, clones that tree, and
@@ -259,8 +260,9 @@ dragged npm to `2.0.0` and Maven to `9.0.0`, so the package majors became a runn
 of metamodel edits. Measured cadence at the time of the amendment: **19 minor lines in 87
 days**.
 
-**The gate: `node scripts/check-metamodel-version.mjs`** (runs in the `gates` lane, so
-`scripts/ci-local.sh` and hosted CI both enforce it). It diffs
+**The gate: `node scripts/check-metamodel-version.mjs`** (runs in the `gates` lane, so any
+`scripts/ci-local.sh` run that includes `gates` enforces it — `--quick`, `--only gates`, or
+the flagless full run; hosted CI does not, because Actions is disabled here). It diffs
 `expected-registry.json` — already the byte-exact bill of materials every port is gated
 against — against its content at the **last release tag**, classifies every difference,
 and fails if the declared version did not move by at least the amount the change
