@@ -25,11 +25,18 @@
 # So do not "simplify" this back into a single `--quick` step: it is ~30s cheaper and it
 # reports a false red.
 #
-# --strict-toolchains: every step these two selections run is guarded on `bun`
-# (`step_if bun`), and the handful that are not are deliberately toolchain-free (grep/sed).
-# Without the flag, a gate host with no bun on PATH SKIPS all of them and the step reports
-# GREEN. Strict turns that false green into a loud failure. It cannot misfire on a missing
-# dotnet/mvn/uv, because no step in `gates`, `ts-fast` or `ts-unit` invokes them.
+# --strict-toolchains closes a SKIP hole, and only that. These selections run two kinds of
+# step. The `step_if bun` ones — every step in `ts-fast` and `ts-unit`, and 17 of the 32 in
+# `gates` — are the hazard: without the flag, a host with no bun on PATH SKIPS them and the
+# step still reports GREEN. Strict turns that false green into a loud failure. The other 15
+# `gates` steps run under plain `step`, so they were never at risk either way: a missing
+# binary just makes the command fail. Most are shell-only (grep/sed — `check-pom-versions.sh`
+# and `check-uv-lock-version.sh` are deliberately toolchain-free so they need no lane), but
+# NOT all of them, which is the part worth being exact about: five invoke `node` directly
+# (publish-set, script-name hooks, extract field kinds, metamodel-version, migration guides),
+# `check-publish-intent.sh` spawns `node` internally, and `gate_positioning_claims` invokes
+# bare `bun`. What holds across both kinds is the flag's safety: it cannot misfire on a
+# missing dotnet/mvn/uv, because nothing in `gates`, `ts-fast` or `ts-unit` invokes them.
 #
 # WHAT IS DELIBERATELY NOT HERE — the rest of the flagless `scripts/ci-local.sh`: the C#,
 # Java, Kotlin and Python conformance lanes, the full Java reactor, and

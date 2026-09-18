@@ -93,11 +93,13 @@ installed. The `.githooks/pre-push` hook additionally runs the TS build+typechec
 gate and a Java pom-version drift guard on every push (activate hooks once per
 clone: `git config core.hooksPath .githooks`).
 
-If you drive changes through the no-mistakes validation gate, `.no-mistakes.yaml` pins
-its `lint` step to `scripts/ci-local.sh --only gates` and its `test` step to
-`scripts/ci-local.sh --only ts-fast --only ts-unit` — together exactly `--quick`, split
-so neither step repeats the other's work. Those commands are read from the **default
-branch**, so editing them on a feature branch has no effect until it merges.
+If you drive changes through the no-mistakes validation gate, `.no-mistakes.yaml` pins its
+`test` step to `scripts/ci-local.sh --only ts-fast --only ts-unit --strict-toolchains` and
+its `lint` step to `scripts/ci-local.sh --only gates --strict-toolchains` — together exactly
+`--quick`, split so neither step repeats the other's work. `--strict-toolchains` is part of
+both: it promotes a SKIP to a FAIL, so a gate host missing bun cannot report green. Those
+commands are read from the **default branch**, so editing them on a feature branch has no
+effect until it merges.
 
 ## Releasing
 
