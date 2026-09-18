@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# Local CI — run the same gates as .github/workflows/ on your machine.
+# Local CI — run the gates .github/workflows/ describes, on your machine.
 #
-# As of the cost-reduction change, the heavy correctness gates (the 5-port
-# conformance matrix, the full Java reactor, the drift/mutation gates, and the
-# whole integration-tests testcontainers matrix) NO LONGER run automatically on
-# every push/PR — they are `workflow_dispatch` + release-tag (`v*`) only. This
-# script is how you run them locally before opening/merging a PR, so nothing red
-# leaves your machine. The cheap public-repo SECURITY backstop (leak-scan) still
-# runs automatically in CI on every PR; it is included here too.
+# GitHub Actions is DISABLED on this repository (2026-09-16), so nothing in
+# .github/workflows/ fires — not hygiene.yml's leak scan on a PR, not
+# conformance.yml, not integration-tests.yml, not local-ci.yml on the
+# self-hosted runner. The workflow files are kept, and unchanged, because the
+# switch is reversible. Until it is reversed THIS SCRIPT IS THE ONLY THING THAT
+# RUNS THEM, including the public-repo leak scan. Run it before opening or
+# merging a PR, so nothing red leaves your machine. The no-mistakes validation
+# gate runs it automatically — see .no-mistakes.yaml.
 #
 # Usage:
 #   scripts/ci-local.sh              # FULL parity: all-port conformance + full Java
@@ -65,9 +66,11 @@
 # selection without waiting for tests to complete.
 #
 # Ports whose toolchain (bun / dotnet / uv / mvn) is not installed are SKIPPED
-# with a loud warning (not silently passed). A full pre-release run is expected on
-# a machine with every toolchain — otherwise rely on the release-tag CI run.
-# Use --strict-toolchains to promote all SKIPs to FAILs (e.g. in CI itself).
+# with a loud warning (not silently passed). With Actions off there is no CI run to
+# fall back on, so the full pre-release run (docs/RELEASING.md) must happen on a
+# machine with every toolchain. --strict-toolchains promotes every SKIP to a FAIL,
+# so use it wherever a skip would mean a real gap rather than an absent toolchain:
+# the pre-release run, and the no-mistakes gate's two commands (.no-mistakes.yaml).
 #
 # Mirrors: hygiene.yml (leak-scan) · conformance.yml (fixture-lint, typecheck,
 # 5-port conformance, kotlin, java-reactor, completeness-gate, doc-template-drift,

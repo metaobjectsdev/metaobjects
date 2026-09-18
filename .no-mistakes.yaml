@@ -1,0 +1,62 @@
+# no-mistakes gate configuration — metaobjects
+#
+# WHY THIS EXISTS. With no commands declared, the gate's test step is an AGENT choosing
+# "the smallest relevant tests" to run. This repository already has the answer committed:
+# `scripts/ci-local.sh`, which mirrors `.github/workflows/` — hygiene.yml's leak scan,
+# conformance.yml's eight jobs, and integration-tests.yml's Testcontainers matrix. Since
+# GitHub Actions was disabled on this repository (2026-09-16) that script is the ONLY thing
+# that runs those checks at all, so pinning the gate to it is what keeps them running.
+#
+# THE SPLIT. These two commands together are exactly `scripts/ci-local.sh --quick`, cut
+# along the script's own `--only` section boundaries so neither step repeats the other.
+# `scripts/ci-local.sh --help` enumerates what each section contains, and
+# `MO_CI_LIST_ONLY=1 scripts/ci-local.sh --only <section>` prints its exact step list.
+# Measured green on a warm tree 2026-09-18: test 256s (it carries the mutation gate and is
+# almost all of the cost), lint 23s.
+#
+# ORDER IS LOAD-BEARING, and it is why the work is split this way round rather than one
+# `--quick` in `test`. The pipeline runs test BEFORE lint. The `gates` section contains
+# `site payload is true`, which spawns the `meta` CLI — and the CLI prefers a package's
+# compiled `dist/` over its source, so on a tree whose dist is stale that gate regenerates
+# with the OLD emitter and fails. `--quick` runs the gates before the build and hits exactly
+# that: measured here, `meta gen` died on `sidecarLine is not a function` and the gate went
+# red on a tree that is green. Building first in `test` and running the gates after in
+# `lint` removes it — the same tree that failed under `--quick` passed as `--only gates`.
+# So do not "simplify" this back into a single `--quick` step: it is ~30s cheaper and it
+# reports a false red.
+#
+# --strict-toolchains closes a SKIP hole, and only that. These selections run two kinds of
+# step. The `step_if bun` ones — every step in `ts-fast` and `ts-unit`, and 17 of the 32 in
+# `gates` — are the hazard: without the flag, a host with no bun on PATH SKIPS them and the
+# step still reports GREEN. Strict turns that false green into a loud failure. The other 15
+# `gates` steps run under plain `step`, so they were never at risk either way: a missing
+# binary just makes the command fail. Most are shell-only (grep/sed — `check-pom-versions.sh`
+# and `check-uv-lock-version.sh` are deliberately toolchain-free so they need no lane), but
+# NOT all of them, which is the part worth being exact about: five invoke `node` directly
+# (publish-set, script-name hooks, extract field kinds, metamodel-version, migration guides),
+# `check-publish-intent.sh` spawns `node` internally, and `gate_positioning_claims` invokes
+# bare `bun`. What holds across both kinds is the flag's safety: it cannot misfire on a
+# missing dotnet/mvn/uv, because nothing in `gates`, `ts-fast` or `ts-unit` invokes them.
+#
+# WHAT IS DELIBERATELY NOT HERE — the rest of the flagless `scripts/ci-local.sh`: the C#,
+# Java, Kotlin and Python conformance lanes, the full Java reactor, and
+# integration-tests.yml's five-port Testcontainers matrix plus the migrate-ts / runtime-ts
+# real-Postgres suites (`--only ts-slow`). Dropped for cost — they turn a ~4.5 minute step
+# into a much longer one on every round — and for dependence: they need dotnet, mvn, uv and
+# a live Docker daemon, which a gate host is not guaranteed to have, and neither
+# `--strict-toolchains` (a missing toolchain FAILS) nor its absence (a down Docker SKIPS
+# silently) gives an honest per-change signal when they are missing. docs/RELEASING.md
+# requires the flagless run before `bun publish`, which is where they are enforced.
+#
+# NOTE: this file must be at the repo ROOT as `.no-mistakes.yaml` (NOT under
+# .no-mistakes/), and repo commands are read from the DEFAULT BRANCH — so nothing here
+# takes effect until it is merged to `main`.
+#
+# There is no `ci` section and none is needed: `no-mistakes status` reports this repository
+# as `ci_mode: local`, so the gate skips the CI step and monitors no forge checks. That is
+# already the right answer while Actions is disabled — a PR triggers zero workflows, so
+# there would be nothing to wait for.
+
+commands:
+  test: "scripts/ci-local.sh --only ts-fast --only ts-unit --strict-toolchains"
+  lint: "scripts/ci-local.sh --only gates --strict-toolchains"

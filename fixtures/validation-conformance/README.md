@@ -153,16 +153,14 @@ runners wrap the bind step so a native-parse failure maps to `valid=false`.
 
 ## CI gate
 
-All five port runners are wired into `.github/workflows/conformance.yml` (the
-non-Docker conformance job) — TS/C#/Java/Python under the `conformance` matrix,
-Kotlin under `conformance-kotlin` — asserting byte-identical boolean verdicts
-across all five generated validation artifacts.
-
-That workflow runs on release tags, nightly on a schedule, and on
-`workflow_dispatch` — not on every PR (pull requests get the leak scan only, for
-hosted-minutes cost). Push-to-`main`
-coverage comes from the self-hosted `local-ci.yml`, and `scripts/ci-local.sh`
-reproduces the gate locally. See [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md).
+All five port runners assert byte-identical boolean verdicts across all five
+generated validation artifacts. `.github/workflows/conformance.yml` describes
+them (TS/C#/Java/Python under the `conformance` matrix, Kotlin under
+`conformance-kotlin`) but no longer runs them — Actions is disabled here, see
+AGENTS.md. `scripts/ci-local.sh` is what runs them: the five live in its
+`csharp`, `java` and `python` sections plus `ts-fast`, so the flagless
+`scripts/ci-local.sh` covers all five and `--quick` covers TypeScript only. See
+[`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md).
 
 ## Notes
 

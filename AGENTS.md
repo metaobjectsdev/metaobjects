@@ -102,19 +102,38 @@ It blocks commits whose added lines match (`git commit --no-verify` bypasses, di
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
-test suite while the CI `typecheck` job goes red — and a direct admin push to `main`
-bypasses branch protection. This hook closes that hole locally: when a push touches
-`server/typescript/` or `client/web/`, it runs the same `bun run --filter '*' build &&
-… typecheck` gate CI runs and **blocks the push when it is red** (~6s on a clean tree;
+test suite while `bun run --filter '*' typecheck` — the same check `scripts/ci-local.sh`
+runs — goes red, and a direct admin push to `main` bypasses branch protection. This hook closes that hole locally: when a push touches
+`server/typescript/` or `client/web/`, it runs that same `bun run --filter '*' build &&
+… typecheck` pair and **blocks the push when it is red** (~6s on a clean tree;
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
-or `SKIP_TS_TYPECHECK=1 git push`. The Java/C#/Python compile+conformance gates do NOT run on PRs (hosted CI runs
-them on release tags, a nightly schedule, and manual dispatch, for cost). Instead, every push to
-`main` triggers `local-ci.yml` on the maintainer's self-hosted runner: parallel
-per-port jobs, each running `scripts/ci-local.sh --only <port> --strict-toolchains`;
-a nightly dispatch runs the full matrix. PRs get the leak-scan only — run
-`scripts/ci-local.sh --quick` locally before opening one.
+or `SKIP_TS_TYPECHECK=1 git push`.
+
+**GitHub Actions is DISABLED on this repository (2026-09-16) — every check runs locally.**
+The workflow files are kept and unchanged, because the switch is reversible, but nothing in
+`.github/workflows/` fires today: not `hygiene.yml`'s leak scan on a PR, not `conformance.yml`'s
+nightly + `v*`-tag matrix, and not `local-ci.yml` on the self-hosted runner. **`scripts/ci-local.sh`
+is now the only thing that runs them**, and it already mirrors all three — `--quick` covers
+`hygiene.yml` in full plus the TypeScript half of `conformance.yml`, and the flagless full run
+adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integration-tests.yml`'s
+Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
+`MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
+running it. The no-mistakes validation gate runs the script for you — see `.no-mistakes.yaml`,
+whose `lint` and `test` commands partition `--quick` between the two steps. That file is read
+from the **default branch**, so it does nothing until it is merged to `main`.
+
+**A green `leak-scan` check on a PR is a LOCAL scan, not a hosted one.** `main`'s protection
+requires that one status, and `hygiene.yml` was the only thing that ever published it — so with
+Actions off, nothing could merge. Rather than weaken the rule, `scripts/publish-leak-scan-status.sh`
+runs `.githooks/leak-scan.sh` and reports that exact result as the `leak-scan` commit status,
+bound to the SHA it scanned. Run it after pushing, once per head you want mergeable. It publishes
+the real verdict only — a failed scan publishes `failure` — and refuses outright on a dirty tree,
+on a HEAD that moved mid-scan, or with no credential. The status description repeats the caveat,
+so the PR page carries it too. No hosted scan runs while Actions is off, on any branch.
 
 **Lane selection is "not known-green", not "affected"** (`scripts/ci-ports-to-run.sh`).
+This is how `local-ci.yml` chooses its lanes, so it is dormant while Actions is off — but
+it is still committed and still gated, and it is what resumes if Actions comes back.
 The selector unions the ports this push touched (`scripts/ci-affected-ports.sh`) with
 the ports whose *newest* verdict on `main` is not a success, read from the workflow's
 own run history — so a stale red lane gets **re-run**, not merely reported. Affected
