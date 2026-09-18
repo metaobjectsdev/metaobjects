@@ -24,12 +24,9 @@ conformance corpora. This guide covers how to propose changes.
 
 1. **Fork** the repo and create a branch from `main`.
 2. Make your change following the discipline below — **tests first (TDD)**.
-3. Run the gates locally with **`scripts/ci-local.sh --quick`** (or the flagless
-   `scripts/ci-local.sh` for full parity) and make sure it's green. **This matters:**
-   GitHub Actions is disabled on this repository, so *nothing* in `.github/workflows/`
-   runs on a push or a PR — not the cross-port conformance matrix, not the Java
-   reactor, not the testcontainers suite, and not even the `leak-scan`. The script is
-   the only thing that runs them.
+3. Run the gates locally with **`scripts/ci-local.sh --quick`** and make sure it's
+   green. **This matters:** nothing in `.github/workflows/` runs any more — see the
+   *Local CI* section below.
 4. Open a **pull request** against `main` and fill out the PR template.
 5. A maintainer runs the full gates locally and approves before merge.
 

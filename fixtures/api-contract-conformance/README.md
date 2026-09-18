@@ -207,14 +207,13 @@ run by the same `cd server/typescript/packages/integration-tests && bun test`
 invocation, so whatever runs the TS integration-tests package gates both — no
 separate opt-in.
 
-**When this actually runs.** GitHub Actions is disabled on this repository, so
-neither `integration-tests.yml` nor `local-ci.yml` fires; the workflow files are
-kept because the switch is reversible. Coverage comes from one place:
-`scripts/ci-local.sh`, whose `integration-tests` steps run this corpus for every
-port. It needs a Docker daemon and is skipped by `--quick`, so run the flagless
-`scripts/ci-local.sh` (or `scripts/integration-test.sh <port>`) before you open a
-PR. See [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md) for the corpus x port
-matrix and the per-port runner commands.
+**When this actually runs.** Nothing in `.github/workflows/` runs it — Actions is
+disabled here, see AGENTS.md. Coverage comes from one place: `scripts/ci-local.sh`,
+whose `integration-tests` steps run this corpus for every port. It needs a Docker
+daemon and `--quick` skips it, so run the flagless `scripts/ci-local.sh` (or
+`scripts/integration-test.sh <port>`) before you open a PR. See
+[`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md) for the corpus x port matrix and
+the per-port runner commands.
 
 ### Fan-out — COMPLETE (all 5 ports)
 

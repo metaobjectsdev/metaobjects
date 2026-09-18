@@ -102,9 +102,8 @@ It blocks commits whose added lines match (`git commit --no-verify` bypasses, di
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
-test suite while `bun run --filter '*' typecheck` — the gate `conformance.yml` declares
-and `scripts/ci-local.sh` runs — goes red, and a direct admin push to `main` bypasses
-branch protection. This hook closes that hole locally: when a push touches
+test suite while `bun run --filter '*' typecheck` — the same check `scripts/ci-local.sh`
+runs — goes red, and a direct admin push to `main` bypasses branch protection. This hook closes that hole locally: when a push touches
 `server/typescript/` or `client/web/`, it runs that same `bun run --filter '*' build &&
 … typecheck` pair and **blocks the push when it is red** (~6s on a clean tree;
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`

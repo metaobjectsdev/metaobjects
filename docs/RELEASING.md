@@ -201,12 +201,14 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    a review found eight defects in 172 lines. If you change a gate, change its case there —
    and check the change against a mutation, not just a green run.
 
-   **A second effect, and it is an improvement rather than a cost.** `conformance.yml` and
-   `integration-tests.yml` are the heavy gates that run on a `v*` tag and nowhere else.
-   Cutting the tag last means they now run against the FINAL coordinated tree — all four
-   registries bumped, docs refreshed, payload true — instead of the npm-only commit, which
-   is a tree that never actually shipped. `publish-npm.yml` triggers on `npm-v*`, not `v*`,
-   so moving the tag does not re-trigger a publish.
+   **A second effect, dormant while Actions is off.** `conformance.yml` and
+   `integration-tests.yml` used to be the heavy gates that ran on a `v*` tag and nowhere
+   else; today they run nowhere, and step 3 above is what gates the cut instead. The
+   ordering still earns its place, because if Actions is re-enabled those runs land on the
+   FINAL coordinated tree — all four registries bumped, docs refreshed, payload true —
+   instead of the npm-only commit, which is a tree that never actually shipped.
+   `publish-npm.yml` triggers on `npm-v*`, not `v*`, so moving the tag does not re-trigger
+   a publish.
 
 ## Versioning policy
 
@@ -498,14 +500,16 @@ red run as a blocker:
 
 ### 3. Promote to `latest`
 
-**Before `bun publish`: confirm the `local-ci` run for the release commit is green.**
-Its `ts-slow` lane now carries the real-Postgres migrate gate. Publishing is irreversible on
-all four registries, and the `v*` tag is pushed *after* `bun publish` — so the tag-triggered
-`integration-tests` run can never be the pre-publish gate. This is the last gate that can
-precede the irreversible step.
+**Before `bun publish`: run the FULL local CI on the release commit and confirm it is
+green.** Its `ts-slow` section carries the real-Postgres migrate gate. Publishing is
+irreversible on all four registries, and the `v*` tag is pushed *after* `bun publish`, so
+even if Actions were on, a tag-triggered `integration-tests` run could never be the
+pre-publish gate. This is the last gate that can precede the irreversible step — and with
+Actions disabled it is the only one, so the flagless script (all five ports, the reactor,
+the docker matrix) is what you run, not `--quick`.
 
 ```bash
-gh run list --workflow local-ci.yml --limit 1 --json headSha,conclusion
+scripts/ci-local.sh --strict-toolchains        # must end "LOCAL CI PASSED"
 ```
 
 ```bash
