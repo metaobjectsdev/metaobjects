@@ -148,26 +148,46 @@ export function hasAutoSetFields(obj: MetaObject): boolean {
   return false;
 }
 
+/** Is this field's column one the TPH BASE declares, rather than a subtype-only one?
+ *
+ *  Resolving (ADR-0039) and compared by name against `base.fields()` — exactly the set
+ *  `collectTphSubtypeFields` treats as "already emitted" when it folds the subtype
+ *  columns into the base table, so the two answers cannot drift apart. A field declared
+ *  on an abstract level BETWEEN the base and the subtype is subtype-only: the base's own
+ *  field set does not carry it, and neither does the base's `.notNull()`. */
+function isTphBaseOwnField(obj: MetaObject, field: MetaField): boolean {
+  const base = tphDiscriminatorBase(obj);
+  if (base === undefined) return false;
+  return base.fields().some((f) => f.name === field.name);
+}
+
 /**
  * Is this field NULL-tolerant in a TPH subtype's READ shape?
  *
- * A TPH subtype shares one physical table with its siblings, so a column only one
- * subtype declares is NULL on every other subtype's row, and a non-`@required` column
- * of this subtype's own is NULL when unset. Either way the value read back is `null`,
- * not `undefined`. The PRIMARY KEY is the exception — it is the shared base table's
- * key and is present on every row.
+ * Answered from the PHYSICAL column, because that is the only thing a read can return.
+ * A TPH subtype shares one table with its siblings, so a column only some subtypes
+ * declare is NULL on every other subtype's row and `drizzle-schema.ts` drops its
+ * `.notNull()` whatever `@required` says (its `forceNullable` fold). A column the base
+ * itself declares carries `.notNull()` precisely when the field is required. The PRIMARY
+ * KEY is the shared base table's key and is present on every row.
+ *
+ * `@default` is deliberately NOT consulted, and that is the fix rather than an omission.
+ * A default decides whether an INSERT may leave the value out; it says nothing about what
+ * a READ can see. Asking `fieldWillBeOptional` here widened a `NOT NULL DEFAULT` column to
+ * `| null` and — through the `.optional()` that same predicate mirrors — to `| undefined`,
+ * which the declared interface did not admit: `parse<Base>()` returned a value not
+ * assignable to the base union and the generated module failed to compile (TS2322).
  *
  * ONE predicate, because TWO emitters answer this question about the same field: the
  * Zod read schema (`renderTphSubtypeReadSchema`) and the declared TS type
- * (`renderValueObjectInterface`). They answered it differently, so the value
- * `parse<Base>()` returns was not assignable to the base union and the generated
- * module did not compile (TS2322). A second answer to one question is the defect;
+ * (`renderValueObjectInterface`). A second answer to one question is the defect;
  * keeping the two call sites pointed here is the fix.
  */
 export function isTphReadNullTolerant(obj: MetaObject, field: MetaField): boolean {
   if (!isTphSubtype(obj)) return false;
-  if (!fieldWillBeOptional(field)) return false;
-  return !primaryIdentityFieldNames(obj).includes(field.name);
+  if (primaryIdentityFieldNames(obj).includes(field.name)) return false;
+  if (!isTphBaseOwnField(obj, field)) return true;
+  return !isRequired(field);
 }
 
 /**
@@ -191,10 +211,12 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
       fieldLines.push(code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
       continue;
     }
-    const expr = zodFieldExpr(child, obj, ctx);
-    // zodFieldExpr already appends `.optional()` for non-required fields; add
-    // `.nullable()` on top so a NULL column value parses cleanly. The declared
-    // interface widens the SAME fields — see isTphReadNullTolerant.
+    // forceRequired: a row selected from the table carries every column as a KEY —
+    // a nullable one arrives as `null`, never absent — so nothing in a read shape is
+    // `.optional()`. Letting zodFieldExpr append it made the inferred type
+    // `T | undefined` while the declared interface said `T`, and the two disagreed.
+    // Null-tolerance is added below, from the column, by isTphReadNullTolerant.
+    const expr = zodFieldExpr(child, obj, ctx, true);
     fieldLines.push(
       isTphReadNullTolerant(obj, child)
         ? code`  ${child.name}: ${expr}.nullable()`
@@ -606,8 +628,9 @@ function zodFieldExpr(
   field: MetaField,
   owner?: MetaObject,
   ctx?: RenderContext,
-  /** Suppress the trailing `.optional()` — see assignedPkFieldNames. Set ONLY
-   *  by the insert-shape emitters; the update/read shapes must stay optional. */
+  /** Suppress the trailing `.optional()`. Set by the insert-shape emitters for an
+   *  assigned PK (see assignedPkFieldNames) and by the TPH read shape, where every
+   *  column is a present key. The UPDATE shape must stay optional (PATCH semantics). */
   forceRequired = false,
 ): Code {
   // `@dbColumnType: jsonb` on a scalar (legal only on field.string) is the
