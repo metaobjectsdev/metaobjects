@@ -407,6 +407,12 @@ diff explained.
   > registration per package on npmjs.com. This is a dated requirement, not the "future
   > improvement (research-backed, not yet adopted)" that `.claude/skills/releasing/SKILL.md`
   > still files it under.
+  >
+  > **That replacement is itself inoperative right now: GitHub Actions is disabled on this
+  > repository (2026-09-16), so `publish-npm.yml` cannot fire** and a registration would have
+  > no runner to serve it. The publishing path that replaces the token after the 2027
+  > deadline is being decided and is not written down yet; until it is, the local-token
+  > procedure above is the only npm publishing path that runs.
 - `bun publish` does **not** apply `publishConfig` field overrides (bin/main/exports) — only
   `access`/`tag` (oven-sh/bun#19205). So fields like `bin` must be correct at the top level, not
   swapped via `publishConfig`.
@@ -540,7 +546,11 @@ and deleting a dist-tag is package access. Measured across all 14 packages on 20
 the prerelease install path, which is the actual harm; the tag continuing to exist alongside an
 identical `latest` is cosmetic.
 
-Do it for the whole set from CI, where the publish token already lives — Actions →
+**The CI route is inoperative right now (2026-09-16): GitHub Actions is disabled on this
+repository, so the dispatch below cannot run**, and the replacement path is being decided.
+Until it lands, the `dist-tag add` above is what repoints the tag — run from your machine,
+per package. The dispatch is kept because the switch is reversible: it ran the whole
+set from CI, where the publish token already lives — Actions →
 **npm dist-tag** → Run workflow → tag `next`, action `add`, version `<version>`
 ([`.github/workflows/npm-dist-tag.yml`](../.github/workflows/npm-dist-tag.yml); the set and its
 order come from `scripts/publish-set.mjs`, never a list maintained there). Action `ls` is the
@@ -581,8 +591,15 @@ per-package `PackageId`/`Title`/`Description` live in each `.csproj`. Test/integ
 
 The workflow [`.github/workflows/publish-csharp.yml`](../.github/workflows/publish-csharp.yml) packs
 the four projects, exchanges a GitHub OIDC token for a short-lived (~1 hour) nuget.org key via
-`NuGet/login@v1`, then `dotnet nuget push`es. Trigger it manually (**Actions → publish-csharp → Run
-workflow**, with an optional version override) or by pushing a `csharp-v*` tag.
+`NuGet/login@v1`, then `dotnet nuget push`es.
+
+**Both triggers are inoperative right now (2026-09-16): GitHub Actions is disabled on this
+repository, so neither the manual dispatch nor a `csharp-v*` tag can run anything** — and a
+NuGet publish fundamentally needs Actions for its OIDC exchange, so there is no local
+stand-in; the replacement path is being decided. The workflow and the one-time setup below
+are kept as the mechanism record, because the switch is reversible. Trigger it manually
+(**Actions → publish-csharp → Run workflow**, with an optional version override) or by
+pushing a `csharp-v*` tag once it fires again.
 
 ### One-time nuget.org setup
 
@@ -643,14 +660,19 @@ lock the repo/owner IDs against resurrection attacks.)
    dotnet tool install --global --add-source /tmp/mo-nupkg MetaObjects.Cli && dotnet meta --help
    ```
 3. **Run persistence conformance** if the runtime/codegen changed: `scripts/integration-test.sh csharp`.
-4. **Publish:** GitHub → **Actions → publish-csharp → Run workflow** (or push a `csharp-v<version>` tag).
+4. **Publish:** GitHub → **Actions → publish-csharp → Run workflow** (or push a `csharp-v<version>` tag)
+   — **inoperative while Actions is off (2026-09-16)**; see the note under "How we publish" above.
 5. **Verify** on nuget.org: all four packages listed and **owned by the `metaobjects` org**
    (indexing/validation takes a few minutes).
 
 # Releasing the Python package to PyPI
 
 How to publish the **`metaobjects`** Python package to PyPI: push a `python-v<version>` tag and
-the workflow publishes it with the `PYPI_API_TOKEN` repo secret.
+the workflow publishes it with the `PYPI_API_TOKEN` repo secret. **That trigger is inoperative
+right now (2026-09-16): GitHub Actions is disabled on this repository, so the tag fires
+nothing** — and PyPI publishing here runs only through the workflow, so there is no local
+stand-in; the replacement path is being decided. The workflow description below is kept as the
+mechanism record, because the switch is reversible.
 
 ## What gets published
 
@@ -742,7 +764,9 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
 3. **Deploy — ONE of two routes, never both** (a second deploy of a published version fails
    with `Component … already exists`): push a `java-v<maven-version>` tag, and
    `publish-java.yml` runs the deploy below in CI with the signing secrets (how `8.0.4`
-   shipped); or run `mvn -Prelease deploy` from `server/java`. The `central-publishing-maven-plugin`
+   shipped — **inoperative while Actions is off, 2026-09-16**: GitHub Actions is disabled on
+   this repository, so the tag fires nothing); or run `mvn -Prelease deploy` from `server/java`.
+   The `central-publishing-maven-plugin`
    (`<publishingServerId>central</publishingServerId>`, `<autoPublish>true</autoPublish>`) uploads
    the signed bundle and auto-releases — **no manual staging → release promotion**. Auth + the GPG
    passphrase come from `~/.m2/settings.xml` (server ids `central` + `gpg-credentials`); the GPG

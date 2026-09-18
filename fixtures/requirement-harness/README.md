@@ -39,9 +39,9 @@ five ports and cannot be quietly forgotten.
 
 ## What is wired, and what is not
 
-| Port | Generated | Runs in CI |
+| Port | Generated | Runs in `scripts/ci-local.sh` |
 |---|---|---|
-| TypeScript | ✅ | ✅ — the gate executes it, so the shape is proven by a port that runs it |
+| TypeScript | ✅ | ✅ — the `gates` section executes it, so the shape is proven by a port that runs it |
 | Python · Java · Kotlin · C# | ✅ | ❌ — scaffolds only |
 
 The four unwired ports are **not** in any build path, so they compile nothing and

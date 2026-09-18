@@ -155,8 +155,10 @@ Add the `CHANGELOG.md` entry (Keep-a-Changelog format) if not already committed.
 
 Retire the RC's `next` tag by **repointing, not deleting**: `npm dist-tag rm` 403s for every
 token we hold (local and CI both — npm's bypass-2FA package-access rule, not a missing OTP).
-Run Actions → **npm dist-tag** → tag `next`, action `add`, version `<version>`, which does the
-whole lockstep set from the publish token. See `docs/RELEASING.md` §4.
+The Actions → **npm dist-tag** dispatch that repointed the whole lockstep set from the
+publish token **cannot run — GitHub Actions is disabled on this repository (2026-09-16),
+and the replacement path is being decided**. Repoint per package from your machine instead:
+`npm dist-tag add <pkg>@<version> next` (`add` is not restricted). See `docs/RELEASING.md` §4.
 
 ## Phase 10 — Propagate versions (docs + websites)
 
@@ -208,7 +210,8 @@ since 2026-07-31 such tokens already cannot change package access — including
 both 403 on `DELETE …/dist-tags/next` and `--otp` changes neither, so this is a grant
 boundary and no OTP session was going to clear it. Phase 9 repoints with `dist-tag add`
 instead, which is not restricted. The replacement is **OIDC Trusted Publishing** via
-`publish-npm.yml` (which exists), the same mechanism `publish-csharp.yml` already
+`publish-npm.yml` (which exists — inoperative while GitHub Actions is disabled on this
+repository, 2026-09-16), the same mechanism `publish-csharp.yml` already
 uses for NuGet; the remaining work is a trusted-publisher registration per package
 on npmjs.com. Caveat: OIDC can't drive `npm dist-tag` yet, so RC→promote still needs
 a token.
