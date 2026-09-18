@@ -182,7 +182,7 @@ controller/routes **unmodified**; the in-memory repo (seam ports) is the only
 hand-written piece.
 
 Every generated lane lives beside its port's hand-rolled lane and runs under the
-same per-port `integration-tests.yml` job — no separate opt-in.
+same per-port integration-tests lane of `scripts/ci-local.sh` — no separate opt-in.
 
 ### TS lanes (illustrative detail)
 

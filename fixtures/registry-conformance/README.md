@@ -317,15 +317,15 @@ divergence:
 
 ## Per-port status
 
-| Port | Status | Runner | Runs in CI via |
+| Port | Status | Runner | Runs in `scripts/ci-local.sh` via |
 |---|---|---|---|
-| TypeScript | **live + green** (reference emitter; produces the canonical) | `packages/metadata/test/registry-conformance.test.ts` | `conformance` job, `typescript` matrix leg (scoped `bun test`) |
-| C# | **live + green** (byte-identical) | `MetaObjects.Conformance.Tests/RegistryManifestConformanceTests.cs` | `conformance` job, `csharp` matrix leg (whole `MetaObjects.Conformance.Tests` project) |
-| Python | **live + green** (byte-identical) | `tests/conformance/test_registry_conformance.py` | `conformance` job, `python` matrix leg (whole `tests/conformance` dir) |
-| Java | **live + green** (byte-identical; reconciled SP-G Units 4-7, gate re-enabled Unit 8) | `metadata/src/test/java/com/metaobjects/registry/RegistryManifestConformanceTest.java` | `conformance` job, `java` matrix leg (in the metadata `-Dtest=` list) |
-| Kotlin | **live + green** (byte-identical; composes the metamodel provider set) | `codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RegistryManifestConformanceTest.kt` | `conformance-kotlin` job (in the codegen-kotlin `-Dtest=` list) |
+| TypeScript | **live + green** (reference emitter; produces the canonical) | `packages/metadata/test/registry-conformance.test.ts` | its `ts-fast` section (scoped `bun test`) |
+| C# | **live + green** (byte-identical) | `MetaObjects.Conformance.Tests/RegistryManifestConformanceTests.cs` | its `csharp` section (whole `MetaObjects.Conformance.Tests` project) |
+| Python | **live + green** (byte-identical) | `tests/conformance/test_registry_conformance.py` | its `python` section (the full `tests/` suite) |
+| Java | **live + green** (byte-identical; reconciled SP-G Units 4-7, gate re-enabled Unit 8) | `metadata/src/test/java/com/metaobjects/registry/RegistryManifestConformanceTest.java` | its `java` section (in the metadata `-Dtest=` list) |
+| Kotlin | **live + green** (byte-identical; composes the metamodel provider set) | `codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RegistryManifestConformanceTest.kt` | its `java` section (in the codegen-kotlin `-Dtest=` list) |
 
-All five ports now genuinely run the gate on every CI build (`.github/workflows/conformance.yml`). TS / C# / Python were live from the start; Java + Kotlin were re-enabled in SP-G Unit 8 after the Java metamodel-vocabulary reconciliation (Units 4-7) landed (see the **divergence analysis**:
+`.github/workflows/conformance.yml` describes where each port's runner is wired (the `conformance` matrix plus `conformance-kotlin`) but no longer runs them — Actions is disabled on this repository, see AGENTS.md; `scripts/ci-local.sh` is what runs them, and `--quick` covers TypeScript only. TS / C# / Python were live from the start; Java + Kotlin were re-enabled in SP-G Unit 8 after the Java metamodel-vocabulary reconciliation (Units 4-7) landed (see the **divergence analysis**:
 [`docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md`](../../docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md) and the
 [reconciliation plan](../../docs/superpowers/plans/2026-06-02-sp-g-java-reconciliation-plan.md)).
 
