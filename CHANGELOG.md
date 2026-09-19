@@ -170,7 +170,10 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   a discriminator base also gains the `.references()` of subtype-declared references, matching
   the migration. New helpers `tphStorageObject` / `tphStorageName` answer "which object's
   table stores these rows" for owned generators. **Generated output changes**: re-run
-  `meta gen`.
+  `meta gen`. The Kotlin port carried the same defect class — a reference onto a
+  subtype emitted `.references(<Sub>Table.pk)` naming a table that is never emitted —
+  closed with the traversal work below through the same storage-object redirect
+  (`KotlinTphPlan.storageObjectOf`).
 - **M:N traversal routes inside a TPH hierarchy were never mounted at all.** The TPH emit
   path (`renderTphRoutesFile`) rendered the polymorphic mount and the full per-subtype CRUD
   set but never consulted the relation map, so every many-to-many navigation in a hierarchy
@@ -192,10 +195,10 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   no route; the build still passes. The feature-combination ledger's `tph-m2m-routes` entry
   is drained, and its m2m check now runs for hierarchy holders too, reading the traversal
   back through every segment the oracle says serves it, sibling-subtype source ids included.
-  **Scope is TypeScript, C# and Python**: the same two gaps (the controller generator
+  **Scope is now all five ports**: those same two gaps (the controller generator
   skipping TPH subtypes at the top of its entity loop, and the TPH emit path asking no
-  M:N question at all) remain in Java and Kotlin — the remaining work of the agreed
-  five-port pass. C# reaches the same contract by its own route: the subtype-scoped mount
+  M:N question at all) closed in Java and Kotlin last, completing the agreed five-port
+  pass. C# reaches the same contract by its own route: the subtype-scoped mount
   proves ownership with `db.<Base>.OfType<Sub>().AnyAsync(...)` before touching the
   junction; an M:N whose TARGET is a TPH subtype binds to the base's `DbSet` narrowed by
   `OfType<Sub>()`, because a subtype has no `DbSet` of its own and the emitted routes
@@ -222,8 +225,35 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   convey — and the raised message mislabels that shape as an ambiguous self-join
   (advising `@sourceRefField`/`@symmetric`) when the author actually wrote a hetero
   base-to-subtype relation; repairing that heuristic is out of scope here.
+  Java reaches it by its own route too: the TPH repository seam gains a whole-table
+  finder per base-declared relationship plus, for every concrete subtype that
+  resolves the relation (its own or inherited), a subtype-scoped finder under a
+  DISTINCT name (`findTagsForBridge`) — Java cannot declare two methods with the same
+  erasure that behave differently by discriminator — and the GENERATED controller
+  enforces the subtype gate itself: it composes the seam's own
+  `findByIdAndType(id, "<disc>")` (the lookup the per-subtype GET already gates on)
+  and answers an empty list, HTTP 200, for a sibling's id before the traversal finder
+  ever runs. Leaving that gate as a javadoc obligation on the finder — directly
+  beside the unscoped finder a copy-paste body would clone — compiled, type-checked,
+  and silently 200'd a sibling's rows; enforced in generated code it costs one
+  redundant primary-key lookup and adds no new persistence assumption. Kotlin reaches
+  it by its own route too, and carries the physical half the consumer-owned port
+  never owed: a TPH subtype has NO Exposed `Table` object and NO data class of its
+  own — its rows live in, and are shaped like, the discriminator base's — so a
+  reference onto a subtype, a reference declared on one, and an M:N whose target is
+  one now resolve through a new `KotlinTphPlan.storageObjectOf` to the base's table
+  instead of naming a `BridgeAuthTable` that is never emitted (which was an
+  unresolved-reference compile failure, not merely an absent route); an M:N whose
+  target is a CONCRETE subtype ANDs the target's discriminator into the emitted join,
+  narrowing the shared table's rows back to the declared target's (an abstract
+  mid-level target has no single discriminator value and stays unfiltered); the
+  hierarchy base's relations file gains the query helpers for the M:N relationships
+  its subtypes declare on themselves, and the controller's per-subtype mounts reuse
+  those SAME helpers behind a stage-0 discriminator check that answers `[]` for a
+  sibling's id.
   **Generated output changes**: a TPH hierarchy with M:N relationships gains routes
-  on the next `meta gen`, in all three ports.
+  on the next `meta gen`, in all five ports — and a Java adopter implementing a TPH
+  repository interface gains finder methods to implement.
 - **An abstract object that inherits a source got a queries and a routes file that did not
   compile.** An abstract level has no table of its own, only a type-only shape, yet the
   queries and routes generators gated on "has a source" alone, so `Organization.queries.ts`

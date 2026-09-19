@@ -138,9 +138,11 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
                .append(" rows related to this ").append(shortName)
                .append(" through ").append(nav.junctionShortName());
             if (nav.symmetric()) src.append(" (symmetric — union on read)");
+            src.append(targetSubtypeJavadocClause(nav));
             src.append(". */\n");
             src.append("    List<").append(nav.targetDtoType()).append("> ")
-               .append(m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId);\n");
+               .append(m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
+               .append(targetSubtypeParam(nav)).append(");\n");
         }
 
         // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
@@ -195,6 +197,9 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         // The single TPH table is keyed by the BASE's primary identity — polymorphic and
         // per-subtype-scoped operations all trade that derived PK type (uuid → java.util.UUID, …).
         String pkType = SpringTypeMapper.primaryKeyJavaType(base);
+        // Non-null by construction — execute() only calls emitTph when TphPlan.isTphBase(entity)
+        // already proved planFor(entity, loader) resolves.
+        TphPlan.Plan plan = TphPlan.planFor(base, loader);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
@@ -233,6 +238,63 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
            .append("> patchByIdAndType(").append(pkType)
            .append(" id, String discriminator, java.util.Map<String, Object> assigned);\n");
         src.append("    boolean deleteByIdAndType(").append(pkType).append(" id, String discriminator);\n");
+
+        // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. A relationship declared on
+        // the BASE is legitimate for every row of the shared table, so it gets one whole-table
+        // finder (same shape + name as the vanilla repository's M:N finder). A relationship
+        // resolved by a CONCRETE SUBTYPE — its own, or inherited from the base — additionally
+        // gets a finder SCOPED to that subtype. The subtype-membership check is NOT this
+        // finder's obligation: the GENERATED controller (see SpringControllerGenerator#emitTph)
+        // composes repository.findByIdAndType(id, discriminator) — the same seam the per-subtype
+        // GET already gates on — BEFORE ever calling this finder, and short-circuits to an empty
+        // list, HTTP 200, when sourceId does not name a row of this subtype. That enforces the
+        // gate on every conforming implementation by construction, rather than leaving a
+        // documented obligation a copy-paste finder body could silently violate. Distinct method
+        // names per subtype are still required here (unlike the vanilla finder) because the
+        // interface cannot declare two methods with the same erasure that behave differently by
+        // discriminator.
+        src.append("\n    // --- M:N traversal (whole-table, then per-subtype-scoped) ---\n");
+        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(base, loader)) {
+            src.append("    /** M:N traversal: the ").append(nav.targetShortName())
+               .append(" rows related to this ").append(shortName)
+               .append(" through ").append(nav.junctionShortName());
+            if (nav.symmetric()) src.append(" (symmetric — union on read)");
+            src.append(targetSubtypeJavadocClause(nav));
+            src.append(". */\n");
+            src.append("    List<").append(nav.targetDtoType()).append("> ")
+               .append(m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
+               .append(targetSubtypeParam(nav)).append(");\n");
+        }
+        for (TphPlan.Subtype st : plan.subtypes()) {
+            for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
+                src.append("    /** M:N traversal scoped to ").append(st.value())
+                   .append(": the ").append(nav.targetShortName()).append(" rows related to this ")
+                   .append(st.value()).append(" through ").append(nav.junctionShortName())
+                   .append(". The generated controller calls this ONLY after confirming sourceId ")
+                   .append("names a ").append(st.value())
+                   .append(" row (via findByIdAndType) — implementations may assume sourceId is ")
+                   .append("valid for this subtype.");
+                if (nav.targetDiscriminatorValue() != null) {
+                    // The TARGET side of the same gate: unlike sourceId (verified above, by the
+                    // GENERATED controller, before this finder is ever called), the target's own
+                    // subtype is NOT verified by anything MetaObjects generates — the junction
+                    // join is entirely consumer-owned, and Java's interface cannot AND a
+                    // discriminator into a join it does not write. Implementations MUST use the
+                    // targetSubtype argument — always the resolved discriminator literal — to
+                    // filter the join to rows of that subtype.
+                    src.append(" Implementations MUST use the targetSubtype argument (always the")
+                       .append(" resolved \"").append(nav.targetDiscriminatorValue())
+                       .append("\" literal) to filter the join to rows of that subtype; a")
+                       .append(" copy-paste of the unscoped join would silently return a")
+                       .append(" same-table sibling's rows.");
+                }
+                src.append(" */\n");
+                src.append("    List<").append(nav.targetDtoType()).append("> ")
+                   .append(m2mFinderNameForSubtype(nav.relationName(), st.value()))
+                   .append("(").append(pkType).append(" sourceId")
+                   .append(targetSubtypeParam(nav)).append(");\n");
+            }
+        }
         src.append("}\n");
 
         try {
@@ -248,6 +310,57 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
     public static String m2mFinderName(String relationName) {
         if (relationName.isEmpty()) return "find";
         return "find" + Character.toUpperCase(relationName.charAt(0)) + relationName.substring(1);
+    }
+
+    /**
+     * FR-017 x FR-018: the subtype-scoped M:N finder name, e.g. {@code ("tags", "Bridge")} →
+     * {@code findTagsForBridge}. Distinct from {@link #m2mFinderName} because a TPH interface
+     * may need BOTH the whole-table finder (base-declared relationship) AND a per-subtype one
+     * for the exact same relation name (an inherited relationship resolved by more than one
+     * subtype) — same naming shape as the existing {@code list<Suffix>}/{@code get<Suffix>}
+     * per-subtype CRUD methods.
+     */
+    public static String m2mFinderNameForSubtype(String relationName, String discriminatorValue) {
+        return m2mFinderName(relationName) + "For" + SpringNaming.capitalize(discriminatorValue);
+    }
+
+    /**
+     * FW-8 follow-up (target-side TPH gate): the extra finder parameter clause for {@code nav} —
+     * {@code ", String targetSubtype"} when {@code nav}'s target is a concrete TPH subtype,
+     * empty otherwise. Threading this same {@code targetDiscriminatorValue() != null} test at
+     * every finder declaration AND its matching controller call site (see
+     * {@link SpringControllerGenerator}) is what keeps a widened finder's interface signature
+     * and call site in agreement — a real disagreement here is a javac compile error, not a
+     * silently-wrong runtime result, because each (relation name, source scope) pair is its own
+     * distinct Java method (never a single shared seam multiple mounts must agree on the arity
+     * of, unlike the Python port's one Protocol method per relation name).
+     */
+    public static String targetSubtypeParam(SpringM2mSupport.M2mNav nav) {
+        return nav.targetDiscriminatorValue() != null ? ", String targetSubtype" : "";
+    }
+
+    /**
+     * The matching CALL-SITE argument clause for {@link #targetSubtypeParam} — the quoted
+     * discriminator literal when {@code nav}'s target is TPH, empty otherwise. Used by
+     * {@link SpringControllerGenerator} at every M:N call site (unscoped base finder AND every
+     * subtype-scoped {@code find<Rel>For<Disc>} finder) so each call site's argument count
+     * always matches its own finder's declared parameter count.
+     */
+    static String targetSubtypeCallArg(SpringM2mSupport.M2mNav nav) {
+        return nav.targetDiscriminatorValue() != null
+            ? ", \"" + nav.targetDiscriminatorValue() + "\""
+            : "";
+    }
+
+    /**
+     * The javadoc clause naming a widened finder's target-subtype literal, appended right
+     * before the closing sentence period — empty when {@code nav}'s target isn't TPH (byte-
+     * identical javadoc for the overwhelming common case).
+     */
+    static String targetSubtypeJavadocClause(SpringM2mSupport.M2mNav nav) {
+        if (nav.targetDiscriminatorValue() == null) return "";
+        return " (target is a TPH subtype: this finder also takes targetSubtype, always the"
+            + " resolved \"" + nav.targetDiscriminatorValue() + "\" literal)";
     }
 
     /**

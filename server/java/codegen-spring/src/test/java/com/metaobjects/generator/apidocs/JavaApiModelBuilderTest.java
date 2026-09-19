@@ -147,6 +147,38 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
         assertNull(unit(m, "Author").example());
     }
 
+    /**
+     * ba95f069c widened the generated finder for an M:N whose TARGET is a concrete TPH subtype
+     * to `find<Rel>(Long sourceId, String targetSubtype)`. The api-docs signature must render
+     * the same arity the generator actually emits, or the listing of the interface an adopter
+     * implements is wrong.
+     */
+    @Test
+    public void repositorySignatureIncludesTargetSubtypeParamForTphTarget() throws Exception {
+        Path workspace = tempFolder.newFolder("apidocs-tph-target").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(
+            workspace, "m2m-target-tph", com.metaobjects.generator.spring.SpringM2mTargetTphCodegenTest.FIXTURE);
+
+        JavaApiModel m = new JavaApiModelBuilder().build(loader, "acme-sponsor");
+
+        ApiUnit sponsor = unit(m, "Sponsor");
+        ApiSymbol repo = symbol(sponsor, ApiSymbolKind.DATA_ACCESS, "SponsorRepository");
+        assertTrue("repo signature widens the TPH-target finder with targetSubtype; saw:\n" + repo.signature(),
+            repo.signature().contains("findBridgeAuths(Long sourceId, String targetSubtype)"));
+
+        // Author's `tags -> Tag` (from the other fixture in this test class) has a non-TPH
+        // target, so its finder must stay the bare one-argument form, unchanged.
+        MetaDataLoader nonTphLoader = SpringTestFixtures.loadFixture(
+            tempFolder.newFolder("apidocs-non-tph").toPath(), "apidocs", FIXTURE);
+        JavaApiModel nonTphModel = new JavaApiModelBuilder().build(nonTphLoader, "acme-blog");
+        ApiUnit author = unit(nonTphModel, "Author");
+        ApiSymbol authorRepo = symbol(author, ApiSymbolKind.DATA_ACCESS, "AuthorRepository");
+        assertTrue("non-TPH-target finder stays bare 1-arg; saw:\n" + authorRepo.signature(),
+            authorRepo.signature().contains("findTags(Long sourceId)"));
+        assertFalse("non-TPH-target finder must not gain targetSubtype; saw:\n" + authorRepo.signature(),
+            authorRepo.signature().contains("findTags(Long sourceId, String targetSubtype)"));
+    }
+
     // ----- test helpers ------------------------------------------------------
 
     private static ApiUnit unit(JavaApiModel m, String node) {

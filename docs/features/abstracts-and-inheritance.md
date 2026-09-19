@@ -228,8 +228,9 @@ so it can hold a sibling subtype's id, and that row is not a `BridgeAuth`. A ref
 declared **on** a subtype, or on an abstract level between the base and a subtype, is
 folded onto the base table with its FK, the same way its column is. These three rules
 are what the TypeScript toolchain (`meta migrate`, `meta verify --db` and the generated
-Drizzle schema and routes) enforces; the other ports' codegen is being brought to the
-same contract.
+Drizzle schema and routes) enforces, what the Kotlin port's generated Exposed schema and
+queries enforce in their own mapping, and — where persistence is consumer-owned — a
+contract on the repository seam you implement.
 
 ### What codegen emits (all five ports)
 
@@ -275,19 +276,30 @@ every port:
   reads the source row's own discriminator first: a sibling subtype's id — which
   names no row of this subtype and so has no relations here — answers **200 with
   `[]`**, where a subtype-scoped CRUD read of the same id answers 404.
-  TypeScript, C# and Python today; Java and Kotlin do not mount traversal inside
-  a hierarchy yet and are being brought to the same contract. The ports reach the
-  sibling-id gate by different mechanics: TypeScript reads the source row's own
-  discriminator in a stage 0 before the join, C# proves ownership with
-  `db.<Base>.OfType<Sub>().AnyAsync(...)`, and Python — which ships no runtime SQL
-  layer — composes the consumer-implemented repository seam's own
-  `find_by_id(subtype, id)` as the ownership check; for a TPH-subtype TARGET,
-  Python widens the `find_related_<relation>` seam with a `target_subtype`
-  parameter carrying the resolved `@discriminatorValue` (threaded per relation
-  name across every mount of that name — `str | None` with an explicit `None` at
-  non-TPH mounts, since a subtype may shadow a base-declared relationship with a
-  differently-TPH target) where TypeScript adds a WHERE clause to its shared
-  Drizzle helper.
+  All five ports serve it today. The ports reach the sibling-id gate by different
+  mechanics: TypeScript reads the source row's own discriminator in a stage 0 before
+  the join, Kotlin runs the same stage 0 against the shared Exposed table
+  (`(id eq :id) and (type eq <Enum>.<Value>)`) before delegating to the ONE shared
+  query helper every mount of the relation calls, C# proves ownership with
+  `db.<Base>.OfType<Sub>().AnyAsync(...)`, and the two consumer-owned persistence
+  ports compose the repository seam's own lookup as the ownership check — Java's
+  generated controller calls `findByIdAndType(id, "<disc>")` (the same seam the
+  per-subtype GET gates on) and answers `[]` on a miss, Python's calls
+  `find_by_id(subtype, id)`. Java's subtype-scoped traversal is a DISTINCT repository
+  method (`find<Relation>For<Disc>`, e.g. `findTagsForBridge`) — the interface needs
+  both it and the whole-table finder for an inherited relation, and the two
+  signatures would otherwise be identical. For a TPH-subtype TARGET, TypeScript adds
+  a WHERE clause to its shared Drizzle helper, Java threads a `targetSubtype`
+  parameter to the finder seam (the repository method declares `find<Relation>(Long
+  sourceId, String targetSubtype)`), Kotlin ANDs the target's discriminator
+  into the emitted Exposed join — the join binds the base's table, because a subtype
+  has no table or data class of its own, so the AND is what narrows the rows back to
+  the declared target (an abstract mid-level target has no single discriminator value
+  and stays unfiltered) — and Python widens the `find_related_<relation>` seam with
+  a `target_subtype` parameter carrying the resolved `@discriminatorValue` (threaded
+  per relation name across every mount of that name — `str | None` with an explicit
+  `None` at non-TPH mounts, since a subtype may shadow a base-declared relationship
+  with a differently-TPH target).
 - **The discriminator is immutable** — an update can't move a row to another
   subtype (the field is stripped from update patches).
 - **Polymorphic reads** — `GET /auths` and `GET /auths/{id}` return the union across

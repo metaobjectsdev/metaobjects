@@ -232,7 +232,8 @@ public final class JavaApiModelBuilder {
         sb.append("    boolean delete(Long id);\n");
         for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(obj, loader)) {
             sb.append("    List<").append(nav.targetDtoType()).append("> ")
-              .append(SpringRepositoryGenerator.m2mFinderName(nav.relationName())).append("(Long sourceId);\n");
+              .append(SpringRepositoryGenerator.m2mFinderName(nav.relationName())).append("(Long sourceId")
+              .append(SpringRepositoryGenerator.targetSubtypeParam(nav)).append(");\n");
         }
         sb.append("}");
         return sb.toString();
