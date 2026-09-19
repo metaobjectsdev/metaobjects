@@ -378,7 +378,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
             src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
                .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-            src.append("        return ResponseEntity.ok(repository.").append(finder).append("(id));\n");
+            src.append("        return ResponseEntity.ok(repository.").append(finder)
+               .append("(id").append(SpringRepositoryGenerator.targetSubtypeCallArg(nav)).append("));\n");
             src.append("    }\n\n");
         }
 
@@ -643,7 +644,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
             src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
                .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-            src.append("        return ResponseEntity.ok(repository.").append(finder).append("(id));\n");
+            src.append("        return ResponseEntity.ok(repository.").append(finder)
+               .append("(id").append(SpringRepositoryGenerator.targetSubtypeCallArg(nav)).append("));\n");
             src.append("    }\n\n");
         }
 
@@ -831,7 +833,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("        if (repository.findByIdAndType(id, \"").append(disc).append("\").isEmpty()) {\n");
                 src.append("            return ResponseEntity.ok(List.of());\n");
                 src.append("        }\n");
-                src.append("        return ResponseEntity.ok(repository.").append(subFinder).append("(id));\n");
+                src.append("        return ResponseEntity.ok(repository.").append(subFinder)
+                   .append("(id").append(SpringRepositoryGenerator.targetSubtypeCallArg(nav)).append("));\n");
                 src.append("    }\n\n");
             }
         }

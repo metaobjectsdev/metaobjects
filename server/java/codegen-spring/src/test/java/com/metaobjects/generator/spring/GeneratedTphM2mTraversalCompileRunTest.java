@@ -149,9 +149,83 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             assertNamesEqual(List.of(), invokeFinder(repo, "findTagsForCopay", 1L));
 
             // Subtype-OWN relationship (linkedAuths, self-join on BridgeAuth): resolves for
-            // a real Bridge id, empty for the Copay id.
-            assertReferencesEqual(List.of("b1"), invokeFinder(repo, "findLinkedAuthsForBridge", 1L));
-            assertReferencesEqual(List.of(), invokeFinder(repo, "findLinkedAuthsForBridge", 2L));
+            // a real Bridge id, empty for the Copay id. The target — BridgeAuth itself — is
+            // ALSO a concrete TPH subtype, so the finder now takes the build-time-resolved
+            // "Bridge" literal as a second argument (FW-8 follow-up, target-side gate).
+            assertReferencesEqual(List.of("b1"), invokeFinderWithSubtype(repo, "findLinkedAuthsForBridge", 1L, "Bridge"));
+            assertReferencesEqual(List.of(), invokeFinderWithSubtype(repo, "findLinkedAuthsForBridge", 2L, "Bridge"));
+        }
+    }
+
+    /**
+     * The target-side counterpart to
+     * {@link #generatedControllerEnforcesTheGateEvenWhenTheRepositoryDoesNotFilter}: proves the
+     * {@code targetSubtype} literal is genuinely THREADED end-to-end — codegen resolves it at
+     * build time, the generated controller passes it at the call site, and a repository
+     * implementation that actually USES it to filter the join returns only rows of that
+     * subtype, never a same-table sibling's. {@code linkedAuths}' {@code @objectRef} names
+     * {@code BridgeAuth} — a concrete TPH subtype of {@code Auth} — so its rows physically
+     * share the {@code auths} table with {@code CopayAuth} rows; nothing in the junction FK
+     * itself (a plain {@code Long} id) can distinguish them. Unlike the SOURCE-side rule (c),
+     * Java's generated controller CANNOT enforce this itself (the join is entirely
+     * consumer-owned) — the seam can only be WIDENED so a conforming implementation has what
+     * it needs, exactly the same limitation the Python port documents for its own
+     * {@code target_subtype} parameter. This test's junction data is deliberately corrupted
+     * (a link row pointing at a same-table Copay row) to prove a conforming, FILTERING
+     * repository correctly excludes it once it is handed {@code "Bridge"}.
+     */
+    @Test
+    public void generatedControllerThreadsTheResolvedTargetDiscriminatorLiteralToAFilteringRepository() throws Exception {
+        Path srcDir = tmp.newFolder("src3").toPath();
+        Path classesDir = tmp.newFolder("classes3").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("fx3").toPath(), "tph-m2m-target-3", FIXTURE);
+
+        runGenerator(new SpringDtoGenerator(), loader, srcDir);
+        runGenerator(new SpringRepositoryGenerator(), loader, srcDir);
+        runGenerator(new SpringControllerGenerator(), loader, srcDir);
+        runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);
+
+        Path pkgDir = srcDir.resolve(PKG.replace('.', '/'));
+        Files.createDirectories(pkgDir);
+        Files.writeString(pkgDir.resolve("FilteringAuthRepository.java"), FILTERING_AUTH_REPO_IMPL);
+
+        compile(srcDir, classesDir);
+
+        Map<String, Object> seed = Map.of(
+            "auths", List.of(
+                Map.of("id", 1, "type", "Bridge", "reference", "b1"),
+                Map.of("id", 2, "type", "Copay", "reference", "c1")),
+            "tags", List.of(),
+            "auth_tags", List.of(),
+            // auth 1 (Bridge) links to itself (a GENUINE Bridge target) AND — a corrupted row
+            // that should never exist under a correctly-enforced physical schema — to auth 2,
+            // whose type is Copay. Nothing in the junction FK's plain Long id distinguishes them.
+            "auth_links", List.of(
+                Map.of("fromAuthId", 1, "toAuthId", 1),
+                Map.of("fromAuthId", 1, "toAuthId", 2)));
+
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader())) {
+            Object repo = instantiate(cl, PKG + ".FilteringAuthRepository",
+                rows(seed, "auths"), rows(seed, "tags"), rows(seed, "auth_tags"), rows(seed, "auth_links"));
+
+            Class<?> repoIface = cl.loadClass(PKG + ".AuthRepository");
+            Class<?> controllerClass = cl.loadClass(PKG + ".AuthController");
+            Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+            Constructor<?> ctor = controllerClass.getDeclaredConstructor(repoIface, ObjectMapper.class, Validator.class);
+            Object controller = ctor.newInstance(repo, new ObjectMapper(), validator);
+
+            // Direct repository call: the FILTERING implementation excludes the corrupted
+            // Copay-typed target even though the junction row itself does not.
+            assertReferencesEqual(List.of("b1"),
+                invokeFinderWithSubtype(repo, "findLinkedAuthsForBridge", 1L, "Bridge"));
+
+            // Through the GENERATED CONTROLLER — the exact call site codegen now emits,
+            // repository.findLinkedAuthsForBridge(id, "Bridge") — the same clean result.
+            ResponseEntity<?> resp = invokeControllerFinder(controller, "findLinkedAuthsForBridge", 1L);
+            assertEquals(200, resp.getStatusCode().value());
+            List<Object> body = (List<Object>) resp.getBody();
+            assertReferencesEqual(List.of("b1"), body);
         }
     }
 
@@ -248,6 +322,14 @@ public class GeneratedTphM2mTraversalCompileRunTest {
     private static List<Object> invokeFinder(Object repo, String finder, long sourceId) throws Exception {
         Method m = repo.getClass().getMethod(finder, Long.class);
         return (List<Object>) m.invoke(repo, sourceId);
+    }
+
+    /** Invoke a widened (target-subtype-carrying) M:N finder: {@code (Long, String)}. */
+    @SuppressWarnings("unchecked")
+    private static List<Object> invokeFinderWithSubtype(
+            Object repo, String finder, long sourceId, String targetSubtype) throws Exception {
+        Method m = repo.getClass().getMethod(finder, Long.class, String.class);
+        return (List<Object>) m.invoke(repo, sourceId, targetSubtype);
     }
 
     /** Invoke a generated controller's M:N handler ({@code ResponseEntity<List<Dto>> x(Long)}). */
@@ -367,8 +449,12 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             // @objectRef names BridgeAuth itself, so the repository's finder is DTO-typed to the
             // subtype's own standalone BridgeAuthDto (Java emits one per TPH subtype for exactly
             // this reason — see SpringDtoGenerator), unlike Kotlin's target-redirection (FW-3),
-            // which has no such standalone subtype type to bind to.
-            @Override public List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId) {
+            // which has no such standalone subtype type to bind to. BridgeAuth is ITSELF a TPH
+            // subtype, so the finder also carries the build-time-resolved targetSubtype literal
+            // (FW-8 follow-up); this impl does not filter on it (that is proven separately by
+            // FilteringAuthRepository below) — it is accepted here purely to satisfy the widened
+            // interface.
+            @Override public List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId, String targetSubtype) {
                 if (!isType(sourceId, "Bridge")) return List.of();
                 List<JunctionRow> matched = new ArrayList<>();
                 for (JunctionRow jr : authLinks)
@@ -465,7 +551,7 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             // stops it from doing so and still passing every OTHER test.
             @Override public List<TagDto> findTagsForBridge(Long sourceId) { return tagsFor(sourceId); }
             @Override public List<TagDto> findTagsForCopay(Long sourceId) { return tagsFor(sourceId); }
-            @Override public List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId) { return List.of(); }
+            @Override public List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId, String targetSubtype) { return List.of(); }
 
             private List<TagDto> tagsFor(Long sourceId) {
                 List<JunctionRow> matched = new ArrayList<>();
@@ -483,6 +569,96 @@ public class GeneratedTphM2mTraversalCompileRunTest {
 
             // findByIdAndType is CORRECT — the same seam the per-subtype GET already relies on,
             // and the one the generated controller's M:N gate now composes.
+            @Override public Optional<AuthDto> findByIdAndType(Long id, String discriminator) {
+                for (AuthDto a : auths)
+                    if (M2mJoinResolver.keyEquals(a.id(), id) && discriminator.equals(a.type())) return Optional.of(a);
+                return Optional.empty();
+            }
+
+            // --- unused CRUD stubs ---
+            @Override public List<AuthDto> list(int limit, int offset, SortClause sort, List<FilterPredicate> f) { return List.of(); }
+            @Override public long count(List<FilterPredicate> f) { return 0; }
+            @Override public Optional<AuthDto> findById(Long id) { return Optional.empty(); }
+            @Override public List<AuthDto> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> f) { return List.of(); }
+            @Override public AuthDto createWithType(String discriminator, AuthDto dto) { return dto; }
+            @Override public Optional<AuthDto> updateByIdAndType(Long id, String discriminator, AuthDto dto) { return Optional.empty(); }
+            @Override public Optional<AuthDto> patchByIdAndType(Long id, String discriminator, Map<String, Object> assigned) { return Optional.empty(); }
+            @Override public boolean deleteByIdAndType(Long id, String discriminator) { return false; }
+        }
+        """;
+
+    // -----------------------------------------------------------------------
+    // A CONFORMING consumer-seam repo for the target-side gate: unlike AUTH_REPO_IMPL
+    // (which accepts-but-ignores targetSubtype) and NAIVE_AUTH_REPO_IMPL (which
+    // ignores the SOURCE-side gate), this implementation actually USES the widened
+    // targetSubtype argument to filter the join — exactly what a real adopter must
+    // do, since MetaObjects hands the literal but cannot itself enforce it (the join
+    // is entirely consumer-owned). Proves the seam is not merely present but
+    // genuinely load-bearing.
+    // -----------------------------------------------------------------------
+
+    private static final String FILTERING_AUTH_REPO_IMPL = """
+        package acme.auth;
+
+        import com.metaobjects.generator.spring.runtime.FilterPredicate;
+        import com.metaobjects.generator.spring.runtime.M2mJoinResolver;
+        import com.metaobjects.generator.spring.runtime.M2mJoinResolver.JunctionRow;
+        import java.util.ArrayList;
+        import java.util.List;
+        import java.util.Map;
+        import java.util.Optional;
+
+        public class FilteringAuthRepository implements AuthRepository {
+            private final List<AuthDto> auths = new ArrayList<>();
+            private final List<TagDto> tags = new ArrayList<>();
+            private final List<JunctionRow> authTags = new ArrayList<>();
+            private final List<JunctionRow> authLinks = new ArrayList<>();
+
+            public FilteringAuthRepository(List<Map<String, Object>> authRows,
+                                            List<Map<String, Object>> tagRows,
+                                            List<Map<String, Object>> authTagRows,
+                                            List<Map<String, Object>> authLinkRows) {
+                for (Map<String, Object> r : authRows)
+                    auths.add(new AuthDto(asLong(r.get("id")), (String) r.get("type"),
+                        (String) r.get("reference"), null, null));
+                for (Map<String, Object> r : tagRows)
+                    tags.add(new TagDto(asLong(r.get("id")), (String) r.get("name")));
+                for (Map<String, Object> r : authTagRows)
+                    authTags.add(new JunctionRow(asLong(r.get("authId")), asLong(r.get("tagId"))));
+                for (Map<String, Object> r : authLinkRows)
+                    authLinks.add(new JunctionRow(asLong(r.get("fromAuthId")), asLong(r.get("toAuthId"))));
+            }
+
+            @Override public List<TagDto> findTags(Long sourceId) { return List.of(); }
+            @Override public List<TagDto> findTagsForBridge(Long sourceId) { return List.of(); }
+            @Override public List<TagDto> findTagsForCopay(Long sourceId) { return List.of(); }
+
+            // The load-bearing method: filters the joined targets down to rows whose OWN
+            // discriminator matches the literal the generated controller now hands in —
+            // excluding a same-table sibling the junction FK alone cannot distinguish.
+            @Override public List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId, String targetSubtype) {
+                if (!isType(sourceId, "Bridge")) return List.of();
+                List<JunctionRow> matched = new ArrayList<>();
+                for (JunctionRow jr : authLinks)
+                    if (M2mJoinResolver.keyEquals(jr.sourceKey(), sourceId)) matched.add(jr);
+                List<Object> ids = M2mJoinResolver.relatedKeys(sourceId, matched, false);
+                List<BridgeAuthDto> out = new ArrayList<>();
+                for (Object id : ids)
+                    for (AuthDto a : auths)
+                        if (M2mJoinResolver.keyEquals(a.id(), id) && targetSubtype.equals(a.type())) {
+                            out.add(new BridgeAuthDto(0, a.id(), a.type(), a.reference()));
+                        }
+                return out;
+            }
+
+            private boolean isType(Long sourceId, String type) {
+                for (AuthDto a : auths)
+                    if (M2mJoinResolver.keyEquals(a.id(), sourceId)) return type.equals(a.type());
+                return false;
+            }
+
+            private static Long asLong(Object o) { return o == null ? null : ((Number) o).longValue(); }
+
             @Override public Optional<AuthDto> findByIdAndType(Long id, String discriminator) {
                 for (AuthDto a : auths)
                     if (M2mJoinResolver.keyEquals(a.id(), id) && discriminator.equals(a.type())) return Optional.of(a);

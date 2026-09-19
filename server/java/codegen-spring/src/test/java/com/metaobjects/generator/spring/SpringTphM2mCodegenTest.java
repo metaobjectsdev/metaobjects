@@ -116,8 +116,13 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
     @Test
     public void repositoryEmitsSubtypeScopedFinderForSubtypeOwnRelation() throws Exception {
         String src = generate(new SpringRepositoryGenerator(), loadFixture(), "acme/auth/AuthRepository.java");
+        // linkedAuths' @objectRef ("BridgeAuth") is ITSELF a concrete TPH subtype, so this
+        // finder also carries the target-subtype gate (FW-8 follow-up) — see
+        // repositoryFinderForTphSubtypeTargetGainsTargetSubtypeParam below for the dedicated
+        // coverage of that gate; this test's own concern is unchanged (subtype-OWN relation
+        // scoping + the Copay exclusion).
         assertTrue("expected Bridge-scoped findLinkedAuthsForBridge; saw:\n" + src,
-            src.contains("List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId);"));
+            src.contains("List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId, String targetSubtype);"));
         // linkedAuths is declared on BridgeAuth only — Copay never resolves it.
         assertFalse("Copay must not get a linkedAuths finder; saw:\n" + src,
             src.contains("findLinkedAuthsForCopay"));
@@ -172,5 +177,52 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
         assertTrue(src.contains("@GetMapping\n    public ResponseEntity<?> list("));
         assertTrue(src.contains("@GetMapping(\"/bridge\")"));
         assertTrue(src.contains("@GetMapping(\"/copay\")"));
+    }
+
+    // --- target-side TPH gate (FW-8 follow-up) --------------------------
+    //
+    // linkedAuths' @objectRef is "BridgeAuth" — a CONCRETE TPH subtype of Auth
+    // (@discriminatorValue "Bridge"). BridgeAuth's rows physically live in the
+    // shared `auths` table, so an unscoped junction traversal cannot itself tell
+    // a genuine Bridge target from a same-table Copay row; Java cannot AND a
+    // discriminator into a join it does not write (the interface is
+    // consumer-implemented), so the fix widens the finder seam with a
+    // build-time-literal `targetSubtype` argument (mirrors the Python
+    // `target_subtype` seam widening).
+
+    @Test
+    public void repositoryFinderForTphSubtypeTargetGainsTargetSubtypeParam() throws Exception {
+        String src = generate(new SpringRepositoryGenerator(), loadFixture(), "acme/auth/AuthRepository.java");
+        assertTrue("expected findLinkedAuthsForBridge to carry a targetSubtype param; saw:\n" + src,
+            src.contains("List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId, String targetSubtype);"));
+        assertFalse("the bare (no targetSubtype) form must not also leak; saw:\n" + src,
+            src.contains("List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId);"));
+    }
+
+    @Test
+    public void controllerCallSiteForTphSubtypeTargetPassesTheResolvedDiscriminatorLiteral() throws Exception {
+        String src = generate(new SpringControllerGenerator(), loadFixture(), "acme/auth/AuthController.java");
+        assertTrue("expected repository.findLinkedAuthsForBridge(id, \"Bridge\"); saw:\n" + src,
+            src.contains("repository.findLinkedAuthsForBridge(id, \"Bridge\")"));
+        assertFalse("the unwidened 1-arg call must not remain; saw:\n" + src,
+            src.contains("repository.findLinkedAuthsForBridge(id));"));
+    }
+
+    @Test
+    public void nonTphTargetFindersStayUnwidened() throws Exception {
+        // Regression guard: tags -> Tag (Tag is NOT a TPH subtype) must stay
+        // byte-identical — no targetSubtype param anywhere for this relation name.
+        String repoSrc = generate(new SpringRepositoryGenerator(), loadFixture(), "acme/auth/AuthRepository.java");
+        assertTrue(repoSrc.contains("List<TagDto> findTags(Long sourceId);"));
+        assertTrue(repoSrc.contains("List<TagDto> findTagsForBridge(Long sourceId);"));
+        assertTrue(repoSrc.contains("List<TagDto> findTagsForCopay(Long sourceId);"));
+        assertFalse(repoSrc.contains("findTags(Long sourceId, String targetSubtype)"));
+        assertFalse(repoSrc.contains("findTagsForBridge(Long sourceId, String targetSubtype)"));
+        assertFalse(repoSrc.contains("findTagsForCopay(Long sourceId, String targetSubtype)"));
+
+        String ctrlSrc = generate(new SpringControllerGenerator(), loadFixture(), "acme/auth/AuthController.java");
+        assertTrue(ctrlSrc.contains("repository.findTags(id));"));
+        assertTrue(ctrlSrc.contains("repository.findTagsForBridge(id));"));
+        assertTrue(ctrlSrc.contains("repository.findTagsForCopay(id));"));
     }
 }
