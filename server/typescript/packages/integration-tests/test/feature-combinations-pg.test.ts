@@ -44,14 +44,6 @@ const isManyToMany = (c: Combination) => c.link === "m2m" || c.link === "m2m-sel
 
 const KNOWN_DEFECTS: KnownDefect[] = [
   {
-    id: "tph-m2m-routes",
-    what: "an M:N declared on a TPH base, subtype or abstract level mounts no traversal route "
-      + "(the ruling: /<base-path>/<discriminatorValue lowercased>/:id/<relation>)",
-    check: "routes",
-    applies: (c) => inHierarchy(c) && isManyToMany(c),
-    signature: /^GET \S+\/:id\/related \(\w+\.related M:N traversal\)$/,
-  },
-  {
     id: "composite-pk-drizzle-references",
     what: "a link table whose primary key is its two FK columns: the Drizzle schema omits `.references()` on "
       + "key columns, while the migration creates the FKs (awaiting the maintainer's ruling)",

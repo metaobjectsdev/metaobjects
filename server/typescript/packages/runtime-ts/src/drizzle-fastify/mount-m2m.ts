@@ -23,6 +23,12 @@
 // junction FK can only point at that base table — so it can hold the id of a row of
 // another subtype. `targetDiscriminator` ANDs the subtype predicate into stage 2 so
 // only rows of the declared target come back.
+//
+// The SOURCE has the mirror problem. An M:N declared ON a subtype mounts under that
+// subtype's segment (`/auths/bridge/:id/linkedAuths`), but the junction FK still points
+// at the shared base table, so a SIBLING subtype's id traverses it just as well and the
+// subtype segment in the path would be decorative. `sourceDiscriminator` adds a stage 0
+// that checks the source row's own discriminator first.
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { and, eq, or, inArray } from "drizzle-orm";
@@ -60,6 +66,16 @@ export interface M2mRouteOptions {
    * Absent → every related row is returned, behaviour unchanged.
    */
   targetDiscriminator?: { column: string; value: string };
+  /**
+   * The SOURCE is a TPH subtype: this route is mounted under the subtype's path segment,
+   * but the junction FK addresses the shared base table, so an id belonging to a SIBLING
+   * subtype would traverse it successfully and return that sibling's relations. Stage 0
+   * reads the source row's discriminator from `table` (the base table the row lives in)
+   * and yields an empty list when it is not `value` — the id names no row of THIS
+   * subtype, so it has no relations, which is a 200 with `[]` rather than an error.
+   * Absent → no source check, behaviour unchanged.
+   */
+  sourceDiscriminator?: { table: AnyTable; pkColumn: string; column: string; value: string };
   /** Fastify route-level hooks (auth, etc.). */
   routeOptions?: RouteShorthandOptions;
 }
@@ -81,6 +97,24 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
     const sourceId = coerceIdForColumn(srcCol, id);
     if (sourceId === undefined) {
       return reply.code(400).send({ error: "invalid_id" });
+    }
+
+    // Stage 0 — the source id must name a row of THIS subtype. Skipping it would let
+    // `/auths/bridge/{a Copay's id}/linkedAuths` return that Copay's relations, because
+    // the junction FK cannot tell the subtypes apart: it points at the shared base table.
+    const srcDisc = opts.sourceDiscriminator;
+    if (srcDisc !== undefined) {
+      const srcPk = columnRef(srcDisc.table, srcDisc.pkColumn);
+      const ownId = coerceIdForColumn(srcPk, id);
+      if (ownId === undefined) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
+      const owner = await opts.db
+        .select({ d: columnRef(srcDisc.table, srcDisc.column) })
+        .from(srcDisc.table)
+        .where(eq(srcPk, ownId))
+        .limit(1);
+      if (owner.length === 0 || String(owner[0]?.d) !== srcDisc.value) return [];
     }
 
     // Stage 1 — junction rows for this source id.

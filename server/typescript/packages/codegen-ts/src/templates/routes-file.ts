@@ -255,11 +255,36 @@ function renderM2mMounts(
   source: MetaObject,
   ctx: RenderContext,
   fastifyVar: string,
+  tphSource?: TphM2mSource,
 ): Code | string {
   if (entries.length === 0) return "";
-  const mounts = entries.map((e) => renderM2mMount(e, source, ctx, fastifyVar));
+  const mounts = entries.map((e) => renderM2mMount(e, source, ctx, fastifyVar, tphSource));
   return code`${joinCode(mounts, { on: "\n", trim: false })}
 `;
+}
+
+/**
+ * Where a TPH M:N mount hangs, and how it proves the source id is really ITS subtype's.
+ *
+ * Only `renderTphRoutesFile` supplies this, and only for a relationship declared ON a
+ * subtype. The path gains that subtype's segment, and `sourceDiscriminator` gets the
+ * check that makes the segment mean something: the junction FK points at the shared base
+ * table, so without it a sibling subtype's id reaches the same junction rows and the
+ * segment in the URL is decorative. A relationship declared on the BASE passes nothing
+ * here — every row of the table is a legitimate source — so its mount is byte-identical
+ * to a vanilla entity's.
+ */
+interface TphM2mSource {
+  /** Appended to the base entity's `$path`, e.g. `"/bridge"`. */
+  pathSuffix: string;
+  /** The base table const this subtype's rows live in. */
+  table: Code | string;
+  /** Physical PK column of the base table. */
+  pkColumn: Code;
+  /** Physical discriminator column of the base table. */
+  discriminatorColumn: Code;
+  /** This subtype's `@discriminatorValue`. */
+  value: string;
 }
 
 /**
@@ -274,6 +299,7 @@ function renderM2mMount(
   source: MetaObject,
   ctx: RenderContext,
   fastifyVar: string,
+  tphSource?: TphM2mSource,
 ): Code {
   // `source` never changes across this function, so its effective package is computed
   // once and reused below (both crossEntitySpecifier calls, and the three
@@ -329,9 +355,20 @@ function renderM2mMount(
     targetDiscriminator: { column: ${resolveJunctionColumn(target, pin.fieldName, ctx, sourcePkg)}, value: ${JSON.stringify(pin.value)} },`
     : "";
 
+  // A subtype-declared M:N hangs under the subtype's segment; everything else hangs at
+  // the source entity's own path. `$path` is read from the BASE const either way — a TPH
+  // subtype's module exports no entity const of its own.
+  const pathExpr: Code = tphSource === undefined
+    ? code`${source.name}.$path`
+    : code`${source.name}.$path + ${JSON.stringify(tphSource.pathSuffix)}`;
+  const sourceDiscriminatorLine: Code | string = tphSource === undefined
+    ? ""
+    : code`
+    sourceDiscriminator: { table: ${tphSource.table}, pkColumn: ${tphSource.pkColumn}, column: ${tphSource.discriminatorColumn}, value: ${JSON.stringify(tphSource.value)} },`;
+
   return code`  ${mountM2mRouteSym}({
     fastify: ${fastifyVar},
-    path: ${source.name}.$path,
+    path: ${pathExpr},
     relationName: ${JSON.stringify(entry.name)},
     db,
     junctionTable: ${junctionVarSym},
@@ -339,7 +376,7 @@ function renderM2mMount(
     sourceColumn: ${sourceColumn},
     targetColumn: ${targetColumn},
     targetPkColumn: ${targetPkColumn},
-    symmetric: ${entry.symmetric ? "true" : "false"},${discriminatorLine}
+    symmetric: ${entry.symmetric ? "true" : "false"},${discriminatorLine}${sourceDiscriminatorLine}
   });`;
 }
 
@@ -440,7 +477,23 @@ function renderTphRoutesFile(
       dialect: ${dialectLit},${polymorphicExposeLine}
     });`;
 
-  const subtypeMounts: Code[] = plan.subtypes.map(({ entity: sub, value, routeSegment: segment }) => {
+  // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. This file never consulted
+  // the relation map at all, so BOTH sides vanished from the generated API: a
+  // relationship declared on the base (every row of the table is a legitimate source)
+  // and one declared on a subtype (only that subtype's rows are). Neither is a compile
+  // error — a route that is never mounted is an absence — which is why the codegen
+  // compile gate stayed green while the endpoint 404'd.
+  const m2mOf = (name: string) =>
+    (ctx.relationMap.get(name) ?? []).filter(
+      (e): e is RelationEntry & { junctionEntity: string } => e.junctionEntity !== undefined,
+    );
+  // The physical columns stage 0 needs, resolved once against the base's own table.
+  const basePkField = ctx.pkMap.get(baseName)?.fieldName ?? "id";
+  const basePkColumn = resolveJunctionColumn(base, basePkField, ctx, basePkg);
+  const baseDiscColumn = resolveJunctionColumn(base, discField, ctx, basePkg);
+  const baseM2mMounts = renderM2mMounts(m2mOf(baseName), base, ctx, fastifyRef);
+
+  const subtypeMounts: Code[] = plan.subtypes.flatMap(({ entity: sub, value, routeSegment: segment }) => {
     const subFileSpec = entityModuleSpecifier(
       ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(sub), sub.name, ctx.extStyle,
     );
@@ -457,7 +510,7 @@ function renderTphRoutesFile(
     // (discriminator excluded — it's pinned by this path).
     const subFilterSym = imp(`${sub.name}FilterAllowlist@${subFileSpec}`);
     const subSortSym = imp(`${sub.name}SortAllowlist@${subFileSpec}`);
-    return code`
+    const crud = code`
     ${mountCrudRoutesSym}({
       fastify: ${fastifyRef},
       path: ${baseConstSym}.$path + ${JSON.stringify("/" + segment)},
@@ -470,9 +523,32 @@ function renderTphRoutesFile(
       dialect: ${dialectLit},
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
+    // This subtype's own M:N navigations, mounted beneath its segment and gated on the
+    // discriminator so a sibling's id yields [] instead of the sibling's relations.
+    //
+    // Every relationship this subtype RESOLVES, inherited ones included — not just the
+    // ones it declares. A subtype resource is a resource: `/auths/bridge/1` carries the
+    // same sub-resources as any other, so it carries the base's relationships too, and
+    // an abstract mid level's relationship has nowhere else to be served at all.
+    //
+    // The base mounts its own set separately, at its own path. The overlap is deliberate
+    // and not redundant: `/auths/1/tags` accepts any row of the table, while
+    // `/auths/bridge/1/tags` answers [] for a Copay id — the segment is a type
+    // assertion, which is exactly what sourceDiscriminator enforces below.
+    const subM2m = renderM2mMounts(m2mOf(sub.name), base, ctx, fastifyRef, {
+      pathSuffix: "/" + segment,
+      table: code`${tableSym}`,
+      pkColumn: basePkColumn,
+      discriminatorColumn: baseDiscColumn,
+      value,
+    });
+    return subM2m === "" ? [crud] : [crud, subM2m as Code];
   });
 
-  const mounts = joinCode([polymorphic, ...subtypeMounts], { on: "\n" });
+  const mounts = joinCode(
+    [polymorphic, ...(baseM2mMounts === "" ? [] : [baseM2mMounts as Code]), ...subtypeMounts],
+    { on: "\n" },
+  );
   // The base path is read-only by construction (TPH_POLYMORPHIC_VERBS), but the
   // per-subtype mounts below it are full CRUD — so `expose` does narrow this file.
   const tphAuthJsDoc = authSeamJsDoc({ framework: "fastify", handlerName, narrowable: true });
