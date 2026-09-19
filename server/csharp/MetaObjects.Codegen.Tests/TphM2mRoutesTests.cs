@@ -23,6 +23,17 @@
 //      below Roslyn-compiles Entity + DbContext + FilterAllowlist + Routes together
 //      against EF Core 8 + ASP.NET Core, so a regression here is a build failure, not a
 //      silent 404.
+//   C. a THIRD, latent compile defect this model's abstract mid level (ScopedAuth)
+//      surfaced under the DEFAULT config (EmitAbstractShapes: false — see Ctx() below):
+//      `class PriorAuthAuth : ScopedAuth` named a class that is never emitted, AND
+//      ScopedAuth's own field was silently excluded from PriorAuthAuth's member set as
+//      "already inherited" by that never-emitted class — a dropped member, worse than
+//      the compile error alone. Fixed by EntityGenerator.EmittedTphAncestor (walks past
+//      any skipped abstract level to the nearest ancestor that IS emitted — ultimately
+//      the TPH discriminator base, always emitted). Covered by
+//      Abstract_mid_level_extends_and_field_fold_under_the_default_config plus
+//      Full_model_compiles_against_ef_core_8_and_aspnetcore (now exercised under the
+//      default config, the shape a shared cross-port conformance fixture carries).
 //
 // Mirrors the TS reference model 1:1 (server/typescript/packages/codegen-ts/test/
 // tph-m2m-routes.test.ts, from the commit that fixed the same two gaps in TypeScript)
@@ -76,6 +87,7 @@ public class TphM2mRoutesTests
         { "field.int": { "name": "copayCents" } }
       ]}},
       { "object.entity": { "name": "ScopedAuth", "extends": "Auth", "abstract": true, "children": [
+        { "field.string": { "name": "auditNotes", "@maxLength": 200 } },
         { "relationship.association": { "name": "auditors", "@cardinality": "many", "@objectRef": "Tag", "@through": "AuthAudit" } }
       ]}},
       { "object.entity": { "name": "PriorAuthAuth", "extends": "ScopedAuth", "@discriminatorValue": "PriorAuth", "children": [
@@ -123,15 +135,16 @@ public class TphM2mRoutesTests
     ]}}
     """;
 
+    // DEFAULT config deliberately — EmitAbstractShapes is false (the GenConfig default),
+    // so ScopedAuth (the abstract TPH mid level between Auth and PriorAuthAuth) emits NO
+    // class of its own. That used to leave `class PriorAuthAuth : ScopedAuth` referencing
+    // a type that does not exist, AND silently dropped ScopedAuth's own fields (excluded
+    // from PriorAuthAuth's member set as "already inherited" by a class that was never
+    // emitted). See EntityGenerator.EmittedTphAncestor + the tests below.
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        // EmitAbstractShapes: true — ScopedAuth (the abstract TPH mid level between Auth
-        // and PriorAuthAuth) is a real link in the C# inheritance chain
-        // (`class PriorAuthAuth : ScopedAuth`); without its own emitted shape that
-        // reference does not compile. A consumer with an abstract TPH intermediate level
-        // needs this knob on regardless of these particular tests.
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal, EmitAbstractShapes = true },
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
     };
 
     private static MetaRoot Load()
@@ -230,6 +243,37 @@ public class TphM2mRoutesTests
     }
 
     [Fact]
+    public void Abstract_mid_level_extends_and_field_fold_under_the_default_config()
+    {
+        // GenConfig.EmitAbstractShapes defaults to false, so ScopedAuth (abstract, between
+        // Auth and PriorAuthAuth) emits NO class of its own. Two things must still be true:
+        //   1. PriorAuthAuth's base-class clause resolves PAST ScopedAuth to the nearest
+        //      ancestor that DOES get emitted — here, the TPH discriminator base itself
+        //      (always emitted; never metadata-abstract) — instead of naming a type that
+        //      does not exist.
+        //   2. ScopedAuth's OWN field ("auditNotes") still lands SOMEWHERE — on
+        //      PriorAuthAuth, the one concrete subtype beneath it — rather than being
+        //      silently dropped because it was excluded as "already inherited" by a class
+        //      that was never emitted. A dropped member is worse than the compile error
+        //      fixing only the base-class clause would have left behind: the compile error
+        //      at least announces itself.
+        var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
+        Assert.DoesNotContain(files, f => f.Path == "ScopedAuth.g.cs");
+
+        var priorAuth = FileContent(files, "PriorAuthAuth.g.cs");
+        Assert.Contains("public class PriorAuthAuth : Auth", priorAuth);
+        Assert.DoesNotContain("ScopedAuth", priorAuth);
+        // ScopedAuth's own field, folded onto the one concrete subtype beneath it.
+        Assert.Contains("public string? AuditNotes { get; set; }", priorAuth);
+
+        // The sibling subtypes (which do NOT extend ScopedAuth) never see it.
+        var bridge = FileContent(files, "BridgeAuth.g.cs");
+        Assert.DoesNotContain("AuditNotes", bridge);
+        var copay = FileContent(files, "CopayAuth.g.cs");
+        Assert.DoesNotContain("AuditNotes", copay);
+    }
+
+    [Fact]
     public void Nonsubtype_source_onto_a_subtype_target_binds_through_the_base_with_no_source_gate()
     {
         var routes = FileContent(new RoutesGenerator().Generate(Ctx(Load())), "PayerRoutes.g.cs");
@@ -272,6 +316,12 @@ public class TphM2mRoutesTests
         // excluded from CodegenCompileConformanceTests / IntegrationFixtureDriftTests (see
         // those files' headers), so a M:N-onto-a-TPH-subtype binding to a nonexistent DbSet
         // compiles clean everywhere else and only fails here, or in a live consumer's build.
+        //
+        // Also the regression guard for the abstract-TPH-mid-level defect (ScopedAuth,
+        // between Auth and PriorAuthAuth): Ctx() uses the DEFAULT config
+        // (EmitAbstractShapes: false), the shape a shared cross-port conformance fixture
+        // carries — a `class PriorAuthAuth : ScopedAuth` referencing a class that is never
+        // emitted is exactly what this compile assertion exists to catch.
         var ctx = Ctx(Load());
         var sources = new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))

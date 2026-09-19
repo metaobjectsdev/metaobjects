@@ -409,10 +409,21 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine($"public {classKeyword} {className}");
                 break;
             case ClassDeclarationKind.TphSubtype:
-                // Extend the DIRECT metadata parent (abstract intermediate or root), not the
-                // discriminator root — preserves the inheritance chain. Abstract intermediates
-                // are emitted `abstract class`.
-                var baseClass = CSharpNaming.Pascal(DirectTphParent(entity).Name);
+                // Extend the nearest ancestor that actually GETS EMITTED as a class — the
+                // direct metadata parent when it emits one (an abstract intermediate only
+                // does when EmitAbstractShapes is on), else the walk continues up the
+                // extends chain until it does. It always terminates: the TPH discriminator
+                // base is never metadata-abstract (IsTphDiscriminatorBase requires OWNING
+                // @discriminator, which excludes @isAbstract in practice for this codebase's
+                // fixtures) and its class is ALWAYS emitted via EmitMappedClass — the
+                // "abstract class Auth" keyword there is EF's requirement (no bare-base
+                // rows), not the metadata-abstract gate. Skipping the DIRECT parent here
+                // (EmittedTphAncestor, not DirectTphParent) is what keeps `EmitAbstractShapes:
+                // false` (the default) compiling for a TPH hierarchy with an abstract mid
+                // level — see EmitTphSubtypeClass for the other half (that level's OWN
+                // fields must still land on the subtype, or skipping its class would silently
+                // drop them instead of merely failing to compile).
+                var baseClass = CSharpNaming.Pascal(EmittedTphAncestor(entity, ctx).Name);
                 var tphKeyword = InstanceArtifacts.IsAbstract(entity) ? "abstract class" : "class";
                 sb.AppendLine($"public {tphKeyword} {className} : {baseClass}");
                 break;
@@ -452,10 +463,18 @@ public class EntityGenerator : IGenerator
     protected virtual EmittedFile EmitTphSubtypeClass(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
-        // Own fields only — the rest are inherited through the C# base chain (which mirrors
-        // the metadata `extends` chain), so exclude everything the DIRECT parent already carries.
+        // Own fields only — the rest are inherited through the C# base chain. Excluded
+        // against the EMITTED ancestor (EmittedTphAncestor), NOT the direct metadata
+        // parent: when an abstract intermediate between this subtype and the
+        // discriminator base is SKIPPED (EmitAbstractShapes: false, the default), that
+        // level's own fields have no class of their own to appear on — excluding them
+        // here too would silently drop them from the generated model entirely, a worse
+        // defect than the compile error skipping the class-declaration fix alone would
+        // have left behind. Resolving against the emitted ancestor instead folds them
+        // onto THIS subtype, matching where CollectSubtypeFields (the DbContext/entity
+        // column-folding SSOT) already puts them in the shared base table.
         var baseFieldNames = new HashSet<string>(
-            DirectTphParent(entity).Fields().Select(f => f.Name), StringComparer.Ordinal);
+            EmittedTphAncestor(entity, ctx).Fields().Select(f => f.Name), StringComparer.Ordinal);
         var strategy = ctx.Config.ColumnNamingStrategy;
 
         var sb = new StringBuilder();
@@ -588,6 +607,34 @@ public class EntityGenerator : IGenerator
     // back to the discriminator root if no super is resolved (shouldn't happen for a subtype).
     protected static MetaObject DirectTphParent(MetaObject subtype) =>
         subtype.SuperData as MetaObject ?? TphBaseOf(subtype);
+
+    /// <summary>
+    /// The nearest ancestor of <paramref name="member"/> (a TPH subtype OR an abstract
+    /// TPH intermediate) that actually GETS EMITTED as a C# class — the one safe to
+    /// name in a <c>: Base</c> clause. Starts at <see cref="DirectTphParent"/> and, while
+    /// that ancestor is metadata-abstract AND <see cref="GenConfig.EmitAbstractShapes"/>
+    /// is off (an abstract entity emits no shape file at all — see <see
+    /// cref="InstanceArtifacts.IsAbstract"/> and the <c>Generate</c> loop's `continue`),
+    /// keeps walking to ITS direct parent. Always terminates: the TPH discriminator base
+    /// is never metadata-abstract (a table-owning base wouldn't set <c>@discriminator</c>
+    /// otherwise) and is unconditionally emitted by <c>EmitMappedClass</c>.
+    ///
+    /// <para>Distinct from <see cref="DirectTphParent"/>, which callers that need the
+    /// EXACT metadata parent (independent of what gets emitted) should keep using.
+    /// <see cref="EmitTphSubtypeClass"/> uses THIS for its own-field exclusion set for
+    /// exactly that reason: a field declared on a SKIPPED abstract level must still
+    /// land somewhere, and resolving against the emitted ancestor — one level further
+    /// up than the skipped one — is what folds it onto the subtype instead of quietly
+    /// dropping it (the skipped level's fields are absent from the emitted ancestor's
+    /// own <c>Fields()</c>, so they stop being excluded).</para>
+    /// </summary>
+    protected static MetaObject EmittedTphAncestor(MetaObject member, GenContext ctx)
+    {
+        var cursor = DirectTphParent(member);
+        while (InstanceArtifacts.IsAbstract(cursor) && !ctx.Config.EmitAbstractShapes)
+            cursor = DirectTphParent(cursor);
+        return cursor;
+    }
 
     // The directly-extended entity to emit as a C# base class for a NON-TPH entity (mapped
     // entity or abstract shape). The metadata `extends` chain becomes the C# inheritance
