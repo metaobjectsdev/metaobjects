@@ -335,7 +335,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
      * distinct Java method (never a single shared seam multiple mounts must agree on the arity
      * of, unlike the Python port's one Protocol method per relation name).
      */
-    static String targetSubtypeParam(SpringM2mSupport.M2mNav nav) {
+    public static String targetSubtypeParam(SpringM2mSupport.M2mNav nav) {
         return nav.targetDiscriminatorValue() != null ? ", String targetSubtype" : "";
     }
 

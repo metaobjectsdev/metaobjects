@@ -35,7 +35,7 @@ public class SpringM2mTargetTphCodegenTest extends SharedRegistryTestBase {
     @Rule
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
-    static final String FIXTURE = """
+    public static final String FIXTURE = """
         {
           "metadata.root": { "package": "acme::sponsor", "children": [
             { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [

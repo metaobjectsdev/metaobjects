@@ -124,16 +124,19 @@ object KotlinM2mSupport {
                 .map { it.name }
                 .distinct()
 
-            // `target !== declaredTarget` means the declared target WAS a TPH subtype (redirected
-            // to its storage object by KotlinTphPlan.storageObjectOf above) — so narrowing back to
-            // just the declared target's own rows IS required here; every step below MUST resolve.
-            // A step that can't (e.g. an ABSTRACT mid-level `@objectRef` with no own
-            // @discriminatorValue of its own to filter by) is NOT silently left unfiltered —
-            // that would silently WIDEN the query to every sibling subtype's rows sharing the
-            // storage table, the exact "silently dropping target narrowing" defect this loud
-            // failure replaces — but a hard M2MDerivationException, matching this port's (and the
-            // Java/Python ports') stance on an underivable M:N: fail the build, don't skip.
-            val targetDiscriminator = if (target !== declaredTarget) {
+            // `target !== declaredTarget` means the declared target WAS folded into a
+            // discriminator base's storage (KotlinTphPlan.storageObjectOf above) — either because
+            // it is a CONCRETE TPH subtype, or because it is an ABSTRACT mid-level `@objectRef`
+            // with no own `@discriminatorValue`. The two are different shapes, not the same
+            // failure: an abstract mid-level legitimately has no single discriminator value —
+            // it is never instantiated, and rows of every concrete subtype beneath it are valid
+            // targets — so the loader accepts that model and traversal stays intentionally
+            // unfiltered (docs/features/abstracts-and-inheritance.md). A CONCRETE subtype (one
+            // that DOES declare its own `@discriminatorValue`) whose narrowing nevertheless can't
+            // be derived is a genuine defect — that case fails loud with M2MDerivationException,
+            // matching this port's (and the Java/Python ports') stance on an underivable M:N.
+            val declaredDiscValue = KotlinTphPlan.discriminatorValueOf(declaredTarget)
+            val targetDiscriminator = if (target !== declaredTarget && declaredDiscValue != null) {
                 val relLabel = "${entity.shortName}.${rel.shortName ?: rel.name}"
                 val discField = KotlinTphPlan.discriminatorFieldOf(target)
                     ?: throw M2MFields.M2MDerivationException(
@@ -142,11 +145,7 @@ object KotlinM2mSupport {
                             "@discriminator field could be resolved on it — target narrowing cannot " +
                             "be derived."
                     )
-                val discValue = KotlinTphPlan.discriminatorValueOf(declaredTarget)
-                    ?: throw M2MFields.M2MDerivationException(
-                        "M:N relationship \"$relLabel\": target \"${declaredTarget.name}\" declares no " +
-                            "own @discriminatorValue — target narrowing cannot be derived."
-                    )
+                val discValue = declaredDiscValue
                 val discMetaField = target.metaFields.firstOrNull { it.name == discField }
                     ?: throw M2MFields.M2MDerivationException(
                         "M:N relationship \"$relLabel\": discriminator field \"$discField\" does not " +
