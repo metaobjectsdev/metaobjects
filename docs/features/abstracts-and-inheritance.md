@@ -264,6 +264,19 @@ every port:
 - **Reads/updates/deletes are scoped to the subtype** — `GET|PATCH|DELETE
   /auths/bridge/{id}` on a `Copay` row → **404** (a different-subtype row is
   invisible to a subtype-scoped operation).
+- **M:N traversal is served inside the hierarchy** — a relationship declared on
+  the base mounts at the base path (`GET /auths/{id}/tags`: every row of the
+  shared table is a legitimate source), and every relationship a subtype
+  resolves — declared on it or inherited, including one declared on an abstract
+  level between base and subtype, which has no path of its own — also mounts
+  under the subtype's segment (`GET /auths/bridge/{id}/tags`). The overlap is
+  deliberate: only the subtype segment gates the source id. The junction FK
+  points at the shared base table and cannot tell subtypes apart, so the mount
+  reads the source row's own discriminator first: a sibling subtype's id — which
+  names no row of this subtype and so has no relations here — answers **200 with
+  `[]`**, where a subtype-scoped CRUD read of the same id answers 404.
+  TypeScript today: the other ports' controller generators do not mount
+  traversal inside a hierarchy yet; they are being brought to the same contract.
 - **The discriminator is immutable** — an update can't move a row to another
   subtype (the field is stripped from update patches).
 - **Polymorphic reads** — `GET /auths` and `GET /auths/{id}` return the union across
