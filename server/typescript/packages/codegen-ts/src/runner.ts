@@ -486,7 +486,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   // 3. Build shared render state once.
   const pkMap = buildPkMap(root);
-  const relationMap = buildRelationMap(root);
+  const relationMap = buildRelationMap(root, (m) => warnings.push(m));
   // ADR-0044/#228 — the ENTITY-tier collision domain is the run's EMITTED
   // `object.value` SET (NOT any per-payload closure): value-object module
   // filenames + `packageOf` are per-run/global, so the emitted-name map is built

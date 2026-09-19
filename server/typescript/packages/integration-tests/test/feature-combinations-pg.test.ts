@@ -9,8 +9,9 @@
 //   columns  every declared column exists
 //   drizzle  the generated Drizzle schema declares exactly the database's FKs
 //   routes   every route the metadata says is served is mounted
-//   m2m      an M:N traversal returns exactly the related rows — and only rows of the
-//            target type when its table is shared (TPH)
+//   m2m      an M:N traversal returns exactly the related rows — only rows of the target
+//            type when its table is shared (TPH), and 200 with [] for a source id of a
+//            sibling subtype at a subtype segment (mount-m2m's stage 0)
 //
 // KNOWN DEFECTS. A check that fails for a reason recorded in KNOWN_DEFECTS below passes —
 // but only if EVERY failure line matches that defect's signature, so a known defect cannot
@@ -39,18 +40,9 @@ interface KnownDefect {
   signature: RegExp;
 }
 
-const inHierarchy = (c: Combination) => c.holder === "base" || c.holder === "subtype" || c.holder === "mid";
 const isManyToMany = (c: Combination) => c.link === "m2m" || c.link === "m2m-self" || c.link === "m2m-symmetric";
 
 const KNOWN_DEFECTS: KnownDefect[] = [
-  {
-    id: "tph-m2m-routes",
-    what: "an M:N declared on a TPH base, subtype or abstract level mounts no traversal route "
-      + "(the ruling: /<base-path>/<discriminatorValue lowercased>/:id/<relation>)",
-    check: "routes",
-    applies: (c) => inHierarchy(c) && isManyToMany(c),
-    signature: /^GET \S+\/:id\/related \(\w+\.related M:N traversal\)$/,
-  },
   {
     id: "composite-pk-drizzle-references",
     what: "a link table whose primary key is its two FK columns: the Drizzle schema omits `.references()` on "
@@ -92,47 +84,128 @@ function judge(c: Combination, check: Check, failures: string[]): void {
 }
 
 /**
- * Seed rows behind a plain holder's M:N and read the traversal back through the generated
- * route. The expected ids are stated here per shape, never derived from the product. The
- * tables are the ones `buildModel` names; every link carries an unrelated or
- * other-subtype row the traversal must NOT return.
+ * Seed rows behind an M:N and read the traversal back through the generated route, at
+ * every segment the oracle says serves it. The expected ids are stated here per shape,
+ * never derived from the product. The tables are the ones `buildModel` names; every link
+ * carries an unrelated or other-subtype row the traversal must NOT return, and every
+ * subtype-segment read carries a source id of a SIBLING subtype, which must answer 200
+ * with [] (mount-m2m's stage 0) rather than that sibling's relations.
  */
-async function m2mFailures(root: MetaRoot, c: Combination, app: GeneratedApp, uri: string, path: string): Promise<string[]> {
+async function m2mFailures(
+  root: MetaRoot,
+  c: Combination,
+  app: GeneratedApp,
+  uri: string,
+  paths: Map<MetaObject, string>,
+): Promise<string[]> {
   const link = root.findObject("Link")!;
   const [sourceRef, targetRef] = link.referenceIdentities();
   const linkColumn = (fields: string[]) => resolveColumnName(link.findField(fields[0]!)!, "snake_case");
-  const order = (id: number) => c.extra === "none"
-    ? `INSERT INTO orders (id) VALUES (${id});`
-    : `INSERT INTO orders (id, status) VALUES (${id}, 'open');`;
+  // The holder's `extra` column travels with every row of the table that stores the
+  // holder — `orders` for a plain holder, `parties` for one inside the hierarchy.
+  const extraCols = c.extra === "none" ? "" : ", status";
+  const extraVals = c.extra === "none" ? "" : ", 'open'";
+  const order = (id: number) => `INSERT INTO orders (id${extraCols}) VALUES (${id}${extraVals});`;
+  const party = (id: number, type: string) =>
+    `INSERT INTO parties (id, party_type${extraCols}) VALUES (${id}, '${type}'${extraVals});`;
+  const customers = "INSERT INTO customers (id) VALUES (11), (12), (13);";
   const pair = (from: number, to: number) =>
     `INSERT INTO links (${linkColumn(sourceRef!.fields)}, ${linkColumn(targetRef!.fields)}) VALUES (${from}, ${to});`;
 
+  // Which object serves `related` at which URL is the oracle's rule; this check reads
+  // the answer back rather than deriving a path of its own.
+  const routes = expectedRoutes(root, (o) => paths.get(o)!);
+  const traversalUrl = (obj: string, id: number): string => {
+    const route = routes.find((r) => r.why === `${obj}.related M:N traversal`);
+    if (route === undefined) throw new Error(`oracle lists no ${obj}.related traversal for ${caseName(c)}`);
+    return route.url.replace(":id", String(id));
+  };
+
+  interface Read { obj: string; id: number; expected: number[] }
   let sql: string;
-  let expected: number[];
-  if (c.target === "self") {
-    sql = order(1) + order(2) + order(3) + order(4)
-      + (c.link === "m2m-self" ? pair(1, 2) + pair(2, 1) + pair(1, 3) + pair(4, 1) : pair(1, 2) + pair(3, 1));
-    expected = [2, 3];
-  } else if (c.target === "plain") {
-    sql = order(1) + "INSERT INTO customers (id) VALUES (11), (12), (13);" + pair(1, 11) + pair(1, 12);
-    expected = [11, 12];
+  let reads: Read[];
+  if (c.holder === "plain") {
+    if (c.target === "self") {
+      sql = order(1) + order(2) + order(3) + order(4)
+        + (c.link === "m2m-self" ? pair(1, 2) + pair(2, 1) + pair(1, 3) + pair(4, 1) : pair(1, 2) + pair(3, 1));
+      reads = [{ obj: "Order", id: 1, expected: [2, 3] }];
+    } else if (c.target === "plain") {
+      sql = order(1) + customers + pair(1, 11) + pair(1, 12);
+      reads = [{ obj: "Order", id: 1, expected: [11, 12] }];
+    } else {
+      // Two Carriers and a Broker, all reachable through the same junction column.
+      sql = order(1) + "INSERT INTO parties (id, party_type) VALUES (11, 'Carrier'), (12, 'Carrier'), (13, 'Broker');"
+        + pair(1, 11) + pair(1, 12) + pair(1, 13);
+      reads = [{ obj: "Order", id: 1, expected: c.target === "subtype" ? [11, 12] : [11, 12, 13] }];
+    }
+  } else if (c.holder === "base") {
+    // Declared on the Party base, so it serves at the BASE path — every row of the
+    // table is a legitimate source — AND under each subtype segment, where the mount
+    // gates the source id on that subtype's discriminator. Source row 1 is a Carrier,
+    // so the Broker segment reading the SAME id is the type assertion: [] where the
+    // base path (the first read) returns the rows.
+    if (c.target === "self") {
+      sql = party(1, "Carrier") + party(2, "Broker") + party(3, "Carrier") + party(4, "Broker")
+        + (c.link === "m2m-self" ? pair(1, 2) + pair(2, 1) + pair(1, 3) + pair(4, 1) : pair(1, 2) + pair(3, 1));
+      reads = [{ obj: "Party", id: 1, expected: [2, 3] }, { obj: "Broker", id: 1, expected: [] }];
+    } else if (c.target === "plain") {
+      sql = party(1, "Carrier") + party(2, "Broker") + customers + pair(1, 11) + pair(1, 12);
+      reads = [{ obj: "Party", id: 1, expected: [11, 12] }, { obj: "Broker", id: 1, expected: [] }];
+    } else {
+      throw new Error(`no seeded m2m shape for ${caseName(c)} — the covering set grew`);
+    }
+  } else if (c.holder === "subtype") {
+    // Declared on Broker, so it serves ONLY under /parties/broker, and only a Broker
+    // id may traverse it. The target is Broker itself (self) or another Party subtype,
+    // so a joined row of the wrong subtype (a Carrier) must be filtered out of the
+    // result while a Carrier SOURCE id reads as [].
+    if (c.target === "self") {
+      sql = party(1, "Broker") + party(2, "Broker") + party(3, "Broker") + party(4, "Carrier")
+        + (c.link === "m2m-self"
+          ? pair(1, 2) + pair(2, 1) + pair(1, 3) + pair(1, 4)
+          : pair(1, 2) + pair(3, 1) + pair(1, 4));
+      reads = [{ obj: "Broker", id: 1, expected: [2, 3] }, { obj: "Broker", id: 4, expected: [] }];
+    } else if (c.target === "plain") {
+      sql = party(1, "Broker") + party(2, "Carrier") + customers + pair(1, 11) + pair(1, 12);
+      reads = [{ obj: "Broker", id: 1, expected: [11, 12] }, { obj: "Broker", id: 2, expected: [] }];
+    } else if (c.target === "subtype") {
+      // target=subtype: Carriers 11/12 joined, Carrier 2 present for the stage-0 read,
+      // and a joined Broker 13 that the target filter must drop.
+      sql = party(1, "Broker") + party(2, "Carrier") + party(11, "Carrier") + party(12, "Carrier")
+        + party(13, "Broker") + pair(1, 11) + pair(1, 12) + pair(1, 13);
+      reads = [{ obj: "Broker", id: 1, expected: [11, 12] }, { obj: "Broker", id: 2, expected: [] }];
+    } else {
+      // target=base is a VALID shape (a Broker→Party hetero M:N) with NO target pin —
+      // the base carries @discriminator, not @discriminatorValue — so these
+      // pinned-target expectations would misjudge it. Fail loudly instead.
+      throw new Error(`no seeded m2m shape for ${caseName(c)} — the covering set grew`);
+    }
   } else {
-    // Two Carriers and a Broker, all reachable through the same junction column.
-    sql = order(1) + "INSERT INTO parties (id, party_type) VALUES (11, 'Carrier'), (12, 'Carrier'), (13, 'Broker');"
-      + pair(1, 11) + pair(1, 12) + pair(1, 13);
-    expected = c.target === "subtype" ? [11, 12] : [11, 12, 13];
+    // Declared on the abstract Organization level: no path of its own, resolved only by
+    // Carrier, so /parties/carrier is the one place it serves — and only a Carrier id
+    // may traverse it.
+    if (c.target !== "plain") throw new Error(`no seeded m2m shape for ${caseName(c)} — the covering set grew`);
+    sql = party(1, "Carrier") + party(2, "Broker") + customers + pair(1, 11) + pair(1, 12);
+    reads = [{ obj: "Carrier", id: 1, expected: [11, 12] }, { obj: "Carrier", id: 2, expected: [] }];
   }
   await executeSql(uri, sql);
 
   const fastify = await app.bootRoutes();
   try {
-    const url = `${path}/1/related`;
-    const res = await fastify.inject({ method: "GET", url });
-    if (res.statusCode !== 200) return [`GET ${url} -> ${res.statusCode} ${res.body}`];
-    const ids = (JSON.parse(res.body) as Array<{ id: number }>).map((r) => Number(r.id)).sort((a, b) => a - b);
-    return JSON.stringify(ids) === JSON.stringify(expected)
-      ? []
-      : [`GET ${url} -> ids ${JSON.stringify(ids)}, expected ${JSON.stringify(expected)}`];
+    const failures: string[] = [];
+    for (const read of reads) {
+      const url = traversalUrl(read.obj, read.id);
+      const res = await fastify.inject({ method: "GET", url });
+      if (res.statusCode !== 200) {
+        failures.push(`GET ${url} -> ${res.statusCode} ${res.body}`);
+        continue;
+      }
+      const ids = (JSON.parse(res.body) as Array<{ id: number }>).map((r) => Number(r.id)).sort((a, b) => a - b);
+      if (JSON.stringify(ids) !== JSON.stringify(read.expected)) {
+        failures.push(`GET ${url} -> ids ${JSON.stringify(ids)}, expected ${JSON.stringify(read.expected)}`);
+      }
+    }
+    return failures;
   } finally {
     await fastify.close();
   }
@@ -200,9 +273,8 @@ describe("feature combinations, end to end against Postgres", () => {
       await fastify.close();
       judge(c, "routes", missingRoutes);
 
-      if (isManyToMany(c) && !inHierarchy(c)) {
-        const holder = root.findObject("Order")!;
-        judge(c, "m2m", await m2mFailures(root, c, app, uri, paths.get(holder)!));
+      if (isManyToMany(c)) {
+        judge(c, "m2m", await m2mFailures(root, c, app, uri, paths));
       }
     }, 120_000);
   }

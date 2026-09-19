@@ -171,6 +171,32 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   the migration. New helpers `tphStorageObject` / `tphStorageName` answer "which object's
   table stores these rows" for owned generators. **Generated output changes**: re-run
   `meta gen`.
+- **M:N traversal routes inside a TPH hierarchy were never mounted at all.** The TPH emit
+  path (`renderTphRoutesFile`) rendered the polymorphic mount and the full per-subtype CRUD
+  set but never consulted the relation map, so every many-to-many navigation in a hierarchy
+  vanished from the generated API — a relationship declared on the base as much as one
+  declared on a subtype. Nothing failed: a route that is never mounted is an ABSENCE rather
+  than a compile error, which is why the codegen-compile gate stayed green while the endpoint
+  404'd. The base's relationships now mount at the base path — every row of the shared table
+  is a legitimate source, so that mount is byte-identical to a vanilla entity's — and every
+  relationship a subtype RESOLVES, declared on it or inherited (including one declared on an
+  abstract mid level, which otherwise serves nowhere), also mounts under the subtype's
+  segment. The overlap is deliberate: only the subtype segment gates the source id.
+  `mountM2mRoute` takes a new optional `sourceDiscriminator: { table, pkColumn, column,
+  value }` — a stage 0 that reads the source row's own discriminator from the shared base
+  table and answers **200 with `[]`** when it is not this subtype's: the id names no row of
+  THIS subtype, so it has no relations. Absent, the behaviour is unchanged. An M:N whose
+  junction cannot be paired — the loader never checks subject pairing, so the model loads
+  clean — now emits a WARNING through the gen warnings channel naming the entity, the
+  relationship, the junction and the derivation's own reason, instead of silently producing
+  no route; the build still passes. The feature-combination ledger's `tph-m2m-routes` entry
+  is drained, and its m2m check now runs for hierarchy holders too, reading the traversal
+  back through every segment the oracle says serves it, sibling-subtype source ids included.
+  **Scope is TypeScript only**: the same two gaps (the controller generator skipping TPH
+  subtypes at the top of its entity loop, and the TPH emit path asking no M:N question at
+  all) remain in C#, Java, Kotlin and Python — the remaining work of the agreed five-port
+  pass. **Generated output changes**: a TPH hierarchy with M:N relationships gains routes on
+  the next `meta gen`.
 - **An abstract object that inherits a source got a queries and a routes file that did not
   compile.** An abstract level has no table of its own, only a type-only shape, yet the
   queries and routes generators gated on "has a source" alone, so `Organization.queries.ts`
