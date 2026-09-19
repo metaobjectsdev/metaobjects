@@ -1433,18 +1433,23 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * "::" embedded.
      */
     private fun buildDeclaredFkSpec(target: MetaObject, rel: MetaRelationship): FkColumnSpec? {
-        val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
+        // FW-3: `target` may be a TPH subtype (or an abstract mid-level folded into a
+        // discriminator base) with no Exposed Table object of its own — the FK must reference
+        // the STORAGE object's table instead, or the emitted `.references(<Sub>Table.pk)` names
+        // a table this generator never emits.
+        val storageTarget = KotlinTphPlan.storageObjectOf(target)
+        val targetTable = PackageMapping.splitFqn(storageTarget.name).second + "Table"
         val relShortName = rel.shortName ?: rel.name
         val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
         val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "${fkColumnBuilder(target, colName)}.references($targetTable.${primaryKeyProperty(target)}$refSuffix)",
+            columnExpr = "${fkColumnBuilder(storageTarget, colName)}.references($targetTable.${primaryKeyProperty(storageTarget)}$refSuffix)",
             refSuffix = refSuffix,
             declared = true,
             targetTable = targetTable,
-            targetFqn = target.name,
+            targetFqn = storageTarget.name,
         )
     }
 
@@ -1459,21 +1464,26 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * FK's ReferenceOption arguments.
      */
     private fun buildInverseFkSpec(owner: MetaObject, rel: MetaRelationship): FkColumnSpec? {
-        // Skip when the owner has no rdb source — there would be no OwnerTable to reference.
-        // ADR-0039: resolving (an inherited source.rdb still means the owner is persisted).
-        if (!KotlinGenUtil.hasRdbSource(owner)) return null
-        val ownerShort = PackageMapping.splitFqn(owner.name).second
+        // FW-3: `owner` may itself be a TPH subtype or an abstract mid-level (e.g. a to-many
+        // composition declared ON a subtype, or on an abstract level between the base and its
+        // subtypes) — its rows, and its primary key, live in the discriminator base's shared
+        // table. Redirect before naming/referencing the owner's table.
+        val storageOwner = KotlinTphPlan.storageObjectOf(owner)
+        // Skip when the storage owner has no rdb source — there would be no OwnerTable to
+        // reference. ADR-0039: resolving (an inherited source.rdb still means it is persisted).
+        if (!KotlinGenUtil.hasRdbSource(storageOwner)) return null
+        val ownerShort = PackageMapping.splitFqn(storageOwner.name).second
         val ownerTable = ownerShort + "Table"
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
         val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "${fkColumnBuilder(owner, colName)}.references($ownerTable.${primaryKeyProperty(owner)}$refSuffix)",
+            columnExpr = "${fkColumnBuilder(storageOwner, colName)}.references($ownerTable.${primaryKeyProperty(storageOwner)}$refSuffix)",
             refSuffix = refSuffix,
             declared = false,
             targetTable = ownerTable,
-            targetFqn = owner.name,
+            targetFqn = storageOwner.name,
         )
     }
 
@@ -1562,14 +1572,21 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val fieldName = fields[0]
                 val targetEntityName = child.targetEntity ?: continue
                 val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetEntityName) ?: continue
-                // Skip when the target has no rdb source — Exposed cannot reference a non-table.
-                // ADR-0039: resolving (an inherited source.rdb still means the target is a table).
-                if (!KotlinGenUtil.hasRdbSource(target)) continue
+                // FW-3: `target` may be a TPH subtype (e.g. `@references: BridgeAuth`) or an
+                // abstract mid-level, neither of which has an Exposed Table of its own — its rows
+                // live in, and its primary key belongs to, the discriminator base's shared table.
+                // The referential-action correlation below stays keyed to the DECLARED `target`
+                // (a relationship may specifically name the subtype); only the PHYSICAL
+                // table/column decoration redirects to the storage object.
+                val storageTarget = KotlinTphPlan.storageObjectOf(target)
+                // Skip when the storage target has no rdb source — Exposed cannot reference a
+                // non-table. ADR-0039: resolving (an inherited source.rdb still means a table).
+                if (!KotlinGenUtil.hasRdbSource(storageTarget)) continue
                 // Soft references register a null-targetTable entry so dedup-vs-inferred works,
                 // but column emission will skip the `.references(...)` decoration.
                 val targetTable = if (child.isEnforced)
-                    PackageMapping.splitFqn(target.name).second + "Table" else null
-                val targetFqn = if (child.isEnforced) target.name else null
+                    PackageMapping.splitFqn(storageTarget.name).second + "Table" else null
+                val targetFqn = if (child.isEnforced) storageTarget.name else null
                 // ADR-0047 — resolve the decorated FK's referential actions with the
                 // cross-port precedence (mirrors the TS migrate engine's
                 // resolveReferentialActions): (1) @onDelete / @onUpdate declared directly
@@ -1590,7 +1607,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     resolveDecorationActions(loader, entity, child, target)
                 val refSuffix = referentialActionSuffix(resolvedOnDelete, resolvedOnUpdate)
                 acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
-                    RefDecoration(targetTable, primaryKeyProperty(target), refSuffix, targetFqn)
+                    RefDecoration(targetTable, primaryKeyProperty(storageTarget), refSuffix, targetFqn)
             }
         }
         return acc

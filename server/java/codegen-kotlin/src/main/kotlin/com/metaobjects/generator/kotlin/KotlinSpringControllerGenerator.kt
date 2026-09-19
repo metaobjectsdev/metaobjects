@@ -132,7 +132,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // FR-017 TPH: a discriminator base emits ONE controller mounting the polymorphic
             // collection routes plus a full per-subtype CRUD set scoped by the discriminator.
             val tph = KotlinTphPlan.planFor(entity, loader)
-            if (tph != null) emitTph(entity, tph, outRoot) else emit(entity, outRoot, loader)
+            if (tph != null) emitTph(entity, tph, outRoot, loader) else emit(entity, outRoot, loader)
         }
     }
 
@@ -635,7 +635,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * embeds Exposed against the union `<Base>Table` ([KotlinExposedTableGenerator]); the
      * discriminator is the generated enum, so `type` is scoped/injected as `<Enum>.<Value>`.
      */
-    protected open fun emitTph(base: MetaObject, plan: KotlinTphPlan.Plan, outRoot: Path) {
+    protected open fun emitTph(base: MetaObject, plan: KotlinTphPlan.Plan, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(base.name)
         val table = shortName + "Table"
         val routeBase = "/api/" + pluralLowercase(shortName)
@@ -709,6 +709,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // is per-subtype so a PriorAuth patch never touches a Bridge-only column.
         fun subtypePatchFields(st: KotlinTphPlan.Subtype) =
             KotlinTphPlan.subtypeSettableFields(st.entity)
+
+        // FW-8 x FR-017: M:N traversal inside a TPH hierarchy. A relationship declared on the
+        // BASE is legitimate for every row of the shared table — mounted once, unscoped, exactly
+        // like a vanilla entity's (see emitM2mEndpoint). Every relationship a SUBTYPE resolves —
+        // its own, or inherited from the base — is ALSO mounted under that subtype's segment,
+        // scoped by a Stage-0 discriminator check (see emitTphSubtypeM2mEndpoint): a subtype
+        // resource carries the same sub-resources as any other, and the junction FK addresses
+        // the shared base table, so without that check a sibling's id would traverse it too.
+        val baseM2mNavs = KotlinM2mSupport.resolve(base, loader)
+        fun subtypeM2mNavs(st: KotlinTphPlan.Subtype) = KotlinM2mSupport.resolve(st.entity, loader)
         // When NO subtype has a settable column (a PK + discriminator + only object/jsonb columns) the
         // controller emits no ObjectMapper/Validator ctor param or TypeReference import (they would be
         // unused → allWarningsAsErrors). A real TPH base always contributes ≥1 base scalar, so this is
@@ -854,6 +864,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
             append("    }\n\n")
+
+            // Base-declared M:N — unscoped, same shape emitM2mEndpoint gives a vanilla entity.
+            for (nav in baseM2mNavs) {
+                emitM2mEndpoint(this, pkg, shortName, nav, pkParamType)
+            }
 
             for (st in plan.subtypes) {
                 val seg = st.routeSegment
@@ -1037,6 +1052,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
                 append("        else ResponseEntity.noContent().build<Any>()\n")
                 append("    }\n\n")
+
+                // M:N traversal scoped to THIS subtype — every relationship it resolves,
+                // inherited ones (e.g. a base-declared relationship) included.
+                for (nav in subtypeM2mNavs(st)) {
+                    emitTphSubtypeM2mEndpoint(this, pkg, table, pkFieldName, plan.discriminatorField, disc, seg, sfx, nav, pkParamType)
+                }
             }
             append("}\n")
         }
@@ -1381,10 +1402,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         pkParamType: String,
     ) {
         val sourceTable = sourceShort + "Table"
+        // FW-3: the data class rows are mapped into is the STORAGE object's type (`nav.targetType`
+        // — e.g. `Auth`, the union type, when the declared target is a TPH subtype), never
+        // `nav.targetShortName` (the DECLARED target's name, e.g. `BridgeAuth`) — a TPH subtype
+        // has no data class of its own to reference.
         val targetType = if (nav.targetPackage == sourcePkg || nav.targetPackage.isEmpty()) {
-            nav.targetShortName
+            nav.targetType
         } else {
-            nav.targetPackage + "." + nav.targetShortName
+            nav.targetPackage + "." + nav.targetType
         }
         val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
         out.append("\n")
@@ -1392,6 +1417,52 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("    @GetMapping(\"/{id}/${nav.relationName}\")\n")
         out.append("    fun ${nav.relationName}(@PathVariable id: $pkParamType): ResponseEntity<List<$targetType>> = transaction {\n")
         out.append("        val rows = $sourceTable.${nav.relationName}Query(id).map { row ->\n")
+        out.append("            $targetType(\n")
+        for (fname in nav.targetScalarFields) {
+            out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
+        }
+        out.append("            )\n")
+        out.append("        }\n")
+        out.append("        ResponseEntity.ok(rows)\n")
+        out.append("    }\n")
+    }
+
+    /**
+     * FW-8 x FR-017 — emit one M:N traversal sub-resource SCOPED to a TPH subtype:
+     * `GET /<seg>/{id}/<relationName>`. Stage 0 reads the source row's OWN discriminator column
+     * and returns an EMPTY list (HTTP 200 — not 404, not the query below) when [id] does not name
+     * a row of [discExpr]'s subtype, THEN delegates to the exact SAME
+     * `<Base>Table.<relationName>Query(id)` Exposed helper every other mount of this relation
+     * calls (the base's own mount, or a sibling subtype's) — the junction FK addresses the shared
+     * base table and cannot itself tell the subtypes apart, so without this gate a sibling's id
+     * would traverse it just as well and the `/<seg>` segment would be decorative.
+     */
+    protected open fun emitTphSubtypeM2mEndpoint(
+        out: StringBuilder,
+        sourcePkg: String,
+        table: String,
+        pkFieldName: String,
+        discField: String,
+        discExpr: String,
+        seg: String,
+        sfx: String,
+        nav: KotlinM2mSupport.M2mNav,
+        pkParamType: String,
+    ) {
+        val targetType = if (nav.targetPackage == sourcePkg || nav.targetPackage.isEmpty()) {
+            nav.targetType
+        } else {
+            nav.targetPackage + "." + nav.targetType
+        }
+        val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
+        out.append("\n")
+        out.append("    /** M:N traversal scoped to $discExpr: the ${nav.targetShortName} rows related to this $discExpr through ${nav.junctionShortName}$symMarker. Verifies id names a $discExpr row, returning [] (not the sibling's rows) when it does not. */\n")
+        out.append("    @GetMapping(\"/$seg/{id}/${nav.relationName}\")\n")
+        out.append("    fun ${nav.relationName}$sfx(@PathVariable id: $pkParamType): ResponseEntity<List<$targetType>> = transaction {\n")
+        out.append("        if ($table.selectAll().where { ($table.$pkFieldName eq id) and ($table.$discField eq $discExpr) }.singleOrNull() == null) {\n")
+        out.append("            return@transaction ResponseEntity.ok(emptyList<$targetType>())\n")
+        out.append("        }\n")
+        out.append("        val rows = $table.${nav.relationName}Query(id).map { row ->\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
             out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")

@@ -632,6 +632,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("                .orElseGet(this::notFound);\n");
         src.append("    }\n\n");
 
+        // FR-018 x FR-017 — M:N traversal declared on the BASE: every row of the shared
+        // table is a legitimate source, so this is the SAME mount + finder shape a vanilla
+        // entity gets (see emit() above) — no discriminator gating needed. Per-subtype
+        // traversal (including this same relationship, inherited) is emitted below, inside
+        // the per-subtype loop — the overlap is deliberate (FR-017 design): a subtype
+        // resource carries the same sub-resources as any other resource.
+        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(base, loader)) {
+            String finder = SpringRepositoryGenerator.m2mFinderName(nav.relationName());
+            src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
+            src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
+               .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
+            src.append("        return ResponseEntity.ok(repository.").append(finder).append("(id));\n");
+            src.append("    }\n\n");
+        }
+
         // --- per-subtype CRUD ---
         for (TphPlan.Subtype st : plan.subtypes()) {
             String seg = st.routeSegment();              // url segment (e.g. "bridge")
@@ -794,6 +809,22 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("        if (repository.deleteByIdAndType(id, \"").append(disc).append("\")) return ResponseEntity.noContent().build();\n");
             src.append("        return notFound();\n");
             src.append("    }\n\n");
+
+            // FR-018 x FR-017 — M:N traversal scoped to THIS subtype: every relationship it
+            // resolves, inherited ones (e.g. a base-declared relationship) included — a
+            // subtype resource carries the same sub-resources as any other. The repository
+            // finder's CONTRACT (see SpringRepositoryGenerator#m2mFinderNameForSubtype) is to
+            // verify sourceId names a row of THIS subtype and return [] — not 404, not a
+            // sibling's rows — on mismatch, because the junction FK addresses the shared
+            // base table and cannot itself tell the subtypes apart.
+            for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
+                String subFinder = SpringRepositoryGenerator.m2mFinderNameForSubtype(nav.relationName(), disc);
+                src.append("    @GetMapping(\"/").append(seg).append("/{id}/").append(nav.relationName()).append("\")\n");
+                src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
+                   .append(subFinder).append("(@PathVariable ").append(pkType).append(" id) {\n");
+                src.append("        return ResponseEntity.ok(repository.").append(subFinder).append("(id));\n");
+                src.append("    }\n\n");
+            }
         }
 
         // shared helpers
