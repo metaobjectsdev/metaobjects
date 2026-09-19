@@ -192,11 +192,19 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   no route; the build still passes. The feature-combination ledger's `tph-m2m-routes` entry
   is drained, and its m2m check now runs for hierarchy holders too, reading the traversal
   back through every segment the oracle says serves it, sibling-subtype source ids included.
-  **Scope is TypeScript only**: the same two gaps (the controller generator skipping TPH
+  **Scope is TypeScript and C#**: the same two gaps (the controller generator skipping TPH
   subtypes at the top of its entity loop, and the TPH emit path asking no M:N question at
-  all) remain in C#, Java, Kotlin and Python — the remaining work of the agreed five-port
-  pass. **Generated output changes**: a TPH hierarchy with M:N relationships gains routes on
-  the next `meta gen`.
+  all) remain in Java, Kotlin and Python — the remaining work of the agreed five-port pass.
+  C# reaches the same contract by its own route: the subtype-scoped mount proves ownership
+  with `db.<Base>.OfType<Sub>().AnyAsync(...)` before touching the junction; an M:N whose
+  TARGET is a TPH subtype binds to the base's `DbSet` narrowed by `OfType<Sub>()`, because
+  a subtype has no `DbSet` of its own and the emitted routes file previously did not
+  compile; a TPH subtype-only scalar carrying both `@required` and `@default` now applies
+  that default instead of starting at the CLR default; and a subtype separated from its
+  base by an abstract mid level resolves its base class to the nearest ancestor that is
+  actually emitted, rather than naming a class that `EmitAbstractShapes: false` never
+  emits. **Generated output changes**: a TPH hierarchy with M:N relationships gains routes
+  on the next `meta gen`, in both ports.
 - **An abstract object that inherits a source got a queries and a routes file that did not
   compile.** An abstract level has no table of its own, only a type-only shape, yet the
   queries and routes generators gated on "has a source" alone, so `Organization.queries.ts`

@@ -293,8 +293,8 @@ public class RoutesGenerator : PerEntityGenerator
         // Cross-port contract: source URL segment = pluralized ENTITY name, relation
         // segment = relationship name.
         if (hasItem)
-            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root))
-                AppendM2mRoute(sb, nav, route, pkType!);
+            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
+                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root);
 
         sb.AppendLine();
         sb.AppendLine("        return app;");
@@ -443,9 +443,18 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                ? Results.Ok(found)");
             sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
 
+            // FW-8 — M:N traversal declared on the BASE: every row of the shared table
+            // is a legitimate source (rule a in the cross-port contract — the independent
+            // oracle's expectedRoutes walks every SERVED object's RESOLVED relationships,
+            // and the base is itself a served object), so the mount is byte-identical to
+            // a vanilla entity's traversal at the base route. Mirrors TS
+            // renderTphRoutesFile's baseM2mMounts.
+            foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
+                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root);
+
             // --- Per-subtype CRUD sets ---
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp);
+                AppendTphSubtypeRoutes(sb, st, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
         }
 
         sb.AppendLine();
@@ -937,7 +946,7 @@ public class RoutesGenerator : PerEntityGenerator
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
         StringBuilder sb, TphSubtypePlan st, MetaRoot root, string baseRoute, string baseCls, string dbSet,
-        string pkType, string pkProp, string discProp)
+        string pkType, string pkProp, string discProp, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
@@ -1039,6 +1048,18 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine("            return Results.NoContent();");
         sb.AppendLine("        });");
+
+        // FW-8 — M:N traversal this SUBTYPE resolves, own + INHERITED (rule b: use the
+        // resolving Relationships(), not an own-only read — M2MNavigationBuilder.For
+        // already does this, so a relationship declared on the base or on an abstract
+        // mid level between the base and this subtype is served here too; that overlap
+        // with the base's own mount is deliberate, not redundant, per rule (b)). Every
+        // mount is scoped: the junction FK addresses the shared base table, so without
+        // the scope a sibling subtype's id would traverse it just as well and the
+        // segment in the URL would be decorative (rule c).
+        var sourceScope = new TphM2mSourceScope(dbSet, subCls, pkProp);
+        foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
+            AppendM2mRoute(sb, nav, subRoute, pkType, root, sourceScope);
     }
 
     // Emit the M:N traversal handler for one navigation. The junction + target are
@@ -1052,12 +1073,28 @@ public class RoutesGenerator : PerEntityGenerator
     //
     // Junction FK properties / target PK property are EF.Property<T>(...) lookups, so the
     // handler stays reflection-free and EF translates the property access to the column.
+    //
+    // `root` resolves whether the TARGET is a TPH subtype (Defect B): such a subtype has
+    // no table/DbSet of its own — DbContextGenerator.AppliesTo excludes it — so binding to
+    // `db.<Pluralize(Target)>` names a DbSet property that does not exist and the generated
+    // routes file fails to compile. `sourceScope`, when supplied, is the mirror problem on
+    // the SOURCE side: this mount hangs under a TPH SUBTYPE's own path segment, but the
+    // junction FK still addresses the shared base table, so a sibling subtype's id would
+    // traverse it just as well and the segment would be decorative (rule c in the
+    // cross-port contract; mirrors TS mount-m2m.ts's `sourceDiscriminator` Stage 0).
     private static void AppendM2mRoute(
-        System.Text.StringBuilder sb, M2MNavigation nav, string sourceRoute, string pkType)
+        System.Text.StringBuilder sb, M2MNavigation nav, string sourceRoute, string pkType, MetaRoot root,
+        TphM2mSourceScope? sourceScope = null)
     {
         var relSeg = nav.Name;                                    // relationship name segment
         var targetCls = CSharpNaming.Pascal(nav.Target.Name);
-        var targetDbSet = CSharpNaming.Pluralize(targetCls);
+        // Defect B — a TPH subtype target is folded into its discriminator base's single
+        // table (no DbSet of its own). Bind to the BASE's DbSet and narrow with
+        // OfType<Sub>() so the emitted db.<DbSet> always names a real property; every
+        // other target keeps binding to its own pluralized DbSet, byte-identical to before.
+        var targetFrom = TphPlanBuilder.IsTphSubtype(nav.Target, root)
+            ? $"db.{CSharpNaming.DbSetName(TphPlanBuilder.DiscriminatorRoot(nav.Target)!)}.OfType<{targetCls}>()"
+            : $"db.{CSharpNaming.Pluralize(targetCls)}";
         var junctionDbSet = CSharpNaming.Pluralize(CSharpNaming.Pascal(nav.Junction.Name));
         var srcFkProp = CSharpNaming.Pascal(nav.SourceField);
         var tgtFkProp = CSharpNaming.Pascal(nav.TargetField);
@@ -1070,6 +1107,15 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         sb.AppendLine("        app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (" + pkType + " id, AppDbContext db) =>");
         sb.AppendLine("        {");
+        if (sourceScope is not null)
+        {
+            // Rule c — prove the id names a row of THIS subtype before touching the
+            // junction. A well-formed id belonging to a SIBLING subtype is not an error
+            // (it just has no relations under this segment): 200 with an empty list,
+            // never 404 and never the sibling's rows.
+            sb.AppendLine($"            if (!await db.{sourceScope.DbSet}.OfType<{sourceScope.SubtypeClass}>().AnyAsync(x => x.{sourceScope.PkProp} == id))");
+            sb.AppendLine($"                return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
+        }
         if (nav.Symmetric)
         {
             // Union both junction columns; the related id is the column that is NOT the source id.
@@ -1089,12 +1135,22 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                .ToListAsync()).ToHashSet();");
         }
         sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
-        sb.AppendLine($"            var rows = await db.{targetDbSet}.AsNoTracking()");
+        sb.AppendLine($"            var rows = await {targetFrom}.AsNoTracking()");
         sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
         sb.AppendLine("                .ToListAsync();");
         sb.AppendLine("            return Results.Ok(rows);");
         sb.AppendLine("        });");
     }
+
+    /// <summary>
+    /// Where a subtype-scoped M:N mount proves the id in the URL really names a row of
+    /// THAT subtype (rule c). <c>DbSet</c> is the BASE's DbSet property name (the
+    /// subtype has none of its own); <c>SubtypeClass</c> narrows it via
+    /// <c>OfType&lt;SubtypeClass&gt;()</c>; <c>PkProp</c> is the (shared) PK CLR
+    /// property. Mirrors TS mount-m2m.ts's <c>sourceDiscriminator</c> option — this is
+    /// the codegen-time descriptor for that runtime check.
+    /// </summary>
+    private sealed record TphM2mSourceScope(string DbSet, string SubtypeClass, string PkProp);
 
     // The CLR type of the junction FK columns (and thus the related-id key). Both
     // junction references point at same-typed PKs; use the source FK field's subtype.

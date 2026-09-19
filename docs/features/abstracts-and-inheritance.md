@@ -275,8 +275,8 @@ every port:
   reads the source row's own discriminator first: a sibling subtype's id — which
   names no row of this subtype and so has no relations here — answers **200 with
   `[]`**, where a subtype-scoped CRUD read of the same id answers 404.
-  TypeScript today: the other ports' controller generators do not mount
-  traversal inside a hierarchy yet; they are being brought to the same contract.
+  TypeScript and C# today; Java, Kotlin and Python do not mount traversal inside
+  a hierarchy yet and are being brought to the same contract.
 - **The discriminator is immutable** — an update can't move a row to another
   subtype (the field is stripped from update patches).
 - **Polymorphic reads** — `GET /auths` and `GET /auths/{id}` return the union across

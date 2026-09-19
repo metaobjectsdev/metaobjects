@@ -90,7 +90,7 @@ public class DbContextGenerator : IGenerator
         // can carry their actions.
         var m2mNavs = new Dictionary<MetaObject, List<M2MNavigation>>();
         foreach (var o in objects.Where(o => o.IsEntity()))
-            m2mNavs[o] = M2MNavigationBuilder.For(o, ctx.Root).Where(n => !n.IsSelfJoin).ToList();
+            m2mNavs[o] = M2MNavigationBuilder.For(o, ctx.Root, ctx.Warn).Where(n => !n.IsSelfJoin).ToList();
 
         // #294 — the FK COLUMNS that UsingEntityConfig already configures, per junction
         // entity. That call is what establishes those two relationships, so a standalone

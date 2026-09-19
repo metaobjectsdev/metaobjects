@@ -148,8 +148,24 @@ public static class TphPlanBuilder
         return bindings;
     }
 
-    // The nearest @discriminator-bearing ancestor (or self), walking the extends chain.
-    private static MetaObject? DiscriminatorRoot(MetaObject obj)
+    /// <summary>
+    /// The nearest <c>@discriminator</c>-bearing ancestor (or self), walking the
+    /// <c>extends</c> chain — i.e. the entity whose SINGLE TABLE physically stores
+    /// <paramref name="obj"/>'s rows (mirrors TS's <c>storingObject</c> in
+    /// <c>independent-oracle.ts</c>). Returns <see langword="null"/> for an object that
+    /// is not a TPH hierarchy member at all (no <c>@discriminator</c> anywhere up its
+    /// <c>extends</c> chain, including on itself).
+    ///
+    /// <para>Public (not folded into <see cref="IsTphSubtype"/>/<see cref="IsTphMember"/>)
+    /// because a caller outside this file sometimes needs "which entity's DbSet actually
+    /// reaches this row" — e.g. a M:N relationship whose TARGET is a TPH subtype: that
+    /// subtype has no DbSet of its own (<see cref="DbContextGenerator.AppliesTo"/>
+    /// excludes TPH subtypes), so the generated route must bind to the BASE's DbSet and
+    /// narrow via <c>OfType&lt;Sub&gt;()</c> (see <c>RoutesGenerator.AppendM2mRoute</c>).
+    /// Exposing the existing walk here keeps that lookup the ONE place it happens,
+    /// rather than a second copy of this loop living in RoutesGenerator.</para>
+    /// </summary>
+    public static MetaObject? DiscriminatorRoot(MetaObject obj)
     {
         MetaData? cursor = obj;
         // ADR-0039: this IS the super-chain walk — OwnAttr at each level finds the nearest
