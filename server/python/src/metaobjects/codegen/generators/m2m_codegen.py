@@ -39,6 +39,8 @@ from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_PRIMARY,
 )
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.core.object.object_constants import OBJECT_ATTR_DISCRIMINATOR_VALUE
+from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.meta.core.relationship.derive_m2m_fields import (
     M2MDerivationError,
     derive_m2m_fields,
@@ -63,6 +65,16 @@ class M2mDescriptor:
     target_column: str
     target_pk_column: str
     symmetric: bool
+    #: The target's OWN ``@discriminatorValue`` when ``@objectRef`` resolves to a
+    #: concrete TPH subtype (FW-8 follow-up; mirrors the TS reference's
+    #: ``targetDiscriminator``) — ``None`` for the overwhelming common case (a
+    #: vanilla, non-TPH target). The target's rows physically live in its
+    #: discriminator base's shared table, so a route generator threads this value
+    #: into the ``find_related_<relation>`` seam as an extra ``target_subtype``
+    #: parameter, structurally handing the consumer's join what it needs to
+    #: filter to just that subtype rather than every row of the shared table.
+    #: Defaulted so existing positional construction (if any) stays valid.
+    target_discriminator: str | None = None
 
 
 def _strip_package(name: str) -> str:
@@ -186,6 +198,12 @@ def resolve_m2m_descriptors(
         fields = derive_m2m_fields(rel, entity, meta_index)
         source_fk = _field_named(junction, fields.source_field)
         target_fk = _field_named(junction, fields.target_field)
+        # FW-8 follow-up: the target's rows live in its discriminator base's shared
+        # table when @objectRef resolves to a concrete TPH subtype — @discriminatorValue
+        # is the subtype's OWN value (ADR-0039 sanctioned own, same idiom as tph_plan.py).
+        target_discriminator = (
+            target.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE) if is_tph_subtype(target) else None
+        )
 
         descriptors.append(
             M2mDescriptor(
@@ -213,6 +231,7 @@ def resolve_m2m_descriptors(
                     column_naming,
                 ),
                 symmetric=rel.symmetric(),
+                target_discriminator=target_discriminator,
             )
         )
     return descriptors

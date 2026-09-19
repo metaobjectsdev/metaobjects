@@ -275,8 +275,19 @@ every port:
   reads the source row's own discriminator first: a sibling subtype's id — which
   names no row of this subtype and so has no relations here — answers **200 with
   `[]`**, where a subtype-scoped CRUD read of the same id answers 404.
-  TypeScript and C# today; Java, Kotlin and Python do not mount traversal inside
-  a hierarchy yet and are being brought to the same contract.
+  TypeScript, C# and Python today; Java and Kotlin do not mount traversal inside
+  a hierarchy yet and are being brought to the same contract. The ports reach the
+  sibling-id gate by different mechanics: TypeScript reads the source row's own
+  discriminator in a stage 0 before the join, C# proves ownership with
+  `db.<Base>.OfType<Sub>().AnyAsync(...)`, and Python — which ships no runtime SQL
+  layer — composes the consumer-implemented repository seam's own
+  `find_by_id(subtype, id)` as the ownership check; for a TPH-subtype TARGET,
+  Python widens the `find_related_<relation>` seam with a `target_subtype`
+  parameter carrying the resolved `@discriminatorValue` (threaded per relation
+  name across every mount of that name — `str | None` with an explicit `None` at
+  non-TPH mounts, since a subtype may shadow a base-declared relationship with a
+  differently-TPH target) where TypeScript adds a WHERE clause to its shared
+  Drizzle helper.
 - **The discriminator is immutable** — an update can't move a row to another
   subtype (the field is stripped from update patches).
 - **Polymorphic reads** — `GET /auths` and `GET /auths/{id}` return the union across
