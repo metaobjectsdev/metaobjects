@@ -55,8 +55,16 @@ export type RelationMap = Map<string, RelationEntry[]>;
 /**
  * Walk all entities, collect relationship children, and also register inverse
  * many() sides on the target entity.
+ *
+ * `onWarn`, when supplied, receives one line per M:N relationship whose junction FKs
+ * could not be derived: the entry is skipped (a route that mounts nothing is an
+ * ABSENCE, not an error), and the warning is the only thing that says so. The runner
+ * passes its warnings channel; callers without one keep the silent skip.
  */
-export function buildRelationMap(root: MetaRoot): RelationMap {
+export function buildRelationMap(
+  root: MetaRoot,
+  onWarn?: (msg: string) => void,
+): RelationMap {
   const result: RelationMap = new Map();
 
   const ensure = (name: string): RelationEntry[] => {
@@ -79,7 +87,7 @@ export function buildRelationMap(root: MetaRoot): RelationMap {
       // many(junction) navigation on the source.
       // ADR-0039: resolving — @through may be inherited via extends.
       if (cardinality === CARDINALITY_MANY && child.attr(RELATIONSHIP_ATTR_THROUGH) !== undefined) {
-        const m2m = buildM2mEntry(obj, child as MetaRelationship, root);
+        const m2m = buildM2mEntry(obj, child as MetaRelationship, root, onWarn);
         if (m2m) ensure(obj.name).push(m2m);
         continue;
       }
@@ -174,12 +182,16 @@ function collectJunctionNames(root: MetaRoot): Set<string> {
  * Build the source-side M:N navigation entry: derive the junction FK fields from
  * the junction's two identity.reference children (the SSOT), handling hetero /
  * directed-self-join / symmetric. Returns null (skips the entry) if derivation
- * fails — the loader validation pass surfaces the actionable error separately.
+ * fails, reporting the derivation's own reason through `onWarn` when supplied —
+ * the loader's rules never check subject pairing, so a model can load clean and
+ * still carry a junction this pass cannot pair (e.g. one whose identity.reference
+ * names a concrete subtype of the declaring entity).
  */
 function buildM2mEntry(
   source: MetaObject,
   rel: MetaRelationship,
   root: MetaRoot,
+  onWarn?: (msg: string) => void,
 ): RelationEntry | null {
   // ADR-0039: resolving — @objectRef/@through may be inherited via extends.
   const targetRaw = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
@@ -188,7 +200,13 @@ function buildM2mEntry(
   let fields;
   try {
     fields = deriveM2MFields(rel, source, root);
-  } catch {
+  } catch (err) {
+    onWarn?.(
+      `M:N relationship "${rel.name}" on entity "${source.name}" gets no traversal route: its ` +
+        `@through junction "${stripPackage(throughRaw)}" could not be paired — ` +
+        `${err instanceof Error ? err.message : String(err)}. The model loads, so the run ` +
+        `continues, but the endpoint is absent (a 404).`,
+    );
     return null;
   }
   return {

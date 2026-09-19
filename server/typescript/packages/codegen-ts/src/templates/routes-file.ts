@@ -167,9 +167,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   // FK columns were derived from the junction's identity.reference children (the
   // SSOT) by the relation-resolver pre-pass; here we resolve them to physical
   // column names for the Drizzle two-stage join.
-  const m2mEntries = (ctx.relationMap.get(entityName) ?? []).filter(
-    (e): e is RelationEntry & { junctionEntity: string } => e.junctionEntity !== undefined,
-  );
+  const m2mEntries = m2mEntriesOf(ctx, entityName);
   // Two fastify-scope variants: under an apiPrefix the mounts live inside the
   // register-block (`instance`); otherwise they bind directly to `fastify`.
   const m2mMountsPrefixed = renderM2mMounts(m2mEntries, entity, ctx, "instance");
@@ -240,6 +238,21 @@ ${m2mMountsFlat}}
 `;
 
   return header + literalImports.toString() + body.toString();
+}
+
+/**
+ * The M:N navigation entries of `name` — the ONE rule for which relationships get a
+ * traversal mount. The vanilla entity path and the TPH path both go through it, so
+ * they cannot drift apart: a rule change moves every mount at once, and the
+ * independent oracle's route rule stays checkable against both emit paths alike.
+ */
+function m2mEntriesOf(
+  ctx: RenderContext,
+  name: string,
+): Array<RelationEntry & { junctionEntity: string }> {
+  return (ctx.relationMap.get(name) ?? []).filter(
+    (e): e is RelationEntry & { junctionEntity: string } => e.junctionEntity !== undefined,
+  );
 }
 
 /**
@@ -483,15 +496,12 @@ function renderTphRoutesFile(
   // and one declared on a subtype (only that subtype's rows are). Neither is a compile
   // error — a route that is never mounted is an absence — which is why the codegen
   // compile gate stayed green while the endpoint 404'd.
-  const m2mOf = (name: string) =>
-    (ctx.relationMap.get(name) ?? []).filter(
-      (e): e is RelationEntry & { junctionEntity: string } => e.junctionEntity !== undefined,
-    );
+  //
   // The physical columns stage 0 needs, resolved once against the base's own table.
   const basePkField = ctx.pkMap.get(baseName)?.fieldName ?? "id";
   const basePkColumn = resolveJunctionColumn(base, basePkField, ctx, basePkg);
   const baseDiscColumn = resolveJunctionColumn(base, discField, ctx, basePkg);
-  const baseM2mMounts = renderM2mMounts(m2mOf(baseName), base, ctx, fastifyRef);
+  const baseM2mMounts = renderM2mMounts(m2mEntriesOf(ctx, baseName), base, ctx, fastifyRef);
 
   const subtypeMounts: Code[] = plan.subtypes.flatMap(({ entity: sub, value, routeSegment: segment }) => {
     const subFileSpec = entityModuleSpecifier(
@@ -535,7 +545,7 @@ function renderTphRoutesFile(
     // and not redundant: `/auths/1/tags` accepts any row of the table, while
     // `/auths/bridge/1/tags` answers [] for a Copay id — the segment is a type
     // assertion, which is exactly what sourceDiscriminator enforces below.
-    const subM2m = renderM2mMounts(m2mOf(sub.name), base, ctx, fastifyRef, {
+    const subM2m = renderM2mMounts(m2mEntriesOf(ctx, sub.name), base, ctx, fastifyRef, {
       pathSuffix: "/" + segment,
       table: code`${tableSym}`,
       pkColumn: basePkColumn,

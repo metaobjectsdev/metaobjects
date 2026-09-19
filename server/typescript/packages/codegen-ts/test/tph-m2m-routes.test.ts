@@ -13,8 +13,11 @@
 //
 // None of this is a compile error. A route that is never mounted is an ABSENCE, which is
 // why every port's codegen-compile gate stayed green while the endpoint 404'd — and why
-// these assertions are over the emitted mount calls. The behaviour they describe is
-// gated end-to-end by the api-contract corpus, which boots the generated routes.
+// these assertions are over the emitted mount calls. The behaviour they describe — the
+// booted routes answering over a real Postgres, sibling-subtype source ids included — is
+// gated by the pairwise covering set (integration-tests, feature-combinations-pg.test.ts).
+// A shared api-contract TPH+M:N fixture is planned as the cross-port capstone of the
+// five-port pass; until it lands, that covering set is the behavioural evidence.
 //
 // Routes are deliberately not compiled here: fastify does not resolve from this package
 // and its zod is a major behind runtime-ts, so the diagnostics drown the signal. That is
