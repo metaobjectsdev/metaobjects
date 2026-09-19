@@ -206,6 +206,21 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   route through one predicate, `isTphReadNullTolerant`. **Generated output changes**: a TPH
   subtype's interface widens its null-tolerant fields to `| null`, and its read schema stops
   widening the PK.
+- **A TPH subtype's read schema consulted `@default`, so a required column carrying one did
+  not compile again.** The one predicate above asked `fieldWillBeOptional` (not-required OR
+  has-a-default) on the read path too, widening a `NOT NULL DEFAULT` column to `| null` and —
+  through the `.optional()` that predicate mirrors — to `| undefined`, while the declared
+  interface keyed its `?` on bare `@required` and said `T | null`: the value `parse<Base>()`
+  returns was not assignable to the base union (`TS2322`). A default decides what an INSERT
+  may omit; it says nothing about what a READ can see, so the read shape now answers from the
+  physical column: a subtype-only column is nullable (the Drizzle fold drops `.notNull()` for
+  exactly that set), a base-declared column is nullable iff not `@required`, and the primary
+  key is present on every row. Nothing with a column is `.optional()` — a selected row
+  carries every column as a key — and a derived (`origin.*`-bearing) field is the one member
+  with no column, so it alone keeps `.optional()`. The insert and update shapes are
+  unchanged: consulting `@default` is correct there. **Generated output changes**: a TPH
+  subtype's read schema (re-run `meta gen`); the feature-combination ledger's
+  `tph-required-default-read-type` entry is drained as a result.
 - **`@dbColumnType: jsonb` emitted a SQLite column that did not match its own type.** The
   open-JSON-bag escape hatch types the field `unknown` in Zod and TS, because the value
   round-trips as a PARSED JSON value on every dialect. On SQLite the attribute fell through
