@@ -192,19 +192,38 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   no route; the build still passes. The feature-combination ledger's `tph-m2m-routes` entry
   is drained, and its m2m check now runs for hierarchy holders too, reading the traversal
   back through every segment the oracle says serves it, sibling-subtype source ids included.
-  **Scope is TypeScript and C#**: the same two gaps (the controller generator skipping TPH
-  subtypes at the top of its entity loop, and the TPH emit path asking no M:N question at
-  all) remain in Java, Kotlin and Python — the remaining work of the agreed five-port pass.
-  C# reaches the same contract by its own route: the subtype-scoped mount proves ownership
-  with `db.<Base>.OfType<Sub>().AnyAsync(...)` before touching the junction; an M:N whose
-  TARGET is a TPH subtype binds to the base's `DbSet` narrowed by `OfType<Sub>()`, because
-  a subtype has no `DbSet` of its own and the emitted routes file previously did not
-  compile; a TPH subtype-only scalar carrying both `@required` and `@default` now applies
-  that default instead of starting at the CLR default; and a subtype separated from its
-  base by an abstract mid level resolves its base class to the nearest ancestor that is
-  actually emitted, rather than naming a class that `EmitAbstractShapes: false` never
-  emits. **Generated output changes**: a TPH hierarchy with M:N relationships gains routes
-  on the next `meta gen`, in both ports.
+  **Scope is TypeScript, C# and Python**: the same two gaps (the controller generator
+  skipping TPH subtypes at the top of its entity loop, and the TPH emit path asking no
+  M:N question at all) remain in Java and Kotlin — the remaining work of the agreed
+  five-port pass. C# reaches the same contract by its own route: the subtype-scoped mount
+  proves ownership with `db.<Base>.OfType<Sub>().AnyAsync(...)` before touching the
+  junction; an M:N whose TARGET is a TPH subtype binds to the base's `DbSet` narrowed by
+  `OfType<Sub>()`, because a subtype has no `DbSet` of its own and the emitted routes
+  file previously did not compile; a TPH subtype-only scalar carrying both `@required`
+  and `@default` now applies that default instead of starting at the CLR default; and a
+  subtype separated from its base by an abstract mid level resolves its base class to
+  the nearest ancestor that is actually emitted, rather than naming a class that
+  `EmitAbstractShapes: false` never emits. Python reaches it by its own route too: it
+  ships no runtime SQL layer (the repository `Protocol` is consumer-implemented), so the
+  subtype-scoped mount composes the seam's own `find_by_id(subtype, id)` — the exact
+  lookup the per-subtype GET route already calls — as the subtype-ownership gate
+  answering 200 with `[]` for a sibling's id, rather than a `sourceDiscriminator`
+  stage 0; and an M:N whose TARGET is a TPH subtype WIDENS the
+  `find_related_<relation>` seam with a `target_subtype` parameter carrying the
+  resolved `@discriminatorValue` — threaded per relation NAME across every mount of
+  that name in a hierarchy (`str | None` with an explicit `None` at non-TPH mounts,
+  because a subtype may legally shadow a base-declared relationship with a
+  differently-TPH target) — rather than adding a WHERE clause to a shared Drizzle
+  helper. One Python behaviour transition to know: a base-declared M:N whose target is
+  one of the hierarchy's OWN subtypes now FAILS `meta gen` (`M2MDerivationError` from
+  the per-subtype resolution tripping the shared self-join heuristic) where it
+  previously generated green with the route silently absent — a green-to-red
+  transition for existing metadata that the "gains routes" sentence above does not
+  convey — and the raised message mislabels that shape as an ambiguous self-join
+  (advising `@sourceRefField`/`@symmetric`) when the author actually wrote a hetero
+  base-to-subtype relation; repairing that heuristic is out of scope here.
+  **Generated output changes**: a TPH hierarchy with M:N relationships gains routes
+  on the next `meta gen`, in all three ports.
 - **An abstract object that inherits a source got a queries and a routes file that did not
   compile.** An abstract level has no table of its own, only a type-only shape, yet the
   queries and routes generators gated on "has a source" alone, so `Organization.queries.ts`

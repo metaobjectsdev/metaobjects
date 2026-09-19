@@ -193,19 +193,46 @@ def _auto_set_stamp_lines(fields: list[MetaField], comment: str) -> list[str]:
     return lines
 
 
-def _target_subtype_param(d: M2mDescriptor) -> str:
-    """FW-8 follow-up: ``, target_subtype: str`` appended to a
-    ``find_related_<relation>`` Protocol signature when *d*'s target resolves to a
-    concrete TPH subtype (``d.target_discriminator`` set) — empty for a vanilla
-    target, so output stays byte-identical for the overwhelming common case (no
-    M:N target is ever TPH)."""
-    return ", target_subtype: str" if d.target_discriminator is not None else ""
+def _m2m_target_discs(mounts: list[M2mDescriptor]) -> dict[str, set[str | None]]:
+    """Per relation NAME, the set of target discriminators every mount of that
+    name resolves to (``None`` = a non-TPH target) — the ONE decision both the
+    ``find_related_<relation>`` seam signature and every call site derive from.
+    A name mounted more than once (a TPH hierarchy serves it at the base path and
+    under subtype segments, and a subtype may legally SHADOW a base-declared
+    relationship with a target of different TPH-ness) must not let one mount's
+    descriptor decide the seam for all of them."""
+    out: dict[str, set[str | None]] = {}
+    for d in mounts:
+        out.setdefault(d.relation_name, set()).add(d.target_discriminator)
+    return out
 
 
-def _target_subtype_arg(d: M2mDescriptor) -> str:
-    """The call-site counterpart of :func:`_target_subtype_param`: the resolved
-    ``@discriminatorValue`` literal, or empty when the target isn't TPH."""
-    return f', "{d.target_discriminator}"' if d.target_discriminator is not None else ""
+def _target_subtype_param(discs: set[str | None]) -> str:
+    """FW-8 follow-up: the ``target_subtype`` clause of a
+    ``find_related_<relation>`` Protocol signature, decided per relation NAME
+    from *discs* (:func:`_m2m_target_discs`): empty when no mount of the name
+    targets a TPH subtype (byte-identical output for the overwhelming common
+    case); ``, target_subtype: str`` when every mount does; and
+    ``, target_subtype: str | None`` when only some do — the parameter then
+    threads UNIFORMLY for the name, the non-TPH mounts passing an explicit
+    ``None``, so the seam and every call site agree on arity."""
+    if not discs or discs == {None}:
+        return ""
+    if None in discs:
+        return ", target_subtype: str | None"
+    return ", target_subtype: str"
+
+
+def _target_subtype_arg(d: M2mDescriptor, discs: set[str | None]) -> str:
+    """The call-site counterpart of :func:`_target_subtype_param`, derived from
+    the SAME per-name decision: nothing when the name has no parameter, this
+    mount's resolved ``@discriminatorValue`` literal when it does, and an
+    explicit ``None`` literal for a non-TPH mount of a name that threads it."""
+    if not discs or discs == {None}:
+        return ""
+    if d.target_discriminator is None:
+        return ", None"
+    return f', "{d.target_discriminator}"'
 
 
 def _py_set_literal(names: list[str], *, frozen: bool = False) -> str:
@@ -354,10 +381,11 @@ class RouterGenerator:
             f"    def update(self, id: {pk_type}, dto: Any) -> Any | None: ...",
             f"    def delete(self, id: {pk_type}) -> bool: ...",
         ]
+        discs = _m2m_target_discs(m2m)
         for d in m2m:
             lines.append(
                 f"    def find_related_{d.relation_name}(self, id: {pk_type}"
-                f"{_target_subtype_param(d)}) -> list[Any]: ..."
+                f"{_target_subtype_param(discs[d.relation_name])}) -> list[Any]: ..."
             )
         return lines
 
@@ -514,14 +542,17 @@ class RouterGenerator:
         to the repository's ``find_related_*`` finder. Override to add filtering /
         pagination on the traversal. FW-8 follow-up: when the target resolves to a
         TPH subtype, the call also carries the resolved ``target_subtype`` literal
-        (see :func:`_target_subtype_arg`) — empty for a vanilla target."""
+        (see :func:`_target_subtype_arg`) — empty for a vanilla target. A vanilla
+        render mounts a name exactly once, so the name's decision set is the
+        mount's own singleton."""
         return [
             f'@router.get("/{{{pk_param}}}/{d.relation_name}")',
             f"def list_{snake}_{d.relation_name}(",
             f"    {pk_param}: {pk_type},",
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
-            f"    return repo.find_related_{d.relation_name}({pk_param}{_target_subtype_arg(d)})",
+            f"    return repo.find_related_{d.relation_name}"
+            f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})})",
         ]
 
     def _emit_tph_m2m_route(
@@ -535,6 +566,7 @@ class RouterGenerator:
         repo_class: str,
         subtype_expr: str,
         gated: bool,
+        target_discs: set[str | None],
     ) -> list[str]:
         """One M:N traversal route INSIDE a TPH hierarchy (FW-8) — ``GET`` *route*
         delegating to the subtype-keyed ``find_related_<relation>(subtype, id)`` seam,
@@ -545,6 +577,11 @@ class RouterGenerator:
         ``"None"`` for a mount at the BASE path (every row of the shared table is a
         legitimate source — rule a), or a quoted ``@discriminatorValue`` for a mount
         under a subtype's segment (rule b).
+
+        *target_discs* is the relation NAME's decision set across EVERY mount of
+        that name in the hierarchy (:func:`_m2m_target_discs`) — the same decision
+        the Protocol seam signature derives from, so this call site and the seam
+        cannot disagree on the ``target_subtype`` parameter's arity.
 
         *gated* — True for a subtype mount — composes the seam's OWN
         ``find_by_id(subtype, id)`` (the exact lookup the per-subtype GET route
@@ -572,7 +609,7 @@ class RouterGenerator:
             ]
         lines.append(
             f"    return repo.find_related_{d.relation_name}"
-            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d)})"
+            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)})"
         )
         return lines
 
@@ -721,6 +758,15 @@ class RouterGenerator:
                 if d.relation_name not in m2m_seen:
                     m2m_seen.add(d.relation_name)
                     m2m_union.append(d)
+        # `target_subtype` presence is decided per relation NAME across EVERY mount
+        # of that name — base path and subtype segments together — never by the
+        # first descriptor the union kept: a subtype may SHADOW a base-declared
+        # relationship with a target of different TPH-ness, and the seam signature
+        # and every call site below derive from this one map.
+        m2m_target_discs = _m2m_target_discs(
+            list(base_m2m)
+            + [d for st in plan.subtypes for d in sub_m2m[st.entity.name]]
+        )
 
         h = generated_header(short_name, _effective_fqn(entity)).rstrip()
         parts: list[str] = []
@@ -822,7 +868,7 @@ class RouterGenerator:
         for d in m2m_union:
             parts.append(
                 f"    def find_related_{d.relation_name}(self, subtype: str | None, id: {pk_type}"
-                f"{_target_subtype_param(d)}) -> list[Any]: ..."
+                f"{_target_subtype_param(m2m_target_discs[d.relation_name])}) -> list[Any]: ..."
             )
         parts.append("")
         parts.append("")
@@ -934,6 +980,7 @@ class RouterGenerator:
                     repo_class=repo_class,
                     subtype_expr=f'"{val}"',
                     gated=True,
+                    target_discs=m2m_target_discs[d.relation_name],
                 ))
                 parts.append("")
                 parts.append("")
@@ -968,6 +1015,7 @@ class RouterGenerator:
                 repo_class=repo_class,
                 subtype_expr="None",
                 gated=False,
+                target_discs=m2m_target_discs[d.relation_name],
             ))
             parts.append("")
 
