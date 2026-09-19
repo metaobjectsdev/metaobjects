@@ -106,6 +106,42 @@ object KotlinTphPlan {
     fun discriminatorBaseOf(subtype: MetaObject): MetaObject? =
         discriminatorRoot(subtype)?.takeIf { it !== subtype }
 
+    /**
+     * FW-3 — the Exposed-table-bearing "storage object" for [obj]: itself, unless [obj] is a TPH
+     * subtype OR an abstract intermediate level folded into a discriminator base's single table,
+     * in which case it is that base. Every FK / M:N-target-table computation in the Kotlin
+     * generators MUST resolve through this before naming a `<Foo>Table` object or a `<Foo>` data
+     * class — a `BridgeAuth` has neither; its rows live in `AuthTable` and its shape is `Auth`
+     * (the union data class). [discriminatorBaseOf] returns null for a non-subtype (right for its
+     * own `isTphSubtype`-gated callers, wrong to `?:`-chain ad hoc at every new call site — a
+     * forgotten `?:` reintroduces this defect one site at a time). Total, unlike
+     * [discriminatorBaseOf]: returns [obj] itself when it is not folded away by a hierarchy.
+     */
+    fun storageObjectOf(obj: MetaObject): MetaObject = discriminatorBaseOf(obj) ?: obj
+
+    /**
+     * The `@discriminator` field NAME governing [obj] (the nearest `@discriminator`-bearing
+     * ancestor-or-self via the [discriminatorRoot] super-walk), or null when [obj] is not part of
+     * a TPH hierarchy at all. Mirrors the Java `TphPlan.discriminatorFieldOf`. Unlike
+     * [Plan.discriminatorField] this does not require a resolved [Plan] (a [Plan] only exists for
+     * a base with ≥1 concrete subtype) — it answers for any node reachable from a discriminator
+     * root, base or subtype alike.
+     */
+    fun discriminatorFieldOf(obj: MetaObject): String? {
+        val root = discriminatorRoot(obj) ?: return null
+        return root.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false).valueAsString
+    }
+
+    /**
+     * The OWN `@discriminatorValue` of [obj] (e.g. `"Bridge"`), or null when it declares none.
+     * ADR-0039: declaration-layer marker, never inherited — kept own-only, same as
+     * [isTphSubtype]'s own read.
+     */
+    fun discriminatorValueOf(obj: MetaObject): String? {
+        if (!obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) return null
+        return obj.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false).valueAsString
+    }
+
     /** The base's primary-key field name; falls back to "id" when no `identity.primary` is declared. */
     private fun primaryKeyFieldName(base: MetaObject): String =
         base.getIdentities(true).filterIsInstance<MetaIdentity>()

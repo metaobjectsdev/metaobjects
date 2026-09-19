@@ -97,6 +97,31 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- compile-and-run test (GeneratedTphM2mTraversalCompileRunTest): the generated TPH
+             @RestController's per-subtype M:N traversal endpoint composes
+             repository.findByIdAndType(...) itself now (the enforcement moved off the
+             repository interface's javadoc and into generated code), so proving that requires
+             actually compiling + directly invoking the emitted controller class — no Spring
+             context boot, no HTTP dispatch, just `new AuthController(...)` + a method call.
+             spring-web alone supplies the annotation types (@RestController/@GetMapping/…) plus
+             ResponseEntity/HttpStatus; the full spring-webmvc/spring-test MockMvc harness that
+             exercises the real HTTP lane lives in the separate integration-tests module (SP-F). -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>6.2.11</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- jakarta servlet: the generated controller's list() takes HttpServletRequest, so the
+             whole file needs this on the classpath to compile even though this test never calls
+             that method. -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>6.0.0</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Inherited from parent POM: SLF4J, JUnit 4, Logback -->
     </dependencies>
 

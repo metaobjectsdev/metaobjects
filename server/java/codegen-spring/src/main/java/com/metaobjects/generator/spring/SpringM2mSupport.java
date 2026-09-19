@@ -48,6 +48,17 @@ public final class SpringM2mSupport {
      * @param sourceField      the junction FK field holding the source key (derived)
      * @param targetField      the junction FK field holding the target key (derived)
      * @param symmetric        {@code true} for an undirected self-join (union-on-read)
+     * @param targetDiscriminatorValue the target's OWN {@code @discriminatorValue} when
+     *        {@code @objectRef} resolves to a concrete TPH subtype (FW-8 follow-up; mirrors
+     *        the TS reference's {@code targetDiscriminator} and the Python port's
+     *        {@code target_discriminator}), {@code null} for the overwhelming common case
+     *        (a vanilla, non-TPH target). The target's rows physically live in its
+     *        discriminator base's shared table, so a non-null value here is threaded by the
+     *        repository/controller generators as an extra build-time-literal
+     *        {@code targetSubtype} finder argument — Java's repository interface is
+     *        consumer-implemented and cannot itself AND a discriminator into a join it does
+     *        not write, so widening the seam (rather than enforcing in generated code, as
+     *        the SOURCE-side gate does) is the only remedy available to this port.
      */
     public record M2mNav(
         String relationName,
@@ -56,7 +67,8 @@ public final class SpringM2mSupport {
         String junctionShortName,
         String sourceField,
         String targetField,
-        boolean symmetric) {}
+        boolean symmetric,
+        String targetDiscriminatorValue) {}
 
     /**
      * Resolve every M:N relationship declared on {@code entity}. Returns an empty
@@ -94,6 +106,16 @@ public final class SpringM2mSupport {
 
             String junctionShort = SpringNaming.splitFqn(junction.getName())[1];
 
+            // FW-8 follow-up: the target's rows live in its discriminator base's shared
+            // table when @objectRef resolves to a concrete TPH subtype. @discriminatorValue
+            // is a declaration-layer TPH marker that is never inherited (ADR-0039) — reading
+            // it own-only here is the SANCTIONED case: it is the TARGET SUBTYPE's OWN value,
+            // exactly mirroring TphPlan's own-only reads and the Python reference's
+            // `target.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)`.
+            String targetDiscriminatorValue = TphPlan.isTphSubtype(target)
+                ? target.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false).getValueAsString()
+                : null;
+
             out.add(new M2mNav(
                 rel.getShortName(),
                 targetShort,
@@ -101,7 +123,8 @@ public final class SpringM2mSupport {
                 junctionShort,
                 fields.getSourceField(),
                 fields.getTargetField(),
-                rel.isSymmetric()));
+                rel.isSymmetric(),
+                targetDiscriminatorValue));
         }
         return out;
     }
