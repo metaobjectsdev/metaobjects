@@ -289,7 +289,9 @@ every port:
   method (`find<Relation>For<Disc>`, e.g. `findTagsForBridge`) — the interface needs
   both it and the whole-table finder for an inherited relation, and the two
   signatures would otherwise be identical. For a TPH-subtype TARGET, TypeScript adds
-  a WHERE clause to its shared Drizzle helper, Kotlin ANDs the target's discriminator
+  a WHERE clause to its shared Drizzle helper, Java threads a `targetSubtype`
+  parameter to the finder seam (the repository method declares `find<Relation>(Long
+  sourceId, String targetSubtype)`), Kotlin ANDs the target's discriminator
   into the emitted Exposed join — the join binds the base's table, because a subtype
   has no table or data class of its own, so the AND is what narrows the rows back to
   the declared target (an abstract mid-level target has no single discriminator value
