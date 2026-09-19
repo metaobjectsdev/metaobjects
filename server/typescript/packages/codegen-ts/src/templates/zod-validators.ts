@@ -212,11 +212,15 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
       continue;
     }
     // forceRequired: a row selected from the table carries every column as a KEY —
-    // a nullable one arrives as `null`, never absent — so nothing in a read shape is
-    // `.optional()`. Letting zodFieldExpr append it made the inferred type
-    // `T | undefined` while the declared interface said `T`, and the two disagreed.
+    // a nullable one arrives as `null`, never absent — so nothing with a COLUMN in a
+    // read shape is `.optional()`. Letting zodFieldExpr append it made the inferred
+    // type `T | undefined` while the declared interface said `T`, and the two
+    // disagreed. A derived (origin-bearing) field is the one member of obj.fields()
+    // with no column — drizzle-schema.ts emits none, and the TPH queries path selects
+    // the bare base table — so its key is genuinely absent from every parsed row and
+    // it alone keeps `.optional()`, matching the interface's `?: T | null`.
     // Null-tolerance is added below, from the column, by isTphReadNullTolerant.
-    const expr = zodFieldExpr(child, obj, ctx, true);
+    const expr = zodFieldExpr(child, obj, ctx, !child.isDerived());
     fieldLines.push(
       isTphReadNullTolerant(obj, child)
         ? code`  ${child.name}: ${expr}.nullable()`
