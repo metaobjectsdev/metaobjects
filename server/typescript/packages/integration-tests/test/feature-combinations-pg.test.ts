@@ -168,12 +168,17 @@ async function m2mFailures(
     } else if (c.target === "plain") {
       sql = party(1, "Broker") + party(2, "Carrier") + customers + pair(1, 11) + pair(1, 12);
       reads = [{ obj: "Broker", id: 1, expected: [11, 12] }, { obj: "Broker", id: 2, expected: [] }];
-    } else {
+    } else if (c.target === "subtype") {
       // target=subtype: Carriers 11/12 joined, Carrier 2 present for the stage-0 read,
       // and a joined Broker 13 that the target filter must drop.
       sql = party(1, "Broker") + party(2, "Carrier") + party(11, "Carrier") + party(12, "Carrier")
         + party(13, "Broker") + pair(1, 11) + pair(1, 12) + pair(1, 13);
       reads = [{ obj: "Broker", id: 1, expected: [11, 12] }, { obj: "Broker", id: 2, expected: [] }];
+    } else {
+      // target=base is a VALID shape (a Broker→Party hetero M:N) with NO target pin —
+      // the base carries @discriminator, not @discriminatorValue — so these
+      // pinned-target expectations would misjudge it. Fail loudly instead.
+      throw new Error(`no seeded m2m shape for ${caseName(c)} — the covering set grew`);
     }
   } else {
     // Declared on the abstract Organization level: no path of its own, resolved only by
