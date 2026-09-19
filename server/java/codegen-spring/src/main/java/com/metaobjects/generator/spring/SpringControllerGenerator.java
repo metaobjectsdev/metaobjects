@@ -812,16 +812,25 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
             // FR-018 x FR-017 — M:N traversal scoped to THIS subtype: every relationship it
             // resolves, inherited ones (e.g. a base-declared relationship) included — a
-            // subtype resource carries the same sub-resources as any other. The repository
-            // finder's CONTRACT (see SpringRepositoryGenerator#m2mFinderNameForSubtype) is to
-            // verify sourceId names a row of THIS subtype and return [] — not 404, not a
-            // sibling's rows — on mismatch, because the junction FK addresses the shared
-            // base table and cannot itself tell the subtypes apart.
+            // subtype resource carries the same sub-resources as any other. The GENERATED
+            // controller enforces the gate itself (never left to the repository
+            // implementation): it composes the SAME repository.findByIdAndType(id, disc) lookup
+            // the per-subtype GET above already relies on — a sibling subtype's id returns
+            // Optional.empty() there (the tph-cross-subtype-404 contract) — and short-circuits
+            // to an EMPTY list, HTTP 200, before ever calling the traversal finder. This costs
+            // one redundant primary-key lookup and adds no new persistence assumption: it reuses
+            // a seam the consumer must already implement correctly for the per-subtype GET to
+            // pass conformance. Without it, a copy-paste finder body (e.g. findTagsForBridge
+            // implemented identically to findTags) compiles, type-checks, and silently 200s a
+            // sibling's rows — nothing else in the pipeline catches that.
             for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
                 String subFinder = SpringRepositoryGenerator.m2mFinderNameForSubtype(nav.relationName(), disc);
                 src.append("    @GetMapping(\"/").append(seg).append("/{id}/").append(nav.relationName()).append("\")\n");
                 src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
                    .append(subFinder).append("(@PathVariable ").append(pkType).append(" id) {\n");
+                src.append("        if (repository.findByIdAndType(id, \"").append(disc).append("\").isEmpty()) {\n");
+                src.append("            return ResponseEntity.ok(List.of());\n");
+                src.append("        }\n");
                 src.append("        return ResponseEntity.ok(repository.").append(subFinder).append("(id));\n");
                 src.append("    }\n\n");
             }

@@ -1,9 +1,13 @@
 package com.metaobjects.generator.spring;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.metaobjects.loader.MetaDataLoader;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.springframework.http.ResponseEntity;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -11,6 +15,7 @@ import javax.tools.JavaFileObject;
 import javax.tools.ToolProvider;
 
 import java.io.File;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -150,6 +155,78 @@ public class GeneratedTphM2mTraversalCompileRunTest {
         }
     }
 
+    /**
+     * The distinguishing test: enforcement, not delegation. {@link NaiveAuthRepository}'s
+     * {@code findTagsForBridge}/{@code findTagsForCopay} are a copy-paste of the UNSCOPED
+     * {@code findTags} — no discriminator check at all — which javac, the repository
+     * interface's type system, and a corpus scenario against a delegating port all wave
+     * through. Only the GENERATED CONTROLLER's own composition of
+     * {@code repository.findByIdAndType(id, "<disc>")} (the exact seam the per-subtype GET
+     * already depends on) stands between that bug and a sibling subtype's rows leaking out at
+     * HTTP 200. This test instantiates the ACTUAL GENERATED {@code AuthController} — no Spring
+     * context, no HTTP dispatch, just the emitted Java object — wired to the naive repository,
+     * and proves the controller still returns {@code []} for a mismatched id. Delete the
+     * {@code findByIdAndType} composition from {@code SpringControllerGenerator#emitTph} and
+     * this test fails (the naive repo answers directly, non-empty).
+     */
+    @Test
+    public void generatedControllerEnforcesTheGateEvenWhenTheRepositoryDoesNotFilter() throws Exception {
+        Path srcDir = tmp.newFolder("src2").toPath();
+        Path classesDir = tmp.newFolder("classes2").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("fx2").toPath(), "tph-m2m-2", FIXTURE);
+
+        runGenerator(new SpringDtoGenerator(), loader, srcDir);
+        runGenerator(new SpringRepositoryGenerator(), loader, srcDir);
+        runGenerator(new SpringControllerGenerator(), loader, srcDir);
+        // FilterAllowlist / SortAllowlist / FilterParser support types the controller imports.
+        runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);
+
+        Path pkgDir = srcDir.resolve(PKG.replace('.', '/'));
+        Files.createDirectories(pkgDir);
+        Files.writeString(pkgDir.resolve("NaiveAuthRepository.java"), NAIVE_AUTH_REPO_IMPL);
+
+        compile(srcDir, classesDir);
+
+        Map<String, Object> seed = Map.of(
+            "auths", List.of(
+                Map.of("id", 1, "type", "Bridge", "reference", "b1"),
+                Map.of("id", 2, "type", "Copay", "reference", "c1")),
+            "tags", List.of(Map.of("id", 10, "name", "red"), Map.of("id", 20, "name", "green")),
+            "auth_tags", List.of(Map.of("authId", 1, "tagId", 10), Map.of("authId", 2, "tagId", 20)));
+
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader())) {
+            Object naiveRepo = instantiate(cl, PKG + ".NaiveAuthRepository",
+                rows(seed, "auths"), rows(seed, "tags"), rows(seed, "auth_tags"));
+
+            Class<?> repoIface = cl.loadClass(PKG + ".AuthRepository");
+            Class<?> controllerClass = cl.loadClass(PKG + ".AuthController");
+            Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+            Constructor<?> ctor = controllerClass.getDeclaredConstructor(repoIface, ObjectMapper.class, Validator.class);
+            Object controller = ctor.newInstance(naiveRepo, new ObjectMapper(), validator);
+
+            // A REAL Bridge id: findByIdAndType finds it, the controller proceeds to the
+            // (naive, but here harmlessly correct for its OWN id) finder.
+            ResponseEntity<?> bridgeResp = invokeControllerFinder(controller, "findTagsForBridge", 1L);
+            assertEquals(200, bridgeResp.getStatusCode().value());
+            assertNamesEqual(List.of("red"), (List<Object>) bridgeResp.getBody());
+
+            // The Copay id: NaiveAuthRepository.findTagsForBridge would happily return the
+            // Copay's OWN tags (["green"]) if the controller ever called it — it has no
+            // discriminator check of its own. It must NOT be called: the controller's
+            // findByIdAndType(2, "Bridge") composition returns empty first, short-circuiting
+            // to [] before the naive finder runs.
+            ResponseEntity<?> mismatchResp = invokeControllerFinder(controller, "findTagsForBridge", 2L);
+            assertEquals(200, mismatchResp.getStatusCode().value());
+            assertNamesEqual(List.of(), (List<Object>) mismatchResp.getBody());
+
+            // Mirror on the Copay-scoped finder with the Bridge id.
+            ResponseEntity<?> mismatchResp2 = invokeControllerFinder(controller, "findTagsForCopay", 1L);
+            assertEquals(200, mismatchResp2.getStatusCode().value());
+            assertNamesEqual(List.of(), (List<Object>) mismatchResp2.getBody());
+        }
+    }
+
     // -----------------------------------------------------------------------
     // helpers
     // -----------------------------------------------------------------------
@@ -171,6 +248,12 @@ public class GeneratedTphM2mTraversalCompileRunTest {
     private static List<Object> invokeFinder(Object repo, String finder, long sourceId) throws Exception {
         Method m = repo.getClass().getMethod(finder, Long.class);
         return (List<Object>) m.invoke(repo, sourceId);
+    }
+
+    /** Invoke a generated controller's M:N handler ({@code ResponseEntity<List<Dto>> x(Long)}). */
+    private static ResponseEntity<?> invokeControllerFinder(Object controller, String finder, long sourceId) throws Exception {
+        Method m = controller.getClass().getMethod(finder, Long.class);
+        return (ResponseEntity<?>) m.invoke(controller, sourceId);
     }
 
     /** Assert the multiset of {@code name} record-components matches, order-insensitive. */
@@ -325,7 +408,92 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             @Override public long count(List<FilterPredicate> f) { return 0; }
             @Override public Optional<AuthDto> findById(Long id) { return Optional.empty(); }
             @Override public List<AuthDto> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> f) { return List.of(); }
-            @Override public Optional<AuthDto> findByIdAndType(Long id, String discriminator) { return Optional.empty(); }
+            @Override public Optional<AuthDto> findByIdAndType(Long id, String discriminator) {
+                for (AuthDto a : auths)
+                    if (M2mJoinResolver.keyEquals(a.id(), id) && discriminator.equals(a.type())) return Optional.of(a);
+                return Optional.empty();
+            }
+            @Override public AuthDto createWithType(String discriminator, AuthDto dto) { return dto; }
+            @Override public Optional<AuthDto> updateByIdAndType(Long id, String discriminator, AuthDto dto) { return Optional.empty(); }
+            @Override public Optional<AuthDto> patchByIdAndType(Long id, String discriminator, Map<String, Object> assigned) { return Optional.empty(); }
+            @Override public boolean deleteByIdAndType(Long id, String discriminator) { return false; }
+        }
+        """;
+
+    // -----------------------------------------------------------------------
+    // A DELIBERATELY BUGGY consumer-seam repo: findByIdAndType is correct (the same
+    // per-subtype GET contract every consumer must already satisfy), but the M:N finders
+    // are a copy-paste of the UNSCOPED base finder — no discriminator check at all. This is
+    // exactly the shape javac and the repository interface's own type system cannot reject
+    // (see GeneratedTphM2mTraversalCompileRunTest's controllerEnforces... test): only the
+    // GENERATED CONTROLLER's composition of findByIdAndType stands between this bug and a
+    // sibling subtype's rows leaking out at 200.
+    // -----------------------------------------------------------------------
+
+    private static final String NAIVE_AUTH_REPO_IMPL = """
+        package acme.auth;
+
+        import com.metaobjects.generator.spring.runtime.FilterPredicate;
+        import com.metaobjects.generator.spring.runtime.M2mJoinResolver;
+        import com.metaobjects.generator.spring.runtime.M2mJoinResolver.JunctionRow;
+        import java.util.ArrayList;
+        import java.util.List;
+        import java.util.Map;
+        import java.util.Optional;
+
+        public class NaiveAuthRepository implements AuthRepository {
+            private final List<AuthDto> auths = new ArrayList<>();
+            private final List<TagDto> tags = new ArrayList<>();
+            private final List<JunctionRow> authTags = new ArrayList<>();
+
+            public NaiveAuthRepository(List<Map<String, Object>> authRows,
+                                       List<Map<String, Object>> tagRows,
+                                       List<Map<String, Object>> authTagRows) {
+                for (Map<String, Object> r : authRows)
+                    auths.add(new AuthDto(asLong(r.get("id")), (String) r.get("type"),
+                        (String) r.get("reference"), null, null));
+                for (Map<String, Object> r : tagRows)
+                    tags.add(new TagDto(asLong(r.get("id")), (String) r.get("name")));
+                for (Map<String, Object> r : authTagRows)
+                    authTags.add(new JunctionRow(asLong(r.get("authId")), asLong(r.get("tagId"))));
+            }
+
+            @Override public List<TagDto> findTags(Long sourceId) { return tagsFor(sourceId); }
+
+            // BUG: a copy-paste of findTags — no discriminator check. A conforming consumer
+            // must not ship this, but nothing except the generated controller's own gate
+            // stops it from doing so and still passing every OTHER test.
+            @Override public List<TagDto> findTagsForBridge(Long sourceId) { return tagsFor(sourceId); }
+            @Override public List<TagDto> findTagsForCopay(Long sourceId) { return tagsFor(sourceId); }
+            @Override public List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId) { return List.of(); }
+
+            private List<TagDto> tagsFor(Long sourceId) {
+                List<JunctionRow> matched = new ArrayList<>();
+                for (JunctionRow jr : authTags)
+                    if (M2mJoinResolver.keyEquals(jr.sourceKey(), sourceId)) matched.add(jr);
+                List<Object> ids = M2mJoinResolver.relatedKeys(sourceId, matched, false);
+                List<TagDto> out = new ArrayList<>();
+                for (Object id : ids)
+                    for (TagDto t : tags)
+                        if (M2mJoinResolver.keyEquals(t.id(), id)) out.add(t);
+                return out;
+            }
+
+            private static Long asLong(Object o) { return o == null ? null : ((Number) o).longValue(); }
+
+            // findByIdAndType is CORRECT — the same seam the per-subtype GET already relies on,
+            // and the one the generated controller's M:N gate now composes.
+            @Override public Optional<AuthDto> findByIdAndType(Long id, String discriminator) {
+                for (AuthDto a : auths)
+                    if (M2mJoinResolver.keyEquals(a.id(), id) && discriminator.equals(a.type())) return Optional.of(a);
+                return Optional.empty();
+            }
+
+            // --- unused CRUD stubs ---
+            @Override public List<AuthDto> list(int limit, int offset, SortClause sort, List<FilterPredicate> f) { return List.of(); }
+            @Override public long count(List<FilterPredicate> f) { return 0; }
+            @Override public Optional<AuthDto> findById(Long id) { return Optional.empty(); }
+            @Override public List<AuthDto> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> f) { return List.of(); }
             @Override public AuthDto createWithType(String discriminator, AuthDto dto) { return dto; }
             @Override public Optional<AuthDto> updateByIdAndType(Long id, String discriminator, AuthDto dto) { return Optional.empty(); }
             @Override public Optional<AuthDto> patchByIdAndType(Long id, String discriminator, Map<String, Object> assigned) { return Optional.empty(); }

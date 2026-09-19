@@ -241,12 +241,16 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         // the BASE is legitimate for every row of the shared table, so it gets one whole-table
         // finder (same shape + name as the vanilla repository's M:N finder). A relationship
         // resolved by a CONCRETE SUBTYPE — its own, or inherited from the base — additionally
-        // gets a finder SCOPED to that subtype: the consumer implementing it MUST verify the
-        // source id names a row of THAT subtype (a sibling subtype's id addresses the same
-        // shared-table junction FK just as well) and return an EMPTY list, not throw, when it
-        // does not. Distinct method names per subtype are required here (unlike the vanilla
-        // finder) because the interface cannot declare two methods with the same erasure that
-        // behave differently by discriminator.
+        // gets a finder SCOPED to that subtype. The subtype-membership check is NOT this
+        // finder's obligation: the GENERATED controller (see SpringControllerGenerator#emitTph)
+        // composes repository.findByIdAndType(id, discriminator) — the same seam the per-subtype
+        // GET already gates on — BEFORE ever calling this finder, and short-circuits to an empty
+        // list, HTTP 200, when sourceId does not name a row of this subtype. That enforces the
+        // gate on every conforming implementation by construction, rather than leaving a
+        // documented obligation a copy-paste finder body could silently violate. Distinct method
+        // names per subtype are still required here (unlike the vanilla finder) because the
+        // interface cannot declare two methods with the same erasure that behave differently by
+        // discriminator.
         src.append("\n    // --- M:N traversal (whole-table, then per-subtype-scoped) ---\n");
         for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(base, loader)) {
             src.append("    /** M:N traversal: the ").append(nav.targetShortName())
@@ -262,9 +266,10 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("    /** M:N traversal scoped to ").append(st.value())
                    .append(": the ").append(nav.targetShortName()).append(" rows related to this ")
                    .append(st.value()).append(" through ").append(nav.junctionShortName())
-                   .append(". MUST verify sourceId names a ").append(st.value())
-                   .append(" row, returning an empty list (never 404/throw) when it does not — a ")
-                   .append("sibling subtype's id reaches the same junction FK. */\n");
+                   .append(". The generated controller calls this ONLY after confirming sourceId ")
+                   .append("names a ").append(st.value())
+                   .append(" row (via findByIdAndType) — implementations may assume sourceId is ")
+                   .append("valid for this subtype. */\n");
                 src.append("    List<").append(nav.targetDtoType()).append("> ")
                    .append(m2mFinderNameForSubtype(nav.relationName(), st.value()))
                    .append("(").append(pkType).append(" sourceId);\n");
