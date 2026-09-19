@@ -44,14 +44,6 @@ const isManyToMany = (c: Combination) => c.link === "m2m" || c.link === "m2m-sel
 
 const KNOWN_DEFECTS: KnownDefect[] = [
   {
-    id: "tph-required-default-read-type",
-    what: "a @required field with a @default anywhere in a TPH hierarchy: the subtype's read schema makes it "
-      + "optional while its declared type does not, so the base's queries module does not compile",
-    check: "compile",
-    applies: (c) => inHierarchy(c) && c.extra === "required-default",
-    signature: /^Party(\.queries)?\.ts:\d+ Type '\{ partyType: "(Carrier|Broker)";[\s\S]*is not assignable to type '(Carrier|Broker|Party)(\[\])?'/,
-  },
-  {
     id: "tph-m2m-routes",
     what: "an M:N declared on a TPH base, subtype or abstract level mounts no traversal route "
       + "(the ruling: /<base-path>/<discriminatorValue lowercased>/:id/<relation>)",
