@@ -124,19 +124,43 @@ object KotlinM2mSupport {
                 .map { it.name }
                 .distinct()
 
-            // Only a CONCRETE subtype target (one carrying its own @discriminatorValue) can be
-            // filtered to a single value — an abstract mid-level target has no single value to
-            // filter by and is left unfiltered (a documented gap narrower than this fix's brief).
+            // `target !== declaredTarget` means the declared target WAS a TPH subtype (redirected
+            // to its storage object by KotlinTphPlan.storageObjectOf above) — so narrowing back to
+            // just the declared target's own rows IS required here; every step below MUST resolve.
+            // A step that can't (e.g. an ABSTRACT mid-level `@objectRef` with no own
+            // @discriminatorValue of its own to filter by) is NOT silently left unfiltered —
+            // that would silently WIDEN the query to every sibling subtype's rows sharing the
+            // storage table, the exact "silently dropping target narrowing" defect this loud
+            // failure replaces — but a hard M2MDerivationException, matching this port's (and the
+            // Java/Python ports') stance on an underivable M:N: fail the build, don't skip.
             val targetDiscriminator = if (target !== declaredTarget) {
+                val relLabel = "${entity.shortName}.${rel.shortName ?: rel.name}"
                 val discField = KotlinTphPlan.discriminatorFieldOf(target)
+                    ?: throw M2MFields.M2MDerivationException(
+                        "M:N relationship \"$relLabel\": target \"${declaredTarget.name}\" is a TPH " +
+                            "subtype folded into storage object \"${target.name}\", but no " +
+                            "@discriminator field could be resolved on it — target narrowing cannot " +
+                            "be derived."
+                    )
                 val discValue = KotlinTphPlan.discriminatorValueOf(declaredTarget)
-                val discMetaField = discField?.let { fn -> target.metaFields.firstOrNull { it.name == fn } }
-                val enumSimple = discMetaField?.let {
-                    runCatching { KotlinTypeMapper.enumTypeName(it, target)?.simpleName }.getOrNull()
-                }
-                if (discField != null && discValue != null && enumSimple != null) {
-                    TargetDiscriminator(discField, "$enumSimple.$discValue")
-                } else null
+                    ?: throw M2MFields.M2MDerivationException(
+                        "M:N relationship \"$relLabel\": target \"${declaredTarget.name}\" declares no " +
+                            "own @discriminatorValue — target narrowing cannot be derived."
+                    )
+                val discMetaField = target.metaFields.firstOrNull { it.name == discField }
+                    ?: throw M2MFields.M2MDerivationException(
+                        "M:N relationship \"$relLabel\": discriminator field \"$discField\" does not " +
+                            "resolve to a field on storage object \"${target.name}\" — target narrowing " +
+                            "cannot be derived."
+                    )
+                val enumSimple = runCatching { KotlinTypeMapper.enumTypeName(discMetaField, target)?.simpleName }
+                    .getOrNull()
+                    ?: throw M2MFields.M2MDerivationException(
+                        "M:N relationship \"$relLabel\": discriminator field \"$discField\" on " +
+                            "\"${target.name}\" is not a materialized enum — target narrowing cannot " +
+                            "be derived."
+                    )
+                TargetDiscriminator(discField, "$enumSimple.$discValue")
             } else null
 
             out.add(
@@ -158,6 +182,65 @@ object KotlinM2mSupport {
             )
         }
         return out
+    }
+
+    /**
+     * A resolved [M2mNav] paired with the Exposed query-helper function name it must be
+     * emitted/called under — see [tphQueryFnNames]. [defaultQueryFnName] in the common case
+     * (no TPH shadow); disambiguated when one is present.
+     */
+    data class NamedM2mNav(val nav: M2mNav, val queryFnName: String)
+
+    /** The DEFAULT Exposed query-helper function name for a relation name: `<name>Query`. */
+    fun defaultQueryFnName(relationName: String): String = "${relationName}Query"
+
+    /**
+     * FW-8 follow-up — TPH-group-wide M:N query-helper NAME assignment, keyed by the resolved
+     * [M2mNav] VALUE (structural/data-class equality) so [KotlinRelationsGenerator] (which
+     * computes this once per discriminator base, to decide both WHICH distinct navs need a
+     * helper and what to NAME each) and [KotlinSpringControllerGenerator] (which independently
+     * re-resolves each subtype's own navs for its return type + row mapping, and needs to call
+     * the SAME helper by name) land on the IDENTICAL name for the identical nav, with no shared
+     * mutable state between the two generators.
+     *
+     * Per relation NAME, the FIRST [M2mNav] shape encountered — walking [base]'s own navs, then
+     * each subtype's own navs in [plan]'s (already name-sorted) subtype order — wins the plain
+     * [defaultQueryFnName]. That is EXACTLY the pre-existing dedup-by-name behaviour for the
+     * overwhelming common case where every mount of a name resolves to the identical nav (an
+     * inherited relationship resolves unchanged through every subtype it folds into), so that
+     * case stays byte-identical to pre-existing generated output.
+     *
+     * A subtype may legally SHADOW a name with a genuinely different [M2mNav] — own children
+     * shadow super on `(type, name)` (ADR-0039's resolving-accessor contract), so the loader
+     * accepts a subtype redeclaring a relationship name onto a different `@objectRef`/`@through`.
+     * That shadowing shape is a DISTINCT mount and must not collapse into the first shape's
+     * helper (doing so silently reused a wrong-target/wrong-junction query — see
+     * `KotlinTphM2mShadowedCodegenTest`). It gets its OWN helper, suffixed by the
+     * `@discriminatorValue` of the subtype that first introduces it (mirrors the Java port's
+     * per-subtype finder shape, `SpringRepositoryGenerator.m2mFinderNameForSubtype` /
+     * `findTagsForBridge`): `<name><Suffix>Query`. A LATER mount whose nav resolves to that SAME
+     * shape (structural equality) reuses that same helper rather than minting another — so two
+     * subtypes shadowing a name identically still share one helper, matching the plain-name case.
+     */
+    fun tphQueryFnNames(base: MetaObject, plan: KotlinTphPlan.Plan, loader: MetaDataLoader): Map<M2mNav, String> {
+        val names = LinkedHashMap<M2mNav, String>()
+        val firstShapePerName = HashMap<String, M2mNav>()
+        fun visit(navs: List<M2mNav>, suffixSource: String?) {
+            for (nav in navs) {
+                if (nav in names) continue
+                val firstShape = firstShapePerName[nav.relationName]
+                if (firstShape == null) {
+                    firstShapePerName[nav.relationName] = nav
+                    names[nav] = defaultQueryFnName(nav.relationName)
+                } else {
+                    val suffix = suffixSource?.let { KotlinNaming.capitalizeFirst(it) }.orEmpty()
+                    names[nav] = "${nav.relationName}${suffix}Query"
+                }
+            }
+        }
+        visit(resolve(base, loader), null)
+        for (st in plan.subtypes) visit(resolve(st.entity, loader), st.value)
+        return names
     }
 
     /** The single primary-key field name of an entity (defaults to `id`). */

@@ -105,7 +105,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
     protected open fun emit(
         entity: MetaObject,
         manyRels: List<MetaRelationship>,
-        m2mNavs: List<KotlinM2mSupport.M2mNav>,
+        m2mNavs: List<KotlinM2mSupport.NamedM2mNav>,
         reverseFks: List<ReverseFk>,
         outRoot: Path,
         loader: MetaDataLoader,
@@ -143,10 +143,10 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
                 // exclusion — keeps the self endpoint) AND a non-symmetric nav whose TARGET is a
                 // TPH subtype (FW-3): the shared storage table's rows are ANDed with the
                 // discriminator so a sibling subtype's row can't come back. `or` is symmetric-only.
-                if (m2mNavs.any { it.symmetric }) {
+                if (m2mNavs.any { it.nav.symmetric }) {
                     append("import org.jetbrains.exposed.sql.or\n")
                 }
-                if (m2mNavs.any { it.symmetric || it.targetDiscriminator != null }) {
+                if (m2mNavs.any { it.nav.symmetric || it.nav.targetDiscriminator != null }) {
                     append("import org.jetbrains.exposed.sql.and\n")
                 }
             }
@@ -179,12 +179,13 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             // The join keys the target by its PRIMARY KEY against the junction's target-side
             // FK; the source filter uses the junction's source-side FK. Related-row order is
             // not contractual.
-            for (nav in m2mNavs) {
+            for (named in m2mNavs) {
+                val nav = named.nav
                 if (!first) append("\n")
                 first = false
                 val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
                 append("/** Query `$ownerShort.${nav.relationName}` (M:N via ${nav.junctionShortName})$symMarker — the related ${nav.targetShortName} rows. */\n")
-                append("fun $ownerTable.${nav.relationName}Query(sourceId: $pkParamSimpleName): Query =\n")
+                append("fun $ownerTable.${named.queryFnName}(sourceId: $pkParamSimpleName): Query =\n")
                 if (nav.symmetric) {
                     // Symmetric storage is single-row; a friend appears via EITHER FK column.
                     // Union-on-read: for each junction row touching the source, the related id is
@@ -259,23 +260,27 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
 
     /**
      * FW-8 x FR-017 — [entity]'s own M:N navs, UNIONED with every concrete TPH subtype's own
-     * M:N navs when [entity] is a discriminator base. A plain (non-TPH) entity is unaffected:
-     * [KotlinTphPlan.planFor] returns null and this is exactly [KotlinM2mSupport.resolve].
+     * M:N navs when [entity] is a discriminator base, each paired with the query-helper function
+     * name it must be emitted under. A plain (non-TPH) entity is unaffected: [KotlinTphPlan.planFor]
+     * returns null and each of [entity]'s own navs keeps its [KotlinM2mSupport.defaultQueryFnName].
      *
-     * Only a nav a subtype declares FOR ITSELF is added (deduped by relation name, first-seen
-     * wins) — one a subtype merely INHERITS from the base is already in [entity]'s own resolved
-     * set (relationships resolve through `extends`), so re-adding it would emit the SAME query
-     * helper function twice. The controller mounts that inherited nav a second time too (once at
-     * the base path, once under each subtype's segment), but both mounts call this ONE helper —
-     * only the subtype-scoped mount adds a source-discriminator gate in front of it.
+     * Distinctness (and therefore the helper-name assignment) is delegated to
+     * [KotlinM2mSupport.tphQueryFnNames] — the shared decision [KotlinSpringControllerGenerator]
+     * also reads, so both generators land on the SAME name for the SAME nav. One a subtype merely
+     * INHERITS from the base resolves to the IDENTICAL nav (relationships resolve through
+     * `extends`), so it collapses into [entity]'s own entry and emits ONE query helper, not two —
+     * the controller mounts that inherited nav a second time too (once at the base path, once
+     * under each subtype's segment), but both mounts call this ONE helper, the subtype-scoped
+     * mount only adding a source-discriminator gate in front of it. A subtype that instead
+     * SHADOWS the name with a genuinely different nav (own children shadow super on `(type,
+     * name)`, ADR-0039) gets its OWN distinctly-named helper — see [KotlinM2mSupport.tphQueryFnNames].
      */
-    private fun tphAugmentedM2mNavs(entity: MetaObject, loader: MetaDataLoader): List<KotlinM2mSupport.M2mNav> {
+    private fun tphAugmentedM2mNavs(entity: MetaObject, loader: MetaDataLoader): List<KotlinM2mSupport.NamedM2mNav> {
         val ownNavs = KotlinM2mSupport.resolve(entity, loader)
-        val plan = KotlinTphPlan.planFor(entity, loader) ?: return ownNavs
-        val seen = ownNavs.mapTo(HashSet()) { it.relationName }
-        val subtypeOwnNavs = plan.subtypes.flatMap { st -> KotlinM2mSupport.resolve(st.entity, loader) }
-            .filter { seen.add(it.relationName) }
-        return ownNavs + subtypeOwnNavs
+        val plan = KotlinTphPlan.planFor(entity, loader)
+            ?: return ownNavs.map { KotlinM2mSupport.NamedM2mNav(it, KotlinM2mSupport.defaultQueryFnName(it.relationName)) }
+        return KotlinM2mSupport.tphQueryFnNames(entity, plan, loader)
+            .map { (nav, fnName) -> KotlinM2mSupport.NamedM2mNav(nav, fnName) }
     }
 
     /**

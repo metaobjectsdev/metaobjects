@@ -719,6 +719,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // the shared base table, so without that check a sibling's id would traverse it too.
         val baseM2mNavs = KotlinM2mSupport.resolve(base, loader)
         fun subtypeM2mNavs(st: KotlinTphPlan.Subtype) = KotlinM2mSupport.resolve(st.entity, loader)
+        // FW-8 follow-up: the TPH-group-wide query-helper NAME for every distinct nav shape
+        // (base's own + every subtype's own) — the SAME decision KotlinRelationsGenerator makes
+        // for AuthRelations.kt (KotlinM2mSupport.tphQueryFnNames), keyed by structural M2mNav
+        // equality so a nav resolved here and the identical nav resolved there agree on the
+        // helper to call. A subtype that SHADOWS a relation name with a genuinely different nav
+        // (own children shadow super on (type, name), ADR-0039) gets its OWN disambiguated entry.
+        val m2mHelperNames = KotlinM2mSupport.tphQueryFnNames(base, plan, loader)
         // When NO subtype has a settable column (a PK + discriminator + only object/jsonb columns) the
         // controller emits no ObjectMapper/Validator ctor param or TypeReference import (they would be
         // unused → allWarningsAsErrors). A real TPH base always contributes ≥1 base scalar, so this is
@@ -867,7 +874,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
             // Base-declared M:N — unscoped, same shape emitM2mEndpoint gives a vanilla entity.
             for (nav in baseM2mNavs) {
-                emitM2mEndpoint(this, pkg, shortName, nav, pkParamType)
+                emitM2mEndpoint(this, pkg, shortName, nav, pkParamType, m2mHelperNames.getValue(nav))
             }
 
             for (st in plan.subtypes) {
@@ -1056,7 +1063,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // M:N traversal scoped to THIS subtype — every relationship it resolves,
                 // inherited ones (e.g. a base-declared relationship) included.
                 for (nav in subtypeM2mNavs(st)) {
-                    emitTphSubtypeM2mEndpoint(this, pkg, table, pkFieldName, plan.discriminatorField, disc, seg, sfx, nav, pkParamType)
+                    emitTphSubtypeM2mEndpoint(
+                        this, pkg, table, pkFieldName, plan.discriminatorField, disc, seg, sfx, nav, pkParamType,
+                        m2mHelperNames.getValue(nav),
+                    )
                 }
             }
             append("}\n")
@@ -1385,8 +1395,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     /**
      * Emit one M:N traversal sub-resource: {@code GET /{id}/<relationName>} returning
      * the related target rows as the target's data class. Delegates the junction
-     * traversal to the {@code <Source>Table.<relationName>Query(id)} Exposed join helper
-     * (emitted by [KotlinRelationsGenerator]); maps each returned {@link ResultRow} to the
+     * traversal to the {@code <Source>Table.<queryFnName>(id)} Exposed join helper
+     * (emitted by [KotlinRelationsGenerator] under that exact name — [queryFnName] defaults to
+     * [KotlinM2mSupport.defaultQueryFnName], `<relationName>Query`, the only name a non-TPH
+     * caller or a TPH base's own mount ever needs); maps each returned {@link ResultRow} to the
      * target data class inline (the target's per-controller {@code rowTo<Target>} mapper
      * is file-private, so the mapping is inlined here against the target's scalar fields).
      *
@@ -1400,6 +1412,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         sourceShort: String,
         nav: KotlinM2mSupport.M2mNav,
         pkParamType: String,
+        queryFnName: String = KotlinM2mSupport.defaultQueryFnName(nav.relationName),
     ) {
         val sourceTable = sourceShort + "Table"
         // FW-3: the data class rows are mapped into is the STORAGE object's type (`nav.targetType`
@@ -1416,7 +1429,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("    /** M:N traversal: the ${nav.targetShortName} rows related to this $sourceShort through ${nav.junctionShortName}$symMarker. */\n")
         out.append("    @GetMapping(\"/{id}/${nav.relationName}\")\n")
         out.append("    fun ${nav.relationName}(@PathVariable id: $pkParamType): ResponseEntity<List<$targetType>> = transaction {\n")
-        out.append("        val rows = $sourceTable.${nav.relationName}Query(id).map { row ->\n")
+        out.append("        val rows = $sourceTable.$queryFnName(id).map { row ->\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
             out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
@@ -1431,10 +1444,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * FW-8 x FR-017 — emit one M:N traversal sub-resource SCOPED to a TPH subtype:
      * `GET /<seg>/{id}/<relationName>`. Stage 0 reads the source row's OWN discriminator column
      * and returns an EMPTY list (HTTP 200 — not 404, not the query below) when [id] does not name
-     * a row of [discExpr]'s subtype, THEN delegates to the exact SAME
-     * `<Base>Table.<relationName>Query(id)` Exposed helper every other mount of this relation
-     * calls (the base's own mount, or a sibling subtype's) — the junction FK addresses the shared
-     * base table and cannot itself tell the subtypes apart, so without this gate a sibling's id
+     * a row of [discExpr]'s subtype, THEN delegates to [queryFnName] — the `<Base>Table.<fn>(id)`
+     * Exposed helper [KotlinRelationsGenerator] emitted for [nav]'s exact shape. In the common
+     * case that is the SAME helper every other mount of this relation NAME calls (the base's own
+     * mount, or a sibling subtype's, when [nav] is inherited unchanged); when the calling subtype
+     * instead SHADOWS the name with a genuinely different nav (own children shadow super on
+     * `(type, name)`, ADR-0039), [queryFnName] names ITS OWN disambiguated helper — see
+     * [KotlinM2mSupport.tphQueryFnNames]. Either way, the junction FK addresses the shared base
+     * table and cannot itself tell the subtypes apart, so without the Stage-0 gate a sibling's id
      * would traverse it just as well and the `/<seg>` segment would be decorative.
      */
     protected open fun emitTphSubtypeM2mEndpoint(
@@ -1448,6 +1465,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         sfx: String,
         nav: KotlinM2mSupport.M2mNav,
         pkParamType: String,
+        queryFnName: String = KotlinM2mSupport.defaultQueryFnName(nav.relationName),
     ) {
         val targetType = if (nav.targetPackage == sourcePkg || nav.targetPackage.isEmpty()) {
             nav.targetType
@@ -1462,7 +1480,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("        if ($table.selectAll().where { ($table.$pkFieldName eq id) and ($table.$discField eq $discExpr) }.singleOrNull() == null) {\n")
         out.append("            return@transaction ResponseEntity.ok(emptyList<$targetType>())\n")
         out.append("        }\n")
-        out.append("        val rows = $table.${nav.relationName}Query(id).map { row ->\n")
+        out.append("        val rows = $table.$queryFnName(id).map { row ->\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
             out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
