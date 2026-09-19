@@ -305,6 +305,9 @@ class RouterGenerator:
       create / update / delete), keyed by ``name``.
     * ``_emit_m2m_route(d, snake, pk_param, pk_type, repo_class)`` — one M:N
       traversal route.
+    * ``_emit_tph_m2m_route(d, ..., subtype_expr)`` — one M:N traversal route
+      INSIDE a TPH hierarchy (FW-8), threading the discriminator scope through
+      the subtype-keyed ``find_related_*`` seam.
     * ``render_router(entity, object_index)`` — the whole module (last resort).
 
     Skips entities without a ``source.rdb`` child and read-only kinds
@@ -503,6 +506,39 @@ class RouterGenerator:
             f"    return repo.find_related_{d.relation_name}({pk_param})",
         ]
 
+    def _emit_tph_m2m_route(
+        self,
+        d: M2mDescriptor,
+        *,
+        handler_name: str,
+        route: str,
+        pk_param: str,
+        pk_type: str,
+        repo_class: str,
+        subtype_expr: str,
+    ) -> list[str]:
+        """One M:N traversal route INSIDE a TPH hierarchy (FW-8) — ``GET`` *route*
+        delegating to the subtype-keyed ``find_related_<relation>(subtype, id)`` seam,
+        the same discriminator-first shape every other TPH Protocol method already
+        uses (``find_by_id(subtype, id)``, ...).
+
+        *subtype_expr* is the Python literal threaded as the discriminator scope:
+        ``"None"`` for a mount at the BASE path (every row of the shared table is a
+        legitimate source — rule a), or a quoted ``@discriminatorValue`` for a mount
+        under a subtype's segment (rule b). The router itself does not verify the
+        source id's discriminator — that check is the CONSUMER repo's job, exactly
+        like every other subtype-scoped seam method here; a mismatch is expected to
+        answer ``[]`` (HTTP 200), never 404, per rule c: the id names no row of that
+        subtype, so it has no relations."""
+        return [
+            f'@router.get("{route}")',
+            f"def {handler_name}(",
+            f"    {pk_param}: {pk_type},",
+            f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+            ") -> list[Any]:",
+            f"    return repo.find_related_{d.relation_name}({subtype_expr}, {pk_param})",
+        ]
+
     def _emit_tph_list_body(
         self, subtype_expr: str, fields_const: str, ops_const: str, repo_var: str = "repo"
     ) -> list[str]:
@@ -528,11 +564,24 @@ class RouterGenerator:
             "    return rows",
         ]
 
-    def _render_tph_router(self, entity: MetaObject, plan: TphPlan) -> str:
+    def _render_tph_router(
+        self,
+        entity: MetaObject,
+        plan: TphPlan,
+        object_index: dict[str, MetaObject],
+        column_naming: str = DEFAULT_COLUMN_NAMING,
+    ) -> str:
         """FR-017 TPH: emit the discriminator base's router — a polymorphic collection
         at the base path + a full per-subtype CRUD set at /<base>/<segment>. The repo
         seam is subtype-keyed (the ``@discriminatorValue``, or ``None`` for the base);
-        the consumer's repo applies the single-table discriminator scope."""
+        the consumer's repo applies the single-table discriminator scope.
+
+        FW-8: also emits M:N traversal routes — one for every relationship the BASE
+        resolves (rule a), and one for every relationship each CONCRETE SUBTYPE
+        resolves, INHERITED ones included (rule b/d). ``resolve_m2m_descriptors`` is
+        called directly against the base and against each subtype's entity (never via
+        ``render_router``, which returns ``None`` for a TPH subtype before reaching
+        M:N resolution at all — the two independent gaps this fix closes)."""
         short_name = entity.name
         snake = _snake_case(short_name)
         plural = _plural_lowercase(short_name)
@@ -611,6 +660,30 @@ class RouterGenerator:
                 "    for _frozen in _FROZEN_FIELDS:",
                 "        dto.pop(_frozen, None)",
             ]
+
+        # FW-8 — FR-018 x FR-017: M:N traversal inside a TPH hierarchy. Resolved
+        # directly against the base and against each subtype's OWN entity (never via
+        # `render_router`, which bails out for a TPH subtype before any M:N question
+        # at all). `resolve_m2m_descriptors` reads the RESOLVING `children()`
+        # (m2m_relationships), so a subtype's list already includes relationships
+        # inherited from the base or an abstract intermediate level — that overlap
+        # with the base's own list is rule (b), not a bug.
+        base_m2m = resolve_m2m_descriptors(entity, object_index, column_naming)
+        sub_m2m: dict[str, list[M2mDescriptor]] = {
+            st.entity.name: resolve_m2m_descriptors(st.entity, object_index, column_naming)
+            for st in plan.subtypes
+        }
+        # One `find_related_<relation>` Protocol seam per DISTINCT relation name
+        # anywhere in the hierarchy — mirrors the sort/required/frozen unions above.
+        # `subtype` threads through exactly like every other TPH seam method: `None`
+        # from the base route, the @discriminatorValue from a subtype route.
+        m2m_union: list[M2mDescriptor] = list(base_m2m)
+        m2m_seen = {d.relation_name for d in m2m_union}
+        for st in plan.subtypes:
+            for d in sub_m2m[st.entity.name]:
+                if d.relation_name not in m2m_seen:
+                    m2m_seen.add(d.relation_name)
+                    m2m_union.append(d)
 
         h = generated_header(short_name, _effective_fqn(entity)).rstrip()
         parts: list[str] = []
@@ -705,6 +778,14 @@ class RouterGenerator:
         parts.append("    def create(self, subtype: str, dto: Any) -> Any: ...")
         parts.append(f"    def update(self, subtype: str, id: {pk_type}, dto: Any) -> Any | None: ...")
         parts.append(f"    def delete(self, subtype: str, id: {pk_type}) -> bool: ...")
+        # FW-8: one find_related_<relation> seam per relation name resolved ANYWHERE
+        # in the hierarchy (base ∪ every subtype) — `subtype` scopes the traversal the
+        # same way every method above does; the consumer verifies a subtype-scoped id
+        # really is that subtype's, answering [] rather than a sibling's rows.
+        for d in m2m_union:
+            parts.append(
+                f"    def find_related_{d.relation_name}(self, subtype: str | None, id: {pk_type}) -> list[Any]: ..."
+            )
         parts.append("")
         parts.append("")
         parts.append(f"def get_repository() -> {repo_class}:")
@@ -799,6 +880,25 @@ class RouterGenerator:
             parts.append("")
             parts.append("")
 
+            # FW-8 rule (b)/(d): every relationship THIS subtype resolves — inherited
+            # from the base or an abstract intermediate level included — mounted under
+            # its own segment. Stays inside the subtype loop (registered before the
+            # base's `/{id}` routes below) for the same reason the CRUD block above
+            # does: a literal segment must be tried before a dynamic one, or FastAPI's
+            # path-param coercion 422s before a later, more specific route is tried.
+            for d in sub_m2m[sub]:
+                parts.extend(self._emit_tph_m2m_route(
+                    d,
+                    handler_name=f"list_{plural}_{sfx}_{d.relation_name}",
+                    route=f"/{seg}/{{{pk_param}}}/{d.relation_name}",
+                    pk_param=pk_param,
+                    pk_type=pk_type,
+                    repo_class=repo_class,
+                    subtype_expr=f'"{val}"',
+                ))
+                parts.append("")
+                parts.append("")
+
         # --- Polymorphic base routes LAST (so /{id} doesn't shadow /<segment>). ---
         parts.extend(list_sig(f"list_{plural}", ""))
         parts.extend(self._emit_tph_list_body("None", fields_const, ops_const))
@@ -814,6 +914,22 @@ class RouterGenerator:
         parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
         parts.append("    return row")
         parts.append("")
+
+        # FW-8 rule (a): every relationship the BASE resolves — every row of the
+        # shared table is a legitimate source, so this is the same shape a vanilla
+        # entity's mount gets (subtype=None, no discriminator gate).
+        for d in base_m2m:
+            parts.append("")
+            parts.extend(self._emit_tph_m2m_route(
+                d,
+                handler_name=f"list_{snake}_{d.relation_name}",
+                route=f"/{{{pk_param}}}/{d.relation_name}",
+                pk_param=pk_param,
+                pk_type=pk_type,
+                repo_class=repo_class,
+                subtype_expr="None",
+            ))
+            parts.append("")
 
         return "\n".join(parts)
 
@@ -868,7 +984,7 @@ class RouterGenerator:
         if object_index is not None:
             plan = tph_plan_for(entity, object_index)
             if plan is not None:
-                return self._render_tph_router(entity, plan)
+                return self._render_tph_router(entity, plan, object_index, column_naming)
 
         m2m: list[M2mDescriptor] = (
             resolve_m2m_descriptors(entity, object_index, column_naming)
