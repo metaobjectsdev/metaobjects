@@ -552,8 +552,21 @@ public class EntityGenerator : IGenerator
             AppendStringValidatorAttributes(sb, field);
         else
             AppendNumericValidatorAttributes(sb, field);
-        var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
-        sb.Append($"    public {baseType}{nullable} {propName} {{ get; set; }}");
+        var required = CSharpNaming.IsRequired(entity, field);
+        var nullable = required ? "" : "?";
+        // Mirrors ScalarProperty's own initializer handling (its non-TPH sibling): a
+        // literal-safe @default (bool/int/long/double/float/decimal/string) wins over the
+        // `= default!;` filler a required REFERENCE-type property would otherwise need.
+        // Before this, a @required + @default TPH subtype-only field silently started
+        // life at the CLR default (false/0/null) on `new Sub()` instead of the declared
+        // @default value — every OTHER scalar-property path in this generator already
+        // applies DefaultInitializer; this one was the one gap.
+        var defaultInit = DefaultInitializer(field, baseType);
+        var isValue = CSharpNaming.IsValueType(baseType);
+        var init = defaultInit.Length > 0
+            ? defaultInit
+            : (required && !isValue ? " = default!;" : string.Empty);
+        sb.Append($"    public {baseType}{nullable} {propName} {{ get; set; }}{init}");
         return sb.ToString();
     }
 
