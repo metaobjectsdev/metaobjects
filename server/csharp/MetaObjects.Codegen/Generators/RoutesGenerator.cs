@@ -293,7 +293,7 @@ public class RoutesGenerator : PerEntityGenerator
         // Cross-port contract: source URL segment = pluralized ENTITY name, relation
         // segment = relationship name.
         if (hasItem)
-            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root))
+            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
                 AppendM2mRoute(sb, nav, route, pkType!, ctx.Root);
 
         sb.AppendLine();
@@ -449,12 +449,12 @@ public class RoutesGenerator : PerEntityGenerator
             // and the base is itself a served object), so the mount is byte-identical to
             // a vanilla entity's traversal at the base route. Mirrors TS
             // renderTphRoutesFile's baseM2mMounts.
-            foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root))
+            foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
                 AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root);
 
             // --- Per-subtype CRUD sets ---
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp);
+                AppendTphSubtypeRoutes(sb, st, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
         }
 
         sb.AppendLine();
@@ -946,7 +946,7 @@ public class RoutesGenerator : PerEntityGenerator
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
         StringBuilder sb, TphSubtypePlan st, MetaRoot root, string baseRoute, string baseCls, string dbSet,
-        string pkType, string pkProp, string discProp)
+        string pkType, string pkProp, string discProp, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
@@ -1058,7 +1058,7 @@ public class RoutesGenerator : PerEntityGenerator
         // the scope a sibling subtype's id would traverse it just as well and the
         // segment in the URL would be decorative (rule c).
         var sourceScope = new TphM2mSourceScope(dbSet, subCls, pkProp);
-        foreach (var nav in M2MNavigationBuilder.For(st.Entity, root))
+        foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
             AppendM2mRoute(sb, nav, subRoute, pkType, root, sourceScope);
     }
 

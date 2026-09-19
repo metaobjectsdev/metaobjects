@@ -82,20 +82,23 @@ public static class M2MNavigationBuilder
     /// believing otherwise is what produced the declaring-vs-visiting bug this class's
     /// <see cref="M2MNavigation.DeclaringEntity"/> now guards. Returns an empty list for an
     /// entity with no M:N relationships. A relationship whose junction FK columns cannot be
-    /// derived is skipped (the loader validation surfaces the error).
+    /// derived is skipped, reporting the derivation's own reason through
+    /// <paramref name="onWarn"/> when supplied — the loader's rules never check subject
+    /// pairing, so a model can load clean and still carry a junction this walk cannot pair.
+    /// Callers without a channel keep the silent skip (mirrors the TS relation-resolver).
     /// </summary>
-    public static IReadOnlyList<M2MNavigation> For(MetaObject entity, MetaRoot root)
+    public static IReadOnlyList<M2MNavigation> For(MetaObject entity, MetaRoot root, Action<string>? onWarn = null)
     {
         var result = new List<M2MNavigation>();
         foreach (var rel in entity.Relationships())
         {
             if (rel.Cardinality != CARDINALITY_MANY || rel.Through is null) continue;
-            if (Build(entity, rel, root) is { } nav) result.Add(nav);
+            if (Build(entity, rel, root, onWarn) is { } nav) result.Add(nav);
         }
         return result;
     }
 
-    private static M2MNavigation? Build(MetaObject source, MetaRelationship rel, MetaRoot root)
+    private static M2MNavigation? Build(MetaObject source, MetaRelationship rel, MetaRoot root, Action<string>? onWarn = null)
     {
         if (rel.ObjectRef is not { } targetRef || rel.Through is not { } throughRef) return null;
         // Resolve by the SAME rule the derivation uses (FQN-exact when qualified, bare
@@ -112,7 +115,14 @@ public static class M2MNavigationBuilder
 
         M2MFields fields;
         try { fields = M2MDerivation.DeriveM2MFields(rel, source, root); }
-        catch (M2MDerivationException) { return null; }
+        catch (M2MDerivationException ex)
+        {
+            onWarn?.Invoke(
+                $"M:N relationship \"{rel.Name}\" on entity \"{source.Name}\" gets no traversal route: its " +
+                $"@through junction \"{CSharpNaming.StripPkg(throughRef)}\" could not be paired — " +
+                $"{ex.Message}. The model loads, so the run continues, but the endpoint is absent (a 404).");
+            return null;
+        }
 
         return new M2MNavigation(
             Source: source,

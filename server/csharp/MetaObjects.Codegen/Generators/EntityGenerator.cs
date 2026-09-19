@@ -321,7 +321,7 @@ public class EntityGenerator : IGenerator
         // generators). One ICollection<Target> per @cardinality:"many" + @through
         // relationship — for a self-join the member is named after the relationship.
         if (!isProjection)
-            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root))
+            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
                 members.Add(M2mNavProperty(nav));
 
         if (enumDecls.Count > 0)
