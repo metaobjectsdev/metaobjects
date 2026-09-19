@@ -211,20 +211,59 @@ class _Repo:
         tag_ids = {t for (a, t) in self._auth_tags if a == id}
         return [t for t in self._tags if t["id"] in tag_ids]
 
-    def find_related_linkedAuths(self, subtype: str | None, id: int) -> list[Any]:
+    def find_related_linkedAuths(
+        self, subtype: str | None, id: int, target_subtype: str
+    ) -> list[Any]:
+        # linkedAuths is a self-join onto BridgeAuth itself (FW-8 follow-up): the
+        # related rows must ALSO be of `target_subtype` — independent of the
+        # source-side `subtype` check above (they happen to share the same value
+        # here only because this relation self-joins onto its own subtype).
         if self.find_by_id(subtype, id) is None:
             return []
+        target_ids = {b for (a, b) in self._auth_links if a == id}
+        return [
+            r for r in self._auths
+            if r["id"] in target_ids and r.get(self._disc) == target_subtype
+        ]
+
+
+class _HostileRepo(_Repo):
+    """A deliberately NON-COMPLIANT repo: ``find_by_id`` correctly scopes by
+    subtype (inherited, unchanged — it must, since the per-subtype GET route
+    already depends on it), but ``find_related_*`` ignores the ``subtype``
+    argument entirely and joins as if unscoped — exactly the shape a careless
+    consumer implementation would take, and precisely the failure the maintainer
+    flagged: a repo that forgets to filter used to leak a sibling's rows with a
+    silent 200, caught by nothing (not a type checker, not a corpus scenario
+    against a delegating port, since that tests the harness's OWN repo).
+
+    This class exists to prove the generated router itself REFUSES to reach this
+    broken join for a mismatched id — the composed ``find_by_id`` gate in
+    ``_emit_tph_m2m_route`` must short-circuit to ``[]`` before ``find_related_*``
+    is ever called, regardless of what that method would have done.
+    """
+
+    def find_related_tags(self, subtype: str | None, id: int) -> list[Any]:
+        tag_ids = {t for (a, t) in self._auth_tags if a == id}
+        return [t for t in self._tags if t["id"] in tag_ids]
+
+    def find_related_linkedAuths(
+        self, subtype: str | None, id: int, target_subtype: str
+    ) -> list[Any]:
+        # Hostile on BOTH axes: ignores subtype (source gate) AND target_subtype
+        # (target-discriminator) — the router's OWN find_by_id gate is still the
+        # only thing standing between a mismatched source id and a 200 leak.
         target_ids = {b for (a, b) in self._auth_links if a == id}
         return [r for r in self._auths if r["id"] in target_ids]
 
 
-def _build_app() -> tuple[FastAPI, _Repo]:
+def _build_app(repo_factory: type[_Repo] = _Repo) -> tuple[FastAPI, _Repo]:
     entities = _load_entities(_META)
     index = build_object_index(list(entities.values()))
     base = entities["Auth"]
     plan = tph_plan_for(base, index)
     assert plan is not None
-    repo = _Repo(plan.discriminator_field)
+    repo = repo_factory(plan.discriminator_field)
 
     snake = _snake(base.name)
     pkg_name = f"gentphm2m_{uuid.uuid4().hex[:8]}"
@@ -330,3 +369,52 @@ def test_subtype_only_relation_traversal(client_and_repo) -> None:
     # itself answers 404 (no matching route), not an application-level empty list.
     assert client.get("/api/auths/copay/2/linkedAuths").status_code == 404
     assert client.get("/api/auths/1/linkedAuths").status_code == 404
+
+
+@pytest.fixture()
+def hostile_client_and_repo():
+    """Same seed as ``client_and_repo``, but behind ``_HostileRepo`` — its
+    ``find_related_*`` ignores the ``subtype`` argument entirely."""
+    app, repo = _build_app(repo_factory=_HostileRepo)
+    repo.seed(
+        auths=[
+            {"id": 1, "type": "Bridge", "reference": "b1", "quantity": 3},
+            {"id": 2, "type": "Copay", "reference": "c1", "payer": "acme"},
+        ],
+        tags=[{"id": 10, "name": "shared"}, {"id": 11, "name": "bridge-only"}],
+        auth_tags=[(1, 10), (1, 11), (2, 10)],
+        auth_links=[(1, 1)],
+    )
+    with TestClient(app) as client:
+        yield client, repo
+
+
+def test_generated_router_enforces_subtype_gate_even_when_repo_does_not(
+    hostile_client_and_repo,
+) -> None:
+    # THE assertion that distinguishes ENFORCEMENT (in generated code) from
+    # DELEGATION (trusting the consumer): _HostileRepo.find_related_tags does NOT
+    # filter by subtype at all — if the router only ever called it directly (the
+    # pre-follow-up shape), GET /auths/bridge/2/tags (id=2 is a COPAY row) would
+    # execute the join over id=2's real auth_tags rows and return tag 10 with a
+    # 200, exactly the silent leak the maintainer flagged. With the composed
+    # find_by_id("Bridge", 2) gate in _emit_tph_m2m_route, the router itself
+    # discovers id=2 is not a Bridge row and returns [] BEFORE find_related_tags
+    # is ever invoked — the hostile join never runs.
+    client, _ = hostile_client_and_repo
+    resp = client.get("/api/auths/bridge/2/tags")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    # A genuine Bridge id still resolves normally through the same (broken but
+    # never-reached-incorrectly) find_related_tags.
+    resp2 = client.get("/api/auths/bridge/1/tags")
+    assert resp2.status_code == 200
+    assert {t["id"] for t in resp2.json()} == {10, 11}
+
+    # The base-level mount is deliberately UNGATED (rule a) — it must still reach
+    # the (here, hostile-but-irrelevant, since there's no scoping to bypass)
+    # find_related_tags directly and return every row regardless of subtype.
+    resp3 = client.get("/api/auths/2/tags")
+    assert resp3.status_code == 200
+    assert {t["id"] for t in resp3.json()} == {10}

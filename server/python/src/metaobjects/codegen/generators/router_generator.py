@@ -193,6 +193,21 @@ def _auto_set_stamp_lines(fields: list[MetaField], comment: str) -> list[str]:
     return lines
 
 
+def _target_subtype_param(d: M2mDescriptor) -> str:
+    """FW-8 follow-up: ``, target_subtype: str`` appended to a
+    ``find_related_<relation>`` Protocol signature when *d*'s target resolves to a
+    concrete TPH subtype (``d.target_discriminator`` set) — empty for a vanilla
+    target, so output stays byte-identical for the overwhelming common case (no
+    M:N target is ever TPH)."""
+    return ", target_subtype: str" if d.target_discriminator is not None else ""
+
+
+def _target_subtype_arg(d: M2mDescriptor) -> str:
+    """The call-site counterpart of :func:`_target_subtype_param`: the resolved
+    ``@discriminatorValue`` literal, or empty when the target isn't TPH."""
+    return f', "{d.target_discriminator}"' if d.target_discriminator is not None else ""
+
+
 def _py_set_literal(names: list[str], *, frozen: bool = False) -> str:
     """A Python set/frozenset literal from field names, matching the generated
     allowlist idiom (one quoted name per line). Empty → ``frozenset()`` / ``set()``."""
@@ -341,7 +356,8 @@ class RouterGenerator:
         ]
         for d in m2m:
             lines.append(
-                f"    def find_related_{d.relation_name}(self, id: {pk_type}) -> list[Any]: ..."
+                f"    def find_related_{d.relation_name}(self, id: {pk_type}"
+                f"{_target_subtype_param(d)}) -> list[Any]: ..."
             )
         return lines
 
@@ -496,14 +512,16 @@ class RouterGenerator:
     ) -> list[str]:
         """One M:N traversal route ``GET /{id}/<relationName>`` — a thin pass-through
         to the repository's ``find_related_*`` finder. Override to add filtering /
-        pagination on the traversal."""
+        pagination on the traversal. FW-8 follow-up: when the target resolves to a
+        TPH subtype, the call also carries the resolved ``target_subtype`` literal
+        (see :func:`_target_subtype_arg`) — empty for a vanilla target."""
         return [
             f'@router.get("/{{{pk_param}}}/{d.relation_name}")',
             f"def list_{snake}_{d.relation_name}(",
             f"    {pk_param}: {pk_type},",
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
-            f"    return repo.find_related_{d.relation_name}({pk_param})",
+            f"    return repo.find_related_{d.relation_name}({pk_param}{_target_subtype_arg(d)})",
         ]
 
     def _emit_tph_m2m_route(
@@ -516,6 +534,7 @@ class RouterGenerator:
         pk_type: str,
         repo_class: str,
         subtype_expr: str,
+        gated: bool,
     ) -> list[str]:
         """One M:N traversal route INSIDE a TPH hierarchy (FW-8) — ``GET`` *route*
         delegating to the subtype-keyed ``find_related_<relation>(subtype, id)`` seam,
@@ -525,19 +544,37 @@ class RouterGenerator:
         *subtype_expr* is the Python literal threaded as the discriminator scope:
         ``"None"`` for a mount at the BASE path (every row of the shared table is a
         legitimate source — rule a), or a quoted ``@discriminatorValue`` for a mount
-        under a subtype's segment (rule b). The router itself does not verify the
-        source id's discriminator — that check is the CONSUMER repo's job, exactly
-        like every other subtype-scoped seam method here; a mismatch is expected to
-        answer ``[]`` (HTTP 200), never 404, per rule c: the id names no row of that
-        subtype, so it has no relations."""
-        return [
+        under a subtype's segment (rule b).
+
+        *gated* — True for a subtype mount — composes the seam's OWN
+        ``find_by_id(subtype, id)`` (the exact lookup the per-subtype GET route
+        already calls, and the ``tph-cross-subtype-404`` conformance scenario
+        already gates) as a subtype-ownership check BEFORE the join: a miss
+        returns ``[]`` (HTTP 200), never 404 and never the ``find_related_*`` call.
+        This ENFORCES rule (c) in generated code rather than delegating it to the
+        consumer — a ``find_related_*`` implementation that forgets to filter by
+        subtype can no longer leak a sibling's rows, because it is never reached
+        for a mismatched id. No new query strategy: it reuses a method the
+        consumer must already implement correctly. False (the BASE mount) skips
+        the gate — a redundant lookup there would be pure overhead, since every
+        row of the shared table is already a legitimate source (rule a)."""
+        lines = [
             f'@router.get("{route}")',
             f"def {handler_name}(",
             f"    {pk_param}: {pk_type},",
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
-            f"    return repo.find_related_{d.relation_name}({subtype_expr}, {pk_param})",
         ]
+        if gated:
+            lines += [
+                f"    if repo.find_by_id({subtype_expr}, {pk_param}) is None:",
+                "        return []",
+            ]
+        lines.append(
+            f"    return repo.find_related_{d.relation_name}"
+            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d)})"
+        )
+        return lines
 
     def _emit_tph_list_body(
         self, subtype_expr: str, fields_const: str, ops_const: str, repo_var: str = "repo"
@@ -784,7 +821,8 @@ class RouterGenerator:
         # really is that subtype's, answering [] rather than a sibling's rows.
         for d in m2m_union:
             parts.append(
-                f"    def find_related_{d.relation_name}(self, subtype: str | None, id: {pk_type}) -> list[Any]: ..."
+                f"    def find_related_{d.relation_name}(self, subtype: str | None, id: {pk_type}"
+                f"{_target_subtype_param(d)}) -> list[Any]: ..."
             )
         parts.append("")
         parts.append("")
@@ -895,6 +933,7 @@ class RouterGenerator:
                     pk_type=pk_type,
                     repo_class=repo_class,
                     subtype_expr=f'"{val}"',
+                    gated=True,
                 ))
                 parts.append("")
                 parts.append("")
@@ -928,6 +967,7 @@ class RouterGenerator:
                 pk_type=pk_type,
                 repo_class=repo_class,
                 subtype_expr="None",
+                gated=False,
             ))
             parts.append("")
 
