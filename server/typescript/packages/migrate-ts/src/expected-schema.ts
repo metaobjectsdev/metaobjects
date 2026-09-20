@@ -577,7 +577,16 @@ function buildTable(
         if (field.isDerived()) continue;
         const col = buildColumn(field, false, undefined, strategy);
         if (existing.has(col.name)) continue;
-        col.nullable = true; // subtype-only columns are always nullable in TPH
+        // Subtype-only columns are always nullable in TPH: a row of any OTHER
+        // subtype stores NULL here. A DB DEFAULT defeats exactly that — a sibling
+        // subtype's INSERT omits the column and silently takes the default instead
+        // of NULL — so the default is dropped for the same reason the NOT NULL is.
+        // This mirrors codegen's `forceNullable` (drizzle-schema.ts), which already
+        // suppresses both; without it migrate puts a DEFAULT in the database that
+        // the app's Drizzle schema does not know about, and `verify --db` cannot
+        // see the disagreement because it shares this expected schema.
+        col.nullable = true;
+        col.default = undefined;
         columns.push(col);
         existing.add(col.name);
       }
