@@ -64,17 +64,17 @@ import kotlin.io.path.readText
  *     Exposed + serialization resolve from the test classpath).
  *  4. Provide the consumer persistence seam: the Kotlin controller embeds bare Exposed
  *     `transaction { }` against the thread-bound DEFAULT database. The harness connects
- *     Exposed to in-memory H2, creates the GENERATED `<Entity>Table` schemas via
+ *     Exposed to a Postgres testcontainer, creates the GENERATED `<Entity>Table` schemas via
  *     `SchemaUtils.create`, and seeds them with raw JDBC INSERTs (the corpus is keyed by
  *     physical table name). The generated controller's own Exposed join + map runs
- *     genuinely end-to-end against it. The in-memory DB bootstrap is the ONLY hand-written
+ *     genuinely end-to-end against it. The testcontainer DB bootstrap is the ONLY hand-written
  *     piece — test scaffolding, not a conformance subject (real DB behavior is gated by
  *     persistence-conformance).
  *  5. Instantiate the generated controllers and host them on a Spring MockMvc
  *     `standaloneSetup` (no Spring Boot context, no socket).
  *
- * The harness is built ONCE; all three controllers' MockMvc are rebuilt from a fresh H2
- * database in [reset] per scenario (isolation).
+ * The harness is built ONCE; all three controllers' MockMvc are rebuilt from a fresh
+ * Postgres database in [reset] per scenario (isolation).
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class GeneratedM2mControllerHarness(
