@@ -8,8 +8,10 @@ related collection as a sub-resource:
 GET {prefix}/<source-plural>/:id/<relationName>   →  the related target rows
 ```
 
-Three resolution modes, one scenario each (mirrors the persistence-conformance
-`m2n-*.yaml` corpus exactly — same entities, same seed, same expected results):
+Three plain resolution modes, one scenario each — the three original scenarios,
+which still mirror the persistence-conformance `m2n-*.yaml` corpus exactly (same
+entities, seed rows and expected results). The five TPH x M:N scenarios below
+extend the model with a TPH hierarchy and four more junctions:
 
 | Scenario | Mode | Route |
 |---|---|---|

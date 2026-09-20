@@ -17,17 +17,17 @@ import java.util.stream.Stream
  *
  * Where [com.metaobjects.integration.kotlin.api.m2m.M2mApiContractConformanceTest]
  * drives a hand-rolled reference server, this lane drives the GENERATED Kotlin Spring
- * `@RestController`s (`PostController`/`PersonController`, emitted by codegen-kotlin)
- * over HTTP via [GeneratedM2mControllerHarness] (generate→compile→MockMvc). It proves
+ * `@RestController`s (`PostController`/`PersonController`/`AccountController`, emitted
+ * by codegen-kotlin) over HTTP via [GeneratedM2mControllerHarness]
+ * (generate→compile→MockMvc). It proves
  * the deployed Kotlin M:N traversal artifact — the generated `GET /{id}/<relation>`
  * sub-resources delegating to the emitted Exposed join helpers — implements the
  * cross-port contract.
  *
  * The generated controllers + Exposed join helpers are hosted UNMODIFIED. The only
- * hand-written piece is the in-memory H2 bootstrap (schema + seed); it is test
- * scaffolding, not a conformance subject. Same 3 scenarios, same assertions as the
- * reference lane and every other port. Docker-free (H2, per the SP-F generated-lane
- * design).
+ * hand-written piece is the Postgres testcontainer bootstrap (schema + seed); it is
+ * test scaffolding, not a conformance subject. Same scenarios (every yaml in
+ * `m2m/scenarios/`), same assertions as the reference lane and every other port.
  *
  * Run on-demand:
  *   mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=M2mGeneratedApiContractConformanceTest

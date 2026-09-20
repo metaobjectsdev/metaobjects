@@ -23,8 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  *
  * <p>Where {@link M2mApiContractConformanceTest} drives a hand-rolled reference
  * server, this lane drives the <strong>generated</strong> Spring
- * {@code @RestController}s ({@code PostController}/{@code PersonController}, emitted
- * by {@code codegen-spring}) over HTTP via {@link GeneratedM2mControllerHarness}
+ * {@code @RestController}s ({@code PostController}/{@code PersonController}/
+ * {@code AccountController}, emitted by {@code codegen-spring}) over HTTP via
+ * {@link GeneratedM2mControllerHarness}
  * (generate→compile→MockMvc). It proves the deployed Java M:N traversal artifact —
  * the generated {@code GET /{id}/<relation>} sub-resources — implements the
  * cross-port contract, not just a hand-written stand-in.</p>
@@ -33,8 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  * is the in-memory repository impl behind each generated repository interface (the
  * consumer seam); it traverses the junction via the runtime {@code M2mJoinResolver}
  * and is test scaffolding, not a conformance subject (real DB traversal is gated by
- * persistence-conformance). Same 3 scenarios, same assertions as the reference lane
- * and every other port.</p>
+ * persistence-conformance). Same scenarios (every yaml in {@code m2m/scenarios/}),
+ * same assertions as the reference lane and every other port.</p>
  *
  * <p>Run on-demand:
  * <pre>{@code

@@ -30,7 +30,7 @@ public class SpringM2mCodegenTest extends SharedRegistryTestBase {
     @Rule
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
-    /** The 6-entity model from the shared m2m api-contract corpus, inlined. */
+    /** The m2m api-contract corpus's original 6-entity model (Post/Tag/PostTag + Person/Follow/Friendship), inlined. */
     private static final String M2M_FIXTURE = """
         {
           "metadata.root": { "package": "acme::social", "children": [

@@ -22,7 +22,7 @@ import java.util.stream.Stream;
  * vocabulary; the M:N corpus differs in two ways that warrant a small dedicated
  * harness rather than overloading the {@code ApiContract*} types:</p>
  * <ul>
- *   <li>its {@code seed.json} is keyed by physical table name (six tables), not a
+ *   <li>its {@code seed.json} is keyed by physical table name, not a
  *       single {@code rows[]} array;</li>
  *   <li>it adds one assertion key — {@code namesUnordered}: the response is an
  *       array whose {@code name} multiset is compared order-insensitively (related-row

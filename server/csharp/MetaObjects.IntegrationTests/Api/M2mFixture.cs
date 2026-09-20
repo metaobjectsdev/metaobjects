@@ -115,7 +115,7 @@ internal static class M2mFixture
         ("post_reviewers",       new[] { "postId", "accountId" }),
     };
 
-    /// <summary>Create the six tables on a fresh container.</summary>
+    /// <summary>Create the m2m corpus tables on a fresh container.</summary>
     public static async Task ProvisionSchemaAsync(string connString)
     {
         await using var c = new NpgsqlConnection(connString);

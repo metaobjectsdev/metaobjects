@@ -14,7 +14,7 @@ import java.nio.file.Paths
  * The single-entity api-contract corpus uses a `rows[]` seed shape + the
  * `equals/ids/names/...` assertion vocabulary; the M:N corpus differs in two ways
  * that warrant a small dedicated harness:
- *  - its `seed.json` is keyed by physical table name (six tables), not `rows[]`;
+ *  - its `seed.json` is keyed by physical table name, not `rows[]`;
  *  - it adds one assertion key — `namesUnordered`: the response is an array whose
  *    `name` multiset is compared order-insensitively (related-row order through a
  *    junction is not contractual).
