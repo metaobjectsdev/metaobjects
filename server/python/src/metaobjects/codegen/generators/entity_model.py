@@ -297,6 +297,21 @@ def origin_guaranteed_non_null(field: MetaField) -> bool:
     return False
 
 
+def _with_type_checking(imports: list[str]) -> list[str]:
+    """Add ``TYPE_CHECKING`` to the emitted ``typing`` import.
+
+    Folded into the existing ``from typing import ...`` when there is one, rather than
+    emitted as a second line from the same module — two imports of one module is
+    something every linter in the ecosystem flags, and generated code an adopter has to
+    silence is generated code they stop trusting.
+    """
+    for i, imp in enumerate(imports):
+        if imp.startswith("from typing import "):
+            names = sorted({*imp[len("from typing import ") :].split(", "), "TYPE_CHECKING"})
+            return [*imports[:i], f"from typing import {', '.join(names)}", *imports[i + 1 :]]
+    return sorted([*imports, "from typing import TYPE_CHECKING"])
+
+
 def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
     """Return (source line, uses_field). Collects required imports into *imports*."""
     type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=False)
@@ -718,11 +733,44 @@ class EntityModelGenerator:
             "from __future__ import annotations",
             "",
         ]
-        extra_imports = sorted(imports)
+        # FR-018 M:N — the nav collections' target imports are DEFERRED into a
+        # `if TYPE_CHECKING:` block, never emitted at module level.
+        #
+        # Two entities that navigate each other through one junction (`Shipment.carriers`
+        # and `Carrier.shipments`, both `@through Leg`) each imported the other at module
+        # level, and Python could then import NEITHER — `ImportError: cannot import name
+        # 'Carrier' from partially initialized module`. The whole generated package was
+        # unimportable, so no route in it could run. The hazard was already known here:
+        # the base↔subtype discriminated-union alias is deferred a few lines above for
+        # exactly this reason ("would force a base↔subtype circular import for an unused
+        # artifact"). The M:N navs are the same hazard, unnoticed because no fixture
+        # declares a junction in BOTH directions.
+        #
+        # Deferring costs nothing at runtime: `from __future__ import annotations` is
+        # always emitted above, so every annotation is already a string, and a type
+        # checker still resolves the name. The self-join arm has always done the
+        # equivalent (a quoted forward ref, no import) — a module cannot import itself.
+        #
+        # The base-class import is subtracted back out: when an entity BOTH extends a
+        # target and navigates to it, the base class is needed at class-creation time and
+        # deferring it would break the module for a different reason.
+        deferred = self._deferred_nav_imports(
+            entity, object_index, config if config is not None else GenConfig(out_dir="")
+        ) - {
+            f"from .{base_class} import {base_class}"
+        }
+        deferred &= imports
+        extra_imports = sorted(imports - deferred)
+        if deferred:
+            extra_imports = _with_type_checking(extra_imports)
         if extra_imports:
             parts += [*extra_imports, ""]
         if pyd_names:
             parts += [f"from pydantic import {', '.join(pyd_names)}", ""]
+        # LAST, after every real import: a conditional block in the middle of the import
+        # section splits the group an import sorter expects to be contiguous.
+        if deferred:
+            parts += ["if TYPE_CHECKING:", *(f"    {i}" for i in sorted(deferred)), ""]
         parts += ["", self._emit_class_header(entity, base_class), *body]
         if emit_create:
             parts += [
@@ -745,6 +793,26 @@ class EntityModelGenerator:
             ]
         parts += [""]
         return "\n".join(parts)
+
+    @staticmethod
+    def _deferred_nav_imports(
+        entity: MetaObject,
+        object_index: dict[str, MetaObject] | None,
+        cfg: GenConfig,
+    ) -> set[str]:
+        """The module-level imports the M:N nav collections would otherwise add.
+
+        Re-resolves the descriptors rather than having `_emit_field_lines` hand them
+        back: that method is a documented override seam, and widening its signature
+        would break every adopter subclass to save one cheap metadata walk.
+        """
+        if object_index is None:
+            return set()
+        return {
+            f"from .{d.target_entity} import {d.target_entity}"
+            for d in resolve_m2m_descriptors(entity, object_index, cfg.column_naming)
+            if d.target_entity != entity.name
+        }
 
     def _render_shared_enums_module(self, entities: list[MetaObject]) -> EmittedFile | None:
         """FR-019: the shared ``enums.py`` module — one module-level

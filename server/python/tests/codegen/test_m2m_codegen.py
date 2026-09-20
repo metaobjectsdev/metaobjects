@@ -366,12 +366,26 @@ def _resolved_post_descriptor(spy_target: str, column_naming: str, run: Callable
     with patch(spy_target, side_effect=_capturing):
         run(_m2m_ctx(column_naming))
 
-    assert len(captured) == 1, f"expected exactly one resolve_m2m_descriptors call, got {len(captured)}"
+    assert captured, "expected at least one resolve_m2m_descriptors call, got none"
     # Post now also declares `reviewers` (FW-8's TPH-target M:N fixture) — key by
     # relation name and pick `tags` (the relation this helper's callers probe).
-    by_relation = {d.relation_name: d for d in captured[0]}
-    assert "tags" in by_relation
-    return by_relation["tags"]
+    per_call = []
+    for call in captured:
+        by_relation = {d.relation_name: d for d in call}
+        assert "tags" in by_relation
+        per_call.append(by_relation["tags"])
+    # EVERY resolve site must agree. This used to assert exactly ONE call, which was a
+    # bookkeeping assumption of the harness (so it could index captured[0]) rather than
+    # a property under test — and it broke the moment a generator gained a second,
+    # legitimate resolve site. Agreement is the property that actually matters: what
+    # these tests exist to catch is a site that resolves under a DIFFERENT
+    # column-naming strategy than the rest of the run, and two sites is precisely when
+    # that becomes possible.
+    assert all(d == per_call[0] for d in per_call), (
+        "resolve_m2m_descriptors call sites disagree about the `tags` descriptor — "
+        f"one of them is threading a different column-naming strategy: {per_call}"
+    )
+    return per_call[0]
 
 
 def test_router_generate_threads_column_naming_from_config_snake_case() -> None:
