@@ -79,6 +79,9 @@ class M2mReferenceServer(
                     "PRIMARY KEY (\"accountId\", \"tagId\"))")
                 st.execute("CREATE TABLE \"post_reviewers\" (\"postId\" BIGINT NOT NULL, \"accountId\" BIGINT NOT NULL, " +
                     "PRIMARY KEY (\"postId\", \"accountId\"))")
+                // PostCategory — route-spelling gate. Physical name deliberately unlike
+                // its route segment (/post_categories), so echoing the table cannot pass.
+                st.execute("CREATE TABLE \"blog_categories\" (id BIGINT PRIMARY KEY, name VARCHAR(80) NOT NULL)")
             }
         }
     }
@@ -106,6 +109,8 @@ class M2mReferenceServer(
                 M2mSeed.rows(seed, "member_account_tags"), "accountId", "tagId")
             insertRows(c, "INSERT INTO \"post_reviewers\" (\"postId\", \"accountId\") VALUES (?, ?)",
                 M2mSeed.rows(seed, "post_reviewers"), "postId", "accountId")
+            insertRows(c, "INSERT INTO \"blog_categories\" (id, name) VALUES (?, ?)",
+                M2mSeed.rows(seed, "blog_categories"), "id", "name")
         }
     }
 
@@ -147,6 +152,21 @@ class M2mReferenceServer(
     // HTTP handler
     // -----------------------------------------------------------------------
 
+    /** Every blog_categories row, ordered by id — the shape a generated collection returns. */
+    private fun selectBlogCategories(): List<Map<String, Any?>> {
+        val out = mutableListOf<Map<String, Any?>>()
+        connect().use { c ->
+            c.prepareStatement("SELECT id, name FROM \"blog_categories\" ORDER BY id").use { ps ->
+                ps.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        out.add(linkedMapOf("id" to rs.getLong("id"), "name" to rs.getString("name")))
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     private fun handle(exchange: HttpExchange) {
         try {
             doHandle(exchange)
@@ -160,6 +180,16 @@ class M2mReferenceServer(
     private fun doHandle(exchange: HttpExchange) {
         val method = exchange.requestMethod.uppercase()
         val seg = exchange.requestURI.rawPath.split("/")
+
+        // The one plain collection the route-spelling scenario needs:
+        // ["", "api", "post_categories"]. Written as a LITERAL on purpose — this lane
+        // exists to be an INDEPENDENT implementation, so deriving it from KotlinNaming
+        // would make both lanes share any bug in that rule and the scenario would pass
+        // regardless. The retired spellings are not handled, so they 404 below.
+        if (method == "GET" && seg.size == 3 && seg[1] == "api" && seg[2] == "post_categories") {
+            sendJson(exchange, 200, selectBlogCategories()); return
+        }
+
         if (method != "GET" || seg.size < 5 || seg[1] != "api") {
             sendJson(exchange, 404, mapOf("error" to "not_found")); return
         }

@@ -1,5 +1,7 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.generator.util.RouteNaming
+
 /**
  * Generated-name seam for the codegen-kotlin generators — the single source of truth for the
  * Kotlin type / route / package names the generators emit. Parallels the Java
@@ -101,13 +103,19 @@ object KotlinNaming {
     fun namesMember(fieldName: String): String = KotlinGenUtil.camelToSnake(fieldName).uppercase()
 
     /**
-     * [KotlinSpringControllerGenerator] / [KotlinM2mSupport]: naive route-segment pluralisation —
-     * lowercase + "s" (the same trivial rule TS / C# / Java use for the default route segment).
+     * [KotlinSpringControllerGenerator] / [KotlinM2mSupport]: the REST collection segment —
+     * the ENTITY NAME snake_cased and then pluralized (`Author` -> `authors`,
+     * `PostCategory` -> `post_categories`). Delegates to [RouteNaming], which Java's
+     * generator shares, so the two JVM ports cannot drift apart.
+     *
+     * It was `shortName.lowercase() + "s"`, and the comment here asserted that was
+     * "the same trivial rule TS / C# / Java use". Only Java's matched; TS and C# both
+     * pluralized irregularly, and TS separated words. One URL, four spellings.
      */
-    fun pluralLowercase(shortName: String): String = shortName.lowercase() + "s"
+    fun collectionSegment(shortName: String): String = RouteNaming.collectionSegment(shortName)
 
-    /** [KotlinSpringControllerGenerator]: the controller route base `"/api/" + pluralLowercase(shortName)`. */
-    fun controllerPath(shortName: String): String = "/api/" + pluralLowercase(shortName)
+    /** [KotlinSpringControllerGenerator]: the controller route base `"/api/" + collectionSegment(shortName)`. */
+    fun controllerPath(shortName: String): String = "/api/" + collectionSegment(shortName)
 
     /**
      * Output package for template-helper artifacts: `if (pkg.isEmpty()) "prompts" else "$pkg.prompts"`.

@@ -42,6 +42,7 @@ final class InMemoryM2mRepositorySources {
     static final String POST_FQCN = "acme.social.InMemoryPostRepository";
     static final String PERSON_FQCN = "acme.social.InMemoryPersonRepository";
     static final String ACCOUNT_FQCN = "acme.social.InMemoryAccountRepository";
+    static final String POST_CATEGORY_FQCN = "acme.social.InMemoryPostCategoryRepository";
 
     static final String POST_REPO_SOURCE = """
         package acme.social;
@@ -280,6 +281,53 @@ final class InMemoryM2mRepositorySources {
             @Override public Optional<AccountDto> updateByIdAndType(Long id, String discriminator, AccountDto dto) { return Optional.empty(); }
             @Override public Optional<AccountDto> patchByIdAndType(Long id, String discriminator, Map<String, Object> assigned) { return Optional.empty(); }
             @Override public boolean deleteByIdAndType(Long id, String discriminator) { return false; }
+        }
+        """;
+
+    /**
+     * Backs the GENERATED {@code PostCategoryController}'s consumer seam. PostCategory
+     * takes part in no relationship — it exists to gate the COLLECTION-URL SPELLING
+     * ({@code /api/post_categories}), so {@code list} is the only method the scenario
+     * reaches and the only one implemented for real.
+     */
+    static final String POST_CATEGORY_REPO_SOURCE = """
+        package acme.social;
+
+        import com.metaobjects.generator.spring.runtime.FilterPredicate;
+        import java.util.ArrayList;
+        import java.util.Comparator;
+        import java.util.List;
+        import java.util.Map;
+        import java.util.Optional;
+
+        /** Hand-written in-memory PostCategoryRepository (consumer seam). Test scaffolding only. */
+        public final class InMemoryPostCategoryRepository implements PostCategoryRepository {
+            private final List<PostCategoryDto> rows = new ArrayList<>();
+
+            public InMemoryPostCategoryRepository(List<Map<String, Object>> categoryRows) {
+                for (Map<String, Object> r : categoryRows)
+                    rows.add(new PostCategoryDto(asLong(r.get("id")), (String) r.get("name")));
+                rows.sort(Comparator.comparing(PostCategoryDto::id));
+            }
+
+            @Override public List<PostCategoryDto> list(int limit, int offset, SortClause sort, List<FilterPredicate> f) {
+                if (offset >= rows.size()) return List.of();
+                int to = limit <= 0 ? rows.size() : Math.min(rows.size(), offset + limit);
+                return List.copyOf(rows.subList(offset, to));
+            }
+            @Override public long count(List<FilterPredicate> f) { return rows.size(); }
+            @Override public Optional<PostCategoryDto> findById(Long id) {
+                for (PostCategoryDto c : rows) if (id.equals(c.id())) return Optional.of(c);
+                return Optional.empty();
+            }
+
+            // --- writes: unused by the route-spelling scenario ---
+            @Override public PostCategoryDto create(PostCategoryDto dto) { return dto; }
+            @Override public Optional<PostCategoryDto> update(Long id, PostCategoryDto dto) { return Optional.empty(); }
+            @Override public Optional<PostCategoryDto> patch(Long id, PostCategoryPatch patch) { return Optional.empty(); }
+            @Override public boolean delete(Long id) { return false; }
+
+            private static Long asLong(Object o) { return o == null ? null : ((Number) o).longValue(); }
         }
         """;
 }

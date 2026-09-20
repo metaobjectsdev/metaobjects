@@ -145,7 +145,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // entity readObj == tableObjectName, so the emitted controller is byte-identical.
         val writeThrough = entity.isWriteThrough
         val readObj = if (writeThrough) KotlinNaming.viewObjectName(shortName) else tableObjectName
-        val routePath = pluralLowercase(shortName)
+        val routePath = KotlinNaming.collectionSegment(shortName)
         val routeBase = "/api/$routePath"
 
         // Primary key: single-field PKs only for v1. Composite PKs are uncommon for HTTP
@@ -638,7 +638,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     protected open fun emitTph(base: MetaObject, plan: KotlinTphPlan.Plan, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(base.name)
         val table = shortName + "Table"
-        val routeBase = "/api/" + pluralLowercase(shortName)
+        val routeBase = "/api/" + KotlinNaming.collectionSegment(shortName)
         // The single TPH table is keyed by the BASE's primary identity — every polymorphic
         // + per-subtype by-id route binds the PK field's OWN Kotlin type (uuid → UUID, …),
         // matching the Exposed Column<T> it is compared against (a hard-coded Long does
@@ -1389,8 +1389,6 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * {@code GENERATED} banner is advisory, not a hard merge gate, since
      * regeneration overwrites.
      */
-    private fun pluralLowercase(shortName: String): String =
-        KotlinNaming.pluralLowercase(shortName)
 
     /**
      * Emit one M:N traversal sub-resource: {@code GET /{id}/<relationName>} returning

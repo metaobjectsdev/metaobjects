@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.util.RouteNaming;
 import com.metaobjects.MetaData;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
@@ -126,15 +127,21 @@ public final class SpringNaming {
     }
 
     /**
-     * Naive pluralisation: lowercase + "s". Matches the cross-port reference
-     * (TS / C# / Kotlin all use the same trivial rule for the default route
-     * segment). Consumers needing irregular plurals (e.g. {@code Person} →
-     * {@code people}) can override the generated {@code @RequestMapping} value
-     * by hand-editing the file — the {@code GENERATED} banner is advisory,
-     * not a hard merge gate, since regeneration overwrites.
+     * The REST collection segment: the ENTITY NAME {@code snake_case}d and then
+     * pluralized ({@code Author} → {@code authors}, {@code PostCategory} →
+     * {@code post_categories}). Delegates to {@link RouteNaming}, which Kotlin's
+     * generator shares, so the JVM ports cannot drift from each other.
+     *
+     * <p>It was {@code shortName.toLowerCase() + "s"}, and the javadoc here claimed
+     * that matched TS / C# / Kotlin. Only Kotlin matched: TS snake_cases then
+     * pluralizes irregularly and C# pluralized irregularly then lowercased, so one
+     * URL had four spellings and {@code PostCategory} was served at
+     * {@code /postcategorys}. The old note also told consumers to hand-edit the
+     * generated {@code @RequestMapping} — which does not survive here, because
+     * regeneration overwrites on the JVM rather than three-way merging.</p>
      */
-    public static String pluralLowercase(String shortName) {
-        return shortName.toLowerCase() + "s";
+    public static String collectionSegment(String shortName) {
+        return RouteNaming.collectionSegment(shortName);
     }
 
     // ---------------------------------------------------------------------
@@ -199,9 +206,9 @@ public final class SpringNaming {
         return className + "Extractor";
     }
 
-    /** {@code SpringControllerGenerator}: route base {@code "/api/" + pluralLowercase(shortName)}. */
+    /** {@code SpringControllerGenerator}: route base {@code "/api/" + collectionSegment(shortName)}. */
     public static String controllerPath(String shortName) {
-        return "/api/" + pluralLowercase(shortName);
+        return "/api/" + collectionSegment(shortName);
     }
 
     /**
