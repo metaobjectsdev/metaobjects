@@ -116,6 +116,16 @@ export function buildRelationMap(
     // a spurious inverse-many on the target entity.
     if (isProjection(obj)) continue;
 
+    // An ABSTRACT level's own declarations do not file. Its FK column reaches the
+    // base's single table only through a CONCRETE @discriminatorValue descendant
+    // (collectTphSubtypeFields folds effective fields per concrete subtype), and
+    // that descendant's RESOLVING relationships() walk reaches this same
+    // relationship and files the identical entry — the dedupe collapses the
+    // copies. With no concrete descendant there is no folded column and no rows to
+    // navigate, so absence is the honest output: an entry would make the base's
+    // relations() block name a column the table does not have.
+    if (obj.isAbstract) continue;
+
     for (const child of obj.relationships()) {
       // ADR-0039: resolving — a relationship may inherit @cardinality via extends.
       const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;

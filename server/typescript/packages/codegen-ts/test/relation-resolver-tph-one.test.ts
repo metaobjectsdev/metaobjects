@@ -138,3 +138,51 @@ describe("buildRelationMap — cardinality-one declared inside a TPH hierarchy",
     expect(warnings[0]).toContain("cannot hold both");
   });
 });
+
+// An abstract level's belongs-to reaches the base's block only through a CONCRETE
+// @discriminatorValue descendant: the FK column folds into the base's single table
+// per concrete subtype, and that subtype's resolving relationships() walk re-files
+// the entry. With no concrete descendant beneath the abstract level, the column
+// never folds — an entry would make the base's relations() block name a column the
+// table does not have (generated code that fails tsc while `meta gen` exits 0).
+describe("buildRelationMap — cardinality-one declared on an ABSTRACT level", () => {
+  const AUTHOR = { "object.entity": { name: "Author", children: [
+    { "source.rdb": { "@table": "authors" } },
+    { "field.long": { name: "id" } },
+    { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+  ]}};
+  const PARTY = { "object.entity": { name: "Party", "@discriminator": "kind", children: [
+    { "source.rdb": { "@table": "parties" } },
+    { "field.long": { name: "id" } },
+    { "field.enum": { name: "kind", "@values": ["Company"] } },
+    { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+  ]}};
+  const ORGANIZATION = { "object.entity": { name: "Organization", abstract: true, extends: "Party", children: [
+    { "field.long": { name: "authorId" } },
+    { "identity.reference": { name: "fkAuthor", "@fields": "authorId", "@references": "Author" } },
+    { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "Author" } },
+  ]}};
+
+  test("with NO concrete descendant, the base's key carries no entry — the FK column never folds", async () => {
+    const map = buildRelationMap(await load({
+      "metadata.root": { package: "repro", children: [AUTHOR, PARTY, ORGANIZATION] },
+    }));
+    expect((map.get("Party") ?? []).find((e) => e.name === "author")).toBeUndefined();
+  });
+
+  test("with a concrete descendant, the resolving walk still files it on the base", async () => {
+    const map = buildRelationMap(await load({
+      "metadata.root": { package: "repro", children: [
+        AUTHOR,
+        PARTY,
+        ORGANIZATION,
+        { "object.entity": { name: "Company", extends: "Organization", "@discriminatorValue": "Company", children: [] }},
+      ]},
+    }));
+    const author = (map.get("Party") ?? []).find((e) => e.name === "author");
+    expect(author).toBeDefined();
+    expect(author!.cardinality).toBe("one");
+    expect(author!.targetEntity).toBe("Author");
+    expect(author!.fkField).toBe("authorId");
+  });
+});

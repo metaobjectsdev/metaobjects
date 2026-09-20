@@ -187,6 +187,10 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   a TPH subtype's unit loses its `<Sub>Relations` symbol — it documented an export that never
   existed, since a subtype emits a value-object module with no relations block — and the
   base's relations symbol gains the folded subtype-declared navigations, which are real.
+  An abstract level with no concrete descendant beneath it now files nothing at all: its FK
+  column never folds into the base's table, so an entry would have named a column the table
+  does not have — generated code failing tsc while `meta gen` exited 0 — and its unit loses
+  the same phantom symbol.
 
 - **A reference or M:N relationship onto a TPH subtype generated code that did not compile.**
   The subtype's module exports no table const, but the FK's `.references()`, the `relations()`
