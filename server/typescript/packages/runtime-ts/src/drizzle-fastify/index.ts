@@ -286,6 +286,31 @@ export function mountUpdateRoute(opts: VerbOptions): void {
       const { [opts.discriminator.column]: _omit, ...rest } = data;
       data = rest;
     }
+    // A patch that strips to NOTHING is a no-op update, not a failure, and it
+    // must never reach the driver. Drizzle's `.set({})` throws `No values to
+    // set`; that throw IS caught below, and `classifyConstraintError` rightly
+    // declines it — an empty update is a programming error, not a constraint
+    // violation — so it took the redact path and answered 500 `database error`.
+    // The strip above is precisely what produces the empty object, so a body
+    // naming only the discriminator (the one key a client is most likely to
+    // send at a TPH subtype route) was a guaranteed 500. Answer as a READ does,
+    // including the 404: a no-op patch must not become a hole through which one
+    // subtype's route reports another subtype's row.
+    if (Object.keys(data).length === 0) {
+      const src = readSource(opts);
+      const noopId = coerceIdForColumn(src.id, id);
+      if (noopId === undefined) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
+      const noopCond = eq(src.id, noopId);
+      const rows = await opts.db
+        .select()
+        .from(src)
+        .where(discCond ? and(noopCond, discCond) : noopCond)
+        .limit(1);
+      const row = (rows as unknown[])[0];
+      return row ?? reply.code(404).send({ error: "not_found" });
+    }
     // Compare against the PK's real type (see mountGetRoute) — a numeric-
     // LOOKING id on a TEXT pk would otherwise UPDATE the wrong row.
     const idValue = coerceIdForColumn(opts.table.id, id);

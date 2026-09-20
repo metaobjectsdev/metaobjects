@@ -104,6 +104,41 @@ describe("mountCrudRoutes — TPH discriminator scoping", () => {
     expect(row.quantity).toBe(9);
   });
 
+  // A patch that strips to NOTHING is a no-op update, not an error. The
+  // discriminator strip above is what produces it: a body naming only the
+  // subtype has every key removed, and an empty `.set({})` makes Drizzle throw
+  // `No values to set`. That throw IS caught here — it reaches
+  // `classifyConstraintError`, which correctly declines it (an empty update is a
+  // programming error, not a constraint violation), so it took the redact path
+  // and answered 500 `database error`. The fix is not a wider catch: an empty
+  // patch must never reach the driver.
+  test("PATCH carrying ONLY the discriminator is a no-op 200, not a 500", async () => {
+    const res = await fastify.inject({
+      method: "PATCH", url: "/auths/bridge/1", payload: { type: "Copay" },
+    });
+    expect(res.statusCode).toBe(200);
+    const row = JSON.parse(res.body) as { type: string; quantity: number };
+    expect(row.type).toBe("Bridge"); // still unchanged
+  });
+
+  test("PATCH with an EMPTY body is a no-op 200", async () => {
+    const before = await fastify.inject({ method: "GET", url: "/auths/bridge/1" });
+    const res = await fastify.inject({
+      method: "PATCH", url: "/auths/bridge/1", payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual(JSON.parse(before.body));
+  });
+
+  // The short-circuit must not become a hole in the discriminator scoping: a
+  // no-op patch aimed at ANOTHER subtype's row is still invisible here.
+  test("an empty PATCH across subtypes still 404s", async () => {
+    const res = await fastify.inject({
+      method: "PATCH", url: "/auths/bridge/2", payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
   test("DELETE 404s across subtypes", async () => {
     const cross = await fastify.inject({ method: "DELETE", url: "/auths/bridge/2" });
     expect(cross.statusCode).toBe(404);

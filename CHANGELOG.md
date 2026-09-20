@@ -113,6 +113,25 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **TypeScript: a PATCH that strips to nothing answered 500.** A generated TPH subtype route
+  strips the discriminator from an update body, because a row's subtype is immutable — so a
+  body naming ONLY the subtype (the one key a client is most likely to send at such a route)
+  stripped to `{}`, reached Drizzle's `.set({})`, and threw `No values to set`. The throw was
+  caught, and `classifyConstraintError` correctly declined it — an empty update is a
+  programming error, not a constraint violation — so it took the redact path and answered
+  500 `database error`. The fix is NOT a wider catch: an empty patch must never reach the
+  driver. It now answers as a READ does, including the 404, so a no-op patch cannot become a
+  hole through which one subtype's route reports another subtype's row. This also removes a
+  divergence INSIDE the TypeScript port: the reference server, which updates through
+  ObjectManager, already no-opped and returned the row, so the two api-contract lanes
+  disagreed on this input.
+
+  **The cross-port contract for an empty PATCH remains deliberately unsettled** and this does
+  not settle it — `fixtures/api-contract-conformance/scenarios/writeonce-patch-stripped.yaml`
+  records that the C# reference 400s on an empty SET where TypeScript no-ops. That is a
+  ruling to make, not a fix to sneak in under one port, so no conformance fixture pins it
+  here. What is fixed is only this: 500 was defensible under no reading of it.
+
 - **Java: a field name that is legal metadata could not be a record component.** The JLS
   forbids a record component named after a no-argument `Object` method
   (`clone`/`finalize`/`getClass`/`hashCode`/`notify`/`notifyAll`/`toString`/`wait`) — its
