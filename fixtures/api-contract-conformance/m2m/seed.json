@@ -9,6 +9,10 @@
     { "id": 20, "name": "green" },
     { "id": 30, "name": "blue" }
   ],
+  "blog_categories": [
+    { "id": 100, "name": "Opinion" },
+    { "id": 200, "name": "Tutorial" }
+  ],
   "post_tags": [
     { "postId": 1, "tagId": 10 },
     { "postId": 1, "tagId": 20 },

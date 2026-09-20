@@ -1,0 +1,35 @@
+name: route-spelling-multiword-collection
+description: >
+  The collection URL segment derives from the ENTITY NAME, snake_cased and then
+  pluralized: PostCategory is served at /api/post_categories. Two divergence
+  axes meet on this one entity and nowhere else in any corpus. Its name is
+  MULTI-WORD, so a port that lowercases without separating words would serve
+  /postcategories; and it ends consonant+y, so a port pluralizing naively with
+  "+s" would serve /postcategorys. Both wrong spellings are asserted absent, so
+  the scenario also fails a port that mounts the new path while leaving the old
+  one in place. The physical @table is deliberately `blog_categories` — unlike
+  the route and unlike the entity name — so no port can pass by echoing the
+  table. Every collection base elsewhere in the corpus is a single regular word
+  (/posts, /tags, /accounts, /authors), where all the ports' rules coincide.
+requests:
+  - id: r1
+    method: GET
+    path: /api/post_categories
+    expect:
+      status: 200
+      body:
+        ids: [100, 200]
+        length: 2
+  # The two retired spellings. No body assertion: an unmounted route 404s with
+  # the framework's own body, not the cross-port error envelope, so only the
+  # status is portable here.
+  - id: r2
+    method: GET
+    path: /api/postcategorys
+    expect:
+      status: 404
+  - id: r3
+    method: GET
+    path: /api/postcategories
+    expect:
+      status: 404
