@@ -134,6 +134,10 @@ import {
   resolveRelationshipReference,
 } from "../core/relationship/resolve-relationship-reference.js";
 import type { MetaRoot } from "../shared/meta-root.js";
+import type { MetaRelationship } from "../core/relationship/meta-relationship.js";
+// Rule (f) runs the REAL M:N derivation so the loader and codegen cannot drift.
+import { deriveM2MFields, M2MDerivationError } from "../core/relationship/derive-m2m-fields.js";
+import { isReadOnlySource, isWritableSource } from "../shared/node-guards.js";
 import { stripPackage } from "../naming.js";
 import {
   FILTER_COMPOSE_OR,
@@ -2248,6 +2252,115 @@ export function validateOneSideReferenceResolution(root: MetaRoot): ParseError[]
     }
   }
   return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Rule (f) — a M:N junction must PAIR: one identity.reference resolving to the
+// navigating entity, one to the @objectRef target.
+//
+// Rule (d) already checks that the junction declares exactly TWO references. It
+// never checked WHAT they point at, so a junction whose two references name some
+// other pair of entities loaded perfectly clean and then failed — differently —
+// in every port's codegen: TypeScript and C# warned and emitted no traversal
+// route (the endpoint simply 404s, with nothing in the build output a CI gate
+// would fail on), while Java, Kotlin and Python threw and failed the build. One
+// input, five contracts, and the quiet arm is the dangerous one.
+//
+// The check belongs HERE because the model is what is wrong, and because a
+// loader error is the only answer every port already agrees on. Both codegen
+// branches become unreachable for a model that loaded.
+//
+// It runs the REAL derivation (deriveM2MFields) rather than reimplementing the
+// pairing, so the loader and the FK derivation cannot drift apart — the same
+// reason _junctionReferences above shares referenceIdentities() with codegen. A
+// parallel check would be a second opinion, and the defect class being closed
+// here is precisely "two parts of the pipeline disagree".
+//
+// SCOPE mirrors codegen's own iteration exactly (relation-resolver.ts): every
+// CONCRETE, non-projection object crossed with its EFFECTIVE relationships.
+// That is not incidental —
+//   * per (entity, relationship), NOT deduped by declaration like rule (d):
+//     pairing is a property of the NAVIGATING entity. deriveM2MFields accepts a
+//     junction reference naming either the declaring entity or the navigating
+//     one, so an inherited M:N can pair from one subtype and not another, and
+//     checking the declaration alone would both miss that and reject models
+//     codegen accepts.
+//   * abstract levels are skipped because their own declarations do not file —
+//     an abstract base's FK reaches a table only through a concrete descendant,
+//     whose own walk reaches this same relationship.
+//   * projections are skipped because they never emit a relations() block.
+// Widening past that set would fail builds codegen never had a problem with.
+// ---------------------------------------------------------------------------
+
+/** codegen-ts's isProjection, reproduced here: that module is not reachable from
+ * the loader, and the two source guards it is built from live in this package.
+ * ADR-0039: own — projection-ness is the entity's OWN declared source @kind. */
+function isProjectionObject(obj: MetaObject): boolean {
+  const own = obj.ownChildren();
+  return own.some(isReadOnlySource) && !own.some(isWritableSource);
+}
+
+export function validateM2MJunctionPairing(root: MetaRoot): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.objects()) {
+    if (obj.isAbstract === true) continue;
+    if (isProjectionObject(obj)) continue;
+    // ADR-0039: resolving — an M:N relationship may be reached only via extends.
+    for (const rel of obj.relationships()) {
+      if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
+      if (rel.attr(RELATIONSHIP_ATTR_THROUGH) === undefined) continue;
+      try {
+        deriveM2MFields(rel, obj, root);
+      } catch (err) {
+        if (!(err instanceof M2MDerivationError)) throw err;
+        // Rule (d) reports the malformed-junction cases it owns (missing
+        // @through, unresolvable @through, a reference count other than two, an
+        // @sourceRefField matching no FK) against the DECLARING entity, and the
+        // derivation re-checks them. Reporting them again here — once per
+        // concrete subtype — would bury the pairing finding under duplicates of
+        // a diagnosis the author already has, so those are left to rule (d) and
+        // this rule speaks only where it is the sole witness.
+        if (isJunctionShapeErrorOwnedByRuleD(rel, root)) continue;
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" cannot be resolved through its ` +
+              `@${RELATIONSHIP_ATTR_THROUGH} junction: ${err.message}. Without a reference to ` +
+              `"${obj.name}" the junction rows cannot be filtered to this entity, so no ` +
+              `traversal is derivable.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+          ),
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * True when the derivation's failure is one rule (d) already reports — a
+ * junction that is missing, unresolvable, or does not declare exactly two
+ * identity.reference children. Keyed on the SHAPE rather than on the message
+ * text: matching strings would make this silently stop de-duplicating the first
+ * time a message is reworded, and a gate keyed to prose breaks on the rewrite.
+ */
+function isJunctionShapeErrorOwnedByRuleD(rel: MetaRelationship, root: MetaRoot): boolean {
+  const through = rel.attr(RELATIONSHIP_ATTR_THROUGH);
+  if (typeof through !== "string" || through === "") return true;
+  // Resolve exactly as rule (d) and deriveM2MFields do — ADR-0042 via the single
+  // resolveObjectRef matcher, referred from the DECLARING entity's package. A
+  // second resolution rule here is what made this helper disagree with the
+  // derivation and emit rule (d)'s finding a second time.
+  const declaring = rel.parent;
+  const referrerPkg = declaring?.package ?? declaring?.fileDefaultPackage ?? "";
+  const junction = _findObject(root, through, referrerPkg) as MetaObject | undefined;
+  if (junction === undefined) return true;
+  if (junction.subType !== OBJECT_SUBTYPE_ENTITY) return true;
+  if (_countJunctionReferences(junction) !== 2) return true;
+  const sourceRefField = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+  if (typeof sourceRefField === "string" && sourceRefField !== "") {
+    if (!_junctionReferenceFkFields(junction).includes(sourceRefField)) return true;
+  }
+  return false;
 }
 
 /**

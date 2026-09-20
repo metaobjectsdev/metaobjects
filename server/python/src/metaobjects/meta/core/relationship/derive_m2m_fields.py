@@ -44,6 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...meta_data import MetaData
+from ....naming_refs import resolve_object_ref
 from ....shared.base_types import TYPE_IDENTITY, TYPE_OBJECT
 from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
@@ -143,55 +144,61 @@ def _ref_target_qualified(ref: MetaData) -> str | None:
     return reference_target_entity(ref)
 
 
-def _root_objects(node: MetaData) -> list[MetaData]:
-    """Every top-level object of the tree *node* belongs to, in declaration order.
-
-    Walks up to the root rather than taking the caller's ``object_index``: that
-    index is keyed by BARE name, so two same-short-name entities in different
-    packages collapse to one entry and FQN-exact resolution is impossible from it.
-    """
+def _find_root(node: MetaData) -> MetaData:
+    """Walk up to the tree root from *node* -- the ``MetaData`` ``resolve_object_ref``
+    needs (it reads ``root.children()`` itself), computed on demand rather than taking
+    the caller's ``object_index``: that map is keyed by BARE name, so two same-short-
+    name entities in different packages collapse to one entry and neither FQN-exact
+    nor package-local resolution is possible from it -- exactly the shape of bug this
+    function now avoids (see ``_find_entity``'s replacement below)."""
     root = node
     while root.parent is not None:
         root = root.parent
-    return [c for c in root.children() if c.type == TYPE_OBJECT]
+    return root
 
 
-def _find_entity(objects: list[MetaData], name: str | None) -> MetaData | None:
-    """The root entity a reference name denotes, or ``None``.
+def _find_entity(root: MetaData, name: str | None, referrer_pkg: str) -> MetaData | None:
+    """The root entity a reference name denotes, or ``None`` -- resolved by the ONE
+    matcher the loader uses (``resolve_object_ref``, ADR-0041/0042): a fully-qualified
+    name binds exactly on its resolution key, a bare name binds in the REFERRER's
+    package.
 
-    Mirrors the Java reference's ``M2MFields.findObject`` exactly: a FULLY-QUALIFIED
-    name (one containing ``::``) resolves EXACTLY on the object's package-folded key,
-    never a bare-tail fallback; a bare name matches a short name, first match wins
-    (the bare-collision case is the deferred follow-up Java records as issue #174).
-
-    This exists so the SUBJECT comparison can be made on object IDENTITY the way
-    Java's already is. A bare-name compare cannot tell ``a::NodeBase`` from
-    ``b::NodeBase``, which made a genuine cross-package hetero M:N read as a
-    self-join the moment the subject set held two names.
+    This exists so the SUBJECT comparison below can be made on object IDENTITY. A
+    bare-name compare cannot tell ``a::NodeBase`` from ``b::NodeBase``, which made a
+    genuine cross-package hetero M:N read as a self-join the moment the subject set
+    held two names -- and a first-match-wins bare arm (this function's own prior
+    behaviour, mirroring the Java reference's deferred issue #174) bound a bare name to
+    whichever same-short-named entity happened to load first, which is load-ORDER
+    dependence, not a naming rule. Callers pass the referrer that owns the name they
+    are resolving -- the DECLARING entity for the relationship's own ``@objectRef``/
+    ``@through``, the JUNCTION for its references' ``@references`` -- because those are
+    different packages whenever a base is inherited across one.
     """
     if not name:
         return None
-    if PACKAGE_SEP in name:
-        return next((o for o in objects if o.resolution_key() == name), None)
-    bare = _strip_package(name)
-    return next((o for o in objects if o.name == bare), None)
+    return resolve_object_ref(root, name, referrer_pkg)
 
 
 def derive_m2m_fields(
     rel: MetaRelationship,
     source: MetaData,
-    object_index: dict[str, MetaData],
+    object_index: dict[str, MetaData] | None = None,
 ) -> M2MFields:
     """Derive the source/target junction FK fields for a M:N relationship.
 
-    *object_index* is a bare-name → object map of the loaded model's top-level
-    objects (the Python loader's resolution surface; mirrors the TS
-    ``root.findObject``). *source* is the entity the caller is navigating from;
-    it is accepted alongside ``rel.parent`` as a name for the relationship's
-    subject, and used as the declaring entity when *rel* has no object parent —
-    see the module docstring. Raises
-    :class:`M2MDerivationError` when the junction is missing/malformed or the
-    self-join is ambiguous.
+    *object_index* is accepted (and defaulted to ``None``) for call-site
+    compatibility but no longer used for resolution — it used to be a bare-name
+    → object map, which collapses two same-short-name entities in different
+    packages to one entry and cannot represent the ADR-0042 package-local
+    contract. Resolution instead runs through the SAME matcher the loader uses
+    (``resolve_object_ref``), computed against the real tree root walked up from
+    *rel*/*source* — see ``_find_root``/``_find_entity``. A caller with no index
+    handy (e.g. the loader's own pairing validation, rule (f)) may simply omit it.
+    *source* is the entity the caller is navigating from; it is accepted alongside
+    ``rel.parent`` as a name for the relationship's subject, and used as the
+    declaring entity when *rel* has no object parent — see the module docstring.
+    Raises :class:`M2MDerivationError` when the junction is missing/malformed or
+    the self-join is ambiguous.
     """
     # The entity that DECLARES ``rel`` — see the module docstring. ``parent`` is
     # the owning entity for both an own declaration and an inherited one (an
@@ -203,6 +210,21 @@ def derive_m2m_fields(
         if rel_parent is not None and rel_parent.type == TYPE_OBJECT
         else source
     )
+    root = _find_root(declaring)
+    # ADR-0041/0042 — resolve @through through the SAME matcher the loader uses
+    # (resolve_object_ref, via validation_passes' _validate_relationships rule
+    # (c)): an FQN resolves exactly on its resolution key, a bare name resolves
+    # package-locally in the DECLARING entity's package.
+    #
+    # This used to be ``object_index.get(_strip_package(through_name))`` — a dict
+    # keyed by BARE name alone, so it always took the FIRST (or last, by
+    # insertion) entity with that short name — the wrong package's whenever two
+    # share one (`xpkg-m2n-collision` is exactly that model: two same-short-named
+    # junctions in different packages). A valid cross-package M:N would silently
+    # derive against the wrong junction, whose references point nowhere near the
+    # navigating entity — see the TS reference's derive-m2m-fields.ts header for
+    # the same fix.
+    referrer_pkg = declaring.package or declaring.file_default_package or ""
 
     through_name = rel.through()
     if through_name is None:
@@ -210,7 +232,7 @@ def derive_m2m_fields(
             f'relationship "{declaring.name}.{rel.name}" is missing @through '
             f"(required for M:N derivation)"
         )
-    junction = object_index.get(_strip_package(through_name))
+    junction = resolve_object_ref(root, through_name, referrer_pkg)
     if junction is None:
         raise M2MDerivationError(
             f'relationship "{declaring.name}.{rel.name}" @through "{through_name}" '
@@ -251,28 +273,33 @@ def derive_m2m_fields(
     # package-stripped compare cannot distinguish ``a::NodeBase`` from
     # ``b::NodeBase``, so with two names in the set a genuine cross-package hetero
     # M:N read as a self-join and refused to derive.
-    root_objects = _root_objects(declaring)
-
     def _is_subject(entity: MetaData | None) -> bool:
         return entity is not None and (entity is declaring or entity is source)
 
-    # Defensive bare fallback when @objectRef does not resolve — loader validation
-    # normally guarantees it does. Same carve-out the Java reference makes.
-    target_entity_node = _find_entity(root_objects, target_name)
+    # @objectRef resolves in the DECLARING entity's package (referrer_pkg), same
+    # as @through above. Defensive bare fallback when it does not resolve —
+    # loader validation normally guarantees it does. Same carve-out the Java
+    # reference makes.
+    target_entity_node = _find_entity(root, target_name, referrer_pkg)
     is_self_join = (
         _is_subject(target_entity_node)
         if target_entity_node is not None
         else _strip_package(target_name) in subject_names
     )
 
+    # The junction owns its references' @references names, so those resolve in
+    # the JUNCTION's package; the relationship's own @objectRef resolves in the
+    # DECLARING entity's. Under `extends` across packages these differ, and using
+    # one for both is what bound a bare @objectRef to the wrong same-named entity.
+    junction_pkg = junction.package or junction.file_default_package or ""
+
+    def _ref_entity(r: MetaData) -> MetaData | None:
+        return _find_entity(root, _ref_target_qualified(r), junction_pkg)
+
     if not is_self_join:
         # Hetero: match each reference by the ENTITY OBJECT it resolves to.
         source_ref = next(
-            (
-                r
-                for r in refs
-                if _is_subject(_find_entity(root_objects, _ref_target_qualified(r)))
-            ),
+            (r for r in refs if _is_subject(_ref_entity(r))),
             None,
         )
         # Identity here too. The two searches are INDEPENDENT — nothing excludes
@@ -281,15 +308,7 @@ def derive_m2m_fields(
         # target's short name equals the source's, and silently return (src_fk, src_fk).
         # Java matches identity on both sides (findRefToSubject + findRefToObject).
         target_ref = (
-            next(
-                (
-                    r
-                    for r in refs
-                    if _find_entity(root_objects, _ref_target_qualified(r))
-                    is target_entity_node
-                ),
-                None,
-            )
+            next((r for r in refs if _ref_entity(r) is target_entity_node), None)
             if target_entity_node is not None
             else next(
                 (r for r in refs if _ref_target_entity(r) == _strip_package(target_name)),

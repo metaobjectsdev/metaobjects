@@ -51,6 +51,7 @@ import com.metaobjects.origin.ComputedOrigin;
 import com.metaobjects.origin.FirstOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
+import com.metaobjects.relationship.M2MFields;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.relationship.RelationshipReferences;
 import com.metaobjects.requirement.MetaRequirement;
@@ -217,6 +218,20 @@ public final class ValidationPhase {
         // genuinely, independently ambiguous.
         pass(collected, () -> {
             for (MetaDataException e : validateOneSideReferenceResolution(root)) {
+                collected.add(e);
+            }
+        });
+        // Rule (f) — an owner ruling (2026-09-20) settled a cross-port divergence: a M:N
+        // junction that does not PAIR (neither of its two identity.reference children
+        // resolves to the navigating entity, or neither resolves to the @objectRef
+        // target) must be a load error in every port. Rule (d) above only checks that
+        // the junction declares exactly TWO references, never what they point at, so an
+        // unpairable junction loaded clean and then failed differently downstream — a
+        // silent missing traversal route in TS/C#, a failed codegen build in
+        // Java/Kotlin/Python. Registered alongside rules (d)/(e) — same deferred-
+        // resolution timing (after all files load + extends resolution).
+        pass(collected, () -> {
+            for (MetaDataException e : validateM2MJunctionPairing(root)) {
                 collected.add(e);
             }
         });
@@ -2017,6 +2032,137 @@ public final class ValidationPhase {
             }
         }
         return errors;
+    }
+
+    // =========================================================================
+    // Rule (f) — a M:N junction must PAIR: one identity.reference resolving to the
+    // navigating entity, one to the @objectRef target.
+    //
+    // Rule (d) (validateRelationshipsM2M, above) already checks that the junction
+    // declares exactly TWO references. It never checked WHAT they point at, so a
+    // junction whose two references name some other pair of entities loaded
+    // perfectly clean and then failed — differently — in every port's codegen:
+    // TypeScript and C# warned and emitted no traversal route (the endpoint simply
+    // 404s, with nothing in the build output a CI gate would fail on), while Java,
+    // Kotlin and Python threw and failed the build. One input, five contracts, and
+    // the quiet arm was the dangerous one. An owner ruling (2026-09-20) settled it:
+    // every port now fails the LOAD with ERR_INVALID_RELATIONSHIP.
+    //
+    // The check belongs HERE because the model is what is wrong, and because a
+    // loader error is the only answer every port already agrees on. Both codegen
+    // branches become unreachable for a model that loaded.
+    //
+    // It runs the REAL derivation ({@link M2MFields#derive}) rather than
+    // reimplementing the pairing, so the loader and the FK derivation cannot drift
+    // apart — the same reason {@link #countJunctionReferences} shares its
+    // reference-walk shape with codegen ({@link M2MFields}). A parallel check would
+    // be a second opinion, and the defect class being closed here is precisely "two
+    // parts of the pipeline disagree". Mirrors the TS reference
+    // (validation-passes.ts's {@code validateM2MJunctionPairing}).
+    //
+    // SCOPE mirrors codegen's own iteration exactly: every CONCRETE, non-projection
+    // object crossed with its EFFECTIVE relationships. That is not incidental —
+    //   * per (entity, relationship), NOT deduped by declaration like rule (d):
+    //     pairing is a property of the NAVIGATING entity. M2MFields.derive accepts a
+    //     junction reference naming either the declaring entity or the navigating
+    //     one, so an inherited M:N can pair from one subtype and not another, and
+    //     checking the declaration alone would both miss that and reject models
+    //     codegen accepts.
+    //   * abstract levels are skipped because their own declarations do not file —
+    //     an abstract base's FK reaches a table only through a concrete descendant,
+    //     whose own walk reaches this same relationship.
+    //   * projections are skipped because they never emit a relations() block.
+    // Widening past that set would fail builds codegen never had a problem with.
+    // =========================================================================
+
+    /**
+     * codegen-ts's isProjection, reproduced here (that module is not reachable from
+     * the loader): true when the object declares its OWN read-only source and no
+     * OWN writable source. ADR-0039: own-only — projection-ness is the entity's OWN
+     * declared source @kind; {@link MetaObject#findPrimaryReadOnlySource()} is
+     * already own-only for this reason, so the writable check below mirrors it with
+     * {@code getSources(false)} rather than the extends-walking
+     * {@link MetaObject#findPrimaryWritableSource()}.
+     */
+    private static boolean isProjectionObject(MetaObject obj) {
+        boolean hasOwnReadOnly = false;
+        boolean hasOwnWritable = false;
+        for (MetaSource src : obj.getSources(false)) {
+            if (src.isReadOnly()) hasOwnReadOnly = true;
+            if (src.isWritable()) hasOwnWritable = true;
+        }
+        return hasOwnReadOnly && !hasOwnWritable;
+    }
+
+    static List<MetaDataException> validateM2MJunctionPairing(MetaRoot root) {
+        List<MetaDataException> errors = new java.util.ArrayList<>();
+        // ADR-0039: root has no super; root.objects() is the complete top-level set.
+        for (MetaObject obj : root.objects()) {
+            if (isAbstract(obj)) continue;
+            if (isProjectionObject(obj)) continue;
+            // ADR-0039: resolving — an M:N relationship may be reached only via extends.
+            for (MetaRelationship rel : obj.getRelationships()) {
+                // Raw read, not getCardinality() (see the cross-port divergence note in
+                // validateRelationshipM2MNode above) — an absent @cardinality must skip
+                // this pass, exactly as it does on TS/C#/Python.
+                if (!MetaRelationship.CARDINALITY_MANY.equals(rawCardinality(rel))) continue;
+                String through = rel.getThrough();
+                if (through == null || through.isEmpty()) continue;
+                try {
+                    M2MFields.derive(rel, obj, root);
+                } catch (M2MFields.M2MDerivationException e) {
+                    // Rule (d) reports the malformed-junction cases it owns (missing
+                    // @through, unresolvable @through, a reference count other than
+                    // two, an @sourceRefField matching no FK) against the DECLARING
+                    // entity, and the derivation re-checks them. Reporting them again
+                    // here — once per concrete subtype — would bury the pairing
+                    // finding under duplicates of a diagnosis the author already has,
+                    // so those are left to rule (d) and this rule speaks only where
+                    // it is the sole witness.
+                    if (isJunctionShapeErrorOwnedByRuleD(rel, root)) continue;
+                    errors.add(new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                            + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                            + "\" cannot be resolved through its @" + MetaRelationship.ATTR_THROUGH
+                            + " junction: " + e.getMessage() + ". Without a reference to \""
+                            + obj.getShortName() + "\" the junction rows cannot be filtered to this"
+                            + " entity, so no traversal is derivable.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource()));
+                }
+            }
+        }
+        return errors;
+    }
+
+    /**
+     * True when the derivation's failure is one rule (d) already reports — a
+     * junction that is missing, unresolvable, not an entity, or does not declare
+     * exactly two identity.reference children (plus an @sourceRefField matching no
+     * FK field). Keyed on the SHAPE rather than on the message text: matching
+     * strings would make this silently stop de-duplicating the first time a
+     * message is reworded, and a gate keyed to prose breaks on the rewrite.
+     *
+     * Resolves the junction exactly as rule (d) and {@link M2MFields#derive} do —
+     * ADR-0042 via {@code resolveRootObject}, referred from the DECLARING entity's
+     * package. A second resolution rule here is what would make this helper
+     * disagree with the derivation and emit rule (d)'s finding a second time.
+     */
+    private static boolean isJunctionShapeErrorOwnedByRuleD(MetaRelationship rel, MetaRoot root) {
+        String through = rel.getThrough();
+        if (through == null || through.isEmpty()) return true;
+        MetaData relParent = rel.getParent();
+        MetaObject declaring = (relParent instanceof MetaObject) ? (MetaObject) relParent : null;
+        String referrerPkg = (declaring != null && declaring.getPackage() != null)
+            ? declaring.getPackage() : "";
+        MetaObject junction = resolveRootObject(root, through, referrerPkg);
+        if (junction == null) return true;
+        if (!MetaObject.SUBTYPE_ENTITY.equals(junction.getSubType())) return true;
+        if (countJunctionReferences(junction) != 2) return true;
+        String sourceRefField = rel.getSourceRefField();
+        if (sourceRefField != null && !sourceRefField.isEmpty()) {
+            if (!junctionReferenceFkFields(junction).contains(sourceRefField)) return true;
+        }
+        return false;
     }
 
     /** Render a candidate reference as {@code name(fkField)}, or {@code name(fieldA, fieldB)}

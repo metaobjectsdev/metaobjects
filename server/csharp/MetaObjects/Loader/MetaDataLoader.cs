@@ -562,6 +562,15 @@ public class MetaDataLoader
             // be genuinely, independently ambiguous.
             errors.AddRange(ValidationPasses.ValidateOneSideReferenceResolution(root));
 
+            // Rule (f) — a M:N junction must PAIR: one identity.reference to the
+            // navigating entity, one to the @objectRef target. Rule (d) checks only
+            // that there are TWO references, never what they point at, so an
+            // unpairable junction loaded clean and then failed differently in every
+            // port's codegen — a silent missing route in TS/C#, a failed build in
+            // Java/Kotlin/Python. Runs the real M2MDerivation so the loader and
+            // codegen cannot drift apart.
+            errors.AddRange(ValidationPasses.ValidateM2MJunctionPairing(root));
+
             // index.lookup @fields resolution — every index.lookup must name ≥1 field,
             // and each must exist in the entity's effective field set (ERR_INVALID_INDEX).
             errors.AddRange(ValidationPasses.ValidateIndexLookupFields(root));

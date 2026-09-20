@@ -55,6 +55,7 @@ from ..meta.persistence.db.db_constants import (
     VALID_DB_COLUMN_TYPES,
 )
 from ..meta.core.object.meta_object import MetaObject
+from ..meta.core.relationship.meta_relationship import MetaRelationship
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source.source_constants import (
@@ -141,6 +142,8 @@ from ..meta.core.relationship.relationship_references import (
     reference_fields,
     resolve_relationship_reference,
 )
+# Rule (f) runs the REAL M:N derivation so the loader and codegen cannot drift.
+from ..meta.core.relationship.derive_m2m_fields import M2MDerivationError, derive_m2m_fields
 
 # A subtype-specific template attr is valid ONLY on the subtype(s) it is registered
 # for. The metamodel registers these per-subtype (see the core_types template block),
@@ -202,6 +205,13 @@ def run_validations(
     # slim-vocabulary pass, rule (d)): same deferred-resolution timing (after
     # all files load + extends resolution).
     _validate_one_side_reference_resolution(root, errors)
+    # Rule (f) — a M:N junction must PAIR: one identity.reference to the
+    # navigating entity, one to the @objectRef target. Rule (d) checks only
+    # that there are TWO references, never what they point at, so an
+    # unpairable junction loaded clean and then failed differently in every
+    # port's codegen — a silent missing route in TS/C#, a failed build in
+    # Java/Kotlin/Python.
+    _validate_m2m_junction_pairing(root, errors)
     # Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
     # carries its reference descriptors (relationship @objectRef, identity.reference
     # @references for core; a downstream provider's type carries its own) + validator,
@@ -2900,6 +2910,151 @@ def _validate_one_side_reference_resolution(
                 ErrorCode.ERR_INVALID_RELATIONSHIP,
                 envelope=rel.source,
             ))
+
+
+# ---------------------------------------------------------------------------
+# Rule (f) — a M:N junction must PAIR: one identity.reference resolving to the
+# navigating entity, one to the @objectRef target.
+#
+# Rule (d) already checks that the junction declares exactly TWO references. It
+# never checked WHAT they point at, so a junction whose two references name some
+# other pair of entities loaded perfectly clean and then failed — differently —
+# in every port's codegen: TypeScript and C# warned and emitted no traversal
+# route (the endpoint simply 404s, with nothing in the build output a CI gate
+# would fail on), while Java, Kotlin and Python threw and failed the build. One
+# input, five contracts, and the quiet arm is the dangerous one.
+#
+# The check belongs HERE because the model is what is wrong, and because a
+# loader error is the only answer every port already agrees on. Both codegen
+# branches become unreachable for a model that loaded.
+#
+# It runs the REAL derivation (derive_m2m_fields) rather than reimplementing the
+# pairing, so the loader and the FK derivation cannot drift apart — the same
+# reason _junction_reference_fk_fields above is shared with the derivation's own
+# shape checks. A parallel check would be a second opinion, and the defect class
+# being closed here is precisely "two parts of the pipeline disagree".
+#
+# SCOPE mirrors codegen's own iteration exactly (m2m_codegen.m2m_relationships):
+# every CONCRETE, non-projection object crossed with its EFFECTIVE relationships.
+# That is not incidental —
+#   * per (entity, relationship), NOT deduped by declaration like rule (d):
+#     pairing is a property of the NAVIGATING entity. derive_m2m_fields accepts a
+#     junction reference naming either the declaring entity or the navigating
+#     one, so an inherited M:N can pair from one subtype and not another, and
+#     checking the declaration alone would both miss that and reject models
+#     codegen accepts.
+#   * abstract levels are skipped because their own declarations do not file —
+#     an abstract base's FK reaches a table only through a concrete descendant,
+#     whose own walk reaches this same relationship.
+#   * projections are skipped because they never emit a relations() block.
+# Widening past that set would fail builds codegen never had a problem with.
+# ---------------------------------------------------------------------------
+
+
+def _has_read_only_kind_source(obj: MetaData) -> bool:
+    """ADR-0039: own — projection source-kind classification. Mirrors the TS
+    ``hasReadOnlyKindSource`` / C# ``IsReadOnlyProjection()``: an entity's
+    projection-ness is determined by its OWN declared source @kind, not one
+    inherited via extends."""
+    return any(
+        isinstance(c, MetaSource) and c.is_read_only()
+        for c in obj.own_children()
+        if c.type == TYPE_SOURCE
+    )
+
+
+def _has_writable_kind_source(obj: MetaData) -> bool:
+    """ADR-0039: own — see :func:`_has_read_only_kind_source`."""
+    return any(
+        isinstance(c, MetaSource) and c.is_writable()
+        for c in obj.own_children()
+        if c.type == TYPE_SOURCE
+    )
+
+
+def _is_projection_object(obj: MetaData) -> bool:
+    """codegen's projection detector (``isProjection``), reproduced here: the
+    loader has no dependency on codegen, and the two source-kind guards it is
+    built from are already available on :class:`MetaSource` in this package. An
+    entity whose own sources are read-only-kind-only never emits a relations()
+    block, so rule (f) has nothing to check on it."""
+    return _has_read_only_kind_source(obj) and not _has_writable_kind_source(obj)
+
+
+def _validate_m2m_junction_pairing(root: MetaData, errors: list[MetaError]) -> None:
+    # ADR-0039: root has no super; children()==own_children().
+    for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
+        if obj.is_abstract:
+            continue
+        if _is_projection_object(obj):
+            continue
+        # ADR-0039: resolving — an M:N relationship may be reached only via extends.
+        # isinstance (not the bare c.type == TYPE_RELATIONSHIP check the other
+        # rules use) so the loop variable narrows to MetaRelationship, matching
+        # derive_m2m_fields's own parameter type and the other two call sites
+        # that feed it (m2m_codegen.m2m_relationships, n2m_resolver).
+        for rel in (c for c in obj.children() if isinstance(c, MetaRelationship)):
+            if rel.get_meta_attr(RELATIONSHIP_ATTR_CARDINALITY) != CARDINALITY_MANY:
+                continue
+            if rel.get_meta_attr(RELATIONSHIP_ATTR_THROUGH) is None:
+                continue
+            try:
+                derive_m2m_fields(rel, obj)
+            except M2MDerivationError as err:
+                # Rule (d) reports the malformed-junction cases it owns (missing
+                # @through, unresolvable @through, a reference count other than
+                # two, an @sourceRefField matching no FK) against the DECLARING
+                # entity, and the derivation re-checks them. Reporting them again
+                # here — once per concrete subtype — would bury the pairing
+                # finding under duplicates of a diagnosis the author already
+                # has, so those are left to rule (d) and this rule speaks only
+                # where it is the sole witness.
+                if _is_junction_shape_error_owned_by_rule_d(rel, root):
+                    continue
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" cannot be resolved '
+                    f'through its @{RELATIONSHIP_ATTR_THROUGH} junction: {err}. '
+                    f'Without a reference to "{obj.name}" the junction rows '
+                    f'cannot be filtered to this entity, so no traversal is '
+                    f'derivable.',
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    envelope=rel.source,
+                ))
+
+
+def _is_junction_shape_error_owned_by_rule_d(rel: MetaData, root: MetaData) -> bool:
+    """True when the derivation's failure is one rule (d) already reports — a
+    junction that is missing, unresolvable, or does not declare exactly two
+    identity.reference children. Keyed on the SHAPE rather than on the message
+    text: matching strings would make this silently stop de-duplicating the
+    first time a message is reworded, and a gate keyed to prose breaks on the
+    rewrite.
+    """
+    through = rel.get_meta_attr(RELATIONSHIP_ATTR_THROUGH)
+    if not isinstance(through, str) or through == "":
+        return True
+    # Resolve exactly as rule (d) and derive_m2m_fields do — ADR-0042 via the
+    # single resolve_object_ref matcher, referred from the DECLARING entity's
+    # package. A second resolution rule here is what made this helper disagree
+    # with the derivation and emit rule (d)'s finding a second time.
+    declaring = rel.parent
+    referrer_pkg = (
+        (declaring.package or declaring.file_default_package or "")
+        if declaring is not None
+        else ""
+    )
+    junction = resolve_object_ref(root, through, referrer_pkg)
+    if junction is None:
+        return True
+    if junction.sub_type != OBJECT_SUBTYPE_ENTITY:
+        return True
+    if _count_junction_references(junction) != 2:
+        return True
+    source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
+    if isinstance(source_ref_field, str) and source_ref_field != "":
+        if source_ref_field not in _junction_reference_fk_fields(junction):
+            return True
+    return False
 
 
 def _format_reference_candidates(candidates: list[MetaData]) -> str:

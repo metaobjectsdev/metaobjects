@@ -1,18 +1,29 @@
 // A junction whose identity.reference names a CONCRETE SUBTYPE of the declaring
-// entity loads clean — the loader's relationship rules never check subject pairing —
-// but deriveM2MFields' subject set is only {declaring entity, navigating entity}, so
-// for every resolver outside that set the derivation throws and buildM2mEntry returns
-// null: the mount silently vanishes, the same ABSENCE class FW-8 is. Concretely, Auth
-// declaring `bridgeTags` while the junction's reference names BridgeAuth leaves the
-// navigation on BridgeAuth only — /auths/:id/bridgeTags would 404 with nothing said.
+// entity used to load clean — the loader's relationship rules checked that a
+// junction declares TWO references, never what they point at. deriveM2MFields'
+// subject set is only {declaring entity, navigating entity}, so for every
+// resolver outside that set the derivation threw and buildM2mEntry returned
+// null: the mount silently vanished, the same ABSENCE class FW-8 is. Concretely,
+// Auth declaring `bridgeTags` while the junction's reference names BridgeAuth
+// left the navigation on BridgeAuth only — /auths/:id/bridgeTags would 404 with
+// nothing said.
 //
-// The skip is deliberate (a model that loads must keep building), so the contract is
-// visibility, not failure: buildRelationMap takes a warn callback and reports every
-// un-pairable junction with the derivation's own reason.
+// This file used to pin the SKIP, on the reasoning that a model which loads must
+// keep building, so the contract was visibility (a warn callback) rather than
+// failure. That reasoning is retired: the ports never agreed on it. TypeScript
+// and C# warned and emitted no route, while Java, Kotlin and Python threw and
+// failed the build — one input, two contracts, and the quiet arm was the
+// dangerous one. Owner ruling 2026-09-20: the MODEL is what is wrong, so it is
+// rejected at LOAD in every port (validation-passes rule (f),
+// `validateM2MJunctionPairing`), which is the one answer all five already agreed
+// was legitimate for a broken model.
+//
+// So the assertion below is inverted from what it was: this model no longer
+// loads. buildRelationMap's catch survives as unreachable defence-in-depth for a
+// root assembled without loader validation; nothing that loads can reach it.
 
 import { describe, expect, test } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
-import { buildRelationMap } from "../src/relation-resolver.js";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
 const MODEL = {
   "metadata.root": {
@@ -44,41 +55,35 @@ const MODEL = {
   },
 };
 
-async function load(): Promise<MetaRoot> {
-  const res = await new MetaDataLoader({ strict: true }).load([
+async function load() {
+  return new MetaDataLoader({ strict: true }).load([
     new InMemoryStringSource(JSON.stringify(MODEL), { id: "m2m-warn.json" }),
   ]);
-  // The premise of the defect: nothing about this model fails the loader.
-  expect(res.errors).toEqual([]);
-  return res.root;
 }
 
-describe("buildRelationMap — un-pairable M:N junction is reported, not silent", () => {
-  test("the map still builds, the subtype keeps its navigation, and the skip warns", async () => {
-    const root = await load();
-    const warnings: string[] = [];
-    const map = buildRelationMap(root, (m) => warnings.push(m));
+describe("un-pairable M:N junction is a LOAD ERROR, not a silent skip", () => {
+  test("the model is rejected, naming the entity, the relationship and the junction", async () => {
+    const res = await load();
+    const codes = res.errors.map((e) => (e as { code?: string }).code);
+    expect(codes).toContain("ERR_INVALID_RELATIONSHIP");
 
-    // The declaring entity's side is skipped, never fatal.
-    expect((map.get("Auth") ?? []).find((e) => e.name === "bridgeTags")).toBeUndefined();
-    // The subtype the junction names still derives its own navigation.
-    const sub = (map.get("BridgeAuth") ?? []).find((e) => e.name === "bridgeTags");
-    expect(sub?.junctionEntity).toBe("AuthTag");
-    expect(sub?.sourceJoinField).toBe("authId");
-    expect(sub?.targetJoinField).toBe("tagId");
-
-    // Exactly one warning, naming the entity, the relationship, the junction and the
-    // derivation's own reason.
-    expect(warnings.length).toBe(1);
-    expect(warnings[0]).toContain('"Auth"');
-    expect(warnings[0]).toContain('"bridgeTags"');
-    expect(warnings[0]).toContain('"AuthTag"');
-    expect(warnings[0]).toContain("must declare one identity.reference to");
+    const msg = res.errors.map((e) => e.message).join("\n");
+    // The navigating entity whose traversal would have vanished...
+    expect(msg).toContain('"Auth.bridgeTags"');
+    // ...the junction that cannot be paired...
+    expect(msg).toContain('"AuthTag"');
+    // ...and the derivation's own reason, so the author is told WHICH reference
+    // is missing rather than just that something is wrong.
+    expect(msg).toContain("must declare one identity.reference to");
   });
 
-  test("without a callback the silent skip is the pre-existing behaviour", async () => {
-    const root = await load();
-    expect(() => buildRelationMap(root)).not.toThrow();
-    expect((buildRelationMap(root).get("Auth") ?? []).find((e) => e.name === "bridgeTags")).toBeUndefined();
+  test("the subtype deriving fine is not a reprieve — the model still fails", async () => {
+    // BridgeAuth IS in the junction's reference set, so navigating from it always
+    // derived cleanly. That partial success is precisely what made the defect
+    // survive: the route existed under one segment and not the other, and a
+    // corpus asserting only the working segment stayed green. A model is not
+    // half-valid, so one unpairable subject fails the whole load.
+    const res = await load();
+    expect(res.errors.length).toBeGreaterThan(0);
   });
 });

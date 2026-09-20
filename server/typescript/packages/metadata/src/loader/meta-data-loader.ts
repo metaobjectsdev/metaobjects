@@ -25,7 +25,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourceEscapes } from "../persistence/source/validate-source-escapes.js";
@@ -657,6 +657,14 @@ export class MetaDataLoader {
       // than one onto the same target; an unresolvable case is a load error
       // naming the candidates (ADR-0029 §5).
       errors.push(...validateOneSideReferenceResolution(root));
+
+      // Rule (f) — a M:N junction must PAIR: one identity.reference to the
+      // navigating entity, one to the @objectRef target. Rule (d) checks only
+      // that there are TWO references, never what they point at, so an
+      // unpairable junction loaded clean and then failed differently in every
+      // port's codegen — a silent missing route in TS/C#, a failed build in
+      // Java/Kotlin/Python.
+      errors.push(...validateM2MJunctionPairing(root));
 
       // index.lookup @fields resolution — each index.lookup must name ≥1 field,
       // and every field must exist in the entity's effective (resolved) field set

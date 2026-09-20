@@ -333,15 +333,25 @@ entity and the entity you are navigating from as the relationship's *subject*: t
 source-side junction reference may name either, and `@objectRef` naming either makes
 the relationship a self-join. Nothing else counts — in particular an entity lying
 strictly *between* the declaring base and the navigating entity in a deeper hierarchy
-is **not** accepted, and a junction reference naming one fails derivation with
+is **not** accepted, and a junction reference naming one fails with
 `ERR_INVALID_RELATIONSHIP`.
+
+**Since 2026-09-20 that failure is at LOAD, in every port.** Declaring two
+`identity.reference` children is not enough — the loader now checks what they point
+at, by running the same FK derivation and reporting its failure. Before, this was
+only ever caught downstream, and not consistently: TypeScript and C# warned and
+emitted no traversal route (so `GET /posts/1/tags` simply 404'd, with nothing in the
+build output to fail on), while Java, Kotlin and Python failed the build. The check
+runs for every concrete entity that can navigate the relationship, so an inherited
+M:N that pairs from one subtype and not another is reported against the subtype that
+cannot pair — which is the one whose endpoint would have gone missing.
 
 ```yaml
 # PostBase (abstract) declares the M:N; Post extends it. The junction may reference
 # EITHER PostBase or Post — both derive postId/tagId for Post.tags.
 - object.entity:
     name: PostBase
-    isAbstract: true
+    abstract: true
     children:
       - relationship.association:
           name: tags
@@ -545,6 +555,7 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/relationship-one-two-refs-name-pairing/`](../../fixtures/conformance/relationship-one-two-refs-name-pairing/) — the same shape resolved by name-pairing alone (ladder stage 3)
 - [`fixtures/conformance/error-relationship-one-refs-ambiguous/`](../../fixtures/conformance/error-relationship-one-refs-ambiguous/) — neither `@sourceRefField` nor a pairing name given: `ERR_INVALID_RELATIONSHIP` at load (#368, ADR-0029 Amendment 1)
 - [`fixtures/conformance/relationship-one-two-refs-dotted-references/`](../../fixtures/conformance/relationship-one-two-refs-dotted-references/) — the same two-reference shape with `@references` in the dotted `Entity.field` form: the entity half is the segment before the first `.`, so the ladder resolves identically to the bare form
+- [`fixtures/conformance/error-relationship-m2m-junction-unpairable/`](../../fixtures/conformance/error-relationship-m2m-junction-unpairable/) — a junction declaring its two `identity.reference` children but neither resolving to the navigating entity: `ERR_INVALID_RELATIONSHIP` at load in every port (owner ruling 2026-09-20)
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
 via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)

@@ -81,11 +81,17 @@ public static class M2MNavigationBuilder
     /// <c>extends</c>) carrying <c>@cardinality: "many"</c> + <c>@through</c>. NOT own-only:
     /// believing otherwise is what produced the declaring-vs-visiting bug this class's
     /// <see cref="M2MNavigation.DeclaringEntity"/> now guards. Returns an empty list for an
-    /// entity with no M:N relationships. A relationship whose junction FK columns cannot be
-    /// derived is skipped, reporting the derivation's own reason through
-    /// <paramref name="onWarn"/> when supplied — the loader's rules never check subject
-    /// pairing, so a model can load clean and still carry a junction this walk cannot pair.
-    /// Callers without a channel keep the silent skip (mirrors the TS relation-resolver).
+    /// entity with no M:N relationships.
+    ///
+    /// A relationship whose junction FK columns cannot be derived is skipped, reporting the
+    /// derivation's own reason through <paramref name="onWarn"/> when supplied. Owner ruling
+    /// 2026-09-20: an un-pairable junction is now a LOAD ERROR in every port
+    /// (<c>ValidationPasses.ValidateM2MJunctionPairing</c>, rule (f) — it runs this SAME
+    /// derivation, so the two cannot drift apart), so for a root that passed loader
+    /// validation this branch is UNREACHABLE — nothing that loads can carry a junction this
+    /// walk cannot pair. It stays as defence-in-depth for a root assembled WITHOUT loader
+    /// validation (e.g. built programmatically, bypassing <c>MetaDataLoader</c>). Callers
+    /// without a channel keep the silent skip (mirrors the TS relation-resolver).
     /// </summary>
     public static IReadOnlyList<M2MNavigation> For(MetaObject entity, MetaRoot root, Action<string>? onWarn = null)
     {
@@ -113,6 +119,11 @@ public static class M2MNavigationBuilder
             ?? root.FindObject(CSharpNaming.StripPkg(throughRef));
         if (target is null || junction is null) return null;
 
+        // Owner ruling 2026-09-20: an un-pairable junction is a LOAD ERROR
+        // (ValidationPasses.ValidateM2MJunctionPairing, rule (f) — the real gate, and it
+        // runs this SAME derivation so the two cannot disagree). A root that came through
+        // MetaDataLoader can never reach this catch: it would already have failed to load.
+        // This is defence-in-depth ONLY for a root assembled without loader validation.
         M2MFields fields;
         try { fields = M2MDerivation.DeriveM2MFields(rel, source, root); }
         catch (M2MDerivationException ex)
@@ -120,7 +131,8 @@ public static class M2MNavigationBuilder
             onWarn?.Invoke(
                 $"M:N relationship \"{rel.Name}\" on entity \"{source.Name}\" gets no traversal route: its " +
                 $"@through junction \"{CSharpNaming.StripPkg(throughRef)}\" could not be paired — " +
-                $"{ex.Message}. The model loads, so the run continues, but the endpoint is absent (a 404).");
+                $"{ex.Message}. A loader-validated model cannot reach this: the endpoint would be absent " +
+                "(a 404) only for a root assembled without loader validation.");
             return null;
         }
 

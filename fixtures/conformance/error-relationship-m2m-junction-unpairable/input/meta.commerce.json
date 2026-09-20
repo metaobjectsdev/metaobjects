@@ -1,0 +1,55 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Post",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "relationship.association": {
+                "name": "tags",
+                "@cardinality": "many",
+                "@objectRef": "acme::commerce::Tag",
+                "@through": "PostTag"
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Tag",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Author",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "PostTag",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "authorId" } },
+            { "field.long": { "name": "tagId" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "identity.reference": { "name": "authorRef", "@fields": "authorId", "@references": "acme::commerce::Author" } },
+            { "identity.reference": { "name": "tagRef", "@fields": "tagId", "@references": "acme::commerce::Tag" } }
+          ]
+        }
+      }
+    ]
+  }
+}

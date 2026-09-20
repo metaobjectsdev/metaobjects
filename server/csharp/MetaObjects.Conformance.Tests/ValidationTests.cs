@@ -167,7 +167,7 @@ public class ValidationTests
         // Post only via extends — the validator must resolve them.
         const string model = """
         { "metadata.root": { "package": "acme::social", "children": [
-          { "object.entity": { "name": "PostBase", "@isAbstract": true, "children": [
+          { "object.entity": { "name": "PostBase", "abstract": true, "children": [
             { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } }
           ]}},
           { "object.entity": { "name": "Post", "extends": "PostBase", "children": [
@@ -218,7 +218,7 @@ public class ValidationTests
             { "field.long":   { "name": "id" } },
             { "identity.primary": { "name": "pk", "@fields": "id" } }
           ]}},
-          { "object.entity": { "name": "JunctionBase", "@isAbstract": true, "children": [
+          { "object.entity": { "name": "JunctionBase", "abstract": true, "children": [
             { "field.long": { "name": "postId" } },
             { "field.long": { "name": "tagId" } },
             { "identity.reference": { "name": "fkPost", "@fields": "postId", "@references": "Post" } },

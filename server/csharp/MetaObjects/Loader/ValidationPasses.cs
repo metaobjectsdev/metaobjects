@@ -3388,6 +3388,118 @@ public static class ValidationPasses
         return errors.AsReadOnly();
     }
 
+    // ---------------------------------------------------------------------------
+    // Rule (f) — a M:N junction must PAIR: one identity.reference resolving to the
+    // navigating entity, one to the @objectRef target.
+    //
+    // Rule (d) already checks that the junction declares exactly TWO references. It
+    // never checked WHAT they point at, so a junction whose two references name some
+    // other pair of entities loaded perfectly clean and then failed — differently —
+    // in every port's codegen: TypeScript and C# warned and emitted no traversal
+    // route (the endpoint simply 404s, with nothing in the build output a CI gate
+    // would fail on), while Java, Kotlin and Python threw and failed the build. One
+    // input, five contracts, and the quiet arm is the dangerous one.
+    //
+    // The check belongs HERE because the model is what is wrong, and because a
+    // loader error is the only answer every port already agrees on. Both codegen
+    // branches become unreachable for a model that loaded — see
+    // M2MNavigationBuilder.Build's catch, whose comment now names this rule as the
+    // real gate.
+    //
+    // It runs the REAL derivation (M2MDerivation.DeriveM2MFields) rather than
+    // reimplementing the pairing, so the loader and the FK derivation cannot drift
+    // apart — the same reason JunctionReferences above shares ReferenceIdentities()
+    // with codegen. A parallel check would be a second opinion, and the defect
+    // class being closed here is precisely "two parts of the pipeline disagree".
+    //
+    // Ported from validateM2MJunctionPairing in
+    // typescript/packages/metadata/src/loader/validation-passes.ts.
+    //
+    // SCOPE mirrors codegen's own iteration exactly (M2MNavigationBuilder.For):
+    // every CONCRETE, non-projection object crossed with its EFFECTIVE relationships.
+    // That is not incidental —
+    //   * per (entity, relationship), NOT deduped by declaration like rule (d):
+    //     pairing is a property of the NAVIGATING entity. M2MDerivation accepts a
+    //     junction reference naming either the declaring entity or the navigating
+    //     one, so an inherited M:N can pair from one subtype and not another, and
+    //     checking the declaration alone would both miss that and reject models
+    //     codegen accepts.
+    //   * abstract levels are skipped because their own declarations do not file —
+    //     an abstract base's FK reaches a table only through a concrete descendant,
+    //     whose own walk reaches this same relationship.
+    //   * read-only projections are skipped because they never emit a navigation
+    //     collection (IsReadOnlyProjection — own read-only source, no own writable
+    //     source; mirrors TS codegen-ts's isProjection, which the loader package
+    //     cannot reach and so reproduces by source-kind rather than subType).
+    // Widening past that set would fail builds codegen never had a problem with.
+    // ---------------------------------------------------------------------------
+
+    public static IReadOnlyList<MetaError> ValidateM2MJunctionPairing(MetaRoot root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.Objects())
+        {
+            if (obj.IsAbstract) continue;
+            if (obj.IsReadOnlyProjection()) continue;
+            // ADR-0039: resolving — an M:N relationship may be reached only via extends.
+            foreach (var rel in obj.Relationships())
+            {
+                if (rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) is not string cardinality || cardinality != CARDINALITY_MANY) continue;
+                if (rel.Attr(RELATIONSHIP_ATTR_THROUGH) is null) continue;
+                try
+                {
+                    M2MDerivation.DeriveM2MFields(rel, obj, root);
+                }
+                catch (M2MDerivationException ex)
+                {
+                    // Rule (d) reports the malformed-junction cases it owns (missing
+                    // @through, unresolvable @through, junction is not an entity,
+                    // reference count != 2, an @sourceRefField matching no FK) against
+                    // the DECLARING entity, and the derivation re-checks them. Reporting
+                    // them again here — once per concrete subtype — would bury the
+                    // pairing finding under duplicates of a diagnosis the author already
+                    // has, so those are left to rule (d) and this rule speaks only where
+                    // it is the sole witness.
+                    if (IsJunctionShapeErrorOwnedByRuleD(rel, root)) continue;
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" cannot be resolved through its " +
+                        $"@{RELATIONSHIP_ATTR_THROUGH} junction: {ex.Message}. Without a reference to " +
+                        $"\"{obj.Name}\" the junction rows cannot be filtered to this entity, so no " +
+                        "traversal is derivable.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        Envelope: rel.Source));
+                }
+            }
+        }
+        return errors.AsReadOnly();
+    }
+
+    /// <summary>
+    /// True when the derivation's failure is one rule (d) already reports — a junction
+    /// that is missing, unresolvable, or does not declare exactly two identity.reference
+    /// children. Keyed on the SHAPE rather than on the message text: matching strings
+    /// would make this silently stop de-duplicating the first time a message is
+    /// reworded, and a gate keyed to prose breaks on the rewrite.
+    /// </summary>
+    private static bool IsJunctionShapeErrorOwnedByRuleD(MetaRelationship rel, MetaRoot root)
+    {
+        if (rel.Attr(RELATIONSHIP_ATTR_THROUGH) is not string through || through.Length == 0) return true;
+        // Resolve exactly as rule (d) and M2MDerivation do — ADR-0042 via the single
+        // NamingRefs.ResolveObjectRef matcher, referred from the DECLARING entity's
+        // package. A second resolution rule here is what made this helper disagree
+        // with the derivation and emit rule (d)'s finding a second time.
+        string referrerPkg = rel.Parent is { } declaring ? NamingRefs.EffectivePackage(declaring) : "";
+        var junction = NamingRefs.ResolveObjectRef(root, through, referrerPkg) as MetaObject;
+        if (junction is null) return true;
+        if (junction.SubType != OBJECT_SUBTYPE_ENTITY) return true;
+        if (CountJunctionReferences(junction) != 2) return true;
+        if (rel.Attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) is string sourceRefField && sourceRefField.Length > 0)
+        {
+            if (!JunctionReferenceFkFields(junction).Contains(sourceRefField, StringComparer.Ordinal)) return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// Render a candidate reference as <c>name(fkField)</c>, or <c>name(fieldA, fieldB)</c>
     /// for a composite reference — so two composite references sharing a first column still

@@ -37,7 +37,7 @@ public class M2MInheritedDeclaringEntityTests
         { "field.long": { "name": "id" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "NodeBase", "@isAbstract": true, "children": [
+      { "object.entity": { "name": "NodeBase", "abstract": true, "children": [
         { "relationship.association": { "name": "peers", "@cardinality": "many", "@objectRef": "NodeBase", "@through": "NodeLink", "@symmetric": true } }
       ]}},
       { "object.entity": { "name": "NodeLink", "children": [
@@ -59,7 +59,7 @@ public class M2MInheritedDeclaringEntityTests
         { "field.long": { "name": "id" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "ArticleBase", "@isAbstract": true, "children": [
+      { "object.entity": { "name": "ArticleBase", "abstract": true, "children": [
         { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "ArticleTag" } }
       ]}},
       { "object.entity": { "name": "Tag", "children": [
@@ -86,7 +86,7 @@ public class M2MInheritedDeclaringEntityTests
         { "field.long": { "name": "id" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "PostBase", "@isAbstract": true, "children": [
+      { "object.entity": { "name": "PostBase", "abstract": true, "children": [
         { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } }
       ]}},
       { "object.entity": { "name": "Tag", "children": [
@@ -185,7 +185,7 @@ public class M2MInheritedDeclaringEntityTests
         { "field.long": { "name": "id" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "NodeBase", "@isAbstract": true, "children": [
+      { "object.entity": { "name": "NodeBase", "abstract": true, "children": [
         { "relationship.association": { "name": "links", "@cardinality": "many", "@objectRef": "b::NodeBase", "@through": "L" } }
       ]}},
       { "object.entity": { "name": "L", "children": [

@@ -44,6 +44,7 @@ import type { MetaRoot } from "../../shared/meta-root.js";
 import type { MetaRelationship } from "./meta-relationship.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
 import { stripPackage } from "../../naming.js";
+import { resolveObjectRef } from "../../naming-refs.js";
 import { TYPE_OBJECT } from "../../shared/base-types.js";
 import { PACKAGE_SEPARATOR } from "../../shared/structural.js";
 
@@ -69,25 +70,34 @@ function refFkField(ref: MetaReferenceIdentity): string | undefined {
 }
 
 /**
- * The root entity a reference name denotes, or undefined. Mirrors the Java
- * reference's `M2MFields.findObject` exactly: a FULLY-QUALIFIED name (one
- * containing "::") resolves EXACTLY on the object's package-folded key, never a
- * bare-tail fallback; a bare name matches a short name, first match wins (the
- * bare-collision case is the deferred follow-up Java records as issue #174).
+ * The root entity a reference name denotes, or undefined — resolved by the ONE
+ * matcher the loader uses (`resolveObjectRef`, ADR-0041/0042): a fully-qualified
+ * name binds exactly on its resolution key, a bare name binds in the REFERRER's
+ * package.
  *
- * This exists so the SUBJECT comparison below can be made on object IDENTITY the
- * way Java's already is. A bare-name compare cannot tell `a::NodeBase` from
- * `b::NodeBase`, which made a genuine cross-package hetero M:N read as a
- * self-join the moment the subject set held two names.
+ * This exists so the SUBJECT comparison below can be made on object IDENTITY.
+ * A bare-name compare cannot tell `a::NodeBase` from `b::NodeBase`, which made a
+ * genuine cross-package hetero M:N read as a self-join the moment the subject
+ * set held two names — and the first-match-wins bare arm this used to carry
+ * (Java's deferred #174) bound a bare name to whichever same-short-named entity
+ * happened to load first, which is load-ORDER dependence, not a naming rule.
  */
-function findEntity(root: MetaRoot, name: string | undefined): MetaObject | undefined {
+function findEntity(
+  root: MetaRoot,
+  name: string | undefined,
+  referrerPkg: string,
+): MetaObject | undefined {
   if (name === undefined || name === "") return undefined;
-  const objects = root.objects();
-  if (name.includes(PACKAGE_SEPARATOR)) {
-    return objects.find((o) => o.resolutionKey() === name);
-  }
-  const bare = stripPackage(name);
-  return objects.find((o) => o.name === bare);
+  // ADR-0041/0042 through the single resolveObjectRef matcher — an FQN resolves
+  // exactly on its resolution key, a BARE name resolves in the REFERRER's
+  // package. The bare arm used to be `objects().find(o => o.name === bare)`,
+  // which took whichever same-short-named entity loaded first: a bare
+  // `@objectRef: "Tag"` on an abstract base in package `base` bound to
+  // `acme::Tag` merely because the acme source was read first. Callers pass the
+  // referrer that owns the name they are resolving — the DECLARING entity for
+  // the relationship's own @objectRef, the JUNCTION for its references' —
+  // because those are different packages whenever a base is inherited across one.
+  return resolveObjectRef(root, name, referrerPkg).node as MetaObject | undefined;
 }
 
 /**
@@ -124,14 +134,25 @@ export function deriveM2MFields(
       `relationship "${declaringEntity.name}.${rel.name}" is missing @through (required for M:N derivation)`,
     );
   }
-  // @through may be package-qualified (FQN); findObject is keyed by bare name,
-  // so fall back to the bare suffix after the last "::". Mirrors the
-  // resolvedTargetPkField fix (meta-identity.ts); without it a FQN @through
-  // (which passes the loader's own FQN-aware validation) fails to resolve here.
-  const junction = root.findObject(throughName)
-    ?? (throughName.includes("::")
-      ? root.findObject(throughName.slice(throughName.lastIndexOf("::") + 2))
-      : undefined);
+  // ADR-0041/0042 — resolve @through through the SAME matcher the loader uses
+  // (resolveObjectRef, via validation-passes' _findObject): an FQN resolves
+  // exactly on its resolution key, a bare name resolves package-locally.
+  //
+  // This used to be `root.findObject(fqn)` with a fall back to the bare suffix
+  // after the last "::". findObject is keyed by BARE name, so the FQN lookup
+  // always missed and the fallback took the FIRST entity with that short name —
+  // the wrong package's whenever two share one. `xpkg-m2n-collision` is exactly
+  // that model (`xpkg::store::AccountLink` and `xpkg::partner::AccountLink`),
+  // and it silently derived against the partner junction, whose references point
+  // nowhere near the navigating entity. The pairing then failed, so a valid
+  // cross-package M:N emitted no traversal route in TS and C# and failed the
+  // build in Java, Kotlin and Python.
+  //
+  // Note findEntity() below was ALREADY FQN-exact for the same reason (see its
+  // doc comment). The two halves of one function disagreed about how a
+  // package-qualified name resolves; only the junction half was wrong.
+  const referrerPkg = declaringEntity.package ?? declaringEntity.fileDefaultPackage ?? "";
+  const junction = resolveObjectRef(root, throughName, referrerPkg).node as MetaObject | undefined;
   if (junction === undefined) {
     throw new M2MDerivationError(
       `relationship "${declaringEntity.name}.${rel.name}" @through "${throughName}" does not resolve to an entity`,
@@ -180,16 +201,24 @@ export function deriveM2MFields(
   const isSubjectName = (name: string | undefined): boolean =>
     name !== undefined && subjectNames.includes(stripPackage(name));
 
+  // The junction owns its references' @references names, so those resolve in the
+  // JUNCTION's package; the relationship's own @objectRef resolves in the
+  // DECLARING entity's. Under `extends` across packages these differ, and using
+  // one for both is what bound a bare @objectRef to the wrong same-named entity.
+  const junctionPkg = junction.package ?? junction.fileDefaultPackage ?? "";
+  const refEntity = (r: MetaReferenceIdentity): MetaObject | undefined =>
+    findEntity(root, r.targetEntity, junctionPkg);
+
   // Defensive bare fallback when @objectRef does not resolve — loader validation
   // normally guarantees it does. Same carve-out the Java reference makes.
-  const targetEntityNode = findEntity(root, targetName);
+  const targetEntityNode = findEntity(root, targetName, referrerPkg);
   const isSelfJoin = targetEntityNode !== undefined
     ? isSubject(targetEntityNode)
     : isSubjectName(targetName);
 
   if (!isSelfJoin) {
     // Hetero: match each reference by the ENTITY OBJECT it resolves to.
-    const sourceRef = refs.find((r) => isSubject(findEntity(root, r.targetEntity)));
+    const sourceRef = refs.find((r) => isSubject(refEntity(r)));
     // Identity here too. The two searches are INDEPENDENT — nothing excludes
     // sourceRef from this one, unlike the directed self-join branch below — so a
     // bare compare could match the SOURCE-side reference again whenever the
@@ -199,7 +228,7 @@ export function deriveM2MFields(
     // broke that invariant. Java matches identity on both sides (findRefToSubject
     // + findRefToObject) and never had the hole.
     const targetRef = targetEntityNode !== undefined
-      ? refs.find((r) => findEntity(root, r.targetEntity) === targetEntityNode)
+      ? refs.find((r) => refEntity(r) === targetEntityNode)
       : refs.find((r) => r.targetEntity !== undefined && stripPackage(r.targetEntity) === stripPackage(targetName));
     const sourceField = sourceRef ? refFkField(sourceRef) : undefined;
     const targetField = targetRef ? refFkField(targetRef) : undefined;

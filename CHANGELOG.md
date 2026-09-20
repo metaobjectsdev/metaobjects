@@ -15,6 +15,49 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Changed
 
+- **BREAKING (metadata): a M:N junction that cannot be PAIRED is now a load error in every
+  port — previously-loading metadata stops loading.** `@through` has always been documented
+  as a junction declaring "two `identity.reference` children, **one per FK side**", but the
+  loader only ever counted them; it never checked what they point at. A junction whose two
+  references name some other pair of entities therefore loaded perfectly clean, and then
+  behaved differently in every port: TypeScript and C# warned and emitted no traversal route
+  at all — the endpoint simply 404s, with nothing in the build output a CI gate would fail
+  on — while Java, Kotlin and Python threw and failed the build. One input, two contracts,
+  and the quiet arm was the dangerous one. Owner ruling 2026-09-20: the MODEL is what is
+  wrong, so every port now rejects it at LOAD with `ERR_INVALID_RELATIONSHIP`.
+
+  **This is a correction, not a redesign, and it ships as a PATCH under the three-part test
+  in `docs/compatibility-policy.md`:** the form contradicted the documented contract; it
+  produced no correct outcome for anyone, in any port (a traversal that 404s is not a
+  working outcome); and the load error names the exact repair — which entity, which
+  relationship, which junction, and which reference is missing. `metamodelVersion` stays
+  `1.0`: this lives in loader validation and has no registry-manifest footprint, which is
+  precisely the class the version gate cannot see. **If your model has such a junction it
+  will stop loading, and the fix is to point one of its `identity.reference` children at
+  the navigating entity.**
+
+  The loader runs the REAL FK derivation and converts its failure, rather than
+  re-implementing the pairing — the defect class being closed here is "two parts of the
+  pipeline disagree", so a second opinion would have been the wrong shape. Scope mirrors
+  codegen's own iteration exactly: every concrete, non-projection object crossed with its
+  effective relationships, NOT deduped by declaration, because pairing is a property of the
+  navigating entity and an inherited M:N can pair from one subtype and not another. Gated
+  cross-port by `fixtures/conformance/error-relationship-m2m-junction-unpairable/`.
+
+- **A cross-package M:N bound the WRONG junction in TypeScript and C#.** Found by the rule
+  above, which made it fail loudly instead of silently. Both ports resolved `@through`
+  through a bare-name lookup that a package-qualified name could never match, then fell
+  back to the first entity with that short name — so with two same-short-named junctions in
+  different packages (the shape `xpkg-m2n-collision` has covered all along) the derivation
+  paired against the wrong one and gave up, emitting no traversal route for a perfectly
+  valid model. Java was already FQN-exact here and unaffected. All four now resolve through
+  the one ADR-0041/0042 matcher the loader itself uses, which also closes the deferred
+  bare-name collision gap (#174): a bare `@objectRef`/`@through` now binds in the
+  **referrer's** package instead of whichever same-named entity happened to load first —
+  load-order dependence, not a naming rule. A junction reference's `@references` resolves in
+  the junction's package and the relationship's own `@objectRef` in the declaring entity's,
+  because under `extends` across packages those differ.
+
 - **BREAKING (generated routes): the REST collection URL is now the entity name
   `snake_case`d then pluralized, in every port.** One rule replaces five. The ports
   agreed only on single regular words — `Author` → `authors` under every old rule, and

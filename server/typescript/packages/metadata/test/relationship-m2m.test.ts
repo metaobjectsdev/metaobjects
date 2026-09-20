@@ -632,7 +632,7 @@ describe("FR-017 #368 order-dependence regressions (declaring entity vs. visitin
       { "object.entity": { name: "Node", "extends": "NodeBase", children: [
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
-      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+      { "object.entity": { name: "NodeBase", abstract: true, children: [
         { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "NodeBase",
             "@through": "NodeLink", "@symmetric": true } } ] } },
       { "object.entity": { name: "NodeLink", children: [
@@ -673,7 +673,7 @@ describe("FR-017 #368 order-dependence regressions (declaring entity vs. visitin
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
     ] } };
     const baseDoc = { "metadata.root": { package: "base", children: [
-      { "object.entity": { name: "WeekBase", "@isAbstract": true, children: [
+      { "object.entity": { name: "WeekBase", abstract: true, children: [
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "Tag" } } ] } },
       { "object.entity": { name: "Tag", children: [
         { "field.long": { name: "id" } },
@@ -732,7 +732,7 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
       { "object.entity": { name: "Node", "extends": "NodeBase", children: [
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
-      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+      { "object.entity": { name: "NodeBase", abstract: true, children: [
         { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "NodeBase",
             "@through": "NodeLink", "@symmetric": true } } ] } },
       { "object.entity": { name: "NodeLink", children: [
@@ -765,7 +765,7 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
       { "object.entity": { name: "Person", "extends": "PartyBase", children: [
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
-      { "object.entity": { name: "PartyBase", "@isAbstract": true, children: [
+      { "object.entity": { name: "PartyBase", abstract: true, children: [
         { "relationship.association": { name: "follows", "@cardinality": "many", "@objectRef": "PartyBase",
             "@through": "Follow", "@sourceRefField": "followerId" } } ] } },
       { "object.entity": { name: "Follow", children: [
@@ -794,7 +794,7 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
       { "object.entity": { name: "Article", "extends": "ArticleBase", children: [
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
-      { "object.entity": { name: "ArticleBase", "@isAbstract": true, children: [
+      { "object.entity": { name: "ArticleBase", abstract: true, children: [
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag",
             "@through": "ArticleTag" } } ] } },
       { "object.entity": { name: "Tag", children: [
@@ -829,7 +829,7 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
       { "object.entity": { name: "Post", "extends": "PostBase", children: [
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
-      { "object.entity": { name: "PostBase", "@isAbstract": true, children: [
+      { "object.entity": { name: "PostBase", abstract: true, children: [
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag",
             "@through": "PostTag" } } ] } },
       { "object.entity": { name: "Tag", children: [
@@ -880,7 +880,7 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
       { "object.entity": { name: "Node", "extends": "a::NodeBase", children: [
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
-      { "object.entity": { name: "NodeBase", "@isAbstract": true, children: [
+      { "object.entity": { name: "NodeBase", abstract: true, children: [
         { "relationship.association": { name: "links", "@cardinality": "many",
             "@objectRef": "b::NodeBase", "@through": "L" } } ] } },
       { "object.entity": { name: "L", children: [
@@ -957,7 +957,7 @@ describe("FR-017 deriveM2MFields uses the DECLARING entity, not the visiting one
         { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "Sub",
             "@through": "SubLink", "@symmetric": true } },
         { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
-      { "object.entity": { name: "Base", "@isAbstract": true, children: [
+      { "object.entity": { name: "Base", abstract: true, children: [
         { "relationship.association": { name: "peers", "@cardinality": "many", "@objectRef": "Base",
             "@through": "BaseLink", "@symmetric": true } } ] } },
       { "object.entity": { name: "SubLink", children: [

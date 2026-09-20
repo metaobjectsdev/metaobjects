@@ -101,17 +101,41 @@ public static class M2MDerivation
     public static MetaObject? ResolveEntity(MetaRoot root, string? name) => FindEntity(root, name);
 
     /// <summary>
+    /// The root entity a reference name denotes, or <c>null</c> — resolved by the ONE
+    /// matcher the loader uses (<see cref="NamingRefs.ResolveObjectRef"/>, ADR-0041/0042):
+    /// an FQN binds exactly on its resolution key, a BARE name binds in the REFERRER's
+    /// package. Used only INTERNALLY by <see cref="DeriveM2MFields"/> — <see cref="FindEntity(MetaRoot, string?)"/>
+    /// (no referrer) is the pre-existing, deliberately narrower matcher <see cref="ResolveEntity"/>
+    /// exposes to codegen; the two are NOT unified here, to avoid changing that public
+    /// contract in the same change as the loader/derivation alignment.
+    ///
+    /// This exists so the SUBJECT comparison can be made on object IDENTITY. A bare-name
+    /// compare cannot tell <c>a::NodeBase</c> from <c>b::NodeBase</c>, which made a
+    /// genuine cross-package hetero M:N read as a self-join the moment the subject set
+    /// held two names — and the first-match-wins bare arm this used to carry (a bare
+    /// <c>@objectRef</c> on an abstract base bound to whichever same-short-named entity
+    /// happened to load first, which is load-ORDER dependence, not a naming rule).
+    /// Callers pass the referrer that owns the name they are resolving — the DECLARING
+    /// entity for the relationship's own <c>@objectRef</c>/<c>@through</c>, the JUNCTION
+    /// for its references' <c>@references</c> — because those are different packages
+    /// whenever a base is inherited across one.
+    /// </summary>
+    private static MetaObject? FindEntity(MetaRoot root, string? name, string referrerPkg)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        return NamingRefs.ResolveObjectRef(root, name, referrerPkg) as MetaObject;
+    }
+
+    /// <summary>
     /// The root entity a reference name denotes, or <c>null</c>. Mirrors the Java
     /// reference's <c>M2MFields.findObject</c> exactly: a FULLY-QUALIFIED name (one
     /// containing <c>::</c>) resolves EXACTLY on the object's package-folded key, never
     /// a bare-tail fallback; a bare name matches a short name, first match wins (the
     /// bare-collision case is the deferred follow-up Java records as issue #174).
     ///
-    /// This exists so the junction matches can be made on object IDENTITY the way Java's
-    /// already are. A bare-name compare cannot tell <c>a::NodeBase</c> from
-    /// <c>b::NodeBase</c>, which made a genuine cross-package hetero M:N read as a
-    /// self-join the moment the subject set held two names — and, once the subject side
-    /// alone was fixed, made the target search re-match the source-side reference.
+    /// This is the matcher <see cref="ResolveEntity"/> exposes to codegen — deliberately
+    /// narrower than <see cref="FindEntity(MetaRoot, string?, string)"/> above, which the
+    /// DERIVATION uses internally and which IS referrer-package aware (ADR-0041/0042).
     /// </summary>
     private static MetaObject? FindEntity(MetaRoot root, string? name)
     {
@@ -161,7 +185,22 @@ public static class M2MDerivation
                 $"relationship \"{declaring.Name}.{rel.Name}\" is missing @through (required for M:N derivation)");
         }
 
-        var junction = root.FindObject(throughName);
+        // ADR-0041/0042 — resolve @through through the SAME matcher the loader uses
+        // (NamingRefs.ResolveObjectRef, via ValidationPasses' IsJunctionShapeErrorOwnedByRuleD
+        // and rule (c)'s FindObject): an FQN resolves exactly on its resolution key, a bare
+        // name resolves in the DECLARING entity's package.
+        //
+        // This used to be `root.FindObject(throughName)`, keyed by BARE name only (an FQN
+        // input never matched, since a node's own `Name` is always bare), so a package-
+        // qualified @through always missed and any bare collision took the FIRST entity
+        // with that short name — the wrong package's whenever two share one.
+        // `xpkg-m2n-collision`-shaped models (two same-short-named junctions in different
+        // packages) silently derived against the wrong one, whose references point nowhere
+        // near the navigating entity — the pairing then failed, so a valid cross-package
+        // M:N emitted no traversal route (this port and TS) or failed the build (Java,
+        // Kotlin, Python).
+        string referrerPkg = NamingRefs.EffectivePackage(declaring);
+        var junction = NamingRefs.ResolveObjectRef(root, throughName, referrerPkg) as MetaObject;
         if (junction is null)
         {
             throw new M2MDerivationException(
@@ -185,22 +224,31 @@ public static class M2MDerivation
 
         // Defensive bare fallback when @objectRef does not resolve — loader validation
         // normally guarantees it does. Same carve-out the Java reference makes.
-        var targetEntityNode = FindEntity(root, targetName);
+        // @objectRef resolves in the DECLARING entity's package (referrerPkg), same as
+        // @through above.
+        var targetEntityNode = FindEntity(root, targetName, referrerPkg);
         bool isSelfJoin = targetEntityNode is not null
             ? IsSubject(targetEntityNode)
             : IsSubjectName(targetName);
 
+        // The junction owns its references' @references names, so those resolve in the
+        // JUNCTION's package; the relationship's own @objectRef resolves in the
+        // DECLARING entity's (referrerPkg, above). Under `extends` across packages these
+        // differ, and using one for both is what bound a bare @objectRef to the wrong
+        // same-named entity.
+        string junctionPkg = NamingRefs.EffectivePackage(junction);
+
         if (!isSelfJoin)
         {
             // Hetero: match each reference by the ENTITY OBJECT it resolves to.
-            var sourceRef = refs.FirstOrDefault(r => IsSubject(FindEntity(root, r.TargetEntity)));
+            var sourceRef = refs.FirstOrDefault(r => IsSubject(FindEntity(root, r.TargetEntity, junctionPkg)));
             // Identity here too. The two searches are INDEPENDENT — nothing excludes
             // sourceRef from this one, unlike the directed self-join branch below — so a
             // bare compare could match the SOURCE-side reference again whenever the
             // target's short name equals the source's, and silently return (srcFk, srcFk).
             // Java matches identity on both sides (findRefToSubject + findRefToObject).
             var targetRef = targetEntityNode is not null
-                ? refs.FirstOrDefault(r => ReferenceEquals(FindEntity(root, r.TargetEntity), targetEntityNode))
+                ? refs.FirstOrDefault(r => ReferenceEquals(FindEntity(root, r.TargetEntity, junctionPkg), targetEntityNode))
                 : refs.FirstOrDefault(
                     r => r.TargetEntity is not null && StripPackage(r.TargetEntity) == StripPackage(targetName));
             var sourceField = sourceRef is not null ? RefFkField(sourceRef) : null;
