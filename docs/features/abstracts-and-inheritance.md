@@ -218,8 +218,11 @@ Every subtype persists to the base's one table (`auths`). Subtype-only columns
 a row of any other subtype stores `NULL` there, **even when the field is
 `@required`** on its subtype (a required rule can't hold across the shared table, so
 it is dropped on the folded column; an enum `CHECK` still passes because `NULL IN
-(...)` is `NULL`, not false). The base row shape is the **union** of all subtype
-columns. Subtype entities emit **no** table of their own.
+(...)` is `NULL`, not false). The same applies to `@default` — a subtype-only
+column's default is suppressed on the folded column (an INSERT by another subtype
+omits the column and must stay NULL, not take a default), though the base entity's
+own columns keep their defaults because every row has them. The base row shape is
+the **union** of all subtype columns. Subtype entities emit **no** table of their own.
 
 A reference **onto** a subtype (`@references: BridgeAuth`) is a foreign key into the
 base's table, `auths`. An M:N relationship onto a subtype traverses that same table and

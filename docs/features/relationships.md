@@ -243,6 +243,78 @@ See [ADR-0029](../../spec/decisions/ADR-0029-entity-child-extends-and-via-infere
 Amendment 1 for the full ladder specification, including why suffix-stripping applies
 to candidates only.
 
+## Cardinality-one relationships on TPH subtypes or abstract levels
+
+A `@cardinality: one` relationship may be declared on a TPH subtype or on an abstract
+level between the base and a subtype. Both cases are treated the same way:
+
+- The relationship is **folded onto the discriminator base's `relations()` block**, the
+  same way the subtype's own columns are folded into the base's table.
+- **Abstract levels with no concrete descendant beneath them file nothing.** An abstract
+  level's FK column reaches the base's table only through a concrete @discriminatorValue
+  descendant, so a concrete descendant's RESOLVING walk will file the identical entry
+  again — the dedupe collapses both copies. With no concrete descendant there is no
+  folded column, so an entry would name a column the table does not have. `meta gen`
+  exits 0 but the generated relations() block would fail to compile.
+
+```yaml
+# Base entity with a discriminator and a subtype-declared belongs-to.
+- object.entity:
+    name: Auth                      # the TPH base
+    "@discriminator": type
+    children:
+      - source.rdb: { "@table": auths }
+      - field.long: { name: id }
+      - field.enum:
+          name: type
+          "@values": ["Bridge", "Copay"]
+      - field.long: { name: approverId }  # FK to the approver
+      - identity.reference:
+          name: fkApprover
+          fields: approverId
+          references: User
+      - identity.primary: { "@fields": id }
+
+    - object.entity:
+        name: BridgeAuth                # subtype declares the belongs-to
+        extends: Auth
+        "@discriminatorValue": Bridge
+        children:
+          - relationship.association:
+              name: approver
+              objectRef: User           # navigable as `one(users, ...)`
+              cardinality: one
+              sourceRefField: fkApprover
+
+    - object.entity:
+        name: User
+        children:
+          - source.rdb: { "@table": users }
+          - field.long: { name: id }
+          - identity.primary: { "@fields": id }
+```
+
+In the generated TypeScript Drizzle schema, the `auths` table carries both `approverId`
+(folded from BridgeAuth) and the relations() block emits it on the Auth base:
+
+```ts
+// generated schema mixin on Auth (not on BridgeAuth, which has no module)
+export const authRelations = relations(auth, ({ one }) => ({
+  approver: one(users, {
+    fields: [auth.approverId],
+    references: [users.id]
+  }),
+}));
+```
+
+The same rule governs **concrete subtypes and abstract mid-level declarers alike**:
+every relationship resolved by a concrete subtype is reached through that subtype's
+RESOLVING walk and files an entry under the base's key, with structurally identical
+entries deduplicated. For M:N relationships (which mount under each subtype's segment),
+entries stay keyed per declaring entity so routes can mount them per-subtype; only
+cardinality-one entries — which render in the shared relations() block on the base —
+are re-keyed to the base.
+
 ## Inheriting an M:N relationship through `extends`
 
 An M:N relationship declared on an abstract base is visible on every entity that

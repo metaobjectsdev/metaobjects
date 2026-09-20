@@ -32,6 +32,9 @@
 //      every M:N relationship it has serves `<path>/:id/<relation>`. A TPH subtype serves
 //      them under its base's path at `/<discriminatorValue lowercased>` (the FR-017
 //      contract, and the maintainer's ruling for an M:N declared on a subtype).
+//   6. Relations. Every `@cardinality: one` relationship of every table-backed object
+//      (rule 2's walk) is a navigation in the relations() block of its STORING object's
+//      module — the base's, for a relationship declared anywhere inside a TPH hierarchy.
 
 import {
   type MetaObject,
@@ -40,6 +43,9 @@ import {
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
   RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_CARDINALITY,
+  CARDINALITY_ONE,
   DEFAULT_COLUMN_NAMING_STRATEGY,
   isMetaObject,
   isMetaSource,
@@ -262,4 +268,62 @@ export function expectedRoutes(root: MetaRoot, pathOf: (obj: MetaObject) => stri
     }
   }
   return routes;
+}
+
+/** One entry a generated `relations()` block must carry. */
+export interface ExpectedRelation {
+  /** The entity whose MODULE renders the block — not necessarily the declaring entity. */
+  onEntity: string;
+  /** The relationship name; the object-literal key inside `relations()`. */
+  name: string;
+  targetEntity: string;
+  why: string;
+}
+
+/**
+ * Rule 6. A `@cardinality: one` relationship must appear in the `relations()` block of
+ * the module that RENDERS it. That is NOT always the entity that declares it: a TPH
+ * subtype has no module of its own, so a relationship declared on a subtype — or on an
+ * abstract mid level — renders on the discriminator BASE's module. Restated here via
+ * `storingObject`, independently of how codegen keys its own relation map, which is the
+ * point: keying that map by the declaring entity stranded these entries and emitted
+ * nothing, with no error to notice.
+ *
+ * The walk is `tableBackedObjects` (rule 2's), NOT `servedObjects`: a relations() block
+ * renders only in a module that emits a Drizzle table, and two legal shapes never emit
+ * one. Demanding a navigation of either would be a FALSE POSITIVE on a legal model —
+ * the failure mode that teaches people to ignore an oracle — so each exclusion is
+ * stated with the model property that causes it:
+ * - a view-backed PROJECTION: its source's `@kind` is read-only, so no object in its
+ *   storing walk has a writable source (a projection may carry a belongs-to of its
+ *   own, since its `extends` may only target another projection);
+ * - an object whose STORING object is an ABSTRACT discriminator base: abstract ⇒ no
+ *   table even with a source, and the subtypes fold into a table that never renders,
+ *   so nothing in the hierarchy emits a relations() block at all.
+ *
+ * Deduped by (onEntity, name): relationships RESOLVE, so a base-declared one is reached
+ * again through every subtype and maps to the same rendering module each time.
+ */
+export function expectedRelations(root: MetaRoot): ExpectedRelation[] {
+  const byKey = new Map<string, ExpectedRelation>();
+  for (const { obj, storing } of tableBackedObjects(root)) {
+    const onEntity = storing.name;
+    // ADR-0039: resolving — cardinality and @objectRef may be inherited via extends.
+    for (const rel of obj.relationships()) {
+      if (rel.attr(RELATIONSHIP_ATTR_THROUGH) !== undefined) continue; // M:N is the routes tier
+      if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_ONE) continue;
+      const ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+      if (typeof ref !== "string") continue;
+      const targetEntity = stripPackage(ref);
+      const key = `${onEntity}.${rel.name}`;
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        onEntity,
+        name: rel.name,
+        targetEntity,
+        why: `${obj.name}.${rel.name} belongs-to renders on ${onEntity}`,
+      });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => `${a.onEntity}.${a.name}`.localeCompare(`${b.onEntity}.${b.name}`));
 }

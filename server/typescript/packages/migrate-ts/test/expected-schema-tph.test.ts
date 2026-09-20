@@ -71,6 +71,58 @@ describe("buildExpectedSchema — TPH single table", () => {
     expect(copay.nullable).toBe(true);
   });
 
+  // A TPH subtype-only column must carry NO DB default, for the same reason it is
+  // forced nullable: every row of every OTHER subtype stores NULL there. A DEFAULT
+  // defeats that — a sibling subtype's INSERT omits the column and silently takes
+  // the default instead of NULL. codegen states this intent outright (the
+  // `forceNullable` parameter in drizzle-schema.ts: "force nullable (drop
+  // .notNull()) and suppress any DB default") and honours it, so migrate emitting
+  // one puts a DEFAULT in the database that the app's Drizzle schema does not know
+  // about. `verify --db` cannot catch the disagreement because migrate and verify
+  // share this expected schema.
+  test("subtype-only columns carry NO default, even when the field declares one", async () => {
+    const result = await new MetaDataLoader().load([
+      new InMemoryStringSource(
+        JSON.stringify({
+          "metadata.root": {
+            package: "demo",
+            children: [
+              { "object.entity": { name: "Doc", "@discriminator": "kind", children: [
+                { "source.rdb": { "@table": "docs" } },
+                { "field.long": { name: "id" } },
+                { "field.enum": { name: "kind", "@values": ["Draft", "Final"] } },
+                { "field.string": { name: "title", "@required": true, "@maxLength": 80, "@default": "untitled" } },
+                { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+              ]}},
+              { "object.entity": { name: "DraftDoc", extends: "Doc", "@discriminatorValue": "Draft", children: [
+                { "field.int": { name: "revision", "@required": true, "@default": "1" } },
+              ]}},
+              { "object.entity": { name: "FinalDoc", extends: "Doc", "@discriminatorValue": "Final", children: [
+                { "field.string": { name: "approver", "@maxLength": 80, "@default": "nobody" } },
+              ]}},
+            ],
+          },
+        }),
+      ),
+    ]);
+    if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("; "));
+    const snap = buildExpectedSchema(result.root, { dialect: "postgres" });
+    const docs = snap.tables.find((t) => t.name === "docs")!;
+
+    const revision = docs.columns.find((c) => c.name === "revision")!;
+    expect(revision.nullable).toBe(true);
+    expect(revision.default).toBeUndefined();
+
+    const approver = docs.columns.find((c) => c.name === "approver")!;
+    expect(approver.nullable).toBe(true);
+    expect(approver.default).toBeUndefined();
+
+    // The BASE's own column is unaffected: every row has it, so its default stands.
+    const title = docs.columns.find((c) => c.name === "title")!;
+    expect(title.nullable).toBe(false);
+    expect(title.default).toEqual({ kind: "literal", value: "untitled" });
+  });
+
   test("base-owned required column keeps its NOT NULL", async () => {
     const snap = buildExpectedSchema(await loadTph(), { dialect: "postgres" });
     const auths = snap.tables.find((t) => t.name === "auths")!;
