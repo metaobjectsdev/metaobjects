@@ -36,6 +36,25 @@ fi
 
 run_ts() {
   echo "==> TypeScript persistence conformance"
+  # BUILD FIRST — this is load-bearing, not a convenience.
+  #
+  # The feature-combination gate runs a real `tsc --strict` over the generated
+  # tree WITH the routes tier, so it resolves `@metaobjectsdev/*` through the
+  # `types` export condition, which points into `dist/`. Bun's own resolution
+  # takes the `bun` condition straight to `src/` and never needs `dist` at all —
+  # so every bun test in this package passes without it, and a dev box that has
+  # built even once stays green forever. A cold runner cannot: the workflow
+  # installs but never builds, so `tsc` reported `Cannot find module
+  # '@metaobjectsdev/runtime-ts/drizzle-fastify'` for all 23 models.
+  #
+  # It went unseen because the gate landed (2026-09-19) while GitHub Actions was
+  # disabled, so its first hosted run was the v1.0.5-rc.3 tag — every earlier
+  # release had run this lane green without the gate existing.
+  #
+  # The build belongs HERE rather than in the workflow, so a local
+  # `scripts/integration-test.sh ts` proves the same thing CI does. Warmth is
+  # what hid this; a caller that skips the build gets it back.
+  ( cd "$REPO_ROOT" && bun run --filter '*' build ) || { FAIL=1; return; }
   ( cd server/typescript/packages/integration-tests && bun test ) || FAIL=1
 }
 
