@@ -156,6 +156,20 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **C#: a `field.enum` that `extends` another entity's enum field generated code that does
+  not compile.** `extends` on a `field.enum` has two very different readings and only one
+  materializes a type: FR-019's shared enum is a ROOT-level ABSTRACT `field.enum`, while a
+  field extending another ENTITY's concrete field — the ordinary way a projection restates a
+  column it reads, `ShipmentSummary.status extends "Shipment.status"` — shares nothing. The
+  C# type-name rule keyed on "has a super" rather than on the shared-declaration predicate,
+  so the second case took the super's bare simple name and the entity nested
+  `public enum Status` beside its own `public Status Status { get; set; }` — **CS0102**, a
+  member and a nested type with one name. `meta gen` exits 0; the adopter's build is the
+  first thing that disagrees. The name now comes from the SAME predicate that decides
+  materialization, so a reference always resolves to a type that exists. Only the
+  non-shared case changes spelling (to the entity-qualified `<Entity><Field>`); shared and
+  `@provided` enums are byte-identical.
+
 - **C#: `dotnet meta gen` keyed its hash manifest by the OUT DIR, so a second `--out` under
   one project could destroy a hand edit in the first.** `.gen-state/.hashes.json` is ANCHORED
   on the project — the gen-state directory is derived from it and cannot be configured per

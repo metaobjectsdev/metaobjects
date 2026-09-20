@@ -93,13 +93,11 @@ public class Fr019SharedEnumCodegenTests
         }
     }
 
-    [Fact]
-    public void Shared_enum_set_compiles()
+    /// <summary>Compile the emitted set with the real compiler and fail naming every
+    /// diagnostic. A generated tree that parses but does not BUILD is the failure mode
+    /// these tests exist for — `gen` exits 0 either way.</summary>
+    private static void AssertCompiles(IReadOnlyList<EmittedFile> files, string label)
     {
-        var ctx = Ctx(Load(SharedModel));
-        // §A6 (task 4) — the entities now reference the names artifacts.
-        var files = new EntityGenerator().Generate(ctx)
-            .Concat(new NamesGenerator().Generate(ctx)).ToList();
         var trees = files.Select(f =>
             Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
                 f.Content,
@@ -110,13 +108,79 @@ public class Fr019SharedEnumCodegenTests
             .Select(p => (Microsoft.CodeAnalysis.MetadataReference)Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(p))
             .ToList();
         var comp = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
-            "fr019shared_" + Guid.NewGuid().ToString("N"),
+            $"fr019{label}_" + Guid.NewGuid().ToString("N"),
             trees, refs,
             new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
         var errors = comp.GetDiagnostics()
             .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
-        Assert.True(errors.Count == 0, "shared-enum set should compile, got: " + string.Join("; ", errors));
+        Assert.True(errors.Count == 0, $"{label} set should compile, got: " + string.Join("; ", errors));
+    }
+
+    [Fact]
+    public void Shared_enum_set_compiles()
+    {
+        var ctx = Ctx(Load(SharedModel));
+        // §A6 (task 4) — the entities now reference the names artifacts.
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx)).ToList();
+        AssertCompiles(files, "shared");
+    }
+
+    // ---- a super that is NOT a shared declaration ----
+    //
+    // `extends` on a field.enum has two very different readings, and only one of them
+    // materializes a type. FR-019's shared enum is a ROOT-level ABSTRACT field.enum
+    // (ResolveSharedEnumDecl requires both). A field that extends another ENTITY's
+    // concrete field — the ordinary way a projection restates a column it reads, e.g.
+    // `ShipmentSummary.status extends "Shipment.status"` — resolves a super but shares
+    // nothing: no Enums.g.cs entry is emitted for it and no type of that name exists.
+    //
+    // EnumTypeName used to take the super's simple name unconditionally, so such a field
+    // nested `public enum Status` inside a class that also declares `public Status Status
+    // { get; set; }` — CS0102, a member and a nested type with one name. `meta gen` exits
+    // 0 and the adopter's build is the first thing that disagrees.
+
+    private const string ProjectionModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Shipment", "children": [
+        { "source.rdb": { "@table": "shipments" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "status", "@values": ["DRAFT", "BOOKED"] } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } }
+      ]}},
+      { "object.projection": { "name": "ShipmentSummary", "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_shipment_summary" } },
+        { "field.long": { "name": "id", "extends": "Shipment.id" } },
+        { "field.enum": { "name": "status", "extends": "Shipment.status" } },
+        { "identity.primary": { "name": "pk", "extends": "Shipment.pk" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_field_extending_another_entitys_enum_keeps_the_entity_qualified_type_name()
+    {
+        var files = new EntityGenerator().Generate(Ctx(Load(ProjectionModel))).ToList();
+        var summary = Assert.Single(files, f => f.Path == "ShipmentSummary.g.cs");
+
+        // Entity-qualified, so it cannot collide with the property of the same name.
+        Assert.Contains("public enum ShipmentSummaryStatus", summary.Content);
+        Assert.Contains("ShipmentSummaryStatus? Status { get; set; }", summary.Content);
+        // The bare super name would be BOTH the nested type and the property.
+        Assert.DoesNotContain("public enum Status ", summary.Content);
+
+        // Nothing is shared, so nothing is materialized centrally either.
+        Assert.DoesNotContain(files, f => f.Path == "Enums.g.cs");
+    }
+
+    [Fact]
+    public void The_projection_set_compiles()
+    {
+        var ctx = Ctx(Load(ProjectionModel));
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx)).ToList();
+        AssertCompiles(files, "projection");
     }
 
     private const string ProvidedModel = """

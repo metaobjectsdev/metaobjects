@@ -6,6 +6,7 @@
 // use the modern DateOnly/TimeOnly/DateTime trio.
 
 using MetaObjects.Meta;
+using MetaObjects.Codegen.Generators;
 using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Identity.IdentityConstants;
@@ -1015,15 +1016,27 @@ public static class CSharpNaming
     /// <summary>
     /// The C# enum type name for an enum-subtype field:
     /// <list type="bullet">
-    ///   <item>When the field <c>extends:</c> an abstract super, use the PascalCased super name
-    ///   (one enum type shared by all fields that extend it).</item>
+    ///   <item>When the field extends a SHARED declaration — a root-level abstract
+    ///   <c>field.enum</c> (FR-019) — use the PascalCased super name, the one type
+    ///   materialized in <c>Enums.g.cs</c> (or provided externally) and shared by every
+    ///   field that extends it.</item>
     ///   <item>Otherwise use <c>&lt;EntityPascal&gt;&lt;FieldPascal&gt;</c>.</item>
     /// </list>
+    /// <para>
+    /// The predicate is <see cref="Fr019SharedEnum.ResolveSharedEnumDecl"/> — the SAME one
+    /// that decides whether a type is materialized — because a name and a declaration have
+    /// to agree. Keying on "has a super" instead let a field that extends another ENTITY's
+    /// concrete field (the ordinary way a projection restates a column it reads, e.g.
+    /// <c>ShipmentSummary.status extends "Shipment.status"</c>) take the super's bare
+    /// simple name: nothing shared was materialized, and the entity nested
+    /// <c>public enum Status</c> beside its own <c>public Status Status { get; set; }</c> —
+    /// CS0102. `gen` exits 0 and the adopter's build is the first thing that disagrees.
+    /// </para>
     /// </summary>
     public static string EnumTypeName(MetaObject entity, MetaField field)
     {
-        if (field.ResolveSuper() is { } super)
-            return Pascal(super.Name);
+        if (Fr019SharedEnum.ResolveSharedEnumDecl(field) is { } shared)
+            return Pascal(shared.Name);
         return Pascal(entity.Name) + Pascal(field.Name);
     }
 }
