@@ -89,6 +89,9 @@ class GeneratedM2mControllerHarness(
     private val postControllerClass: Class<*>
     private val personControllerClass: Class<*>
     private val accountControllerClass: Class<*> // FW-8 TPH base
+    // PostCategory — no relationship; mounted so the GENERATED controller's route PATH
+    // is exercised over HTTP rather than only asserted as a string.
+    private val postCategoryControllerClass: Class<*>
 
     /** The generated `<Entity>Table` singletons, in dependency-safe create order. */
     private val tables: List<Table>
@@ -96,6 +99,7 @@ class GeneratedM2mControllerHarness(
     private var postMvc: MockMvc? = null
     private var personMvc: MockMvc? = null
     private var accountMvc: MockMvc? = null
+    private var postCategoryMvc: MockMvc? = null
     private var activeContainer: PostgresContainer? = null
 
     init {
@@ -147,12 +151,16 @@ class GeneratedM2mControllerHarness(
         postControllerClass = classLoader.loadClass("$ENTITY_PKG.PostController")
         personControllerClass = classLoader.loadClass("$ENTITY_PKG.PersonController")
         accountControllerClass = classLoader.loadClass("$ENTITY_PKG.AccountController")
+        postCategoryControllerClass = classLoader.loadClass("$ENTITY_PKG.PostCategoryController")
         // SchemaUtils.create resolves FK dependency order itself, but list the referenced
         // tables (posts/tags/people/accounts) before the junctions for readability. FW-8:
         // MemberAccount/GuestAccount fold into AccountTable — no table of their own.
         tables = listOf(
             "PostTable", "TagTable", "PersonTable", "PostTagTable", "FollowTable", "FriendshipTable",
             "AccountTable", "AccountTagTable", "ScopedAccountTagTable", "MemberAccountTagTable", "PostReviewerTable",
+            // PostCategoryTable maps to the physical "blog_categories" (its @table), which
+            // is deliberately unlike its route segment.
+            "PostCategoryTable",
         ).map { loadTable(it) }
     }
 
@@ -180,12 +188,17 @@ class GeneratedM2mControllerHarness(
         // FW-8: the TPH base controller takes the SAME (ObjectMapper, Validator) shape —
         // it embeds its own Exposed queries, so there is no repository ctor arg to widen.
         accountMvc = standalone(accountControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
+        postCategoryMvc = standalone(postCategoryControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
     }
 
     /** Dispatch to the controller owning the source URL segment. */
     fun exchange(method: String, path: String): Response {
         val mvc = (
-            if (path.startsWith("/api/posts")) postMvc
+            // post_categories is checked FIRST and explicitly. It does not actually match
+            // "/api/posts" ('_' != 's'), but relying on that near-miss would be a trap for
+            // the next entity whose name shares a prefix.
+            if (path.startsWith("/api/post_categories")) postCategoryMvc
+            else if (path.startsWith("/api/posts")) postMvc
             else if (path.startsWith("/api/accounts")) accountMvc
             else personMvc
             ) ?: error("reset() must be called before exchange()")
@@ -247,6 +260,7 @@ class GeneratedM2mControllerHarness(
         // strict parameter-type inference (karma is INTEGER, not BIGINT — bind()'s Number
         // branch would call setLong).
         insertAccounts(conn)
+        exec("blog_categories", "id", "name")
         exec("account_tags", "accountId", "tagId")
         exec("scoped_account_tags", "accountId", "tagId")
         exec("member_account_tags", "accountId", "tagId")

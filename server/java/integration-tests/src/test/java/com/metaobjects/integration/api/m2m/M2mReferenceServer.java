@@ -101,6 +101,9 @@ final class M2mReferenceServer implements AutoCloseable {
                 + "PRIMARY KEY (\"accountId\", \"tagId\"))");
             st.execute("CREATE TABLE \"post_reviewers\" (\"postId\" BIGINT NOT NULL, \"accountId\" BIGINT NOT NULL, "
                 + "PRIMARY KEY (\"postId\", \"accountId\"))");
+            // PostCategory — route-spelling gate. Physical name deliberately unlike
+            // its route segment (/post_categories), so echoing the table cannot pass.
+            st.execute("CREATE TABLE \"blog_categories\" (id BIGINT PRIMARY KEY, name VARCHAR(80) NOT NULL)");
         }
     }
 
@@ -127,6 +130,8 @@ final class M2mReferenceServer implements AutoCloseable {
                 M2mSeed.rows(seed, "member_account_tags"), "accountId", "tagId");
             insertRows(c, "INSERT INTO \"post_reviewers\" (\"postId\", \"accountId\") VALUES (?, ?)",
                 M2mSeed.rows(seed, "post_reviewers"), "postId", "accountId");
+            insertRows(c, "INSERT INTO \"blog_categories\" (id, name) VALUES (?, ?)",
+                M2mSeed.rows(seed, "blog_categories"), "id", "name");
         }
     }
 
@@ -182,6 +187,19 @@ final class M2mReferenceServer implements AutoCloseable {
         String method = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
         String path = exchange.getRequestURI().getRawPath();
         String[] seg = path.split("/");
+
+        // The one plain collection the route-spelling scenario needs:
+        // ["", "api", "post_categories"]. The segment is a LITERAL on purpose —
+        // this lane exists to be an INDEPENDENT implementation, so deriving it from
+        // SpringNaming would make both lanes share any bug in that rule and the
+        // scenario would pass regardless. The retired spellings are simply not
+        // handled, so they fall through to the 404 below.
+        if (method.equals("GET") && seg.length == 3 && seg[1].equals("api")
+                && seg[2].equals("post_categories")) {
+            sendJson(exchange, 200, selectBlogCategories());
+            return;
+        }
+
         if (!method.equals("GET") || seg.length < 5 || !seg[1].equals("api")) {
             sendJson(exchange, 404, Map.of("error", "not_found"));
             return;
@@ -366,6 +384,24 @@ final class M2mReferenceServer implements AutoCloseable {
 
     private Connection connect() throws SQLException {
         return DriverManager.getConnection(pg.jdbcUrl(), pg.username(), pg.password());
+    }
+
+    /** Every blog_categories row, ordered by id — the shape a generated collection returns. */
+    private List<Map<String, Object>> selectBlogCategories() throws SQLException {
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                 "SELECT id, name FROM \"blog_categories\" ORDER BY id")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", rs.getLong("id"));
+                    row.put("name", rs.getString("name"));
+                    out.add(row);
+                }
+            }
+        }
+        return out;
     }
 
     private void sendJson(HttpExchange exchange, int status, Object body) throws IOException {

@@ -239,7 +239,7 @@ private fun rowToAuthLine(row: ResultRow): AuthLine = AuthLine(
 
 /** GENERATED — REST controller for AuthLine entity. Implements the cross-port API contract. */
 @RestController
-@RequestMapping("/api/authlines")
+@RequestMapping("/api/auth_lines")
 class AuthLineController(private val objectMapper: ObjectMapper, private val validator: Validator) {
 
     @GetMapping

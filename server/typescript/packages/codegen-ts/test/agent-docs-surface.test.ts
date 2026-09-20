@@ -397,7 +397,7 @@ describe("agent/schema.md", () => {
 
 // A model exercising the shapes whose ENDPOINT, CONTROL or SCHEMA claim the page used to
 // state wrongly: a TPH hierarchy (mounted under its base, never at its own name), a
-// multi-word projection (mounted kebab-cased, not snake-cased), a `field.object`
+// multi-word projection (whose segment is separated and irregularly pluralized), a `field.object`
 // (rendered as a nested sub-form, not an input), a sourceless value carrying an enum (no
 // column anywhere), and two relationships whose cardinality reads in opposite directions.
 const SHAPES = {
@@ -504,15 +504,20 @@ describe("agent/ui.md — the endpoint it prints", () => {
     );
     expect(ui).toContain("Endpoint `/vehicles/car`.");
     // A read-only projection keeps its own reason.
-    expect(ui).toContain("Endpoint `/owner-summaries` — **no form is generated** (read-only).");
+    expect(ui).toContain("Endpoint `/owner_summaries` — **no form is generated** (read-only).");
   });
 
-  test("a multi-word projection is documented KEBAB-cased, as its const emits it", async () => {
+  test("a multi-word projection's endpoint is the segment its const emits", async () => {
     const ui = (await emit(await load(SHAPES))).get("agent/ui.md") ?? "";
-    // `renderProjectionDecl` emits `$path: "/owner-summaries"` and the read-only routes
-    // mount `OwnerSummary.$path`. The snake-cased entity spelling is a different address.
-    expect(ui).toContain("Endpoint `/owner-summaries`");
-    expect(ui).not.toContain("/owner_summaries");
+    // `renderProjectionDecl` emits `$path: "/owner_summaries"` and the read-only routes
+    // mount `OwnerSummary.$path`. A projection takes the SAME rule as an entity now, so
+    // this no longer separates two spellings; what it still catches is a page printing an
+    // unseparated or naively-pluralized segment. `OwnerSummary` is multi-word AND ends
+    // consonant+y, so both wrong spellings are distinguishable here.
+    expect(ui).toContain("Endpoint `/owner_summaries`");
+    expect(ui).not.toContain("/owner-summaries");
+    expect(ui).not.toContain("/ownersummaries");
+    expect(ui).not.toContain("/ownersummarys");
   });
 });
 
@@ -626,7 +631,7 @@ describe("agent/ui.md — the address, in full", () => {
     // page states its heading is the address the routes mount at; omitting the prefix made
     // that promise false for every project that sets one.
     expect(ui).toContain("Endpoint `/api/vehicles/car`.");
-    expect(ui).toContain("Endpoint `/api/owner-summaries`");
+    expect(ui).toContain("Endpoint `/api/owner_summaries`");
     expect(ui).not.toContain("Endpoint `/vehicles/car`.");
   });
 

@@ -23,6 +23,15 @@
         ]
       }},
       { "object.entity": {
+        "name": "PostCategory",
+        "children": [
+          { "source.rdb":       { "@table": "blog_categories" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "name", "@required": true, "@maxLength": 80 } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
         "name": "PostTag",
         "children": [
           { "source.rdb":         { "@table": "post_tags" } },

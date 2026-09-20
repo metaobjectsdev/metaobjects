@@ -86,12 +86,13 @@ _SCHEMA = (
     'CREATE TABLE IF NOT EXISTS "scoped_account_tags" ("accountId" BIGINT NOT NULL, "tagId" BIGINT NOT NULL, PRIMARY KEY ("accountId","tagId"))',
     'CREATE TABLE IF NOT EXISTS "member_account_tags" ("accountId" BIGINT NOT NULL, "tagId" BIGINT NOT NULL, PRIMARY KEY ("accountId","tagId"))',
     'CREATE TABLE IF NOT EXISTS "post_reviewers" ("postId" BIGINT NOT NULL, "accountId" BIGINT NOT NULL, PRIMARY KEY ("postId","accountId"))',
+    'CREATE TABLE IF NOT EXISTS "blog_categories" ("id" BIGSERIAL PRIMARY KEY, "name" VARCHAR(80) NOT NULL)',
 )
 
 _TABLES = (
     "posts", "tags", "post_tags", "people", "follows", "friendships",
     "accounts", "account_tags", "scoped_account_tags", "member_account_tags",
-    "post_reviewers",
+    "post_reviewers", "blog_categories",
 )
 
 # Physical table → ordered insert columns, matching the seed.json row shapes.
@@ -107,6 +108,7 @@ _SEED_COLUMNS: dict[str, tuple[str, ...]] = {
     "scoped_account_tags": ("accountId", "tagId"),
     "member_account_tags": ("accountId", "tagId"),
     "post_reviewers": ("postId", "accountId"),
+    "blog_categories": ("id", "name"),
 }
 
 
@@ -138,6 +140,21 @@ class M2mRepository:
                     for r in rows:
                         cur.execute(sql, tuple(r[c] for c in cols))
                 conn.commit()
+            finally:
+                cur.close()
+
+    # ----- plain collection (route-spelling gate) ---------------------------
+
+    def list_all(self, table: str) -> list[dict[str, Any]]:
+        """Every row of ``table``, ordered by id — the shape a generated
+        collection route returns. Used only by the route-spelling scenario,
+        whose subject is the URL, not the query."""
+        with closing(self._connect()) as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(f'SELECT * FROM "{table}" ORDER BY "id"')
+                col_names = [d[0] for d in cur.description]
+                return [_normalize(dict(zip(col_names, row))) for row in cur.fetchall()]
             finally:
                 cur.close()
 
@@ -281,8 +298,16 @@ class M2mRepository:
 
 
 def make_app(repo: M2mRepository) -> FastAPI:
-    """Mount the three M:N traversal sub-resources."""
+    """Mount the M:N traversal sub-resources, plus the one plain collection the
+    route-spelling scenario needs."""
     app = FastAPI()
+
+    # The collection segment is the ENTITY NAME snake_cased then pluralized:
+    # PostCategory -> /post_categories. Neither retired spelling is mounted, so
+    # both 404 by absence.
+    @app.get("/api/post_categories")
+    def post_categories() -> list[dict[str, Any]]:
+        return repo.list_all("blog_categories")
 
     @app.get("/api/posts/{post_id}/tags")
     def posts_tags(post_id: int) -> list[dict[str, Any]]:

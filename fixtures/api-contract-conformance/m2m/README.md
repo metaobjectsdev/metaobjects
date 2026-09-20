@@ -19,9 +19,12 @@ extend the model with a TPH hierarchy and four more junctions:
 | `m2m-directed-self-join-traversal` | directed self-join (`Person` —`following`→ `Person` via `Follow`, `@sourceRefField`) | `GET /api/persons/:id/following` |
 | `m2m-symmetric-self-join-traversal` | symmetric self-join (`Person` —`friends`→ `Person` via `Friendship`, `@symmetric`) | `GET /api/persons/:id/friends` |
 
-The URL segment for the source is its **entity name pluralized** (`Person` →
-`/persons`, `Post` → `/posts`), per the cross-port grammar — NOT the physical
-`@table`. The relation segment is the relationship `name`.
+The URL segment for the source is its **entity name `snake_case`d and then
+pluralized** (`Person` → `/persons`, `Post` → `/posts`, `PostCategory` →
+`/post_categories`), per the cross-port grammar — NOT the physical `@table`. The
+relation segment is the relationship `name`. Every source above is a single
+regular word, where snake_casing and pluralizing are both no-ops; see
+"Collection-URL spelling" for the case that is not.
 
 ## TPH x M:N (FW-8)
 
@@ -50,6 +53,30 @@ without the other, so both are gated separately.
 entity. Pointing it at `MemberAccount` is refused by the M:N derivation, whose
 subject set is `{declaring entity, navigating entity}`.
 
+## Collection-URL spelling (`PostCategory`)
+
+`PostCategory` takes part in no relationship. It is here because this corpus was the
+only one with a per-entity seed and a multi-entity route lane, and the spelling of a
+collection URL had nowhere else to be gated.
+
+The rule: the segment is the **entity name**, `snake_case`d and then pluralized, so
+`PostCategory` is served at `/api/post_categories`. Two divergence axes meet on this
+one name and nowhere else in any corpus:
+
+| Axis | What it catches | Wrong spelling |
+|---|---|---|
+| word separation | lowercasing a multi-word name without separating it | `/postcategories` |
+| pluralization | appending a naive `"s"` instead of `y` → `ies` | `/postcategorys` |
+
+`route-spelling-multiword-collection` asserts the correct path serves the rows **and
+that both wrong spellings 404** — so a port that mounts the new path while leaving its
+old one in place fails too. Its `@table` is `blog_categories`, deliberately unlike both
+the route and the entity name, so no port can pass by echoing the table.
+
+Every other collection base in the corpus is a single regular word (`/posts`, `/tags`,
+`/accounts`, and `/authors` in the core corpus), where all five ports' rules coincide —
+which is exactly how four different spellings shipped green.
+
 ## Files
 
 ```
@@ -58,6 +85,7 @@ m2m/
 ├── meta.json              # Post/Tag/PostTag + Person/Follow/Friendship
 │                          #   + Account/ScopedAccount/MemberAccount/GuestAccount
 │                          #   + AccountTag/ScopedAccountTag/MemberAccountTag/PostReviewer
+│                          #   + PostCategory (route spelling only — no relationship)
 ├── seed.json              # rows for every table, applied fresh per scenario
 └── scenarios/
     ├── m2m-hetero-traversal.yaml
@@ -67,7 +95,8 @@ m2m/
     ├── tph-m2m-subtype-declared-traversal.yaml
     ├── tph-m2m-abstract-mid-declared-traversal.yaml
     ├── tph-m2m-onto-subtype-target.yaml
-    └── tph-m2m-cross-subtype-source-empty.yaml
+    ├── tph-m2m-cross-subtype-source-empty.yaml
+    └── route-spelling-multiword-collection.yaml
 ```
 
 The junction FK columns are **derived** from each junction entity's two

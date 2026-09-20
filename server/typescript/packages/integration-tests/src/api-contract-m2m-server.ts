@@ -29,6 +29,7 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import pg from "pg";
+import { asc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { pgTable, bigint, integer, varchar, bigserial, primaryKey } from "drizzle-orm/pg-core";
 import { mountM2mRoute } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
@@ -93,6 +94,15 @@ const postReviewers = pgTable("post_reviewers", {
   accountId: bigint("account_id", { mode: "number" }).notNull(),
 }, (t) => [primaryKey({ columns: [t.postId, t.accountId] })]);
 
+// Route-spelling gate: PostCategory has no relationship. The reference lane
+// serves its collection so the spelling is proven by an INDEPENDENT
+// implementation, not only by the emitted one. Table name is deliberately
+// unlike the route segment.
+const blogCategories = pgTable("blog_categories", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  name: varchar("name", { length: 80 }).notNull(),
+});
+
 export async function startM2mServer(connectionUri: string): Promise<M2mServerHandle> {
   const pool = new pg.Pool({ connectionString: connectionUri, types: bigintAsNumberTypes });
   const db = drizzle(pool);
@@ -108,6 +118,7 @@ export async function startM2mServer(connectionUri: string): Promise<M2mServerHa
   await pool.query(`CREATE TABLE IF NOT EXISTS "scoped_account_tags" ("account_id" bigint NOT NULL, "tag_id" bigint NOT NULL, PRIMARY KEY ("account_id","tag_id"))`);
   await pool.query(`CREATE TABLE IF NOT EXISTS "member_account_tags" ("account_id" bigint NOT NULL, "tag_id" bigint NOT NULL, PRIMARY KEY ("account_id","tag_id"))`);
   await pool.query(`CREATE TABLE IF NOT EXISTS "post_reviewers" ("post_id" bigint NOT NULL, "account_id" bigint NOT NULL, PRIMARY KEY ("post_id","account_id"))`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS "blog_categories" ("id" bigserial PRIMARY KEY, "name" varchar(80) NOT NULL)`);
 
   const fastify = Fastify();
   await fastify.register(async (instance) => {
@@ -145,6 +156,12 @@ export async function startM2mServer(connectionUri: string): Promise<M2mServerHa
     mountM2mRoute({ fastify: instance, path: "/posts", relationName: "reviewers", db,
       junctionTable: postReviewers, targetTable: accounts, sourceColumn: "post_id", targetColumn: "account_id", targetPkColumn: "id", symmetric: false,
       targetDiscriminator: { column: "kind", value: "Member" } });
+
+    // The collection segment is the ENTITY NAME snake_cased then pluralized:
+    // PostCategory -> /post_categories. Neither wrong spelling is mounted, so
+    // both 404 by absence.
+    instance.get("/post_categories", async () =>
+      db.select().from(blogCategories).orderBy(asc(blogCategories.id)));
   }, { prefix: "/api" });
   await fastify.ready();
   const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });

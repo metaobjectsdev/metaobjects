@@ -86,39 +86,39 @@ the verbs, filters, sort/pagination, and wire format are uniform.
 `apiPrefix` (default `/api`, set in project config) flows to both the server routes
 and the client fetch URLs.
 
-The `<entity>` collection segment is NOT currently uniform across ports — a known
-divergence, not a subtlety. Each port composes it with its own rule, and no rule
-is more correct than another:
+The `<entity>` collection segment is the **entity name `snake_case`d and then
+pluralized** — one rule, identical in all five ports, and derived from the NAME,
+never from the physical `@table`:
 
-| Port | `<entity>` segment rule | `OrderSummary` → | Decided by |
-|---|---|---|---|
-| TypeScript (entity) | snake_case, then pluralize (underscores) | `order_summaries` | `resourcePath` in `codegen-ts`'s `entity-ui-descriptor.ts` |
-| TypeScript (`source.rdb` projection) | pluralize → snake_case → hyphens | `order-summaries` | same function, projection branch |
-| C# | pluralize, then lowercase — no separator | `ordersummaries` | `CSharpNaming.RoutePath` (`MetaObjects.Codegen`) |
-| Java | lowercase + `"s"` | `ordersummarys` | `SpringNaming.pluralLowercase` (`codegen-spring`) |
-| Kotlin | lowercase + `"s"` | `ordersummarys` | `KotlinNaming.pluralLowercase` (`codegen-kotlin`) |
-| Python | lowercase + `"s"` | `ordersummarys` | `plural_lowercase` (`apidocs/naming.py`) |
+| Name | Segment | Rule |
+|---|---|---|
+| `Author` | `authors` | a single regular word takes `s` |
+| `PostCategory` | `post_categories` | multi-word: the capitals carry the word boundary |
+| `Address` | `addresses` | ending `s`/`x`/`z`/`ch`/`sh` takes `es` |
+| `Category` | `categories` | consonant + `y` becomes `ies` |
+| `Day` | `days` | a VOWEL before the `y` does not |
+| `HTTPServer` | `http_servers` | a run of capitals stays together until the final one that begins a word |
 
-A single-word name hides all of this (`Author` → `authors` under every rule
-above); a MULTI-word name must be checked against the serving port's rule before
-assuming a path — a wrong guess is a silent 404, not a build error. The trap is
-cross-port by construction: the generated web-client hooks and grids build their
-fetch URLs from the TypeScript `$path`, so for a multi-word name a React/TanStack
-client calls a path a C#, Java, Kotlin, or Python backend does not mount.
+An `object.projection` uses the same rule, so `OrderSummary` is at
+`/order_summaries` either way. The generated web-client hooks and grids build
+their fetch URLs from the TypeScript `$path`, and every backend now mounts that
+same spelling, so a React/TanStack client works against any port's server.
 
-**TypeScript additionally splits entity from projection, deliberately**: the two
-TypeScript rows compose in a different ORDER as well as a different separator,
-and both spellings are already mounted, so neither may be "tidied" into the
-other — unifying them would be a breaking route rename for existing projection
-consumers. The split is deliberate and grandfathered, not an oversight.
+**This is a change, and it was a breaking one.** Each port used to spell the
+segment differently and they agreed only on single regular words — which was
+every collection base in the corpus, so all five lanes were green while
+`OrderSummary` was served at four different URLs: `/order_summaries` (TS entity),
+`/order-summaries` (TS projection), `/ordersummaries` (C#) and `/ordersummarys`
+(Java, Kotlin, Python). A project whose entity names are all single regular words
+saw nothing move. Any multi-word or irregular-plural name had its collection URL
+renamed, and clients had to follow.
 
-These segment spellings are slated for UNIFICATION in a separate follow-up
-change — one rule across ports, a breaking route rename for the non-TypeScript
-ports — which will collapse this table back to a single rule. Until it lands,
-this section deliberately documents today's shipped behaviour: a doc describing
-an unshipped state is worse than one describing a messy shipped one. Read the
-deciding function for the port you are wiring; do not guess a path and do not
-"fix" one port's spelling to match another's.
+The rule is gated, not just documented: `fixtures/api-contract-conformance/m2m/`
+declares `PostCategory` — multi-word AND ending consonant+`y`, so it separates
+every spelling the ports used to produce — and asserts both retired spellings
+404, on each port's reference AND generated lane. The JVM ports share one
+implementation (`RouteNaming` in `codegen-base`); the acronym case is pinned by
+unit test in each port, since no corpus entity carries one.
 
 | Verb | Path | Purpose |
 |---|---|---|

@@ -99,10 +99,13 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
     private final Constructor<?> postRepoCtor;    // (List tags, List postTags, List accounts, List postReviewers)
     private final Constructor<?> personRepoCtor;  // (List people, List follows, List friendships)
     private final Constructor<?> accountRepoCtor; // (List accounts, List tags, List accountTags, List scopedAccountTags, List memberAccountTags)
+    private final Constructor<?> postCategoryControllerCtor; // (PostCategoryRepository)
+    private final Constructor<?> postCategoryRepoCtor;       // (List blogCategories)
 
     private MockMvc postMvc;
     private MockMvc personMvc;
     private MockMvc accountMvc;
+    private MockMvc postCategoryMvc;
 
     public GeneratedM2mControllerHarness(Path corpusRoot, Path genDir,
                                          Map<String, List<Map<String, Object>>> seed) throws Exception {
@@ -130,6 +133,8 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
             InMemoryM2mRepositorySources.PERSON_REPO_SOURCE);
         Files.writeString(pkgDir.resolve("InMemoryAccountRepository.java"),
             InMemoryM2mRepositorySources.ACCOUNT_REPO_SOURCE);
+        Files.writeString(pkgDir.resolve("InMemoryPostCategoryRepository.java"),
+            InMemoryM2mRepositorySources.POST_CATEGORY_REPO_SOURCE);
 
         // 4. Compile everything against the test classpath.
         compile(srcDir, classesDir);
@@ -155,6 +160,13 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
             .getDeclaredConstructor(List.class, List.class, List.class);
         this.accountRepoCtor = classLoader.loadClass(InMemoryM2mRepositorySources.ACCOUNT_FQCN)
             .getDeclaredConstructor(List.class, List.class, List.class, List.class, List.class);
+        // PostCategory — no relationship; mounted so the GENERATED controller's route
+        // path is exercised over HTTP, not merely asserted as a string.
+        Class<?> postCategoryRepoIf = classLoader.loadClass(ENTITY_PKG + ".PostCategoryRepository");
+        this.postCategoryControllerCtor = classLoader.loadClass(ENTITY_PKG + ".PostCategoryController")
+            .getDeclaredConstructor(postCategoryRepoIf, ObjectMapper.class, Validator.class);
+        this.postCategoryRepoCtor = classLoader.loadClass(InMemoryM2mRepositorySources.POST_CATEGORY_FQCN)
+            .getDeclaredConstructor(List.class);
     }
 
     /** Rebuild all three controllers' MockMvc from a fresh seed (per-scenario isolation). */
@@ -173,6 +185,11 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
         this.postMvc = standalone(postControllerCtor.newInstance(postRepo, mapper, validator));
         this.personMvc = standalone(personControllerCtor.newInstance(personRepo, mapper, validator));
         this.accountMvc = standalone(accountControllerCtor.newInstance(accountRepo, mapper, validator));
+
+        Object postCategoryRepo = postCategoryRepoCtor.newInstance(
+            M2mSeedRows.rows(seed, "blog_categories"));
+        this.postCategoryMvc = standalone(
+            postCategoryControllerCtor.newInstance(postCategoryRepo, mapper, validator));
     }
 
     /**
@@ -182,7 +199,11 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
      * {@code /api/accounts/...} → AccountController).
      */
     public Response exchange(String method, String path) throws Exception {
-        MockMvc mvc = path.startsWith("/api/posts") ? postMvc
+        // post_categories is checked FIRST and explicitly. It does not in fact match
+        // "/api/posts" ('_' != 's'), but relying on that near-miss would be a trap for
+        // the next entity whose name happens to share a prefix.
+        MockMvc mvc = path.startsWith("/api/post_categories") ? postCategoryMvc
+            : path.startsWith("/api/posts") ? postMvc
             : path.startsWith("/api/accounts") ? accountMvc
             : personMvc;
         MvcResult result = mvc.perform(

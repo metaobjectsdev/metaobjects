@@ -81,6 +81,11 @@ internal static class M2mFixture
           "accountId" BIGINT NOT NULL,
           CONSTRAINT "post_reviewers_pkey" PRIMARY KEY ("postId", "accountId")
         );
+        CREATE TABLE "blog_categories" (
+          "id" BIGINT NOT NULL,
+          "name" VARCHAR(80) NOT NULL,
+          CONSTRAINT "blog_categories_pkey" PRIMARY KEY ("id")
+        );
         ALTER TABLE "post_tags" ADD CONSTRAINT "post_tags_postId_fk" FOREIGN KEY ("postId") REFERENCES "posts" ("id");
         ALTER TABLE "post_tags" ADD CONSTRAINT "post_tags_tagId_fk" FOREIGN KEY ("tagId") REFERENCES "tags" ("id");
         ALTER TABLE "follows" ADD CONSTRAINT "follows_followerId_fk" FOREIGN KEY ("followerId") REFERENCES "people" ("id");
@@ -113,6 +118,9 @@ internal static class M2mFixture
         ("scoped_account_tags",  new[] { "accountId", "tagId" }),
         ("member_account_tags",  new[] { "accountId", "tagId" }),
         ("post_reviewers",       new[] { "postId", "accountId" }),
+        // PostCategory — route-spelling gate only, no relationship. The physical
+        // name is deliberately unlike the route segment (/post_categories).
+        ("blog_categories",      new[] { "id", "name" }),
     };
 
     /// <summary>Create the m2m corpus tables on a fresh container.</summary>

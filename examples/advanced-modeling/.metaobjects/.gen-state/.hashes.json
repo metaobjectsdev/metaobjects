@@ -18,7 +18,7 @@
   "src/generated/ProgramDescriptionPayload.ts": "dbd946676f6bd5f08b1fdf14fde91d063a3fafe093dd9fe35ad77e983291c7aa",
   "src/generated/ProgramSummary.queries.ts": "ce0757c98cfee05d5e4056025da0695a5a59cd79a9bd258d04ef420ce571629c",
   "src/generated/ProgramSummary.routes.ts": "a32bfbad5e32fafa331e26916c7b7112910cabbdf1b99969172d8d434bb58037",
-  "src/generated/ProgramSummary.ts": "7c3028f57760caad20083db6a6ad648c6509a54839d0e12b9ad8af29c395cb8b",
+  "src/generated/ProgramSummary.ts": "9c6b35ac32e31746a0ed5942066c3ead0e83d15978d612f61f9aaf21839f3fb8",
   "src/generated/Purchase.form.tsx": "d0cc5d82e13477ed1c1e9636212dbc5cf368a2e90a42bb2b65ff688b2a0453d5",
   "src/generated/Purchase.queries.ts": "d347ddf3960fd1725e421de798d11f17bc58606a3a7753112db1d9d0a8f1e96c",
   "src/generated/Purchase.routes.ts": "fd93a50609205bce5172f633de91d6ec30fed5f72f3a40beb7216390be340c5d",

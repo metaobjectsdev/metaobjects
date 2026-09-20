@@ -34,7 +34,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 33 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 14 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 33 (27 query + 6 migration) | all 33 | 27 query (migrations TS-only, ADR-0015) | 27 query (via Exposed) | 27 query | 27 query |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 49 (28 core + 9 tph + 8 m2m + 2 jsonb + 2 write-through) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 50 (28 core + 9 tph + 9 m2m + 2 jsonb + 2 write-through) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 16 cases | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -226,9 +226,9 @@ All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 - `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
 - `queries/*` (27) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-### `fixtures/api-contract-conformance/` (49)
+### `fixtures/api-contract-conformance/` (50)
 
-All 49 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 50 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -328,7 +328,7 @@ Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 329 + yaml 16 + verify 31
-+ render 15 + persistence 33 + api-contract 49 + source-resolution 25 + scope 10 +
++ render 15 + persistence 33 + api-contract 50 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,

@@ -26,8 +26,14 @@ public class SpringNamingTest {
         assertEquals("AuthorFilterAllowlist", SpringNaming.filterAllowlistName("Author"));
         assertEquals("AuthorExtractor", SpringNaming.extractorName("Author"));
 
-        // Controller route base: "/api/" + pluralLowercase(shortName).
+        // Controller route base: "/api/" + collectionSegment(shortName). A single
+        // regular word reads the same under the old rule and the new one, so the
+        // multi-word case below is what actually proves this seam DELEGATES to the
+        // shared RouteNaming rather than reintroducing "lowercase + s".
+        // The full table lives in codegen-base's RouteNamingTest.
         assertEquals("/api/authors", SpringNaming.controllerPath("Author"));
+        assertEquals("/api/post_categories", SpringNaming.controllerPath("PostCategory"));
+        assertEquals("/api/order_summaries", SpringNaming.controllerPath("OrderSummary"));
 
         // Prompts package rule.
         assertEquals("prompts", SpringNaming.promptsPackage(""));

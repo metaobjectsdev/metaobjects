@@ -7,8 +7,10 @@ generators delegate their name computation here, and the
 calling the SAME functions. So the documented name can never drift from the
 emitted name — they are computed once, in one place.
 
-Behaviour-preserving: each function reproduces exactly what the corresponding
-generator used to compute inline (``_snake_case`` / ``_plural_lowercase`` /
+Behaviour-preserving with ONE deliberate exception: :func:`route_path` no longer
+reproduces the old inline ``name.lower() + "s"``, because that spelling diverged
+from the other ports (see its docstring). Every other function reproduces exactly
+what the corresponding generator used to compute inline (``_snake_case`` /
 ``<Name>Repository`` / ``<ENTITY>_FILTER_FIELDS`` / ``parse_<snake>`` /
 ``render_<snake>`` / ``render_<snake>_format`` / ``extract_<snake>`` …). The
 payload-class / payload-module names already lived in
@@ -23,10 +25,11 @@ from metaobjects.codegen.generators.payload_vo_generator import (
     response_class_name,
     response_module_name,
 )
+from metaobjects.naming import to_snake_case
 
 __all__ = [
     "snake_case",
-    "plural_lowercase",
+    "pluralize",
     "model_class_name",
     "router_module_name",
     "repository_class_name",
@@ -64,9 +67,35 @@ def snake_case(name: str) -> str:
     return "".join(out)
 
 
-def plural_lowercase(name: str) -> str:
-    """``Author`` → ``authors``. Cross-port-aligned trivial pluralization."""
-    return name.lower() + "s"
+def _route_snake_case(name: str) -> str:
+    """``PostCategory`` → ``post_category``; ``HTTPServer`` → ``http_server``.
+
+    ACRONYM-AWARE, and deliberately NOT :func:`snake_case`. The trivial variant
+    above inserts a separator before every capital, which is right for a module
+    name but would emit ``h_t_t_p_server`` in a URL. Delegates to
+    :func:`metaobjects.naming.to_snake_case` — the port's acronym-aware loop,
+    documented there as byte-for-byte the other ports' rule (separate when the
+    previous character is lower or a digit, or when it is upper and the NEXT one
+    is lower, so a run of capitals stays together until the final one that
+    begins a word)."""
+    return to_snake_case(name)
+
+
+def pluralize(name: str) -> str:
+    """``post_category`` → ``post_categories``; ``address`` → ``addresses``.
+
+    The cross-port pluralization contract, byte-identical in every port: a word
+    ending ``s``/``x``/``z``/``ch``/``sh`` takes ``es``; a consonant followed by
+    ``y`` becomes ``ies``; anything else takes ``s``. The cross-port
+    byte-identity covers the already-lowercased word :func:`route_path` feeds
+    in — suffix tests here run on a lowercased copy, unlike the JVM port's
+    case-sensitive ones, so mixed-case input may diverge."""
+    lowered = name.lower()
+    if lowered.endswith(("s", "x", "z", "ch", "sh")):
+        return name + "es"
+    if len(name) >= 2 and lowered[-1] == "y" and lowered[-2] not in "aeiou":
+        return name[:-1] + "ies"
+    return name + "s"
 
 
 def model_class_name(obj_name: str) -> str:
@@ -100,9 +129,14 @@ def filter_ops_const(obj_name: str) -> str:
 
 
 def route_path(obj_name: str) -> str:
-    """The default REST base segment — the entity name pluralized + lowercased
-    (cross-port grammar; e.g. ``Author`` → ``authors``)."""
-    return plural_lowercase(obj_name)
+    """The default REST collection segment — the ENTITY NAME ``snake_case``d and
+    then pluralized (``Author`` → ``authors``, ``PostCategory`` →
+    ``post_categories``). Never the physical ``@table``.
+
+    One rule, identical in all five ports. It used to be ``name.lower() + "s"``
+    here, which served ``PostCategory`` at ``/postcategorys``; see
+    ``fixtures/api-contract-conformance/m2m/`` for the scenario that gates it."""
+    return pluralize(_route_snake_case(obj_name))
 
 
 def pk_param(obj_name: str) -> str:
@@ -168,15 +202,14 @@ def extractor_fn(template_name: str) -> str:
 def _pluralize(name: str) -> str:
     """Trivial cross-port pluralization (matches the TS ``pluralize`` /
     ``MetaSource._pluralize``), applied to a PascalCase entity name BEFORE
-    snake-casing (``GameSession`` → ``GameSessions``)."""
+    snake-casing (``GameSession`` → ``GameSessions``).
+
+    Delegates to :func:`pluralize` so this file states the cross-port inflector
+    contract once, not twice; the empty-string guard stays here because it is
+    this finder-naming helper's own contract, not ``pluralize``'s."""
     if not name:
         return name
-    lower = name.lower()
-    if lower.endswith(("s", "x", "z", "ch", "sh")):
-        return name + "es"
-    if len(name) >= 2 and lower[-1] == "y" and lower[-2] not in "aeiou":
-        return name[:-1] + "ies"
-    return name + "s"
+    return pluralize(name)
 
 
 def reverse_finder_fk_segment(fk_field_name: str) -> str:

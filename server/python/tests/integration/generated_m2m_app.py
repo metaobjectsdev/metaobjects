@@ -176,7 +176,9 @@ def build_generated_m2m_app(m2m_dir: Path) -> tuple[FastAPI, "_CombinedM2mRepo"]
         pk_field=pk_field_name(account),
         target_discriminator_field=target_discriminator_field,
     )
-    repo = _CombinedM2mRepo(vanilla_repo, tph_repo)
+    # PostCategory's physical table is deliberately unlike its route segment.
+    plain_repo = _PlainCollectionRepo("blog_categories")
+    repo = _CombinedM2mRepo(vanilla_repo, tph_repo, plain_repo)
 
     pkg_name = f"genm2m_{uuid.uuid4().hex[:8]}"
     tmp = Path(tempfile.mkdtemp(prefix="apic-m2m-gen-"))
@@ -221,6 +223,26 @@ def build_generated_m2m_app(m2m_dir: Path) -> tuple[FastAPI, "_CombinedM2mRepo"]
 
         app.include_router(router_mod.router)
         app.dependency_overrides[router_mod.get_repository] = lambda r=vanilla_repo: r
+
+    # PostCategory — no relationship at all. Mounted so the GENERATED lane proves
+    # the collection-URL spelling of a multi-word, y-ending entity name.
+    pc = entities["PostCategory"]
+    pc_snake = _snake(pc.name)
+    pc_allowlist = render_filter_allowlist(pc, index)
+    pc_router_src = render_router(pc, index)
+    if pc_allowlist is None or pc_router_src is None:
+        raise RuntimeError("generators returned None for PostCategory")
+    (pkg_dir / f"{pc_snake}_filter_allowlist.py").write_text(pc_allowlist)
+    (pkg_dir / f"{pc_snake}_router.py").write_text(pc_router_src)
+    pc_spec = importlib.util.spec_from_file_location(
+        f"{pkg_name}.{pc_snake}_router", pkg_dir / f"{pc_snake}_router.py"
+    )
+    assert pc_spec is not None and pc_spec.loader is not None
+    pc_mod = importlib.util.module_from_spec(pc_spec)
+    sys.modules[f"{pkg_name}.{pc_snake}_router"] = pc_mod
+    pc_spec.loader.exec_module(pc_mod)
+    app.include_router(pc_mod.router)
+    app.dependency_overrides[pc_mod.get_repository] = lambda: plain_repo
 
     # The TPH discriminator base router (Account) — folds the base's polymorphic
     # collection PLUS every concrete subtype's CRUD + M:N traversal under one module.
@@ -477,19 +499,64 @@ class InMemoryTphM2mRepository:
         )
 
 
+class _PlainCollectionRepo:
+    """Fills the generated PostCategory router's consumer seam.
+
+    PostCategory exists to gate the COLLECTION-URL SPELLING, so only the list
+    route is exercised; the rest of the Protocol is present because the generated
+    router declares it, and raises rather than pretending to work."""
+
+    def __init__(self, seed_key: str) -> None:
+        self._seed_key = seed_key
+        self._rows: list[dict[str, Any]] = []
+
+    def reset(self) -> None:
+        self._rows = []
+
+    def seed(self, seed: dict[str, list[dict[str, Any]]]) -> None:
+        self._rows = [dict(r) for r in seed.get(self._seed_key, [])]
+
+    def list(self, limit: int, offset: int, sort: Any, filters: Any) -> list[dict[str, Any]]:
+        rows = sorted(self._rows, key=lambda r: r["id"])
+        return rows[offset : offset + limit] if limit else rows[offset:]
+
+    def count(self, filters: Any) -> int:
+        return len(self._rows)
+
+    def find_by_id(self, id: Any) -> Any | None:
+        return next((r for r in self._rows if str(r["id"]) == str(id)), None)
+
+    def create(self, dto: Any) -> Any:
+        raise NotImplementedError("route-spelling gate exercises the list route only")
+
+    def update(self, id: Any, dto: Any) -> Any | None:
+        raise NotImplementedError("route-spelling gate exercises the list route only")
+
+    def delete(self, id: Any) -> bool:
+        raise NotImplementedError("route-spelling gate exercises the list route only")
+
+
 class _CombinedM2mRepo:
     """Fans ``.reset()``/``.seed()`` out to the vanilla + TPH in-memory repos
     this harness wires to their respective generated routers, so a caller only
     ever holds one repo handle to reset/seed per scenario."""
 
-    def __init__(self, vanilla: InMemoryM2mRepository, tph: InMemoryTphM2mRepository) -> None:
+    def __init__(
+        self,
+        vanilla: InMemoryM2mRepository,
+        tph: InMemoryTphM2mRepository,
+        plain: "_PlainCollectionRepo",
+    ) -> None:
         self._vanilla = vanilla
         self._tph = tph
+        self._plain = plain
 
     def reset(self) -> None:
         self._vanilla.reset()
         self._tph.reset()
+        self._plain.reset()
 
     def seed(self, seed: dict[str, list[dict[str, Any]]]) -> None:
         self._vanilla.seed(seed)
         self._tph.seed(seed)
+        self._plain.seed(seed)

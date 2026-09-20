@@ -45,6 +45,8 @@ export interface M2mSeed {
   scoped_account_tags: Array<{ accountId: number; tagId: number }>;
   member_account_tags: Array<{ accountId: number; tagId: number }>;
   post_reviewers: Array<{ postId: number; accountId: number }>;
+  // Route-spelling gate only (no relationship) — see m2m/README.md.
+  blog_categories: Array<{ id: number; name: string }>;
 }
 
 export interface GeneratedM2mServerHandle {
@@ -106,6 +108,7 @@ export const db = drizzle(pool);
     CREATE TABLE IF NOT EXISTS "scoped_account_tags" ("account_id" bigint NOT NULL, "tag_id" bigint NOT NULL, PRIMARY KEY ("account_id","tag_id"));
     CREATE TABLE IF NOT EXISTS "member_account_tags" ("account_id" bigint NOT NULL, "tag_id" bigint NOT NULL, PRIMARY KEY ("account_id","tag_id"));
     CREATE TABLE IF NOT EXISTS "post_reviewers" ("post_id" bigint NOT NULL, "account_id" bigint NOT NULL, PRIMARY KEY ("post_id","account_id"));
+    CREATE TABLE IF NOT EXISTS "blog_categories" ("id" bigserial PRIMARY KEY, "name" varchar(80) NOT NULL);
   `);
 
   // 4. Import the EMITTED route files unmodified and mount them.
@@ -120,12 +123,18 @@ export const db = drizzle(pool);
   const accountRoutes = (await import(pathToFileURL(join(tmp, "Account.routes.ts")).href)) as {
     accountRoutes: (f: FastifyInstance) => Promise<void>;
   };
+  // PostCategory takes part in no relationship; it is mounted so the corpus can
+  // gate the COLLECTION-URL spelling of a multi-word, y-ending entity name.
+  const postCategoryRoutes = (await import(pathToFileURL(join(tmp, "PostCategory.routes.ts")).href)) as {
+    postCategoryRoutes: (f: FastifyInstance) => Promise<void>;
+  };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
 
   const fastify = Fastify();
   await fastify.register(postRoutes.postRoutes);
   await fastify.register(personRoutes.personRoutes);
   await fastify.register(accountRoutes.accountRoutes);
+  await fastify.register(postCategoryRoutes.postCategoryRoutes);
   await fastify.ready();
   const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
 
@@ -146,7 +155,8 @@ export const db = drizzle(pool);
 export async function seedM2m(connectionUri: string, seed: M2mSeed): Promise<void> {
   await executeSql(connectionUri, `
     TRUNCATE TABLE "posts","tags","post_tags","people","follows","friendships",
-      "accounts","account_tags","scoped_account_tags","member_account_tags","post_reviewers"
+      "accounts","account_tags","scoped_account_tags","member_account_tags","post_reviewers",
+      "blog_categories"
       RESTART IDENTITY;
   `);
   for (const p of seed.posts)
@@ -176,6 +186,8 @@ export async function seedM2m(connectionUri: string, seed: M2mSeed): Promise<voi
     await executeSql(connectionUri, `INSERT INTO "member_account_tags" ("account_id","tag_id") VALUES (${mt.accountId}, ${mt.tagId})`);
   for (const pr of seed.post_reviewers)
     await executeSql(connectionUri, `INSERT INTO "post_reviewers" ("post_id","account_id") VALUES (${pr.postId}, ${pr.accountId})`);
+  for (const bc of seed.blog_categories)
+    await executeSql(connectionUri, `INSERT INTO "blog_categories" ("id","name") VALUES (${bc.id}, ${str(bc.name)})`);
 }
 
 function str(v: string): string {

@@ -53,7 +53,6 @@ import {
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor } from "./field-meta.js";
 import { VIEW_CONTEXT_FORM } from "../view-context.js";
 import { enumValues } from "../enum-meta.js";
-import { isProjection } from "../projection/projection-detector.js";
 // `restPath` lives HERE rather than in api-surface.ts, which is where it used to sit and
 // which now re-exports it. The descriptor is what emits `$path`, so the composition has to
 // be reachable from this module; importing it back from `api-surface.js` would be a cycle,
@@ -116,30 +115,24 @@ export interface EntityUiDescriptor {
  * An object's OWN pluralized resource path — the one derivation of that spelling, and the
  * input {@link restPath} composes an address from. It is NOT `$path` on its own.
  *
- * A projection is KEBAB-cased and an entity is SNAKE-cased, and that split is not a
- * style choice: both spellings are already mounted. `renderProjectionDecl` emits
- * `$path: "/order-summaries"` and `renderEntityConstants` emits `$path:
- * "/order_summaries"`, and `routes-file.ts` mounts whichever const belongs to the object
- * — so an address computed without the split is wrong for every multi-word projection.
- * It used to live in a second function inside `projection-decl.ts`, which is exactly how
- * `agent/ui.md` and `api/AGENT-API.md` both came to print `/order_summaries` for a
- * projection served at `/order-summaries`.
+ * ONE rule for entities and projections alike: snake_case the name, then pluralize.
+ * A projection used to be KEBAB-cased here while an entity was SNAKE-cased, composed in
+ * the opposite ORDER, and that split was grandfathered rather than designed — the only
+ * reason recorded for it was that the projection const had always emitted it. It is
+ * collapsed, so `OrderSummary` is `/order_summaries` whichever it is. That renamed every
+ * multi-word projection's collection URL; see CHANGELOG.
  *
  *   "Subscriber"     → "/subscribers"
  *   "WorkoutEvent"   → "/workout_events"
- *   "ProgramSummary" → "/program-summaries"   (projection)
+ *   "ProgramSummary" → "/program_summaries"   (projection — same rule)
  *
  * A TPH SUBTYPE is not addressed by this path — it is mounted under its base — so this is
  * an INPUT to {@link restPath}, not the answer. `$path` carries `restPath`; call this only
  * when you specifically want an object's own pluralized name, never to build an address.
  */
 export function resourcePath(entity: MetaData): string {
-  // The two compositions differ in ORDER as well as separator, and both are load-bearing:
-  // pluralize-then-snake is what the projection const has always emitted, snake-then-
-  // pluralize is what the entity const has. Neither may be "tidied" into the other.
-  return isProjection(entity)
-    ? `/${toSnakeCase(pluralize(entity.name)).replace(/_/g, "-")}`
-    : `/${pluralize(toSnakeCase(entity.name))}`;
+  // One rule, every object kind and every port: snake_case, then pluralize.
+  return `/${pluralize(toSnakeCase(entity.name))}`;
 }
 
 /**
