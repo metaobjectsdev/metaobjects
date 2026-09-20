@@ -219,3 +219,52 @@ describe("buildRelationMap — abstract DISCRIMINATOR BASE", () => {
     expect([...map.values()].flat().filter((e) => e.name === "author")).toHaveLength(0);
   });
 });
+
+// A CONCRETE discriminator base with NO writable source is in the same position
+// as an abstract one: the entity file routes it to the value-object emission
+// (no table), so no module in the hierarchy renders a relations() block, and an
+// entry would only document a `<Base>Relations` export that exists nowhere.
+describe("buildRelationMap — sourceless CONCRETE discriminator BASE", () => {
+  const AUTHOR = { "object.entity": { name: "Author", children: [
+    { "source.rdb": { "@table": "authors" } },
+    { "field.long": { name: "id" } },
+    { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+  ]}};
+  const SOURCELESS_DOC = { "object.entity": { name: "Doc", "@discriminator": "kind", children: [
+    { "field.long": { name: "id" } },
+    { "field.enum": { name: "kind", "@values": ["Draft", "Final"] } },
+    { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+  ]}};
+  const DRAFT_DOC = { "object.entity": { name: "DraftDoc", extends: "Doc", "@discriminatorValue": "Draft", children: [
+    { "field.long": { name: "authorId" } },
+    { "identity.reference": { name: "fkAuthor", "@fields": "authorId", "@references": "Author" } },
+    { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "Author" } },
+  ]}};
+
+  test("a subtype's belongs-to files nothing: no module in the hierarchy renders a block", async () => {
+    const map = buildRelationMap(await load({
+      "metadata.root": { package: "repro", children: [
+        AUTHOR, SOURCELESS_DOC, DRAFT_DOC,
+        { "object.entity": { name: "FinalDoc", extends: "Doc", "@discriminatorValue": "Final", children: [] }},
+      ]},
+    }));
+    expect(map.get("Doc") ?? []).toHaveLength(0);
+    expect([...map.values()].flat().filter((e) => e.name === "author")).toHaveLength(0);
+  });
+
+  test("a plain sourceless entity carrying a belongs-to files nothing either", async () => {
+    const map = buildRelationMap(await load({
+      "metadata.root": { package: "repro", children: [
+        AUTHOR,
+        { "object.entity": { name: "Note", children: [
+          { "field.long": { name: "id" } },
+          { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+          { "field.long": { name: "authorId" } },
+          { "identity.reference": { name: "fkAuthor", "@fields": "authorId", "@references": "Author" } },
+          { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "Author" } },
+        ]}},
+      ]},
+    }));
+    expect(map.get("Note") ?? []).toHaveLength(0);
+  });
+});

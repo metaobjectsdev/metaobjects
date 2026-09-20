@@ -18,6 +18,7 @@ import {
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity } from "./naming.js";
+import { hasWritableRdbSource } from "./source-detect.js";
 import { tphStorageObject } from "./templates/zod-validators.js";
 import { isProjection } from "./projection/projection-detector.js";
 
@@ -87,14 +88,19 @@ export function buildRelationMap(
   // with a DIFFERENT shape is a real conflict the base's single block cannot express:
   // it is reported through `onWarn` rather than silently overwritten, because a
   // navigation that quietly resolves to another subtype's target is the worse failure.
+  // True when a module renders a relations() block for this storage object — the
+  // question the map's contract asks, not either cause of its answer. Both
+  // non-abstractness and a writable source.rdb are required: the entity file
+  // routes an object failing EITHER to renderValueObjectFile, which emits no
+  // block. The oracle's tableBackedObjects walk makes the same exclusion. Filing
+  // an entry without it would only document, in `meta docs`/api-model, a
+  // `<Entity>Relations` export that no module emits.
+  const rendersRelationsBlock = (storing: MetaObject): boolean =>
+    !storing.isAbstract && hasWritableRdbSource(storing);
+
   const push = (obj: MetaObject, entry: RelationEntry): void => {
     const storing = tphStorageObject(obj);
-    // An ABSTRACT storage object emits a value-object module — no table, so no
-    // relations() block renders anywhere in its hierarchy — which is the same
-    // exclusion the oracle's tableBackedObjects walk makes. Filing the entry
-    // would only document, in `meta docs`/api-model, a `<Base>Relations` export
-    // that no module emits.
-    if (storing.isAbstract) return;
+    if (!rendersRelationsBlock(storing)) return;
     const key = storing.name;
     const entries = ensure(key);
     const clash = entries.find((e) => e.name === entry.name);

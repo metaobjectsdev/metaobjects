@@ -18,10 +18,12 @@ const MODEL = {
     package: "repro",
     children: [
       { "object.entity": { name: "Team", children: [
+        { "source.rdb": { "@table": "teams" } },
         { "field.int": { name: "id" } },
         { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
       ] } },
       { "object.entity": { name: "Match", children: [
+        { "source.rdb": { "@table": "matches" } },
         { "field.int": { name: "id" } },
         { "field.int": { name: "homeTeamId" } },
         { "field.int": { name: "awayTeamId" } },
@@ -36,10 +38,12 @@ const MODEL = {
       // proving that declaration reaches codegen and is not just tested at
       // the metadata layer (Task 1).
       { "object.entity": { name: "Player", children: [
+        { "source.rdb": { "@table": "players" } },
         { "field.int": { name: "id" } },
         { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
       ] } },
       { "object.entity": { name: "Game", children: [
+        { "source.rdb": { "@table": "games" } },
         { "field.int": { name: "id" } },
         { "field.int": { name: "p1Id" } },
         { "field.int": { name: "p2Id" } },
