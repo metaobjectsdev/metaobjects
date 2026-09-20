@@ -19,9 +19,12 @@ extend the model with a TPH hierarchy and four more junctions:
 | `m2m-directed-self-join-traversal` | directed self-join (`Person` —`following`→ `Person` via `Follow`, `@sourceRefField`) | `GET /api/persons/:id/following` |
 | `m2m-symmetric-self-join-traversal` | symmetric self-join (`Person` —`friends`→ `Person` via `Friendship`, `@symmetric`) | `GET /api/persons/:id/friends` |
 
-The URL segment for the source is its **entity name pluralized** (`Person` →
-`/persons`, `Post` → `/posts`), per the cross-port grammar — NOT the physical
-`@table`. The relation segment is the relationship `name`.
+The URL segment for the source is its **entity name `snake_case`d and then
+pluralized** (`Person` → `/persons`, `Post` → `/posts`, `PostCategory` →
+`/post_categories`), per the cross-port grammar — NOT the physical `@table`. The
+relation segment is the relationship `name`. Every source above is a single
+regular word, where snake_casing and pluralizing are both no-ops; see
+"Collection-URL spelling" for the case that is not.
 
 ## TPH x M:N (FW-8)
 

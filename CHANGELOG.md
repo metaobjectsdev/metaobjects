@@ -15,6 +15,39 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Changed
 
+- **BREAKING (generated routes): the REST collection URL is now the entity name
+  `snake_case`d then pluralized, in every port.** One rule replaces five. The ports
+  agreed only on single regular words — `Author` → `authors` under every old rule, and
+  every collection base in every corpus was such a word, so all five lanes were green
+  while `OrderSummary` was served at four different URLs: `/order_summaries` (TS
+  entity), `/order-summaries` (TS projection), `/ordersummaries` (C#) and
+  `/ordersummarys` (Java, Kotlin, Python). Kotlin's own comment asserted all four ports
+  shared one trivial rule; only Java matched it.
+
+  **Who is affected.** If every entity and projection name in your model is a single
+  regular word, nothing moves — `authors`, `posts`, `tags`, `persons`, `accounts`,
+  `auths`, `documents`, `orders` are byte-identical under the old and new rules. If any
+  name is multi-word or takes an irregular plural, **its collection URL changes** and
+  clients calling it must follow. Regenerate (`meta gen`, `dotnet meta gen`,
+  `mvn metaobjects:generate`, `metaobjects gen`) and diff your routes. This is a
+  reference-template output change — codegen is opt-in and generated code is yours
+  (`docs/compatibility-policy.md`) — so it ships here rather than waiting for a major.
+
+  The rule: `s`/`x`/`z`/`ch`/`sh` takes `es`, a consonant before `y` becomes `ies` (a
+  vowel does not — `days`), and a run of capitals stays together until the final one
+  that begins a word (`HTTPServer` → `http_servers`). It derives from the entity NAME,
+  never the physical `@table`. TypeScript's deliberate entity-vs-projection split is
+  collapsed into it, so `OrderSummary` is `/order_summaries` either way.
+
+  It is gated rather than merely documented: `fixtures/api-contract-conformance/m2m/`
+  declares `PostCategory` — multi-word AND ending consonant+`y`, so one entity
+  separates every spelling the ports used to produce — and asserts that both retired
+  spellings 404, on each port's hand-rolled reference lane AND its generated lane. The
+  JVM ports now share ONE implementation (`RouteNaming` in `codegen-base`) instead of
+  two hand-maintained copies; Python's second private copy of the rule in
+  `m2m_codegen` is gone the same way. The acronym case is pinned by unit test per port,
+  since no corpus entity carries one.
+
 - **`meta types <construct> --detail` no longer drops rows from a query that has already
   narrowed.** `meta types field.enum --detail` printed "20 of 22 shown — narrow with
   QUERY/--type/--kind or raise --limit", having dropped `@values` and `@xmlText`. Both halves

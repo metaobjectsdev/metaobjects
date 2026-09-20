@@ -71,10 +71,36 @@ app's job — see the policy section below.
 | `PUT`    | `/<apiPrefix>/<entity>/:id` | Update (replace) — optional; same body shape as `PATCH` |
 | `DELETE` | `/<apiPrefix>/<entity>/:id` | Delete |
 
-`<entity>` is lowercased + pluralized per the codegen's pluralization
-helper (so `Author` → `authors`). Generated TS hooks read `$path` from
-the entity-constants file, so the client and the server agree on the
-path segment without hand-coordination.
+#### The `<entity>` segment
+
+`<entity>` is the **entity name** `snake_case`d and then pluralized. One rule, the
+same in all five ports, and derived from the NAME — never from the physical
+`@table`:
+
+| Name | Segment | Why |
+|---|---|---|
+| `Author` | `authors` | a single regular word takes `s` |
+| `PostCategory` | `post_categories` | multi-word: the capitals carry the word boundary |
+| `Address` | `addresses` | ending `s`/`x`/`z`/`ch`/`sh` takes `es` |
+| `Category` | `categories` | consonant + `y` becomes `ies` |
+| `Day` | `days` | a VOWEL before the `y` does not |
+| `HTTPServer` | `http_servers` | a run of capitals stays together until the final one that begins a word |
+
+The same rule serves an `object.projection`, so `OrderSummary` is at
+`/order_summaries` whether it is an entity or a projection.
+
+Generated TS hooks read `$path` from the entity-constants file, so the client and
+the server agree on the path segment without hand-coordination.
+
+> **This changed.** Each port used to spell this differently, and they only agreed
+> on single regular words like `Author` — which is every collection base the
+> corpus had, so every lane was green while `OrderSummary` was served at four
+> different URLs: `/order_summaries` (TS entity), `/order-summaries` (TS
+> projection), `/ordersummaries` (C#) and `/ordersummarys` (Java, Kotlin,
+> Python). If your entity names are all single regular words, nothing moves. If
+> any is multi-word or takes an irregular plural, **its collection URL changes**
+> and clients must follow. `fixtures/api-contract-conformance/m2m/`'s
+> `PostCategory` now gates it in every port, on both lanes.
 
 ### Filter operators (9)
 

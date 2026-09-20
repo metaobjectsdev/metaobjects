@@ -1,6 +1,6 @@
 name: m2m-directed-self-join-traversal
 description: >
-  FR-018 directed self-join over HTTP: GET /people/:id/following traverses the
+  FR-018 directed self-join over HTTP: GET /persons/:id/following traverses the
   Follow junction. Both junction references resolve to Person, so
   @sourceRefField ("followerId") names the source side; followeeId is the
   target. Direction matters — (1→2) means 1 follows 2, NOT the reverse.
