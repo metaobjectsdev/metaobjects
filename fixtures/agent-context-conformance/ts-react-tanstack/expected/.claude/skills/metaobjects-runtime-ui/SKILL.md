@@ -77,13 +77,48 @@ with literal names because "there is no constant" is the loop this closes.
 ## The REST contract
 
 Generated (or hand-written) routes speak one cross-port HTTP contract so the same
-universal web client serves any backend language.
+universal web client serves any backend language. One part of the path grammar —
+the `<entity>` collection segment — is a known cross-port divergence (below);
+the verbs, filters, sort/pagination, and wire format are uniform.
 
 ### URL grammar
 
 `apiPrefix` (default `/api`, set in project config) flows to both the server routes
-and the client fetch URLs. `<entity>` is lowercased + pluralized (`Author` →
-`authors`).
+and the client fetch URLs.
+
+The `<entity>` collection segment is NOT currently uniform across ports — a known
+divergence, not a subtlety. Each port composes it with its own rule, and no rule
+is more correct than another:
+
+| Port | `<entity>` segment rule | `OrderSummary` → | Decided by |
+|---|---|---|---|
+| TypeScript (entity) | snake_case, then pluralize (underscores) | `order_summaries` | `resourcePath` in `codegen-ts`'s `entity-ui-descriptor.ts` |
+| TypeScript (`source.rdb` projection) | pluralize → snake_case → hyphens | `order-summaries` | same function, projection branch |
+| C# | pluralize, then lowercase — no separator | `ordersummaries` | `CSharpNaming.RoutePath` (`MetaObjects.Codegen`) |
+| Java | lowercase + `"s"` | `ordersummarys` | `SpringNaming.pluralLowercase` (`codegen-spring`) |
+| Kotlin | lowercase + `"s"` | `ordersummarys` | `KotlinNaming.pluralLowercase` (`codegen-kotlin`) |
+| Python | lowercase + `"s"` | `ordersummarys` | `plural_lowercase` (`apidocs/naming.py`) |
+
+A single-word name hides all of this (`Author` → `authors` under every rule
+above); a MULTI-word name must be checked against the serving port's rule before
+assuming a path — a wrong guess is a silent 404, not a build error. The trap is
+cross-port by construction: the generated web-client hooks and grids build their
+fetch URLs from the TypeScript `$path`, so for a multi-word name a React/TanStack
+client calls a path a C#, Java, Kotlin, or Python backend does not mount.
+
+**TypeScript additionally splits entity from projection, deliberately**: the two
+TypeScript rows compose in a different ORDER as well as a different separator,
+and both spellings are already mounted, so neither may be "tidied" into the
+other — unifying them would be a breaking route rename for existing projection
+consumers. The split is deliberate and grandfathered, not an oversight.
+
+These segment spellings are slated for UNIFICATION in a separate follow-up
+change — one rule across ports, a breaking route rename for the non-TypeScript
+ports — which will collapse this table back to a single rule. Until it lands,
+this section deliberately documents today's shipped behaviour: a doc describing
+an unshipped state is worse than one describing a messy shipped one. Read the
+deciding function for the port you are wiring; do not guess a path and do not
+"fix" one port's spelling to match another's.
 
 | Verb | Path | Purpose |
 |---|---|---|
