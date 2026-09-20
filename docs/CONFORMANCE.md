@@ -174,7 +174,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (329)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (330)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -328,8 +328,8 @@ Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 329 + yaml 16 + verify 31
-+ render 15 + persistence 33 + api-contract 50 + source-resolution 25 + scope 10 +
+The fixtures in the nine corpora mapped above (metamodel 330 + yaml 16 + verify 31
++ render 15 + persistence 33 + api-contract 51 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,
