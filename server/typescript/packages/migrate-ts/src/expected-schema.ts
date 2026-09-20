@@ -586,7 +586,11 @@ function buildTable(
         // the app's Drizzle schema does not know about, and `verify --db` cannot
         // see the disagreement because it shares this expected schema.
         col.nullable = true;
-        col.default = undefined;
+        // `delete`, not `= undefined`: the descriptor's `default` is an OPTIONAL
+        // property and this package compiles with exactOptionalPropertyTypes, under
+        // which assigning undefined is a type error (TS2412). `bun test` transpiles
+        // per-file without typechecking, so that mistake passes the whole suite.
+        delete col.default;
         columns.push(col);
         existing.add(col.name);
       }
