@@ -168,13 +168,36 @@ public class MetaDataLoader
         => FromUris(uris, DefaultRegistry(), strict);
 
     /// <summary>
+    /// <see cref="FromUris(IReadOnlyList{Uri}, bool)"/> plus an opt-in list of
+    /// MetaObjects-shipped library packages, loaded BEFORE the URI sources — same
+    /// names, same semantics, same order as
+    /// <see cref="FromDirectory(string, IEnumerable{string}?, DirectorySource.Options?, bool)"/>.
+    /// Exists because the CLI's <c>.metaobjects/config.json</c> ladder path loads via
+    /// <c>FromUris</c> (an already-resolved, <c>_pending</c>-excluded file list), never
+    /// <c>FromDirectory</c> — without this overload that path had no way to honor a
+    /// declared <c>libraries</c> selection at all.
+    /// </summary>
+    public static LoadResult FromUris(IReadOnlyList<Uri> uris, IEnumerable<string>? libraries, bool strict = false)
+        => FromUris(uris, DefaultRegistry(), libraries, strict);
+
+    /// <summary>
     /// Registry-aware overload: wrap each URI in a <see cref="UriSource"/> and
     /// load using the supplied <paramref name="registry"/>.
     /// </summary>
     public static LoadResult FromUris(IReadOnlyList<Uri> uris, TypeRegistry registry, bool strict = false)
+        => FromUris(uris, registry, null, strict);
+
+    /// <summary>
+    /// Registry-aware overload carrying the library opt-in — see
+    /// <see cref="FromUris(IReadOnlyList{Uri}, IEnumerable{string}?, bool)"/>.
+    /// </summary>
+    public static LoadResult FromUris(
+        IReadOnlyList<Uri> uris, TypeRegistry registry, IEnumerable<string>? libraries, bool strict = false)
     {
         var loader = new MetaDataLoader(registry, strict: strict);
         var sources = uris.Select(u => (IMetaDataSource)new UriSource(u)).ToList();
+        var libSources = Library.LibrarySources.Resolve(libraries);
+        if (libSources.Count > 0) sources.InsertRange(0, libSources);
         return loader.Load(sources);
     }
 

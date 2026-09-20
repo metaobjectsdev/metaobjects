@@ -52,6 +52,19 @@ class NeutralConfig:
     #: built with full TS parity.
     migrate_scope: list[str] | None
 
+    #: FR-043 §12 Q4 — MetaObjects-shipped library packages this project opts
+    #: into (e.g. ``["iam", "iam/db"]``). Declared HERE, beside `dependencies` —
+    #: the port-neutral surface every port reads — not in a per-port config, so
+    #: which designs a project adopts is a fact about the PROJECT, read at every
+    #: rung of the source ladder (DESIGN §2.3), same as `dependencies`/`scope`.
+    #: Each token is validated against this build's shipped tokens
+    #: (`known_tokens()`) here, not left to `library_sources()` (which skips an
+    #: unrecognised token silently, on purpose, for a programmatic caller) — a
+    #: name typed into a config file is a mistake worth failing on loudly,
+    #: rather than resurfacing later as `ERR_UNRESOLVED_SUPER` against the
+    #: adopter's own metadata, the wrong place to go looking.
+    libraries: list[str]
+
 
 def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     """Read the neutral subset from ``config_dir/.metaobjects/config.json``.
@@ -130,6 +143,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
 
     scope_include = _read_scope_include(raw, path)
     migrate_scope = _read_migrate_scope(raw, path)
+    libraries = _read_libraries(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
     return NeutralConfig(
@@ -137,6 +151,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         dependencies=dependencies,
         scope_include=scope_include,
         migrate_scope=migrate_scope,
+        libraries=libraries,
     )
 
 
@@ -182,6 +197,36 @@ def _read_migrate_scope(raw: dict[str, object], path: Path) -> list[str] | None:
     if scope is None:
         return None
     return _string_array_or_raise(scope, "migrate.scope", path)
+
+
+def _read_libraries(raw: dict[str, object], path: Path) -> list[str]:
+    """FR-043 §12 Q4 — `libraries`, this project's opted-in shipped-library
+    tokens. Empty when the key is absent. Each token is validated against
+    `known_tokens()` (mirrors the TS `resolveCollection`'s `ERR_UNKNOWN_LIBRARY`
+    check in `collection.ts`) — TOKENS, not library names, so an adopter who
+    typed `iam/database` is shown `iam/db` rather than only the half they got
+    right.
+    """
+    libraries = raw.get("libraries", [])
+    libraries = _string_array_or_raise(libraries, "libraries", path)
+    if not libraries:
+        return libraries
+
+    # Local import: keeps `metaobjects.library` (and the embedded-library module
+    # it pulls in) off this module's import path for the common case of a
+    # config declaring no libraries at all.
+    from metaobjects.library.library_sources import known_tokens
+
+    available = known_tokens()
+    unknown = [name for name in libraries if name not in available]
+    if unknown:
+        raise ParseError(
+            f"{path}: 'libraries' names unknown "
+            f"librar{'y' if len(unknown) == 1 else 'ies'} {unknown}; "
+            f"available: {available}",
+            code=ErrorCode.ERR_UNKNOWN_LIBRARY,
+        )
+    return libraries
 
 
 def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:

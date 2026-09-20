@@ -314,7 +314,7 @@ def _collection(**overrides: object) -> Collection:
     base: dict[str, object] = dict(
         files=(), own_files=(), file_ids={}, dependencies=(),
         imported_packages=frozenset(), imported_nodes=frozenset(),
-        scope_include=(), in_migrate_scope=None,
+        scope_include=(), in_migrate_scope=None, libraries=(),
     )
     base.update(overrides)
     return Collection(**base)  # type: ignore[arg-type]

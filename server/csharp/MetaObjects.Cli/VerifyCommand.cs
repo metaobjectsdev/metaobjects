@@ -91,6 +91,13 @@ public static class VerifyCommand
         /// <see cref="MetadataDir"/> came from an explicit CLI argument instead.
         /// </summary>
         public IReadOnlyList<string>? MetadataFiles { get; init; }
+        /// <summary>
+        /// FR-043 — the project's <c>.metaobjects/config.json</c> <c>libraries</c>
+        /// selection (e.g. <c>["iam", "iam/db"]</c>), read regardless of whether
+        /// <see cref="MetadataDir"/> came from the ladder or an explicit CLI argument
+        /// (<c>Program.cs</c>'s <c>ResolveMetadataDirOrExit</c>). Empty when none declared.
+        /// </summary>
+        public IReadOnlyList<string> Libraries { get; init; } = Array.Empty<string>();
         /// <summary>Templates root for the <c>--templates</c> gate (<c>--templates &lt;root&gt;</c>).</summary>
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
@@ -217,8 +224,8 @@ public static class VerifyCommand
     /// explicit CLI argument — the legacy, unfiltered directory load).
     /// </summary>
     private static LoadResult LoadMetadata(Options opts) => opts.MetadataFiles is { } files
-        ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Strict)
-        : MetaDataLoader.FromDirectory(opts.MetadataDir, strict: opts.Strict);
+        ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Libraries, opts.Strict)
+        : MetaDataLoader.FromDirectory(opts.MetadataDir, opts.Libraries, strict: opts.Strict);
 
     /// <summary>
     /// Run the codegen-drift gate: load metadata, resolve the generator suite (default

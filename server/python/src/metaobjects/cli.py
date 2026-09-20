@@ -59,6 +59,7 @@ from metaobjects.config.dependencies import (
     refuse_library_package_misuse,
     refuse_unowned_packages,
 )
+from metaobjects.config.neutral_config import read_neutral_config
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -257,6 +258,23 @@ def _select_targets(
     return [t], None
 
 
+def _merge_libraries(*groups: "list[str] | tuple[str, ...] | None") -> list[str]:
+    """Union several ``libraries`` selection-token groups, de-duplicated and
+    order-preserving (first occurrence wins the position).
+
+    Every group is a selection from a DIFFERENT source for the same concept —
+    the neutral ``.metaobjects/config.json`` (FR-043 §12 Q4, read at every rung)
+    and, where one exists, a per-port config surface's own ``libraries:`` key
+    (Python's ``metaobjects.config.yaml``). Neither is authoritative over the
+    other, so a project may declare libraries in either place or both.
+    """
+    seen: dict[str, None] = {}
+    for group in groups:
+        for token in group or ():
+            seen.setdefault(token, None)
+    return list(seen)
+
+
 def _load_root(
     metadata_dir: str,
     strict: bool = False,
@@ -279,8 +297,25 @@ def _load_root(
     e.g. ``["ai"]``). Without this the CLI could not load ``metaobjects::ai::LlmCallBase``,
     so ``metaobjects gen`` failed with ERR_UNRESOLVED_SUPER on exactly the metadata the
     registered ``trace-helper`` generator exists to consume — the generator was reachable
-    from the CLI while its input was not.
+    from the CLI while its input was not. ADDITIVE to (never a replacement for) the
+    neutral ``.metaobjects/config.json``'s own ``libraries`` key (FR-043 §12 Q4), which
+    this function ALWAYS also reads, from the project holding ``metadata_dir``
+    (:func:`project_root_for`) — an explicit-``metadata_dir`` CLI invocation
+    (``gen``, ``docs``, ``verify --templates``, ``verify --codegen``'s
+    regenerate-to-temp path) never resolves a `Collection`
+    (:func:`resolve_metadata_location`'s docstring: rung 1 is not its concern), so
+    without this an adopter whose opt-in lives only in ``.metaobjects/config.json``
+    could not run any explicit-directory command against metadata using a library
+    at all — exactly the gap ``config``-mode (:func:`_cmd_gen_config`) does not have,
+    because it already threads ``config.libraries`` through
+    :func:`_load_root_from_collection`.
     """
+    try:
+        neutral = read_neutral_config(project_root_for(metadata_dir))
+    except ParseError as exc:
+        return None, [f"{exc.code}: {exc}"]
+    all_libraries = _merge_libraries(neutral.libraries if neutral is not None else None, libraries)
+
     try:
         if providers:
             from metaobjects.core_types import core_providers
@@ -289,11 +324,11 @@ def _load_root(
                 metadata_dir,
                 providers=[*core_providers, *providers],
                 strict=strict,
-                libraries=libraries,
+                libraries=all_libraries,
             )
         else:
             result = MetaDataLoader.from_directory(
-                metadata_dir, strict=strict, libraries=libraries
+                metadata_dir, strict=strict, libraries=all_libraries
             )
     except OSError as e:
         # `DirectorySource.expand()` walks via `iterdir()` (not `rglob()`, so it
@@ -310,6 +345,15 @@ def _load_root(
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
+    try:
+        # FR-043 §3.4 / §3.5 — same misuse guard the `Collection` load path runs
+        # (`_load_collection_result`): an explicit-directory load opted into a
+        # library was the one path that never checked for an ejected-copy
+        # collision or an adopter node declared straight into the library's
+        # package.
+        refuse_library_package_misuse(result.root, all_libraries)
+    except ParseError as exc:
+        return None, [f"{exc.code}: {exc}"]
     return result.root, []
 
 
@@ -324,6 +368,12 @@ def _load_collection_result(
     post-load ownership refusal (`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, DESIGN
     §11.5). Mirrors the TS `loadMemory` (`sdk/src/memory.ts`).
 
+    ``libraries`` is ADDITIVE to ``collection.libraries`` (the neutral
+    `.metaobjects/config.json`'s own key, read at every rung — FR-043 §12 Q4),
+    never a replacement for it: a caller passes a per-port config surface's own
+    selection here (Python's `metaobjects.config.yaml` `libraries:` key), and
+    both are merged before resolving library sources.
+
     Lower-level than :func:`_load_root_from_collection`: this returns the raw
     `LoadResult` (structured `MetaError`s, a code + provenance on each) rather
     than the CLI's flattened `(root, message-strings)` contract, so a caller
@@ -332,11 +382,18 @@ def _load_collection_result(
     errors, never before: an unflagged overlay whose target the upstream
     removed fails first, with its own coded error.
     """
+    # `collection.libraries` (FR-043 §12 Q4 — the neutral `.metaobjects/config.json`,
+    # read at every rung) is merged with whatever the caller additionally passes
+    # (a per-port config surface's own `libraries:` key, e.g. Python's
+    # `metaobjects.config.yaml` — see `_cmd_gen_config`). Neither source is
+    # authoritative over the other.
+    all_libraries = _merge_libraries(collection.libraries, libraries)
+
     lib_sources: list[object] = []
-    if libraries:
+    if all_libraries:
         from metaobjects.library import library_sources
 
-        lib_sources = library_sources(libraries)
+        lib_sources = library_sources(all_libraries)
 
     sources = [FileSource(p, id=collection.file_ids.get(p)) for p in collection.files]
 
@@ -354,7 +411,7 @@ def _load_collection_result(
         # two ways to get it wrong are opposite: a node the library also declares (an
         # ejected copy, still opted in) and one it does not (a new node in someone
         # else's package).
-        refuse_library_package_misuse(result.root, libraries)
+        refuse_library_package_misuse(result.root, all_libraries)
     return result
 
 

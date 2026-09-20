@@ -12,6 +12,7 @@ persist with "Unknown field", and the two drifting apart is invisible until then
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 import textwrap
 from pathlib import Path
@@ -352,3 +353,66 @@ class TestTheCliCanLoadTheLibrary:
 
         with pytest.raises(ConfigError, match="unknown package"):
             load_project_config(self._config(tmp_path, 'libraries: ["ai-trace"]\n'))
+
+
+class TestTheExplicitDirectoryCliPathReadsTheNeutralConfig:
+    """FR-043 §12 Q4 — `libraries` moved to the port-neutral
+    `.metaobjects/config.json`, read at every rung of the source ladder (DESIGN
+    §2.3), same as `dependencies`/`scope`/`migrate.scope`.
+
+    `TestTheCliCanLoadTheLibrary` above proves the CONFIG-mode path (a
+    `metaobjects.config.yaml` with its own `libraries:` key). This class proves
+    the OTHER CLI shape: an explicit `<metadata_dir>` invocation
+    (`metaobjects gen <dir> --out <dir>`) with NO `metaobjects.config.yaml` at
+    all — the shape an adopter who declares their opt-in only in the
+    port-neutral config file uses, and the one `_load_root` never consulted
+    before this fix (it built the `MetaDataLoader` call directly, with no
+    notion of a project root to find `.metaobjects/config.json` under).
+    """
+
+    def _project(self, tmp_path: Path, config_json: dict[str, object] | None) -> Path:
+        """A project laid out as ``<tmp_path>/metadata`` (the metadata dir a
+        caller passes explicitly) beside ``<tmp_path>/.metaobjects/config.json``
+        (or nothing, when ``config_json`` is None) — never `metaobjects.config.yaml`,
+        so declarative-config mode never applies. Returns the metadata dir.
+        """
+        metadata_dir = tmp_path / "metadata"
+        metadata_dir.mkdir()
+        (metadata_dir / "meta.app.yaml").write_text(ADOPTER_YAML, encoding="utf-8")
+        if config_json is not None:
+            metaobjects_dir = tmp_path / ".metaobjects"
+            metaobjects_dir.mkdir()
+            (metaobjects_dir / "config.json").write_text(json.dumps(config_json))
+        return metadata_dir
+
+    def test_explicit_directory_reads_libraries_from_the_neutral_config(
+        self, tmp_path: Path
+    ) -> None:
+        from metaobjects.cli import _load_root
+
+        metadata_dir = self._project(
+            tmp_path, {"schema_version": 1, "sources": [], "libraries": ["ai"]}
+        )
+
+        root, errors = _load_root(str(metadata_dir))
+
+        assert errors == []
+        assert root is not None
+        assert any(
+            child.type == TYPE_OBJECT and isinstance(child, MetaObject) and child.name == "AdopterCall"
+            for child in root.children()
+        )
+
+    def test_explicit_directory_without_the_neutral_config_still_fails(
+        self, tmp_path: Path
+    ) -> None:
+        """Pins that the neutral config's `libraries` key is what resolves it —
+        not some other, broader default `_load_root` applies regardless."""
+        from metaobjects.cli import _load_root
+
+        metadata_dir = self._project(tmp_path, config_json=None)
+
+        root, errors = _load_root(str(metadata_dir))
+
+        assert root is None
+        assert any("ERR_UNRESOLVED_SUPER" in e for e in errors)

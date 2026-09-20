@@ -149,14 +149,17 @@ static int RunGen(string[] rest)
         ? GenCommand.ProjectRootFor(metadataDir)
         : Directory.GetCurrentDirectory();
 
-    var outcome = resolvedMeta.Files is { } files
-        ? GenCommand.Run(
-            MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList()),
-            outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
-            columnNaming, baseline)
-        : GenCommand.Run(
-            resolvedMeta.Directory, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath,
-            columnNaming, baseline);
+    // FR-043 — `resolvedMeta.Libraries` is threaded into whichever load path ran
+    // (ladder or explicit <metadataDir>; see ResolveMetadataDirOrExit), so both
+    // branches now build a LoadResult up front and share the single
+    // GenCommand.Run(LoadResult, ...) overload, exactly as VerifyCommand.LoadMetadata
+    // already does.
+    var load = resolvedMeta.Files is { } files
+        ? MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), resolvedMeta.Libraries)
+        : MetaObjects.Loader.MetaDataLoader.FromDirectory(resolvedMeta.Directory, resolvedMeta.Libraries);
+    var outcome = GenCommand.Run(
+        load, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
+        columnNaming, baseline);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
@@ -221,12 +224,12 @@ static int RunDocs(string[] rest)
 
     // See the identical comment in RunGen above: a ladder-resolved source loads
     // via its already-resolved, `_pending`-excluded file list, never a second
-    // (unfiltered) directory walk.
-    var outcome = resolvedMeta.Files is { } files
-        ? DocsCommand.Run(
-            MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList()),
-            outDir, project, ns, modelBaseUrl: modelBaseUrl)
-        : DocsCommand.Run(resolvedMeta.Directory, outDir, project, ns, modelBaseUrl: modelBaseUrl);
+    // (unfiltered) directory walk. FR-043 — `resolvedMeta.Libraries` is threaded
+    // in the same way RunGen does.
+    var load = resolvedMeta.Files is { } files
+        ? MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), resolvedMeta.Libraries)
+        : MetaObjects.Loader.MetaDataLoader.FromDirectory(resolvedMeta.Directory, resolvedMeta.Libraries);
+    var outcome = DocsCommand.Run(load, outDir, project, ns, modelBaseUrl: modelBaseUrl);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
@@ -290,13 +293,25 @@ static bool TryParseColumnNaming(string raw, out ColumnNamingStrategy strategy)
 
 static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
 {
-    if (metadataDir is not null) return new ResolvedMetadata(metadataDir, null);
+    if (metadataDir is not null)
+    {
+        // Libraries are read from the port-neutral config REGARDLESS of an explicit
+        // positional <metadataDir> — mirrors the "dependencies is read at every rung"
+        // rule (docs/features/metadata-sources.md) extended to `libraries`, since this
+        // port has no rung-2 native config surface to fall back on. The project root
+        // is the directory HOLDING the explicit dir (GenCommand.ProjectRootFor — the
+        // same anchor `.gen-state` uses), which is where `.metaobjects/config.json`
+        // sits beside the metadata directory in the conventional layout.
+        var explicitLibs = ReadLibrariesOrExit(GenCommand.ProjectRootFor(metadataDir));
+        return new ResolvedMetadata(metadataDir, null, explicitLibs);
+    }
 
     var cwd = Directory.GetCurrentDirectory();
     try
     {
         var cfg = MetaObjects.Config.NeutralConfig.Read(cwd);
         var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
+        var libraries = cfg?.Libraries ?? Array.Empty<string>();
 
         if (specs.Count == 0)
         {
@@ -306,7 +321,7 @@ static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
             // returned file list IS the load — no second walk needed.
             var defaultFiles = MetaObjects.Config.SourceResolver.ResolveCollection(cwd);
             return new ResolvedMetadata(
-                Path.Combine(cwd, MetaObjects.Config.NeutralConfig.DefaultMetadataDir), defaultFiles);
+                Path.Combine(cwd, MetaObjects.Config.NeutralConfig.DefaultMetadataDir), defaultFiles, libraries);
         }
 
         if (specs.Count > 1)
@@ -347,7 +362,28 @@ static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
             throw new InvalidOperationException("unreachable");
         }
 
-        return new ResolvedMetadata(resolved, files);
+        return new ResolvedMetadata(resolved, files, libraries);
+    }
+    catch (MetaObjects.MetaModelException e)
+    {
+        Console.Error.WriteLine($"error: {e.Code}: {e.Message}");
+        Environment.Exit(2);
+        throw;
+    }
+}
+
+// The `libraries` read for an EXPLICIT <metadataDir> (see ResolveMetadataDirOrExit
+// above) — a malformed .metaobjects/config.json (unknown "libraries" token included,
+// ERR_UNKNOWN_LIBRARY) exits 2 with the same diagnostic shape the ladder path's own
+// catch block prints, rather than throwing past the CLI's usual error handling. An
+// ABSENT config (or one with no "libraries" key) is not an error — most projects with
+// an explicit <metadataDir> declare no libraries at all — so this returns empty rather
+// than exiting.
+static IReadOnlyList<string> ReadLibrariesOrExit(string configDir)
+{
+    try
+    {
+        return MetaObjects.Config.NeutralConfig.Read(configDir)?.Libraries ?? Array.Empty<string>();
     }
     catch (MetaObjects.MetaModelException e)
     {
@@ -472,6 +508,9 @@ static int RunVerify(string[] rest)
         // `_pending`-excluded file list (see VerifyCommand.LoadMetadata) — never a
         // second (unfiltered) directory walk of MetadataDir.
         MetadataFiles = resolvedMeta.Files,
+        // FR-043 — read regardless of ladder vs. explicit <metadataDir> (see
+        // ResolveMetadataDirOrExit).
+        Libraries = resolvedMeta.Libraries,
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
@@ -536,4 +575,8 @@ static int RunVerify(string[] rest)
 }
 
 // See the doc comment on ResolveMetadataDirOrExit above.
-readonly record struct ResolvedMetadata(string Directory, IReadOnlyList<string>? Files);
+// `Libraries` — FR-043's `.metaobjects/config.json` `libraries` selection, read
+// REGARDLESS of whether `Directory` came from the ladder or an explicit CLI
+// argument (see ResolveMetadataDirOrExit). Empty (never null) when none declared,
+// so every caller can pass it straight to a loader overload without a null check.
+readonly record struct ResolvedMetadata(string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries);

@@ -1,11 +1,18 @@
 // Port-neutral `.metaobjects/config.json` reading.
 //
-// Reads only the NEUTRAL SUBSET (`schema_version`, `sources`). The file also
+// Reads the NEUTRAL SUBSET (`schema_version`, `sources`, `libraries`). The file also
 // carries TypeScript-owned keys (`pending_in_git`, `confidence_thresholds`,
 // `extract`, `migrate`, `scope`); those are IGNORED rather than modeled, so a
 // new TS-only key never becomes a four-port change. `scope` in particular is
 // entirely out of scope for this reader — see
 // docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md §4.
+//
+// `libraries` (FR-043) is read here — not just by TypeScript — because this port has
+// no rung-2 native config surface (unlike Java/Kotlin's pom or Python's
+// metaobjects.config.yaml): `.metaobjects/config.json` is the ONLY place a C# adopter
+// can opt into a shipped library at all. See docs/superpowers/specs/2026-09-13-fr-043-
+// feature-and-nfr-packages-design.md §12 Q4 ("should libraries move to
+// .metaobjects/config.json? yes, outright... the JVM/C# ports can follow").
 using System.Text.Json;
 
 namespace MetaObjects.Config;
@@ -25,7 +32,22 @@ public sealed class NeutralConfig
     /// SourceResolver, not here.
     public IReadOnlyList<IReadOnlyDictionary<string, string>> Sources { get; }
 
-    private NeutralConfig(IReadOnlyList<IReadOnlyDictionary<string, string>> sources) => Sources = sources;
+    /// FR-043 selection tokens (e.g. `["iam", "iam/db"]`) — empty when the key is
+    /// absent or an empty array. Validated against
+    /// <see cref="MetaObjects.Library.LibrarySources.KnownTokens"/> at read time: an
+    /// unrecognised token is a config MISTAKE (a human typed it), not the
+    /// programmatic-caller case <c>LibrarySources.Resolve</c> tolerates by skipping —
+    /// skipped here, it would resurface as ERR_UNRESOLVED_SUPER against the adopter's
+    /// own metadata, the wrong place to send someone looking. Mirrors TypeScript's
+    /// `resolveCollection` (ERR_UNKNOWN_LIBRARY).
+    public IReadOnlyList<string> Libraries { get; }
+
+    private NeutralConfig(
+        IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries)
+    {
+        Sources = sources;
+        Libraries = libraries;
+    }
 
     /// Returns null when `<configDir>/.metaobjects/config.json` does not exist.
     /// A file that EXISTS but is malformed THROWS — swallowing it would make a
@@ -114,9 +136,37 @@ public sealed class NeutralConfig
                 }
             }
 
+            var libraries = new List<string>();
+            if (root.TryGetProperty("libraries", out var libs))
+            {
+                // Same "present-but-wrong-shaped raises" rule as `sources` above.
+                if (libs.ValueKind != JsonValueKind.Array)
+                    throw new MetaModelException($"{path}: \"libraries\" must be an array", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+                foreach (var l in libs.EnumerateArray())
+                {
+                    if (l.ValueKind != JsonValueKind.String)
+                        throw new MetaModelException($"{path}: each \"libraries\" entry must be a string", ErrorCode.ERR_BAD_ATTR_VALUE);
+                    var token = l.GetString()!;
+                    if (string.IsNullOrWhiteSpace(token))
+                        throw new MetaModelException($"{path}: each \"libraries\" entry must not be empty", ErrorCode.ERR_BAD_ATTR_VALUE);
+                    libraries.Add(token);
+                }
+
+                var available = MetaObjects.Library.LibrarySources.KnownTokens();
+                var unknown = libraries.Where(t => !available.Contains(t)).ToList();
+                if (unknown.Count > 0)
+                {
+                    throw new MetaModelException(
+                        $"{path}: \"libraries\" names unknown librar{(unknown.Count == 1 ? "y" : "ies")} " +
+                        $"[{string.Join(", ", unknown)}]; available: [{string.Join(", ", available)}]",
+                        ErrorCode.ERR_UNKNOWN_LIBRARY);
+                }
+            }
+
             // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
             // design — see the file header.
-            return new NeutralConfig(specs);
+            return new NeutralConfig(specs, libraries);
         }
     }
 }

@@ -144,14 +144,16 @@ def _collection_from_own_files(
 ) -> Collection:
     """The tail shared by `resolve_collection_full` (own files via the source
     ladder) and `build_collection` (own files from an external surface, e.g.
-    a native `metaobjects.config.yaml` `metadata:` key) — dependencies, scope
-    and migrate.scope come from `root`'s neutral `.metaobjects/config.json`
-    regardless of where `own_files` came from (DESIGN §2.3: dependencies are
-    read at EVERY rung of the source ladder).
+    a native `metaobjects.config.yaml` `metadata:` key) — dependencies, scope,
+    migrate.scope AND libraries come from `root`'s neutral
+    `.metaobjects/config.json` regardless of where `own_files` came from
+    (DESIGN §2.3: dependencies are read at EVERY rung of the source ladder;
+    FR-043 §12 Q4 applies the same rule to `libraries`).
     """
     dependency_specs: list[dict[str, str]] = cfg.dependencies if cfg is not None else []
     scope_include: list[str] = cfg.scope_include if cfg is not None else []
     migrate_scope: list[str] | None = cfg.migrate_scope if cfg is not None else None
+    libraries: list[str] = cfg.libraries if cfg is not None else []
 
     lock = read_lock(root)
     dependencies: list[ResolvedDependency] = (
@@ -180,6 +182,7 @@ def _collection_from_own_files(
         in_migrate_scope=_make_in_migrate_scope(
             migrate_scope, imported_packages, has_dependencies=bool(dependencies)
         ),
+        libraries=tuple(libraries),
     )
 
 

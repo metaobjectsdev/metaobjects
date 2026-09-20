@@ -646,6 +646,13 @@ class Collection:
     #: is TS-owned, ADR-0015).
     in_migrate_scope: Callable[[str], bool] | None
 
+    #: FR-043 §12 Q4 — this project's opted-in shipped-library tokens, read
+    #: from the neutral `.metaobjects/config.json` at EVERY rung, same as
+    #: `dependencies`/`scope_include` above. A CLI caller merges this with
+    #: whatever a per-port config surface additionally supplies (e.g. Python's
+    #: own `metaobjects.config.yaml` `libraries:` key) before resolving sources.
+    libraries: tuple[str, ...]
+
     def imported(self, fqn: str) -> bool:
         """Is `fqn` in a package one of this project's dependencies owns?"""
         return package_of_resolution_key(fqn) in self.imported_packages

@@ -139,3 +139,41 @@ def test_dependencies_shape_errors(tmp_path: Path, bad: object) -> None:
     with pytest.raises(ParseError) as e:
         read_neutral_config(tmp_path)
     assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
+
+
+# FR-043 §12 Q4 — `libraries` moved to this port-neutral file, beside
+# `dependencies`: read at every rung of the source ladder, by every port.
+
+
+def test_libraries_parse(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "libraries": ["iam", "iam/db"]})
+    cfg = read_neutral_config(tmp_path)
+    assert cfg is not None
+    assert cfg.libraries == ["iam", "iam/db"]
+
+
+def test_libraries_absent_is_empty(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": []})
+    cfg = read_neutral_config(tmp_path)
+    assert cfg is not None
+    assert cfg.libraries == []
+
+
+def test_libraries_shape_error(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "libraries": [1, 2]})
+    with pytest.raises(ParseError) as e:
+        read_neutral_config(tmp_path)
+    assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
+
+
+def test_unknown_library_token_raises_loudly(tmp_path: Path) -> None:
+    """A typo'd token must never resolve silently — `library_sources()` itself skips
+    an unrecognised token on purpose (for a programmatic caller), but a name a human
+    typed into a config file is refused here with the tokens this build actually
+    ships, or it resurfaces later as `ERR_UNRESOLVED_SUPER` against the adopter's own
+    metadata — the wrong place to go looking."""
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "libraries": ["ai-trace"]})
+    with pytest.raises(ParseError) as e:
+        read_neutral_config(tmp_path)
+    assert e.value.code == ErrorCode.ERR_UNKNOWN_LIBRARY
+    assert "ai-trace" in str(e.value)
