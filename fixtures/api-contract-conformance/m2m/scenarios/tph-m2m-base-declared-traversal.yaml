@@ -1,0 +1,36 @@
+name: tph-m2m-base-declared-traversal
+description: >
+  FW-8 rule (a)/(b): a M:N declared on the TPH DISCRIMINATOR BASE mounts at the
+  base path, where every row of the shared table is a legitimate source — a
+  Member id and a Guest id both traverse it. The SAME inherited relationship
+  ALSO mounts under each concrete subtype's segment; that overlap is deliberate,
+  not redundant, and the independent oracle requires it.
+requests:
+  - id: r1
+    method: GET
+    path: /api/accounts/1/badges
+    expect:
+      status: 200
+      body:
+        namesUnordered: [green, red]
+  - id: r2
+    method: GET
+    path: /api/accounts/2/badges
+    expect:
+      status: 200
+      body:
+        namesUnordered: [blue]
+  - id: r3
+    method: GET
+    path: /api/accounts/3/badges
+    expect:
+      status: 200
+      body:
+        length: 0
+  - id: r4
+    method: GET
+    path: /api/accounts/member/1/badges
+    expect:
+      status: 200
+      body:
+        namesUnordered: [green, red]

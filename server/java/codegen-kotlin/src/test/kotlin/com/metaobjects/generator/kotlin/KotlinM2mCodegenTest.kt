@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
  */
 class KotlinM2mCodegenTest {
 
-    /** The 6-entity model from the shared m2m api-contract corpus, inlined. */
+    /** The m2m api-contract corpus's original 6-entity model (Post/Tag/PostTag + Person/Follow/Friendship), inlined. */
     private val m2mFixture = """{
       "metadata.root": { "package": "acme::social", "children": [
         { "object.entity": { "name": "Post", "children": [

@@ -11,9 +11,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * FR-018 — the shared M:N corpus {@code seed.json}, keyed by physical table name
- * (six tables: {@code posts/tags/post_tags/people/follows/friendships}). Loaded
- * once and applied fresh per scenario by both lanes.
+ * FR-018 — the shared M:N corpus {@code seed.json}, keyed by physical table name.
+ * Loaded once and applied fresh per scenario by both lanes.
  *
  * <p>Mirror of {@code M2mSeed.kt} in {@code integration-tests-kotlin}.</p>
  */

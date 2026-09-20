@@ -124,9 +124,11 @@ _INDEX = build_object_index(list(_ENTITIES.values()))
 
 
 def test_hetero_descriptor() -> None:
-    descs = resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX)
-    assert len(descs) == 1
-    d = descs[0]
+    # Post now also declares `reviewers` (FW-8's TPH-target M:N fixture, onto
+    # MemberAccount) — key by relation name rather than assuming a single result.
+    descs = {d.relation_name: d for d in resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX)}
+    assert "tags" in descs
+    d = descs["tags"]
     assert d.relation_name == "tags"
     assert d.target_entity == "Tag"
     assert d.source_plural == "posts"
@@ -231,9 +233,11 @@ def test_the_column_naming_strategy_reaches_the_junction_columns() -> None:
     ``snake_case`` is chosen because ``postId`` → ``post_id`` differs from the field
     name, which ``literal`` cannot produce.
     """
-    descs = resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX, column_naming="snake_case")
-    assert len(descs) == 1
-    d = descs[0]
+    descs = {
+        d.relation_name: d
+        for d in resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX, column_naming="snake_case")
+    }
+    d = descs["tags"]
     assert d.source_column == "post_id"
     assert d.target_column == "tag_id"
     # And the strategy must not leak into names that are not columns.
@@ -290,10 +294,9 @@ def test_sourced_junction_still_resolves_correctly() -> None:
     shape without breaking the working one. (Mirrors test_hetero_descriptor's
     junction_table assertion; kept as its own test so it survives independently
     of that test's other, unrelated assertions.)"""
-    descs = resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX)
-    assert len(descs) == 1
-    assert descs[0].junction_table == "post_tags"
-    assert descs[0].target_table == "tags"
+    descs = {d.relation_name: d for d in resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX)}
+    assert descs["tags"].junction_table == "post_tags"
+    assert descs["tags"].target_table == "tags"
 
 
 def test_dotted_junction_reference_still_derives_m2m_fields() -> None:
@@ -307,9 +310,8 @@ def test_dotted_junction_reference_still_derives_m2m_fields() -> None:
     correct behaviour: same shape, same descriptor, dotted spelling."""
     entities = _load_entities_edited(_dot_the_junction_references)
     index = build_object_index(list(entities.values()))
-    descs = resolve_m2m_descriptors(entities["Post"], index)
-    assert len(descs) == 1
-    d = descs[0]
+    descs = {d.relation_name: d for d in resolve_m2m_descriptors(entities["Post"], index)}
+    d = descs["tags"]
     assert d.target_entity == "Tag"
     assert d.junction_table == "post_tags"
     assert d.target_table == "tags"
@@ -365,9 +367,11 @@ def _resolved_post_descriptor(spy_target: str, column_naming: str, run: Callable
         run(_m2m_ctx(column_naming))
 
     assert len(captured) == 1, f"expected exactly one resolve_m2m_descriptors call, got {len(captured)}"
-    descs = captured[0]
-    assert len(descs) == 1
-    return descs[0]
+    # Post now also declares `reviewers` (FW-8's TPH-target M:N fixture) — key by
+    # relation name and pick `tags` (the relation this helper's callers probe).
+    by_relation = {d.relation_name: d for d in captured[0]}
+    assert "tags" in by_relation
+    return by_relation["tags"]
 
 
 def test_router_generate_threads_column_naming_from_config_snake_case() -> None:

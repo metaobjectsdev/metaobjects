@@ -29,5 +29,27 @@
     { "personAId": 1, "personBId": 2 },
     { "personAId": 3, "personBId": 1 },
     { "personAId": 2, "personBId": 4 }
+  ],
+  "accounts": [
+    { "id": 1, "kind": "Member", "handle": "alice", "karma": 10,   "invitedBy": null },
+    { "id": 2, "kind": "Guest",  "handle": "bob",   "karma": null, "invitedBy": "alice" },
+    { "id": 3, "kind": "Member", "handle": "carol", "karma": 7,    "invitedBy": null }
+  ],
+  "account_tags": [
+    { "accountId": 1, "tagId": 10 },
+    { "accountId": 1, "tagId": 20 },
+    { "accountId": 2, "tagId": 30 }
+  ],
+  "scoped_account_tags": [
+    { "accountId": 1, "tagId": 30 }
+  ],
+  "member_account_tags": [
+    { "accountId": 1, "tagId": 20 },
+    { "accountId": 3, "tagId": 10 }
+  ],
+  "post_reviewers": [
+    { "postId": 1, "accountId": 1 },
+    { "postId": 1, "accountId": 3 },
+    { "postId": 2, "accountId": 2 }
   ]
 }

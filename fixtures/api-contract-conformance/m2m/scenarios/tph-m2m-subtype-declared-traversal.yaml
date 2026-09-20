@@ -1,0 +1,21 @@
+name: tph-m2m-subtype-declared-traversal
+description: >
+  FW-8 rule (b): a M:N declared on a CONCRETE TPH SUBTYPE mounts under that
+  subtype's own segment. Before the fix this relationship got no route at all —
+  the controller generator skipped every TPH subtype, so the endpoint 404'd
+  while everything still compiled.
+requests:
+  - id: r1
+    method: GET
+    path: /api/accounts/member/1/interests
+    expect:
+      status: 200
+      body:
+        namesUnordered: [green]
+  - id: r2
+    method: GET
+    path: /api/accounts/member/3/interests
+    expect:
+      status: 200
+      body:
+        namesUnordered: [red]

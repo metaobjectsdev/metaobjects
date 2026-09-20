@@ -8,12 +8,49 @@ per-scenario Testcontainers Postgres:
     GET /api/persons/{id}/following  directed self-join (@sourceRefField)
     GET /api/persons/{id}/friends    symmetric self-join (@symmetric, union-on-read)
 
+Plus, FW-8 (FR-018 x FR-017 — M:N traversal inside a TPH hierarchy), over the
+``Account`` discriminator base (``@discriminator: "kind"``, subtypes
+``MemberAccount`` / ``GuestAccount``, abstract mid level ``ScopedAccount``):
+
+    GET /api/accounts/{id}/badges            base-declared, UNGATED (rule a) —
+                                              every row of the shared table is a
+                                              legitimate source.
+    GET /api/accounts/member/{id}/badges     the SAME relationship, also mounted
+                                              under the subtype segment (rule b) —
+                                              gated: an id that isn't a Member
+                                              answers [] (rule c), not a sibling's
+                                              rows.
+    GET /api/accounts/member/{id}/scopes     declared on the ABSTRACT mid level
+                                              ScopedAccount — has no path of its
+                                              own, served only under the one
+                                              concrete descendant beneath it
+                                              (rule d).
+    GET /api/accounts/member/{id}/interests  declared on the CONCRETE subtype
+                                              MemberAccount itself (rule b).
+    GET /api/posts/{id}/reviewers            a non-TPH source (Post) whose
+                                              relationship TARGET is a TPH
+                                              subtype (MemberAccount) — the
+                                              target's rows live in the shared
+                                              `accounts` table, so the join
+                                              additionally filters on the
+                                              target's own discriminator value
+                                              ("Member") to exclude sibling
+                                              subtypes (Guest).
+
+There is no `/api/accounts/guest/*` route wired here: no scenario in the shared
+corpus exercises the Guest segment, and this lane hand-implements exactly the
+routes its scenarios need (unlike the GENERATED lane, whose router IS the real
+generator output and therefore emits every subtype segment unconditionally).
+
 The route wiring + join SQL are declared by hand here (NOT emitted by codegen),
 so this lane is an independent witness of the same contract the GENERATED lane
 (``test_api_contract_m2m_generated.py``) must also satisfy. The traversal
 semantics mirror the cross-port resolver: a two-stage join (junction rows for the
 source id → target rows by related id); symmetric unions both junction FK columns
-on read and returns the column that is NOT the source id.
+on read and returns the column that is NOT the source id. A TPH subtype-scoped
+mount additionally verifies the source id names a row of that subtype BEFORE
+joining (rule c); a TPH-target relationship additionally filters the joined rows
+to the target's own discriminator value.
 
 Physical schema uses the CROSS-PORT CANONICAL column spelling — the metadata
 field names quoted verbatim (``"postId"``, ``"followerId"`` …), matching
@@ -38,6 +75,23 @@ _SCHEMA = (
     'CREATE TABLE IF NOT EXISTS "people" ("id" BIGSERIAL PRIMARY KEY, "name" VARCHAR(80) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS "follows" ("followerId" BIGINT NOT NULL, "followeeId" BIGINT NOT NULL, PRIMARY KEY ("followerId","followeeId"))',
     'CREATE TABLE IF NOT EXISTS "friendships" ("personAId" BIGINT NOT NULL, "personBId" BIGINT NOT NULL, PRIMARY KEY ("personAId","personBId"))',
+    # FW-8: the TPH discriminator base — ONE shared table for Account /
+    # MemberAccount / GuestAccount (single-table inheritance); "kind" is the
+    # discriminator column, "karma" (Member-only) and "invitedBy" (Guest-only)
+    # are nullable since a row of the other subtype never sets them.
+    'CREATE TABLE IF NOT EXISTS "accounts" ('
+    '"id" BIGSERIAL PRIMARY KEY, "kind" VARCHAR(20) NOT NULL, '
+    '"handle" VARCHAR(80) NOT NULL, "karma" INTEGER, "invitedBy" VARCHAR(80))',
+    'CREATE TABLE IF NOT EXISTS "account_tags" ("accountId" BIGINT NOT NULL, "tagId" BIGINT NOT NULL, PRIMARY KEY ("accountId","tagId"))',
+    'CREATE TABLE IF NOT EXISTS "scoped_account_tags" ("accountId" BIGINT NOT NULL, "tagId" BIGINT NOT NULL, PRIMARY KEY ("accountId","tagId"))',
+    'CREATE TABLE IF NOT EXISTS "member_account_tags" ("accountId" BIGINT NOT NULL, "tagId" BIGINT NOT NULL, PRIMARY KEY ("accountId","tagId"))',
+    'CREATE TABLE IF NOT EXISTS "post_reviewers" ("postId" BIGINT NOT NULL, "accountId" BIGINT NOT NULL, PRIMARY KEY ("postId","accountId"))',
+)
+
+_TABLES = (
+    "posts", "tags", "post_tags", "people", "follows", "friendships",
+    "accounts", "account_tags", "scoped_account_tags", "member_account_tags",
+    "post_reviewers",
 )
 
 # Physical table → ordered insert columns, matching the seed.json row shapes.
@@ -48,6 +102,11 @@ _SEED_COLUMNS: dict[str, tuple[str, ...]] = {
     "people": ("id", "name"),
     "follows": ("followerId", "followeeId"),
     "friendships": ("personAId", "personBId"),
+    "accounts": ("id", "kind", "handle", "karma", "invitedBy"),
+    "account_tags": ("accountId", "tagId"),
+    "scoped_account_tags": ("accountId", "tagId"),
+    "member_account_tags": ("accountId", "tagId"),
+    "post_reviewers": ("postId", "accountId"),
 }
 
 
@@ -64,10 +123,8 @@ class M2mRepository:
             self._exec(ddl)
 
     def apply_seed(self, seed: dict[str, list[dict[str, Any]]]) -> None:
-        self._exec(
-            'TRUNCATE TABLE "posts","tags","post_tags","people","follows","friendships" '
-            "RESTART IDENTITY"
-        )
+        table_list = ",".join(f'"{t}"' for t in _TABLES)
+        self._exec(f"TRUNCATE TABLE {table_list} RESTART IDENTITY")
         with closing(self._connect()) as conn:
             cur = conn.cursor()
             try:
@@ -133,6 +190,75 @@ class M2mRepository:
             finally:
                 cur.close()
 
+    # ----- FW-8: M:N traversal inside a TPH hierarchy ------------------------
+
+    def find_related_scoped(
+        self,
+        source_id: int,
+        *,
+        subtype: str | None,
+        discriminator_table: str = "accounts",
+        discriminator_column: str = "kind",
+        junction_table: str,
+        target_table: str,
+        source_column: str,
+        target_column: str,
+        target_pk_column: str,
+    ) -> list[dict[str, Any]]:
+        """Rule (c): a subtype-scoped mount verifies the source id names a row
+        of ``subtype`` in the shared discriminator table BEFORE ever joining —
+        a miss returns ``[]`` rather than reaching the junction, where the FK
+        alone cannot tell subtypes apart (it addresses the shared base table).
+        ``subtype=None`` (the base-path mount) skips the check entirely — every
+        row is a legitimate source there (rule a)."""
+        if subtype is not None and not self._row_is_kind(
+            source_id, table=discriminator_table, column=discriminator_column, value=subtype
+        ):
+            return []
+        return self.find_related(
+            source_id,
+            junction_table=junction_table, target_table=target_table,
+            source_column=source_column, target_column=target_column,
+            target_pk_column=target_pk_column, symmetric=False,
+        )
+
+    def find_related_target_scoped(
+        self,
+        source_id: int,
+        *,
+        junction_table: str,
+        target_table: str,
+        source_column: str,
+        target_column: str,
+        target_pk_column: str,
+        target_discriminator_column: str,
+        target_discriminator_value: str,
+    ) -> list[dict[str, Any]]:
+        """FW-8 target side: the relationship's ``@objectRef`` target is a TPH
+        subtype, so its rows live in a shared table alongside its siblings — an
+        unscoped join cannot tell a genuine match from a same-table sibling.
+        Narrow the joined rows to ``target_discriminator_value`` after the join
+        (the junction FK itself addresses the shared base table either way)."""
+        rows = self.find_related(
+            source_id,
+            junction_table=junction_table, target_table=target_table,
+            source_column=source_column, target_column=target_column,
+            target_pk_column=target_pk_column, symmetric=False,
+        )
+        return [r for r in rows if r.get(target_discriminator_column) == target_discriminator_value]
+
+    def _row_is_kind(self, row_id: int, *, table: str, column: str, value: str) -> bool:
+        with closing(self._connect()) as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    f'SELECT 1 FROM "{table}" WHERE "id" = %s AND "{column}" = %s',
+                    (row_id, value),
+                )
+                return cur.fetchone() is not None
+            finally:
+                cur.close()
+
     # ----- plumbing ---------------------------------------------------------
 
     def _connect(self) -> Any:
@@ -180,6 +306,59 @@ def make_app(repo: M2mRepository) -> FastAPI:
             person_id, junction_table="friendships", target_table="people",
             source_column="personAId", target_column="personBId", target_pk_column="id",
             symmetric=True,
+        )
+
+    # ----- FW-8: M:N traversal inside a TPH hierarchy (Account) --------------
+
+    @app.get("/api/accounts/{account_id}/badges")
+    def accounts_badges(account_id: int) -> list[dict[str, Any]]:
+        # Base-declared, UNGATED (rule a): every row of the shared `accounts`
+        # table — Member or Guest — is a legitimate source here.
+        return repo.find_related(
+            account_id, junction_table="account_tags", target_table="tags",
+            source_column="accountId", target_column="tagId", target_pk_column="id",
+            symmetric=False,
+        )
+
+    @app.get("/api/accounts/member/{account_id}/badges")
+    def accounts_member_badges(account_id: int) -> list[dict[str, Any]]:
+        # The SAME relationship, also mounted under the subtype segment (rule
+        # b) — the overlap with the base route above is deliberate.
+        return repo.find_related_scoped(
+            account_id, subtype="Member",
+            junction_table="account_tags", target_table="tags",
+            source_column="accountId", target_column="tagId", target_pk_column="id",
+        )
+
+    @app.get("/api/accounts/member/{account_id}/scopes")
+    def accounts_member_scopes(account_id: int) -> list[dict[str, Any]]:
+        # Declared on the ABSTRACT mid level ScopedAccount — no path of its
+        # own; served only under its one concrete descendant (rule d).
+        return repo.find_related_scoped(
+            account_id, subtype="Member",
+            junction_table="scoped_account_tags", target_table="tags",
+            source_column="accountId", target_column="tagId", target_pk_column="id",
+        )
+
+    @app.get("/api/accounts/member/{account_id}/interests")
+    def accounts_member_interests(account_id: int) -> list[dict[str, Any]]:
+        # Declared on the CONCRETE subtype MemberAccount itself (rule b).
+        return repo.find_related_scoped(
+            account_id, subtype="Member",
+            junction_table="member_account_tags", target_table="tags",
+            source_column="accountId", target_column="tagId", target_pk_column="id",
+        )
+
+    @app.get("/api/posts/{post_id}/reviewers")
+    def posts_reviewers(post_id: int) -> list[dict[str, Any]]:
+        # FW-8 target side: Post is NOT TPH, but @objectRef targets MemberAccount
+        # — a TPH subtype whose rows live in the shared `accounts` table. Narrow
+        # to "Member" so a Guest co-tenant (post 2 → account 2, deliberately
+        # seeded) never leaks through.
+        return repo.find_related_target_scoped(
+            post_id, junction_table="post_reviewers", target_table="accounts",
+            source_column="postId", target_column="accountId", target_pk_column="id",
+            target_discriminator_column="kind", target_discriminator_value="Member",
         )
 
     return app

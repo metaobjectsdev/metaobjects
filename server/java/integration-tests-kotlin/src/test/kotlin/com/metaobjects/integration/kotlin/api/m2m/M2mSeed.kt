@@ -5,9 +5,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * FR-018 — the shared M:N corpus `seed.json`, keyed by physical table name (six
- * tables: posts/tags/post_tags/people/follows/friendships). Kotlin mirror of the
- * Java `M2mSeed`.
+ * FR-018 — the shared M:N corpus `seed.json`, keyed by physical table name.
+ * Kotlin mirror of the Java `M2mSeed`.
  */
 object M2mSeed {
 

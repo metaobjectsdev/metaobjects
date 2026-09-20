@@ -1,0 +1,22 @@
+name: tph-m2m-abstract-mid-declared-traversal
+description: >
+  FW-8 rule (b): a M:N declared on an ABSTRACT MID LEVEL between the
+  discriminator base and a concrete subtype. The abstract level is never served
+  itself, so this relationship serves under the concrete subtype's segment or it
+  serves NOWHERE — which is exactly what mounting an inherited M:N only at the
+  base would have caused.
+requests:
+  - id: r1
+    method: GET
+    path: /api/accounts/member/1/scopes
+    expect:
+      status: 200
+      body:
+        namesUnordered: [blue]
+  - id: r2
+    method: GET
+    path: /api/accounts/member/3/scopes
+    expect:
+      status: 200
+      body:
+        length: 0
