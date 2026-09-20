@@ -95,8 +95,8 @@ public class ProjectionTests
         var src = new RoutesGenerator().Generate(ctx)
             .Single(f => f.Path == "ProgramSummaryRoutes.g.cs").Content;
         // GET list takes HttpContext (qs handling per api-contract.md).
-        Assert.Contains("app.MapGet(prefix + \"/programsummaries\", async (HttpContext http, AppDbContext db) =>", src);
-        Assert.Contains("app.MapGet(prefix + \"/programsummaries/{id}\"", src); // keyed -> readable by id
+        Assert.Contains("app.MapGet(prefix + \"/program_summaries\", async (HttpContext http, AppDbContext db) =>", src);
+        Assert.Contains("app.MapGet(prefix + \"/program_summaries/{id}\"", src); // keyed -> readable by id
         Assert.DoesNotContain("app.MapPost", src);    // read-only: no writes
         Assert.DoesNotContain("app.MapPut", src);
         Assert.DoesNotContain("app.MapPatch", src);

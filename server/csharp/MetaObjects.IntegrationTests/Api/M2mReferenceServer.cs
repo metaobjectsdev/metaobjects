@@ -242,6 +242,29 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
             return;
         }
 
+        // The one plain collection the route-spelling scenario needs. The segment is
+        // written as a LITERAL on purpose: this lane exists to be an INDEPENDENT
+        // implementation, so deriving it from CSharpNaming.RoutePath would make both
+        // lanes share any bug in that function and the scenario would pass anyway.
+        // The retired spellings are simply not handled, so they fall to the 404 below.
+        if (method == "GET" && segs.Length == 2 && segs[0] == "api" && segs[1] == "post_categories")
+        {
+            await using var conn = new NpgsqlConnection(_pg.ConnectionString);
+            await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT \"id\", \"name\" FROM \"blog_categories\" ORDER BY \"id\"";
+            var collectionRows = new List<object?>();
+            await using var rdr = await cmd.ExecuteReaderAsync();
+            while (await rdr.ReadAsync())
+                collectionRows.Add(new Dictionary<string, object?>
+                {
+                    ["id"] = rdr.GetInt64(0),
+                    ["name"] = rdr.GetString(1),
+                });
+            await SendJsonAsync(ctx, 200, collectionRows);
+            return;
+        }
+
         await SendJsonAsync(ctx, 404, new Dictionary<string, object?> { ["error"] = "not_found" });
     }
 

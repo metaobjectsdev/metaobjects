@@ -336,8 +336,20 @@ public static class CSharpNaming
     /// <summary>The routes static class name for an entity: <c>&lt;EntityPascal&gt;Routes</c>.</summary>
     public static string RoutesClassName(MetaObject entity) => Pascal(entity.Name) + "Routes";
 
-    /// <summary>The REST collection URL segment for an entity: <c>Pluralize(name).ToLowerInvariant()</c>.</summary>
-    public static string RoutePath(MetaObject entity) => Pluralize(entity.Name).ToLowerInvariant();
+    /// <summary>
+    /// The REST collection URL segment for an entity: the ENTITY NAME
+    /// <c>ToSnakeCase</c>d and then <c>Pluralize</c>d (<c>Author</c> →
+    /// <c>authors</c>, <c>PostCategory</c> → <c>post_categories</c>). Never the
+    /// physical <c>@table</c>. One rule, identical in all five ports.
+    /// <para>
+    /// It was <c>Pluralize(name).ToLowerInvariant()</c>, which served
+    /// <c>PostCategory</c> at <c>/postcategories</c> — the capitals carried the
+    /// word boundary and lowercasing threw it away. <c>Pluralize</c> is left
+    /// alone because <see cref="DbSetName"/> shares it.
+    /// See <c>fixtures/api-contract-conformance/m2m/</c> for the gating scenario.
+    /// </para>
+    /// </summary>
+    public static string RoutePath(MetaObject entity) => Pluralize(ToSnakeCase(entity.Name));
 
     /// <summary>The DbSet property name for an entity: <c>Pluralize(Pascal(name))</c>.</summary>
     public static string DbSetName(MetaObject entity) => Pluralize(Pascal(entity.Name));
