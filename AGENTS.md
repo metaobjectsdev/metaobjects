@@ -109,12 +109,20 @@ runs — goes red, and a direct admin push to `main` bypasses branch protection.
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
 or `SKIP_TS_TYPECHECK=1 git push`.
 
-**GitHub Actions is DISABLED on this repository (2026-09-16) — every check runs locally.**
-The workflow files are kept and unchanged, because the switch is reversible, but nothing in
-`.github/workflows/` fires today: not `hygiene.yml`'s leak scan on a PR, not `conformance.yml`'s
-nightly + `v*`-tag matrix, and not `local-ci.yml` on the self-hosted runner. **`scripts/ci-local.sh`
-is now the only thing that runs them**, and it already mirrors all three — `--quick` covers
-`hygiene.yml` in full plus the TypeScript half of `conformance.yml`, and the flagless full run
+**GitHub Actions is ENABLED (re-enabled 2026-09-20, and it stays on).** It was off from
+2026-09-16, and a good deal of the prose below was written for that period — read any claim
+that "nothing fires" as history. It came back because **NuGet cannot be published without
+it**: `publish-csharp.yml` uses Trusted Publishing (OIDC), and the short-lived key is minted
+by `id-token: write` INSIDE a workflow run. There is no long-lived NuGet key to publish with
+locally — only a `NUGET_USER` username. The other three registries publish LOCALLY in the RC
+dance and must: `publish-python.yml` and `publish-java.yml` take no version override, so they
+would publish the committed (non-RC) version; only `publish-csharp.yml` has a `version` input.
+(To toggle it: `gh api -X PUT repos/<owner>/<repo>/actions/permissions -F enabled=true` — `-F`
+for a TYPED boolean, since `-f` sends the string `"true"` and 422s.)
+
+**`scripts/ci-local.sh` is still the pre-PR gate**, and it mirrors the hosted lanes —
+`--quick` covers `hygiene.yml` in full plus the TypeScript half of `conformance.yml`, and the
+flagless full run
 adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integration-tests.yml`'s
 Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
 `MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
@@ -122,18 +130,18 @@ running it. The no-mistakes validation gate runs the script for you — see `.no
 whose `lint` and `test` commands partition `--quick` between the two steps. That file is read
 from the **default branch**, so it does nothing until it is merged to `main`.
 
-**A green `leak-scan` check on a PR is a LOCAL scan, not a hosted one.** `main`'s protection
-requires that one status, and `hygiene.yml` was the only thing that ever published it — so with
-Actions off, nothing could merge. Rather than weaken the rule, `scripts/publish-leak-scan-status.sh`
-runs `.githooks/leak-scan.sh` and reports that exact result as the `leak-scan` commit status,
-bound to the SHA it scanned. Run it after pushing, once per head you want mergeable. It publishes
-the real verdict only — a failed scan publishes `failure` — and refuses outright on a dirty tree,
-on a HEAD that moved mid-scan, or with no credential. The status description repeats the caveat,
-so the PR page carries it too. No hosted scan runs while Actions is off, on any branch.
+**`leak-scan` is hosted again.** `main`'s protection requires that one status, and `hygiene.yml`
+is the only thing that publishes it — so while Actions was off, nothing could merge. Rather than
+weaken the rule, `scripts/publish-leak-scan-status.sh` runs `.githooks/leak-scan.sh` and reports
+that exact result as the `leak-scan` commit status, bound to the SHA it scanned. With Actions on
+you do NOT need it; keep it for the next time Actions is off, and for a direct admin push to
+`main` (which bypasses branch protection and so never gets a PR's hosted scan). It publishes the
+real verdict only — a failed scan publishes `failure` — and refuses outright on a dirty tree, on
+a HEAD that moved mid-scan, or with no credential. A status it published is a LOCAL scan, and its
+description says so on the PR page.
 
 **Lane selection is "not known-green", not "affected"** (`scripts/ci-ports-to-run.sh`).
-This is how `local-ci.yml` chooses its lanes, so it is dormant while Actions is off — but
-it is still committed and still gated, and it is what resumes if Actions comes back.
+This is how `local-ci.yml` chooses its lanes, and with Actions back on it is live again.
 The selector unions the ports this push touched (`scripts/ci-affected-ports.sh`) with
 the ports whose *newest* verdict on `main` is not a success, read from the workflow's
 own run history — so a stale red lane gets **re-run**, not merely reported. Affected

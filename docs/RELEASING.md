@@ -201,11 +201,11 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    a review found eight defects in 172 lines. If you change a gate, change its case there —
    and check the change against a mutation, not just a green run.
 
-   **A second effect, dormant while Actions is off.** `conformance.yml` and
-   `integration-tests.yml` used to be the heavy gates that ran on a `v*` tag and nowhere
-   else; today they run nowhere, and step 3 above is what gates the cut instead. The
-   ordering still earns its place, because if Actions is re-enabled those runs land on the
-   FINAL coordinated tree — all four registries bumped, docs refreshed, payload true —
+   **A second effect.** `conformance.yml` and `integration-tests.yml` are the heavy gates
+   that run on a `v*` tag and nowhere else. (They were dormant while Actions was off,
+   2026-09-16 to 09-20, and step 3 above was what gated the cut instead; step 3 still
+   earns its place, because it is the only gate that runs BEFORE the tag.) The ordering
+   matters because those runs land on the FINAL coordinated tree — all four registries bumped, docs refreshed, payload true —
    instead of the npm-only commit, which is a tree that never actually shipped.
    `publish-npm.yml` triggers on `npm-v*`, not `v*`, so moving the tag does not re-trigger
    a publish.
@@ -264,7 +264,7 @@ days**.
 
 **The gate: `node scripts/check-metamodel-version.mjs`** (runs in the `gates` lane, so any
 `scripts/ci-local.sh` run that includes `gates` enforces it — `--quick`, `--only gates`, or
-the flagless full run; hosted CI does not, because Actions is disabled here). It diffs
+the flagless full run). It diffs
 `expected-registry.json` — already the byte-exact bill of materials every port is gated
 against — against its content at the **last release tag**, classifies every difference,
 and fails if the declared version did not move by at least the amount the change
@@ -408,11 +408,10 @@ diff explained.
   > improvement (research-backed, not yet adopted)" that `.claude/skills/releasing/SKILL.md`
   > still files it under.
   >
-  > **That replacement is itself inoperative right now: GitHub Actions is disabled on this
-  > repository (2026-09-16), so `publish-npm.yml` cannot fire** and a registration would have
-  > no runner to serve it. The publishing path that replaces the token after the 2027
-  > deadline is being decided and is not written down yet; until it is, the local-token
-  > procedure above is the only npm publishing path that runs.
+  > The publishing path that replaces the token after the 2027 deadline is being decided and
+  > is not written down yet; until it is, the local-token procedure above is the npm
+  > publishing path we actually use. (It was additionally blocked while Actions was off,
+  > 2026-09-16 to 09-20 — Actions is back on, so `publish-npm.yml` can fire again.)
 - `bun publish` does **not** apply `publishConfig` field overrides (bin/main/exports) — only
   `access`/`tag` (oven-sh/bun#19205). So fields like `bin` must be correct at the top level, not
   swapped via `publishConfig`.
@@ -546,11 +545,9 @@ and deleting a dist-tag is package access. Measured across all 14 packages on 20
 the prerelease install path, which is the actual harm; the tag continuing to exist alongside an
 identical `latest` is cosmetic.
 
-**The CI route is inoperative right now (2026-09-16): GitHub Actions is disabled on this
-repository, so the dispatch below cannot run**, and the replacement path is being decided.
-Until it lands, the `dist-tag add` above is what repoints the tag — run from your machine,
-per package. The dispatch is kept because the switch is reversible: it ran the whole
-set from CI, where the publish token already lives — Actions →
+Either route works: the `dist-tag add` above run from your machine, per package, or the CI
+dispatch, which does the whole set at once from where the publish token already lives —
+Actions →
 **npm dist-tag** → Run workflow → tag `next`, action `add`, version `<version>`
 ([`.github/workflows/npm-dist-tag.yml`](../.github/workflows/npm-dist-tag.yml); the set and its
 order come from `scripts/publish-set.mjs`, never a list maintained there). Action `ls` is the
@@ -593,11 +590,9 @@ The workflow [`.github/workflows/publish-csharp.yml`](../.github/workflows/publi
 the four projects, exchanges a GitHub OIDC token for a short-lived (~1 hour) nuget.org key via
 `NuGet/login@v1`, then `dotnet nuget push`es.
 
-**Both triggers are inoperative right now (2026-09-16): GitHub Actions is disabled on this
-repository, so neither the manual dispatch nor a `csharp-v*` tag can run anything** — and a
-NuGet publish fundamentally needs Actions for its OIDC exchange, so there is no local
-stand-in; the replacement path is being decided. The workflow and the one-time setup below
-are kept as the mechanism record, because the switch is reversible. Trigger it manually
+**A NuGet publish fundamentally needs Actions for its OIDC exchange — there is no local
+stand-in.** That is why Actions was re-enabled on 2026-09-20 after four days off: with it
+disabled, NuGet simply cannot be published. Trigger it manually
 (**Actions → publish-csharp → Run workflow**, with an optional version override) or by
 pushing a `csharp-v*` tag once it fires again.
 
@@ -660,19 +655,18 @@ lock the repo/owner IDs against resurrection attacks.)
    dotnet tool install --global --add-source /tmp/mo-nupkg MetaObjects.Cli && dotnet meta --help
    ```
 3. **Run persistence conformance** if the runtime/codegen changed: `scripts/integration-test.sh csharp`.
-4. **Publish:** GitHub → **Actions → publish-csharp → Run workflow** (or push a `csharp-v<version>` tag)
-   — **inoperative while Actions is off (2026-09-16)**; see the note under "How we publish" above.
+4. **Publish:** GitHub → **Actions → publish-csharp → Run workflow** (or push a `csharp-v<version>` tag).
+   This is the one registry that CANNOT be published locally — see "How we publish" above.
 5. **Verify** on nuget.org: all four packages listed and **owned by the `metaobjects` org**
    (indexing/validation takes a few minutes).
 
 # Releasing the Python package to PyPI
 
 How to publish the **`metaobjects`** Python package to PyPI: push a `python-v<version>` tag and
-the workflow publishes it with the `PYPI_API_TOKEN` repo secret. **That trigger is inoperative
-right now (2026-09-16): GitHub Actions is disabled on this repository, so the tag fires
-nothing** — and PyPI publishing here runs only through the workflow, so there is no local
-stand-in; the replacement path is being decided. The workflow description below is kept as the
-mechanism record, because the switch is reversible.
+the workflow publishes it with the `PYPI_API_TOKEN` repo secret. PyPI publishing here runs
+only through that workflow — there is no local stand-in. Note `publish-python.yml` takes no
+version override, so it publishes the COMMITTED version: in the RC dance, do not fire it for
+a pre-release you have not committed.
 
 ## What gets published
 
@@ -764,8 +758,8 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
 3. **Deploy — ONE of two routes, never both** (a second deploy of a published version fails
    with `Component … already exists`): push a `java-v<maven-version>` tag, and
    `publish-java.yml` runs the deploy below in CI with the signing secrets (how `8.0.4`
-   shipped — **inoperative while Actions is off, 2026-09-16**: GitHub Actions is disabled on
-   this repository, so the tag fires nothing); or run `mvn -Prelease deploy` from `server/java`.
+   shipped; it takes no version override, so it deploys the COMMITTED version — do not fire
+   it for an uncommitted pre-release); or run `mvn -Prelease deploy` from `server/java`.
    The `central-publishing-maven-plugin`
    (`<publishingServerId>central</publishingServerId>`, `<autoPublish>true</autoPublish>`) uploads
    the signed bundle and auto-releases — **no manual staging → release promotion**. Auth + the GPG
