@@ -258,7 +258,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
             AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs);
-            sb.AppendLine("            await db.SaveChangesAsync();");
+            AppendSaveChanges(sb);
             AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
             // through the replica view by PK so the returned body carries the derived fields.
@@ -283,7 +283,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
             sb.AppendLine("            db." + dbSet + ".Remove(existing);");
-            sb.AppendLine("            await db.SaveChangesAsync();");
+            AppendSaveChanges(sb);
             sb.AppendLine("            return Results.NoContent();");
             sb.AppendLine("        });");
         }
@@ -690,7 +690,7 @@ public class RoutesGenerator : PerEntityGenerator
         (string ReadDbSet, string PkProp, string Route)? reRead)
     {
         sb.AppendLine($"            db.{dbSet}.Add(input);");
-        sb.AppendLine("            await db.SaveChangesAsync();");
+        AppendSaveChanges(sb);
         if (reRead is { } rr)
         {
             sb.AppendLine($"            var __created = await db.{rr.ReadDbSet}.FindAsync(input.{rr.PkProp});");
@@ -1032,7 +1032,7 @@ public class RoutesGenerator : PerEntityGenerator
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
         AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs);
-        sb.AppendLine("            await db.SaveChangesAsync();");
+        AppendSaveChanges(sb);
         sb.AppendLine("            return Results.Ok(existing);");
         sb.AppendLine("        }");
         sb.AppendLine("        app.MapPatch(prefix + \"/" + subRoute + "/{id}\", Update" + subCls + ");");
@@ -1045,7 +1045,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subCls}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         sb.AppendLine($"            db.{dbSet}.Remove(existing);");
-        sb.AppendLine("            await db.SaveChangesAsync();");
+        AppendSaveChanges(sb);
         sb.AppendLine("            return Results.NoContent();");
         sb.AppendLine("        });");
 
@@ -1060,6 +1060,37 @@ public class RoutesGenerator : PerEntityGenerator
         var sourceScope = new TphM2mSourceScope(dbSet, subCls, pkProp);
         foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
             AppendM2mRoute(sb, nav, subRoute, pkType, root, sourceScope);
+    }
+
+    /// <summary>
+    /// Emit the write, with the database's own constraints translated to the api
+    /// contract's client errors.
+    /// <para>
+    /// A bare <c>await db.SaveChangesAsync();</c> let a driver failure reach ASP.NET's
+    /// default handler, so a client-supplied foreign key naming no row — or a value
+    /// duplicating a unique one — came back as a 500. Both are CLIENT errors, declared by
+    /// the same metadata (<c>identity.reference</c>, <c>index.unique</c>) the handler
+    /// already uses to reject bad enum members and missing required fields.
+    /// </para>
+    /// <para>
+    /// An UNRECOGNISED failure rethrows: the operator keeps the full diagnostic and the
+    /// caller still gets a plain 500. Classification lives in
+    /// <see cref="Runtime.ConstraintErrors"/>, which is the C# half of runtime-ts's
+    /// <c>constraint-errors.ts</c> — one code (<c>constraint_violation</c>) plus the
+    /// kind, identical on both ports.
+    /// </para>
+    /// </summary>
+    private static void AppendSaveChanges(StringBuilder sb, string indent = "            ")
+    {
+        sb.AppendLine(indent + "try { await db.SaveChangesAsync(); }");
+        sb.AppendLine(indent + "catch (System.Exception __saveError)");
+        sb.AppendLine(indent + "{");
+        sb.AppendLine(indent + "    if (ConstraintErrors.Classify(__saveError) is { } __constraint)");
+        sb.AppendLine(indent + "        return Results.Json(");
+        sb.AppendLine(indent + "            new { error = __constraint.Error, constraint = __constraint.Constraint },");
+        sb.AppendLine(indent + "            statusCode: __constraint.Status);");
+        sb.AppendLine(indent + "    throw;");
+        sb.AppendLine(indent + "}");
     }
 
     // Emit the M:N traversal handler for one navigation. The junction + target are

@@ -181,6 +181,20 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   projection with no `@filterable` field gets an empty allowlist, exactly as an entity does,
   and the api-docs builder now documents the projection's Filter symbol.
 
+- **C#: a constraint violation answered 500 instead of 409.** A generated CRUD route had no
+  try/catch around `SaveChangesAsync`, so a client-supplied foreign key naming no row, or a
+  value duplicating a unique one, reached ASP.NET's default handler and came back as a bare
+  500. Both are CLIENT errors, declared by the same metadata (`identity.reference`,
+  `index.unique`) the handler already uses to reject bad enum members and missing required
+  fields. The contract — and every other port — answers `409 {"error":
+  "constraint_violation", "constraint": "foreign_key" | "unique"}`, with `check` and
+  `not_null` as 400. `MetaObjects.Codegen.Runtime.ConstraintErrors` is the C# half of
+  runtime-ts's `constraint-errors.ts`, algorithm for algorithm: it walks the exception chain
+  (EF wraps every provider failure in a `DbUpdateException` whose own message names no
+  constraint, so a top-level-only read classifies nothing) and matches driver CODES, so it
+  binds to no specific ADO.NET provider. An unrecognised failure still rethrows and is still
+  a 500.
+
 - **C#: `dotnet meta gen` keyed its hash manifest by the OUT DIR, so a second `--out` under
   one project could destroy a hand edit in the first.** `.gen-state/.hashes.json` is ANCHORED
   on the project — the gen-state directory is derived from it and cannot be configured per
