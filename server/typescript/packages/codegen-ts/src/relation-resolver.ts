@@ -18,6 +18,7 @@ import {
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity } from "./naming.js";
+import { tphStorageName } from "./templates/zod-validators.js";
 import { isProjection } from "./projection/projection-detector.js";
 
 export interface RelationEntry {
@@ -72,6 +73,43 @@ export function buildRelationMap(
     return result.get(name)!;
   };
 
+  // Files a CARDINALITY-ONE entry under the entity whose module renders the
+  // relations() block. A TPH subtype has no module of its own — it is folded into
+  // the discriminator base's single table, and the block renders on the BASE's.
+  // So an entry must be filed under the entity that actually renders it, or it is
+  // silently never emitted. `tphStorageName` is the seam for exactly this (its own
+  // doc says "for the name-keyed relation map"); the TARGET side of relations-block
+  // already resolves through it — only the SOURCE side was keyed raw.
+  //
+  // Because `obj.relationships()` RESOLVES, a base-declared relationship is reached
+  // again through every subtype and would now land on the same key repeatedly, so an
+  // entry structurally identical to one already filed is skipped. A name that collides
+  // with a DIFFERENT shape is a real conflict the base's single block cannot express:
+  // it is reported through `onWarn` rather than silently overwritten, because a
+  // navigation that quietly resolves to another subtype's target is the worse failure.
+  const push = (obj: MetaObject, entry: RelationEntry): void => {
+    const key = tphStorageName(obj.name, root);
+    const entries = ensure(key);
+    const clash = entries.find((e) => e.name === entry.name);
+    if (clash !== undefined) {
+      const same =
+        clash.cardinality === entry.cardinality &&
+        clash.targetEntity === entry.targetEntity &&
+        clash.fkField === entry.fkField;
+      if (!same) {
+        onWarn?.(
+          `relationship "${entry.name}" on entity "${obj.name}" gets no relations() entry: ` +
+            `"${key}" already carries a different "${entry.name}" ` +
+            `(-> ${clash.targetEntity} via ${clash.fkField}), and a single-table hierarchy ` +
+            `renders ONE relations() block on the base, which cannot hold both. ` +
+            `Rename one of them.`,
+        );
+      }
+      return;
+    }
+    entries.push(entry);
+  };
+
   for (const obj of root.objects()) {
     // Projections (source.dbView) are view-backed; they never emit a relations()
     // block, and their inherited belongs-to relationships would otherwise register
@@ -88,6 +126,11 @@ export function buildRelationMap(
       // ADR-0039: resolving — @through may be inherited via extends.
       if (cardinality === CARDINALITY_MANY && child.attr(RELATIONSHIP_ATTR_THROUGH) !== undefined) {
         const m2m = buildM2mEntry(obj, child as MetaRelationship, root, onWarn);
+        // NOT re-keyed to the storage base: the ROUTES tier reads this map to mount
+        // an M:N under EACH concrete subtype's segment, so it needs the per-subtype
+        // entries. Collapsing them onto the base key silently reduces four mounts to
+        // one. Only the cardinality-one path below is re-keyed, because that is the
+        // one the relations() block renders on the base's module.
         if (m2m) ensure(obj.name).push(m2m);
         continue;
       }
@@ -114,7 +157,7 @@ export function buildRelationMap(
       const fkField = matching.fields[0];
       if (!fkField) continue;
 
-      ensure(obj.name).push({
+      push(obj, {
         name: child.name,
         cardinality: "one",
         targetEntity,
