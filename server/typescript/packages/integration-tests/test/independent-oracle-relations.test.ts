@@ -41,6 +41,67 @@ const TPH_WITH_BELONGS_TO = {
   },
 };
 
+// A view-backed projection may carry a belongs-to of ITS OWN — its object-level
+// `extends` may only target another projection, so nothing is inherited from an
+// entity. It renders a view declaration, never a Drizzle table, so no module of
+// its own carries a relations() block.
+const PROJECTION_WITH_OWN_BELONGS_TO = {
+  "metadata.root": {
+    package: "oracle",
+    children: [
+      { "object.entity": { name: "Author", children: [
+        { "source.rdb": { "@table": "authors" } },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+      ]}},
+      { "object.entity": { name: "Doc", children: [
+        { "source.rdb": { "@table": "docs" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "authorId" } },
+        { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+        { "identity.reference": { name: "fkAuthor", "@fields": "authorId", "@references": "Author" } },
+        { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "Author" } },
+      ]}},
+      { "object.projection": { name: "DocSummary", children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_doc_summary" } },
+        { "field.long": { name: "id", extends: "Doc.id" } },
+        { "field.long": { name: "authorId", extends: "Doc.authorId" } },
+        { "identity.reference": { name: "fkAuthor", extends: "Doc.fkAuthor" } },
+        { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "Author" } },
+      ]}},
+    ],
+  },
+};
+
+// A TPH hierarchy whose discriminator BASE is abstract: the base renders a
+// value-object shape (abstract ⇒ no table, even with a source), and each
+// subtype renders a per-subtype read schema. No module in the hierarchy emits
+// a table, so none emits a relations() block.
+const ABSTRACT_DISCRIMINATOR_BASE = {
+  "metadata.root": {
+    package: "oracle",
+    children: [
+      { "object.entity": { name: "Author", children: [
+        { "source.rdb": { "@table": "authors" } },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+      ]}},
+      { "object.entity": { name: "Doc", abstract: true, "@discriminator": "kind", children: [
+        { "source.rdb": { "@table": "docs" } },
+        { "field.long": { name: "id" } },
+        { "field.enum": { name: "kind", "@values": ["Draft", "Final"] } },
+        { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+      ]}},
+      { "object.entity": { name: "DraftDoc", extends: "Doc", "@discriminatorValue": "Draft", children: [
+        { "field.long": { name: "authorId" } },
+        { "identity.reference": { name: "fkAuthor", "@fields": "authorId", "@references": "Author" } },
+        { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "Author" } },
+      ]}},
+      { "object.entity": { name: "FinalDoc", extends: "Doc", "@discriminatorValue": "Final", children: [] }},
+    ],
+  },
+};
+
 async function load(model: unknown): Promise<MetaRoot> {
   const result = await new MetaDataLoader().load([
     new InMemoryStringSource(JSON.stringify(model)),
@@ -71,5 +132,22 @@ describe("independent oracle — relations tier (rule 6)", () => {
     expect(
       missing.map((m) => `${m.onEntity}.${m.name} -> ${m.targetEntity} (${m.why})`),
     ).toEqual([]);
+  });
+
+  test("a view-backed projection's own belongs-to is not over-expected", async () => {
+    const expected = expectedRelations(await load(PROJECTION_WITH_OWN_BELONGS_TO));
+    // The projection renders a view declaration, not a table, so no module of
+    // its own carries a relations() block for the oracle to demand anything of.
+    expect(expected.filter((e) => e.onEntity === "DocSummary")).toEqual([]);
+    // The exclusion is not a blanket drop: the real entity's belongs-to is
+    // still expected on the module that renders it.
+    expect(expected.find((e) => e.onEntity === "Doc" && e.name === "author")).toBeDefined();
+  });
+
+  test("a hierarchy whose discriminator base is ABSTRACT expects no relations() block", async () => {
+    // Nothing in this model emits a Drizzle table, so the expectation set is
+    // empty — not keyed on the abstract base, whose module is a value-object
+    // shape.
+    expect(expectedRelations(await load(ABSTRACT_DISCRIMINATOR_BASE))).toEqual([]);
   });
 });

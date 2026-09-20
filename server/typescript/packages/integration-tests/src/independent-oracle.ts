@@ -32,6 +32,9 @@
 //      every M:N relationship it has serves `<path>/:id/<relation>`. A TPH subtype serves
 //      them under its base's path at `/<discriminatorValue lowercased>` (the FR-017
 //      contract, and the maintainer's ruling for an M:N declared on a subtype).
+//   6. Relations. Every `@cardinality: one` relationship of every table-backed object
+//      (rule 2's walk) is a navigation in the relations() block of its STORING object's
+//      module — the base's, for a relationship declared anywhere inside a TPH hierarchy.
 
 import {
   type MetaObject,
@@ -286,20 +289,32 @@ export interface ExpectedRelation {
  * point: keying that map by the declaring entity stranded these entries and emitted
  * nothing, with no error to notice.
  *
+ * The walk is `tableBackedObjects` (rule 2's), NOT `servedObjects`: a relations() block
+ * renders only in a module that emits a Drizzle table, and two legal shapes never emit
+ * one. Demanding a navigation of either would be a FALSE POSITIVE on a legal model —
+ * the failure mode that teaches people to ignore an oracle — so each exclusion is
+ * stated with the model property that causes it:
+ * - a view-backed PROJECTION: its source's `@kind` is read-only, so no object in its
+ *   storing walk has a writable source (a projection may carry a belongs-to of its
+ *   own, since its `extends` may only target another projection);
+ * - an object whose STORING object is an ABSTRACT discriminator base: abstract ⇒ no
+ *   table even with a source, and the subtypes fold into a table that never renders,
+ *   so nothing in the hierarchy emits a relations() block at all.
+ *
  * Deduped by (onEntity, name): relationships RESOLVE, so a base-declared one is reached
  * again through every subtype and maps to the same rendering module each time.
  */
 export function expectedRelations(root: MetaRoot): ExpectedRelation[] {
   const byKey = new Map<string, ExpectedRelation>();
-  for (const obj of servedObjects(root)) {
-    const onEntity = storingObject(obj).name;
+  for (const { obj, storing } of tableBackedObjects(root)) {
+    const onEntity = storing.name;
     // ADR-0039: resolving — cardinality and @objectRef may be inherited via extends.
     for (const rel of obj.relationships()) {
       if (rel.attr(RELATIONSHIP_ATTR_THROUGH) !== undefined) continue; // M:N is the routes tier
       if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_ONE) continue;
       const ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
       if (typeof ref !== "string") continue;
-      const targetEntity = ref.includes("::") ? ref.slice(ref.lastIndexOf("::") + 2) : ref;
+      const targetEntity = stripPackage(ref);
       const key = `${onEntity}.${rel.name}`;
       if (byKey.has(key)) continue;
       byKey.set(key, {

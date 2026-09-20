@@ -182,7 +182,6 @@ export function buildRelationMap(
   for (const junctionName of collectJunctionNames(root)) {
     const junction = root.findObject(junctionName);
     if (!junction) continue;
-    const entries = ensure(junctionName);
     for (const ref of junction.referenceIdentities()) {
       const targetRaw = ref.targetEntity;
       const fkField = ref.fields[0];
@@ -194,7 +193,7 @@ export function buildRelationMap(
       const refName = ref.name && ref.name.length > 0
         ? ref.name
         : variableNameFromEntity(targetEntity);
-      entries.push({
+      push(junction, {
         name: refName,
         cardinality: "one",
         targetEntity,

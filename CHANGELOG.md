@@ -159,6 +159,35 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   `Organization` → `Carrier`), which the Drizzle schema did declare. **An adopter with such a
   model will see `add-fk` (and possibly `add-column`) changes in the next `meta migrate`
   diff** — those are the constraints and columns the metadata always declared.
+
+- **A TPH subtype-only column carried a DB `DEFAULT` it must not have.** The expected-schema
+  TPH fold forces such a column nullable — sibling-subtype rows must stay NULL in it — but
+  kept the authored `@default`, while the Drizzle schema's `forceNullable` contract also
+  suppresses the default. So `meta migrate` emitted a DDL default the app's Drizzle schema
+  knows nothing about, and a sibling subtype's INSERT, which omits the column, silently took
+  the default instead of NULL — defeating the fold's own intent. `verify --db` could not see
+  either side, because migrate and verify share this builder. The subtype-only column now
+  carries no default; the base's OWN column keeps its default, since every row has it.
+  **Migration output changes** for a TPH adopter with a `@default` on a subtype-declared
+  field: the next `meta migrate` diff drops that default.
+
+- **A `@cardinality: one` relationship declared on a TPH subtype (or an abstract mid level)
+  never reached a `relations()` block.** The relation map filed it under the declaring
+  entity's name, but a TPH subtype has no module of its own — the block renders on the
+  discriminator base's — so the entry sat under a key nothing reads and the belongs-to
+  navigation was silently never emitted. Cardinality-one entries, including a junction's
+  `one()` sides, are now keyed through `tphStorageName`, the seam the target side already
+  used; M:N entries stay keyed per declaring entity, because the routes tier mounts an M:N
+  under EACH concrete subtype's segment. A name two subtypes claim with different targets is
+  reported through the gen warnings channel rather than silently resolving to one target.
+  The independent oracle gained a relations-tier rule — restated from its own storing-object
+  walk, not from codegen's map — whose absence is exactly why this defect had no independent
+  check. **Generated output changes**: re-run `meta gen`; a TPH base's relations block gains
+  the subtype-declared navigations. **`meta docs` /api-model output changes too, truthfully**:
+  a TPH subtype's unit loses its `<Sub>Relations` symbol — it documented an export that never
+  existed, since a subtype emits a value-object module with no relations block — and the
+  base's relations symbol gains the folded subtype-declared navigations, which are real.
+
 - **A reference or M:N relationship onto a TPH subtype generated code that did not compile.**
   The subtype's module exports no table const, but the FK's `.references()`, the `relations()`
   entry and the M:N traversal all imported `carriers` from `Carrier.ts` (`TS2724`). They now
