@@ -40,6 +40,9 @@ import {
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
   RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_CARDINALITY,
+  CARDINALITY_ONE,
   DEFAULT_COLUMN_NAMING_STRATEGY,
   isMetaObject,
   isMetaSource,
@@ -262,4 +265,50 @@ export function expectedRoutes(root: MetaRoot, pathOf: (obj: MetaObject) => stri
     }
   }
   return routes;
+}
+
+/** One entry a generated `relations()` block must carry. */
+export interface ExpectedRelation {
+  /** The entity whose MODULE renders the block — not necessarily the declaring entity. */
+  onEntity: string;
+  /** The relationship name; the object-literal key inside `relations()`. */
+  name: string;
+  targetEntity: string;
+  why: string;
+}
+
+/**
+ * Rule 6. A `@cardinality: one` relationship must appear in the `relations()` block of
+ * the module that RENDERS it. That is NOT always the entity that declares it: a TPH
+ * subtype has no module of its own, so a relationship declared on a subtype — or on an
+ * abstract mid level — renders on the discriminator BASE's module. Restated here via
+ * `storingObject`, independently of how codegen keys its own relation map, which is the
+ * point: keying that map by the declaring entity stranded these entries and emitted
+ * nothing, with no error to notice.
+ *
+ * Deduped by (onEntity, name): relationships RESOLVE, so a base-declared one is reached
+ * again through every subtype and maps to the same rendering module each time.
+ */
+export function expectedRelations(root: MetaRoot): ExpectedRelation[] {
+  const byKey = new Map<string, ExpectedRelation>();
+  for (const obj of servedObjects(root)) {
+    const onEntity = storingObject(obj).name;
+    // ADR-0039: resolving — cardinality and @objectRef may be inherited via extends.
+    for (const rel of obj.relationships()) {
+      if (rel.attr(RELATIONSHIP_ATTR_THROUGH) !== undefined) continue; // M:N is the routes tier
+      if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_ONE) continue;
+      const ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+      if (typeof ref !== "string") continue;
+      const targetEntity = ref.includes("::") ? ref.slice(ref.lastIndexOf("::") + 2) : ref;
+      const key = `${onEntity}.${rel.name}`;
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        onEntity,
+        name: rel.name,
+        targetEntity,
+        why: `${obj.name}.${rel.name} belongs-to renders on ${onEntity}`,
+      });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => `${a.onEntity}.${a.name}`.localeCompare(`${b.onEntity}.${b.name}`));
 }
