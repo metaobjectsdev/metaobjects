@@ -16,16 +16,29 @@ The principle: the **web UI is TS (browser-native), but it must be drivable by m
 
 | ID | Gap | Status | Scope |
 |---|---|---|---|
-| UI-1 | **Metadata API endpoint** — each backend serves its loaded metadata as canonical JSON over HTTP (`GET /_meta` / per-entity), so a browser can fetch the model. | ❌ MISSING | all 5 backends |
-| UI-2 | **Browser runtime metadata loader** — `runtime-web` loads canonical metadata JSON into an in-browser MetaData read-model (entities/fields/views/validators/layouts queryable client-side). | ❌ MISSING | TS web |
-| UI-3 | **Runtime-driven dataGrid** — build columns + cell renderers + sort/filter/page config from fetched metadata at runtime (no codegen). | ❌ MISSING | TS web |
+| UI-1 | **Metadata API endpoint** — each backend serves its loaded metadata as canonical JSON over HTTP (`GET /_meta`), so a browser can fetch the model. | 📋 **DESIGNED 2026-09-20** — whole-model, **effective** canonical JSON; a framework-free `metaJson(root)` helper per port + a TS Fastify/Hono mount (only TS has a web-bound runtime home). Per-entity/ETag/versioning deferred. | all 5 backends |
+| UI-2 | **Browser runtime metadata loader** — `runtime-web` loads canonical metadata JSON into an in-browser MetaData read-model (entities/fields/views/validators/layouts queryable client-side). | 📋 **DESIGNED 2026-09-20** — a slim structural read-model (`loadMetaModel`), NOT `MetaDataLoader` in the browser (#287: the root barrel pulls `node:url`). Settles this theme's open question. | TS web |
+| UI-3 | **Runtime-driven dataGrid** — build columns + cell renderers + sort/filter/page config from fetched metadata at runtime (no codegen). | 🟡 **PARTIAL** — `buildGrid()` shipped `ea2b9e932` (#40). `buildColumns` + `useMetaGrid` remain (2026-06-16 slice-1 design §5.4/§5.5); they consume the EXISTING generated data API. | TS web |
 | UI-4 | **Runtime-driven create + edit forms** — build the form fields + client validation from fetched metadata + validators at runtime. | ❌ MISSING | TS web |
-| UI-5 | **Codegen edit forms** — `UpdateSchema` is generated but unused; emit `<Entity>EditForm` (load defaults, PATCH). | ❌ MISSING (FR-026) | TS web |
+| UI-5 | **Codegen edit forms** — `UpdateSchema` is generated but unused; emit `<Entity>EditForm` (load defaults, PATCH). | ✅ **SHIPPED** (status corrected 2026-09-20 — was stale). `spec/roadmap.md:41` records FR-026 edit forms shipped; `client/web/packages/react/src/use-entity-form.tsx` derives from the GENERATED schema, which is what makes it UI-5 and not UI-4. | TS web |
 | UI-6 | **View-render parity (codegen + runtime)** — register `datetime`; add `hotlink`/`month`/`radio` renderers; wire `validator.numeric`/`validator.array` to client rules; view attrs beyond `@locale`. | 🟡 PARTIAL (FR-026) | TS web |
 | UI-7 | **"Both ways" demo + docs** — one reference app showing the codegen UI and the runtime-metadata-driven UI side by side, against each backend language. | ❌ MISSING | docs/example |
 | UI-8 | **Backend-agnostic guarantee** — the TS UI verified working against all 5 backends (each serving the metadata API + the existing data REST API). | ❌ MISSING | cross-port |
 
-Open questions: metadata-API shape (whole-model vs per-entity), caching/ETag/versioning, auth, and whether the runtime read-model reuses the `@metaobjectsdev/metadata` loader compiled to the browser or a slim client model.
+Open questions: caching/ETag/versioning, and per-entity vs whole-model.
+
+**Answered 2026-09-20** (`docs/superpowers/specs/2026-09-20-fr-029-metadata-api-and-browser-read-model-design.md`):
+whole-model, serving the **effective** canonical serialization (so the browser never has to
+resolve `extends` — an own-vs-resolving error there would silently corrupt exactly the attrs a
+runtime grid reads, per ADR-0039); and a **slim client read-model**, not the
+`@metaobjectsdev/metadata` loader compiled to the browser, because that loader's root barrel
+transitively imports `node:url` and cannot be bundled (#287, gated by
+`runtime-web/test/browser-bundleable.test.ts`). Auth: `/_meta` is opt-in to mount and guarded by
+the host's own middleware, the same answer #367 gives for generated routes.
+
+**Also ruled 2026-09-20: there is no runtime metadata-driven REST *data* surface.** The runtime
+UI consumes the existing generated data API — `EntityFetcher` is a bare path fetch and cannot
+tell how an endpoint was produced. Rationale, and what would reopen it, in §8 of that design.
 
 ## Theme 2 — DataGrid downloads, all backends → FR-027
 

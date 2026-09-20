@@ -208,11 +208,19 @@ run by the same `cd server/typescript/packages/integration-tests && bun test`
 invocation, so whatever runs the TS integration-tests package gates both — no
 separate opt-in.
 
-**When this actually runs.** Nothing in `.github/workflows/` runs it — Actions is
-disabled here, see AGENTS.md. Coverage comes from one place: `scripts/ci-local.sh`,
-whose `integration-tests` steps run this corpus for every port. It needs a Docker
-daemon and `--quick` skips it, so run the flagless `scripts/ci-local.sh` (or
-`scripts/integration-test.sh <port>`) before you open a PR. See
+**When this actually runs.** Three places, and **none of them is a pull request** —
+so the local run below is still what gates a PR:
+
+- `integration-tests.yml` — the full five-port Testcontainers matrix, on **tag push
+  (`v*`)** and **manual dispatch** only. It is deliberately not on every push/PR: the
+  matrix is expensive.
+- `local-ci.yml` (self-hosted, **push to `main`**) — its `ts-slow` and `java-slow`
+  lanes carry the docker/integration work, when the lane selector picks them.
+- `scripts/ci-local.sh` — locally, whose `integration-tests` steps run this corpus for
+  every port.
+
+It needs a Docker daemon and `--quick` skips it, so run the flagless
+`scripts/ci-local.sh` (or `scripts/integration-test.sh <port>`) before you open a PR. See
 [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md) for the corpus x port matrix and
 the per-port runner commands.
 
