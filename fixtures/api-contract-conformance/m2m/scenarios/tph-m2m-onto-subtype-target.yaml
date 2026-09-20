@@ -1,0 +1,30 @@
+name: tph-m2m-onto-subtype-target
+description: >
+  FW-8 target side: a M:N from a NON-subtype source (Post) whose TARGET is a
+  concrete TPH subtype (MemberAccount). The target's rows live in the shared
+  `accounts` table, so an unscoped junction join cannot tell a genuine Member
+  from a same-table Guest. post_reviewers deliberately links post 2 to account 2
+  — a GUEST — so a port that fails to narrow the target returns that sibling's
+  row here instead of an empty list.
+requests:
+  - id: r1
+    method: GET
+    path: /api/posts/1/reviewers
+    expect:
+      status: 200
+      body:
+        length: 2
+  - id: r2
+    method: GET
+    path: /api/posts/2/reviewers
+    expect:
+      status: 200
+      body:
+        length: 0
+  - id: r3
+    method: GET
+    path: /api/posts/3/reviewers
+    expect:
+      status: 200
+      body:
+        length: 0

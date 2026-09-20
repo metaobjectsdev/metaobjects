@@ -2,19 +2,25 @@
 // deployed artifact) over HTTP and drives them against the FR-018 M:N corpus.
 //
 // Mirrors api-contract-generated-server.ts (the single-entity Author lane) but
-// for the multi-entity M:N model (Post/Tag/PostTag + Person/Follow/Friendship).
-// It:
+// for the multi-entity M:N model (Post/Tag/PostTag + Person/Follow/Friendship),
+// PLUS FW-8 (FR-018 x FR-017 — M:N traversal inside a TPH hierarchy) over the
+// Account discriminator base (@discriminator "kind", subtypes MemberAccount /
+// GuestAccount, abstract mid level ScopedAccount). It:
 //   1. runs the real codegen (runGen from @metaobjectsdev/codegen-ts) over the
 //      M:N meta into a temp dir, emitting each entity's Drizzle table + Zod +
 //      allowlists AND each <Entity>.routes.ts — which, for an entity with a M:N
-//      relationship, now mounts `mountM2mRoute(...)` traversals alongside CRUD;
-//   2. provisions the six tables;
-//   3. imports the EMITTED Post.routes.ts + Person.routes.ts unmodified and
-//      mounts them on a Fastify instance backed by a real Drizzle(node-postgres)
-//      connection to the per-run testcontainer.
+//      relationship, now mounts `mountM2mRoute(...)` traversals alongside CRUD.
+//      For the TPH base this is the SINGLE Account.routes.ts file: it carries
+//      the polymorphic + per-subtype CRUD set AND every M:N reachable anywhere
+//      in the hierarchy (base-declared, abstract-mid-declared, subtype-declared)
+//      — see `renderTphRoutesFile` in codegen-ts;
+//   2. provisions the eleven tables (six vanilla + accounts + its four junctions);
+//   3. imports the EMITTED Post.routes.ts + Person.routes.ts + Account.routes.ts
+//      unmodified and mounts them on a Fastify instance backed by a real
+//      Drizzle(node-postgres) connection to the per-run testcontainer.
 //
 // This proves the GENERATED M:N traversal route — not a stand-in — implements
-// the cross-port contract over HTTP.
+// the cross-port contract over HTTP, including the TPH source/target narrowing.
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -33,6 +39,12 @@ export interface M2mSeed {
   people: Array<{ id: number; name: string }>;
   follows: Array<{ followerId: number; followeeId: number }>;
   friendships: Array<{ personAId: number; personBId: number }>;
+  // FW-8 — the TPH discriminator base (Account) + its junction tables.
+  accounts: Array<{ id: number; kind: string; handle: string; karma: number | null; invitedBy: string | null }>;
+  account_tags: Array<{ accountId: number; tagId: number }>;
+  scoped_account_tags: Array<{ accountId: number; tagId: number }>;
+  member_account_tags: Array<{ accountId: number; tagId: number }>;
+  post_reviewers: Array<{ postId: number; accountId: number }>;
 }
 
 export interface GeneratedM2mServerHandle {
@@ -79,6 +91,9 @@ export const db = drizzle(pool);
   writeFileSync(join(tmp, "db.ts"), dbModule, "utf8");
 
   // 3. Provision the schema to match the EMITTED Drizzle tables (snake_case).
+  //    "accounts" is the TPH discriminator base's SINGLE shared table — karma
+  //    (Member-only) and invited_by (Guest-only) are nullable since a row of
+  //    the other subtype never sets them.
   await executeSql(connectionUri, `
     CREATE TABLE IF NOT EXISTS "posts"  ("id" bigserial PRIMARY KEY, "title" varchar(200) NOT NULL);
     CREATE TABLE IF NOT EXISTS "tags"   ("id" bigserial PRIMARY KEY, "name" varchar(80) NOT NULL);
@@ -86,6 +101,11 @@ export const db = drizzle(pool);
     CREATE TABLE IF NOT EXISTS "people" ("id" bigserial PRIMARY KEY, "name" varchar(80) NOT NULL);
     CREATE TABLE IF NOT EXISTS "follows" ("follower_id" bigint NOT NULL, "followee_id" bigint NOT NULL, PRIMARY KEY ("follower_id","followee_id"));
     CREATE TABLE IF NOT EXISTS "friendships" ("person_a_id" bigint NOT NULL, "person_b_id" bigint NOT NULL, PRIMARY KEY ("person_a_id","person_b_id"));
+    CREATE TABLE IF NOT EXISTS "accounts" ("id" bigserial PRIMARY KEY, "kind" varchar(20) NOT NULL, "handle" varchar(80) NOT NULL, "karma" integer, "invited_by" varchar(80));
+    CREATE TABLE IF NOT EXISTS "account_tags" ("account_id" bigint NOT NULL, "tag_id" bigint NOT NULL, PRIMARY KEY ("account_id","tag_id"));
+    CREATE TABLE IF NOT EXISTS "scoped_account_tags" ("account_id" bigint NOT NULL, "tag_id" bigint NOT NULL, PRIMARY KEY ("account_id","tag_id"));
+    CREATE TABLE IF NOT EXISTS "member_account_tags" ("account_id" bigint NOT NULL, "tag_id" bigint NOT NULL, PRIMARY KEY ("account_id","tag_id"));
+    CREATE TABLE IF NOT EXISTS "post_reviewers" ("post_id" bigint NOT NULL, "account_id" bigint NOT NULL, PRIMARY KEY ("post_id","account_id"));
   `);
 
   // 4. Import the EMITTED route files unmodified and mount them.
@@ -95,11 +115,17 @@ export const db = drizzle(pool);
   const personRoutes = (await import(pathToFileURL(join(tmp, "Person.routes.ts")).href)) as {
     personRoutes: (f: FastifyInstance) => Promise<void>;
   };
+  // FW-8: the TPH discriminator base's routes file carries the polymorphic base
+  // path AND every per-subtype path (incl. subtype-scoped M:N mounts) in one module.
+  const accountRoutes = (await import(pathToFileURL(join(tmp, "Account.routes.ts")).href)) as {
+    accountRoutes: (f: FastifyInstance) => Promise<void>;
+  };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
 
   const fastify = Fastify();
   await fastify.register(postRoutes.postRoutes);
   await fastify.register(personRoutes.personRoutes);
+  await fastify.register(accountRoutes.accountRoutes);
   await fastify.ready();
   const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
 
@@ -119,7 +145,9 @@ export const db = drizzle(pool);
 /** Truncate + insert the M:N corpus seed (shared by both lanes). */
 export async function seedM2m(connectionUri: string, seed: M2mSeed): Promise<void> {
   await executeSql(connectionUri, `
-    TRUNCATE TABLE "posts","tags","post_tags","people","follows","friendships" RESTART IDENTITY;
+    TRUNCATE TABLE "posts","tags","post_tags","people","follows","friendships",
+      "accounts","account_tags","scoped_account_tags","member_account_tags","post_reviewers"
+      RESTART IDENTITY;
   `);
   for (const p of seed.posts)
     await executeSql(connectionUri, `INSERT INTO "posts" ("id","title") VALUES (${p.id}, ${str(p.title)})`);
@@ -133,8 +161,31 @@ export async function seedM2m(connectionUri: string, seed: M2mSeed): Promise<voi
     await executeSql(connectionUri, `INSERT INTO "follows" ("follower_id","followee_id") VALUES (${f.followerId}, ${f.followeeId})`);
   for (const fr of seed.friendships)
     await executeSql(connectionUri, `INSERT INTO "friendships" ("person_a_id","person_b_id") VALUES (${fr.personAId}, ${fr.personBId})`);
+  // FW-8 — accounts before its junctions; post_reviewers needs both posts and
+  // accounts already present.
+  for (const a of seed.accounts)
+    await executeSql(
+      connectionUri,
+      `INSERT INTO "accounts" ("id","kind","handle","karma","invited_by") VALUES (${a.id}, ${str(a.kind)}, ${str(a.handle)}, ${numOrNull(a.karma)}, ${strOrNull(a.invitedBy)})`,
+    );
+  for (const at of seed.account_tags)
+    await executeSql(connectionUri, `INSERT INTO "account_tags" ("account_id","tag_id") VALUES (${at.accountId}, ${at.tagId})`);
+  for (const st of seed.scoped_account_tags)
+    await executeSql(connectionUri, `INSERT INTO "scoped_account_tags" ("account_id","tag_id") VALUES (${st.accountId}, ${st.tagId})`);
+  for (const mt of seed.member_account_tags)
+    await executeSql(connectionUri, `INSERT INTO "member_account_tags" ("account_id","tag_id") VALUES (${mt.accountId}, ${mt.tagId})`);
+  for (const pr of seed.post_reviewers)
+    await executeSql(connectionUri, `INSERT INTO "post_reviewers" ("post_id","account_id") VALUES (${pr.postId}, ${pr.accountId})`);
 }
 
 function str(v: string): string {
   return `'${v.replace(/'/g, "''")}'`;
+}
+
+function strOrNull(v: string | null): string {
+  return v === null ? "NULL" : str(v);
+}
+
+function numOrNull(v: number | null): string {
+  return v === null ? "NULL" : String(v);
 }

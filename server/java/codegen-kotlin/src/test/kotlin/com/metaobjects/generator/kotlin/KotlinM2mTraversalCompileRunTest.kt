@@ -143,10 +143,22 @@ class KotlinM2mTraversalCompileRunTest {
      * M:N junction-join query helpers and COMPILE them against exposed-core, asserting
      * the emitted Exposed DSL is valid Kotlin. The exposed-core jar is resolved from the
      * local Maven repository (it is not on codegen-kotlin's own test classpath).
+     *
+     * FW-8: also run [KotlinEntityGenerator] into the SAME [exposedDir] first. The corpus
+     * now has a `field.enum` (`Account.kind`), and FR-019 materializes an inline
+     * (non-shared) enum as a standalone top-level type — `AccountTable.kt`'s
+     * `enumerationByName(..., AccountKind::class)` and `PostRelations.kt`'s target-side
+     * `AccountTable.kind eq AccountKind.Member` narrowing both reference it by bare name.
+     * Compiling the Exposed artifacts in a compile unit that lacks `AccountKind.kt`
+     * (this test's own two-pass split, unique to it — [GeneratedM2mControllerHarness] in
+     * integration-tests-kotlin runs every generator into ONE dir and never hits this) is a
+     * TEST gap, not a product one: a real consumer's build compiles every generated file
+     * in one module and never has to choose a subset.
      */
     private fun compileExposedArtifacts(loader: com.metaobjects.loader.MetaDataLoader) {
         val exposedDir = Files.createTempDirectory("km2m-exposed-")
         try {
+            KotlinEntityGenerator().apply { setArgs(mapOf("outputDir" to exposedDir.toString())) }.execute(loader)
             KotlinExposedTableGenerator().apply { setArgs(mapOf("outputDir" to exposedDir.toString())) }.execute(loader)
             KotlinRelationsGenerator().apply { setArgs(mapOf("outputDir" to exposedDir.toString())) }.execute(loader)
 

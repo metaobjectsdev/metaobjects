@@ -110,11 +110,18 @@ public class GeneratedM2mTraversalCompileRunTest {
 
             // --- hetero: Post.findTags via the generated PostRepository ---
             Object postRepo = instantiate(cl, PKG + ".InMemoryPostRepository",
-                rows(seed, "tags"), rows(seed, "post_tags"));
+                rows(seed, "tags"), rows(seed, "post_tags"), rows(seed, "accounts"), rows(seed, "post_reviewers"));
             // post_tags = (1,10),(1,20),(2,30); tags 10=red,20=green,30=blue.
             assertNamesEqual(List.of("green", "red"), invokeFinder(postRepo, "findTags", 1L));
             assertNamesEqual(List.of("blue"), invokeFinder(postRepo, "findTags", 2L));
             assertNamesEqual(List.of(), invokeFinder(postRepo, "findTags", 3L));
+
+            // --- FW-8 target side: Post.findReviewers -> MemberAccount (a TPH subtype) ---
+            // post_reviewers = (1,1),(1,3),(2,2); accounts 1=Member alice,2=Guest bob,3=Member carol.
+            // Account 2 is a GUEST — findReviewers must exclude it (target-side narrowing).
+            assertHandlesEqual(List.of("alice", "carol"),
+                invokeFinderWithArg(postRepo, "findReviewers", 1L, "Member"));
+            assertHandlesEqual(List.of(), invokeFinderWithArg(postRepo, "findReviewers", 2L, "Member"));
 
             // --- directed self-join: Person.findFollowing ---
             Object personRepo = instantiate(cl, PKG + ".InMemoryPersonRepository",
@@ -156,6 +163,15 @@ public class GeneratedM2mTraversalCompileRunTest {
         return (List<Object>) m.invoke(repo, sourceId);
     }
 
+    /** Invoke a widened M:N finder ({@code List<Dto> find...(Long, String)} — FW-8 target-side
+     * TPH gate) and return the result list. */
+    @SuppressWarnings("unchecked")
+    private static List<Object> invokeFinderWithArg(Object repo, String finder, long sourceId, String targetSubtype)
+            throws Exception {
+        Method m = repo.getClass().getMethod(finder, Long.class, String.class);
+        return (List<Object>) m.invoke(repo, sourceId, targetSubtype);
+    }
+
     /** Assert the multiset of {@code name} record-components matches, order-insensitive. */
     private static void assertNamesEqual(List<String> expected, List<Object> actualDtos) throws Exception {
         List<String> actual = new ArrayList<>();
@@ -164,6 +180,19 @@ public class GeneratedM2mTraversalCompileRunTest {
             actual.add(String.valueOf(nameAccessor.invoke(dto)));
         }
         assertEquals("related-row name multiset (order-insensitive)",
+            new TreeSet<>(expected), new TreeSet<>(actual));
+        assertEquals("related-row count", expected.size(), actual.size());
+    }
+
+    /** Assert the multiset of {@code handle} record-components matches, order-insensitive
+     * (FW-8 target-side: MemberAccountDto has no {@code name} component). */
+    private static void assertHandlesEqual(List<String> expected, List<Object> actualDtos) throws Exception {
+        List<String> actual = new ArrayList<>();
+        for (Object dto : actualDtos) {
+            Method handleAccessor = dto.getClass().getMethod("handle");
+            actual.add(String.valueOf(handleAccessor.invoke(dto)));
+        }
+        assertEquals("related-row handle multiset (order-insensitive)",
             new TreeSet<>(expected), new TreeSet<>(actual));
         assertEquals("related-row count", expected.size(), actual.size());
     }
@@ -220,13 +249,29 @@ public class GeneratedM2mTraversalCompileRunTest {
         public class InMemoryPostRepository implements PostRepository {
             private final List<TagDto> tags = new ArrayList<>();
             private final List<JunctionRow> postTags = new ArrayList<>();
+            // FW-8 target side: reviewers -> MemberAccount (a TPH subtype). Only the Member
+            // rows are kept here (the seam's targetSubtype argument is always the resolved
+            // "Member" literal by construction), so findReviewers filters by kind up front.
+            private final List<MemberAccountDto> members = new ArrayList<>();
+            private final List<JunctionRow> postReviewers = new ArrayList<>();
 
             public InMemoryPostRepository(List<Map<String, Object>> tagRows,
-                                          List<Map<String, Object>> postTagRows) {
+                                          List<Map<String, Object>> postTagRows,
+                                          List<Map<String, Object>> accountRows,
+                                          List<Map<String, Object>> postReviewerRows) {
                 for (Map<String, Object> r : tagRows)
                     tags.add(new TagDto(asLong(r.get("id")), (String) r.get("name")));
                 for (Map<String, Object> r : postTagRows)
                     postTags.add(new JunctionRow(asLong(r.get("postId")), asLong(r.get("tagId"))));
+                for (Map<String, Object> r : accountRows) {
+                    if (!"Member".equals(r.get("kind"))) continue;
+                    Integer karma = r.get("karma") == null ? null : ((Number) r.get("karma")).intValue();
+                    members.add(new MemberAccountDto(karma, asLong(r.get("id")),
+                        MemberAccountDto.MemberAccountKind.valueOf((String) r.get("kind")),
+                        (String) r.get("handle")));
+                }
+                for (Map<String, Object> r : postReviewerRows)
+                    postReviewers.add(new JunctionRow(asLong(r.get("postId")), asLong(r.get("accountId"))));
             }
 
             @Override public List<TagDto> findTags(Long sourceId) {
@@ -239,6 +284,20 @@ public class GeneratedM2mTraversalCompileRunTest {
                 for (Object id : ids)
                     for (TagDto t : tags)
                         if (M2mJoinResolver.keyEquals(t.id(), id)) out.add(t);
+                return out;
+            }
+
+            @Override public List<MemberAccountDto> findReviewers(Long sourceId, String targetSubtype) {
+                // FW-8 target side: `members` above already excludes every row whose kind !=
+                // targetSubtype, so a same-table Guest sibling never surfaces here.
+                List<JunctionRow> matched = new ArrayList<>();
+                for (JunctionRow jr : postReviewers)
+                    if (M2mJoinResolver.keyEquals(jr.sourceKey(), sourceId)) matched.add(jr);
+                List<Object> ids = M2mJoinResolver.relatedKeys(sourceId, matched, false);
+                List<MemberAccountDto> out = new ArrayList<>();
+                for (Object id : ids)
+                    for (MemberAccountDto a : members)
+                        if (M2mJoinResolver.keyEquals(a.id(), id)) out.add(a);
                 return out;
             }
 

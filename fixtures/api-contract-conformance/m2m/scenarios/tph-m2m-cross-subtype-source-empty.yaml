@@ -1,0 +1,29 @@
+name: tph-m2m-cross-subtype-source-empty
+description: >
+  FW-8 rule (c): a subtype-scoped M:N mount addresses ONLY rows of that subtype.
+  Account 2 is a Guest, so through the /member/ segment it names no row — the
+  answer is 200 with an EMPTY LIST, never 404 and never a sibling subtype's
+  rows. Without the gate the junction FK addresses the shared base table, so a
+  sibling id would traverse it just as well and the segment would be decorative.
+requests:
+  - id: r1
+    method: GET
+    path: /api/accounts/member/2/interests
+    expect:
+      status: 200
+      body:
+        length: 0
+  - id: r2
+    method: GET
+    path: /api/accounts/member/2/scopes
+    expect:
+      status: 200
+      body:
+        length: 0
+  - id: r3
+    method: GET
+    path: /api/accounts/member/2/badges
+    expect:
+      status: 200
+      body:
+        length: 0

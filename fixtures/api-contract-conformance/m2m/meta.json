@@ -9,6 +9,7 @@
           { "field.long":       { "name": "id" } },
           { "field.string":     { "name": "title", "@required": true, "@maxLength": 200 } },
           { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
+          { "relationship.association": { "name": "reviewers", "@cardinality": "many", "@objectRef": "MemberAccount", "@through": "PostReviewer" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }},
@@ -63,6 +64,87 @@
           { "identity.primary":   { "name": "id", "@fields": ["personAId", "personBId"] } },
           { "identity.reference": { "name": "fkPersonA", "@fields": "personAId", "@references": "Person" } },
           { "identity.reference": { "name": "fkPersonB", "@fields": "personBId", "@references": "Person" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Account",
+        "@discriminator": "kind",
+        "children": [
+          { "source.rdb":       { "@table": "accounts" } },
+          { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
+          { "field.enum":       { "name": "kind", "@values": ["Member", "Guest"], "@filterable": true } },
+          { "field.string":     { "name": "handle", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true } },
+          { "relationship.association": { "name": "badges", "@cardinality": "many", "@objectRef": "Tag", "@through": "AccountTag" } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "ScopedAccount",
+        "extends": "Account",
+        "abstract": true,
+        "children": [
+          { "relationship.association": { "name": "scopes", "@cardinality": "many", "@objectRef": "Tag", "@through": "ScopedAccountTag" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "MemberAccount",
+        "extends": "ScopedAccount",
+        "@discriminatorValue": "Member",
+        "children": [
+          { "field.int":        { "name": "karma", "@filterable": true, "@sortable": true } },
+          { "relationship.association": { "name": "interests", "@cardinality": "many", "@objectRef": "Tag", "@through": "MemberAccountTag" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "GuestAccount",
+        "extends": "Account",
+        "@discriminatorValue": "Guest",
+        "children": [
+          { "field.string":     { "name": "invitedBy", "@maxLength": 80, "@filterable": true } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "AccountTag",
+        "children": [
+          { "source.rdb":         { "@table": "account_tags" } },
+          { "field.long":         { "name": "accountId", "@required": true } },
+          { "field.long":         { "name": "tagId",     "@required": true } },
+          { "identity.primary":   { "name": "id", "@fields": ["accountId", "tagId"] } },
+          { "identity.reference": { "name": "fkAccount", "@fields": "accountId", "@references": "Account" } },
+          { "identity.reference": { "name": "fkTag",     "@fields": "tagId",     "@references": "Tag" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "ScopedAccountTag",
+        "children": [
+          { "source.rdb":         { "@table": "scoped_account_tags" } },
+          { "field.long":         { "name": "accountId", "@required": true } },
+          { "field.long":         { "name": "tagId",     "@required": true } },
+          { "identity.primary":   { "name": "id", "@fields": ["accountId", "tagId"] } },
+          { "identity.reference": { "name": "fkAccount", "@fields": "accountId", "@references": "ScopedAccount" } },
+          { "identity.reference": { "name": "fkTag",     "@fields": "tagId",     "@references": "Tag" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "MemberAccountTag",
+        "children": [
+          { "source.rdb":         { "@table": "member_account_tags" } },
+          { "field.long":         { "name": "accountId", "@required": true } },
+          { "field.long":         { "name": "tagId",     "@required": true } },
+          { "identity.primary":   { "name": "id", "@fields": ["accountId", "tagId"] } },
+          { "identity.reference": { "name": "fkAccount", "@fields": "accountId", "@references": "MemberAccount" } },
+          { "identity.reference": { "name": "fkTag",     "@fields": "tagId",     "@references": "Tag" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "PostReviewer",
+        "children": [
+          { "source.rdb":         { "@table": "post_reviewers" } },
+          { "field.long":         { "name": "postId",    "@required": true } },
+          { "field.long":         { "name": "accountId", "@required": true } },
+          { "identity.primary":   { "name": "id", "@fields": ["postId", "accountId"] } },
+          { "identity.reference": { "name": "fkPost",    "@fields": "postId",    "@references": "Post" } },
+          { "identity.reference": { "name": "fkAccount", "@fields": "accountId", "@references": "MemberAccount" } }
         ]
       }}
     ]
