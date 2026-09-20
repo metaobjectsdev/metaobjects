@@ -261,16 +261,22 @@ public sealed class CSharpApiDocsAccuracyTests
             var (model, all) = BuildAndGenerate(tpl);
             var summary = model.Units.Single(u => u.Node == "AuthorSummary");
 
-            // A view-kind object.projection → a read-model unit with a read-only DbSet +
-            // read routes, but NO write surfaces (no Validation / FilterAllowlist). The
-            // DbSet + read routes ARE generated for a projection (DbView != null), so the
-            // builder must document them — the bug was the `if (entity)` gate hiding them.
+            // A view-kind object.projection → a read-model unit with a read-only DbSet,
+            // read routes and a filter allowlist, but NO WRITE surface (no Validation).
+            // All of those ARE generated for a projection (DbView != null), so the builder
+            // must document them — the bug was the `if (entity)` gate hiding them.
+            //
+            // Filter used to be asserted ABSENT here, on the reading that an allowlist is
+            // a write surface. It is not: it gates ?filter[...] on a READ, which a
+            // projection's list route emits like any other. While the allowlist was
+            // skipped, that route named a class nothing declared and the tree did not
+            // compile.
             Assert.Equal("projection", summary.Kind);
             var kinds = summary.Symbols.Select(s => s.Kind).ToHashSet();
             Assert.Contains(ApiSymbolKind.Model, kinds);
             Assert.Contains(ApiSymbolKind.DataAccess, kinds);
             Assert.DoesNotContain(ApiSymbolKind.Validation, kinds);
-            Assert.DoesNotContain(ApiSymbolKind.Filter, kinds);
+            Assert.Contains(ApiSymbolKind.Filter, kinds);
 
             // Forward-confirm the documented DbSet is really declared on the AppDbContext...
             var dbSet = summary.Symbols.Single(s => s.Kind == ApiSymbolKind.DataAccess);
@@ -288,9 +294,13 @@ public sealed class CSharpApiDocsAccuracyTests
                     $"documented projection REST '{sym.Name}' has no matching MapGet registration");
             }
 
-            // ...and NO filter allowlist CLASS is declared for the projection (the builder
-            // documents no FILTER symbol, matching FilterAllowlistGenerator skipping it).
-            Assert.False(ContainsDeclaration(all, "AuthorSummaryFilterAllowlist"));
+            // ...and the documented FILTER symbol names a class that is really declared —
+            // the same forward-confirmation as the DbSet above, and the one that would
+            // have caught the dangling reference when the allowlist was skipped.
+            var filter = summary.Symbols.Single(s => s.Kind == ApiSymbolKind.Filter);
+            Assert.True(ContainsDeclaration(all, filter.Name),
+                $"documented projection filter allowlist '{filter.Name}' is not declared in the generated C#");
+            Assert.Equal("AuthorSummaryFilterAllowlist", filter.Name);
         }
         finally { Directory.Delete(tpl, recursive: true); }
     }

@@ -170,6 +170,17 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   non-shared case changes spelling (to the entity-qualified `<Entity><Field>`); shared and
   `@provided` enums are byte-identical.
 
+- **C#: a read-only projection's generated routes named a filter allowlist nothing emitted.**
+  `RoutesGenerator` emits the `FilterParser.Parse(qs, <Cls>FilterAllowlist.Fields, …)` line
+  for a projection's list route like any other read, but `FilterAllowlistGenerator` skipped
+  read-only projections — on a rationale, written into its own comment, that "projections
+  are not filterable in the routes generator today", which had stopped being true. Skipping
+  the allowlist did not disable filtering; it left a dangling reference and the emitted tree
+  did not compile. The two generators now share one predicate, and a test asserts the
+  invariant directly: every `<Cls>FilterAllowlist` a routes file REFERENCES is emitted. A
+  projection with no `@filterable` field gets an empty allowlist, exactly as an entity does,
+  and the api-docs builder now documents the projection's Filter symbol.
+
 - **C#: `dotnet meta gen` keyed its hash manifest by the OUT DIR, so a second `--out` under
   one project could destroy a hand edit in the first.** `.gen-state/.hashes.json` is ANCHORED
   on the project — the gen-state directory is derived from it and cannot be configured per

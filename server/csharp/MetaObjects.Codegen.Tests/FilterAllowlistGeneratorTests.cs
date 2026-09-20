@@ -3,7 +3,8 @@
 //
 //  - Empty allowlist when no field carries @filterable: true.
 //  - Per-subtype operator gating (string vs numeric vs boolean).
-//  - View-kind / projection entity skipped (read-only — no filter routes).
+//  - View-kind / projection entity — filterable like any other read surface.
+//  - Every <Cls>FilterAllowlist the ROUTES generator references is actually emitted.
 
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
@@ -107,32 +108,64 @@ public class FilterAllowlistGeneratorTests
         Assert.Contains("[\"total\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
     }
 
+    private const string ProjectionModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Author", "children": [
+        { "source.rdb": { "@table": "authors" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "name", "@filterable": true } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } }
+      ]}},
+      { "object.projection": { "name": "AuthorView", "children": [
+        { "source.rdb": { "@kind": "view", "@table": "v_authors" } },
+        { "field.long":   { "name": "id", "extends": "Author.id" } },
+        { "field.string": { "name": "name", "extends": "Author.name", "@filterable": true } },
+        { "identity.primary": { "name": "pk", "extends": "Author.pk" } }
+      ]}}
+    ]}}
+    """;
+
     [Fact]
-    public void View_kind_projection_entity_gets_no_allowlist()
+    public void View_kind_projection_entity_gets_an_allowlist()
     {
-        // A read-only projection (source.rdb @kind=view) is filtered out by
-        // FilterAllowlistGenerator — projections aren't writable, the routes
-        // generator emits read-only routes, and filtering view-kind queries
-        // is out of scope (G3 in the routes-generator gap list).
-        const string model = """
-        { "metadata.root": { "package": "acme", "children": [
-          { "object.entity": { "name": "Author", "children": [
-            { "source.rdb": { "@table": "authors" } },
-            { "field.long":   { "name": "id" } },
-            { "field.string": { "name": "name", "@filterable": true } },
-            { "identity.primary": { "@fields": "id" } }
-          ]}},
-          { "object.projection": { "name": "AuthorView", "children": [
-            { "source.rdb": { "@kind": "view", "@table": "v_authors" } },
-            { "field.long":   { "name": "id" } },
-            { "field.string": { "name": "name" } }
-          ]}}
-        ]}}
-        """;
-        // Only the writable Author entity gets an allowlist file; the
-        // projection AuthorView is skipped.
-        var files = new FilterAllowlistGenerator().Generate(Ctx(Load(model))).ToList();
-        var file = Assert.Single(files);
-        Assert.Equal("AuthorFilterAllowlist.g.cs", file.Path);
+        // A read-only projection IS a filterable read surface. This test used to assert
+        // the opposite, on the rationale that "filtering view-kind queries is out of
+        // scope (G3 in the routes-generator gap list)" — which had stopped being true:
+        // RoutesGenerator emits the `FilterParser.Parse(qs, <Cls>FilterAllowlist.Fields,
+        // …)` line for a projection like any other read, and the cross-port api contract
+        // filters a projection collection. Skipping the allowlist did not disable
+        // filtering; it left the routes file naming a class nothing emitted, so the
+        // generated tree did not COMPILE. The test pinned the defect in place.
+        var files = new FilterAllowlistGenerator().Generate(Ctx(Load(ProjectionModel))).ToList();
+        Assert.Equal(
+            new[] { "AuthorFilterAllowlist.g.cs", "AuthorViewFilterAllowlist.g.cs" },
+            files.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToArray());
+
+        // The projection's own @filterable field is in its allowlist, not merely an
+        // empty stub emitted to satisfy the reference.
+        var view = Assert.Single(files, f => f.Path == "AuthorViewFilterAllowlist.g.cs");
+        Assert.Contains("\"name\"", view.Content);
+    }
+
+    [Fact]
+    public void Every_allowlist_the_routes_reference_is_emitted()
+    {
+        // The invariant the projection skip broke, stated directly rather than
+        // per-case: the two generators pick their entities with separate predicates,
+        // and nothing made them agree. `gen` exits 0 when they disagree — the adopter's
+        // compiler is the first thing that objects.
+        var ctx = Ctx(Load(ProjectionModel));
+        var routes = new RoutesGenerator().Generate(ctx).ToList();
+        var emitted = new FilterAllowlistGenerator().Generate(ctx)
+            .Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+
+        var referenced = routes
+            .SelectMany(f => System.Text.RegularExpressions.Regex
+                .Matches(f.Content, @"\b(\w+)FilterAllowlist\b")
+                .Select(m => m.Groups[1].Value + "FilterAllowlist.g.cs"))
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.NotEmpty(referenced);
+        Assert.Empty(referenced.Except(emitted, StringComparer.Ordinal));
     }
 }

@@ -28,17 +28,28 @@ public class FilterAllowlistGenerator : PerEntityGenerator
 {
     public override string Name => "filter-allowlist-generator";
 
-    // Read-only projections (views/etc.) are not filterable in the routes
-    // generator today — skip them here to match.
     protected override bool Filter(MetaObject entity) => AppliesTo(entity);
 
     /// <summary>
-    /// True iff this entity gets a generated filter allowlist: a writable, instance-
-    /// emitting <c>object.entity</c> (read-only projections have no filter routes today).
-    /// Single source of truth shared by the generator loop AND the api-docs builder.
+    /// True iff this entity gets a generated filter allowlist: any persisted,
+    /// instance-emitting read surface — including a read-only projection. Single source
+    /// of truth shared by the generator loop AND the api-docs builder.
+    /// <para>
+    /// Deliberately the same predicate as <see cref="RoutesGenerator.Filter"/>, because
+    /// the routes file NAMES <c>&lt;Cls&gt;FilterAllowlist</c> and the two must pick the
+    /// same entities or the emitted tree does not compile. This used to carry an extra
+    /// <c>!IsReadOnlyProjection()</c> on the rationale that projections had no filter
+    /// routes — which had stopped being true: a projection's list route emits the same
+    /// <c>FilterParser.Parse</c> line as any other read. The skip did not disable
+    /// filtering, it left a dangling reference, and `gen` still exited 0. Note the TPH
+    /// subtypes stay IN (unlike <see cref="RoutesGenerator.AppliesTo"/>, which excludes
+    /// them from having their own routes FILE): the base's routes file references a
+    /// per-subtype allowlist for each of them.
+    /// </para>
     /// </summary>
     public static bool AppliesTo(MetaObject entity) =>
-        entity.IsEntity() && !entity.IsReadOnlyProjection() && InstanceArtifacts.EmitsInstanceArtifacts(entity);
+        (entity.IsEntity() || entity.DbView is not null)
+        && InstanceArtifacts.EmitsInstanceArtifacts(entity);
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {
