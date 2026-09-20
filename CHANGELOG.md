@@ -192,6 +192,21 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   second C#-only key would be an addition to a cross-port wire contract. Non-TPH entities are
   byte-identical.
 
+- **C#: `field.timestamp` crossed the wire as `+00:00` rather than the documented `Z`.**
+  `docs/features/api-contract.md` spells a timestamp ISO 8601 with the UTC designator;
+  System.Text.Json's default for `DateTimeOffset` renders UTC as a numeric zero offset. Both
+  are valid ISO 8601, which is why it went unnoticed — but the cross-port gate is a BYTE
+  comparison of the same `timestamptz` row read by five ports, and two spellings are two
+  answers. `MetaObjects.Codegen.Runtime.Iso8601TimestampConverter` writes UTC with `Z`
+  (fractional seconds only when the instant has them, so a whole-second value round-trips to
+  the string it arrived as) and reads any ISO 8601 spelling, treating an offset-less value as
+  UTC rather than as server local time. Register it on `ConfigureHttpJsonOptions` beside
+  `JsonStringEnumConverter`; the generated handlers deserialize with the app's CONFIGURED
+  options precisely so a host registration reaches them. A near-copy previously existed only
+  inside the integration-test project, where an adopter never saw it — and that copy did not
+  produce the documented spelling either (`DateTimeOffset.ToString("o")` keeps the numeric
+  offset at UTC; reaching `Z` needs the `UtcDateTime`).
+
 - **C#: a constraint violation answered 500 instead of 409.** A generated CRUD route had no
   try/catch around `SaveChangesAsync`, so a client-supplied foreign key naming no row, or a
   value duplicating a unique one, reached ASP.NET's default handler and came back as a bare
