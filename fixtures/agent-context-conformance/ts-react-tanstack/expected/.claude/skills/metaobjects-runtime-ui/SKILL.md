@@ -82,8 +82,21 @@ universal web client serves any backend language.
 ### URL grammar
 
 `apiPrefix` (default `/api`, set in project config) flows to both the server routes
-and the client fetch URLs. `<entity>` is lowercased + pluralized (`Author` →
-`authors`).
+and the client fetch URLs.
+
+`<entity>` is the entity name pluralized and snake_cased — `Author` → `authors`,
+`OrderSummary` → `order_summaries`. **A `source.rdb` projection spells the same
+name with HYPHENS, not underscores**: `OrderSummary` as a projection is
+`order-summaries`. The two are composed in a different ORDER as well as a
+different separator (entity: snake-then-pluralize; projection:
+pluralize-then-snake-then-hyphenate), and both spellings are already mounted, so
+neither may be "tidied" into the other — unifying them would be a breaking route
+rename for existing projection consumers. The split is deliberate and
+grandfathered, not an oversight. A single-word name hides it (`Author` →
+`authors` either way), so check a MULTI-word name before assuming a path.
+
+`resourcePath` in `codegen-ts`'s `entity-ui-descriptor.ts` is the one place that
+decides this; read it rather than guessing a path.
 
 | Verb | Path | Purpose |
 |---|---|---|
