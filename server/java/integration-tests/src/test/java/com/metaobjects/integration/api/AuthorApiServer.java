@@ -517,12 +517,16 @@ final class AuthorApiServer implements AutoCloseable {
         // rejected, matching every other excluded key on this path. Do NOT add a branch:
         // that would leave the mode unenforced. The omission covers the FR-035
         // present-null arm too, since clearing a column is itself a write.
-        if (setClauses.isEmpty()) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        // FR-037 PATCH-5 (patch-empty-noop): NO empty-SET guard here. A patch that strips to
+        // zero CALLER assignments is a no-op answering 200 with the current row — never a 400.
+        // This used to 400 "per FR-035", citing a rule that says the opposite, and it disagreed
+        // with TphReferenceServer/JsonbReferenceServer in this very package.
 
         // Issue #203 / ADR-0045: honor @autoSet onUpdate — bump autoUpdatedAt to now() on EVERY
         // update, and NEVER write autoCreatedAt (created-at is immutable; rewriting it is the
-        // lost-update bug the gate catches). Appended after the caller-field empty-check so the
-        // empty-body → 400 semantics stay keyed on the caller's fields only.
+        // lost-update bug the gate catches). Appended UNCONDITIONALLY, which is also what keeps
+        // the SET non-empty when the caller assigned nothing — so the empty-SET SQL error
+        // PATCH-5 warns about cannot arise on an entity carrying an onUpdate column.
         setClauses.add("\"autoUpdatedAt\" = ?");
         values.add(OffsetDateTime.now(ZoneOffset.UTC));
 

@@ -126,11 +126,29 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   ObjectManager, already no-opped and returned the row, so the two api-contract lanes
   disagreed on this input.
 
-  **The cross-port contract for an empty PATCH remains deliberately unsettled** and this does
-  not settle it — `fixtures/api-contract-conformance/scenarios/writeonce-patch-stripped.yaml`
-  records that the C# reference 400s on an empty SET where TypeScript no-ops. That is a
-  ruling to make, not a fix to sneak in under one port, so no conformance fixture pins it
-  here. What is fixed is only this: 500 was defensible under no reading of it.
+  This fix deliberately did not settle the cross-port contract; the entry below now does.
+
+- **An empty PATCH answered five different ways across the ports; it is now one, and gated.**
+  FR-037 PATCH-5 has always said a patch that strips to zero caller assignments reads the
+  current row back — but nothing in the corpus asserted it, and an unasserted corner is where
+  divergence lives. The ports had drifted to: TypeScript 500 on the generated mount and 200 on
+  the reference lane (fixed above), C# and Java 400 `validation` from their base
+  `AuthorApiServer` while `TphReferenceServer`/`JsonbReferenceServer` in the same directory
+  200'd, Kotlin 200, Python 200. Both 400s cited "per FR-035" — a rule that says the opposite.
+  The answer is now **200 with the current row** in all five ports and both lanes, `404` when
+  the row does not exist, pinned by the new
+  `fixtures/api-contract-conformance/scenarios/patch-empty-noop.yaml`.
+
+  The fix in C# and Java is the *removal* of an empty-`SET` guard: the `@autoSet:onUpdate`
+  stamp was already being appended unconditionally right after it, so dropping the guard makes
+  the `SET` non-empty on its own and the ordinary write path answers correctly. That also
+  settles how PATCH-3 and PATCH-5 meet — the server-side stamp IS an assignment, so on an
+  entity carrying one the literal zero-assignment read-back path is never reached, and
+  `patch-empty-noop.yaml` asserts the stamp still bumps. `docs/features/generated-mutations.md`
+  PATCH-5 is corrected accordingly; it previously read "no write is executed", which holds only
+  for an entity with no onUpdate column.
+
+  No adopter action: a request that used to 400 or 500 now succeeds.
 
 - **Java: a field name that is legal metadata could not be a record component.** The JLS
   forbids a record component named after a no-argument `Object` method

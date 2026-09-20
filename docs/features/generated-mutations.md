@@ -49,8 +49,15 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   entity carrying one.
 - **PATCH-4 (validation).** Assigned values run the same per-field validation and
   the same write codec as `create`.
-- **PATCH-5 (empty patch).** Zero assignments is a no-op — the current row is read
-  back and returned, never an empty-`SET` SQL error.
+- **PATCH-5 (empty patch).** A body that strips to zero *caller* assignments answers
+  `200` with the current row — never a `400`, and never an empty-`SET` SQL error.
+  Note how this meets PATCH-3: the server-side `@autoSet:onUpdate` stamp is itself an
+  assignment, so on an entity carrying one the `SET` is never actually empty and an
+  ordinary write runs (bumping that column, as it does for any other patch). The
+  literal zero-assignment read-back path is reachable only for an entity with **no**
+  onUpdate column. Both routes answer identically, which is what makes the contract
+  stable; what a port must not do is let the caller's empty set decide the status.
+  Gated cross-port by `fixtures/api-contract-conformance/scenarios/patch-empty-noop.yaml`.
 - **PATCH-6 (result).** The patch returns the full updated row (`RETURNING`, or a
   same-transaction re-read); a missing row is the port's not-found idiom
   (`null` / `Optional.empty` / `404`).

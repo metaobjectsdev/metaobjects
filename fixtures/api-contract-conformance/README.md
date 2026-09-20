@@ -30,6 +30,7 @@ fixtures/api-contract-conformance/
     ├── create-constraint-violation-400.yaml # FR-036 POST field-constraint → 400 {error:"validation"}
     ├── update-patch-and-put.yaml
     ├── update-constraint-violation-400.yaml # FR-036 PATCH present-value constraint → 400
+    ├── patch-empty-noop.yaml       # FR-037 PATCH-5 a patch stripping to zero assignments is a no-op read-back
     ├── delete-204-and-404.yaml
     ├── invalid-sort-400.yaml
     ├── filter-eq.yaml             # FR-009 filter operators

@@ -1,0 +1,61 @@
+name: patch-empty-noop
+description: >
+  FR-037 PATCH-5 — a PATCH whose body strips to ZERO CALLER assignments answers
+  200 with the current row. Never a 400, and never an empty-`SET` SQL error.
+
+  This is a documented contract (`docs/features/generated-mutations.md` PATCH-5:
+  "Zero assignments → no write is executed; the current row is read back and
+  returned"), but until 2026-09-20 nothing in this corpus asserted it, and the
+  ports had drifted to FIVE different answers for one input: TS 500'd on the
+  generated mount and 200'd on the reference lane, C# and Java 400'd from
+  `AuthorApiServer` while their own Tph/Jsonb reference servers 200'd, Kotlin
+  200'd but wrote, and Python 200'd. An unasserted corner is where divergence
+  lives; this scenario closes it.
+
+  The probe names ONLY `issuedCurrency`, which is `@mutability: "writeOnce"` and
+  therefore STRIPPED on this path (PATCH-3). Stripping the sole key is what
+  produces the empty assignment set, so this exercises the real mechanism rather
+  than a synthetic empty body — which also keeps the request non-empty as JSON,
+  so no runner has to decide whether to send `{}` at all. It is exactly the arm
+  `writeonce-patch-stripped.yaml` avoids by pairing the frozen key with a
+  settable sibling; that file's r3 comment recorded this case as deliberately
+  unsettled, and now points here instead.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/authors/1
+    body:
+      issuedCurrency: "EUR"
+    expect:
+      status: 200
+      body:
+        row:
+          # The row comes back whole and UNCHANGED — a read, answered at a write verb.
+          id: 1
+          name: "Ada Lovelace"
+          bio: "First computer programmer"
+          # The writeOnce column keeps its created value; the presented "EUR" was stripped.
+          issuedCurrency: "USD"
+        # PATCH-3 and PATCH-5 meet here, and the order matters. The onUpdate
+        # @autoSet column is stamped server-side "regardless of the caller", and
+        # that stamp IS an assignment — so on an entity carrying one, the SET is
+        # never actually empty and a real write runs. PATCH-5's literal
+        # zero-assignment read-back path is reachable only for an entity with NO
+        # onUpdate column. Both readings answer 200 with the current row, which is
+        # why the contract is stable either way; what a port must not do is let the
+        # CALLER's empty set decide, and 400 or 500 before the stamp is applied.
+        # Asserted field-vs-field (format- and timing-agnostic: the seed's 2000
+        # sentinel vs a 2026 now()), same idiom as autoset-patch.yaml.
+        fieldsNotEqual: [autoCreatedAt, autoUpdatedAt]
+  - id: r2
+    method: PATCH
+    path: /api/authors/999
+    body:
+      issuedCurrency: "EUR"
+    expect:
+      # The arm a short-circuit misses. A no-op patch still has to find the row, or
+      # the fast path becomes a hole that reports success for any id — and on a TPH
+      # route, a hole through which one subtype answers for another's row.
+      status: 404
+      body:
+        error: not_found

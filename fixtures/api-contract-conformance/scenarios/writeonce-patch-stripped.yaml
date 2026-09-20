@@ -53,11 +53,12 @@ requests:
     path: /api/authors/1
     body:
       # A readWrite field rides along DELIBERATELY. Sending the null ALONE would
-      # also probe the empty-PATCH contract, which this corpus has never settled
-      # cross-port (TS no-ops and returns the row; the C# reference 400s on an
-      # empty SET) — and settling that is not this scenario's business. With a
-      # settable sibling present, the request is unambiguously non-empty and the
-      # only thing under test is the writeOnce column's response to a null.
+      # also probe the empty-PATCH contract, and settling that is not this
+      # scenario's business. With a settable sibling present, the request is
+      # unambiguously non-empty and the only thing under test is the writeOnce
+      # column's response to a null. (The empty-PATCH contract was unsettled
+      # cross-port when this was written; it is FR-037 PATCH-5 — a no-op
+      # read-back — and is now pinned by `patch-empty-noop.yaml`.)
       bio: "cleared-currency probe"
       issuedCurrency: null
     expect:

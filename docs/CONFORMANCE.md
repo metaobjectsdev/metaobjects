@@ -34,7 +34,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 33 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 14 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 33 (27 query + 6 migration) | all 33 | 27 query (migrations TS-only, ADR-0015) | 27 query (via Exposed) | 27 query | 27 query |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 50 (28 core + 9 tph + 9 m2m + 2 jsonb + 2 write-through) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 51 (29 core + 9 tph + 9 m2m + 2 jsonb + 2 write-through) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 16 cases | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -226,9 +226,9 @@ All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 - `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
 - `queries/*` (27) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-### `fixtures/api-contract-conformance/` (50)
+### `fixtures/api-contract-conformance/` (51)
 
-All 50 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 51 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -238,10 +238,11 @@ status codes.
 The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
 `gte`, `lt`, `lte`, `in`, `like`, `isNull`) plus the implicit-AND combinator
 and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
-URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 28 core
+URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 29 core
 scenarios the corpus carries four sub-corpora — `tph/` (9, single-table
-inheritance), `m2m/` (8 — 3 plain plus 5 gating TPH x M:N together, the
-combination each corpus alone could not reach), `jsonb/` (2, typed value-object columns) and
+inheritance), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
+each corpus alone could not reach, and 1 pinning the collection-URL spelling),
+`jsonb/` (2, typed value-object columns) and
 `write-through/` (2, table-write + view-read entities). All 5 ports — TS, Java,
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
 the port's own GENERATED API artifact booted over HTTP.

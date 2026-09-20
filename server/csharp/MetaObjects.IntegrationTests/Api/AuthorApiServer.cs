@@ -617,15 +617,17 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         // 400'd, matching every other excluded key on this path. Do NOT add a branch for
         // it: that would leave the mode unenforced. The omission also covers the FR-035
         // present-null arm for free, since clearing a column is itself a write.
-        if (sets.Count == 0)
-        {
-            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
-            return;
-        }
+        // FR-037 PATCH-5 (patch-empty-noop): NO empty-SET guard here. A patch that strips to
+        // zero CALLER assignments is a no-op answering 200 with the current row — never a 400.
+        // This used to 400 "per FR-035", citing a rule that says the opposite, and it disagreed
+        // with TphReferenceServer/JsonbReferenceServer in this very directory.
+
         // Issue #203 / ADR-0045 — bump the onUpdate @autoSet column (autoUpdatedAt) to now();
         // autoCreatedAt (onCreate) is NEVER written on update (the write-once created-at contract),
-        // so after a PATCH the two diverge. Appended AFTER the empty-body guard so a no-op PATCH
-        // still 400s per FR-035. Unspecified kind to match the plain-TIMESTAMP column.
+        // so after a PATCH the two diverge. Appended UNCONDITIONALLY, which is also what keeps the
+        // SET non-empty when the caller assigned nothing — so the empty-SET SQL error PATCH-5
+        // warns about cannot arise on an entity carrying an onUpdate column.
+        // Unspecified kind to match the plain-TIMESTAMP column.
         sets.Add("\"autoUpdatedAt\" = @p" + vals.Count);
         vals.Add(DateTime.SpecifyKind(DateTimeOffset.UtcNow.UtcDateTime, DateTimeKind.Unspecified));
         int updated;
