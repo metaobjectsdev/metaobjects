@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from metaobjects.apidocs.naming import plural_lowercase as _plural_lowercase
+from metaobjects.apidocs.naming import route_path as _route_path
 from metaobjects.apidocs.naming import reverse_finder_fn, reverse_finder_in_fn
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
@@ -658,7 +658,7 @@ class RouterGenerator:
         M:N resolution at all — the two independent gaps this fix closes)."""
         short_name = entity.name
         snake = _snake_case(short_name)
-        plural = _plural_lowercase(short_name)
+        plural = _route_path(short_name)
         pk_param = f"{snake}_id"
         # PK type from the BASE's declared primary key (subtypes share the
         # base's single table — mirrors the C# TPH pkType threading).
@@ -1082,7 +1082,7 @@ class RouterGenerator:
 
         short_name = entity.name
         snake = _snake_case(short_name)
-        plural = _plural_lowercase(short_name)
+        plural = _route_path(short_name)
         pk_param = f"{snake}_id"
         pk = _pk_py_type(entity)
         pk_type = pk.expr
