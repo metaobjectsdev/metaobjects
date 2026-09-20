@@ -40,20 +40,25 @@ tph/
 ├── meta.json              # Auth (base, @discriminator "type") + BridgeAuth / CopayAuth / PriorAuthAuth
 ├── seed.json              # 3 seed rows (one per subtype) into the single `auths` table
 └── scenarios/
-    ├── tph-polymorphic-list-and-get.yaml
-    ├── tph-per-subtype-list-and-create.yaml
-    ├── tph-per-subtype-update-and-delete.yaml
-    └── tph-cross-subtype-404.yaml
+    ├── tph-polymorphic-list-and-get.yaml      # polymorphic GET: the /auths union + get-by-id of any subtype
+    ├── tph-per-subtype-list-and-create.yaml   # per-subtype list (discriminator-filtered) + create (discriminator from the URL)
+    ├── tph-per-subtype-update-and-delete.yaml # per-subtype PATCH / DELETE happy paths
+    ├── tph-cross-subtype-404.yaml             # per-subtype get/update/delete on ANOTHER subtype's row → 404
+    ├── tph-autoset-patch.yaml                 # #203/ADR-0045 TPH leg: @autoSet on PATCH (onUpdate bumped, onCreate preserved)
+    ├── tph-writeonce-patch-stripped.yaml      # FR-037: inherited @mutability "writeOnce" stripped on the per-subtype PATCH
+    ├── tph-update-explicit-null-clears.yaml   # FR-035 tristate: present null clears; omitted @required untouched; null on @required → 400
+    ├── tph-create-constraint-violation.yaml   # FR-036: per-subtype CREATE validates against the annotated <Sub>Dto
+    └── tph-update-constraint-violation.yaml   # FR-036: per-subtype PATCH validates each PRESENT value
 ```
 
 `meta.json` declares the `acme::auth` package:
 
-| Entity | Discriminator | Own fields (beyond inherited `id` / `type` / `reference`) |
+| Entity | Discriminator | Own fields (a subtype inherits everything on `Auth`) |
 |---|---|---|
-| `Auth` (base) | `@discriminator: "type"`, `@table "auths"` | `id` (long, pk), `type` (enum `Bridge`/`Copay`/`PriorAuth`), `reference` (string, required) |
+| `Auth` (base) | `@discriminator: "type"`, `@table "auths"` | `id` (long, pk), `type` (enum `Bridge`/`Copay`/`PriorAuth`), `reference` (string, `@required`, `@maxLength` 80), `issuedCurrency` (string, `@maxLength` 3, `@mutability` "writeOnce"), `autoCreatedAt` / `autoUpdatedAt` (timestamp, `@autoSet` onCreate / onUpdate) |
 | `BridgeAuth` | `@discriminatorValue: "Bridge"` | `quantity` (int, required → nullable in the single table) |
 | `CopayAuth` | `@discriminatorValue: "Copay"` | `copayAmount` (decimal 10,2) |
-| `PriorAuthAuth` | `@discriminatorValue: "PriorAuth"` | `approver` (string) |
+| `PriorAuthAuth` | `@discriminatorValue: "PriorAuth"` | `approver` (string, `@maxLength` 80) |
 
 `seed.json` is applied fresh before every scenario (truncate-then-insert into the
 single `auths` table). Subtype-only columns are `null` for rows of other subtypes.
@@ -62,7 +67,9 @@ single `auths` table). Subtype-only columns are `null` for rows of other subtype
 
 Identical to the parent `api-contract-conformance` corpus
 ([`../README.md`](../README.md)). No new assertion shapes are needed —
-`ids` / `length` / `row` (subset key-match) / `error` / `empty` cover TPH.
+`ids` / `length` / `row` (subset key-match) / `error` / `empty` / `fieldsNotEqual`
+cover TPH (the last pins the `@autoSet` leg: `autoCreatedAt` preserved vs
+`autoUpdatedAt` bumped).
 Decimal subtype values are **not** asserted over the API wire (cross-port numeric
 formatting differs); the runtime-layer decimal contract is pinned by
 `persistence-conformance` instead. The `row` assertions pin the discriminator
