@@ -173,7 +173,9 @@ describe("renderEntityFile — source-aware dispatch", () => {
       const out = renderEntityFile(projection, ctx);
       expect(out).toContain("$view");
       expect(out).toContain("$path");
-      expect(out).toContain("/program-summaries");
+      // A projection takes the SAME segment rule as an entity (the kebab split was
+      // collapsed), so this is snake_cased and irregularly pluralized.
+      expect(out).toContain("/program_summaries");
     });
 
     test("does NOT emit Drizzle table declaration", async () => {

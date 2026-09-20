@@ -33,7 +33,7 @@ export type ProgramSummary = z.infer<typeof ProgramSummarySchema>;
 export const ProgramSummary = {
   $entity: "ProgramSummary",
   $view: "v_program_summary",
-  $path: "/program-summaries",
+  $path: "/program_summaries",
   id: { name: "id", label: "Id", view: "text", dbCol: "id" },
   title: { name: "title", label: "Title", view: "text", dbCol: "title" },
   authorName: {

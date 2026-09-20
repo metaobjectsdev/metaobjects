@@ -5,7 +5,8 @@
 // serve that object at, and whether the form generator emits a `<Entity>.form.tsx` for it.
 // Four separate defects have been fixed in that one line — a TPH subtype printed at its
 // own `$path` when the hierarchy is mounted from its base; a multi-word projection printed
-// snake-cased when its const emits kebab; a form announced for a discriminator base the
+// with a different spelling than its const emitted (at the time, snake vs kebab — the two
+// rules have since been collapsed into one); a form announced for a discriminator base the
 // form generator skips; and the project's `apiPrefix` omitted, so every address was wrong
 // for every project that sets one. Each fix pointed the page at a shared predicate
 // (`restPath`, `hasGeneratedForm`), and each was found by READING the page, because
@@ -35,11 +36,12 @@
 //   • a non-empty `apiPrefix` arm (its omission was one of the four), beside an empty one —
 //     the routes file has a DIFFERENT shape with no prefix (no `register` wrapper), so
 //     both emission arms are parsed;
-//   • a multi-word PROJECTION (`OwnerSummary` → `/owner-summaries`, kebab) AND a multi-word
-//     ENTITY (`ServiceRecord` → `/service_records`, snake): `resourcePath` splits the
-//     spelling BY SUBTYPE, so a page applying either rule to both objects is visible only
-//     when both are multi-word — the SHAPES fixture in `agent-docs-surface.test.ts` has
-//     single-word entities only and could not see the entity half;
+//   • a multi-word PROJECTION (`OwnerSummary` → `/owner_summaries`) AND a multi-word
+//     ENTITY (`ServiceRecord` → `/service_records`): `resourcePath` applies ONE rule to
+//     both since the entity/projection split was collapsed, but both are kept multi-word
+//     because that is what makes a naive segment rule visible at all — the SHAPES fixture
+//     in `agent-docs-surface.test.ts` has single-word entities only and could see neither.
+//     `OwnerSummary` also ends consonant+y, so its segment differs from a naive `+"s"`;
 //   • a TPH subtype whose `@discriminatorValue` (`SportsCoupe`) is NOT its name and is
 //     mixed-case: with `Car` / `"Car"` the segment is `car` whether you lowercase the
 //     value, lowercase the NAME or kebab-case either, so a page deriving the segment from
@@ -114,8 +116,8 @@ const FIXTURE = {
       },
       // Write-through entity, MULTI-WORD: a writable table plus a replica view with a
       // derived passthrough field, so its mount carries `readView` (#214) — a distinct
-      // branch of the routes template — and its `$path` is SNAKE-cased (`/service_records`),
-      // the entity half of the spelling split.
+      // branch of the routes template — and its `$path` is `/service_records`: multi-word,
+      // so a page applying an unseparated segment rule is visible here.
       {
         "object.entity": {
           name: "ServiceRecord",
@@ -181,7 +183,9 @@ const FIXTURE = {
           children: [{ "field.string": { name: "name" } }],
         },
       },
-      // Multi-word PROJECTION: read-only mount, no form, KEBAB `$path` (`/owner-summaries`).
+      // Multi-word PROJECTION: read-only mount, no form, `$path` `/owner_summaries` — the
+      // SAME rule an entity gets (the kebab split was collapsed), and y-ending so the
+      // irregular plural is exercised too.
       {
         "object.projection": {
           name: "OwnerSummary",
@@ -446,11 +450,19 @@ describe.each([
       ),
     ).toBe(true);
 
-    // Both spellings of a multi-word name are on disk — an entity's snake `$path` and a
-    // projection's kebab one — so a page applying one rule to both is visible.
+    // The spelling arm. One rule now serves entities and projections alike, so the old
+    // de-blinding here — "both a snake and a kebab `$path` are on disk, so a page applying
+    // one rule to both is visible" — went vacuous WITH the split it measured. Replacing it
+    // rather than deleting it: what keeps the arm honest now is that a multi-word,
+    // y-ending name is SEPARATED and IRREGULARLY pluralized, so a page applying a naive
+    // `lowercase + "s"` rule, or lowercasing without separating, still shows up.
     const paths = [...e.ownPaths.values()];
     expect(paths.some((p) => p.includes("_"))).toBe(true);
-    expect(paths.some((p) => p.includes("-"))).toBe(true);
+    // No kebab spelling survives the collapse; one reappearing is a regression.
+    expect(paths.every((p) => !p.includes("-"))).toBe(true);
+    // OwnerSummary is multi-word AND ends consonant+y, so this differs from BOTH naive
+    // spellings: /ownersummarys and /ownersummaries.
+    expect(paths).toContain("/owner_summaries");
 
     // Both form arms: some objects got a `.form.tsx`, some documented objects did not.
     expect(e.forms.size).toBeGreaterThan(0);

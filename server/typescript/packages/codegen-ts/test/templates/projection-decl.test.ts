@@ -3,16 +3,16 @@ import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobje
 import { renderProjectionDecl } from "../../src/templates/projection-decl.js";
 
 // ---------------------------------------------------------------------------
-// Unit tests for pathFromProjectionName (Fix 1 — pluralize() for sh/ch/x/z)
+// Unit tests for the projection $path segment (pluralize() for sh/ch/x/z/y)
 // ---------------------------------------------------------------------------
-// pathFromProjectionName is not exported; exercise it via renderProjectionDecl
+// resourcePath is exercised here via renderProjectionDecl
 // output and inspect the $path constant. We create minimal projections named
 // after the edge-case words to verify the correct URL segment.
 
 /**
  * Build a minimal two-entity setup: a base table entity named `baseName`
  * and a projection named `projName` that extends it. Used to exercise
- * `pathFromProjectionName` via renderProjectionDecl.
+ * the projection's `$path` via renderProjectionDecl.
  */
 async function makeMinimalProjection(projName: string, baseName: string) {
   const json = JSON.stringify({
@@ -51,30 +51,33 @@ async function makeMinimalProjection(projName: string, baseName: string) {
   return { root, projection };
 }
 
-describe("pathFromProjectionName — pluralization edge cases", () => {
-  test("BoxView → /box-views (x-ending uses pluralize())", async () => {
-    // "BoxView" → pluralize("BoxView") = "BoxViews" → snake "box_views" → kebab "/box-views"
+// A projection uses the SAME rule as an entity: snake_case, then pluralize. It used
+// to be kebab-cased and composed in the opposite order; that split was collapsed, which
+// renamed every multi-word projection's collection URL (see CHANGELOG).
+describe("projection $path — pluralization edge cases", () => {
+  test("BoxView → /box_views (x-ending uses pluralize())", async () => {
+    // "BoxView" → snake "box_view" → pluralize → "/box_views"
     const { root, projection } = await makeMinimalProjection("BoxView", "Box");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
-    expect(code).toContain('"/box-views"');
+    expect(code).toContain('"/box_views"');
   });
 
-  test("WishView → /wish-views (sh-ending uses pluralize())", async () => {
+  test("WishView → /wish_views (sh-ending uses pluralize())", async () => {
     const { root, projection } = await makeMinimalProjection("WishView", "Wish");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
-    expect(code).toContain('"/wish-views"');
+    expect(code).toContain('"/wish_views"');
   });
 
-  test("ProgramSummary → /program-summaries (y-ending regression)", async () => {
+  test("ProgramSummary → /program_summaries (y-ending regression)", async () => {
     const { root, projection } = await makeMinimalProjection("ProgramSummary", "Program");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
-    expect(code).toContain('"/program-summaries"');
+    expect(code).toContain('"/program_summaries"');
   });
 
-  test("CustomerSummary → /customer-summaries (y-ending regression)", async () => {
+  test("CustomerSummary → /customer_summaries (y-ending regression)", async () => {
     const { root, projection } = await makeMinimalProjection("CustomerSummary", "Customer");
     const code = renderProjectionDecl(projection, root, { columnNamingStrategy: "snake_case", dialect: "sqlite" });
-    expect(code).toContain('"/customer-summaries"');
+    expect(code).toContain('"/customer_summaries"');
   });
 });
 
@@ -295,7 +298,7 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).toContain('$view:');
     expect(code).toContain('"v_program_summary"');
     expect(code).toContain('$path:');
-    expect(code).toContain('"/program-summaries"');
+    expect(code).toContain('"/program_summaries"');
 
     // Read-only: no Insert/Update Zod schemas or types
     expect(code).not.toContain("ProgramSummaryInsert");
@@ -416,7 +419,7 @@ describe("renderProjectionDecl — standalone view-entity (no extends)", () => {
     expect(code).toContain("displayName:");
     expect(code).toContain("status:");
     expect(code).toContain('$entity: "LobbyRoster"');
-    expect(code).toContain('"/lobby-rosters"');
+    expect(code).toContain('"/lobby_rosters"');
     // Still read-only — no write artifacts.
     expect(code).not.toContain("LobbyRosterInsert");
     expect(code).not.toContain("LobbyRosterUpdate");
