@@ -370,6 +370,27 @@ public class EntityGenerator : IGenerator
         if (!isProjection)
             sb.AppendLine($"[Table({CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity))}"
                 + $"{CSharpNaming.TableSchemaArg(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)})]");
+        // FR-017 TPH — declare the concrete subtypes so System.Text.Json serializes each row
+        // by its RUNTIME type.
+        //
+        // A collection result is serialized by its DECLARED element type, so a base-path list
+        // returning List<Base> wrote only the base's properties and silently dropped every
+        // subtype column — a 200 whose rows are missing half their fields, with nothing to
+        // error on. (A single-object read was unaffected: ASP.NET falls back to the runtime
+        // type when it differs from the declared one, which is exactly why this survived —
+        // GET /parties/{id} looked right while GET /parties did not.)
+        //
+        // No type discriminator is configured, so NO `$type` key is emitted: the model
+        // already carries a discriminator (@discriminator) which is emitted as an ordinary
+        // property, and a second, C#-only key would be an addition to a cross-port wire
+        // contract. Deserialization into the BASE is not something the generated routes do —
+        // an abstract base has no create/update handler, and each subtype's handler
+        // deserializes that subtype directly.
+        if (TphPlanBuilder.For(entity, ctx.Root) is { } tphPlan)
+            foreach (var sub in tphPlan.Subtypes)
+                sb.AppendLine(
+                    $"[System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]");
+
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping

@@ -181,6 +181,17 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   projection with no `@filterable` field gets an empty allowlist, exactly as an entity does,
   and the api-docs builder now documents the projection's Filter symbol.
 
+- **C#: a TPH base-path collection dropped every subtype field.** `GET /<base>` returns
+  `List<Base>`, and System.Text.Json serializes a collection by its DECLARED element type —
+  so a discriminated-union list answered 200 with rows quietly missing half their columns,
+  with nothing to error on. A single-object read was unaffected, because ASP.NET falls back
+  to the runtime type when it differs from the declared one, which is exactly why this
+  survived: `GET /parties/{id}` looked right while `GET /parties` did not. The base class now
+  carries a `[JsonDerivedType(typeof(<Sub>))]` per concrete subtype. **No `$type` key is
+  added** — the model already carries `@discriminator`, emitted as an ordinary property, and a
+  second C#-only key would be an addition to a cross-port wire contract. Non-TPH entities are
+  byte-identical.
+
 - **C#: a constraint violation answered 500 instead of 409.** A generated CRUD route had no
   try/catch around `SaveChangesAsync`, so a client-supplied foreign key naming no row, or a
   value duplicating a unique one, reached ASP.NET's default handler and came back as a bare

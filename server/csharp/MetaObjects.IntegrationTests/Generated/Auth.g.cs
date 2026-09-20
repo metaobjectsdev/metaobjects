@@ -9,6 +9,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace MetaObjects.IntegrationTests.Generated;
 
 [Table(AuthNames.SourcePrimaryTable)]
+[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]
+[System.Text.Json.Serialization.JsonDerivedType(typeof(CopayAuth))]
+[System.Text.Json.Serialization.JsonDerivedType(typeof(PriorAuthAuth))]
 public abstract class Auth
 {
     public enum AuthType { Bridge, Copay, PriorAuth }

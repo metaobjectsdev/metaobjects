@@ -111,6 +111,53 @@ public class TphCodegenTests
     }
 
     [Fact]
+    public void Entity_base_declares_its_subtypes_for_polymorphic_serialization()
+    {
+        // A LIST route returns List<Auth> whose elements are really subtypes.
+        // System.Text.Json serializes a collection by its DECLARED element type, so
+        // without this the subtype's own columns are silently dropped from every
+        // collection response — while a single-object read still shows them, because
+        // ASP.NET falls back to the runtime type when it differs from the declared one.
+        // A base-path list answering 200 with rows that quietly lack half their fields
+        // is the worst shape this can take: nothing errors.
+        //
+        // No type discriminator is configured: the model already HAS one
+        // (@discriminator), it is emitted as a normal property, and a second `$type`
+        // key would be a C#-only addition to a cross-port wire contract.
+        var auth = FileContent(new EntityGenerator().Generate(Ctx(Load())), "Auth.g.cs");
+
+        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]", auth);
+        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(CopayAuth))]", auth);
+        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(PriorAuthAuth))]", auth);
+        Assert.DoesNotContain("typeDiscriminator", auth);
+    }
+
+    [Fact]
+    public void A_non_tph_entity_declares_no_derived_types()
+    {
+        // The attribute is TPH-only: putting it on every entity would turn an ordinary
+        // class into a polymorphic root and change how it serializes.
+        const string flat = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Author", "children": [
+            { "source.rdb":       { "@table": "authors" } },
+            { "field.long":       { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(flat, id: "flat.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+        Assert.DoesNotContain("JsonDerivedType",
+            FileContent(new EntityGenerator().Generate(ctx), "Author.g.cs"));
+    }
+
+    [Fact]
     public void Entity_subtypes_extend_base_with_only_own_fields_and_no_table()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
