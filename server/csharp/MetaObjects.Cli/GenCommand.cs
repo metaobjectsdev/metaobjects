@@ -189,6 +189,10 @@ public static class GenCommand
             Namespace = ns,
             EmitAbstractShapes = emitAbstractShapes,
             GenStateDir = genStateDir,
+            // The anchor the manifest keys are relative to — the same project genStateDir
+            // was derived from. Without it, generating a second port into a second --out
+            // under this project would record over the first port's entries.
+            ProjectRoot = projectRoot ?? Directory.GetCurrentDirectory(),
             // How a field with no explicit `@column` becomes a column name. Defaults to
             // Literal (EF's property=column convention) — this port's historical
             // behaviour — and is selected per project with `--column-naming`.

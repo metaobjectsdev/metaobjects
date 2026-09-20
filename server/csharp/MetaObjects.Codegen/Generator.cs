@@ -33,6 +33,27 @@ public sealed record GenConfig
     /// </para>
     /// </summary>
     public string? GenStateDir { get; init; }
+
+    /// <summary>
+    /// The project the manifest is anchored on — the directory <see cref="GenStateDir"/>
+    /// was derived from. When set, manifest keys are relative to it rather than to
+    /// <see cref="OutDir"/>.
+    /// <para>
+    /// This matters because the manifest is anchored on the PROJECT and never configured
+    /// per out dir: with out-dir-relative keys, two runs with different <c>--out</c> under
+    /// one project collide on a single entry, and the second run's record makes the first
+    /// out dir's HAND-EDITED file read as pristine. Mirrors the Python port's
+    /// <c>project_root</c>, re-keyed for the same reason.
+    /// </para>
+    /// <para>
+    /// <c>null</c> keeps the out-dir-relative spelling, for a programmatic caller that
+    /// names no project. Both sides of the relative-path computation come from
+    /// <c>Path.GetFullPath</c> — normalised but NOT link-resolved — so they stay
+    /// symmetric; resolving only one side would walk a key out of the project under a
+    /// directory symlink and silently match nothing.
+    /// </para>
+    /// </summary>
+    public string? ProjectRoot { get; init; }
     /// <summary>
     /// First-time-on-existing-file behaviour: <c>"default"</c> refuses a file that cannot
     /// be proved to be generated output; <c>"adopt"</c> records the file's CURRENT content

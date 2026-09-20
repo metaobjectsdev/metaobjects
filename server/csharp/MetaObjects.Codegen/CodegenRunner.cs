@@ -56,7 +56,23 @@ public static class CodegenRunner
                     throw new InvalidOperationException(
                         $"duplicate generated output path \"{file.Path}\" — emitted by both " +
                         $"\"{emitted[full]}\" and \"{generator.Name}\".");
-                var status = WriteOne(config, full, file.Path, file.Content, warnings);
+                // The manifest key. Project-root-relative when the caller names a project,
+                // so two runs with different --out cannot collide on one entry inside the
+                // single manifest that is anchored on that project. `file.Path` rides
+                // along as the legacy spelling — it is what the manifest used to be keyed
+                // by, and it is still what a refusal is REPORTED as (the name the reader
+                // sees under --out).
+                //
+                // BOTH SIDES NORMALISED THE SAME WAY. `full` and ProjectRoot both come
+                // from Path.GetFullPath — normalised, NOT link-resolved — so the relative
+                // path between them is the path between the two directories. Resolving
+                // only one side would, under a directory symlink, walk every key out of
+                // the project; nothing would then match and a drift gate would report
+                // "in sync" over stale output.
+                var key = config.ProjectRoot is { } projectRoot
+                    ? Path.GetRelativePath(Path.GetFullPath(projectRoot), full)
+                    : file.Path;
+                var status = WriteOne(config, full, file.Path, key, file.Content, warnings);
                 results.Add(new WriteResult(file.Path, status));
                 if (status == "refused") refused.Add(file.Path);
                 else if (status == "adopted") adopted.Add(file.Path);
@@ -84,8 +100,13 @@ public static class CodegenRunner
     /// </para>
     /// </summary>
     private static string WriteOne(
-        GenConfig config, string full, string relPath, string content, List<string> warnings)
+        GenConfig config, string full, string relPath, string key, string content,
+        List<string> warnings)
     {
+        // The out-dir-relative spelling this file may already be recorded under, from
+        // before keys became project-root-relative. `null` once the two agree, so an
+        // unmigrated project does no legacy work at all.
+        var legacyKey = string.Equals(key, relPath, StringComparison.Ordinal) ? null : relPath;
         var exists = File.Exists(full);
 
         if (config.GenStateDir is null)
@@ -104,7 +125,7 @@ public static class CodegenRunner
         if (!exists)
         {
             WriteFile(full, content);
-            HashManifest.Record(config.GenStateDir, relPath, content);
+            HashManifest.Record(config.GenStateDir, key, content, legacyKey);
             // "written", not "new": this port's status vocabulary does not distinguish a
             // create from an overwrite, and callers key on it. The manifest ADDS
             // "unchanged" and "refused" without redefining what was already there —
@@ -117,14 +138,14 @@ public static class CodegenRunner
         {
             // Record it: a first run over already-correct output should leave the file
             // recognisable as ours next time.
-            HashManifest.Record(config.GenStateDir, relPath, content);
+            HashManifest.Record(config.GenStateDir, key, content, legacyKey);
             return "unchanged";
         }
 
-        if (HashManifest.IsPristine(config.GenStateDir, relPath, current))
+        if (HashManifest.IsPristine(config.GenStateDir, key, current, legacyKey))
         {
             WriteFile(full, content);
-            HashManifest.Record(config.GenStateDir, relPath, content);
+            HashManifest.Record(config.GenStateDir, key, content, legacyKey);
             return "written";
         }
 
@@ -137,7 +158,7 @@ public static class CodegenRunner
             // `current`, never `content`: recording fresh output would claim we wrote a
             // file we did not, and the next run would read the adopter's file as edited
             // and refuse all over again — the loop this mode exists to end.
-            HashManifest.Record(config.GenStateDir, relPath, current);
+            HashManifest.Record(config.GenStateDir, key, current, legacyKey);
             return "adopted";
         }
 

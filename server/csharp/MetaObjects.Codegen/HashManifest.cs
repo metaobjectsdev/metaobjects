@@ -5,19 +5,20 @@
 // hashes identically on every port.
 //
 // The KEYS deliberately do not match across ports, and a manifest is NOT portable
-// between them. TS and Python key by path relative to the PROJECT ROOT (TS because it
-// supports multiple output targets; Python because its manifest is ANCHORED on the
-// project, so an out-dir-relative key made two runs with different --out collide on one
-// entry). C# alone still keys relative to its single out dir. An earlier version of this
-// comment claimed a conformance fixture could compare two ports' manifests directly — it
-// cannot, and the claim was never true.
+// between them — but all three now key by path relative to the PROJECT ROOT (TS because
+// it supports multiple output targets; Python and C# because the manifest is ANCHORED on
+// the project, so an out-dir-relative key made two runs with different --out collide on
+// one entry). An earlier version of this comment claimed a conformance fixture could
+// compare two ports' manifests directly — it cannot, and the claim was never true.
 //
-// One consequence worth knowing: because the key here is out-dir-relative, running gen
-// twice with different out dirs against ONE gen-state dir collides two distinct files
-// onto one key — and the advice this comment used to give ("point each out dir at its own
-// gen-state dir") is not followable, because the gen-state dir is DERIVED from the project,
-// not configured. C# has the same latent ambiguity Python just fixed; closing it here means
-// the same re-key plus a legacy-key fallback, and it is not done yet.
+// Why the re-key: the gen-state dir is DERIVED from the project, not configured, so the
+// advice this comment used to give ("point each out dir at its own gen-state dir") was
+// never followable. With one shared key, generating a second port into a second --out
+// recorded ITS content under the same entry, and the first out dir's hand-edited file
+// then read as pristine on the next run — the edit destroyed by a run in a different
+// directory. Keys are project-root-relative when the caller names a project; the
+// out-dir-relative spelling is still READ as a legacy key so an existing manifest keeps
+// working, and is dropped as each file converges on the new one.
 //
 // This file is meant to be COMMITTED. It is one hash per generated path — small and
 // reviewable — where a full snapshot of previously-generated content would be a second
@@ -82,18 +83,42 @@ public static class HashManifest
         File.WriteAllText(PathFor(genStateDir), json + "\n");
     }
 
-    /// <summary>Record that <paramref name="relPath"/> was written with this content.</summary>
-    public static void Record(string genStateDir, string relPath, string content)
+    /// <summary>Record that <paramref name="relPath"/> was written with this content.
+    /// <para>
+    /// <paramref name="legacyRelPath"/> is the OUT-DIR-relative key the same file may be
+    /// recorded under from before keys became project-root-relative. It is REMOVED here,
+    /// so a manifest converges on one spelling per file as that file is regenerated
+    /// rather than carrying both forever.
+    /// </para></summary>
+    public static void Record(
+        string genStateDir, string relPath, string content, string? legacyRelPath = null)
     {
         var hashes = Load(genStateDir);
         hashes[relPath] = ContentHash(content);
+        if (legacyRelPath is not null && !string.Equals(legacyRelPath, relPath, StringComparison.Ordinal))
+            hashes.Remove(legacyRelPath);
         Save(genStateDir, hashes);
+    }
+
+    /// <summary>
+    /// The hash recorded when we last wrote <paramref name="relPath"/>, or <c>null</c> if
+    /// never. Falls back to <paramref name="legacyRelPath"/> — the out-dir-relative key
+    /// predating the re-key — so an adopter's committed manifest keeps working instead of
+    /// turning every file into a refusal on upgrade.
+    /// </summary>
+    private static string? Recorded(string genStateDir, string relPath, string? legacyRelPath)
+    {
+        var hashes = Load(genStateDir);
+        if (hashes.TryGetValue(relPath, out var recorded)) return recorded;
+        if (legacyRelPath is not null && hashes.TryGetValue(legacyRelPath, out var legacy)) return legacy;
+        return null;
     }
 
     /// <summary>
     /// Whether the file is byte-for-byte what we recorded writing. FAILS CLOSED —
     /// <c>false</c> when it cannot be proven.
     /// </summary>
-    public static bool IsPristine(string genStateDir, string relPath, string current) =>
-        Load(genStateDir).TryGetValue(relPath, out var recorded) && recorded == ContentHash(current);
+    public static bool IsPristine(
+        string genStateDir, string relPath, string current, string? legacyRelPath = null) =>
+        Recorded(genStateDir, relPath, legacyRelPath) == ContentHash(current);
 }

@@ -156,6 +156,29 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **C#: `dotnet meta gen` keyed its hash manifest by the OUT DIR, so a second `--out` under
+  one project could destroy a hand edit in the first.** `.gen-state/.hashes.json` is ANCHORED
+  on the project — the gen-state directory is derived from it and cannot be configured per
+  out dir — but C# alone still wrote out-dir-relative keys (`AppDbContext.g.cs`), while
+  TypeScript and Python write project-root-relative ones (`ports/ts/src/generated/Party.ts`).
+  Two ports generated from one model therefore collided: a file emitted under both `--out`
+  paths shared a single entry, and whichever ran second recorded ITS content there — after
+  which the first out dir's hand-edited file hashed as pristine and the next `gen` overwrote
+  it. That is the exact failure the manifest exists to prevent, reached by running `gen` in a
+  different directory. The C# source has carried a note describing this as latent and unfixed
+  since Python closed the same hole; an adopter estate generating a TypeScript and a C# port
+  side by side is where it stopped being latent.
+
+  Keys are now project-root-relative in every port that keeps a manifest (Java keeps none).
+  **No adopter action is required and nothing refuses on upgrade:** the out-dir-relative
+  spelling is still READ as a legacy key, so an existing manifest keeps working, and each
+  file drops its legacy entry as it is regenerated — the manifest converges on one spelling
+  per file rather than carrying both. A programmatic caller that names no project keeps the
+  out-dir-relative key. Both sides of the relative-path computation are normalised and NOT
+  link-resolved, so they stay symmetric; resolving one side only would walk every key out of
+  the project under a directory symlink, and a drift gate would then report "in sync" over
+  stale output.
+
 - **TypeScript: a PATCH that strips to nothing answered 500.** A generated TPH subtype route
   strips the discriminator from an update body, because a row's subtype is immutable — so a
   body naming ONLY the subtype (the one key a client is most likely to send at such a route)
