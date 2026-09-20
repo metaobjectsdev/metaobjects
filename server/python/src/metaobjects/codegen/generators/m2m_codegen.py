@@ -174,6 +174,9 @@ def resolve_m2m_descriptors(
     metadata error, surfaced loudly (never silently skipped).
     """
     descriptors: list[M2mDescriptor] = []
+    # The source is *entity* for every relation, so its route segment is
+    # loop-invariant; only the target varies per relation.
+    source_plural = route_path(entity.name)
     for rel in m2m_relationships(entity):
         target_name = _strip_package(rel.object_ref() or "")
         junction_name = _strip_package(rel.through() or "")
@@ -203,7 +206,7 @@ def resolve_m2m_descriptors(
             M2mDescriptor(
                 relation_name=rel.name,
                 target_entity=target.name,
-                source_plural=route_path(entity.name),
+                source_plural=source_plural,
                 target_plural=route_path(target.name),
                 junction_table=_physical_table(
                     junction,

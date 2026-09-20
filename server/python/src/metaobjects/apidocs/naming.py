@@ -25,6 +25,7 @@ from metaobjects.codegen.generators.payload_vo_generator import (
     response_class_name,
     response_module_name,
 )
+from metaobjects.naming import to_snake_case
 
 __all__ = [
     "snake_case",
@@ -71,19 +72,13 @@ def _route_snake_case(name: str) -> str:
 
     ACRONYM-AWARE, and deliberately NOT :func:`snake_case`. The trivial variant
     above inserts a separator before every capital, which is right for a module
-    name but would emit ``h_t_t_p_server`` in a URL. This one reproduces the
-    cross-port rule exactly: separate when the previous character is lower or a
-    digit, or when it is upper and the NEXT one is lower (so a run of capitals
-    stays together until the final one that begins a word)."""
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if i > 0 and ch.isupper():
-            prev = name[i - 1]
-            nxt = name[i + 1] if i + 1 < len(name) else ""
-            if prev.islower() or prev.isdigit() or (prev.isupper() and nxt.islower()):
-                out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
+    name but would emit ``h_t_t_p_server`` in a URL. Delegates to
+    :func:`metaobjects.naming.to_snake_case` — the port's acronym-aware loop,
+    documented there as byte-for-byte the other ports' rule (separate when the
+    previous character is lower or a digit, or when it is upper and the NEXT one
+    is lower, so a run of capitals stays together until the final one that
+    begins a word)."""
+    return to_snake_case(name)
 
 
 def pluralize(name: str) -> str:
@@ -91,7 +86,10 @@ def pluralize(name: str) -> str:
 
     The cross-port pluralization contract, byte-identical in every port: a word
     ending ``s``/``x``/``z``/``ch``/``sh`` takes ``es``; a consonant followed by
-    ``y`` becomes ``ies``; anything else takes ``s``."""
+    ``y`` becomes ``ies``; anything else takes ``s``. The cross-port
+    byte-identity covers the already-lowercased word :func:`route_path` feeds
+    in — suffix tests here run on a lowercased copy, unlike the JVM port's
+    case-sensitive ones, so mixed-case input may diverge."""
     lowered = name.lower()
     if lowered.endswith(("s", "x", "z", "ch", "sh")):
         return name + "es"
@@ -204,15 +202,14 @@ def extractor_fn(template_name: str) -> str:
 def _pluralize(name: str) -> str:
     """Trivial cross-port pluralization (matches the TS ``pluralize`` /
     ``MetaSource._pluralize``), applied to a PascalCase entity name BEFORE
-    snake-casing (``GameSession`` → ``GameSessions``)."""
+    snake-casing (``GameSession`` → ``GameSessions``).
+
+    Delegates to :func:`pluralize` so this file states the cross-port inflector
+    contract once, not twice; the empty-string guard stays here because it is
+    this finder-naming helper's own contract, not ``pluralize``'s."""
     if not name:
         return name
-    lower = name.lower()
-    if lower.endswith(("s", "x", "z", "ch", "sh")):
-        return name + "es"
-    if len(name) >= 2 and lower[-1] == "y" and lower[-2] not in "aeiou":
-        return name[:-1] + "ies"
-    return name + "s"
+    return pluralize(name)
 
 
 def reverse_finder_fk_segment(fk_field_name: str) -> str:

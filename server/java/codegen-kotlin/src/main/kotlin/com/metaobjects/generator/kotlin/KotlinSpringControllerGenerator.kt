@@ -41,7 +41,9 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  * <p>Conforms to the cross-port REST API contract
  * (see {@code docs/features/api-contract.md}):
  * <ul>
- *   <li>Routes: {@code /api/<entity-plural-lowercase>} (e.g. {@code /api/authors}).</li>
+ *   <li>Routes: {@code /api/<entity-name snake_cased, then pluralized>} (e.g.
+ *       {@code /api/authors}, {@code /api/post_categories} — the one cross-port
+ *       collection-URL rule, via [KotlinNaming.controllerPath]).</li>
  *   <li>5 CRUD verbs: GET list, GET by id, POST create, PATCH+PUT update, DELETE.</li>
  *   <li>{@code ?withCount=1} switches list response to {@code { rows, total }}.</li>
  *   <li>{@code ?sort=field:asc|desc} parsed via a static per-entity allowlist (HTTP 400
@@ -145,8 +147,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // entity readObj == tableObjectName, so the emitted controller is byte-identical.
         val writeThrough = entity.isWriteThrough
         val readObj = if (writeThrough) KotlinNaming.viewObjectName(shortName) else tableObjectName
-        val routePath = KotlinNaming.collectionSegment(shortName)
-        val routeBase = "/api/$routePath"
+        val routeBase = KotlinNaming.controllerPath(shortName)
 
         // Primary key: single-field PKs only for v1. Composite PKs are uncommon for HTTP
         // CRUD (you'd need a URL grammar for composite ids — out of scope; the C# port
@@ -638,7 +639,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     protected open fun emitTph(base: MetaObject, plan: KotlinTphPlan.Plan, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(base.name)
         val table = shortName + "Table"
-        val routeBase = "/api/" + KotlinNaming.collectionSegment(shortName)
+        val routeBase = KotlinNaming.controllerPath(shortName)
         // The single TPH table is keyed by the BASE's primary identity — every polymorphic
         // + per-subtype by-id route binds the PK field's OWN Kotlin type (uuid → UUID, …),
         // matching the Exposed Column<T> it is compared against (a hard-coded Long does
@@ -1380,15 +1381,6 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("    return ${shortName}CoercedValue(parse(raw) ?: return null)\n")
         out.append("}\n\n")
     }
-
-    /**
-     * Naive pluralization: lowercase + "s". Matches the cross-port reference (TS / C#
-     * use the same trivial rule for the default route segment). Consumers needing
-     * irregular plurals (e.g. {@code Person} → {@code people}) can override the
-     * generated {@code @RequestMapping} value by hand-editing the file — the
-     * {@code GENERATED} banner is advisory, not a hard merge gate, since
-     * regeneration overwrites.
-     */
 
     /**
      * Emit one M:N traversal sub-resource: {@code GET /{id}/<relationName>} returning
