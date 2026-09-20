@@ -415,10 +415,11 @@ function buildEntityUnit(
     if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix));
   }
 
-  // --- relation: the drizzle relations() export, when the resolver derives a
-  //     relations() block for this entity (1:N belongs-to + inverse many, M:N
-  //     @through). Independent of isQueryable — a relations() block is emitted by
-  //     the entity file regardless. ---
+  // --- relation: the drizzle relations() export, when the resolver files entries
+  //     under this entity (1:N belongs-to + inverse many, M:N @through). The map
+  //     keys by the entity whose module renders the block — the discriminator
+  //     base, for a TPH subtype; an abstract entity emits a value-object module
+  //     and never carries one. Independent of isQueryable. ---
   const relationSym = relationSymbol(obj, entityMod, relationMap);
   if (relationSym !== undefined) symbols.push(relationSym);
 

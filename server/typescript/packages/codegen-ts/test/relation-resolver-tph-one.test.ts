@@ -186,3 +186,36 @@ describe("buildRelationMap — cardinality-one declared on an ABSTRACT level", (
     expect(author!.fkField).toBe("authorId");
   });
 });
+
+// A TPH hierarchy whose discriminator BASE is abstract renders no module with a
+// relations() block — the base emits a value-object shape (abstract ⇒ no table)
+// and each subtype a per-subtype read schema — so nothing may be filed for it
+// under ANY key: an entry would only document, in `meta docs`/api-model, an
+// export that exists nowhere in the hierarchy.
+describe("buildRelationMap — abstract DISCRIMINATOR BASE", () => {
+  test("a concrete subtype's belongs-to files nothing: no module in the hierarchy renders a block", async () => {
+    const map = buildRelationMap(await load({
+      "metadata.root": { package: "repro", children: [
+        { "object.entity": { name: "Author", children: [
+          { "source.rdb": { "@table": "authors" } },
+          { "field.long": { name: "id" } },
+          { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+        ]}},
+        { "object.entity": { name: "Doc", abstract: true, "@discriminator": "kind", children: [
+          { "source.rdb": { "@table": "docs" } },
+          { "field.long": { name: "id" } },
+          { "field.enum": { name: "kind", "@values": ["Draft", "Final"] } },
+          { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+        ]}},
+        { "object.entity": { name: "DraftDoc", extends: "Doc", "@discriminatorValue": "Draft", children: [
+          { "field.long": { name: "authorId" } },
+          { "identity.reference": { name: "fkAuthor", "@fields": "authorId", "@references": "Author" } },
+          { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "Author" } },
+        ]}},
+        { "object.entity": { name: "FinalDoc", extends: "Doc", "@discriminatorValue": "Final", children: [] }},
+      ]},
+    }));
+    expect(map.get("Doc") ?? []).toHaveLength(0);
+    expect([...map.values()].flat().filter((e) => e.name === "author")).toHaveLength(0);
+  });
+});

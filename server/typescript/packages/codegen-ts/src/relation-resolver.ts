@@ -18,7 +18,7 @@ import {
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity } from "./naming.js";
-import { tphStorageName } from "./templates/zod-validators.js";
+import { tphStorageObject } from "./templates/zod-validators.js";
 import { isProjection } from "./projection/projection-detector.js";
 
 export interface RelationEntry {
@@ -88,7 +88,14 @@ export function buildRelationMap(
   // it is reported through `onWarn` rather than silently overwritten, because a
   // navigation that quietly resolves to another subtype's target is the worse failure.
   const push = (obj: MetaObject, entry: RelationEntry): void => {
-    const key = tphStorageName(obj.name, root);
+    const storing = tphStorageObject(obj);
+    // An ABSTRACT storage object emits a value-object module — no table, so no
+    // relations() block renders anywhere in its hierarchy — which is the same
+    // exclusion the oracle's tableBackedObjects walk makes. Filing the entry
+    // would only document, in `meta docs`/api-model, a `<Base>Relations` export
+    // that no module emits.
+    if (storing.isAbstract) return;
+    const key = storing.name;
     const entries = ensure(key);
     const clash = entries.find((e) => e.name === entry.name);
     if (clash !== undefined) {

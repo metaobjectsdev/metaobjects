@@ -183,14 +183,17 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   The independent oracle gained a relations-tier rule — restated from its own storing-object
   walk, not from codegen's map — whose absence is exactly why this defect had no independent
   check. **Generated output changes**: re-run `meta gen`; a TPH base's relations block gains
-  the subtype-declared navigations. **`meta docs` /api-model output changes too, truthfully**:
-  a TPH subtype's unit loses its `<Sub>Relations` symbol — it documented an export that never
-  existed, since a subtype emits a value-object module with no relations block — and the
-  base's relations symbol gains the folded subtype-declared navigations, which are real.
-  An abstract level with no concrete descendant beneath it now files nothing at all: its FK
-  column never folds into the base's table, so an entry would have named a column the table
-  does not have — generated code failing tsc while `meta gen` exited 0 — and its unit loses
-  the same phantom symbol.
+  the subtype-declared navigations. **`meta docs` /api-model output changes with the relations
+  tier**: for a CONCRETE discriminator base, the subtype's unit loses its `<Sub>Relations`
+  symbol — it documented an export that never existed, since a subtype emits a value-object
+  module with no relations block — and the base's relations symbol gains the folded
+  subtype-declared navigations, which are real. For an ABSTRACT discriminator base, no unit
+  in the hierarchy carries a relations symbol at all, because none was ever real there: an
+  abstract entity emits a value-object module, so no module in the hierarchy renders a
+  block. An abstract level with no concrete descendant beneath it likewise files nothing —
+  its FK column never folds into the base's table, so an entry would have named a column the
+  table does not have, generated code failing tsc while `meta gen` exited 0 — and its unit
+  loses the same phantom symbol.
 
 - **A reference or M:N relationship onto a TPH subtype generated code that did not compile.**
   The subtype's module exports no table const, but the FK's `.references()`, the `relations()`
