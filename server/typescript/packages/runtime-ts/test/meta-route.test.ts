@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import Fastify from "fastify";
 import { Hono } from "hono";
-import { metaJson } from "../src/meta-endpoint.js";
+import { metaJson, META_CONTENT_TYPE } from "../src/meta-endpoint.js";
 import { mountMetaRoute } from "../src/fastify/index.js";
 import { mountMetaRouteHono } from "../src/hono/index.js";
 import { loadTestModel } from "./helpers/load-test-model.js";
@@ -16,7 +16,7 @@ describe("GET /_meta (fastify)", () => {
     const res = await app.inject({ method: "GET", url: "/api/_meta" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers["content-type"]).toContain("application/json");
+    expect(res.headers["content-type"]).toBe(META_CONTENT_TYPE);
     expect(res.body).toBe(metaJson(root));
   });
 
@@ -31,7 +31,7 @@ describe("GET /_meta (fastify)", () => {
 });
 
 describe("GET /_meta (hono)", () => {
-  test("serves the same bytes as the fastify mount", async () => {
+  test("serves the same bytes and headers as the fastify mount", async () => {
     const root = await loadTestModel();
     const app = new Hono();
     mountMetaRouteHono({ app, root, prefix: "/api" });
@@ -39,6 +39,7 @@ describe("GET /_meta (hono)", () => {
     const res = await app.request("/api/_meta");
 
     expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe(META_CONTENT_TYPE);
     expect(await res.text()).toBe(metaJson(root));
   });
 });

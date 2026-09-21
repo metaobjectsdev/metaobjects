@@ -326,7 +326,7 @@ export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read
 // ---------------------------------------------------------------------------
 
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { META_ROUTE_PATH, metaJson } from "../meta-endpoint.js";
+import { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson } from "../meta-endpoint.js";
 
 export interface HonoMetaRouteOptions {
   app: AnyHono;
@@ -344,6 +344,6 @@ export interface HonoMetaRouteOptions {
 export function mountMetaRouteHono(opts: HonoMetaRouteOptions): void {
   const path = `${opts.prefix ?? ""}${META_ROUTE_PATH}`;
   opts.app.get(path, (c) =>
-    c.body(metaJson(opts.root), 200, { "content-type": "application/json; charset=utf-8" }),
+    c.body(metaJson(opts.root), 200, { "content-type": META_CONTENT_TYPE }),
   );
 }

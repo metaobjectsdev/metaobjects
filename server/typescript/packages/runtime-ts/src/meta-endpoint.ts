@@ -11,6 +11,14 @@ import { canonicalSerializeEffective, type MetaData } from "@metaobjectsdev/meta
 export const META_ROUTE_PATH = "/_meta";
 
 /**
+ * The `GET {apiPrefix}/_meta` response content-type header.
+ * A cross-port contract value — one browser read-model has to work against
+ * every backend, so the header must be byte-identical across all Fastify and
+ * Hono mounts.
+ */
+export const META_CONTENT_TYPE = "application/json; charset=utf-8";
+
+/**
  * The `GET {apiPrefix}/_meta` response body: the loaded model as EFFECTIVE
  * canonical JSON.
  *

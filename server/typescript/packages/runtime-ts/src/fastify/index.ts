@@ -262,7 +262,7 @@ export { parseId } from "../drizzle-fastify/util.js";
 // ---------------------------------------------------------------------------
 
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { META_ROUTE_PATH, metaJson } from "../meta-endpoint.js";
+import { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson } from "../meta-endpoint.js";
 
 export interface MetaRouteOptions {
   fastify: FastifyInstance;
@@ -292,7 +292,7 @@ export function mountMetaRoute(opts: MetaRouteOptions): void {
   opts.fastify.get(path, async (_req, reply) => {
     return reply
       .code(200)
-      .header("content-type", "application/json; charset=utf-8")
+      .header("content-type", META_CONTENT_TYPE)
       .send(metaJson(opts.root));
   });
 }

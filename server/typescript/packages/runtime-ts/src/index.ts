@@ -50,4 +50,4 @@ export {
 } from "./constraint-errors.js";
 
 // UI-1 — metadata API contract for the browser read-model.
-export { META_ROUTE_PATH, metaJson } from "./meta-endpoint.js";
+export { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson } from "./meta-endpoint.js";
