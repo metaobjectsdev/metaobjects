@@ -216,8 +216,16 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   dependency: `getSQLState()` is JDK API, so Postgres's SQLSTATE class 23 is read directly and
   message text covers the drivers that carry no code.
 
-  Kotlin and Python still answer 500 for the same input; they are the remaining two ports of this
-  fix. Found by building a Java adopter app.
+  **Python** gains the same mapping: `metaobjects.codegen.runtime.constraint_errors`, wired into
+  every generated write handler (create / update / delete, vanilla and TPH). Its chain walk
+  covers `__cause__`, `__context__` AND `.orig` — SQLAlchemy hands the DBAPI exception on the
+  last of those rather than either dunder, so a walk of only the standard chain would classify
+  nothing under the most common Python persistence layer. SQLSTATE is read from whichever of
+  `sqlstate` / `pgcode` / `pgerror` / `code` / `errno` the driver populates, by name, so the
+  module imports no driver.
+
+  Kotlin still answers 500 for the same input; it is the remaining port of this fix. Found by
+  building a Java adopter app.
 
 - **Java: no POST could create anything for an entity whose primary key is `@required`.** The
   generated Spring controller's vanilla create handler validated the WHOLE request DTO:

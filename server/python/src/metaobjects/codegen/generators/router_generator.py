@@ -283,7 +283,25 @@ def _pk_py_type(entity: MetaObject) -> PyType:
     return py_type_for(pk_field)
 
 
+#: The ``except`` arm every generated WRITE handler carries, emitted verbatim.
+#:
+#: A generated CRUD route had no try/except around its write, so a driver failure reached
+#: FastAPI's default handler and the caller got a bare 500 — for what is a CLIENT error
+#: (a foreign key that does not exist, a value duplicating a unique one), both declared by
+#: the same metadata the route already validates against. An UNRECOGNISED exception is
+#: re-raised bare, so the operator keeps the full diagnostic and the caller gets a plain
+#: 500 carrying none of it. See ``runtime/constraint_errors.py``.
+_CONSTRAINT_EXCEPT: tuple[str, ...] = (
+    "    except Exception as exc:",
+    "        failure = classify_constraint_error(exc)",
+    "        if failure is None:",
+    "            raise",
+    "        return JSONResponse(status_code=failure.status, content=failure.body())",
+)
+
+
 @dataclass(frozen=True)
+
 class ReverseFk:
     """One FK an entity ``E`` holds (ADR-0038): the FK FIELD name on ``E`` and the
     bare target entity (``T``) it references. Drives the reverse finder pair on
@@ -490,7 +508,9 @@ class RouterGenerator:
                 # ABOVE the consumer repo seam — onCreate + onUpdate both stamped from one instant
                 # (a fresh row's createdAt == updatedAt), ignoring any caller-supplied value.
                 *create_autoset,
-                "    return repo.create(dto)",
+                "    try:",
+                "        return repo.create(dto)",
+                *_CONSTRAINT_EXCEPT,
             ]
         if name == "update":
             return [
@@ -518,7 +538,9 @@ class RouterGenerator:
                 # present-key tristate); onCreate columns are never touched here.
                 *update_autoset,
                 *frozen_strip,
-                f"    saved = repo.update({pk_param}, dto)",
+                "    try:",
+                f"        saved = repo.update({pk_param}, dto)",
+                *_CONSTRAINT_EXCEPT,
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
                 "    return saved",
@@ -530,7 +552,10 @@ class RouterGenerator:
                 f"    {pk_param}: {pk_type},",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> None:",
-                f"    if not repo.delete({pk_param}):",
+                "    try:",
+                f"        deleted = repo.delete({pk_param})",
+                *_CONSTRAINT_EXCEPT,
+                "    if not deleted:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
             ]
         raise ValueError(f"unknown route handler '{name}'")
@@ -791,6 +816,9 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
+        parts.append("from metaobjects.codegen.runtime.constraint_errors import (")
+        parts.append("    classify_constraint_error,")
+        parts.append(")")
         parts.append("from metaobjects.codegen.runtime.filter_parser import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
@@ -914,7 +942,9 @@ class RouterGenerator:
             # #203/ADR-0045: stamp @autoSet columns ABOVE the repo seam (empty for a
             # non-@autoSet hierarchy — byte-identical output).
             parts.extend(create_autoset)
-            parts.append(f'    return repo.create("{val}", dto)')
+            parts.append("    try:")
+            parts.append(f'        return repo.create("{val}", dto)')
+            parts.extend(_CONSTRAINT_EXCEPT)
             parts.append("")
             parts.append("")
             parts.append(f'@router.get("/{seg}/{{{pk_param}}}")')
@@ -948,7 +978,9 @@ class RouterGenerator:
             # the repo seam (empty for a non-@autoSet hierarchy — byte-identical output).
             parts.extend(update_autoset)
             parts.extend(frozen_strip_tph)
-            parts.append(f'    saved = repo.update("{val}", {pk_param}, dto)')
+            parts.append("    try:")
+            parts.append(f'        saved = repo.update("{val}", {pk_param}, dto)')
+            parts.extend(_CONSTRAINT_EXCEPT)
             parts.append("    if saved is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
             parts.append("    return saved")
@@ -959,7 +991,10 @@ class RouterGenerator:
             parts.append(f"    {pk_param}: {pk_type},")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> None:")
-            parts.append(f'    if not repo.delete("{val}", {pk_param}):')
+            parts.append("    try:")
+            parts.append(f'        deleted = repo.delete("{val}", {pk_param})')
+            parts.extend(_CONSTRAINT_EXCEPT)
+            parts.append("    if not deleted:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
             parts.append("")
             parts.append("")
@@ -1144,6 +1179,9 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
+        parts.append("from metaobjects.codegen.runtime.constraint_errors import (")
+        parts.append("    classify_constraint_error,")
+        parts.append(")")
         parts.append("from metaobjects.codegen.runtime.filter_parser import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")

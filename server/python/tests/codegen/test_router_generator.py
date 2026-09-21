@@ -355,3 +355,39 @@ def test_tph_uuid_pk_types_base_and_subtype_routes_as_uuid() -> None:
     assert "def update(self, subtype: str, id: uuid.UUID, dto: Any) -> Any | None: ..." in out
     assert "def delete(self, subtype: str, id: uuid.UUID) -> bool: ..." in out
     assert "auth_id: int" not in out
+
+
+def test_every_write_verb_maps_constraint_violations() -> None:
+    """Every WRITE verb must map a database constraint violation to the cross-port envelope.
+
+    Without it a driver failure propagates out of the handler and FastAPI answers a bare
+    500 for what is a CLIENT error — a foreign key that does not exist, or a value
+    duplicating a unique one, both declared by the same metadata the route already
+    validates against (FINDINGS F16). Asserted per verb rather than once, because create,
+    update and delete are emitted by three separate branches.
+    """
+    out = _require(_author())
+
+    assert "from metaobjects.codegen.runtime.constraint_errors import (" in out
+    assert "classify_constraint_error," in out
+
+    # One except arm per write verb: create, update (PATCH+PUT share a handler), delete.
+    assert out.count("    except Exception as exc:") == 3
+    assert out.count("        failure = classify_constraint_error(exc)") == 3
+
+    # An unrecognised exception is RE-RAISED, so the operator keeps the diagnostic and the
+    # caller gets a plain 500 carrying none of it.
+    assert out.count("            raise") == 3
+    assert "        return JSONResponse(status_code=failure.status, content=failure.body())" in out
+
+
+def test_generated_router_is_valid_python() -> None:
+    """The emitted try/except must not leave a dangling block.
+
+    A generator that builds handlers from a list of indented string fragments can produce
+    syntactically invalid Python that no string assertion notices — the snapshot still
+    "contains" everything it is asked about.
+    """
+    import ast
+
+    ast.parse(_require(_author()))
