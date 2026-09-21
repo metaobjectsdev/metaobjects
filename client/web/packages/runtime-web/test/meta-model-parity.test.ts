@@ -124,4 +124,71 @@ describe("browser read-model parity", () => {
 
     expect(buildGrid(mirrored!)).toEqual(realGrid);
   });
+
+  // Fix round 2: all four cases above declare no `layout.dataGrid`, so a mutation
+  // proved the layouts split itself is unverified — changing loadMetaModel's layout
+  // filter (TYPE_LAYOUT -> TYPE_VIEW, a plausible copy-paste of the fields filter
+  // above it) still passed every case here. A browser-built grid would silently lose
+  // @columns ordering, @pageSize, @defaultSortField/@defaultSortOrder and @filterable,
+  // falling back to all-fields and the default page size. Built from a string, same
+  // shape as the view case above, with values that differ from grid-from-metadata.ts's
+  // no-layout fallback: a proper subset in a NON-declaration order (drops "id", puts
+  // "status" before "firstName"), a non-default @pageSize, a declared sort field/order,
+  // and @filterable true.
+  test("buildGrid agrees when a dataGrid layout changes every attr the fallback defaults", async () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "LayoutProbe",
+              children: [
+                { "field.long": { name: "id" } },
+                { "field.string": { name: "firstName" } },
+                { "field.string": { name: "status" } },
+                {
+                  "layout.dataGrid": {
+                    name: "default",
+                    "@columns": ["status", "firstName"],
+                    "@pageSize": 10,
+                    "@defaultSortField": "firstName",
+                    "@defaultSortOrder": "desc",
+                    "@filterable": true,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await MetaDataLoader.fromString(json, "json");
+    expect(result.errors).toEqual([]);
+
+    const browser = loadMetaModel(canonicalSerializeEffective(result.root));
+    const realObjects = result.root
+      .children()
+      .filter((c): c is MetaObject => c.type === TYPE_OBJECT);
+    expect(realObjects).toHaveLength(1);
+    const real = realObjects[0]!;
+    const mirrored = browser.object(real.name);
+    expect(mirrored, `${real.name} missing from the browser model`).toBeDefined();
+
+    const realGrid = buildGrid(real);
+    // Sanity: prove this fixture actually exercises the layout path, not the
+    // no-layout fallback (all fields, page size 25, no sort, unfilterable) — a
+    // failure here means the fixture has the same blind spot the case was added
+    // to cover for, not that the parity check is broken.
+    expect(realGrid.columns.map((c) => c.field)).toEqual(["status", "firstName"]);
+    expect(realGrid.config).toEqual({
+      name: "default",
+      pageSize: 10,
+      filterable: true,
+      defaultSort: { field: "firstName", order: "desc" },
+    });
+
+    expect(buildGrid(mirrored!)).toEqual(realGrid);
+  });
 });

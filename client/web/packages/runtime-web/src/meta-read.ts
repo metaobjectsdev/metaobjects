@@ -33,6 +33,19 @@ export interface MetaLayoutRead {
 /** One object (entity / value / projection) as a runtime UI reads it. */
 export interface MetaRead {
   readonly name: string;
+  /**
+   * The node's OWN package, when declared. Undefined for a node that inherits its
+   * package from the declaring file's default rather than declaring one itself —
+   * the same "own, not resolved" reading `MetaData.package` carries server-side
+   * (objects never auto-inherit a file's default package; see parser-core.ts).
+   *
+   * `object(name)` and the model's `byName` lookup key on the SHORT name only, so
+   * two same-named objects in different packages (a shape this repo models
+   * deliberately — see `fixtures/conformance/xpkg-collision-*`) are NOT
+   * disambiguated by `object()`. A caller that might see a cross-package
+   * collision should walk `objects()` and filter on `package` itself.
+   */
+  readonly package?: string;
   readonly subType: string;
   attr: AttrReader;
   fields(): MetaFieldRead[];

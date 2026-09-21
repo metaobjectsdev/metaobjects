@@ -10,7 +10,7 @@
 // below are fine on the root: `import type` is erased at build time.
 import {
   TYPE_FIELD, TYPE_LAYOUT, TYPE_VIEW, TYPE_OBJECT,
-  ATTR_PREFIX, RESERVED_KEY_NAME, RESERVED_KEY_CHILDREN, TYPE_SUBTYPE_SEPARATOR,
+  ATTR_PREFIX, RESERVED_KEY_NAME, RESERVED_KEY_PACKAGE, RESERVED_KEY_CHILDREN, TYPE_SUBTYPE_SEPARATOR,
 } from "@metaobjectsdev/metadata/constants";
 import type {
   AttrReader, MetaFieldRead, MetaLayoutRead, MetaModelRead, MetaRead, MetaViewRead,
@@ -74,6 +74,17 @@ function nameOf(node: RawNode): string {
   return typeof raw === "string" ? raw : "";
 }
 
+/**
+ * A node's OWN `package` body key, when present. Objects never inherit a file's
+ * default package (only certain root-level fields/validators do — see
+ * parser-core.ts), so this is undefined unless the node declared one itself,
+ * matching what `MetaData.package` reads server-side.
+ */
+function packageOf(node: RawNode): string | undefined {
+  const raw = node.body[RESERVED_KEY_PACKAGE];
+  return typeof raw === "string" ? raw : undefined;
+}
+
 function toView(node: RawNode): MetaViewRead {
   return { subType: node.subType, attr: attrReaderFor(node) };
 }
@@ -96,8 +107,14 @@ function toObject(node: RawNode): MetaRead {
   const kids = childrenOf(node);
   const fields = kids.filter((c) => c.type === TYPE_FIELD).map(toField);
   const layouts = kids.filter((c) => c.type === TYPE_LAYOUT).map(toLayout);
+  const pkg = packageOf(node);
   return {
     name: nameOf(node),
+    // Conditional spread, not `package: pkg`: exactOptionalPropertyTypes
+    // distinguishes "absent" from "present and undefined", and MetaRead.package
+    // is meant to read as absent (not `undefined`-valued) for a node with no
+    // own package.
+    ...(pkg !== undefined ? { package: pkg } : {}),
     subType: node.subType,
     attr: attrReaderFor(node),
     fields: () => fields,

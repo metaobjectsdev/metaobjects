@@ -12,9 +12,11 @@ export const META_ROUTE_PATH = "/_meta";
 
 /**
  * The `GET {apiPrefix}/_meta` response content-type header.
- * A cross-port contract value — one browser read-model has to work against
- * every backend, so the header must be byte-identical across all Fastify and
- * Hono mounts.
+ * A TypeScript-local detail, not a cross-port contract: only this port ships
+ * HTTP mounts, so this value only has to stay byte-identical across TypeScript's
+ * own `mountMetaRoute` (Fastify) and `mountMetaRouteHono` (Hono). Another port's
+ * hand-mounted route is free to emit a different content-type
+ * (see docs/features/metadata-api.md).
  */
 export const META_CONTENT_TYPE = "application/json; charset=utf-8";
 

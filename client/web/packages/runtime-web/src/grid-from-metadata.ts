@@ -8,10 +8,11 @@
 // Mirrors the derivation in codegen-ts-tanstack's columns-file (humanized
 // headers, the field's view subtype as the cell-renderer hint, @columns / grid
 // attrs from the dataGrid layout) so a runtime-built grid matches a generated
-// one. Browser-safe: depends only on @metaobjectsdev/metadata.
-// The narrow local surface, not the metadata classes: a browser-built model must
-// satisfy it too (#287 — the metadata root barrel cannot be bundled). A real
-// MetaObject satisfies MetaRead structurally, so server callers are unaffected.
+// one. Browser-safe: types come from the local MetaRead surface (./meta-read.js)
+// below, never from @metaobjectsdev/metadata's classes, and the only values
+// imported from that package come from its browser-safe /constants subpath
+// (#287 — the metadata root barrel cannot be bundled). A real MetaObject
+// satisfies MetaRead structurally, so server callers are unaffected.
 import type { MetaRead, MetaFieldRead, MetaViewRead } from "./meta-read.js";
 // #287: metamodel VALUES come from the browser-safe constants subpath, never the package
 // root. The root exports MetaDataLoader -> library-sources.ts -> `node:url`, so a single

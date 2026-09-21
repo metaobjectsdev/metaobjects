@@ -176,6 +176,12 @@ const model = loadMetaModel(await fetch("/api/_meta").then((r) => r.text()));
 const grid = buildGrid(model.object("Author")!);
 ```
 
+**`object(name)` matches on the short name only.** If the model contains two
+same-named objects in different packages, `object()` and `objects()` cannot
+tell them apart by name alone — a caller that might see a cross-package
+collision should call `objects()` and disambiguate on each result's
+`package` field instead.
+
 `loadMetaModel` is a plain structural reader, not a second loader: no
 registry, no validation, no `extends` resolution — the server already
 validated the model and served it effective, so an attribute read is a map
