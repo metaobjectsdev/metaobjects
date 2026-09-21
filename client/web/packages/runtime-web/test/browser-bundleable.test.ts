@@ -86,4 +86,19 @@ describe("#287 — browser bundleability", () => {
     const { ok } = await browserBundle(root);
     expect(ok).toBe(false);
   });
+
+  test("loadMetaModel is reachable and imports from browser-safe paths", async () => {
+    // load-meta-model.ts imports TYPE_* from @metaobjectsdev/metadata/constants.
+    // If it ever imports them from the package root instead, the root pulls
+    // MetaDataLoader -> library-sources.ts -> node:url and this breaks browser bundles (#287).
+    // Test 1: load Meta Model function is exported from built dist
+    const distModule = await import(DIST_ENTRY);
+    expect(distModule.loadMetaModel).toBeDefined();
+    expect(typeof distModule.loadMetaModel).toBe("function");
+
+    // Test 2: source file imports constants from the safe subpath, not the root
+    const sourceFile = await Bun.file(join(PKG_ROOT, "src", "load-meta-model.ts")).text();
+    expect(sourceFile).toContain('from "@metaobjectsdev/metadata/constants"');
+    expect(sourceFile).not.toMatch(/from ["']@metaobjectsdev\/metadata["']\s*;/);
+  });
 });
