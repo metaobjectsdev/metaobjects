@@ -38,27 +38,25 @@ const METADATA_CONSTANTS = join(
   PKG_ROOT, "..", "..", "..", "..", "server", "typescript", "packages", "metadata", "dist", "constants.js",
 );
 
-/** Bundle `entry` for the browser via Bun's bundler; resolve the failure text, if any. */
-async function browserBundle(entry: string): Promise<{ ok: boolean; message: string }> {
+/** Bundle `entry` for the browser via Bun's bundler; resolve the failure text and code output. */
+async function browserBundle(entry: string): Promise<{ ok: boolean; message: string; code: string }> {
   const built = await Bun.build({ entrypoints: [entry], target: "browser", throw: false });
+  let code = "";
+  if (built.success && built.outputs.length > 0) {
+    try {
+      code = await built.outputs[0]!.text();
+    } catch {
+      // Failed to read output; code stays empty
+    }
+  }
   return {
     ok: built.success,
     message: built.logs.map((l) => String(l)).join("\n"),
+    code,
   };
 }
 
 describe("#287 — browser bundleability", () => {
-  test("loadMetaModel is reachable in a browser bundle", async () => {
-    // load-meta-model.ts imports its metamodel constants from
-    // @metaobjectsdev/metadata/constants. If that ever becomes the package root,
-    // the root pulls MetaDataLoader -> library-sources.ts -> node:url and this fails.
-    const out = await Bun.build({ entrypoints: [DIST_ENTRY], target: "browser", throw: false });
-    const code = await out.outputs[0]?.text() || "";
-    expect(out.success, out.logs.map((l) => String(l)).join("\n")).toBe(true);
-    expect(code).toContain("loadMetaModel");
-    expect(code).not.toContain("fileURLToPath");
-  });
-
   test("the BUILT runtime-web entry bundles for a browser target", async () => {
     // dist/ is what a published consumer resolves. If it is missing the gate is
     // meaningless, so say so rather than skipping quietly.
@@ -69,11 +67,17 @@ describe("#287 — browser bundleability", () => {
         "export condition to TypeScript source and never bundles).",
     ).toBe(true);
 
-    const { ok, message } = await browserBundle(DIST_ENTRY);
+    const { ok, message, code } = await browserBundle(DIST_ENTRY);
     // Name the original symptom so a future failure is self-diagnosing.
     expect(message).not.toMatch(/node:url|fileURLToPath/);
     expect(message).not.toMatch(/node:fs|node:path/);
     expect(ok).toBe(true);
+
+    // loadMetaModel is reachable: if load-meta-model.ts imported from the package root
+    // instead of @metaobjectsdev/metadata/constants, the root pulls MetaDataLoader ->
+    // library-sources.ts -> node:url and this bundle would fail (#287).
+    expect(code).toContain("loadMetaModel");
+    expect(code).not.toContain("fileURLToPath");
   });
 
   test("the metadata constants subpath is free of node:* in its whole graph", async () => {
