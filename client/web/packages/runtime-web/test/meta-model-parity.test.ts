@@ -64,4 +64,64 @@ describe("browser read-model parity", () => {
       }
     });
   }
+
+  // Fix round 1: the three CASES above all carry a view, but none of them
+  // actually exercises grid-from-metadata.ts's view-derived outputs — a
+  // mutation test proved it (dropping every field's views() to `[]` still
+  // passed all three). `extends-view-triple-nest`'s view.currency sits on a
+  // field.currency, so `viewKind` (`view.subType ?? field.subType`) resolves
+  // to "currency" either way, and its view carries `@locale`, not `@title`,
+  // so `header` falls back to the same humanized name either way. Built from
+  // a string, not a fixture, so the divergence this case needs is explicit
+  // and visible right here rather than incidental to some other fixture's
+  // shape.
+  test("buildGrid agrees when a view changes both header and renderer hint", async () => {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.value": {
+              name: "ViewKindProbe",
+              children: [
+                {
+                  "field.string": {
+                    name: "fullName",
+                    children: [
+                      // view.text on field.string: subtypes DIFFER ("text" vs
+                      // "string"), so viewKind changes. @title differs from
+                      // humanize("fullName") ("Full Name"), so header changes.
+                      { "view.text": { name: "display", "@title": "Preferred Display Name" } },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    // fromString is awaited directly, same shape as fromDirectory.
+    const result = await MetaDataLoader.fromString(json, "json");
+    expect(result.errors).toEqual([]);
+
+    const browser = loadMetaModel(canonicalSerializeEffective(result.root));
+    const realObjects = result.root
+      .children()
+      .filter((c): c is MetaObject => c.type === TYPE_OBJECT);
+    expect(realObjects).toHaveLength(1);
+    const real = realObjects[0]!;
+    const mirrored = browser.object(real.name);
+    expect(mirrored, `${real.name} missing from the browser model`).toBeDefined();
+
+    const realGrid = buildGrid(real);
+    // Sanity: prove this fixture actually exercises the view path — a failure
+    // here means the fixture itself has the same blind spot as the fixture
+    // this case was added to cover for, not that the parity check is broken.
+    expect(realGrid.columns[0]!.viewKind).toBe("text");
+    expect(realGrid.columns[0]!.header).toBe("Preferred Display Name");
+
+    expect(buildGrid(mirrored!)).toEqual(realGrid);
+  });
 });
