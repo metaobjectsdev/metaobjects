@@ -227,6 +227,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append(");\n\n");
         appendSortDefaultOrders(src, entity, sortFields);
+        appendServerOwnedOnCreate(src, entity);
 
         // Repository wiring — constructor injection (Spring's recommended idiom; avoids
         // field-injection magic, plays well with final fields + final test seams). The
@@ -296,7 +297,31 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // any field-constraint violation BEFORE persisting.
         src.append("    @PostMapping\n");
         src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
-        src.append("        if (!validator.validate(dto).isEmpty()) {\n");
+        // A caller does not supply server-owned columns, so a @NotNull on one must not reject
+        // the request. The DTO is BOTH the request and the response body, so `id` carries
+        // @NotNull because it is @required in the RESPONSE — while being identity.primary
+        // @generation:uuid, i.e. a column the database defaults and the caller must not invent.
+        // Validating the whole DTO therefore made every POST a 400 for any entity whose PK is
+        // @required, and the only "workaround" was a client-invented primary key.
+        //
+        // The TPH create path has always applied this rule, through
+        // SpringDtoGenerator.settableFields ("the PK is auto-generated and the discriminator is
+        // injected from the URL, so neither is validated from the body") — which is why a TPH
+        // entity POSTed fine while a vanilla one did not. This is the vanilla path adopting the
+        // same rule, so the two write surfaces finally agree.
+        //
+        // validator.validate(dto) is KEPT rather than narrowed to per-property validateValue:
+        // it is what cascades @Valid into nested value objects. The violations are FILTERED,
+        // and only by TOP-LEVEL property name — a nested path like "labels[0].code" can never
+        // match, so cascaded constraints still reject.
+        if (serverOwnedOnCreate(entity).isEmpty()) {
+            // Byte-identical to the pre-fix handler for an entity with no server-owned column,
+            // so this change moves only the output it has to.
+            src.append("        if (!validator.validate(dto).isEmpty()) {\n");
+        } else {
+            src.append("        if (validator.validate(dto).stream()\n");
+            src.append("                .anyMatch(v -> !SERVER_OWNED_ON_CREATE.contains(v.getPropertyPath().toString()))) {\n");
+        }
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
         src.append("        }\n");
         // Issue #203: honor @autoSet — stamp EVERY onCreate AND onUpdate column with now() before
@@ -939,6 +964,49 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append("    private static final Map<String, String> SORT_DEFAULT_ORDER = Map.ofEntries(")
            .append(entries).append(");\n\n");
+    }
+
+    /**
+     * The DTO record components a CALLER never supplies on create, because the server owns them:
+     * the primary-key field(s) and every {@code @autoSet} column.
+     *
+     * <p>This is the same concept {@link SpringDtoGenerator#settableFields(MetaObject, String)}
+     * already excludes for the TPH create path and the {@code <Entity>Patch} — stated here as the
+     * COMPLEMENT (what to ignore) rather than the settable set, because the vanilla create
+     * validates the whole DTO for its {@code @Valid} cascade and filters the result.</p>
+     *
+     * <p>Returned as record-component names, which is what a {@code ConstraintViolation}'s
+     * property path spells for a record.</p>
+     */
+    private static List<String> serverOwnedOnCreate(MetaObject entity) {
+        List<String> pkFields = entity.getIdentities(true).stream()
+            .filter(com.metaobjects.identity.MetaIdentity::isPrimary)
+            .findFirst()
+            .map(com.metaobjects.identity.MetaIdentity::getFields)
+            .orElse(List.of());
+
+        List<String> out = new ArrayList<>();
+        for (MetaField f : SpringDtoGenerator.scalarFields(entity)) {
+            if (pkFields.contains(f.getName()) || AutoSetSupport.isAutoSet(f)) {
+                String component = SpringNaming.recordComponentName(f.getName());
+                if (!out.contains(component)) out.add(component);
+            }
+        }
+        return out;
+    }
+
+    private static void appendServerOwnedOnCreate(StringBuilder src, MetaObject entity) {
+        List<String> serverOwned = serverOwnedOnCreate(entity);
+        if (serverOwned.isEmpty()) return;   // no constant, and the handler keeps its old shape
+        src.append("    /** Components the server owns on create (primary key, @autoSet): a\n");
+        src.append("     *  @NotNull on one of these describes the RESPONSE shape and must not\n");
+        src.append("     *  reject a create body that legitimately omits it. */\n");
+        src.append("    private static final Set<String> SERVER_OWNED_ON_CREATE = Set.of(");
+        for (int i = 0; i < serverOwned.size(); i++) {
+            if (i > 0) src.append(", ");
+            src.append('"').append(serverOwned.get(i)).append('"');
+        }
+        src.append(");\n\n");
     }
 
 }

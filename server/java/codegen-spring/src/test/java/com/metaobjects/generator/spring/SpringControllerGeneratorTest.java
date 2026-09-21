@@ -246,4 +246,94 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         assertFalse("view-kind entities must NOT produce a controller; saw " + controller + " present",
             Files.exists(controller));
     }
+
+    /**
+     * The shape every real adopter has and no other fixture in this file had: a primary key
+     * that is {@code @required} AND server-generated. {@code AUTHOR_FIXTURE}'s {@code id}
+     * carries no {@code @required}, so the DTO never put {@code @NotNull} on it and the create
+     * handler's over-broad validation could not be observed — which is exactly why FINDINGS F25
+     * shipped and why this fixture exists rather than a tweak to that one.
+     */
+    private static final String REQUIRED_PK_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ship", "children": [
+            { "object.entity": { "name": "Parcel", "children": [
+                { "field.uuid":      { "name": "id", "@required": true } },
+                { "field.string":    { "name": "code", "@maxLength": 24, "@required": true } },
+                { "field.timestamp": { "name": "createdAt", "@required": true } },
+                { "source.rdb":      { "@table": "parcel" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "uuid" } }
+            ] } }
+          ] }
+        }
+        """;
+
+    /**
+     * A POST must not be rejected for omitting a column the SERVER owns.
+     *
+     * <p>The DTO is both the request and the response body, so a {@code @required} primary key
+     * earns {@code @NotNull} — a true statement about the response, and a false one about the
+     * request, because {@code @generation: uuid} means the caller must NOT invent the key.
+     * Validating the whole DTO therefore turned every create into a 400, and the only workaround
+     * was a client-supplied primary key, which defeats the declared strategy (FINDINGS F25).</p>
+     *
+     * <p>The TPH create path already applied this rule via
+     * {@code SpringDtoGenerator.settableFields}; this pins the vanilla path to the same answer.</p>
+     */
+    @Test
+    public void createDoesNotValidateServerOwnedColumnsOutOfTheBody() throws Exception {
+        Path outDir = tempFolder.newFolder("ctrl-pk").toPath();
+        Path workspace = tempFolder.newFolder("ctrl-pk-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "parcel-pk", REQUIRED_PK_FIXTURE);
+
+        SpringControllerGenerator gen = new SpringControllerGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        String src = Files.readString(outDir.resolve("acme/ship/ParcelController.java"));
+
+        assertTrue("the server-owned set must name the generated primary key; saw:\n" + src,
+            src.contains("SERVER_OWNED_ON_CREATE = Set.of(\"id\")"));
+
+        // The create handler must FILTER violations, not simply reject any.
+        assertTrue("create must ignore violations on server-owned components; saw:\n" + src,
+            src.contains(".anyMatch(v -> !SERVER_OWNED_ON_CREATE.contains(v.getPropertyPath().toString()))"));
+        assertFalse("create must no longer reject on ANY violation; saw:\n" + src,
+            src.contains("if (!validator.validate(dto).isEmpty())"));
+
+        // And it must still VALIDATE — the cascade into nested beans is why validate(dto) is
+        // kept rather than narrowed to per-property validateValue.
+        assertTrue("create must still run the validator; saw:\n" + src,
+            src.contains("validator.validate(dto)"));
+    }
+
+    /**
+     * The rule keys on being the PRIMARY KEY, not on being {@code @required}.
+     *
+     * <p>{@code AUTHOR_FIXTURE}'s {@code id} carries no {@code @required}, so the DTO puts no
+     * {@code @NotNull} on it and the filter has nothing to ignore — but the component is still
+     * server-owned ({@code @generation: increment}), so the set names it anyway. Pinning this
+     * keeps the two cases from drifting into two rules: a key the database generates is not
+     * caller-supplied whether or not the model also calls it required.</p>
+     */
+    @Test
+    public void serverOwnedKeysOnThePrimaryKeyNotOnRequired() throws Exception {
+        Path outDir = tempFolder.newFolder("ctrl-nopk").toPath();
+        Path workspace = tempFolder.newFolder("ctrl-nopk-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "author-nopk", AUTHOR_FIXTURE);
+
+        SpringControllerGenerator gen = new SpringControllerGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        String src = Files.readString(outDir.resolve("acme/blog/AuthorController.java"));
+        assertTrue("a generated PK is server-owned even without @required; saw:\n" + src,
+            src.contains("SERVER_OWNED_ON_CREATE = Set.of(\"id\")"));
+        assertFalse("and the over-broad guard is gone here too; saw:\n" + src,
+            src.contains("if (!validator.validate(dto).isEmpty())"));
+    }
 }

@@ -189,6 +189,35 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **Java: no POST could create anything for an entity whose primary key is `@required`.** The
+  generated Spring controller's vanilla create handler validated the WHOLE request DTO:
+  `if (!validator.validate(dto).isEmpty()) return 400 {"error":"validation"}`. But
+  `SpringDtoGenerator` emits ONE record used as both request and response body, so a `@required`
+  primary key earns `@NotNull` — a true statement about the RESPONSE and a false one about the
+  request, since `identity.primary @generation: uuid|increment` means the database supplies the
+  key and the caller must not invent one. Every create therefore answered 400, and the only
+  workaround was a client-supplied primary key, which defeats the declared generation strategy.
+
+  The generator already knew the rule and one door never called it:
+  `SpringDtoGenerator.settableFields(...)` returns "effective scalars MINUS the primary key MINUS
+  the discriminator", and its javadoc states it outright — *"the PK is auto-generated and the
+  discriminator is injected from the URL, so neither is validated from the body."* It was applied
+  on the TPH create path and to `<Entity>Patch`. So a TPH entity POSTed fine while a plain one
+  did not: same model, same generator, two write paths, one of which had learned the rule.
+
+  The vanilla create now emits a `SERVER_OWNED_ON_CREATE` set (primary-key components plus
+  `@autoSet` columns) and filters violations by top-level property name. `validator.validate(dto)`
+  is KEPT rather than narrowed to per-property `validateValue`, because it is what cascades
+  `@Valid` into nested value objects — the violations are filtered, not the validation weakened,
+  and a nested path like `labels[0].code` can never match a top-level name, so cascaded
+  constraints still reject. An entity with no server-owned component keeps its previous handler
+  byte-for-byte.
+
+  **No corpus could have caught it**, which is worth recording: the api-contract corpus's only
+  entity declares `Author.id` with no `@required`, so no port's DTO ever annotated the key and
+  both lanes stayed green everywhere. Found by building a Java adopter app, where a shared
+  `BaseEntity` declares `id` required — the shape real models actually have.
+
 - **Java/Kotlin: a `<loader><libraries>` entry naming a LAYER (`iam/db`) failed the build,
   so the JVM could opt into a library's design but never its tables.** Libraries are
   layered and the selection is layer-granular — `"iam"` is the inert core, `"iam/db"` the
