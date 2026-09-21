@@ -17,6 +17,7 @@ import jakarta.validation.Validator
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -319,4 +320,30 @@ class AuthLineController(private val objectMapper: ObjectMapper, private val val
         if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else ResponseEntity.noContent().build<Any>()
     }
+
+    /**
+     * A database constraint violation is a CLIENT error, not a 500: the
+     * identity.reference / identity.secondary that declare these constraints are the
+     * same metadata this controller already validates against. Anything else is
+     * rethrown, so the operator keeps the diagnostic and the caller gets none of it.
+     */
+    @ExceptionHandler(RuntimeException::class)
+    fun handleConstraintViolation(e: RuntimeException): ResponseEntity<Any> {
+        val text = generateSequence<Throwable>(e) { if (it.cause === it) null else it.cause }
+            .take(8)
+            .flatMap { t -> sequenceOf((t as? java.sql.SQLException)?.sqlState, t.message) }
+            .filterNotNull()
+            .joinToString(" ")
+            .uppercase()
+        val kind = when {
+            "23503" in text || "FOREIGN KEY" in text || "SQLITE_CONSTRAINT_FOREIGNKEY" in text -> "foreign_key"
+            "23505" in text || "UNIQUE CONSTRAINT" in text || "SQLITE_CONSTRAINT_UNIQUE" in text -> "unique"
+            "23514" in text || "CHECK CONSTRAINT" in text || "SQLITE_CONSTRAINT_CHECK" in text -> "check"
+            "23502" in text || "NOT NULL" in text || "SQLITE_CONSTRAINT_NOTNULL" in text -> "not_null"
+            else -> throw e
+        }
+        val status = if (kind == "foreign_key" || kind == "unique") HttpStatus.CONFLICT else HttpStatus.BAD_REQUEST
+        return ResponseEntity.status(status).body(mapOf("error" to "constraint_violation", "constraint" to kind) as Any)
+    }
+
 }

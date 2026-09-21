@@ -224,8 +224,19 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   `sqlstate` / `pgcode` / `pgerror` / `code` / `errno` the driver populates, by name, so the
   module imports no driver.
 
-  Kotlin still answers 500 for the same input; it is the remaining port of this fix. Found by
-  building a Java adopter app.
+  **Kotlin** takes a different mechanism to the same wire result, and the difference is a
+  correctness point rather than a stylistic one: an `@ExceptionHandler` on the generated
+  controller instead of a try/catch per verb. An Exposed `transaction { }` whose statement failed
+  must be allowed to ROLL BACK — catching inside the lambda and returning a value would have
+  Exposed commit an already-aborted transaction, which Postgres rejects outright. Letting the
+  exception leave the transaction block and answering from the handler rolls back first. It also
+  covers every write verb at once, including any added later, where a per-handler wrapper is six
+  edits a seventh handler silently misses. The classifier is emitted INLINE rather than imported,
+  because a generated Kotlin controller carries no compile-time MetaObjects dependency — the same
+  reason that port emits its filter parser inline.
+
+  All four non-TS ports now answer the same `409`/`400` for the same input. Found by building a
+  Java adopter app.
 
 - **Java: no POST could create anything for an entity whose primary key is `@required`.** The
   generated Spring controller's vanilla create handler validated the WHOLE request DTO:

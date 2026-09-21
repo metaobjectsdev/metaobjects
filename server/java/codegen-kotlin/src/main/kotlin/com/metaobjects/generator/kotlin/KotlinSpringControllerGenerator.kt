@@ -270,6 +270,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.DeleteMapping\n")
+            append("import org.springframework.web.bind.annotation.ExceptionHandler\n")
             append("import org.springframework.web.bind.annotation.GetMapping\n")
             append("import org.springframework.web.bind.annotation.PathVariable\n")
             append("import org.springframework.web.bind.annotation.PostMapping\n")
@@ -614,6 +615,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 emitM2mEndpoint(this, pkg, shortName, nav, pkParamType)
             }
 
+            appendConstraintHandler()
             append("}\n")
         }
 
@@ -761,6 +763,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.DeleteMapping\n")
+            append("import org.springframework.web.bind.annotation.ExceptionHandler\n")
             append("import org.springframework.web.bind.annotation.GetMapping\n")
             append("import org.springframework.web.bind.annotation.PathVariable\n")
             append("import org.springframework.web.bind.annotation.PostMapping\n")
@@ -1070,12 +1073,68 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     )
                 }
             }
+            appendConstraintHandler()
             append("}\n")
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("${shortName}Controller.kt")
         outFile.parent?.let { Files.createDirectories(it) }
         GeneratedFileWriter.write(outFile, src)
+    }
+
+
+    /**
+     * Emits the constraint-violation handler every generated controller carries.
+     *
+     * An `@ExceptionHandler` rather than a try/catch per write verb, and that is a
+     * correctness choice, not a brevity one: an Exposed `transaction { }` that throws must be
+     * allowed to ROLL BACK. Catching inside the lambda and returning a value would have Exposed
+     * commit a transaction whose statement already failed, which Postgres rejects outright
+     * ("current transaction is aborted"). Letting the exception leave the transaction block and
+     * handling it here rolls back first, then answers.
+     *
+     * It also covers every write verb at once — vanilla and per-subtype, and any added later —
+     * where a per-handler wrapper is six edits that a seventh handler silently misses.
+     *
+     * The classification is the same algorithm as runtime-ts's `constraint-errors.ts`, C#'s
+     * and Java's `ConstraintErrors`: codes first, constraint-name vocabulary as fallback, 409
+     * for referential/uniqueness conflicts with existing state and 400 for a value the request
+     * got wrong. It is emitted INLINE rather than imported, because a generated Kotlin
+     * controller carries no compile-time MetaObjects dependency — the same reason this port
+     * emits its filter parser inline instead of calling a shared runtime one.
+     *
+     * An unrecognised throwable is RETHROWN, so the operator keeps the full diagnostic and the
+     * caller gets a plain 500 carrying none of it.
+     */
+    private fun StringBuilder.appendConstraintHandler() {
+        append("\n")
+        append("    /**\n")
+        append("     * A database constraint violation is a CLIENT error, not a 500: the\n")
+        append("     * identity.reference / identity.secondary that declare these constraints are the\n")
+        append("     * same metadata this controller already validates against. Anything else is\n")
+        append("     * rethrown, so the operator keeps the diagnostic and the caller gets none of it.\n")
+        append("     */\n")
+        append("    @ExceptionHandler(RuntimeException::class)\n")
+        append("    fun handleConstraintViolation(e: RuntimeException): ResponseEntity<Any> {\n")
+        // Depth-bounded and self-reference-guarded: a wrapper whose cause is itself is legal.
+        // SQLState is read via the JDK's own java.sql.SQLException (FQN inline — the #179 guard
+        // forbids surfacing an un-imported type), so no driver is referenced.
+        append("        val text = generateSequence<Throwable>(e) { if (it.cause === it) null else it.cause }\n")
+        append("            .take(8)\n")
+        append("            .flatMap { t -> sequenceOf((t as? java.sql.SQLException)?.sqlState, t.message) }\n")
+        append("            .filterNotNull()\n")
+        append("            .joinToString(\" \")\n")
+        append("            .uppercase()\n")
+        append("        val kind = when {\n")
+        append("            \"23503\" in text || \"FOREIGN KEY\" in text || \"SQLITE_CONSTRAINT_FOREIGNKEY\" in text -> \"foreign_key\"\n")
+        append("            \"23505\" in text || \"UNIQUE CONSTRAINT\" in text || \"SQLITE_CONSTRAINT_UNIQUE\" in text -> \"unique\"\n")
+        append("            \"23514\" in text || \"CHECK CONSTRAINT\" in text || \"SQLITE_CONSTRAINT_CHECK\" in text -> \"check\"\n")
+        append("            \"23502\" in text || \"NOT NULL\" in text || \"SQLITE_CONSTRAINT_NOTNULL\" in text -> \"not_null\"\n")
+        append("            else -> throw e\n")
+        append("        }\n")
+        append("        val status = if (kind == \"foreign_key\" || kind == \"unique\") HttpStatus.CONFLICT else HttpStatus.BAD_REQUEST\n")
+        append("        return ResponseEntity.status(status).body(mapOf(\"error\" to \"constraint_violation\", \"constraint\" to kind) as Any)\n")
+        append("    }\n\n")
     }
 
     /** Capitalize the first char (method-name suffix from a discriminator value). */
