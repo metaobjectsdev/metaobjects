@@ -315,7 +315,13 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // and Python config readers draw, in the same place.
         List<String> libraries = loaderConfig.getLibraries();
         if (libraries != null && !libraries.isEmpty()) {
-            List<String> available = com.metaobjects.library.LibrarySources.knownPackages();
+            // knownTokens(), NOT knownPackages(): a selection is layer-granular
+            // ("iam/db"), and knownPackages() answers with the LIBRARY names ([ai, iam]).
+            // Validating against the latter rejected the very selection the TS and Python
+            // configs carry, and printed a list the user could not act on. knownTokens()
+            // is the set a selection is actually drawn from — its javadoc has said "what a
+            // config error prints" since layers landed; this is the caller it never had.
+            List<String> available = com.metaobjects.library.LibrarySources.knownTokens();
             List<String> unknown = new ArrayList<>();
             for (String lib : libraries) {
                 if (!available.contains(lib)) unknown.add(lib);

@@ -189,6 +189,27 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **Java/Kotlin: a `<loader><libraries>` entry naming a LAYER (`iam/db`) failed the build,
+  so the JVM could opt into a library's design but never its tables.** Libraries are
+  layered and the selection is layer-granular — `"iam"` is the inert core, `"iam/db"` the
+  separate opt-in carrying the `source.rdb` declarations. The Maven plugin validated a
+  pom's tokens against `LibrarySources.knownPackages()`, which answers with the library
+  NAMES (`[ai, iam]`), instead of `knownTokens()`, which answers with the set a selection
+  is actually drawn from (`[ai, ai/db, iam, iam/db]`). So the same selection the
+  TypeScript and Python configs carry failed outright with `names unknown package(s)
+  [iam/db]; available: [ai, iam]` — a list naming nothing the user could type instead.
+
+  The resolver was never involved: `librarySources()` splits a token and looks the layer
+  up, and has since layers landed. Only the mojo's pre-validation refused it, and
+  `knownTokens()` — added by the same change that introduced layers, with a javadoc reading
+  "what a config error prints" — **had no caller anywhere in the port**. No JVM test
+  asserted a library DB layer loads at all, which is why one unwired door could ship.
+
+  Found by building a Java adopter against the published plugin. Consequence while it was
+  broken: a core layer declares no `source.rdb`, so a JVM project could take a library's
+  design but not its schema, and generated from the same model as another port would
+  legitimately disagree with it.
+
 - **C#: a `field.enum` that `extends` another entity's enum field generated code that does
   not compile.** `extends` on a `field.enum` has two very different readings and only one
   materializes a type: FR-019's shared enum is a ROOT-level ABSTRACT `field.enum`, while a
