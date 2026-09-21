@@ -261,7 +261,11 @@ function ensureArray(v: unknown, key: string): unknown[] {
   }
   // Defensive — qs.parse normally produces an object/array; this branch is
   // only reachable if a caller hand-constructs a malformed query object.
-  throw new FilterParseError("filter.invalid_value", `Expected array for "${key}".`, { key });
+  //
+  // `field` (not `key`) because this maps to the cross-port `invalid_filter_value`
+  // envelope, which REQUIRES `field` naming the offending filter key — here the
+  // `or`/`and` connector that was handed a non-array.
+  throw new FilterParseError("filter.invalid_value", `Expected array for "${key}".`, { field: key });
 }
 
 function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist): SQLWrapper[] {
@@ -290,7 +294,7 @@ function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist):
   );
   const order = orderRaw.toLowerCase();
   if (order !== "asc" && order !== "desc") {
-    throw new FilterParseError("sort.invalid_order", `Sort order must be asc|desc, got "${orderRaw}".`, { expected: "asc | desc" });
+    throw new FilterParseError("sort.invalid_order", `Sort order must be asc|desc, got "${orderRaw}".`, { field, expected: "asc | desc" });
   }
   const col = table[field];
   return [order === "asc" ? asc(col as any) : desc(col as any)];

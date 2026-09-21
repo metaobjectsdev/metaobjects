@@ -14,6 +14,7 @@ import metaobjects.core_types  # noqa: F401  — side-effect: registers attr cla
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import render_router
+from metaobjects.codegen.runtime.filter_parser import parse_filter
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -109,7 +110,9 @@ def test_with_count_returns_envelope_bare_list_otherwise() -> None:
     assert "return rows" in out
     # The 404 envelope and 400 invalid_sort envelope are part of the contract.
     assert '"error": "not_found"' in out
-    assert '"error": "invalid_sort"' in out
+    # invalid_sort NAMES the rejected field — required cross-port on every
+    # filter/sort envelope (docs/features/api-contract.md, "Error response").
+    assert '{"error": "invalid_sort", "field": sort.split(":", 1)[0]}' in out
 
 
 def test_view_kind_skipped() -> None:
@@ -258,6 +261,28 @@ _PK_TYPES_META = {
         ],
     }
 }
+
+
+def test_filter_error_envelope_names_the_rejected_field() -> None:
+    """Every filter envelope carries `field` (docs/features/api-contract.md).
+
+    Asserted on the PARSER the generated router forwards verbatim — the router
+    emits `content=filter_result.error_envelope`, so the envelope's shape is
+    what reaches the wire. Python has no gate that reacts to changed generated
+    output, which is exactly how this member could otherwise drift unobserved.
+    """
+    fields = frozenset({"name", "bio"})
+    ops = {"name": frozenset({"eq"}), "bio": frozenset({"eq", "isNull"})}
+
+    # Unknown field.
+    r = parse_filter([("filter[nope][eq]", "x")], fields, ops)
+    assert r.error_envelope == {"error": "invalid_filter_field", "field": "nope"}
+    # Op not allowed for that field's subtype.
+    r = parse_filter([("filter[name][isNull]", "true")], fields, ops)
+    assert r.error_envelope == {"error": "invalid_filter_op", "field": "name"}
+    # Value that will not coerce.
+    r = parse_filter([("filter[bio][isNull]", "maybe")], fields, ops)
+    assert r.error_envelope == {"error": "invalid_filter_value", "field": "bio"}
 
 
 def test_uuid_pk_types_every_path_param_and_protocol_site_as_uuid() -> None:

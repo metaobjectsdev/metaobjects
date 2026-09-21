@@ -21,6 +21,7 @@ import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "..
 import type { ZodTypeAny } from "zod";
 import { eq, count, and } from "drizzle-orm";
 import qs from "qs";
+import { contractErrorCode } from "../drizzle-fastify/util.js";
 import {
   parseFilterParams,
   FilterParseError,
@@ -194,7 +195,11 @@ export function mountListRoute(opts: VerbOptions): void {
       return c.json({ rows, total });
     } catch (err) {
       if (err instanceof FilterParseError) {
-        return c.json({ error: err.code, ...(err.details ?? {}) }, 400);
+        // Map to the cross-port wire code, exactly as the Fastify mount does. Emitting
+        // the INTERNAL dotted code here made the two flavors answer differently for the
+        // same metadata (`filter.unknown_field` vs `invalid_filter_field`), contradicting
+        // this package's own "byte-identical on the wire" contract.
+        return c.json({ error: contractErrorCode(err.code), ...(err.details ?? {}) }, 400);
       }
       throw err;
     }

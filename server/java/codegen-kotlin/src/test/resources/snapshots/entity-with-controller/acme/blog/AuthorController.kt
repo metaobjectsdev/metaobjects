@@ -65,14 +65,15 @@ private const val MAX_IN_LIST = 100
 /** GENERATED — single parsed + validated FR-009 filter predicate. */
 private data class AuthorFilterPredicate(val field: String, val op: String, val value: Any?)
 
-/** GENERATED — parse outcome: either a list of predicates or a cross-port error envelope key. */
-private data class AuthorFilterResult(val predicates: List<AuthorFilterPredicate>, val error: String?)
+/** GENERATED — parse outcome: predicates, or a cross-port error envelope key + the field it rejected. */
+private data class AuthorFilterResult(val predicates: List<AuthorFilterPredicate>, val error: String?, val field: String? = null)
 
 /**
  * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded
  * {@code allParams} map. Returns either a list of validated predicates or one of
  * the cross-port error envelope keys ({@code invalid_filter_field /
- * invalid_filter_op / invalid_filter_value / filter.in_too_large}).
+ * invalid_filter_op / invalid_filter_value / filter.in_too_large}) plus the
+ * field each one is about.
  */
 private fun parseAuthorFilter(allParams: Map<String, String>): AuthorFilterResult {
     val out = mutableListOf<AuthorFilterPredicate>()
@@ -91,14 +92,14 @@ private fun parseAuthorFilter(allParams: Map<String, String>): AuthorFilterResul
             }
             else -> continue
         }
-        if (field !in AuthorFilterAllowlist.FIELDS) return AuthorFilterResult(emptyList(), "invalid_filter_field")
+        if (field !in AuthorFilterAllowlist.FIELDS) return AuthorFilterResult(emptyList(), "invalid_filter_field", field)
         val ops = AuthorFilterAllowlist.OPS_BY_FIELD[field]
-        if (ops == null || op !in ops) return AuthorFilterResult(emptyList(), "invalid_filter_op")
+        if (ops == null || op !in ops) return AuthorFilterResult(emptyList(), "invalid_filter_op", field)
         val coerced = coerceAuthorValue(field, op, value)
-            ?: return AuthorFilterResult(emptyList(), "invalid_filter_value")
+            ?: return AuthorFilterResult(emptyList(), "invalid_filter_value", field)
         val coercedValue = coerced.value
         if (op == "in" && coercedValue is List<*> && coercedValue.size > MAX_IN_LIST) {
-            return AuthorFilterResult(emptyList(), "filter.in_too_large")
+            return AuthorFilterResult(emptyList(), "filter.in_too_large", field)
         }
         out.add(AuthorFilterPredicate(field, op, coercedValue))
     }
@@ -255,13 +256,13 @@ class AuthorController(private val objectMapper: ObjectMapper, private val valid
         // FR-009 filter operators — short-circuit 400 on invalid field/op/value.
         val filterResult = parseAuthorFilter(allParams)
         if (filterResult.error != null) {
-            return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error) as Any)
+            return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         }
         val whereOp = AuthorWhereOp(filterResult.predicates)
         var q = if (whereOp != null) AuthorTable.selectAll().where { whereOp } else AuthorTable.selectAll()
         if (sort != null) {
             val parsed = parseAuthorSort(sort)
-                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
+                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort", "field" to sort.substringBefore(':')) as Any)
             val (field, dir) = parsed
             q = q.orderBy(when (field) {
                 "id" -> AuthorTable.id

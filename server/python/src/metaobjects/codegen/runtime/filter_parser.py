@@ -13,8 +13,10 @@ Returned ``FilterParseResult`` is either:
 
 * ``predicates`` populated + ``error_envelope`` ``None`` — success path; the
   generated router passes ``predicates`` into the repository.
-* ``error_envelope`` non-``None`` (one of ``invalid_filter_field`` /
-  ``invalid_filter_op`` / ``invalid_filter_value`` / ``filter.in_too_large``) —
+* ``error_envelope`` non-``None`` — ``{"error": <key>, "field": <name>}``, where
+  the key is one of ``invalid_filter_field`` / ``invalid_filter_op`` /
+  ``invalid_filter_value`` / ``filter.in_too_large`` and ``field`` names the
+  rejected filter field —
   the generated router raises
   ``HTTPException(status_code=400, detail=result.error_envelope)``.
 
@@ -129,16 +131,18 @@ def parse_filter(
         else:
             continue
 
+        # Every filter envelope names the field it rejected — a caller sending
+        # several filters must not have to guess which one failed.
         if field_name not in allowed_set:
-            return FilterParseResult(error_envelope={"error": _ERR_FIELD})
+            return FilterParseResult(error_envelope={"error": _ERR_FIELD, "field": field_name})
         ops = ops_map.get(field_name)
         if ops is None or op not in ops:
-            return FilterParseResult(error_envelope={"error": _ERR_OP})
+            return FilterParseResult(error_envelope={"error": _ERR_OP, "field": field_name})
         coerced = _coerce_value(value, op)
         if coerced is _INVALID_VALUE:
-            return FilterParseResult(error_envelope={"error": _ERR_VALUE})
+            return FilterParseResult(error_envelope={"error": _ERR_VALUE, "field": field_name})
         if op == "in" and isinstance(coerced, list) and len(coerced) > MAX_IN_LIST:
-            return FilterParseResult(error_envelope={"error": _ERR_IN_TOO_LARGE})
+            return FilterParseResult(error_envelope={"error": _ERR_IN_TOO_LARGE, "field": field_name})
         out.append(FilterPredicate(field=field_name, op=op, value=coerced))
 
     return FilterParseResult(predicates=out)

@@ -148,8 +148,9 @@ public class EntityGeneratorTests
         Assert.Contains("using MetaObjects.Codegen.Runtime;", src);
         // Parses filter against the per-entity allowlist.
         Assert.Contains("FilterParser.Parse(qs, SubscriberFilterAllowlist.Fields, SubscriberFilterAllowlist.OpsByField)", src);
-        // 400 envelope on parse error.
-        Assert.Contains("Results.BadRequest(new { error = filter.ErrorEnvelope })", src);
+        // 400 envelope on parse error — carries `field`, which every filter envelope
+        // names cross-port so a caller with several filters knows which one was rejected.
+        Assert.Contains("Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field })", src);
         // Dispatches predicates onto the IQueryable<T>.
         Assert.Contains("EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates)", src);
         // The withCount query is also filtered so total reflects the filtered count.
@@ -202,8 +203,9 @@ public class EntityGeneratorTests
 
         // Invalid-sort error envelope (unknown sort field → 400). The cross-port
         // api-contract uses the `invalid_sort` code (verified end-to-end by the
-        // SP-F generated-server lane against the corpus), not a generic "validation".
-        Assert.Contains("Results.BadRequest(new { error = \"invalid_sort\" })", src);
+        // SP-F generated-server lane against the corpus), not a generic "validation",
+        // and names the offending field.
+        Assert.Contains("Results.BadRequest(new { error = \"invalid_sort\", field })", src);
 
         // Sort dispatch uses EF.Property (no runtime reflection).
         Assert.Contains("EF.Property<object>", src);

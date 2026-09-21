@@ -162,9 +162,9 @@ class KotlinSpringControllerGeneratorTest {
             // Every scalar field in Author appears in the allowlist.
             assertTrue("\"id\"," in src && "\"name\"," in src && "\"bio\"," in src && "\"createdAt\"," in src,
                 "expected all four scalar fields in the sort allowlist; saw:\n$src")
-            // The 400 envelope for invalid sort is `{ "error": "invalid_sort" }`.
-            assertTrue("\"invalid_sort\"" in src,
-                "expected invalid_sort 400 envelope; saw:\n$src")
+            // The 400 envelope for invalid sort is `{ "error": "invalid_sort", "field": <name> }`.
+            assertTrue("\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')" in src,
+                "expected invalid_sort 400 envelope naming the field; saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -232,9 +232,10 @@ class KotlinSpringControllerGeneratorTest {
                 "expected list handler to call parseAuthorFilter(allParams); saw:\n$src")
             // 400 envelope path on any of invalid_filter_field / invalid_filter_op /
             // invalid_filter_value — the parser puts the envelope KEY in `filterResult.error`
-            // and the controller threads it into the response body verbatim.
-            assertTrue("mapOf(\"error\" to filterResult.error)" in src,
-                "expected the controller to thread filterResult.error into a 400 envelope; saw:\n$src")
+            // and the REJECTED FIELD in `filterResult.field`, and the controller threads
+            // both into the response body verbatim (`field` is required cross-port).
+            assertTrue("mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field)" in src,
+                "expected the controller to thread filterResult.error + .field into a 400 envelope; saw:\n$src")
             // AND the WHERE clause wires through AuthorWhereOp(predicates).
             assertTrue("AuthorWhereOp(filterResult.predicates)" in src,
                 "expected controller to feed predicates into AuthorWhereOp; saw:\n$src")

@@ -130,7 +130,9 @@ export function mountListRoute(opts: SingleVerbOptions): void {
     if (opts.sortAllowlist && typeof parsed["sort"] === "string") {
       const sortParse = parseSort(parsed["sort"], opts.sortAllowlist);
       if (sortParse.error) {
-        return reply.code(400).send({ error: contractErrorCode(sortParse.error) });
+        // `field` is REQUIRED on the invalid_sort envelope cross-port (F20 ruling) —
+        // it names the offending sort field instead of making the caller guess.
+        return reply.code(400).send({ error: contractErrorCode(sortParse.error), field: sortParse.field });
       }
       if (sortParse.orderBy) readOpts.orderBy = sortParse.orderBy;
     }
@@ -153,15 +155,15 @@ export function mountListRoute(opts: SingleVerbOptions): void {
 function parseSort(
   spec: string,
   sortAllowlist: SortAllowlist,
-): { orderBy?: [string, "asc" | "desc"]; error?: string } {
+): { orderBy?: [string, "asc" | "desc"]; error?: string; field?: string } {
   const [field, orderRaw] = spec.split(":");
-  if (!field || !sortAllowlist[field]) return { error: "sort.unknown_field" };
+  if (!field || !sortAllowlist[field]) return { error: "sort.unknown_field", field: field ?? "" };
   // Precedence (caller order > declared @sortableDefaultOrder > asc) comes from the
   // shared sortOrderSpec, so this mount cannot answer one declaration differently from
   // the drizzle mount again. Validation stays here because this mount reports a bad
   // order as an error CODE rather than a thrown FilterParseError.
   const order = sortOrderSpec(sortAllowlist, field, orderRaw).toLowerCase();
-  if (order !== "asc" && order !== "desc") return { error: "sort.invalid_order" };
+  if (order !== "asc" && order !== "desc") return { error: "sort.invalid_order", field };
   return { orderBy: [field, order] };
 }
 

@@ -1,0 +1,20 @@
+name: filter-invalid-value
+description: >
+  GET /api/authors?filter[bio][isNull]=maybe — `isNull` takes the literal
+  `true` or `false`; anything else is an uncoercible value. The server rejects
+  with HTTP 400 and the cross-port `invalid_filter_value` error envelope,
+  naming the rejected field.
+
+  `isNull` is the deliberately chosen trigger: it is the one operator whose
+  value every port coerces in its own parser (the scalar comparison ops pass
+  the raw string through to the substrate), so this scenario exercises the
+  same code path in all five rather than only the ports with a typed coercer.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[bio][isNull]=maybe
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_value"
+        field: "bio"

@@ -55,11 +55,14 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     /// <summary>A single parsed predicate: field, op, coerced value.</summary>
     private sealed record FilterPredicate(string Field, string Op, object? Value);
 
-    /// <summary>Result of parsing filter params: either predicates or an error envelope key.</summary>
-    private sealed record FilterResult(List<FilterPredicate> Predicates, string? Error)
+    /// <summary>
+    /// Result of parsing filter params: either predicates, or an error envelope key
+    /// plus the offending field (which every filter envelope carries cross-port).
+    /// </summary>
+    private sealed record FilterResult(List<FilterPredicate> Predicates, string? Error, string? Field = null)
     {
         public static FilterResult Ok(List<FilterPredicate> p) => new(p, null);
-        public static FilterResult Err(string e) => new(new(), e);
+        public static FilterResult Err(string e, string field) => new(new(), e, field);
     }
 
     private static readonly object InvalidValue = new();
@@ -256,7 +259,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             string field = parts[0];
             if (!SortAllowlist.Contains(field))
             {
-                await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_sort" });
+                await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_sort", ["field"] = field });
                 return;
             }
             // No `:dir` supplied → the named field's declared @sortableDefaultOrder, and
@@ -267,7 +270,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
                 : (SortDefaultOrder.TryGetValue(field, out var declared) ? declared : "asc");
             if (dir != "asc" && dir != "desc")
             {
-                await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_sort" });
+                await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_sort", ["field"] = field });
                 return;
             }
             sortField = field;
@@ -284,7 +287,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         FilterResult filter = ParseFilter(rawQuery);
         if (filter.Error is not null)
         {
-            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = filter.Error });
+            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = filter.Error, ["field"] = filter.Field });
             return;
         }
 
@@ -376,14 +379,14 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             }
 
             if (!FilterAllowlist.TryGetValue(field, out var rule))
-                return FilterResult.Err("invalid_filter_field");
+                return FilterResult.Err("invalid_filter_field", field);
             if (!rule.Ops.Contains(op))
-                return FilterResult.Err("invalid_filter_op");
+                return FilterResult.Err("invalid_filter_op", field);
             object? coerced = CoerceValue(value, rule.SubType, op);
             if (ReferenceEquals(coerced, InvalidValue))
-                return FilterResult.Err("invalid_filter_value");
+                return FilterResult.Err("invalid_filter_value", field);
             if (op == "in" && coerced is List<object?> inList && inList.Count > MaxInList)
-                return FilterResult.Err("filter.in_too_large");
+                return FilterResult.Err("filter.in_too_large", field);
             predicates.Add(new FilterPredicate(field, op, coerced));
         }
         return FilterResult.Ok(predicates);

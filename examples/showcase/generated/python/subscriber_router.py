@@ -10,6 +10,9 @@ from typing import Annotated, Any, Protocol
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
+from metaobjects.codegen.runtime.constraint_errors import (
+    classify_constraint_error,
+)
 from metaobjects.codegen.runtime.filter_parser import (
     FilterPredicate,
     parse_filter,
@@ -109,7 +112,10 @@ def list_subscribers(
     if sort is not None:
         sort_clause = _parse_sort(sort)
         if sort_clause is None:
-            return JSONResponse(status_code=400, content={"error": "invalid_sort"})
+            return JSONResponse(
+                status_code=400,
+                content={"error": "invalid_sort", "field": sort.split(":", 1)[0]},
+            )
     filter_result = parse_filter(
         request.query_params, SUBSCRIBER_FILTER_FIELDS, SUBSCRIBER_FILTER_OPS_BY_FIELD
     )
@@ -148,7 +154,13 @@ def create_subscriber(
     # #203/ADR-0045: stamp @autoSet columns (server-owned; caller ignored).
     _asnow = _dt.datetime.now(_dt.timezone.utc)
     dto["createdAt"] = _asnow
-    return repo.create(dto)
+    try:
+        return repo.create(dto)
+    except Exception as exc:
+        failure = classify_constraint_error(exc)
+        if failure is None:
+            raise
+        return JSONResponse(status_code=failure.status, content=failure.body())
 
 
 @router.patch("/{subscriber_id}")
@@ -171,7 +183,13 @@ def update_subscriber(
     except ValidationError:
         return JSONResponse(status_code=400, content={"error": "validation"})
     dto.pop("createdAt", None)  # onCreate @autoSet is write-once (server-owned)
-    saved = repo.update(subscriber_id, dto)
+    try:
+        saved = repo.update(subscriber_id, dto)
+    except Exception as exc:
+        failure = classify_constraint_error(exc)
+        if failure is None:
+            raise
+        return JSONResponse(status_code=failure.status, content=failure.body())
     if saved is None:
         return JSONResponse(status_code=404, content={"error": "not_found"})
     return saved
@@ -182,5 +200,12 @@ def delete_subscriber(
     subscriber_id: int,
     repo: Annotated[SubscriberRepository, Depends(get_repository)],
 ) -> None:
-    if not repo.delete(subscriber_id):
+    try:
+        deleted = repo.delete(subscriber_id)
+    except Exception as exc:
+        failure = classify_constraint_error(exc)
+        if failure is None:
+            raise
+        return JSONResponse(status_code=failure.status, content=failure.body())
+    if not deleted:
         return JSONResponse(status_code=404, content={"error": "not_found"})

@@ -10,7 +10,7 @@ import type {
   FilterAllowlist,
   SortAllowlist,
 } from "../drizzle-fastify/filter-allowlist.js";
-import { isTruthyFlag, coerceIdForColumn, rawIdLiteral } from "../drizzle-fastify/util.js";
+import { isTruthyFlag, coerceIdForColumn, rawIdLiteral, contractErrorCode } from "../drizzle-fastify/util.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -183,7 +183,9 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       return c.json({ rows, total });
     } catch (err) {
       if (err instanceof FilterParseError) {
-        return c.json({ error: err.code, message: err.message }, 400);
+        // Wire code + the details (so the cross-port-required `field` is present),
+        // matching the Fastify projection mount.
+        return c.json({ error: contractErrorCode(err.code), message: err.message, ...(err.details ?? {}) }, 400);
       }
       throw err;
     }

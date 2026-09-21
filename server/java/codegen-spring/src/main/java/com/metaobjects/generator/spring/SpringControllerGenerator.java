@@ -265,14 +265,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        if (sort != null) {\n");
         src.append("            sortClause = parseSort(sort);\n");
         src.append("            if (sortClause == null) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
+        // `field` names the rejected sort field — required on every cross-port
+        // invalid_sort envelope. `sort` is non-null in this branch and split()
+        // always yields at least one element, so the index is safe.
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
         src.append("            }\n");
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
            .append(allowlistName).append(".OPS_BY_FIELD);\n");
         src.append("        if (filter.error() != null) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error()));\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
         src.append("        List<FilterPredicate> filters = filter.predicates();\n");
         src.append("        List<").append(dtoName)
@@ -645,11 +648,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
         src.append("        if (sort != null) {\n");
         src.append("            sortClause = parseSort(sort);\n");
-        src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
+        src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
            .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD);\n");
-        src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error()));\n");
+        src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        List<FilterPredicate> filters = filter.predicates();\n");
         src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
         src.append("        if (withCount != null && withCount == 1) {\n");
@@ -710,11 +713,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
             src.append("        if (sort != null) {\n");
             src.append("            sortClause = parseSort(sort);\n");
-            src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
+            src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
             src.append("        }\n");
             src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
                .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD);\n");
-            src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error()));\n");
+            src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
             src.append("        return ResponseEntity.ok(repository.listByType(\"").append(disc)
                .append("\", actualLimit, actualOffset, sortClause, filter.predicates()));\n");
             src.append("    }\n\n");

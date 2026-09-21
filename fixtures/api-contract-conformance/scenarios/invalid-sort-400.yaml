@@ -2,7 +2,8 @@ name: invalid-sort-400
 description: >
   GET /api/authors?sort=unknownfield:asc — the field is not on the entity's
   sort allowlist — returns HTTP 400 with the cross-port invalid-sort error
-  envelope. Verifies the server-side sort allowlist gate.
+  envelope, naming the rejected field. Verifies the server-side sort
+  allowlist gate.
 requests:
   - id: r1
     method: GET
@@ -11,3 +12,4 @@ requests:
       status: 400
       body:
         error: "invalid_sort"
+        field: "unknownfield"

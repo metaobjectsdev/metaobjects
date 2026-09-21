@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import qs from "qs";
 import { parseFilterParams, likePatternToGlob, FilterParseError } from "../../src/drizzle-fastify/filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "../../src/drizzle-fastify/filter-allowlist.js";
+import { contractErrorCode } from "../../src/drizzle-fastify/util.js";
 
 // Minimal fake table — drizzle-orm operators just need column refs. We use plain
 // Symbols as the column identities since the parser only forwards them to
@@ -27,7 +28,7 @@ function collectSqlText(expr: unknown): string {
     .join("");
 }
 
-function expectFilterError(fn: () => unknown, expectedCode: string) {
+function expectFilterError(fn: () => unknown, expectedCode: string, expectedField?: string) {
   try {
     fn();
     throw new Error(`expected FilterParseError "${expectedCode}", got no error`);
@@ -36,6 +37,7 @@ function expectFilterError(fn: () => unknown, expectedCode: string) {
       throw new Error(`expected FilterParseError "${expectedCode}", got ${(e as Error)?.constructor?.name}: ${(e as Error)?.message}`);
     }
     expect(e.code).toBe(expectedCode);
+    if (expectedField !== undefined) expect(e.details?.["field"]).toBe(expectedField);
   }
 }
 const table = {
@@ -264,28 +266,28 @@ describe("parseFilterParams — error paths", () => {
     expectFilterError(() => parseFilterParams({
       query: parsedQs("?filter[notReal][eq]=x"),
       table, allowlist, sortAllowlist, dialect: "sqlite",
-    }), "filter.unknown_field");
+    }), "filter.unknown_field", "notReal");
   });
 
   test("disallowed op for subtype → throws", () => {
     expectFilterError(() => parseFilterParams({
       query: parsedQs("?filter[email][gte]=x"),
       table, allowlist, sortAllowlist, dialect: "sqlite",
-    }), "filter.unsupported_op");
+    }), "filter.unsupported_op", "email");
   });
 
   test("invalid number value → throws", () => {
     expectFilterError(() => parseFilterParams({
       query: parsedQs("?filter[id][eq]=notANumber"),
       table, allowlist, sortAllowlist, dialect: "sqlite",
-    }), "filter.invalid_value");
+    }), "filter.invalid_value", "id");
   });
 
   test("invalid boolean value → throws", () => {
     expectFilterError(() => parseFilterParams({
       query: parsedQs("?filter[subscribed][eq]=maybe"),
       table, allowlist, sortAllowlist, dialect: "sqlite",
-    }), "filter.invalid_value");
+    }), "filter.invalid_value", "subscribed");
   });
 
   test("in list too large → throws", () => {
@@ -317,13 +319,53 @@ describe("parseFilterParams — error paths", () => {
     expectFilterError(() => parseFilterParams({
       query: parsedQs("?sort=notReal:asc"),
       table, allowlist, sortAllowlist, dialect: "sqlite",
-    }), "sort.unknown_field");
+    }), "sort.unknown_field", "notReal");
   });
 
   test("invalid sort order → throws", () => {
     expectFilterError(() => parseFilterParams({
       query: parsedQs("?sort=email:bogus"),
       table, allowlist, sortAllowlist, dialect: "sqlite",
-    }), "sort.invalid_order");
+    }), "sort.invalid_order", "email");
+  });
+
+  // F20 — the cross-port invariant, asserted as a rule rather than per-case, so a
+  // NEW throw site on a contract-mapped code cannot ship without `field`. Every
+  // internal code that contractErrorCode() folds into invalid_filter_field /
+  // invalid_filter_op / invalid_filter_value / invalid_sort MUST carry it; the
+  // pass-through codes (nesting depth, in-list size, leading wildcard) need not.
+  test("every contract-mapped error carries `field`", () => {
+    const cases: { q: string; field: string }[] = [
+      { q: "?filter[notReal][eq]=x",                                    field: "notReal" },
+      { q: "?filter[email][gte]=x",                                     field: "email" },
+      { q: "?filter[id][eq]=notANumber",                                field: "id" },
+      { q: "?filter[subscribed][eq]=maybe",                             field: "subscribed" },
+      { q: "?sort=notReal:asc",                                         field: "notReal" },
+      { q: "?sort=email:bogus",                                         field: "email" },
+    ];
+    for (const { q, field } of cases) {
+      let thrown: FilterParseError | undefined;
+      try {
+        parseFilterParams({ query: parsedQs(q), table, allowlist, sortAllowlist, dialect: "sqlite" });
+      } catch (e) {
+        thrown = e as FilterParseError;
+      }
+      if (!thrown) throw new Error(`${q}: expected a FilterParseError`);
+      const wire = contractErrorCode(thrown.code);
+      expect(["invalid_filter_field", "invalid_filter_op", "invalid_filter_value", "invalid_sort"])
+        .toContain(wire);
+      if (thrown.details?.["field"] !== field) {
+        throw new Error(`${q} → ${wire}: expected field "${field}", got ${JSON.stringify(thrown.details?.["field"])}`);
+      }
+    }
+  });
+
+  // The `or`/`and` connector handed a non-array also maps to invalid_filter_value,
+  // so it names the offending key in `field` rather than a bespoke `key`.
+  test("malformed or/and connector reports the connector in `field`", () => {
+    expectFilterError(() => parseFilterParams({
+      query: { filter: { or: "not-an-array" } } as never,
+      table, allowlist, sortAllowlist, dialect: "sqlite",
+    }), "filter.invalid_value", "or");
   });
 });

@@ -65,14 +65,15 @@ private const val MAX_IN_LIST = 100
 /** GENERATED — single parsed + validated FR-009 filter predicate. */
 private data class AuthFilterPredicate(val field: String, val op: String, val value: Any?)
 
-/** GENERATED — parse outcome: either a list of predicates or a cross-port error envelope key. */
-private data class AuthFilterResult(val predicates: List<AuthFilterPredicate>, val error: String?)
+/** GENERATED — parse outcome: predicates, or a cross-port error envelope key + the field it rejected. */
+private data class AuthFilterResult(val predicates: List<AuthFilterPredicate>, val error: String?, val field: String? = null)
 
 /**
  * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded
  * {@code allParams} map. Returns either a list of validated predicates or one of
  * the cross-port error envelope keys ({@code invalid_filter_field /
- * invalid_filter_op / invalid_filter_value / filter.in_too_large}).
+ * invalid_filter_op / invalid_filter_value / filter.in_too_large}) plus the
+ * field each one is about.
  */
 private fun parseAuthFilter(allParams: Map<String, String>): AuthFilterResult {
     val out = mutableListOf<AuthFilterPredicate>()
@@ -91,14 +92,14 @@ private fun parseAuthFilter(allParams: Map<String, String>): AuthFilterResult {
             }
             else -> continue
         }
-        if (field !in AuthFilterAllowlist.FIELDS) return AuthFilterResult(emptyList(), "invalid_filter_field")
+        if (field !in AuthFilterAllowlist.FIELDS) return AuthFilterResult(emptyList(), "invalid_filter_field", field)
         val ops = AuthFilterAllowlist.OPS_BY_FIELD[field]
-        if (ops == null || op !in ops) return AuthFilterResult(emptyList(), "invalid_filter_op")
+        if (ops == null || op !in ops) return AuthFilterResult(emptyList(), "invalid_filter_op", field)
         val coerced = coerceAuthValue(field, op, value)
-            ?: return AuthFilterResult(emptyList(), "invalid_filter_value")
+            ?: return AuthFilterResult(emptyList(), "invalid_filter_value", field)
         val coercedValue = coerced.value
         if (op == "in" && coercedValue is List<*> && coercedValue.size > MAX_IN_LIST) {
-            return AuthFilterResult(emptyList(), "filter.in_too_large")
+            return AuthFilterResult(emptyList(), "filter.in_too_large", field)
         }
         out.add(AuthFilterPredicate(field, op, coercedValue))
     }
@@ -278,12 +279,12 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam allParams: Map<String, String>,
     ): ResponseEntity<Any> = transaction {
         val filterResult = parseAuthFilter(allParams)
-        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error) as Any)
+        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = if (whereOp != null) AuthTable.selectAll().where { whereOp } else AuthTable.selectAll()
         if (sort != null) {
             val parsed = parseAuthSort(sort)
-                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
+                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort", "field" to sort.substringBefore(':')) as Any)
             val (field, dir) = parsed
             q = q.orderBy(when (field) {
                 "id" -> AuthTable.id
@@ -314,7 +315,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam allParams: Map<String, String>,
     ): ResponseEntity<Any> = transaction {
         val filterResult = parseAuthFilter(allParams)
-        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error) as Any)
+        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {
             val d = AuthTable.type eq AuthType.Bridge
@@ -322,7 +323,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         }
         if (sort != null) {
             val parsed = parseAuthSort(sort)
-                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
+                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort", "field" to sort.substringBefore(':')) as Any)
             val (field, dir) = parsed
             q = q.orderBy(when (field) {
                 "id" -> AuthTable.id
@@ -399,7 +400,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam allParams: Map<String, String>,
     ): ResponseEntity<Any> = transaction {
         val filterResult = parseAuthFilter(allParams)
-        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error) as Any)
+        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {
             val d = AuthTable.type eq AuthType.Copay
@@ -407,7 +408,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         }
         if (sort != null) {
             val parsed = parseAuthSort(sort)
-                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
+                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort", "field" to sort.substringBefore(':')) as Any)
             val (field, dir) = parsed
             q = q.orderBy(when (field) {
                 "id" -> AuthTable.id
@@ -484,7 +485,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam allParams: Map<String, String>,
     ): ResponseEntity<Any> = transaction {
         val filterResult = parseAuthFilter(allParams)
-        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error) as Any)
+        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {
             val d = AuthTable.type eq AuthType.PriorAuth
@@ -492,7 +493,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         }
         if (sort != null) {
             val parsed = parseAuthSort(sort)
-                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort") as Any)
+                ?: return@transaction ResponseEntity.badRequest().body(mapOf("error" to "invalid_sort", "field" to sort.substringBefore(':')) as Any)
             val (field, dir) = parsed
             q = q.orderBy(when (field) {
                 "id" -> AuthTable.id

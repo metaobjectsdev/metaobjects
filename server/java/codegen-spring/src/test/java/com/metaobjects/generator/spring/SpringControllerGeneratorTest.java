@@ -159,9 +159,11 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         assertTrue("expected all four scalar fields in the sort allowlist; saw:\n" + src,
             src.contains("\"id\"") && src.contains("\"name\"")
                 && src.contains("\"bio\"") && src.contains("\"createdAt\""));
-        // The 400 envelope for invalid sort is `{ "error": "invalid_sort" }`.
-        assertTrue("expected invalid_sort 400 envelope; saw:\n" + src,
-            src.contains("\"invalid_sort\""));
+        // The 400 envelope for invalid sort is `{ "error": "invalid_sort", "field": <name> }` —
+        // `field` names the rejected sort field, required on every cross-port filter/sort
+        // envelope (docs/features/api-contract.md, "Error response").
+        assertTrue("expected invalid_sort 400 envelope naming the field; saw:\n" + src,
+            src.contains("Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0])"));
     }
 
     @Test
@@ -191,9 +193,11 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
             src.contains("FilterParser.parse(")
                 && src.contains("AuthorFilterAllowlist.FIELDS")
                 && src.contains("AuthorFilterAllowlist.OPS_BY_FIELD"));
-        // 400 envelope on parse failure mirrors the cross-port shape.
+        // 400 envelope on parse failure mirrors the cross-port shape — including
+        // `field`, which every filter envelope carries so a caller sending several
+        // filters knows which one was rejected.
         assertTrue("expected invalid_filter_* 400 envelope on parse failure; saw:\n" + src,
-            src.contains("Map.of(\"error\", filter.error())"));
+            src.contains("Map.of(\"error\", filter.error(), \"field\", filter.field())"));
         // Predicates must flow into BOTH list + count repository calls (the count
         // path is what powers ?withCount=1; same filter must apply to both).
         assertTrue("expected predicates passed into repository.list; saw:\n" + src,

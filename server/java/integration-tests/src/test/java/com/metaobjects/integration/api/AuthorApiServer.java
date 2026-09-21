@@ -77,9 +77,9 @@ final class AuthorApiServer implements AutoCloseable {
     private record FilterPredicate(String field, String op, Object value) {}
 
     /** Result of parsing filter params: either predicates or an error envelope key. */
-    private record FilterResult(List<FilterPredicate> predicates, String error) {
-        static FilterResult ok(List<FilterPredicate> ps) { return new FilterResult(ps, null); }
-        static FilterResult err(String e) { return new FilterResult(List.of(), e); }
+    private record FilterResult(List<FilterPredicate> predicates, String error, String field) {
+        static FilterResult ok(List<FilterPredicate> ps) { return new FilterResult(ps, null, null); }
+        static FilterResult err(String e, String field) { return new FilterResult(List.of(), e, field); }
     }
 
     private final PostgresContainer pg;
@@ -212,7 +212,7 @@ final class AuthorApiServer implements AutoCloseable {
             String[] parts = sortRaw.split(":", 2);
             String field = parts[0];
             if (!SORT_ALLOWLIST.contains(field)) {
-                sendJson(exchange, 400, Map.of("error", "invalid_sort"));
+                sendJson(exchange, 400, Map.of("error", "invalid_sort", "field", field));
                 return;
             }
             // No `:dir` supplied -> the named field's declared @sortableDefaultOrder, and
@@ -222,7 +222,7 @@ final class AuthorApiServer implements AutoCloseable {
                 ? parts[1].toLowerCase(Locale.ROOT)
                 : SORT_DEFAULT_ORDER.getOrDefault(field, "asc");
             if (!dir.equals("asc") && !dir.equals("desc")) {
-                sendJson(exchange, 400, Map.of("error", "invalid_sort"));
+                sendJson(exchange, 400, Map.of("error", "invalid_sort", "field", field));
                 return;
             }
             sortField = field;
@@ -239,7 +239,7 @@ final class AuthorApiServer implements AutoCloseable {
         String rawQuery = exchange.getRequestURI().getRawQuery();
         FilterResult filter = parseFilter(rawQuery == null ? "" : rawQuery);
         if (filter.error() != null) {
-            sendJson(exchange, 400, Map.of("error", filter.error()));
+            sendJson(exchange, 400, Map.of("error", filter.error(), "field", filter.field()));
             return;
         }
 
@@ -289,7 +289,7 @@ final class AuthorApiServer implements AutoCloseable {
      * raw URL query string. Validates each entry against {@link #FILTER_ALLOWLIST}
      * and coerces the value to the field's substrate type.
      *
-     * <p>Returns {@code FilterResult.err(envelope)} on the first failure (unknown
+     * <p>Returns {@code FilterResult.err(envelope, field)} on the first failure (unknown
      * field / disallowed op / invalid value coercion) so the controller can emit
      * the cross-port 400 envelope without partial-progress side-effects.</p>
      */
@@ -321,12 +321,12 @@ final class AuthorApiServer implements AutoCloseable {
                 continue;
             }
             FilterRule rule = FILTER_ALLOWLIST.get(field);
-            if (rule == null) return FilterResult.err("invalid_filter_field");
-            if (!rule.ops().contains(op)) return FilterResult.err("invalid_filter_op");
+            if (rule == null) return FilterResult.err("invalid_filter_field", field);
+            if (!rule.ops().contains(op)) return FilterResult.err("invalid_filter_op", field);
             Object coerced = coerceValue(value, rule.subType(), op);
-            if (coerced == INVALID_VALUE) return FilterResult.err("invalid_filter_value");
+            if (coerced == INVALID_VALUE) return FilterResult.err("invalid_filter_value", field);
             if (op.equals("in") && coerced instanceof List<?> inList && inList.size() > MAX_IN_LIST) {
-                return FilterResult.err("filter.in_too_large");
+                return FilterResult.err("filter.in_too_large", field);
             }
             out.add(new FilterPredicate(field, op, coerced));
         }

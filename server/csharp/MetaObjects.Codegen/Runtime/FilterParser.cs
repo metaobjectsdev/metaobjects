@@ -76,18 +76,18 @@ public static class FilterParser
             }
 
             if (!allowedFields.Contains(field))
-                return FilterParseResult.Err("invalid_filter_field");
+                return FilterParseResult.Err("invalid_filter_field", field);
             if (!opsByField.TryGetValue(field, out var ops) || !ops.Contains(op))
-                return FilterParseResult.Err("invalid_filter_op");
+                return FilterParseResult.Err("invalid_filter_op", field);
 
             // The ASP.NET parser already URL-decodes the value; take the first
             // for multi-value keys (the bracketed grammar always sends one).
             string raw = kvp.Value.Count > 0 ? (kvp.Value[0] ?? "") : "";
             object? coerced = CoerceValue(raw, op);
             if (ReferenceEquals(coerced, InvalidValue))
-                return FilterParseResult.Err("invalid_filter_value");
+                return FilterParseResult.Err("invalid_filter_value", field);
             if (op == "in" && coerced is List<string> list && list.Count > MaxInList)
-                return FilterParseResult.Err("filter.in_too_large");
+                return FilterParseResult.Err("filter.in_too_large", field);
 
             predicates.Add(new FilterPredicate(field, op, coerced));
         }

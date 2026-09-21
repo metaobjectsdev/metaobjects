@@ -18,15 +18,23 @@ namespace MetaObjects.Codegen.Runtime;
 /// <c>invalid_filter_op</c> / <c>invalid_filter_value</c>) on failure;
 /// <see langword="null"/> on success.
 /// </param>
+/// <param name="Field">
+/// The offending filter field on failure; <see langword="null"/> on success.
+/// REQUIRED on the wire for every contract envelope that is about a field
+/// (<c>invalid_filter_field</c> / <c>invalid_filter_op</c> /
+/// <c>invalid_filter_value</c>) — the caller must not have to guess which of
+/// several filters was rejected.
+/// </param>
 public sealed record FilterParseResult(
     System.Collections.Generic.IReadOnlyList<FilterPredicate> Predicates,
-    string? ErrorEnvelope)
+    string? ErrorEnvelope,
+    string? Field = null)
 {
     /// <summary>Success result with the given predicates (may be empty).</summary>
     public static FilterParseResult Ok(System.Collections.Generic.IReadOnlyList<FilterPredicate> predicates) =>
         new(predicates, null);
 
-    /// <summary>Failure result with the cross-port error envelope key.</summary>
-    public static FilterParseResult Err(string envelope) =>
-        new(System.Array.Empty<FilterPredicate>(), envelope);
+    /// <summary>Failure result with the cross-port error envelope key + offending field.</summary>
+    public static FilterParseResult Err(string envelope, string field) =>
+        new(System.Array.Empty<FilterPredicate>(), envelope, field);
 }

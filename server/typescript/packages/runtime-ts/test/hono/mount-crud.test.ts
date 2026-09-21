@@ -120,7 +120,9 @@ describe("Hono mountCrudRoutes — list", () => {
   test("disallowed op → 400 with structured error", async () => {
     const r = await get("/subscribers?filter[email][gte]=x");
     expect(r.status).toBe(400);
-    expect((r.body as { error: string }).error).toBe("filter.unsupported_op");
+    // The WIRE code, not the internal dotted one — the Hono mount is contracted to
+    // answer identically to the Fastify mount. `field` names the offending field.
+    expect(r.body as object).toMatchObject({ error: "invalid_filter_op", field: "email" });
   });
 
   test("like with leading wildcard blocked → 400", async () => {
@@ -134,7 +136,7 @@ describe("Hono mountCrudRoutes — list", () => {
   test("unknown filter field → 400", async () => {
     const r = await get("/subscribers?filter[notReal][eq]=x");
     expect(r.status).toBe(400);
-    expect((r.body as { error: string }).error).toBe("filter.unknown_field");
+    expect(r.body as object).toMatchObject({ error: "invalid_filter_field", field: "notReal" });
   });
 
   test("sort asc", async () => {

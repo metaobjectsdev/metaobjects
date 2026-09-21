@@ -30,7 +30,11 @@ fixtures/api-contract-conformance/
     ├── create-constraint-violation-400.yaml # FR-036 POST field-constraint → 400 {error:"validation"}
     ├── update-patch-and-put.yaml
     ├── update-constraint-violation-400.yaml # FR-036 PATCH present-value constraint → 400
+    ├── update-explicit-null-clears.yaml     # FR-035 tristate: explicit null clears; null on @required → 400
+    ├── update-partial-omitted-field-survives.yaml # a PATCH must not clobber a field it OMITS
     ├── patch-empty-noop.yaml       # FR-037 PATCH-5 a patch stripping to zero assignments is a no-op read-back
+    ├── writeonce-patch-stripped.yaml # FR-037 R1 @mutability:"writeOnce" — stripped on PATCH, never rejected
+    ├── autoset-patch.yaml          # #203 @autoSet — PATCH bumps onUpdate, leaves onCreate alone
     ├── delete-204-and-404.yaml
     ├── invalid-sort-400.yaml
     ├── filter-eq.yaml             # FR-009 filter operators
@@ -43,7 +47,8 @@ fixtures/api-contract-conformance/
     ├── filter-isnull-true.yaml
     ├── filter-and.yaml
     ├── filter-invalid-field.yaml
-    └── filter-invalid-op.yaml
+    ├── filter-invalid-op.yaml
+    └── filter-invalid-value.yaml   # uncoercible value → 400; the fourth envelope, previously ungated
 ```
 
 `meta.json` declares a single canonical `Author` entity in the `acme::blog`
@@ -119,8 +124,15 @@ sugar = `eq`). Coverage:
 | `filter-like` | `like` (SQL `%` wildcard, URL-encoded `%25`) | `?filter[name][like]=A%25` |
 | `filter-isnull-true` | `isNull=true` | `?filter[bio][isNull]=true` |
 | `filter-and` | implicit-AND combinator across multiple `filter[...]` params | `?filter[name][like]=A%25&filter[id][gt]=1` |
-| `filter-invalid-field` | error: unknown field → 400 `{"error":"invalid_filter_field"}` | `?filter[unknown][eq]=x` |
-| `filter-invalid-op` | error: op-subtype mismatch → 400 `{"error":"invalid_filter_op"}` | `?filter[name][gt]=Ada` |
+| `filter-invalid-field` | error: unknown field → 400 `{"error":"invalid_filter_field","field":"unknown"}` | `?filter[unknown][eq]=x` |
+| `filter-invalid-op` | error: op-subtype mismatch → 400 `{"error":"invalid_filter_op","field":"name"}` | `?filter[name][gt]=Ada` |
+| `filter-invalid-value` | error: uncoercible value → 400 `{"error":"invalid_filter_value","field":"bio"}` | `?filter[bio][isNull]=maybe` |
+
+Every filter/sort error envelope carries **`field`**, naming what was rejected
+(see `docs/features/api-contract.md` → "Error response"). It is asserted here
+rather than left optional because a member the corpus can neither require nor
+forbid drifts silently: before this, one port sent it and four did not, and the
+subset-matching assertions passed either way.
 
 `gte` and `lte` are derivable from `gt`/`lt` + boundary value; the corpus pins
 the 9 listed above to keep the matrix focused. Per the cross-port operator-

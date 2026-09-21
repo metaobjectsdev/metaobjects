@@ -148,8 +148,8 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
   fastify.get(ROUTE_BASE, async (req, reply) => {
     const qs = req.query as Record<string, string | undefined>;
     const sort = parseSort(qs["sort"]);
-    if (sort === "invalid") {
-      reply.code(400).send({ error: "invalid_sort" });
+    if (sort !== null && "invalid" in sort) {
+      reply.code(400).send({ error: "invalid_sort", field: sort.field });
       return reply;
     }
 
@@ -158,7 +158,7 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     // raw URL search string ourselves. Returns { error } on validation failure.
     const filterResult = parseFilterFromUrl(req.url);
     if ("error" in filterResult) {
-      reply.code(400).send({ error: filterResult.error });
+      reply.code(400).send({ error: filterResult.error, field: filterResult.field });
       return reply;
     }
 
@@ -298,7 +298,12 @@ const MAX_IN_LIST = 100;
 
 function parseFilterFromUrl(
   url: string,
-): { filter: Filter | undefined } | { error: "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" | "filter.in_too_large" } {
+):
+  | { filter: Filter | undefined }
+  | {
+      error: "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" | "filter.in_too_large";
+      field: string;
+    } {
   const qIdx = url.indexOf("?");
   if (qIdx === -1) return { filter: undefined };
   const search = url.slice(qIdx + 1);
@@ -325,12 +330,12 @@ function parseFilterFromUrl(
   const subFilters: Filter[] = [];
   for (const e of entries) {
     const rule = FILTER_ALLOWLIST[e.field];
-    if (!rule) return { error: "invalid_filter_field" };
-    if (!rule.ops.has(e.op)) return { error: "invalid_filter_op" };
+    if (!rule) return { error: "invalid_filter_field", field: e.field };
+    if (!rule.ops.has(e.op)) return { error: "invalid_filter_op", field: e.field };
     const coerced = coerceFilterValue(e.value, rule.subType, e.op);
-    if (coerced === INVALID) return { error: "invalid_filter_value" };
+    if (coerced === INVALID) return { error: "invalid_filter_value", field: e.field };
     if (e.op === "in" && Array.isArray(coerced) && coerced.length > MAX_IN_LIST) {
-      return { error: "filter.in_too_large" };
+      return { error: "filter.in_too_large", field: e.field };
     }
     subFilters.push({ [e.field]: { [`$${e.op}`]: coerced } } as Filter);
   }
@@ -381,17 +386,21 @@ function coerceFilterValue(
 /**
  * Parse a `?sort=<field>:<dir>` value.
  *   - `null` → no sort param present
- *   - `"invalid"` sentinel → the field/dir is malformed or off-allowlist
+ *   - `{ invalid: true, field }` → the field/dir is malformed or off-allowlist;
+ *     `field` is what the 400 `invalid_sort` envelope must name (it is required
+ *     cross-port — see docs/features/api-contract.md, "Error response")
  *   - `[field, dir]` → valid
  */
-function parseSort(raw: string | undefined): [string, "asc" | "desc"] | null | "invalid" {
+function parseSort(
+  raw: string | undefined,
+): [string, "asc" | "desc"] | null | { invalid: true; field: string } {
   if (raw === undefined || raw === "") return null;
   const [field, dirRaw] = raw.split(":", 2);
-  if (!field || !SORT_ALLOWLIST.has(field)) return "invalid";
+  if (!field || !SORT_ALLOWLIST.has(field)) return { invalid: true, field: field ?? "" };
   // No `:dir` supplied → the named field's declared @sortableDefaultOrder; "asc" when it
   // declares none. The explicit branch is untouched, so a caller-supplied order always
   // beats the declaration.
   const dir = (dirRaw ?? SORT_DEFAULT_ORDER[field] ?? "asc").toLowerCase();
-  if (dir !== "asc" && dir !== "desc") return "invalid";
+  if (dir !== "asc" && dir !== "desc") return { invalid: true, field };
   return [field, dir];
 }

@@ -201,7 +201,9 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       return { rows, total };
     } catch (err) {
       if (err instanceof FilterParseError) {
-        reply.code(400).send({ error: contractErrorCode(err.code), message: err.message });
+        // Spread the details so the cross-port-required `field` reaches the wire on a
+        // projection route too (F20) — the writable mount already does this.
+        reply.code(400).send({ error: contractErrorCode(err.code), message: err.message, ...(err.details ?? {}) });
         return;
       }
       throw err;

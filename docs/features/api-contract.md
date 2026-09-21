@@ -289,15 +289,37 @@ Non-2xx responses MUST return:
 { "error": "<short_code>", "message": "<optional human string>" }
 ```
 
-- HTTP 400 — validation / filter-parser errors (`{ "error": "validation", "issues": [...] }`
-  in TS; `{ "error": "FILTER_UNKNOWN_FIELD", ... }` for filter
-  errors).
+- HTTP 400 — validation and filter/sort-parser errors.
 - HTTP 404 — `{ "error": "not_found" }`.
+- HTTP 409 — a declared constraint conflicting with existing state (a uniqueness or referential violation); a constraint rejecting the request's own value stays a 400.
 - HTTP 5xx — implementation-defined.
 
-The exact `error` code vocabulary is not yet a hard cross-port
-invariant; consumers should treat any 4xx as user-facing and any 5xx as
-retryable / log-only.
+#### Filter and sort errors name the field
+
+These four codes are a hard cross-port invariant, and each one MUST carry
+**`field`** — the filter or sort field the request was rejected for:
+
+| `error` | Raised when | Example |
+|---|---|---|
+| `invalid_filter_field` | the field is not on the entity's filter allowlist | `{ "error": "invalid_filter_field", "field": "unknown" }` |
+| `invalid_filter_op` | the operator is not valid for that field's subtype | `{ "error": "invalid_filter_op", "field": "name" }` |
+| `invalid_filter_value` | the value will not coerce for that field and operator | `{ "error": "invalid_filter_value", "field": "bio" }` |
+| `invalid_sort` | the sort field is off the sort allowlist, or the order is not `asc`/`desc` | `{ "error": "invalid_sort", "field": "unknownfield" }` |
+
+`field` is REQUIRED, not optional. An optional member is un-gateable — the
+corpus can neither require nor forbid it — which is exactly how one port came
+to send it while four did not, invisibly, for several releases. A code that is
+*not* about a particular field (an implementation-specific guard such as filter
+nesting depth or in-list size) carries no `field`, and those guards are outside
+this contract: a port may emit them under its own code.
+
+Responses may carry additional diagnostic members beyond `field` (TS adds `op`,
+`expected` and the allowlist); a consumer must tolerate them. Gated by
+`fixtures/api-contract-conformance/scenarios/filter-invalid-*.yaml` and
+`invalid-sort-400.yaml` in both the reference and generated lanes of every port.
+
+Outside those four, treat any 4xx as user-facing and any 5xx as retryable /
+log-only.
 
 ## Per-port route codegen status
 

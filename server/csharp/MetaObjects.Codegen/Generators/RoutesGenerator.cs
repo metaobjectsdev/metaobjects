@@ -167,7 +167,9 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
         sb.AppendLine($"            var filter = FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField);");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null)");
-        sb.AppendLine("                return Results.BadRequest(new { error = filter.ErrorEnvelope });");
+        // `field` names the rejected filter field — required cross-port on every
+        // filter envelope, so a caller with several filters knows which one failed.
+        sb.AppendLine("                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
         sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
         sb.AppendLine();
         sb.AppendLine("            // Sort: ?sort=field:asc|desc against the static allowlist.");
@@ -176,7 +178,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
         sb.AppendLine("                var field = parts[0];");
         sb.AppendLine("                if (!SortAllowlist.TryGetValue(field, out var resolved))");
-        sb.AppendLine("                    return Results.BadRequest(new { error = \"invalid_sort\" });");
+        sb.AppendLine("                    return Results.BadRequest(new { error = \"invalid_sort\", field });");
         // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
         // Keyed on `resolved` — the allowlist's canonical Pascal spelling — so a
         // case-insensitive wire name still finds its declaration. Ascending stays the
@@ -414,12 +416,12 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var qs = http.Request.Query;");
         sb.AppendLine($"            IQueryable<{baseCls}> q = db.{dbSet}.AsNoTracking();");
         sb.AppendLine($"            var filter = FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField);");
-        sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope });");
+        sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
         sb.AppendLine("            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
-        sb.AppendLine("                if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = \"invalid_sort\" });");
+        sb.AppendLine("                if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = \"invalid_sort\", field = parts[0] });");
         sb.AppendLine("                var desc = parts.Length > 1");
         sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
         sb.AppendLine("                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
@@ -972,12 +974,12 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var qs = http.Request.Query;");
         sb.AppendLine($"            IQueryable<{subCls}> q = db.{dbSet}.OfType<{subCls}>().AsNoTracking();");
         sb.AppendLine($"            var filter = FilterParser.Parse(qs, {subCls}FilterAllowlist.Fields, {subCls}FilterAllowlist.OpsByField);");
-        sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope });");
+        sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
         sb.AppendLine("            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
-        sb.AppendLine($"                if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\" }});");
+        sb.AppendLine($"                if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\", field = parts[0] }});");
         sb.AppendLine("                var desc = parts.Length > 1");
         sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
         sb.AppendLine($"                    : {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");

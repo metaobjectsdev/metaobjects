@@ -92,13 +92,13 @@ public final class FilterParser {
                 continue;
             }
 
-            if (!allowedFields.contains(field)) return FilterParseResult.err("invalid_filter_field");
+            if (!allowedFields.contains(field)) return FilterParseResult.err("invalid_filter_field", field);
             Set<String> ops = opsByField.get(field);
-            if (ops == null || !ops.contains(op)) return FilterParseResult.err("invalid_filter_op");
+            if (ops == null || !ops.contains(op)) return FilterParseResult.err("invalid_filter_op", field);
             Object coerced = coerceValue(value, op);
-            if (coerced == INVALID_VALUE) return FilterParseResult.err("invalid_filter_value");
+            if (coerced == INVALID_VALUE) return FilterParseResult.err("invalid_filter_value", field);
             if (op.equals("in") && coerced instanceof List<?> list && list.size() > MAX_IN_LIST) {
-                return FilterParseResult.err("filter.in_too_large");
+                return FilterParseResult.err("filter.in_too_large", field);
             }
             out.add(new FilterPredicate(field, op, coerced));
         }

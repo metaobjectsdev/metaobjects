@@ -34,7 +34,7 @@ public static class SubscriberRoutes
             // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.
             var filter = FilterParser.Parse(qs, SubscriberFilterAllowlist.Fields, SubscriberFilterAllowlist.OpsByField);
             if (filter.ErrorEnvelope is not null)
-                return Results.BadRequest(new { error = filter.ErrorEnvelope });
+                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
             q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
 
             // Sort: ?sort=field:asc|desc against the static allowlist.
@@ -43,7 +43,7 @@ public static class SubscriberRoutes
                 var parts = sortRaw.ToString().Split(':', 2);
                 var field = parts[0];
                 if (!SortAllowlist.TryGetValue(field, out var resolved))
-                    return Results.BadRequest(new { error = "invalid_sort" });
+                    return Results.BadRequest(new { error = "invalid_sort", field });
                 var desc = parts.Length > 1
                     ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
                     : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
@@ -94,7 +94,15 @@ public static class SubscriberRoutes
                 return Results.BadRequest(new { error = "validation" });
             input.CreatedAt = System.DateTimeOffset.UtcNow;
             db.Subscribers.Add(input);
-            await db.SaveChangesAsync();
+            try { await db.SaveChangesAsync(); }
+            catch (System.Exception __saveError)
+            {
+                if (ConstraintErrors.Classify(__saveError) is { } __constraint)
+                    return Results.Json(
+                        new { error = __constraint.Error, constraint = __constraint.Constraint },
+                        statusCode: __constraint.Status);
+                throw;
+            }
             return Results.Created(prefix + "/subscribers", input);
         });
 
@@ -136,7 +144,15 @@ public static class SubscriberRoutes
                     return Results.BadRequest(new { error = "validation" });
                 entry.CurrentValues[target] = __val;
             }
-            await db.SaveChangesAsync();
+            try { await db.SaveChangesAsync(); }
+            catch (System.Exception __saveError)
+            {
+                if (ConstraintErrors.Classify(__saveError) is { } __constraint)
+                    return Results.Json(
+                        new { error = __constraint.Error, constraint = __constraint.Constraint },
+                        statusCode: __constraint.Status);
+                throw;
+            }
             return Results.Ok(existing);
         }
         app.MapPatch(prefix + "/subscribers/{id}", UpdateSubscriber);
@@ -147,7 +163,15 @@ public static class SubscriberRoutes
             var existing = await db.Subscribers.FindAsync(id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             db.Subscribers.Remove(existing);
-            await db.SaveChangesAsync();
+            try { await db.SaveChangesAsync(); }
+            catch (System.Exception __saveError)
+            {
+                if (ConstraintErrors.Classify(__saveError) is { } __constraint)
+                    return Results.Json(
+                        new { error = __constraint.Error, constraint = __constraint.Constraint },
+                        statusCode: __constraint.Status);
+                throw;
+            }
             return Results.NoContent();
         });
 

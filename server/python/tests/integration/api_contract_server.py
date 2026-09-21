@@ -133,13 +133,16 @@ def _coerce_scalar(raw: str, sub_type: str) -> Any:
     return _INVALID_COERCION
 
 
-def _build_where(predicates: list[FilterPredicate]) -> tuple[str, list[Any], str | None]:
+def _build_where(
+    predicates: list[FilterPredicate],
+) -> tuple[str, list[Any], dict[str, str] | None]:
     """Build a `" WHERE ..."` clause + bound params from `predicates`.
 
-    Returns `(sql_fragment, bind_params, error_envelope_key)`. On a
-    coercion failure (numeric-op on non-numeric URL value), returns
-    `("", [], "invalid_filter_value")` so the caller can emit the
-    cross-port 400 envelope. Multiple predicates AND together.
+    Returns `(sql_fragment, bind_params, error_envelope)`. On a coercion
+    failure (numeric-op on non-numeric URL value), returns the cross-port
+    400 envelope — which names the offending `field`, so a caller sending
+    several filters knows which one was rejected. Multiple predicates AND
+    together.
     """
     if not predicates:
         return "", [], None
@@ -159,7 +162,7 @@ def _build_where(predicates: list[FilterPredicate]) -> tuple[str, list[Any], str
             for raw in value:
                 c = _coerce_scalar(raw, sub_type)
                 if c is _INVALID_COERCION:
-                    return "", [], "invalid_filter_value"
+                    return "", [], {"error": "invalid_filter_value", "field": p.field}
                 coerced.append(c)
             placeholders = ", ".join(["%s"] * len(coerced))
             sql_parts.append(f"{col} IN ({placeholders})")
@@ -168,10 +171,10 @@ def _build_where(predicates: list[FilterPredicate]) -> tuple[str, list[Any], str
         # eq / ne / gt / gte / lt / lte / like → single scalar bind.
         scalar = _coerce_scalar(str(value), sub_type)
         if scalar is _INVALID_COERCION:
-            return "", [], "invalid_filter_value"
+            return "", [], {"error": "invalid_filter_value", "field": p.field}
         sql_op = _SCALAR_OP_SQL.get(op)
         if sql_op is None:
-            return "", [], "invalid_filter_value"
+            return "", [], {"error": "invalid_filter_value", "field": p.field}
         sql_parts.append(f"{col} {sql_op} %s")
         params.append(scalar)
     return " WHERE " + " AND ".join(sql_parts), params, None
@@ -453,7 +456,9 @@ def make_app(repo: AuthorRepository) -> FastAPI:
             parts = sort.split(":", 1)
             field = parts[0]
             if field not in _SORT_ALLOWLIST:
-                return JSONResponse(status_code=400, content={"error": "invalid_sort"})
+                return JSONResponse(
+                    status_code=400, content={"error": "invalid_sort", "field": field}
+                )
             # No `:dir` supplied -> the named field's declared @sortableDefaultOrder, and
             # "asc" when it declares none. The explicit branch is untouched, so a
             # caller-supplied order always beats the declaration.
@@ -462,7 +467,9 @@ def make_app(repo: AuthorRepository) -> FastAPI:
                 else _SORT_DEFAULT_ORDER.get(field, "asc")
             )
             if direction not in ("asc", "desc"):
-                return JSONResponse(status_code=400, content={"error": "invalid_sort"})
+                return JSONResponse(
+                    status_code=400, content={"error": "invalid_sort", "field": field}
+                )
             sort_field, sort_dir = field, direction.upper()
         # FR-009: parse `filter[<field>][<op>]=<value>` from the raw query
         # params via the shared codegen-runtime helper, then coerce to a
@@ -475,7 +482,7 @@ def make_app(repo: AuthorRepository) -> FastAPI:
             return JSONResponse(status_code=400, content=filter_result.error_envelope)
         where_clause, where_params, where_err = _build_where(filter_result.predicates)
         if where_err is not None:
-            return JSONResponse(status_code=400, content={"error": where_err})
+            return JSONResponse(status_code=400, content=where_err)
         rows = repo.list(limit, actual_offset, sort_field, sort_dir, where_clause, where_params)
         if withCount == 1:
             return {"rows": rows, "total": repo.count(where_clause, where_params)}

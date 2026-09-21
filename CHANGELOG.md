@@ -15,6 +15,40 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Changed
 
+- **The filter/sort 400 envelope now NAMES the rejected field, in every port — `field` is
+  REQUIRED, not optional.** `invalid_filter_field`, `invalid_filter_op`,
+  `invalid_filter_value` and `invalid_sort` each carry
+  `{"error": "<code>", "field": "<name>"}`. Before this, TypeScript sent `field` and the
+  other four ports did not, and nobody could tell: every api-contract corpus assertion is a
+  deep-SUBSET match, so TS's extra key passed a corpus the other four satisfied without it.
+  **That is the actual defect being fixed — an "optional" member is un-gateable.** The
+  corpus can neither require nor forbid it, so the divergence was permanent and invisible
+  rather than merely undecided. Ruled additive: adding the key is PATCH-safe and names what
+  was rejected, where deleting it from TS would be breaking and would lose a diagnostic.
+
+  **Consumers gain a member and lose nothing** — no existing key changed and no status code
+  moved. **Adopters with committed generated code should run `meta gen`** (`dotnet meta gen`
+  / `mvn metaobjects:generate` / `metaobjects gen`): C#, Java, Kotlin and Python all emit a
+  changed list handler, and the JVM/C# `FilterParseResult` gains a `field` member (`err(...)`
+  / `Err(...)` now take it, so a hand-written caller of that runtime type needs one edit).
+  TypeScript needs no regen — its routes delegate to `@metaobjectsdev/runtime-ts`.
+
+  Gated, not just shipped: `fixtures/api-contract-conformance/scenarios/` asserts `field` on
+  all four codes, in both the reference and generated lanes of all five ports, and a new
+  `filter-invalid-value` scenario covers the one code no scenario reached before (it uses
+  `?filter[<f>][isNull]=maybe`, the one operator whose value every port coerces in its own
+  parser). A code that is *not* about a field — filter nesting depth, in-list size — carries
+  no `field` and stays outside the contract.
+
+- **`@metaobjectsdev/runtime-ts`'s Hono mounts now emit the cross-port wire code, as the
+  Fastify mounts always did.** They were sending the library's INTERNAL dotted code, so the
+  same metadata answered `{"error":"filter.unknown_field"}` on Hono and
+  `{"error":"invalid_filter_field"}` on Fastify — contradicting this package's own
+  documented guarantee that the two flavors are byte-identical on the wire. Found while
+  implementing the `field` change above. The projection (read-only) mounts on both flavors
+  also now include the parser's details, so a view endpoint names the field too.
+
+
 - **BREAKING (metadata): a M:N junction that cannot be PAIRED is now a load error in every
   port — previously-loading metadata stops loading.** `@through` has always been documented
   as a junction declaring "two `identity.reference` children, **one per FK side**", but the

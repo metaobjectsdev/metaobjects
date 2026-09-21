@@ -131,8 +131,8 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
 
     private fun listAuthors(exchange: HttpExchange, qs: Map<String, String>, rawQuery: String) {
         val sort = parseSort(qs["sort"])
-        if (sort == InvalidSort) {
-            sendJson(exchange, 400, mapOf("error" to "invalid_sort"))
+        if (sort is InvalidSort) {
+            sendJson(exchange, 400, mapOf("error" to "invalid_sort", "field" to sort.field))
             return
         }
         // FR-009 filter operators — parse the bracketed-qs grammar from the raw
@@ -141,7 +141,7 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         // cross-port 400 envelope on invalid_filter_*.
         val filter = parseFilter(rawQuery)
         if (filter.error != null) {
-            sendJson(exchange, 400, mapOf("error" to filter.error))
+            sendJson(exchange, 400, mapOf("error" to filter.error, "field" to filter.field))
             return
         }
         val limit = qs["limit"]?.toIntOrNull()
@@ -332,8 +332,8 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     private fun parseSort(raw: String?): Any? {
         if (raw.isNullOrEmpty()) return null
         val parts = raw.split(":", limit = 2)
-        val field = parts.getOrNull(0) ?: return InvalidSort
-        if (field !in SORT_ALLOWLIST) return InvalidSort
+        val field = parts.getOrNull(0) ?: return InvalidSort("")
+        if (field !in SORT_ALLOWLIST) return InvalidSort(field)
         // No `:dir` supplied -> the named field's declared @sortableDefaultOrder, and
         // "asc" when it declares none. The explicit branch is untouched, so a
         // caller-supplied order always beats the declaration.
@@ -341,7 +341,7 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
             ?: SORT_DEFAULT_ORDER[field] ?: "asc").lowercase()) {
             "asc" -> SortOrder.ASC
             "desc" -> SortOrder.DESC
-            else -> return InvalidSort
+            else -> return InvalidSort(field)
         }
         return ValidSort(field, dir)
     }
@@ -356,7 +356,8 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     private fun formatInstant(instant: Instant): String =
         TIMESTAMP_FMT.format(instant.atOffset(ZoneOffset.UTC)) + "Z"
 
-    private object InvalidSort
+    /** Rejected sort spec — carries the field so the 400 envelope can name it. */
+    private data class InvalidSort(val field: String)
     private data class ValidSort(val field: String, val dir: SortOrder)
 
     // -----------------------------------------------------------------------
@@ -373,7 +374,7 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     private data class FilterPredicate(val field: String, val op: String, val value: Any?)
 
     /** Outcome of [parseFilter]: predicates or one of the cross-port error envelope keys. */
-    private data class FilterResult(val predicates: List<FilterPredicate>, val error: String?)
+    private data class FilterResult(val predicates: List<FilterPredicate>, val error: String?, val field: String? = null)
 
     /**
      * Parse the bracketed-qs filter grammar `filter[<field>][<op>]=<value>` (with
@@ -407,12 +408,12 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 }
                 else -> continue
             }
-            val rule = FILTER_ALLOWLIST[field] ?: return FilterResult(emptyList(), "invalid_filter_field")
-            if (op !in rule.ops) return FilterResult(emptyList(), "invalid_filter_op")
+            val rule = FILTER_ALLOWLIST[field] ?: return FilterResult(emptyList(), "invalid_filter_field", field)
+            if (op !in rule.ops) return FilterResult(emptyList(), "invalid_filter_op", field)
             val coerced = coerceValue(value, rule.subType, op)
-                ?: return FilterResult(emptyList(), "invalid_filter_value")
+                ?: return FilterResult(emptyList(), "invalid_filter_value", field)
             if (op == "in" && coerced is List<*> && coerced.size > MAX_IN_LIST) {
-                return FilterResult(emptyList(), "filter.in_too_large")
+                return FilterResult(emptyList(), "filter.in_too_large", field)
             }
             out.add(FilterPredicate(field, op, coerced))
         }
