@@ -116,6 +116,39 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Added
 
+- **`GET /_meta` — a per-port metadata endpoint contract, plus a browser read-model that
+  consumes it.** Every backend can now serve its loaded model as a single
+  `GET {apiPrefix}/_meta` document: the response body is that port's **effective**
+  canonical JSON (the super-chain merge already materialized) — the same serialization
+  each port's metadata conformance corpus already pins, never the raw form, so a browser
+  reader never has to resolve `extends` itself (per ADR-0039, an own-vs-resolving mistake
+  there silently drops inherited `@columns`/`@pageSize`/`@sortableDefaultOrder`). Each port
+  ships a thin, framework-free helper alongside its own `META_ROUTE_PATH` constant
+  (`"/_meta"`): TypeScript's `metaJson(root)` (`@metaobjectsdev/runtime-ts`), C#'s
+  `MetaEndpoint.MetaJson(MetaData root)`, Java's `MetaEndpoint.metaJson(MetaData root)`
+  (reachable from Kotlin through the `metadata-ktx` facade), and Python's `meta_json(root)`.
+  **Only TypeScript ships an HTTP mount** — `mountMetaRoute` (Fastify) and
+  `mountMetaRouteHono` (Hono), both in `@metaobjectsdev/runtime-ts`: it is the only port
+  with a web-bound runtime home, and adding a web-framework dependency to a runtime package
+  for one endpoint would push that dependency onto every consumer of the package, including
+  ones with no HTTP surface at all — every other port's helper is mounted by the host.
+  Mounting is opt-in everywhere; nothing registers the route implicitly, and `/_meta`
+  should sit behind whatever auth the rest of the API uses, since it discloses the model's
+  shape (entities, fields, types, validators, layouts — never row data).
+
+  On the browser side, `@metaobjectsdev/runtime-web` ships `loadMetaModel()`, a plain
+  structural reader (no registry, no validation, no `extends` resolution) that turns a
+  fetched `/_meta` document into the narrow `MetaRead` / `MetaFieldRead` / `MetaLayoutRead`
+  / `MetaModelRead` surface the existing `buildGrid()` already consumes — so a grid built
+  from a live document and one built from a real loaded `MetaObject` produce byte-identical
+  output, gated by a parity suite that runs `buildGrid()` over both. Two TypeScript barrels
+  widened to support it: the `@metaobjectsdev/metadata` package root now exports
+  `canonicalSerializeEffective`, and its browser-safe `/constants` subpath now re-exports
+  `shared/base-types` and `shared/structural` as well.
+
+  See `docs/features/metadata-api.md` for the full contract, per-port code samples, and the
+  browser-consumption walkthrough.
+
 - **Independent checks and a feature-combination gate (TypeScript, real Postgres).** Every
   corpus was green while the first real application found nine defects, each where two
   features meet, and two of them were invisible by construction: `meta verify --db` diffs

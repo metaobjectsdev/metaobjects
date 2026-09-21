@@ -30,17 +30,7 @@ public class MetaEndpointTests
         // This fixture has a BaseEntity with inherited fields (id, createdAt)
         // and a Subscriber that extends it, allowing us to verify the effective
         // serialization materializes the super-chain merge.
-        // Walk up from AppContext.BaseDirectory to find fixtures/conformance/
-        string root = System.AppContext.BaseDirectory;
-        while (!System.IO.Directory.Exists(System.IO.Path.Combine(root, "fixtures", "conformance")))
-        {
-            var parent = System.IO.Directory.GetParent(root)?.FullName;
-            if (parent is null || parent == root)
-                throw new System.InvalidOperationException("fixtures/conformance not found walking up from " + System.AppContext.BaseDirectory);
-            root = parent;
-        }
-
-        var fixtureDir = System.IO.Path.Combine(root, "fixtures", "conformance", "extends-abstract-base", "input");
+        var fixtureDir = System.IO.Path.Combine(CorpusRoot.Path, "extends-abstract-base", "input");
         return MetaDataLoader.FromDirectory(fixtureDir);
     }
 }
