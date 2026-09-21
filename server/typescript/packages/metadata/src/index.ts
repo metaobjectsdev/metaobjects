@@ -240,7 +240,7 @@ export type { ParseOptions, ParseResult } from "./parser-core.js";
 export { parseJson } from "./parser-json.js";
 
 // Serializer
-export { serializeJson, canonicalSerialize, serializeSharedDocument, inferAttrSubType } from "./serializer-json.js";
+export { serializeJson, canonicalSerialize, canonicalSerializeEffective, serializeSharedDocument, inferAttrSubType } from "./serializer-json.js";
 export type { SerializeOptions } from "./serializer-json.js";
 
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)

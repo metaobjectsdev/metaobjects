@@ -48,3 +48,6 @@ export {
   type ConstraintKind,
   type ConstraintFailure,
 } from "./constraint-errors.js";
+
+// UI-1 — metadata API contract for the browser read-model.
+export { META_ROUTE_PATH, metaJson } from "./meta-endpoint.js";
