@@ -38,22 +38,40 @@ const METADATA_CONSTANTS = join(
   PKG_ROOT, "..", "..", "..", "..", "server", "typescript", "packages", "metadata", "dist", "constants.js",
 );
 
+type BundleResult = { ok: boolean; message: string; code: string };
+
+// Bun's bundler races (a spurious "Unexpected reading file" against an unrelated
+// node_modules package) when this file issues more than a handful of independent
+// `Bun.build()` calls while the full package suite runs concurrently with other test
+// files — this is what broke the suite the first time a 4th build was added here (#287
+// follow-up). Memoize by entry path so multiple tests asserting on the SAME entry share
+// one real build instead of each triggering a fresh one.
+const bundleCache = new Map<string, Promise<BundleResult>>();
+
 /** Bundle `entry` for the browser via Bun's bundler; resolve the failure text and code output. */
-async function browserBundle(entry: string): Promise<{ ok: boolean; message: string; code: string }> {
-  const built = await Bun.build({ entrypoints: [entry], target: "browser", throw: false });
-  let code = "";
-  if (built.success && built.outputs.length > 0) {
-    try {
-      code = await built.outputs[0]!.text();
-    } catch {
-      // Failed to read output; code stays empty
+function browserBundle(entry: string): Promise<BundleResult> {
+  const cached = bundleCache.get(entry);
+  if (cached) return cached;
+
+  const promise = (async (): Promise<BundleResult> => {
+    const built = await Bun.build({ entrypoints: [entry], target: "browser", throw: false });
+    let code = "";
+    if (built.success && built.outputs.length > 0) {
+      try {
+        code = await built.outputs[0]!.text();
+      } catch {
+        // Failed to read output; code stays empty
+      }
     }
-  }
-  return {
-    ok: built.success,
-    message: built.logs.map((l) => String(l)).join("\n"),
-    code,
-  };
+    return {
+      ok: built.success,
+      message: built.logs.map((l) => String(l)).join("\n"),
+      code,
+    };
+  })();
+
+  bundleCache.set(entry, promise);
+  return promise;
 }
 
 describe("#287 — browser bundleability", () => {
@@ -100,5 +118,16 @@ describe("#287 — browser bundleability", () => {
     if (!existsSync(root)) return; // metadata not built in this run — nothing to assert
     const { ok } = await browserBundle(root);
     expect(ok).toBe(false);
+  });
+
+  test("loadMetaModel is reachable in a browser bundle", async () => {
+    // load-meta-model.ts imports its metamodel constants from
+    // `@metaobjectsdev/metadata/constants`, not the package root. If that import were ever
+    // repointed at the root, the root barrel would pull in `MetaDataLoader` ->
+    // `library-sources.ts` -> `node:url`, and this bundle would fail exactly like #287 did.
+    const { ok, code } = await browserBundle(DIST_ENTRY);
+    expect(ok).toBe(true);
+    expect(code).toContain("loadMetaModel");
+    expect(code).not.toContain("fileURLToPath");
   });
 });
