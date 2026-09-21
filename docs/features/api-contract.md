@@ -71,6 +71,12 @@ app's job — see the policy section below.
 | `PUT`    | `/<apiPrefix>/<entity>/:id` | Update (replace) — optional; same body shape as `PATCH` |
 | `DELETE` | `/<apiPrefix>/<entity>/:id` | Delete |
 
+### Other endpoints
+
+| Verb | Path | Purpose |
+|---|---|---|
+| `GET` | `/<apiPrefix>/_meta` | Serves the loaded model's shape (entities, fields, types, validators, layouts) as JSON — a separate contract, see [`docs/features/metadata-api.md`](metadata-api.md) |
+
 #### The `<entity>` segment
 
 `<entity>` is the **entity name** `snake_case`d and then pluralized. One rule, the
@@ -450,6 +456,8 @@ api-contract-conformance suite today (see
 
 ## See also
 
+- [`docs/features/metadata-api.md`](metadata-api.md) — the `GET /_meta`
+  model-shape contract this page's row-data contract complements
 - [`docs/features/loaders.md`](loaders.md) — how metadata maps to the
   entity shapes referenced by these routes
 - [`docs/features/field-types.md`](field-types.md) — wire-format
