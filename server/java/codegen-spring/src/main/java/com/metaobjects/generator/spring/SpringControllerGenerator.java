@@ -188,6 +188,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
         src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.ConstraintErrors;\n");
         src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
@@ -330,8 +331,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // repository.create(dto) verbatim (byte-identical to the pre-#203 handler).
         String createArg = AutoSetSupport.hasAutoSetFields(entity)
             ? dtoName + ".stampForInsert(dto)" : "dto";
-        src.append("        ").append(dtoName).append(" saved = repository.create(").append(createArg).append(");\n");
-        src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
+        src.append("        try {\n");
+        src.append("            ").append(dtoName).append(" saved = repository.create(").append(createArg).append(");\n");
+        src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
+        appendConstraintCatch(src);
         src.append("    }\n\n");
 
         // PATCH + PUT — single handler (per API contract; same body shape both verbs).
@@ -378,18 +381,22 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         if (AutoSetSupport.hasOnUpdateFields(entity)) {
             src.append("        patch.stampAutoSetOnUpdate();\n");
         }
-        src.append("        return repository.patch(id, patch)\n");
-        src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
-        src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
+        src.append("        try {\n");
+        src.append("            return repository.patch(id, patch)\n");
+        src.append("                    .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+        src.append("                    .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
+        appendConstraintCatch(src);
         src.append("    }\n\n");
 
         // DELETE — 204 on success, 404 envelope on miss.
         src.append("    @DeleteMapping(\"/{id}\")\n");
         src.append("    public ResponseEntity<?> delete(@PathVariable ").append(pkType).append(" id) {\n");
-        src.append("        if (repository.delete(id)) {\n");
-        src.append("            return ResponseEntity.noContent().build();\n");
-        src.append("        }\n");
-        src.append("        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"));\n");
+        src.append("        try {\n");
+        src.append("            if (repository.delete(id)) {\n");
+        src.append("                return ResponseEntity.noContent().build();\n");
+        src.append("            }\n");
+        src.append("            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"));\n");
+        appendConstraintCatch(src);
         src.append("    }\n\n");
 
         // FR-018 M:N traversal — GET /{id}/<relationName> exposes each
@@ -569,6 +576,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // exactly the vanilla update handler's dependency set.
         src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
         src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.ConstraintErrors;\n");
         src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
@@ -774,9 +782,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // ports, both base-scoped): the column is simply never stamped, not a compile break.
             String createArg = AutoSetSupport.hasAutoSetFields(base)
                 ? dtoName + ".stampForInsert(dto)" : "dto";
-            src.append("        ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc)
+            src.append("        try {\n");
+            src.append("            ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc)
                .append("\", ").append(createArg).append(");\n");
-            src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
+            src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
+            appendConstraintCatch(src);
             src.append("    }\n\n");
 
             // per-subtype update — FR-036 Program B present-key PATCH tristate (mirrors the vanilla
@@ -823,18 +833,22 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             if (AutoSetSupport.hasOnUpdateFields(base)) {
                 src.append("        patch.stampAutoSetOnUpdate();\n");
             }
-            src.append("        return repository.patchByIdAndType(id, \"").append(disc)
+            src.append("        try {\n");
+            src.append("            return repository.patchByIdAndType(id, \"").append(disc)
                .append("\", patch.assignedValues())\n");
-            src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
-            src.append("                .orElseGet(this::notFound);\n");
+            src.append("                    .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+            src.append("                    .orElseGet(this::notFound);\n");
+            appendConstraintCatch(src);
             src.append("    }\n\n");
 
             // per-subtype delete (404 cross-subtype)
             src.append("    @DeleteMapping(\"/").append(seg).append("/{id}\")\n");
             src.append("    public ResponseEntity<?> delete").append(suffix)
                .append("(@PathVariable ").append(pkType).append(" id) {\n");
-            src.append("        if (repository.deleteByIdAndType(id, \"").append(disc).append("\")) return ResponseEntity.noContent().build();\n");
-            src.append("        return notFound();\n");
+            src.append("        try {\n");
+            src.append("            if (repository.deleteByIdAndType(id, \"").append(disc).append("\")) return ResponseEntity.noContent().build();\n");
+            src.append("            return notFound();\n");
+            appendConstraintCatch(src);
             src.append("    }\n\n");
 
             // FR-018 x FR-017 — M:N traversal scoped to THIS subtype: every relationship it
@@ -993,6 +1007,29 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             }
         }
         return out;
+    }
+
+    /**
+     * Closes a write handler's {@code try} with the cross-port constraint-violation mapping.
+     *
+     * <p>A generated CRUD route had no try/catch around its write, so a driver failure reached
+     * Spring's default handler and came back as a bare 500 — for a client-supplied foreign key
+     * that does not exist, or a value duplicating a unique one, both of which are CLIENT errors
+     * the model already describes ({@code identity.reference}, {@code identity.secondary}).
+     * Unrecognised throwables are RETHROWN, so the operator keeps the full diagnostic and the
+     * caller still gets a plain 500 carrying none of it.</p>
+     *
+     * <p>{@code RuntimeException} rather than {@code Exception}: every Spring data-access failure
+     * is unchecked, and widening it here would force a checked-exception signature onto handlers
+     * that cannot throw one.</p>
+     */
+    private static void appendConstraintCatch(StringBuilder src) {
+        src.append("        } catch (RuntimeException e) {\n");
+        src.append("            ConstraintErrors.Failure failure = ConstraintErrors.classify(e);\n");
+        src.append("            if (failure == null) throw e;\n");
+        src.append("            return ResponseEntity.status(failure.status())\n");
+        src.append("                    .body(Map.of(\"error\", failure.error(), \"constraint\", failure.constraint()));\n");
+        src.append("        }\n");
     }
 
     private static void appendServerOwnedOnCreate(StringBuilder src, MetaObject entity) {

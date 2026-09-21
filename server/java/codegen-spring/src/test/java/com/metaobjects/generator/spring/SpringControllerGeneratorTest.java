@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -335,5 +336,42 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
             src.contains("SERVER_OWNED_ON_CREATE = Set.of(\"id\")"));
         assertFalse("and the over-broad guard is gone here too; saw:\n" + src,
             src.contains("if (!validator.validate(dto).isEmpty())"));
+    }
+
+    /**
+     * Every WRITE verb must map a database constraint violation to the cross-port envelope.
+     *
+     * <p>Without it a driver failure reaches Spring's default handler and the caller gets a bare
+     * 500 for what is a CLIENT error — a foreign key that does not exist, or a value duplicating
+     * a unique one, both declared in the same metadata the route already validates against
+     * (FINDINGS F16). Asserted per verb rather than once, because the three handlers are emitted
+     * by three separate code paths and the TPH set by three more.</p>
+     */
+    @Test
+    public void everyWriteVerbMapsConstraintViolations() throws Exception {
+        Path outDir = tempFolder.newFolder("ctrl-cv").toPath();
+        Path workspace = tempFolder.newFolder("ctrl-cv-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "author-cv", AUTHOR_FIXTURE);
+
+        SpringControllerGenerator gen = new SpringControllerGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        String src = Files.readString(outDir.resolve("acme/blog/AuthorController.java"));
+
+        assertTrue("the runtime classifier must be imported; saw:\n" + src,
+            src.contains("import com.metaobjects.generator.spring.runtime.ConstraintErrors;"));
+
+        // One catch per write verb: create, patch/put, delete.
+        int catches = src.split("catch \\(RuntimeException e\\)", -1).length - 1;
+        assertEquals("expected a constraint catch on create, update and delete; saw:\n" + src,
+            3, catches);
+
+        assertTrue("an unrecognised failure must be RETHROWN, not reported as a constraint; saw:\n" + src,
+            src.contains("if (failure == null) throw e;"));
+        assertTrue("the body must carry the cross-port error + constraint pair; saw:\n" + src,
+            src.contains("Map.of(\"error\", failure.error(), \"constraint\", failure.constraint())"));
     }
 }

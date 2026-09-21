@@ -189,6 +189,36 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **Java: a database constraint violation answered a bare 500 instead of the cross-port
+  `409 {"error":"constraint_violation","constraint":"unique"|"foreign_key"}`.** The generated
+  CRUD routes had no try/catch around their writes at all, so a driver failure reached Spring's
+  default handler. A client-supplied foreign key that does not exist, or a value duplicating a
+  unique one, is a CLIENT error — and the `identity.reference` / `identity.secondary` that
+  declare those constraints are the same metadata the route already uses to reject bad enum
+  members and missing required fields. It just never translated the constraints the DATABASE
+  enforces. Worse, Spring's default error body can carry the driver message, which names the SQL
+  and sometimes the bound values: on a POST whose columns hold PII that is user data reflected
+  back out of generated code the adopter never wrote.
+
+  New `com.metaobjects.generator.spring.runtime.ConstraintErrors`, wired into all six write
+  handlers (create / update / delete, vanilla and TPH). It is the Java port of runtime-ts's
+  `constraint-errors.ts` and C#'s `ConstraintErrors` — the same algorithm, arm for arm, not a
+  third design: walk the exception chain, match driver CODES first with the constraint-name
+  vocabulary as fallback, 409 for referential/uniqueness conflicts with existing state and 400
+  for a value the request itself got wrong. An unrecognised throwable is RETHROWN, so the
+  operator keeps the full diagnostic and the caller gets a plain 500 carrying none of it.
+
+  Walking the chain is the whole trick: Spring wraps every JDBC failure in a
+  `DataAccessException` whose own message names no constraint, so a top-level-only read
+  classifies nothing — the same defect the TypeScript version hit under Drizzle's wrapper and
+  C#'s under EF's `DbUpdateException`. `SQLException#getNextException()` is walked too, because a
+  batch failure puts the useful exception there rather than on `getCause()`. No driver
+  dependency: `getSQLState()` is JDK API, so Postgres's SQLSTATE class 23 is read directly and
+  message text covers the drivers that carry no code.
+
+  Kotlin and Python still answer 500 for the same input; they are the remaining two ports of this
+  fix. Found by building a Java adopter app.
+
 - **Java: no POST could create anything for an entity whose primary key is `@required`.** The
   generated Spring controller's vanilla create handler validated the WHOLE request DTO:
   `if (!validator.validate(dto).isEmpty()) return 400 {"error":"validation"}`. But
