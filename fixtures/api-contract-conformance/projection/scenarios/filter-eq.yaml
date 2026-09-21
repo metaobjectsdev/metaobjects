@@ -1,0 +1,14 @@
+name: projection-filter-eq
+description: >
+  GET /api/invoice_summaries?filter[status][eq]=OPEN — the FR-009 filter grammar
+  applies to a projection's declared @filterable fields, against the allowlist
+  generated from the PROJECTION's own field set (not the base entity's).
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_summaries?filter[status][eq]=OPEN&sort=id:asc
+    expect:
+      status: 200
+      body:
+        - { id: 2, reference: "INV-1002", status: "OPEN", amountCents: 40000 }
+        - { id: 3, reference: "INV-1003", status: "OPEN", amountCents: 90500 }

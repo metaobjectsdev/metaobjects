@@ -1,0 +1,8 @@
+{
+  "invoices": [
+    { "id": 1, "reference": "INV-1001", "status": "PAID",    "amountCents": 125000 },
+    { "id": 2, "reference": "INV-1002", "status": "OPEN",    "amountCents":  40000 },
+    { "id": 3, "reference": "INV-1003", "status": "OPEN",    "amountCents":  90500 },
+    { "id": 4, "reference": "INV-1004", "status": "VOID",    "amountCents":      0 }
+  ]
+}

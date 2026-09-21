@@ -1,0 +1,16 @@
+name: projection-filter-invalid-field
+description: >
+  GET /api/invoice_summaries?filter[nope][eq]=x — a projection's filter allowlist
+  rejects an unknown field with the same envelope a table entity's does, NAMING
+  the rejected field. This is the read-only mount's half of the F20 rule: before
+  it, the TypeScript projection mount dropped the parser's details entirely and
+  answered `{error, message}` with no `field` at all.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_summaries?filter[nope][eq]=x
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_field"
+        field: "nope"

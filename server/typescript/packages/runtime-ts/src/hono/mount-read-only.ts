@@ -1,5 +1,5 @@
 // Hono read-only mount — projection (view-backed) entities. GET list +
-// GET :id only. POST/PATCH/DELETE return 405. Mirrors the drizzle-fastify
+// GET :id only. POST/PATCH/PUT/DELETE return 405. Mirrors the drizzle-fastify
 // equivalent so the cross-port API contract holds for projection endpoints.
 
 import type { Hono } from "hono";
@@ -228,6 +228,10 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   app.post(path, reject as any);
   // biome-ignore lint/suspicious/noExplicitAny: cross-version Hono typing
   app.patch(`${path}/:id`, reject as any);
+  // PUT too — the writable mount serves it, so a projection must reject it rather
+  // than 404, which would deny a resource that answers GET on the same path.
+  // biome-ignore lint/suspicious/noExplicitAny: cross-version Hono typing
+  app.put(`${path}/:id`, reject as any);
   // biome-ignore lint/suspicious/noExplicitAny: cross-version Hono typing
   app.delete(`${path}/:id`, reject as any);
 }

@@ -1,0 +1,48 @@
+name: projection-write-verbs-405
+description: >
+  A projection is read-only by construction, and every write verb answers
+  405 with the cross-port envelope — NOT a 404, and not each framework's own
+  default error body.
+
+  405 rather than 404 because the resource plainly exists: the same path answers
+  GET. 404 would tell a caller the collection is absent when it is merely not
+  writable. And the envelope is asserted, not just the status, for the reason
+  F20 settled: a member no scenario can require drifts silently. Before this,
+  TypeScript sent `{"error":"method_not_allowed", "message":...}` while the
+  other ports answered whatever their framework produced for an unmatched
+  method — a bare 405, Spring's error body, or FastAPI's `{"detail":...}`.
+
+  `message` is deliberately NOT asserted: it is free prose, and the ports word
+  it differently. `error` is the contract.
+requests:
+  - id: post-collection
+    method: POST
+    path: /api/invoice_summaries
+    body: { reference: "INV-9999", status: "OPEN", amountCents: 1 }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"
+  - id: patch-item
+    method: PATCH
+    path: /api/invoice_summaries/1
+    body: { status: "VOID" }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"
+  - id: put-item
+    method: PUT
+    path: /api/invoice_summaries/1
+    body: { id: 1, reference: "INV-1001", status: "VOID", amountCents: 0 }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"
+  - id: delete-item
+    method: DELETE
+    path: /api/invoice_summaries/1
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"

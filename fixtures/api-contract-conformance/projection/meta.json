@@ -1,0 +1,29 @@
+{
+  "metadata.root": {
+    "package": "acme::sales",
+    "children": [
+      { "object.entity": {
+        "name": "Invoice",
+        "children": [
+          { "source.rdb":       { "@table": "invoices" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "reference", "@required": true, "@maxLength": 40 } },
+          { "field.string":     { "name": "status", "@required": true, "@maxLength": 20 } },
+          { "field.long":       { "name": "amountCents", "@required": true } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.projection": {
+        "name": "InvoiceSummary",
+        "children": [
+          { "source.rdb":       { "@kind": "view", "@view": "v_invoice_summary" } },
+          { "field.long":       { "name": "id",          "extends": "Invoice.id",          "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "reference",   "extends": "Invoice.reference",   "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "status",      "extends": "Invoice.status",      "@filterable": true, "@sortable": false } },
+          { "field.long":       { "name": "amountCents", "extends": "Invoice.amountCents", "@filterable": true, "@sortable": true } },
+          { "identity.primary": { "name": "pk", "extends": "Invoice.pk" } }
+        ]
+      }}
+    ]
+  }
+}

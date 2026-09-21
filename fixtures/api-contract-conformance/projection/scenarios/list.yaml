@@ -1,0 +1,17 @@
+name: projection-list
+description: >
+  GET /api/invoice_summaries — a VIEW-ONLY object.projection serves a list route.
+  Every port must mount it: a projection is derived from declared metadata exactly
+  as a table entity is, so the routes are pattern-derivable and must be generated
+  rather than hand-written (F22). Ordered by id so the assertion is deterministic.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_summaries?sort=id:asc
+    expect:
+      status: 200
+      body:
+        - { id: 1, reference: "INV-1001", status: "PAID", amountCents: 125000 }
+        - { id: 2, reference: "INV-1002", status: "OPEN", amountCents: 40000 }
+        - { id: 3, reference: "INV-1003", status: "OPEN", amountCents: 90500 }
+        - { id: 4, reference: "INV-1004", status: "VOID", amountCents: 0 }

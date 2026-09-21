@@ -1,0 +1,13 @@
+name: projection-get-by-id-not-found
+description: >
+  GET /api/invoice_summaries/999 — an id the view does not carry answers the same
+  404 envelope a table entity's detail route does. A projection does not get its
+  own not-found spelling.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_summaries/999
+    expect:
+      status: 404
+      body:
+        error: "not_found"

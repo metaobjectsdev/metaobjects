@@ -1,0 +1,12 @@
+name: projection-get-by-id
+description: >
+  GET /api/invoice_summaries/2 — a projection is addressable by the identity it
+  inherits from the base entity (`identity.primary extends Invoice.pk`), so the
+  detail route is mounted alongside the list route.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_summaries/2
+    expect:
+      status: 200
+      body: { id: 2, reference: "INV-1002", status: "OPEN", amountCents: 40000 }

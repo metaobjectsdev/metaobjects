@@ -37,6 +37,9 @@ export const API_CONTRACT_JSONB_SCENARIOS_DIR = resolve(API_CONTRACT_JSONB_DIR, 
 // #214 write-through read-your-writes subcorpus.
 export const API_CONTRACT_WRITE_THROUGH_DIR = resolve(API_CONTRACT_DIR, "write-through");
 export const API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR = resolve(API_CONTRACT_WRITE_THROUGH_DIR, "scenarios");
+// F22 view-only projection subcorpus (GENERATED lane only, every port).
+export const API_CONTRACT_PROJECTION_DIR = resolve(API_CONTRACT_DIR, "projection");
+export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJECTION_DIR, "scenarios");
 
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");
