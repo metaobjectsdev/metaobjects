@@ -16,6 +16,10 @@ describe("GET /_meta (fastify)", () => {
     const res = await app.inject({ method: "GET", url: "/api/_meta" });
 
     expect(res.statusCode).toBe(200);
+    // Pinned independently of META_CONTENT_TYPE: asserting only against the constant
+    // the mounts also use proves the two mounts AGREE, but cannot catch the constant
+    // itself being wrong. One literal here closes that loop.
+    expect(META_CONTENT_TYPE).toBe("application/json; charset=utf-8");
     expect(res.headers["content-type"]).toBe(META_CONTENT_TYPE);
     expect(res.body).toBe(metaJson(root));
   });
