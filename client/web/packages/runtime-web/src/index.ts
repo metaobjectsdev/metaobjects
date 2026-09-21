@@ -5,6 +5,9 @@ export type { EntityFetcher, GridConfig } from "./fetcher.js";
 export { joinBaseUrl } from "./join-base-url.js";
 export { buildGrid } from "./grid-from-metadata.js";
 export type { MetaColumn, MetaGrid } from "./grid-from-metadata.js";
+export type {
+  MetaRead, MetaFieldRead, MetaViewRead, MetaLayoutRead, MetaModelRead, AttrReader,
+} from "./meta-read.js";
 export { canvasToJpegBlob } from "./canvas-to-jpeg-blob.js";
 export { reencodeJpeg } from "./reencode-jpeg.js";
 export type { ImageUploadAdapter, ImageMeta } from "./image-adapter.js";

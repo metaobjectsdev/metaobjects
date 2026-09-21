@@ -9,7 +9,10 @@
 // headers, the field's view subtype as the cell-renderer hint, @columns / grid
 // attrs from the dataGrid layout) so a runtime-built grid matches a generated
 // one. Browser-safe: depends only on @metaobjectsdev/metadata.
-import type { MetaObject, MetaField, MetaView } from "@metaobjectsdev/metadata";
+// The narrow local surface, not the metadata classes: a browser-built model must
+// satisfy it too (#287 — the metadata root barrel cannot be bundled). A real
+// MetaObject satisfies MetaRead structurally, so server callers are unaffected.
+import type { MetaRead, MetaFieldRead, MetaViewRead } from "./meta-read.js";
 // #287: metamodel VALUES come from the browser-safe constants subpath, never the package
 // root. The root exports MetaDataLoader -> library-sources.ts -> `node:url`, so a single
 // constant import from it made every browser bundle fail ("Browser polyfill for module
@@ -51,14 +54,14 @@ function humanize(s: string): string {
   return s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 }
 
-function firstView(field: MetaField): MetaView | undefined {
+function firstView(field: MetaFieldRead): MetaViewRead | undefined {
   // views(), not ownViews(): ADR-0039 — a field that `extends` an abstract parent
   // inherits the parent's view, and an own-only read drops it, so the column would
   // silently lose both its header and its renderer hint.
   return field.views()[0];
 }
 
-function header(field: MetaField): string {
+function header(field: MetaFieldRead): string {
   // DOC_ATTR_TITLE, not the literal "label". `@label` is registered by NO provider in
   // any port — `@title` is the documentation commonAttr chartered as the display label
   // — so this read was `undefined` for every field that ever set one, and every grid
@@ -70,7 +73,7 @@ function header(field: MetaField): string {
   return typeof label === "string" ? label : humanize(field.name);
 }
 
-function viewKind(field: MetaField): string {
+function viewKind(field: MetaFieldRead): string {
   return firstView(field)?.subType ?? field.subType;
 }
 
@@ -93,7 +96,7 @@ function viewKind(field: MetaField): string {
  */
 function gridDefaultSortOrder(
   declaredOrder: unknown,
-  field: MetaField | undefined,
+  field: MetaFieldRead | undefined,
 ): "asc" | "desc" {
   if (declaredOrder === "asc" || declaredOrder === "desc") return declaredOrder;
   const fromField = field?.attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER);
@@ -108,7 +111,7 @@ function gridDefaultSortOrder(
  * Otherwise every field becomes a column with sensible defaults — so it works
  * for ANY object, with or without a declared grid.
  */
-export function buildGrid(meta: MetaObject, gridName?: string): MetaGrid {
+export function buildGrid(meta: MetaRead, gridName?: string): MetaGrid {
   const layouts = meta.layouts().filter((l) => l.subType === LAYOUT_SUBTYPE_DATA_GRID);
   const layout = gridName ? layouts.find((l) => l.name === gridName) : layouts[0];
 
@@ -126,7 +129,7 @@ export function buildGrid(meta: MetaObject, gridName?: string): MetaGrid {
 
   const columns: MetaColumn[] = names
     .map((n) => fieldsByName.get(n))
-    .filter((f): f is MetaField => f !== undefined)
+    .filter((f): f is MetaFieldRead => f !== undefined)
     .map((f) => ({ field: f.name, header: header(f), viewKind: viewKind(f) }));
 
   const pageSizeAttr = layout?.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
