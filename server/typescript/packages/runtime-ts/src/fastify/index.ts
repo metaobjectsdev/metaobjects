@@ -256,3 +256,43 @@ export function mountDeleteRoute(opts: SingleVerbOptions): void {
 // shared (deprecated) helper so the three adapters can't silently diverge.
 // The mounts above no longer use it: ObjectManager coerces ids per metadata.
 export { parseId } from "../drizzle-fastify/util.js";
+
+// ---------------------------------------------------------------------------
+// Metadata endpoint
+// ---------------------------------------------------------------------------
+
+import type { MetaData } from "@metaobjectsdev/metadata";
+import { META_ROUTE_PATH, metaJson } from "../meta-endpoint.js";
+
+export interface MetaRouteOptions {
+  fastify: FastifyInstance;
+  /** The loaded model root. */
+  root: MetaData;
+  /** Mounted under this prefix; defaults to "" (the bare `/_meta`). */
+  prefix?: string;
+}
+
+/**
+ * Mount `GET {prefix}/_meta`, serving the model as effective canonical JSON.
+ *
+ * Opt-in by design. `/_meta` publishes the SHAPE of the model — entity and field
+ * names, types, validators, layouts — though no row data. Guard it with your own
+ * middleware exactly as you would the generated routes (#367):
+ *
+ *     app.register(async (s) => {
+ *       s.addHook("preHandler", requireAuth);
+ *       mountMetaRoute({ fastify: s, root, prefix: "/api" });
+ *     });
+ *
+ * The body is serialized once per call. If that ever matters, cache it in the
+ * host — the model is immutable after load.
+ */
+export function mountMetaRoute(opts: MetaRouteOptions): void {
+  const path = `${opts.prefix ?? ""}${META_ROUTE_PATH}`;
+  opts.fastify.get(path, async (_req, reply) => {
+    return reply
+      .code(200)
+      .header("content-type", "application/json; charset=utf-8")
+      .send(metaJson(opts.root));
+  });
+}

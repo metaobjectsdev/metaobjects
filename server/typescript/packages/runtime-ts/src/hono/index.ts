@@ -320,3 +320,30 @@ function extractRowCount(result: unknown): number {
 }
 
 export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read-only.js";
+
+// ---------------------------------------------------------------------------
+// Metadata endpoint
+// ---------------------------------------------------------------------------
+
+import type { MetaData } from "@metaobjectsdev/metadata";
+import { META_ROUTE_PATH, metaJson } from "../meta-endpoint.js";
+
+export interface HonoMetaRouteOptions {
+  app: AnyHono;
+  root: MetaData;
+  prefix?: string;
+}
+
+/**
+ * Mount `GET {prefix}/_meta` on Hono. Same contract and same opt-in caveat as
+ * the Fastify twin; guard the mount path with middleware before calling this:
+ *
+ *     app.use(`/api${META_ROUTE_PATH}`, requireAuth);
+ *     mountMetaRouteHono({ app, root, prefix: "/api" });
+ */
+export function mountMetaRouteHono(opts: HonoMetaRouteOptions): void {
+  const path = `${opts.prefix ?? ""}${META_ROUTE_PATH}`;
+  opts.app.get(path, (c) =>
+    c.body(metaJson(opts.root), 200, { "content-type": "application/json; charset=utf-8" }),
+  );
+}
