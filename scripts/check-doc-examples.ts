@@ -85,6 +85,16 @@ const SCAN_ROOTS = [
   // the entire corpus it was BUILT for — #337 was about the agent-context docs teaching
   // retired vocabulary, which is exactly what stops being checked.
   "agent-context",
+  // The auto-loading Claude Code rules. These are the MOST agent-facing prose in
+  // the repo — `.claude/rules/*.md` loads itself into a session on a path match,
+  // unprompted — and they were the one such tree this gate did not read. It cost
+  // exactly what #337 cost in agent-context: `codegen-architecture.md` taught
+  // `source.dbView` / `@name` / a view-sourced `object.entity` long after the v2
+  // paradigm (ADR-0007) retired the first two and B4b (ADR-0028) made the third
+  // `ERR_ENTITY_PRIMARY_SOURCE_READONLY`. Every example it shipped had stopped
+  // loading, and the file that teaches codegen is the file an agent doing codegen
+  // reads first.
+  ".claude/rules",
 ];
 
 /**

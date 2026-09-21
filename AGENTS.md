@@ -284,7 +284,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 
 ## File organization
 
-**Default convention**: one file per domain concept under `metaobjects/`. Multiple objects per file when they share a domain. Projections (`source.dbView`) live inline with their base entity.
+**Default convention**: one file per domain concept under `metaobjects/`. Multiple objects per file when they share a domain. Projections (`object.projection` with a read-only `source.rdb @kind`) live inline with their base entity.
 
 `metaobjects/` is the **default value** of `sources` in `.metaobjects/config.json` — never a requirement. A project declaring `sources` explicitly can point anywhere (and need not have such a directory at all); `"sources": []`, which is what `meta init` scaffolds, takes the default.
 

@@ -113,33 +113,53 @@ const { data } = useSubscribers({
 
 **Architecture:** `parseFilterParams` (in `@metaobjectsdev/runtime-ts/drizzle-fastify`) translates parsed qs into a Drizzle expression tree. `buildFilterQs` (in `@metaobjectsdev/runtime-web` and `@metaobjectsdev/tanstack`) serializes a typed filter object back to a bracketed qs URL.
 
-### Source-aware entities + projections (Project E)
+### Source-aware objects + projections (Project E)
 
-`source` is a top-level metadata type describing where an object's data lives. Subtypes: `dbTable` (writable, default) and `dbView` (read-only).
+`source` is a top-level metadata type describing where an object's data lives.
+There is ONE subtype — **`source.rdb`** (the v2 paradigm, ADR-0007) — and
+read-only-ness comes from **`@kind`**: `table` (writable, the default) vs
+`view` / `materializedView` / `storedProc` / `tableFunction` (read-only).
+The physical name is the **kind-matching alias** (`@table` / `@view` / …,
+ADR-0018), never `@name`.
 
-**Authoring a projection:**
+> The pre-v2 `source.dbTable` / `source.dbView` subtypes are **RETIRED** and no
+> longer load. Multi-source objects use `@role` (exactly one `primary`).
+
+**Authoring a projection.** A read-only derived representation is
+**`object.projection`**, not an entity: an `object.entity`'s primary source must
+be a writable `@kind`, so an entity whose only source is a view is
+`ERR_ENTITY_PRIMARY_SOURCE_READONLY` (ADR-0028 B4b). Its fields are
+`extends`-bound or `origin`-derived, and its identity extends the base entity's.
 
 ```jsonc
-{ "object.entity": {
+{ "object.projection": {
     "name": "ProgramSummary",
-    "extends": "Program",
     "children": [
-      { "source.dbView": { "@name": "v_program_summary" }},
+      { "source.rdb": { "@kind": "view", "@view": "v_program_summary" }},
+      { "field.string": { "name": "title", "extends": "Program.title" }},
       { "field.int": { "name": "weekCount", "children": [
         { "origin.aggregate": {
             "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" }}
       ]}},
-      { "identity.primary": { "@fields": ["id"] }}
+      { "identity.primary": { "name": "pk", "extends": "Program.pk" }}
     ]
 }}
 ```
 
-**`origin`** subtypes: `passthrough` (cross-entity field reference) and `aggregate` (count/sum/avg/min/max). Origins drive view DDL.
+**`origin`** subtypes: `passthrough`, `aggregate`, `collection`, `computed`,
+`first` (`base` is the abstract root). Origins drive view DDL. The four assembly
+origins live on `object.projection` only.
 
 **Source-aware codegen dispatch:**
-- Projection (dbView only) → read-only Zod, read-only routes, read-only hooks.
-- Write-through (dbTable + dbView) → mutations target table, queries target view.
+- Projection (read-only `@kind` only) → read-only Zod, read-only routes (GET list
+  + GET by id; every write verb answers `405 {"error":"method_not_allowed"}`),
+  read-only hooks.
+- Write-through (`@role:primary` table + `@role:replica` view) → mutations target
+  the table, reads route through the view.
 - Vanilla entity → standard behavior.
+
+Gated end-to-end by `fixtures/api-contract-conformance/projection/` (view-only)
+and `.../write-through/` (table + replica view).
 
 **`columnNamingStrategy`** in `metaobjects.config.ts`: `snake_case` (default) | `literal` | `kebab-case`.
 
