@@ -35,7 +35,9 @@ from .meta.core.object.object_extract import (
     extract_schema_for,
 )
 from .meta.core.object.value_object import ValueObject
+from .meta_endpoint import META_ROUTE_PATH, meta_json
 from .naming import resolve_column_name
+from .serializer_json import canonical_serialize_effective
 
 # Module-level shortcuts: the 99% case for callers who don't need a
 # long-lived loader. Signatures + docstrings come straight from the
@@ -60,6 +62,10 @@ __all__ = [
     "load_uris",
     "load_string",
     "resolve_column_name",
+    # UI-1 — the metadata API contract (GET /_meta)
+    "META_ROUTE_PATH",
+    "meta_json",
+    "canonical_serialize_effective",
     # Runtime object model (Phase A)
     "ValueObject",
     "MetaObjectAware",
