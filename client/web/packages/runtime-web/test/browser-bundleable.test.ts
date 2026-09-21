@@ -48,6 +48,17 @@ async function browserBundle(entry: string): Promise<{ ok: boolean; message: str
 }
 
 describe("#287 — browser bundleability", () => {
+  test("loadMetaModel is reachable in a browser bundle", async () => {
+    // load-meta-model.ts imports its metamodel constants from
+    // @metaobjectsdev/metadata/constants. If that ever becomes the package root,
+    // the root pulls MetaDataLoader -> library-sources.ts -> node:url and this fails.
+    const out = await Bun.build({ entrypoints: [DIST_ENTRY], target: "browser", throw: false });
+    const code = await out.outputs[0]?.text() || "";
+    expect(out.success, out.logs.map((l) => String(l)).join("\n")).toBe(true);
+    expect(code).toContain("loadMetaModel");
+    expect(code).not.toContain("fileURLToPath");
+  });
+
   test("the BUILT runtime-web entry bundles for a browser target", async () => {
     // dist/ is what a published consumer resolves. If it is missing the gate is
     // meaningless, so say so rather than skipping quietly.
@@ -85,20 +96,5 @@ describe("#287 — browser bundleability", () => {
     if (!existsSync(root)) return; // metadata not built in this run — nothing to assert
     const { ok } = await browserBundle(root);
     expect(ok).toBe(false);
-  });
-
-  test("loadMetaModel is reachable and imports from browser-safe paths", async () => {
-    // load-meta-model.ts imports TYPE_* from @metaobjectsdev/metadata/constants.
-    // If it ever imports them from the package root instead, the root pulls
-    // MetaDataLoader -> library-sources.ts -> node:url and this breaks browser bundles (#287).
-    // Test 1: load Meta Model function is exported from built dist
-    const distModule = await import(DIST_ENTRY);
-    expect(distModule.loadMetaModel).toBeDefined();
-    expect(typeof distModule.loadMetaModel).toBe("function");
-
-    // Test 2: source file imports constants from the safe subpath, not the root
-    const sourceFile = await Bun.file(join(PKG_ROOT, "src", "load-meta-model.ts")).text();
-    expect(sourceFile).toContain('from "@metaobjectsdev/metadata/constants"');
-    expect(sourceFile).not.toMatch(/from ["']@metaobjectsdev\/metadata["']\s*;/);
   });
 });
