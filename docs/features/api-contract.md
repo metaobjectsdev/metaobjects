@@ -252,7 +252,9 @@ for the one-line change.
 | `field.int`, `field.long`, `field.double` | number | `long` MAY be string on overflow; defer to per-port docs. |
 | `field.boolean` | boolean | – |
 | `field.date` | string | ISO 8601 calendar date (`YYYY-MM-DD`). |
-| `field.timestamp` | string | ISO 8601 with timezone (`YYYY-MM-DDTHH:mm:ss.sssZ`). |
+| `field.time` | string | `HH:MM:SS[.fff]`. |
+| `field.timestamp` | string | Instant, tz-aware by default (ADR-0036 Wave 2) — `YYYY-MM-DDTHH:MM:SS[.fff]Z`, **always UTC**. |
+| `field.timestamp` (`@localTime: true`) | string | Naive wall clock — `YYYY-MM-DDTHH:MM:SS[.fff]`, **no `Z`**. |
 | `field.currency` | **integer minor units** | Cents for USD, yen for JPY. Float arithmetic is forbidden. Server never formats. |
 | `field.object` (`@storage: jsonb`) | object | Nested per the sub-object schema. |
 | `field.object` (`@storage: flattened`) | object | Same JSON shape — only the storage differs. |
@@ -262,6 +264,22 @@ expects integer minor units on the wire, and the
 [`features/field-types.md`](field-types.md) reference enforces this for
 each port's codegen output. Float arithmetic for money has bitten
 every language at least once.
+
+The temporal spellings above are **not** this document's to define — they are
+the cross-port wire forms pinned by
+[`fixtures/persistence-conformance/normalization.md`](../../fixtures/persistence-conformance/normalization.md),
+which every port byte-matches. Two properties of that rule are easy to get
+wrong and are restated here only because they decide whether a response
+compares equal:
+
+- **The `Z` discriminates the two timestamp kinds.** Never elide it for a
+  default (tz-aware) `field.timestamp`, and never add it for an
+  `@localTime: true` one. The suffix is what tells `TIMESTAMPTZ` from
+  `TIMESTAMP`.
+- **Sub-seconds are millisecond resolution, truncated, with no trailing
+  zeros** — and the fractional component *and its `.`* are **omitted
+  entirely when zero**. A whole-second instant is `2026-05-25T14:30:00Z`,
+  never `2026-05-25T14:30:00.000Z`.
 
 ### Error response
 
