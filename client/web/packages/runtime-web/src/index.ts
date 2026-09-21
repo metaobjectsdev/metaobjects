@@ -8,6 +8,7 @@ export type { MetaColumn, MetaGrid } from "./grid-from-metadata.js";
 export type {
   MetaRead, MetaFieldRead, MetaViewRead, MetaLayoutRead, MetaModelRead, AttrReader,
 } from "./meta-read.js";
+export { loadMetaModel } from "./load-meta-model.js";
 export { canvasToJpegBlob } from "./canvas-to-jpeg-blob.js";
 export { reencodeJpeg } from "./reencode-jpeg.js";
 export type { ImageUploadAdapter, ImageMeta } from "./image-adapter.js";

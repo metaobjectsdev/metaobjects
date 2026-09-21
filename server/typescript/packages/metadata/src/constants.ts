@@ -35,6 +35,8 @@
  * `browser-safe-constants` test asserts that by bundling this entry for the browser.
  */
 
+export * from "./shared/base-types.js";
+export * from "./shared/structural.js";
 export * from "./core/attr/attr-constants.js";
 export * from "./core/documentation/doc-constants.js";
 export * from "./core/field/field-constants.js";
