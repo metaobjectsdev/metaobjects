@@ -1,4 +1,8 @@
-namespace MetaObjects.Tests;
+using MetaObjects;
+using MetaObjects.Loader;
+using Xunit;
+
+namespace MetaObjects.Conformance.Tests;
 
 public class MetaEndpointTests
 {
@@ -26,11 +30,17 @@ public class MetaEndpointTests
         // This fixture has a BaseEntity with inherited fields (id, createdAt)
         // and a Subscriber that extends it, allowing us to verify the effective
         // serialization materializes the super-chain merge.
-        var fixtureDir = Path.Combine(
-            Path.GetDirectoryName(typeof(MetaEndpointTests).Assembly.Location)!,
-            "..", "..", "..", "..", "..", "..",
-            "fixtures", "conformance", "extends-abstract-base", "input");
+        // Walk up from AppContext.BaseDirectory to find fixtures/conformance/
+        string root = System.AppContext.BaseDirectory;
+        while (!System.IO.Directory.Exists(System.IO.Path.Combine(root, "fixtures", "conformance")))
+        {
+            var parent = System.IO.Directory.GetParent(root)?.FullName;
+            if (parent is null || parent == root)
+                throw new System.InvalidOperationException("fixtures/conformance not found walking up from " + System.AppContext.BaseDirectory);
+            root = parent;
+        }
 
-        return MetaDataLoader.FromDirectory(Path.GetFullPath(fixtureDir));
+        var fixtureDir = System.IO.Path.Combine(root, "fixtures", "conformance", "extends-abstract-base", "input");
+        return MetaDataLoader.FromDirectory(fixtureDir);
     }
 }
