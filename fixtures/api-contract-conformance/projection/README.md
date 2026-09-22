@@ -76,10 +76,10 @@ nothing about the emitted artifact, which is the thing that was missing.
 | Port | Generated lane | Note |
 |---|---|---|
 | TypeScript | **wired, green (7/7)** | `test/api-contract-projection.test.ts` |
+| Python | **wired, green (7/7)** | `tests/integration/test_api_contract_projection.py` |
 | C# | not yet wired | already emits read-only routes, but mounts no write verbs, so a write falls to the framework's own 405 with no envelope |
-| Java | not yet wired | `SpringControllerGenerator.appliesTo` admits neither `object.projection` nor a read-only `@kind` — emits nothing |
+| Java | not yet wired | `SpringControllerGenerator.appliesTo` admits neither `object.projection` nor a read-only `@kind` — emits nothing. Its repository + filter-allowlist generators carry the same gate and must move with it |
 | Kotlin | not yet wired | same gate as Java (`!writeThrough && kind != KIND_TABLE`) |
-| Python | not yet wired | same gate (`router_generator.py`), though its subtype check is already source-driven |
 
 The corpus is committed ahead of the four remaining ports deliberately: it is
 the contract those ports are being changed to satisfy, and it has already

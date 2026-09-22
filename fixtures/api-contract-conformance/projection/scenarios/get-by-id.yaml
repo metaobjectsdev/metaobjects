@@ -9,4 +9,5 @@ requests:
     path: /api/invoice_summaries/2
     expect:
       status: 200
-      body: { id: 2, reference: "INV-1002", status: "OPEN", amountCents: 40000 }
+      body:
+        row: { id: 2, reference: "INV-1002", status: "OPEN", amountCents: 40000 }

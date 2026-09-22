@@ -13,6 +13,7 @@ import metaobjects.core_types  # noqa: F401  — side-effect: registers attr cla
 from metaobjects.codegen.generators.filter_allowlist_generator import (
     render_filter_allowlist,
 )
+from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -124,17 +125,40 @@ def test_per_subtype_operator_gating() -> None:
     assert '"ref": frozenset({"eq", "ne", "in", "isNull"})' in out
 
 
-def test_view_kind_gets_no_allowlist() -> None:
-    """Same gate as the router generator: read-only kinds skip allowlist
-    emission. Returning ``None`` keeps the two generators in lock-step so
-    the router never imports an allowlist module that wasn't emitted."""
+def test_view_kind_gets_an_allowlist_in_lock_step_with_the_router() -> None:
+    """The invariant this test has always asserted — the allowlist is emitted for
+    exactly the objects the router is emitted for, so the router never imports a
+    module nothing generated — now holds in the OTHER direction for a view.
+
+    It used to read ``assert render_filter_allowlist(view) is None``, which was
+    correct while a view got no router. F22 gave a view-only object a read-only
+    router, and that router imports this allowlist; leaving this returning None
+    would have been the exact ImportError-at-startup the lock-step exists to
+    prevent. Both sides now ask the ONE predicate (``emits_router``), so the
+    assertion is written as lock-step rather than as a second copy of the rule.
+    """
     view = _entity(
         "AuthorView",
         [_f("name", fc.FIELD_SUBTYPE_STRING, filterable=True)],
         source_kind=SOURCE_KIND_VIEW,
         package="acme::blog",
     )
-    assert render_filter_allowlist(view) is None
+    assert (render_filter_allowlist(view) is None) == (render_router(view) is None)
+    assert render_filter_allowlist(view) is not None
+
+
+def test_stored_proc_gets_no_allowlist_in_lock_step_with_the_router() -> None:
+    """The other side of the same invariant: a storedProc gets no router, so it
+    gets no allowlist either. F22 widened the routed set to views and
+    materialized views only."""
+    proc = _entity(
+        "RunReport",
+        [_f("name", fc.FIELD_SUBTYPE_STRING, filterable=True)],
+        source_kind="storedProc",
+        package="acme::blog",
+    )
+    assert (render_filter_allowlist(proc) is None) == (render_router(proc) is None)
+    assert render_filter_allowlist(proc) is None
 
 
 def test_object_fields_skipped() -> None:

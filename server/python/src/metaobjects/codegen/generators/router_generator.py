@@ -1,5 +1,11 @@
-"""FastAPI router codegen — one ``<entity>_router.py`` per writable entity
-(``source.rdb`` with ``@kind="table"``).
+"""FastAPI router codegen — one ``<entity>_router.py`` per routed object.
+
+A writable object (``source.rdb @kind="table"``, or a write-through entity) gets
+the full CRUD router. A VIEW-backed object — an ``object.projection`` whose only
+source is ``@kind="view"`` / ``"materializedView"`` — gets a READ-ONLY router:
+GET list + GET by id, with every write verb answering the cross-port
+``405 {"error": "method_not_allowed"}`` (F22). ``storedProc`` /
+``tableFunction`` are invocations rather than collections and are still skipped.
 
 FR-008 §2.3. Conforms to the cross-port REST API contract
 (see ``docs/features/api-contract.md``):
@@ -12,8 +18,8 @@ FR-008 §2.3. Conforms to the cross-port REST API contract
 * ``?limit=N&offset=N`` pagination with defaults (limit=50, offset=0).
 * HTTP 404 envelope: ``{"error": "not_found"}``.
 
-View / materializedView / storedProc / tableFunction kinds are skipped
-(read-only — would need a different router shape).
+``storedProc`` / ``tableFunction`` kinds are skipped — they have no
+collection-and-item shape to mount.
 
 Filter operators are wired by delegating to the per-entity
 ``<entity_snake>_filter_allowlist.py`` module (FR-009 §3.5) and the
@@ -66,7 +72,11 @@ from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.relationship.relationship_references import (
     reference_target_entity,
 )
-from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
+from metaobjects.meta.persistence.source.source_constants import (
+    SOURCE_KIND_MATERIALIZED_VIEW,
+    SOURCE_KIND_TABLE,
+    SOURCE_KIND_VIEW,
+)
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.shared.base_types import TYPE_IDENTITY
 from metaobjects.shared.separators import PACKAGE_SEP
@@ -345,9 +355,85 @@ def reverse_fks_for(entity: MetaObject) -> list[ReverseFk]:
     return out
 
 
+# F22 — the read-only source kinds that still get a REST surface. A view (and a
+# materialized view) is a collection of rows addressable by the identity the
+# projection inherits, which is exactly the shape a collection-and-item REST
+# resource needs. `storedProc` / `tableFunction` are invocations, not collections:
+# they have no such shape and stay skipped, as they are for the writable router.
+_READ_ONLY_ROUTED_KINDS = frozenset({SOURCE_KIND_VIEW, SOURCE_KIND_MATERIALIZED_VIEW})
+
+
+def emits_router(entity: MetaObject) -> bool:
+    """Whether this object gets a generated router — writable CRUD or read-only.
+
+    THE single source of truth for the router emit set, exported so
+    ``filter_allowlist_generator`` can gate on the same answer instead of a
+    second copy of the rule. The generated router does ``from
+    .<snake>_filter_allowlist import ...``, so an allowlist emitted for a
+    different set than the routers is not a cosmetic mismatch — the module is
+    missing at import and the app fails to start. That failure mode is already
+    recorded in this codebase for the write-through case; keeping two copies of
+    the predicate is what let it happen, so there is now one.
+    """
+    if not emits_instance_artifacts(entity):
+        return False
+    src = primary_rdb_source(entity)
+    if src is None:
+        return False
+    kind = src.effective_kind()
+    return (
+        entity.is_write_through()
+        or kind == SOURCE_KIND_TABLE
+        or kind in _READ_ONLY_ROUTED_KINDS
+    )
+
+
+def _sort_type_and_tables_lines(sort_field_nodes: list[MetaField]) -> list[str]:
+    """The `_SortClause` model + the two sort lookup tables.
+
+    Shared by the writable and read-only routers. Split from the parse function
+    below only because the writable module emits `_REQUIRED_FIELDS` /
+    `_FROZEN_FIELDS` between the two, and moving them would churn every writable
+    entity's generated file for no behavioural gain."""
+    sort_fields = [f.name for f in sort_field_nodes]
+    return [
+        "class _SortClause(BaseModel):",
+        '    """GENERATED — parsed sort directive (field + asc/desc)."""',
+        "    field: str",
+        "    direction: str",
+        "",
+        "",
+        f"_SORT_ALLOWLIST: set[str] = {_py_set_literal(sort_fields)}",
+        "",
+        "",
+        f"_SORT_DEFAULT_ORDER: dict[str, str] = {_py_sort_default_order_literal(sort_field_nodes)}",
+    ]
+
+
+def _sort_parse_fn_lines() -> list[str]:
+    """The `_parse_sort` helper. Shared by the writable and read-only routers, so a
+    projection cannot answer `?sort` differently from a table entity."""
+    return [
+        'def _parse_sort(raw: str) -> _SortClause | None:',
+        '    """Parse `field:asc|desc`; return None for malformed / disallowed input."""',
+        '    parts = raw.split(":", 1)',
+        "    if not parts or parts[0] not in _SORT_ALLOWLIST:",
+        "        return None",
+        # `?sort=field` with no `:order` takes the field's DECLARED
+        # @sortableDefaultOrder. The "asc" fallback stays at the READ, one place.
+        '    direction = (',
+        '        parts[1].lower() if len(parts) == 2',
+        '        else _SORT_DEFAULT_ORDER.get(parts[0], "asc")',
+        '    )',
+        '    if direction not in ("asc", "desc"):',
+        "        return None",
+        "    return _SortClause(field=parts[0], direction=direction)",
+    ]
+
+
 class RouterGenerator:
-    """``object.entity`` + ``source.rdb @kind="table"`` → one
-    ``<entity_snake>_router.py`` per writable entity (FastAPI ``APIRouter``).
+    """One ``<entity_snake>_router.py`` per routed object (FastAPI ``APIRouter``):
+    full CRUD for a writable source, read-only for a view-backed one.
 
     EXTENSION SEAM (open-for-extension). Adopters subclass this and override one of
     the protected ``_emit_*`` hooks to customize the emitted router without forking.
@@ -370,8 +456,8 @@ class RouterGenerator:
       the subtype-keyed ``find_related_*`` seam.
     * ``render_router(entity, object_index)`` — the whole module (last resort).
 
-    Skips entities without a ``source.rdb`` child and read-only kinds
-    (view / materializedView / storedProc / tableFunction).
+    Skips objects without a ``source.rdb`` child, and the non-collection
+    read-only kinds (storedProc / tableFunction). See :func:`emits_router`.
     """
 
     name = "router-generator"
@@ -724,8 +810,6 @@ class RouterGenerator:
                     seen.add(f.name)
                     sort_fields.append(f.name)
                     sort_field_nodes.append(f)
-        sort_set_body = _py_set_literal(sort_fields)
-        sort_default_order_body = _py_sort_default_order_literal(sort_field_nodes)
         # FR-035 PATCH-2: @required fields across the base AND every subtype — an
         # explicit null on any of these is a 400 (the per-subtype update handlers
         # guard against it before the repo call). Union, stable order.
@@ -835,16 +919,7 @@ class RouterGenerator:
         parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
         parts.append("")
         parts.append("")
-        parts.append("class _SortClause(BaseModel):")
-        parts.append('    """GENERATED — parsed sort directive (field + asc/desc)."""')
-        parts.append("    field: str")
-        parts.append("    direction: str")
-        parts.append("")
-        parts.append("")
-        parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
-        parts.append("")
-        parts.append("")
-        parts.append(f"_SORT_DEFAULT_ORDER: dict[str, str] = {sort_default_order_body}")
+        parts.extend(_sort_type_and_tables_lines(sort_field_nodes))
         parts.append("")
         parts.append("")
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
@@ -856,20 +931,7 @@ class RouterGenerator:
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
         parts.append("")
         parts.append("")
-        parts.append("def _parse_sort(raw: str) -> _SortClause | None:")
-        parts.append('    """Parse `field:asc|desc`; return None for malformed / disallowed input."""')
-        parts.append('    parts = raw.split(":", 1)')
-        parts.append("    if not parts or parts[0] not in _SORT_ALLOWLIST:")
-        parts.append("        return None")
-        # `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
-        # The "asc" fallback stays at the READ, one place per port.
-        parts.append('    direction = (')
-        parts.append('        parts[1].lower() if len(parts) == 2')
-        parts.append('        else _SORT_DEFAULT_ORDER.get(parts[0], "asc")')
-        parts.append('    )')
-        parts.append('    if direction not in ("asc", "desc"):')
-        parts.append("        return None")
-        parts.append("    return _SortClause(field=parts[0], direction=direction)")
+        parts.extend(_sort_parse_fn_lines())
         parts.append("")
         parts.append("")
         # Subtype-keyed repository Protocol (None == the polymorphic base).
@@ -1064,9 +1126,10 @@ class RouterGenerator:
     ) -> str | None:
         """Render an entity as a FastAPI ``APIRouter`` module.
 
-        Returns ``None`` when the entity has no ``source.rdb`` child or the source
-        is not a writable table (view / materializedView / storedProc / tableFunction
-        are skipped — read-only kinds need a different shape).
+        Returns ``None`` when the object gets no router at all — no ``source.rdb``
+        child, or a non-collection read-only kind (storedProc / tableFunction). A
+        view-backed object returns a READ-ONLY router instead of ``None`` (F22);
+        :func:`emits_router` is the predicate.
 
         When *object_index* is supplied, each M:N navigation on the entity
         (``relationship.* @cardinality:"many" + @through``) also emits a FastAPI
@@ -1097,9 +1160,15 @@ class RouterGenerator:
         # FR-024 §7 (#214): a write-through entity read-view is writable (owns a table
         # source) and MUST emit its CRUD router regardless of source declaration order —
         # the first-source gate below would wrongly skip a view-source-first write-through
-        # entity. Reads route to the replica view in the ObjectManager (not here). A
-        # projection (read-only source only) is not write-through, so it still skips.
+        # entity. Reads route to the replica view in the ObjectManager (not here).
         if not entity.is_write_through() and src.effective_kind() != SOURCE_KIND_TABLE:
+            # F22: a VIEW-only object is not write-through, and used to stop here —
+            # emitting no router at all, while TypeScript and C# served it. It gets a
+            # READ-ONLY router instead: GET list + GET by id, every write verb
+            # answering the cross-port 405 envelope. Gated by
+            # fixtures/api-contract-conformance/projection/.
+            if src.effective_kind() in _READ_ONLY_ROUTED_KINDS:
+                return self._render_readonly_router(entity, column_naming)
             return None
 
         # FR-017 TPH: a discriminator base emits a polymorphic collection at the base
@@ -1123,14 +1192,11 @@ class RouterGenerator:
         pk_type = pk.expr
         repo_class = f"{short_name}Repository"
         sort_field_nodes = list(_scalar_fields(entity))
-        sort_fields = [f.name for f in sort_field_nodes]
         upper = short_name.upper()
         fields_const = f"{upper}_FILTER_FIELDS"
         ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
         allowlist_module = f"{snake}_filter_allowlist"
 
-        sort_set_body = _py_set_literal(sort_fields)
-        sort_default_order_body = _py_sort_default_order_literal(sort_field_nodes)
         # FR-035 PATCH-2: an explicit null on a @required field (scalar or jsonb)
         # is a 400 — the update handler guards these before the repo call.
         required_set_body = _py_set_literal(_required_field_names(entity), frozen=True)
@@ -1199,16 +1265,7 @@ class RouterGenerator:
         parts.append("")
         # Sort allowlist + parse helper — per-entity, closed over the allowlist set so
         # callers don't need to thread the set through a runtime argument.
-        parts.append("class _SortClause(BaseModel):")
-        parts.append('    """GENERATED — parsed sort directive (field + asc/desc)."""')
-        parts.append("    field: str")
-        parts.append("    direction: str")
-        parts.append("")
-        parts.append("")
-        parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
-        parts.append("")
-        parts.append("")
-        parts.append(f"_SORT_DEFAULT_ORDER: dict[str, str] = {sort_default_order_body}")
+        parts.extend(_sort_type_and_tables_lines(sort_field_nodes))
         parts.append("")
         parts.append("")
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
@@ -1220,20 +1277,7 @@ class RouterGenerator:
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
         parts.append("")
         parts.append("")
-        parts.append('def _parse_sort(raw: str) -> _SortClause | None:')
-        parts.append('    """Parse `field:asc|desc`; return None for malformed / disallowed input."""')
-        parts.append('    parts = raw.split(":", 1)')
-        parts.append("    if not parts or parts[0] not in _SORT_ALLOWLIST:")
-        parts.append("        return None")
-        # `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
-        # The "asc" fallback stays at the READ, one place per port.
-        parts.append('    direction = (')
-        parts.append('        parts[1].lower() if len(parts) == 2')
-        parts.append('        else _SORT_DEFAULT_ORDER.get(parts[0], "asc")')
-        parts.append('    )')
-        parts.append('    if direction not in ("asc", "desc"):')
-        parts.append("        return None")
-        parts.append("    return _SortClause(field=parts[0], direction=direction)")
+        parts.extend(_sort_parse_fn_lines())
         parts.append("")
         parts.append("")
         proto_lines = self._emit_repository_protocol(repo_class, m2m, pk_type)
@@ -1283,6 +1327,151 @@ class RouterGenerator:
 
         return "\n".join(parts)
 
+    def _emit_readonly_reject_handlers(self, snake: str, plural: str, pk_param: str) -> list[str]:
+        """The write verbs on a read-only projection, each answering the cross-port
+        405 envelope.
+
+        405 and not 404: the resource plainly exists — the same path answers GET —
+        and 404 would tell a caller the collection is absent when it is merely not
+        writable. Mounted EXPLICITLY rather than left to FastAPI, which answers an
+        unmatched method with its own ``{"detail": "Method Not Allowed"}`` and so
+        would put a fifth body shape on a wire the other ports spell one way.
+
+        PUT is here because the writable router serves it; a projection has to
+        refuse every verb the writable surface offers, or the one it forgets falls
+        through to a 404 (which is exactly what TypeScript did until F22)."""
+        lines: list[str] = []
+        for i, (verb, path, fn) in enumerate((
+            ("post", '""', f"create_{snake}"),
+            ("patch", f'"/{{{pk_param}}}"', f"update_{snake}"),
+            ("put", f'"/{{{pk_param}}}"', f"replace_{snake}"),
+            ("delete", f'"/{{{pk_param}}}"', f"delete_{snake}"),
+        )):
+            if i > 0:
+                lines.append("")
+                lines.append("")
+            lines.append(f"@router.{verb}({path})")
+            lines.append(f"def {fn}() -> Any:")
+            lines.append(f'    """GENERATED — {plural} is a read-only projection; writes are rejected."""')
+            lines.append("    return JSONResponse(")
+            lines.append("        status_code=405,")
+            lines.append('        content={')
+            lines.append('            "error": "method_not_allowed",')
+            lines.append(f'            "message": "{verb.upper()} is not supported on a projection (read-only).",')
+            lines.append("        },")
+            lines.append("    )")
+        return lines
+
+    def _render_readonly_router(
+        self,
+        entity: MetaObject,
+        column_naming: str = DEFAULT_COLUMN_NAMING,
+    ) -> str:
+        """Render a read-only (`@kind: view` / `materializedView`) object as a FastAPI
+        ``APIRouter``: GET list + GET by id, and the four write verbs answering 405.
+
+        Deliberately a separate assembly from the writable path rather than a pile of
+        ``if writable`` branches through it. The writable router carries create/update
+        DTO validation, the FR-035 tristate, @autoSet stamping, the FR-037 frozen-field
+        strip and constraint-error classification — every one of which is meaningless
+        here, and threading a flag through all of them is how the read-only surface
+        would drift into carrying write machinery it can never run. The two paths share
+        what they genuinely share (the list + get handlers, the sort helper, the filter
+        allowlist wiring) by calling the same emitters."""
+        short_name = entity.name
+        snake = _snake_case(short_name)
+        plural = _route_path(short_name)
+        pk_param = f"{snake}_id"
+        pk = _pk_py_type(entity)
+        pk_type = pk.expr
+        repo_class = f"{short_name}Repository"
+        sort_field_nodes = list(_scalar_fields(entity))
+        upper = short_name.upper()
+        fields_const = f"{upper}_FILTER_FIELDS"
+        ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
+        allowlist_module = f"{snake}_filter_allowlist"
+
+        parts: list[str] = []
+        parts.append(
+            generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
+            + f'"""GENERATED — read-only REST router for the {short_name} projection.\n\n'
+            + "Implements the cross-port API contract: GET list + GET by id; every write\n"
+            + 'verb answers 405 {"error": "method_not_allowed"}."""\n'
+        )
+        parts.append("from __future__ import annotations")
+        parts.append("")
+        for import_line in sorted(pk.imports):
+            parts.append(import_line)
+        if pk.imports:
+            parts.append("")
+        parts.append("from typing import Annotated, Any, Protocol")
+        parts.append("")
+        parts.append("from fastapi import APIRouter, Depends, Query, Request")
+        parts.append("from fastapi.responses import JSONResponse")
+        parts.append("from pydantic import BaseModel")
+        parts.append("")
+        parts.append("from metaobjects.codegen.runtime.filter_parser import (")
+        parts.append("    FilterPredicate,")
+        parts.append("    parse_filter,")
+        parts.append(")")
+        parts.append("")
+        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append("")
+        parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
+        parts.append("")
+        parts.append("")
+        parts.extend(_sort_type_and_tables_lines(sort_field_nodes))
+        parts.append("")
+        parts.append("")
+        parts.extend(_sort_parse_fn_lines())
+        parts.append("")
+        parts.append("")
+        parts.append(f"class {repo_class}(Protocol):")
+        parts.append('    """GENERATED — consumer implements with their preferred persistence layer.')
+        parts.append("")
+        parts.append("    Read-only: a projection is not writable, so the seam offers no")
+        parts.append('    create / update / delete."""')
+        parts.append("    def list(")
+        parts.append("        self,")
+        parts.append("        limit: int,")
+        parts.append("        offset: int,")
+        parts.append("        sort: _SortClause | None,")
+        parts.append("        filters: list[FilterPredicate],")
+        parts.append("    ) -> list[Any]: ...")
+        parts.append("    def count(self, filters: list[FilterPredicate]) -> int: ...")
+        parts.append(f"    def find_by_id(self, id: {pk_type}) -> Any | None: ...")
+        parts.append("")
+        parts.append("")
+        parts.append(f"def get_repository() -> {repo_class}:")
+        parts.append('    """GENERATED — consumer overrides via `app.dependency_overrides[get_repository]`."""')
+        parts.append('    raise NotImplementedError("Override get_repository via FastAPI dependency_overrides in the consumer app")')
+        parts.append("")
+        parts.append("")
+
+        _handler_kwargs = dict(
+            snake=snake,
+            plural=plural,
+            pk_param=pk_param,
+            pk_type=pk_type,
+            repo_class=repo_class,
+            fields_const=fields_const,
+            ops_const=ops_const,
+            # The projection has no create / patch validation model. The list + get
+            # handlers do not read these; they are required by the shared signature.
+            model_name="",
+            patch_model="",
+        )
+        for i, hname in enumerate(("list", "get")):
+            if i > 0:
+                parts.append("")
+                parts.append("")
+            parts.extend(self._emit_route_handler(hname, **_handler_kwargs))
+        parts.append("")
+        parts.append("")
+        parts.extend(self._emit_readonly_reject_handlers(snake, plural, pk_param))
+        parts.append("")
+        return "\n".join(parts)
+
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
 
@@ -1317,10 +1506,10 @@ def render_router(
 
 
 def router_generator() -> Generator:
-    """Generator factory: ``object.entity`` + ``source.rdb @kind="table"`` → one
-    ``<entity_snake>_router.py`` per writable entity.
+    """Generator factory: one ``<entity_snake>_router.py`` per routed object —
+    full CRUD for a writable source, read-only for a view-backed one.
 
-    Returns a :class:`RouterGenerator` (subclassable extension seam). Skips entities
-    without a ``source.rdb`` child and read-only kinds (view / materializedView /
-    storedProc / tableFunction)."""
+    Returns a :class:`RouterGenerator` (subclassable extension seam). Skips objects
+    without a ``source.rdb`` child and the non-collection read-only kinds
+    (storedProc / tableFunction)."""
     return RouterGenerator()

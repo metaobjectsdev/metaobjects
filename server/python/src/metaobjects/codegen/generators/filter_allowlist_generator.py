@@ -37,14 +37,11 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
 from metaobjects.codegen.generators.m2m_codegen import build_object_index
+from metaobjects.codegen.generators.router_generator import emits_router
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
-from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
-from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
-from metaobjects.shared.separators import PACKAGE_SEP
 
 
 # Operator sets — preserve insertion order (Python dict order == spec order).
@@ -259,25 +256,22 @@ class FilterAllowlistGenerator:
     ) -> str | None:
         """Render the filter allowlist module for ``entity`` (or ``None`` to skip).
 
-        Returns ``None`` for entities without a ``source.rdb`` child and for
-        read-only kinds (``view`` / ``materializedView`` / ``storedProc`` /
-        ``tableFunction``) — these match the router generator's "no router"
-        gate, so emitting an allowlist would be pure noise.
+        Returns ``None`` for exactly the objects that get no router — asked of
+        :func:`~metaobjects.codegen.generators.router_generator.emits_router`
+        rather than re-derived here, because the generated router IMPORTS this
+        module and a disagreement is an ImportError at app startup, not a
+        cosmetic mismatch.
 
         ``object_index`` (optional) lets a TPH discriminator base fold in its
         subtypes' filterable fields (see :meth:`_compute_filterable_ops`).
         """
-        if not emits_instance_artifacts(entity):
-            return None
-        src = primary_rdb_source(entity)
-        if src is None:
-            return None
-        # FR-024 §7 (#214): a write-through entity read-view is writable and its generated
-        # router imports this allowlist — so it MUST be emitted for write-through regardless of
-        # source declaration order (matching the router gate; else a view-source-first
-        # write-through router imports a never-generated module and FastAPI startup crashes). A
-        # projection (read-only source only) is not write-through, so it still skips.
-        if not entity.is_write_through() and src.effective_kind() != SOURCE_KIND_TABLE:
+        # ONE predicate, shared with the router generator (see its `emits_router`).
+        # This gate previously carried its own copy of the rule, and the copy is
+        # what broke twice: once for a view-source-first write-through entity, and
+        # again at F22 when the router learned to serve view-only projections and
+        # this module did not — the emitted router imported an allowlist nothing
+        # had generated.
+        if not emits_router(entity):
             return None
 
         short_name = entity.name

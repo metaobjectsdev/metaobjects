@@ -33,8 +33,9 @@ def _entity(
     *,
     source_kind: str | None = "table",
     package: str | None = None,
+    subtype: str = "entity",
 ) -> MetaObject:
-    o = MetaObject(TYPE_OBJECT, "entity", name)
+    o = MetaObject(TYPE_OBJECT, subtype, name)
     o.package = package
     if source_kind is not None:
         src = MetaSource(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, "")
@@ -115,15 +116,74 @@ def test_with_count_returns_envelope_bare_list_otherwise() -> None:
     assert '{"error": "invalid_sort", "field": sort.split(":", 1)[0]}' in out
 
 
-def test_view_kind_skipped() -> None:
-    # Only @kind="table" gets a router. Views are read-only — skipped (returns None).
+def test_view_kind_gets_a_read_only_router() -> None:
+    """F22 — a view-backed object gets a READ-ONLY router, not nothing.
+
+    This test used to assert `render_router(view) is None`, pinning the very gap
+    F22 closed: TypeScript and C# served a view-only projection over REST while
+    Java, Kotlin and Python emitted no routes at all, and no cross-port scenario
+    ever asked which was right. Ruled all-five-serve-projections, so the
+    assertion is inverted deliberately — the old one was the defect, written down.
+    """
     view = _entity(
         "AuthorView",
         [_f("id", fc.FIELD_SUBTYPE_INT, required=True)],
         source_kind=SOURCE_KIND_VIEW,
         package="acme::blog",
     )
-    assert render_router(view) is None
+    out = render_router(view)
+    assert out is not None
+    # Reads are mounted.
+    assert '@router.get("")' in out
+    assert '@router.get("/{author_view_id}")' in out
+    # Every write verb answers the cross-port 405 envelope — including PUT, which
+    # the writable router serves, so omitting it would let PUT fall to a 404.
+    for verb in ("post", "patch", "put", "delete"):
+        assert f"@router.{verb}(" in out, f"missing {verb} rejection; saw:\n{out}"
+    # The trailing comma matches the four handler BODIES only — the module
+    # docstring names the envelope too, and would otherwise inflate the count.
+    assert out.count('"error": "method_not_allowed",') == 4
+    # And it carries NO write machinery: no create/patch validation models, no
+    # constraint classifier, no repository write seam.
+    assert "AuthorViewCreate" not in out
+    assert "AuthorViewPatch" not in out
+    assert "classify_constraint_error" not in out
+    assert "def create(" not in out
+    assert "def update(" not in out
+    assert "def delete(self" not in out
+
+
+def test_projection_subtype_gets_a_read_only_router() -> None:
+    """The same, declared the way ADR-0028 says to declare it: `object.projection`.
+
+    An `object.entity` whose only source is a view is now
+    ERR_ENTITY_PRIMARY_SOURCE_READONLY at load (B4b), so `object.projection` is
+    the shape a real model uses — and the generator must key off the SOURCE, not
+    the subtype (instance artifacts derive from a declared source)."""
+    proj = _entity(
+        "InvoiceSummary",
+        [_f("id", fc.FIELD_SUBTYPE_INT, required=True)],
+        source_kind=SOURCE_KIND_VIEW,
+        package="acme::sales",
+        subtype="projection",
+    )
+    out = render_router(proj)
+    assert out is not None
+    assert 'router = APIRouter(prefix="/api/invoice_summaries"' in out
+    assert out.count('"error": "method_not_allowed",') == 4
+
+
+def test_stored_proc_kind_still_skipped() -> None:
+    """A storedProc is an invocation, not a collection — no collection-and-item
+    REST shape to mount, so it stays skipped. F22 widened the gate to views and
+    materialized views ONLY."""
+    proc = _entity(
+        "RunReport",
+        [_f("id", fc.FIELD_SUBTYPE_INT, required=True)],
+        source_kind="storedProc",
+        package="acme::blog",
+    )
+    assert render_router(proc) is None
 
 
 def test_router_imports_filter_allowlist_module_and_parser() -> None:

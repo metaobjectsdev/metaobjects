@@ -10,5 +10,4 @@ requests:
     expect:
       status: 200
       body:
-        - { id: 2, reference: "INV-1002", status: "OPEN", amountCents: 40000 }
-        - { id: 3, reference: "INV-1003", status: "OPEN", amountCents: 90500 }
+        ids: [2, 3]

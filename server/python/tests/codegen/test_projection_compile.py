@@ -1,5 +1,5 @@
 """Regression guard: a projection (read-only, view-backed) must generate a model
-that actually COMPILES, and its write generators must skip it.
+and a router that actually COMPILE, and neither may carry a write surface.
 
 This mirrors the C# port's DbContextCompileTests and the TypeScript projection
 compile test added alongside the PR #80 fix: a string assertion ("no write
@@ -50,6 +50,35 @@ def test_projection_model_compiles() -> None:
     assert "ProgramSummary" in ns  # the Pydantic model class was defined
 
 
-def test_projection_is_read_only() -> None:
-    # A view-backed projection gets a model but NO write router.
-    assert render_router(_view_projection()) is None
+def test_projection_router_is_read_only() -> None:
+    """A view-backed projection gets a READ-ONLY router — reads mounted, every
+    write verb answering the cross-port 405 envelope, and no write machinery.
+
+    This used to assert `render_router(...) is None`. The INTENT was right ("its
+    write generators must skip it") but the assertion overshot: it pinned the
+    absence of the whole router, which is the F22 gap — TypeScript and C# served
+    a view-only projection over REST while Python emitted nothing. Ruled
+    all-five-serve-projections, so the invariant is now "no WRITE surface",
+    which is what this file meant all along.
+    """
+    src = render_router(_view_projection())
+    assert src is not None
+    # Syntax-check the emitted module, per this file's own doctrine that a string
+    # assertion misses what a compile catches. A full `exec` is not possible here:
+    # the router's `from .program_summary_filter_allowlist import ...` needs a real
+    # package parent, which the integration harness builds and this unit test does
+    # not. The api-contract projection lane runs the module for real.
+    compile(src, "<ProgramSummary router>", "exec")
+
+    # Reads are mounted.
+    assert '@router.get("")' in src
+    assert '@router.get("/{program_summary_id}")' in src
+    # Every write verb is refused with the cross-port envelope — including PUT,
+    # which the writable router serves.
+    for verb in ("post", "patch", "put", "delete"):
+        assert f"@router.{verb}(" in src, f"missing {verb} rejection; saw:\n{src}"
+    assert src.count('"error": "method_not_allowed",') == 4
+    # No write machinery reached the read-only module.
+    assert "ProgramSummaryCreate" not in src
+    assert "ProgramSummaryPatch" not in src
+    assert "classify_constraint_error" not in src
