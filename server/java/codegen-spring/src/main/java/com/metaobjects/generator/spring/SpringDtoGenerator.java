@@ -826,7 +826,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * {@code field.enum} is typed as the value-constrained nested Java {@code enum}
      * ({@link SpringTypeMapper#enumTypeName}, single or {@code List<Enum>}) whose declaration
      * {@link #collectEnumDecls} emits inside the record body — parity with the other ports and
-     * with {@code SpringPayloadGenerator}. Other scalars delegate to {@link SpringTypeMapper};
+     * with {@link SpringValueObjectGenerator}. Other scalars delegate to {@link SpringTypeMapper};
      * array fields ({@code isArray=true}) are wrapped as {@code List<elementType>} (the wrapped
      * element type so an omitted JSON element deserialises to {@code null}).
      */
@@ -1039,7 +1039,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * Collect the nested {@code public enum <Name> { <members> }} declarations for the enum
      * fields in {@code fields} (the record's components), deduped by enum-type name (two fields
      * extending one abstract enum collapse onto ONE decl named for the super). Mirrors
-     * {@code SpringPayloadGenerator.collectEnumDecls}.
+     * {@link SpringValueObjectGenerator}'s own enum collection.
      */
     private static List<String> collectEnumDecls(MetaObject owner, List<MetaField> fields) {
         List<String> decls = new ArrayList<>();

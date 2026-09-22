@@ -25,28 +25,26 @@ import java.util.stream.Stream;
 import static org.junit.Assert.*;
 
 /**
- * Typed-enums payload-VO proof (Java port): the STRICT {@code <Name>Payload} record types a
- * {@code field.enum} component as a generated nested Java {@code enum} (single → {@code Priority};
- * array → {@code List<Labels>}) instead of {@code String}, and the extract mapper coerces the
- * engine-validated member string via {@code <Payload>.<Enum>.valueOf(...)}.
+ * Typed-enums proof (Java port): the value object's own record — the payload a template
+ * renders and the reply a responding prompt parses into (ADR-0056) — types a {@code field.enum}
+ * component as a generated nested Java {@code enum} (single → {@code Priority}; array →
+ * {@code List<Labels>}) instead of {@code String}, and the extract mapper coerces the
+ * engine-validated member string via {@code <Vo>.<Enum>.valueOf(...)}.
  *
- * <p>Each test generates the payload record + the output parser, compiles them in-memory
+ * <p>Each test generates the value-object record + the output parser, compiles them in-memory
  * ({@code render}/{@code om} on the test classpath), loads the parser, invokes the
  * runtime-delegating {@code extractLenient(loader, dirty)}, and asserts via reflection that:</p>
  * <ul>
- *   <li>the payload {@code priority} accessor's return type {@link Class#isEnum() is an enum}
- *       named {@code Priority}, with value the {@code HIGH} constant;</li>
+ *   <li>the record's {@code priority} accessor's return type {@link Class#isEnum() is an enum}
+ *       named {@code <Owner><Field>}, with value the {@code HIGH} constant;</li>
  *   <li>{@code labels} is a {@code List} of the generated {@code Labels} enum, members [A, B];</li>
  *   <li>a shared abstract {@code field.enum} extended by two fields emits EXACTLY ONE nested
  *       {@code enum Priority} (named for the super), and both fields are typed {@code Priority}.</li>
  * </ul>
  *
  * <p><b>Java structural note.</b> Unlike the C#/Kotlin/TS/Python ports, the Java port has no
- * separate all-nullable {@code <Name>Extracted} string mirror — {@code <Name>Payload} is the
- * single typed record returned by both {@code parse(...)} and {@code extractLenient(...)}. So the
- * "lenient mirror stays string" cross-port note is N/A here; the value-constrained enum type is
- * shared, and the mapper coerces the string the engine produced. The engine ({@code render}/{@code om})
- * and the {@code extract-conformance} corpus are unchanged — only codegen types + coercion change.</p>
+ * separate all-nullable {@code <Name>Extracted} string mirror — the value object's record is
+ * the single typed record returned by both {@code parse(...)} and {@code extractLenient(...)}.</p>
  */
 public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
 
@@ -67,14 +65,14 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
             // The payload component types are the generated nested enums.
-            Class<?> payloadClass = cl.loadClass("acme.ai.prompts.OrderPayload");
+            Class<?> payloadClass = cl.loadClass("acme.ai.OrderPayload");
             Class<?> priorityReturn = payloadClass.getMethod("priority").getReturnType();
             assertTrue("strict priority component must be a generated enum, not String; was "
                     + priorityReturn, priorityReturn.isEnum());
             assertEquals("nested enum must be named <OwnerShort><FieldPascal> = OrderPayloadPriority",
                     "OrderPayloadPriority", priorityReturn.getSimpleName());
 
-            Class<?> labelsEnum = cl.loadClass("acme.ai.prompts.OrderPayload$OrderPayloadLabels");
+            Class<?> labelsEnum = cl.loadClass("acme.ai.OrderPayload$OrderPayloadLabels");
             assertTrue("Labels must be a generated enum", labelsEnum.isEnum());
             assertEquals("Labels members verbatim [A, B]",
                     List.of("A", "B"),
@@ -131,7 +129,7 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
 
         // The source must declare EXACTLY ONE nested enum named for the super (Priority), not
         // <Owner><Field> (CurrentPriority / PreviousPriority).
-        String src = Files.readString(gen.resolve("acme/orders/prompts/TicketPayload.java"));
+        String src = Files.readString(gen.resolve("acme/orders/TicketPayload.java"));
         int firstDecl = src.indexOf("public enum Priority {");
         assertTrue("must emit a nested `public enum Priority`; saw:\n" + src, firstDecl >= 0);
         assertEquals("must emit EXACTLY ONE `enum Priority` (deduped); saw:\n" + src,
@@ -144,7 +142,7 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            Class<?> payloadClass = cl.loadClass("acme.orders.prompts.TicketPayload");
+            Class<?> payloadClass = cl.loadClass("acme.orders.TicketPayload");
             Class<?> current = payloadClass.getMethod("currentPriority").getReturnType();
             Class<?> previous = payloadClass.getMethod("previousPriority").getReturnType();
             assertTrue("currentPriority must be an enum", current.isEnum());
@@ -161,7 +159,7 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", gen.toString());
 
-        SpringPayloadGenerator payloadGen = new SpringPayloadGenerator();
+        SpringValueObjectGenerator payloadGen = new SpringValueObjectGenerator();
         payloadGen.setArgs(args);
         payloadGen.execute(loader);
 

@@ -15,33 +15,37 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
- * Generator: one Java 21 {@code record} per {@code object.value} reachable from an
- * entity / projection's value-object jsonb column ({@code field.object @objectRef=<value>
- * @storage:jsonb}, single or {@code @isArray}), transitively through nested value-object
- * members. The emitted record is the strongly-typed component the matching
- * {@code <Entity>Dto} / {@code <Entity>Patch} bind to (see {@link SpringDtoGenerator}), so a
- * VO column POSTs and PATCHes with full nested validation (Program D).
+ * Generator: one Java 21 {@code record} per value shape — every concrete {@code object.value},
+ * and every concrete SOURCELESS {@code object.projection} (#210: pure shape, a legal template
+ * payload target). It is THE Java type for that value object (ADR-0056), used everywhere:
+ * <ul>
+ *   <li>the entity tier — the component a {@code <Entity>Dto} / {@code <Entity>Patch} binds a
+ *       value-object jsonb column to ({@link SpringDtoGenerator}), so a VO column POSTs and
+ *       PATCHes with full nested validation (Program D);</li>
+ *   <li>the template tier — a template's {@code @payloadRef} payload and a responding prompt's
+ *       {@code @responseRef} reply ({@link SpringRenderHelperGenerator},
+ *       {@link SpringOutputParserGenerator}), which declare no record of their own.</li>
+ * </ul>
  *
- * <p>Distinct from {@link SpringPayloadGenerator} (which emits {@code <Template>Payload}
- * records for the prompt / LLM surface): this emitter is wired into the entity request /
- * response path, so — unlike a plain payload record — its record carries jakarta
- * bean-validation constraints on each member (reusing
- * {@link SpringDtoGenerator#validationAnnotations(MetaField)}) plus {@code @Valid} on any
- * nested value-object member, so {@code validator.validate(bean)} cascades to depth &ge; 2
- * (spec section 0). The record name is the value object's short name (e.g. {@code Marker}),
- * emitted into the value object's own Java package — the same package as the consuming DTO,
- * so a same-package reference resolves; {@link SpringTypeMapper} references it fully-qualified
- * regardless.</p>
+ * <p>Its record carries jakarta bean-validation constraints on each member (reusing
+ * {@link SpringDtoGenerator#validationAnnotations(MetaField)}) plus {@code @Valid} on any nested
+ * value-object member, so {@code validator.validate(bean)} cascades to depth &ge; 2 (spec section
+ * 0). The record name is the value object's short name (e.g. {@code Marker}), emitted into the
+ * value object's own Java package; {@link SpringTypeMapper} and the template tier reference it
+ * fully-qualified.</p>
+ *
+ * <p>Emitting for every value shape, not only the ones an entity reaches, is what lets the template
+ * tier drop its own copies: the old per-template {@code <Template>Payload} family was written into
+ * each template's {@code prompts} package, and a value object shared across packages landed in only
+ * one of them (#387).</p>
  *
  * <p>Args:</p>
  * <ul>
@@ -59,37 +63,28 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
     public void execute(MetaDataLoader loader) {
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
-        for (MetaObject vo : reachableValueObjects(loader)) {
+        for (MetaObject vo : valueShapes(loader)) {
             emit(vo, outRoot);
         }
     }
 
     /**
-     * The {@code object.value} objects reachable from any concrete entity / projection's
-     * value-object jsonb column, expanded transitively through nested value-object members.
-     * Deterministic (insertion-ordered). A payload-only value object (referenced solely by a
-     * {@code template.@payloadRef}) is NOT reached here — that surface is
-     * {@link SpringPayloadGenerator}'s {@code <Template>Payload}.
+     * Every value shape this generator emits a record for: each concrete {@code object.value},
+     * and each concrete sourceless {@code object.projection}. Sorted by FQN, so emission is
+     * deterministic whatever the load order.
      */
-    static Set<MetaObject> reachableValueObjects(MetaDataLoader loader) {
-        Set<MetaObject> out = new LinkedHashSet<>();
-        Deque<MetaObject> queue = new ArrayDeque<>();
+    static List<MetaObject> valueShapes(MetaDataLoader loader) {
+        List<MetaObject> out = new ArrayList<>();
         for (MetaObject obj : loader.getMetaObjects()) {
             if (GeneratorUtil.isAbstract(obj)) continue;
-            if (!MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType())
-                    && !MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) continue;
-            for (MetaField field : obj.getMetaFields()) {
-                MetaObject vo = SpringDtoGenerator.valueObjectRefOf(field);
-                if (vo != null && out.add(vo)) queue.add(vo);
-            }
+            boolean value = MetaObject.SUBTYPE_VALUE.equals(obj.getSubType());
+            // ADR-0039: resolving — a source anywhere in the extends chain binds a projection to a
+            // backing store, and then its type is the entity tier's DTO, not a value record.
+            boolean sourcelessProjection = MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())
+                && obj.getSources(true).isEmpty();
+            if (value || sourcelessProjection) out.add(obj);
         }
-        while (!queue.isEmpty()) {
-            MetaObject vo = queue.poll();
-            for (MetaField field : vo.getMetaFields()) {
-                MetaObject nested = SpringDtoGenerator.valueObjectRefOf(field);
-                if (nested != null && out.add(nested)) queue.add(nested);
-            }
-        }
+        out.sort(java.util.Comparator.comparing(MetaObject::getName));
         return out;
     }
 

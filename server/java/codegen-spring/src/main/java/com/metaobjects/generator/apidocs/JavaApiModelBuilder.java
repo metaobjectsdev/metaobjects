@@ -9,7 +9,6 @@ import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringOutputParserGenerator;
 import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
-import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.io.util.IOUtil;
@@ -280,13 +279,16 @@ public final class JavaApiModelBuilder {
 
         List<ApiSymbol> symbols = new ArrayList<>();
 
-        if (SpringPayloadGenerator.appliesTo(tmpl, loader)) {
-            String payload = SpringNaming.payloadName(shortName);
+        // ADR-0056 — the payload is the @payloadRef value object's OWN record, emitted by the
+        // value-object generator in the value object's package, never a template-named copy.
+        MetaObject payloadVo = payloadValueObject(tmpl, loader);
+        if (payloadVo != null) {
+            String payload = SpringNaming.splitFqn(payloadVo.getName())[1];
             symbols.add(symbolWithFields(
-                payload, ApiSymbolKind.PAYLOAD, fqn(promptsPkg, payload),
+                payload, ApiSymbolKind.PAYLOAD, SpringNaming.valueObjectRef(payloadVo),
                 "record " + payload,
-                "the typed payload projection bound to the template",
-                JavaFieldShapes.payloadFields(tmpl, loader)));
+                "the typed payload value object the template renders",
+                JavaFieldShapes.payloadFieldsOf(payloadVo, loader)));
         }
         if (SpringRenderHelperGenerator.appliesTo(tmpl, loader)) {
             String render = SpringNaming.renderHelperName(shortName);
@@ -315,21 +317,29 @@ public final class JavaApiModelBuilder {
                 "final class " + parser,
                 "parses a model reply back into the typed response shape"));
 
-            // The RESPONSE record the parser above actually returns — the `@responseRef`
-            // shape, not the `@payloadRef` request record documented higher up. Documenting
-            // only the request here would name a type the parser never mentions.
+            // The RESPONSE value object the parser above returns — the @responseRef object's own
+            // record (ADR-0056), not the @payloadRef one documented higher up. When both refs
+            // name the same value object it is documented once.
             FindInbound.InboundShape shape = FindInbound.responseShape(loader, tmpl);
-            if (shape != null) {
-                String response = SpringNaming.responseName(shortName);
+            if (shape != null && (payloadVo == null || !shape.vo().getName().equals(payloadVo.getName()))) {
+                String response = SpringNaming.splitFqn(shape.vo().getName())[1];
                 symbols.add(symbolWithFields(
-                    response, ApiSymbolKind.PAYLOAD, fqn(promptsPkg, response),
+                    response, ApiSymbolKind.PAYLOAD, SpringNaming.valueObjectRef(shape.vo()),
                     "record " + response,
-                    "the typed response shape a model reply is parsed into",
+                    "the typed response value object a model reply is parsed into",
                     JavaFieldShapes.payloadFieldsOf(shape.vo(), loader)));
             }
         }
 
         return new ApiUnit(shortName, javaPkg, "template", symbols, null);
+    }
+
+    /** The template's resolvable {@code @payloadRef} value object, or {@code null}. */
+    private static MetaObject payloadValueObject(MetaTemplate tmpl, MetaDataLoader loader) {
+        String ref = tmpl.getPayloadRef();
+        if (ref == null || ref.isEmpty()) return null;
+        return SpringNaming.resolveValueObjectRef(
+            loader, ref, com.metaobjects.util.MetaDataUtil.findPackageForMetaData(tmpl));
     }
 
     /**

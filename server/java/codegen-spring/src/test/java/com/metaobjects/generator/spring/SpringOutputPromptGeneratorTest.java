@@ -80,10 +80,11 @@ public class SpringOutputPromptGeneratorTest extends SharedRegistryTestBase {
         assertTrue("expected `Format.XML` in SPEC literal; saw:\n" + src,
             src.contains("Format.XML"));
 
-        // SPEC rootName is the RESPONSE record — the shape the fragment describes and the
-        // parser returns — never the @payloadRef request record.
-        assertTrue("expected `AnswerOutputResponse` as SPEC rootName; saw:\n" + src,
-            src.contains("\"AnswerOutputResponse\""));
+        // SPEC rootName is the RESPONSE value object's short name (ADR-0056 — the rule TS and
+        // C# use; there is no template-named response record any more).
+        assertTrue("expected `AnswerOutputPayload` as SPEC rootName; saw:\n" + src,
+            src.contains("\"AnswerOutputPayload\""));
+        assertFalse("no template-named root; saw:\n" + src, src.contains("\"AnswerOutputResponse\""));
     }
 
     // -------------------------------------------------------------------------

@@ -287,11 +287,10 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void aPayloadMapNamesThePayloadRecordNotTheSourceValueObject() throws Exception {
-        // A payload component must name a PAYLOAD record. Typing it as the source value
-        // object's FQN names a type the payload path never emits — so the generated
-        // <Name>Payload referenced a record that did not exist. The target also has to enter
-        // the emission closure (nestedTargetOf), or nothing generates it at all.
+    public void aPayloadMapNamesTheValueObjectsOwnRecord() throws Exception {
+        // ADR-0056: a template's payload IS the value object's own record, and a map of value
+        // objects names that value object's record too. Both records are emitted by the
+        // value-object generator — every value object gets one, so nothing is left unemitted.
         final String fixture = """
             {
               "metadata.root": { "package": "acme::ai", "children": [
@@ -317,20 +316,20 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "payloadmap", fixture);
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", gen.toString());
-        SpringPayloadGenerator gen2 = new SpringPayloadGenerator();
+        SpringValueObjectGenerator gen2 = new SpringValueObjectGenerator();
         gen2.setArgs(args);
         gen2.execute(loader);
 
-        String payload = Files.readString(gen.resolve("acme/ai/prompts/NpcOutPayload.java"));
-        // The map's VALUE is the nested PAYLOAD record...
-        assertTrue("expected a Map<String, TraitPayload> component; saw:\n" + payload,
-                payload.contains("java.util.Map<String, TraitPayload> traits"));
-        // ...never the source value object.
-        assertFalse("the payload must not name the source value object; saw:\n" + payload,
-                payload.contains("acme.ai.Trait "));
-        // ...and that nested payload record is actually emitted.
-        assertTrue("expected the nested TraitPayload record to be emitted",
-                Files.exists(gen.resolve("acme/ai/prompts/TraitPayload.java")));
+        String payload = Files.readString(gen.resolve("acme/ai/NpcResponse.java"));
+        // The map's VALUE is the value object's own record, fully qualified...
+        assertTrue("expected a Map<String, acme.ai.Trait> component; saw:\n" + payload,
+                payload.contains("java.util.Map<String, acme.ai.Trait> traits"));
+        // ...and that record is actually emitted, once, in the value object's package.
+        assertTrue("expected the Trait record to be emitted",
+                Files.exists(gen.resolve("acme/ai/Trait.java")));
+        // Nothing value-shaped lands in a template's prompts package any more.
+        assertFalse("no template-tier copy of the payload",
+                Files.exists(gen.resolve("acme/ai/prompts")));
         // A scalar-valued map still types straight through the mapper.
         assertTrue("expected a Map<String, Integer> for the scalar map; saw:\n" + payload,
                 payload.contains("java.util.Map<String, Integer> scores"));

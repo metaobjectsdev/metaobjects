@@ -2,16 +2,16 @@ package com.metaobjects.render;
 
 /**
  * Single source of truth for the names of the auto-derived boolean accessors a
- * payload record exposes for its optional/collection fields.
+ * payload exposes for its optional/collection fields.
  *
- * <p>{@code SpringPayloadGenerator} emits a {@code has<Field>()} instance method
- * for every nullable/possibly-empty payload component (String / List / nested
- * object-reference) so a Mustache prompt can gate a section on presence
- * ({@code {{#hasAbilities}}…{{/hasAbilities}}}) without a hand-written wrapper.
- * These accessors are DERIVED, not declared in the payload YAML — so the static
- * template drift check ({@link Verify}) must recognise them the same way the
- * generator names them. Both consult THIS class so the emitted method name and
- * the accepted section name can never drift apart.
+ * <p>The render engine derives a {@code has<Field>} section for every nullable/possibly-empty
+ * payload field (String / List / nested object) so a Mustache prompt can gate a section on
+ * presence ({@code {{#hasAbilities}}…{{/hasAbilities}}}) without a hand-written wrapper —
+ * whether the payload arrives as a map or as the value object's generated record
+ * ({@link #withDerivedAccessors}). These accessors are DERIVED, not declared in the payload
+ * metadata — so the static template drift check ({@link Verify}) must recognise them the same
+ * way the engine names them. Both consult THIS class so the derived name and the accepted
+ * section name can never drift apart.
  *
  * <p>Kept in the zero-core-dependency {@code render} module so both the render
  * engine ({@link Verify}) and the codegen generators can share it without a
@@ -27,8 +27,8 @@ public final class PayloadAccessors {
     /**
      * The boolean-accessor method/section name for a payload field:
      * {@code "has" + capitalize(fieldName)} (e.g. {@code abilities} →
-     * {@code hasAbilities}). Mirrors {@code SpringPayloadGenerator}'s emission
-     * exactly — do not inline a second copy of this rule.
+     * {@code hasAbilities}). The one naming rule the engine (derivation) and {@link Verify}
+     * (acceptance) both call — do not inline a second copy of this rule.
      */
     public static String hasAccessorName(String fieldName) {
         return HAS_PREFIX + capitalize(fieldName);
@@ -36,8 +36,8 @@ public final class PayloadAccessors {
 
     /**
      * Capitalize the first character (leaving an already-uppercase first char
-     * untouched). Byte-identical to {@code SpringNaming.capitalize} so the
-     * accessor name matches the generated method name character-for-character.
+     * untouched). Byte-identical to {@code SpringNaming.capitalize}, the JVM codegen
+     * spelling of the same rule.
      */
     public static String capitalize(String s) {
         if (s == null || s.isEmpty()) return s;
@@ -71,13 +71,14 @@ public final class PayloadAccessors {
 
     /**
      * A view over {@code payload} carrying its derived {@code has<Field>} accessors,
-     * recursively — for MAP-SHAPED payloads only.
+     * recursively — for map-shaped payloads and Java records (viewed as the map of their
+     * components).
      *
-     * <p>A generated payload record already answers {@code hasFoo()} by its own emitted
-     * method and is returned untouched; this fills the gap for the map/list graphs the
-     * runtime and the conformance corpus actually pass. Without it, the SAME payload data
-     * renders differently depending on whether it arrived as a record or as a map, which
-     * is the divergence the shared {@code render-derived-has-accessor} fixture pins.
+     * <p>Without it, the SAME payload data renders differently depending on the shape it
+     * arrived in, which is the divergence the shared {@code render-derived-has-accessor} fixture
+     * pins. Records need it since ADR-0056: a payload is the value object's own record, which
+     * declares no {@code hasFoo()} method (the template-tier payload copy that emitted one is
+     * gone).
      *
      * <p>NON-MUTATING — a render must not change the object it was handed. An AUTHORED key
      * always wins. Recursion follows Mustache's own scoping: every nested map and every
@@ -89,6 +90,24 @@ public final class PayloadAccessors {
 
     private static Object withDerivedAccessors(Object payload, int depth) {
         if (depth > 32 || payload == null) return payload; // pathological graph
+        // A Java RECORD is viewed as the map of its components. Since ADR-0056 a template's payload
+        // is the value object's own record, which declares no has<Field>() methods of its own (the
+        // template-tier payload copy that emitted them is gone), so the engine derives them here
+        // exactly as it does for a map — the same data renders the same whatever its shape.
+        if (payload instanceof Record rec) {
+            java.util.Map<String, Object> components = new java.util.LinkedHashMap<>();
+            for (java.lang.reflect.RecordComponent rc : rec.getClass().getRecordComponents()) {
+                try {
+                    java.lang.reflect.Method accessor = rc.getAccessor();
+                    accessor.setAccessible(true);
+                    components.put(rc.getName(), accessor.invoke(rec));
+                } catch (ReflectiveOperationException | RuntimeException e) {
+                    // An inaccessible component is left out rather than failing the render;
+                    // Mustache would not have resolved it on the record either.
+                }
+            }
+            return withDerivedAccessors(components, depth);
+        }
         if (payload instanceof java.util.Map<?, ?> map) {
             java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<?, ?> e : map.entrySet()) {

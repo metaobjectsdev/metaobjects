@@ -91,7 +91,7 @@ public final class FindInbound {
         // package first, never a bare-tail/global scan that could bind the WRONG package's
         // same-short-named object. Enforces the SAME "must be an object.value" target rule
         // @payloadRef obeys, so the two refs cannot diverge on what counts as a legal target.
-        MetaObject vo = SpringPayloadGenerator.resolveValueObject(
+        MetaObject vo = SpringNaming.resolveValueObjectRef(
             loader, ref, MetaDataUtil.findPackageForMetaData(tmpl));
         if (vo == null) return null;
         return new InboundShape(vo, ref, responseFormatOf(tmpl));

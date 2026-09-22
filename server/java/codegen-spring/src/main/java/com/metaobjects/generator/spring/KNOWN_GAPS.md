@@ -84,52 +84,29 @@ Non-Spring-Boot consumers (or those who exclude Jackson from
 `spring-boot-starter-web` via `<exclusions>`) must add
 `com.fasterxml.jackson.core:jackson-databind` explicitly.
 
-## FR-010 tolerant `extractLenient()` — two overloads (Plan 2 + Plan 2.1)
+## FR-010 tolerant `extractLenient()` — one metadata-driven path
 
-For `template.output` nodes whose `@format` is `json` or `xml`,
-`SpringOutputParserGenerator` emits two never-throwing, typed
-`extractLenient(...)` flavours returning `ExtractionResult<<Payload>>`:
+For every RESPONDING `template.prompt` (one that declares `@responseRef`, ADR-0052),
+`SpringOutputParserGenerator` emits a never-throwing, typed
+`extractLenient(MetaDataLoader, String[, ExtractOptions])` returning
+`ExtractionResult<<Vo>>`, where `<Vo>` is the `@responseRef` value object's own record
+(ADR-0056). It resolves the value object's `MetaObject` by its baked `PAYLOAD_FQN` from the
+supplied loader and delegates to `com.metaobjects.object.extract.MetaObjectExtractor` (module
+`metaobjects-om`), which assembles the full object graph — nested objects, arrays-of-objects,
+enum coercion, generalized `@default` — reflection-free via the Phase A object model, reading
+the live metadata directly. The assembled `ValueObject` graph (a `Map<String,Object>`) is then
+mapped into the value objects' records by generated `from<Vo>(Map)` helpers.
 
-1. **Self-contained** `extractLenient(String[, ExtractOptions])` — driven by a
-   codegen-baked `ExtractSchema` (`ExtractSchemaEmitter`) + `ExtractMap`
-   reads. Maps **scalar, enum (incl. `@enumAlias` folding), and
-   scalar-array** payload fields. Needs only `metaobjects-render` (+
-   Jackson for `parse`). **Does NOT populate nested-object /
-   array-of-object components** — those map to a typed `null` (a
-   `/* FR-010: nested extract deferred — use extractLenient(loader, text) */`
-   marker appears in the generated source). The `ExtractionReport` still
-   classifies the field, so nothing is silently wrong.
+The earlier self-contained `extractLenient(String)` overload, driven by a codegen-baked
+`ExtractSchema` snapshot, is gone: it could not populate nested objects, and a baked snapshot
+is a second copy of the metadata that drifts.
 
-2. **Runtime-delegating** `extractLenient(MetaDataLoader, String[, ExtractOptions])`
-   (Plan 2.1) — resolves this payload's `MetaObject` by its baked
-   `PAYLOAD_FQN` from the supplied loader and delegates to
-   `com.metaobjects.object.extract.MetaObjectExtractor` (module
-   `metaobjects-om`), which assembles the **full object graph** —
-   nested objects, arrays-of-objects, enum coercion, generalized
-   `@default` — reflection-free via the Phase A object model. The
-   assembled `ValueObject` graph (a `Map<String,Object>`) is then mapped
-   into the typed payload-record graph by generated `from<Payload>(Map)`
-   helpers. **This closes the nested codegen gap.**
+**Runtime classpath.** `com.metaobjects:metaobjects-om` (which transitively brings `render` +
+`metadata`), plus Jackson for the strict `parse`. This is the codegen-wrapping-runtime precedent
+(a generated DAO depending on OMDB).
 
-**Choosing an overload.** Use the self-contained form for a flat
-scalar/enum payload with no `MetaDataLoader` on hand; use the
-runtime-delegating form whenever the payload has nested objects or
-arrays-of-objects (or whenever a loader is available — it is strictly
-more capable).
-
-**Runtime classpath.** The self-contained `extractLenient(String)` needs
-`com.metaobjects:metaobjects-render` (+ Jackson for `parse`). The
-runtime-delegating `extractLenient(MetaDataLoader, ...)` additionally needs
-`com.metaobjects:metaobjects-om` (which transitively brings `render` +
-`metadata`). This is the codegen-wrapping-runtime precedent (a generated
-DAO depending on OMDB).
-
-**Hardening TODO (minor):** `ExtractSchemaEmitter` emits string literals
-(field names, enum values, alias keys/values) without Java-string
-escaping. Field names and enum members are identifier-safe and alias
-*values* are canonical members, so the only at-risk input is an
-`@enumAlias` *key* containing a `"` or `\`. Add a `javaStringLiteral(...)`
-escape if adopters hit it.
+**Not extracted:** a `field.map` component stays `null` in the lenient result (the extract
+engine does not assemble keyed maps).
 
 ## FR-035 partial PATCH — present-value validation (RESOLVED by FR-036)
 
@@ -177,24 +154,6 @@ artifacts — the TPH settable set is `scalarFields` MINUS pk/discriminator/auto
 create/PATCH (the `@Valid` on the `<Sub>Dto` component is decorative there). Before the
 `MapField` type-mapper arm, a map-bearing TPH entity failed generation outright, so this
 shape is newly reachable and untested by any gate.
-
-## `SpringPayloadGenerator.resolveObjectByShortOrFqn` has zero in-repo callers
-
-**Status:** deliberately kept, not dead code — recorded here so it is not later
-rediscovered as live.
-
-#270 (payload typing is declared-type-authoritative) deleted the payload
-generator's `origin.*` type-dispatch and dotted-ref navigation, which held the
-last in-repo callers of the `protected static` `resolveObjectByShortOrFqn`
-(and its private `shortName` support). The helper stays because `protected`
-members of this deliberately-extensible generator are adopter subclass API —
-removing one is an API break out of proportion to the cleanup. Same
-keep-and-record policy as `KotlinGenUtil.splitDottedRef` in the sibling
-`codegen-kotlin` module's `KNOWN_GAPS.md`. Prune in a future MAJOR. (The other
-stranded origin helpers — `firstOriginChild`, `resolveDottedFieldRef`,
-`splitDottedRef` — were deleted: the private ones are not adopter-facing, and
-the `MetaOrigin` inspector had zero callers anywhere, the review's own
-delete-unless-genuinely-used-elsewhere rule.)
 
 ## FR-015 stored-procedure callables are NOT generated by this port
 

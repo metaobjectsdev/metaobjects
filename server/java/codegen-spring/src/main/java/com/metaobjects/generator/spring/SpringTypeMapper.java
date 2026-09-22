@@ -58,9 +58,9 @@ public final class SpringTypeMapper {
      * <p>The returned string is the ELEMENT type, inserted verbatim into the
      * generated record component declaration. Array-ness ({@code isArray=true})
      * wrapping in {@code java.util.List<ElementType>} is the CALLER's concern —
-     * {@code SpringDtoGenerator.componentType} for DTO records and
-     * {@code SpringPayloadGenerator.resolveFieldType} for payload records both
-     * wrap; a Java record accepts a {@code List<String>} component fine (the
+     * {@code SpringDtoGenerator.componentType} (DTO and value-object records)
+     * does it;
+     * a Java record accepts a {@code List<String>} component fine (the
      * earlier varargs rationale here was wrong).</p>
      *
      * <p>Currency: returns {@code "Long"} — the wire/storage contract is

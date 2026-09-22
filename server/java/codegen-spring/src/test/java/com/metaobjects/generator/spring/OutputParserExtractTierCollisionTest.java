@@ -21,13 +21,17 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * #228 — Java port of the extract/output-parser tier collision-scoped naming fix.
- * {@link SpringOutputParserGenerator} now consumes {@link SpringPayloadGenerator}'s
- * OWN ADR-0044 name map (never re-derives naming) so a cross-package short-name
- * collision on a NESTED {@code field.object} target VO gets the SAME
- * package-qualified record name the payload tier emits — a bare {@code NotePayload}
- * reference would either be a dangling class reference or (worse) a duplicate-method
- * compile error when two colliding VOs both derive {@code fromNotePayload(...)}.
+ * ADR-0056 — the template tier references a value object's OWN record and declares none.
+ * {@link SpringValueObjectGenerator} writes each value object's record once, in its own
+ * package; {@link SpringOutputParserGenerator} and {@link SpringRenderHelperGenerator} name it
+ * fully qualified. So:
+ * <ul>
+ *   <li>a value object reached from templates in two packages exists ONCE and both compile
+ *       against it (#387 — the old per-template payload copy landed in only one package);</li>
+ *   <li>two same-short-name value objects in different packages need no type renaming — the
+ *       packages tell them apart. Only the parser's private {@code from<Name>} mapper METHODS,
+ *       which share one class, are package-qualified on a collision.</li>
+ * </ul>
  *
  * <p>Also covers the ADR-0042 build-time {@code @payloadRef} resolver fix
  * (checkpoint 3): {@code resolveValueObject} was previously a package-BLIND
@@ -69,29 +73,102 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
         assertTrue("expected DigestPromptParser.java at " + parser, Files.exists(parser));
         String src = Files.readString(parser);
 
-        // Both colliding nested VOs get their OWN distinct, collision-scoped mapper —
-        // never the bare `NotePayload` the payload generator no longer emits under
-        // collision, and never a dropped/clobbered second mapper.
-        assertTrue("expected a fromAcmeAlphaNotePayload mapper; saw:\n" + src,
-            src.contains("private static AcmeAlphaNotePayload fromAcmeAlphaNotePayload(java.util.Map<String, Object> d)"));
-        assertTrue("expected a fromAcmeBetaNotePayload mapper; saw:\n" + src,
-            src.contains("private static AcmeBetaNotePayload fromAcmeBetaNotePayload(java.util.Map<String, Object> d)"));
-        assertFalse("must NEVER reference/emit the shadowed bare fromNotePayload mapper; saw:\n" + src,
-            src.contains("fromNotePayload("));
-        assertFalse("must NEVER reference the shadowed bare NotePayload type; saw:\n" + src,
-            src.contains("NotePayload fromNotePayload") || src.contains(" NotePayload)"));
+        // Each Note maps into its OWN package's record. The two mappers share this class, so
+        // their METHOD names are package-qualified; the types need no renaming.
+        assertTrue("expected a fromAcmeAlphaNote mapper returning acme.alpha.Note; saw:\n" + src,
+            src.contains("private static acme.alpha.Note fromAcmeAlphaNote(java.util.Map<String, Object> d)"));
+        assertTrue("expected a fromAcmeBetaNote mapper returning acme.beta.Note; saw:\n" + src,
+            src.contains("private static acme.beta.Note fromAcmeBetaNote(java.util.Map<String, Object> d)"));
+        assertFalse("must NEVER emit a colliding bare fromNote mapper; saw:\n" + src,
+            src.contains("fromNote("));
+        assertFalse("no template-tier payload type survives; saw:\n" + src, src.contains("NotePayload"));
 
-        // The root mapper's fromAlpha/fromBeta fields route to their OWN qualified mapper.
-        assertTrue("fromAlpha field must recurse into fromAcmeAlphaNotePayload; saw:\n" + src,
-            src.contains("fromAcmeAlphaNotePayload(asMap(d.get(\"fromAlpha\")))"));
-        assertTrue("fromBeta field must recurse into fromAcmeBetaNotePayload; saw:\n" + src,
-            src.contains("fromAcmeBetaNotePayload(asMap(d.get(\"fromBeta\")))"));
+        // The root mapper's fromAlpha/fromBeta fields route to their OWN mapper.
+        assertTrue("fromAlpha field must recurse into fromAcmeAlphaNote; saw:\n" + src,
+            src.contains("fromAcmeAlphaNote(asMap(d.get(\"fromAlpha\")))"));
+        assertTrue("fromBeta field must recurse into fromAcmeBetaNote; saw:\n" + src,
+            src.contains("fromAcmeBetaNote(asMap(d.get(\"fromBeta\")))"));
+
+        // The whole graph compiles against the value-object records.
+        SpringValueObjectGenerator voGen = new SpringValueObjectGenerator();
+        voGen.setArgs(args);
+        voGen.execute(loader);
+        SpringTestFixtures.compileGenerated(outDir, tempFolder.newFolder("outputparser-xpkg-classes").toPath());
     }
 
     // -------------------------------------------------------------------------
-    // No-churn: a non-colliding nested VO keeps its bare mapper name/type — proves
-    // the nameMap consultation is a no-op absent a collision (byte-identical to
-    // pre-#228 output).
+    // #387 — one shared view, two consuming packages, one generator run.
+    // -------------------------------------------------------------------------
+
+    private static final String SHARED_FIXTURE = """
+        { "metadata.root": { "package": "acme::shared", "children": [
+            { "object.value": { "name": "StyleView", "children": [
+                { "field.string": { "name": "tone", "@required": true } }
+            ] } }
+        ] } }
+        """;
+
+    private static String consumerFixture(String pkg, String prefix) {
+        return """
+            { "metadata.root": { "package": "acme::%1$s", "children": [
+                { "object.value": { "name": "%2$sPayload", "children": [
+                    { "field.object": { "name": "style", "@objectRef": "acme::shared::StyleView" } }
+                ] } },
+                { "template.output": { "name": "%2$sDoc", "@payloadRef": "%2$sPayload",
+                    "@textRef": "%1$s/doc", "@format": "text" } },
+                { "template.prompt": { "name": "%2$sAsk", "@payloadRef": "%2$sPayload",
+                    "@responseRef": "%2$sPayload", "@textRef": "%1$s/doc", "@responseFormat": "json" } }
+            ] } }
+            """.formatted(pkg, prefix);
+    }
+
+    @Test
+    public void aValueObjectSharedByTwoPackagesIsEmittedOnceAndReferencedFromBoth() throws Exception {
+        Path workspace = tempFolder.newFolder("shared-view").toPath();
+        Path shared = workspace.resolve("meta.shared.json");
+        Path alpha = workspace.resolve("meta.alpha.json");
+        Path beta = workspace.resolve("meta.beta.json");
+        Files.writeString(shared, SHARED_FIXTURE);
+        Files.writeString(alpha, consumerFixture("alpha", "Alpha"));
+        Files.writeString(beta, consumerFixture("beta", "Beta"));
+        Path templates = tempFolder.newFolder("shared-view-templates").toPath();
+        for (String pkg : List.of("alpha", "beta")) {
+            Path t = templates.resolve(pkg + "/doc.mustache");
+            Files.createDirectories(t.getParent());
+            Files.writeString(t, "{{style.tone}}");
+        }
+        MetaDataLoader loader = loadMultiFile("shared-view", shared, alpha, beta);
+
+        Path outDir = tempFolder.newFolder("shared-view-out").toPath();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        args.put("templateRoot", templates.toString());
+        for (com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?> g : List.of(
+                new SpringValueObjectGenerator(), new SpringOutputParserGenerator(),
+                new SpringRenderHelperGenerator())) {
+            g.setArgs(args);
+            g.execute(loader);
+        }
+
+        List<String> files;
+        try (java.util.stream.Stream<Path> walk = Files.walk(outDir)) {
+            files = walk.filter(Files::isRegularFile).map(f -> outDir.relativize(f).toString()).sorted().toList();
+        }
+        // The shared view exists exactly once, in its own package.
+        assertTrue("expected acme/shared/StyleView.java; files=" + files,
+            files.contains("acme/shared/StyleView.java"));
+        assertTrue("the shared view must be emitted exactly once; files=" + files,
+            files.stream().filter(f -> f.contains("StyleView")).count() == 1);
+        // The prompts packages hold only template-keyed artifacts.
+        assertTrue("nothing value-shaped in a prompts package; files=" + files,
+            files.stream().filter(f -> f.contains("/prompts/"))
+                .allMatch(f -> f.endsWith("Parser.java") || f.endsWith("RenderHelper.java")));
+
+        SpringTestFixtures.compileGenerated(outDir, tempFolder.newFolder("shared-view-classes").toPath());
+    }
+
+    // -------------------------------------------------------------------------
+    // A non-colliding nested VO's mapper is named for its bare short name.
     // -------------------------------------------------------------------------
 
     private static final String NO_CHURN_FIXTURE = """
@@ -133,10 +210,10 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
         String src = Files.readString(parser);
 
         assertTrue("non-colliding nested VO must keep its BARE mapper; saw:\n" + src,
-            src.contains("private static DetailPayload fromDetailPayload(java.util.Map<String, Object> d)"));
-        assertTrue("detail field must recurse into the bare fromDetailPayload; saw:\n" + src,
-            src.contains("fromDetailPayload(asMap(d.get(\"detail\")))"));
-        assertFalse("must NOT package-qualify a non-colliding VO", src.contains("AcmeAiDetailPayload"));
+            src.contains("private static acme.ai.Detail fromDetail(java.util.Map<String, Object> d)"));
+        assertTrue("detail field must recurse into the bare fromDetail; saw:\n" + src,
+            src.contains("fromDetail(asMap(d.get(\"detail\")))"));
+        assertFalse("must NOT package-qualify a non-colliding VO", src.contains("AcmeAiDetail"));
     }
 
     // -------------------------------------------------------------------------
@@ -204,24 +281,8 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
 
         Path outDir = tempFolder.newFolder("bare-payloadref-out-" + alphaFirst).toPath();
 
-        // SpringPayloadGenerator: each template's record must carry its OWN
-        // package's field, never the other's, regardless of load order.
-        SpringPayloadGenerator payloadGen = new SpringPayloadGenerator();
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", outDir.toString());
-        payloadGen.setArgs(args);
-        payloadGen.execute(loader);
-
-        String alphaPayloadSrc = Files.readString(outDir.resolve("acme/alpha/prompts/ReportDocAlphaPayload.java"));
-        String betaPayloadSrc = Files.readString(outDir.resolve("acme/beta/prompts/ReportDocBetaPayload.java"));
-        assertTrue("ReportDocAlphaPayload must carry alphaVal (own package); saw:\n" + alphaPayloadSrc,
-            alphaPayloadSrc.contains("String alphaVal"));
-        assertFalse("ReportDocAlphaPayload must NOT carry betaVal (wrong package); saw:\n" + alphaPayloadSrc,
-            alphaPayloadSrc.contains("betaVal"));
-        assertTrue("ReportDocBetaPayload must carry betaVal (own package); saw:\n" + betaPayloadSrc,
-            betaPayloadSrc.contains("String betaVal"));
-        assertFalse("ReportDocBetaPayload must NOT carry alphaVal (wrong package); saw:\n" + betaPayloadSrc,
-            betaPayloadSrc.contains("alphaVal"));
 
         // SpringOutputParserGenerator: same resolver, same guarantee — the generated
         // mapper for each template's OWN root payload must read its OWN field name.
@@ -231,6 +292,10 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
 
         String alphaParserSrc = Files.readString(outDir.resolve("acme/alpha/prompts/ReportDocAlphaParser.java"));
         String betaParserSrc = Files.readString(outDir.resolve("acme/beta/prompts/ReportDocBetaParser.java"));
+        assertTrue("ReportDocAlphaParser must return acme.alpha.Report; saw:\n" + alphaParserSrc,
+            alphaParserSrc.contains("public static acme.alpha.Report parse(String text)"));
+        assertTrue("ReportDocBetaParser must return acme.beta.Report; saw:\n" + betaParserSrc,
+            betaParserSrc.contains("public static acme.beta.Report parse(String text)"));
         assertTrue("ReportDocAlphaParser's mapper must read alphaVal; saw:\n" + alphaParserSrc,
             alphaParserSrc.contains("ExtractMap.asString(d, \"alphaVal\")"));
         assertFalse("ReportDocAlphaParser's mapper must NOT read betaVal; saw:\n" + alphaParserSrc,
@@ -242,7 +307,7 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
     }
 
     // -------------------------------------------------------------------------
-    // Helpers (mirrors SpringPayloadGeneratorTest's private helpers of the same name).
+    // Helpers.
     // -------------------------------------------------------------------------
 
     /** Walk up from {@code user.dir} to the repo-root shared corpus, or {@code null}. */

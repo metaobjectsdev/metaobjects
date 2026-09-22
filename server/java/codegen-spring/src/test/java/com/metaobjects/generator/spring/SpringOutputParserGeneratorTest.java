@@ -74,13 +74,14 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
         assertTrue("expected private constructor (no-instance utility); saw:\n" + src,
             src.contains("private NpcResponseOutputParser() {"));
         assertTrue("expected static MAPPER field; saw:\n" + src,
-            src.contains("private static final ObjectMapper MAPPER = new ObjectMapper();"));
-        assertTrue("expected `public static NpcResponseOutputResponse parse(String text)`; saw:\n" + src,
-            src.contains("public static NpcResponseOutputResponse parse(String text)"));
+            src.contains("private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();"));
+        // ADR-0056: parse() returns the @responseRef value object's own record, fully qualified.
+        assertTrue("expected `public static acme.ai.NpcResponsePayload parse(String text)`; saw:\n" + src,
+            src.contains("public static acme.ai.NpcResponsePayload parse(String text)"));
         assertTrue("expected `throws JsonProcessingException`; saw:\n" + src,
             src.contains("throws JsonProcessingException"));
-        assertTrue("expected `MAPPER.readValue(text, NpcResponseOutputResponse.class)`; saw:\n" + src,
-            src.contains("MAPPER.readValue(text, NpcResponseOutputResponse.class)"));
+        assertTrue("expected `MAPPER.readValue(text, acme.ai.NpcResponsePayload.class)`; saw:\n" + src,
+            src.contains("MAPPER.readValue(text, acme.ai.NpcResponsePayload.class)"));
     }
 
     @Test
@@ -108,7 +109,7 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
         // extractLenient() returns ExtractionResult<T> (intentional FR-010); that is distinct from
         // wrapping parse() in a Result return type, so we assert the parse signature is bare.
         assertTrue("parse() must be a direct (throw-only) return, not Result-wrapped; saw:\n" + src,
-            src.contains("public static NpcResponseOutputResponse parse(String text) throws JsonProcessingException"));
+            src.contains("public static acme.ai.NpcResponsePayload parse(String text) throws JsonProcessingException"));
     }
 
     @Test

@@ -35,19 +35,17 @@ public class SpringNamingTest {
         assertEquals("/api/post_categories", SpringNaming.controllerPath("PostCategory"));
         assertEquals("/api/order_summaries", SpringNaming.controllerPath("OrderSummary"));
 
-        // Prompts package rule.
-        assertEquals("prompts", SpringNaming.promptsPackage(""));
+        // Prompts package rule — a no-package template stays in the root package, because its
+        // artifacts name a root-package value object's record, which Java cannot import.
+        assertEquals("", SpringNaming.promptsPackage(""));
         assertEquals("acme.blog.prompts", SpringNaming.promptsPackage("acme.blog"));
 
-        // Template-helper names — capitalize(templateShort) + suffix.
+        // Template-helper names — capitalize(templateShort) + suffix. ADR-0056: there is no
+        // template-named payload or response record; those are the value objects' own records.
         assertEquals("SummaryRenderHelper", SpringNaming.renderHelperName("summary"));
-        assertEquals("SummaryPayload", SpringNaming.payloadName("summary"));
         // ADR-0052 D4: the fragment class is generated FROM a template.prompt now, so the
         // old "Prompt" suffix produced SummaryPromptPrompt for a prompt named summaryPrompt.
         assertEquals("SummaryResponseFormat", SpringNaming.responseFormatName("summary"));
-        // ADR-0052: a responding prompt's SECOND record — the @responseRef shape its parser
-        // returns, distinct from the @payloadRef request record above.
-        assertEquals("SummaryResponse", SpringNaming.responseName("summary"));
         // Verified suffix is "Parser" (SpringOutputParserGenerator), not "OutputParser".
         assertEquals("SummaryParser", SpringNaming.parserName("summary"));
 

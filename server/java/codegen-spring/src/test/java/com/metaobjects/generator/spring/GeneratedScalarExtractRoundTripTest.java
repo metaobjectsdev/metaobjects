@@ -82,7 +82,7 @@ public class GeneratedScalarExtractRoundTripTest extends SharedRegistryTestBase 
 
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", gen.toString());
-        SpringPayloadGenerator pg = new SpringPayloadGenerator(); pg.setArgs(args); pg.execute(loader);
+        SpringValueObjectGenerator pg = new SpringValueObjectGenerator(); pg.setArgs(args); pg.execute(loader);
         SpringOutputParserGenerator og = new SpringOutputParserGenerator(); og.setArgs(args); og.execute(loader);
 
         List<File> sources;

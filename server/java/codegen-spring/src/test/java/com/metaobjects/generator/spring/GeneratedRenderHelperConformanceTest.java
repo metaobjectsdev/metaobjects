@@ -85,7 +85,7 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            Class<?> payloadClass = cl.loadClass("acme.ai.prompts.WelcomePagePayload");
+            Class<?> payloadClass = cl.loadClass("acme.ai.Welcome");
             Object payload = payloadClass.getConstructor(String.class).newInstance("Ada");
 
             Class<?> helperClass = cl.loadClass("acme.ai.prompts.WelcomePageRenderHelper");
@@ -116,7 +116,7 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            Class<?> payloadClass = cl.loadClass("acme.ai.prompts.WelcomeEmailPayload");
+            Class<?> payloadClass = cl.loadClass("acme.ai.Welcome");
             Object payload = payloadClass.getConstructor(String.class).newInstance("Ada");
 
             Class<?> helperClass = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper");
@@ -155,7 +155,7 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            Class<?> payloadClass = cl.loadClass("acme.ai.prompts.WelcomeEmailPayload");
+            Class<?> payloadClass = cl.loadClass("acme.ai.Welcome");
             Object payload = payloadClass.getConstructor(String.class).newInstance("<b>A & Co</b>");
 
             Class<?> helperClass = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper");
@@ -207,25 +207,25 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            // SpringPayloadGenerator names nested payloads after the VO short name:
-            // CustomerPayload + ItemPayload; the root payload after the template:
-            // OrderEmailPayload(CustomerPayload customer, List<ItemPayload> items).
-            Class<?> customerClass = cl.loadClass("prompts.CustomerPayload");
+            // ADR-0056: the payload is the value objects' own records. This sub-corpus has no
+            // package, so they — and the helper — live in the root package:
+            // Order(Customer customer, List<Item> items).
+            Class<?> customerClass = cl.loadClass("Customer");
             Object customer = customerClass.getConstructor(String.class).newInstance("Ada");
 
-            // field.int → boxed Integer in the generated payload record.
-            Class<?> itemClass = cl.loadClass("prompts.ItemPayload");
+            // field.int → boxed Integer in the generated value-object record.
+            Class<?> itemClass = cl.loadClass("Item");
             Object itemA = itemClass.getConstructor(String.class, Integer.class)
                 .newInstance("A1", Integer.valueOf(2));
             Object itemB = itemClass.getConstructor(String.class, Integer.class)
                 .newInstance("B2", Integer.valueOf(1));
 
-            Class<?> payloadClass = cl.loadClass("prompts.OrderEmailPayload");
+            Class<?> payloadClass = cl.loadClass("Order");
             Object payload = payloadClass
                 .getConstructor(customerClass, java.util.List.class)
                 .newInstance(customer, java.util.List.of(itemA, itemB));
 
-            Class<?> helperClass = cl.loadClass("prompts.OrderEmailRenderHelper");
+            Class<?> helperClass = cl.loadClass("OrderEmailRenderHelper");
             Class<?> providerClass = Class.forName("com.metaobjects.render.Provider");
             Class<?> emailDocClass = Class.forName("com.metaobjects.render.EmailDocument");
             Object provider = newFilesystemProvider(templates);
@@ -287,7 +287,7 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
         args.put("outputDir", gen.toString());
         args.put("templateRoot", templates.toString());
 
-        SpringPayloadGenerator payloadGen = new SpringPayloadGenerator();
+        SpringValueObjectGenerator payloadGen = new SpringValueObjectGenerator();
         payloadGen.setArgs(args);
         payloadGen.execute(loader);
 
@@ -338,12 +338,10 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
     // (#220 — the parity gap the other four ports already cover). Two packages
     // each declare object.value Note (alpha: alphaText, beta: betaText); payload
     // Digest references BOTH by FULLY-QUALIFIED @objectRef; DigestDoc renders
-    // "Alpha={{fromAlpha.alphaText}} Beta={{fromBeta.betaText}}". Post-ADR-0044 the
-    // two Notes emit as DISTINCT package-qualified records
-    // (AcmeAlphaNotePayload / AcmeBetaNotePayload), so the generated code compiles
-    // and renders — this gate exercises the FQN-exact resolver AND the collision
-    // naming together (a bare-tail resolver would bind both refs to one Note and
-    // render the wrong text; the pre-ADR-0044 clobber would not compile).
+    // "Alpha={{fromAlpha.alphaText}} Beta={{fromBeta.betaText}}". Each Note is its own
+    // package's record (ADR-0056 — acme.alpha.Note / acme.beta.Note, no renaming), so the
+    // generated code compiles and renders — this gate exercises the FQN-exact resolver
+    // (a bare-tail resolver would bind both refs to one Note and render the wrong text).
     // -------------------------------------------------------------------------
     @Test
     public void xpkgCollisionRenderHelperMatchesCorpusOracle() throws Exception {
@@ -362,13 +360,13 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            // The two colliding Notes emit as DISTINCT package-qualified records.
-            Class<?> alphaClass = cl.loadClass("acme.app.prompts.AcmeAlphaNotePayload");
-            Class<?> betaClass = cl.loadClass("acme.app.prompts.AcmeBetaNotePayload");
+            // The two same-short-name Notes are each package's own record.
+            Class<?> alphaClass = cl.loadClass("acme.alpha.Note");
+            Class<?> betaClass = cl.loadClass("acme.beta.Note");
             Object alpha = alphaClass.getConstructor(String.class).newInstance("AA");
             Object beta = betaClass.getConstructor(String.class).newInstance("BB");
 
-            Class<?> payloadClass = cl.loadClass("acme.app.prompts.DigestDocPayload");
+            Class<?> payloadClass = cl.loadClass("acme.app.Digest");
             Object payload = payloadClass.getConstructor(alphaClass, betaClass).newInstance(alpha, beta);
 
             Class<?> helperClass = cl.loadClass("acme.app.prompts.DigestDocRenderHelper");

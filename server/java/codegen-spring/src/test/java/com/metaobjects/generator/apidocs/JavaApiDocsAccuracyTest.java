@@ -6,8 +6,8 @@ import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
 import com.metaobjects.generator.spring.SpringOutputParserGenerator;
 import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
-import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
+import com.metaobjects.generator.spring.SpringValueObjectGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.generator.spring.SpringTestFixtures;
 import com.metaobjects.loader.MetaDataLoader;
@@ -348,8 +348,11 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
         assertEquals("a template.prompt with no @responseRef → PAYLOAD only",
             EnumSet.of(ApiSymbolKind.PAYLOAD), kinds(classify));
 
-        // Forward-confirm the one PAYLOAD it DOES document is real...
-        assertTrue("documented ClassifyPromptPayload must appear in generated Java",
+        // Forward-confirm the one PAYLOAD it DOES document is real — the @payloadRef value
+        // object's own record (ADR-0056), not a template-named copy...
+        assertTrue("documented ClassifyPayloadVo must appear in generated Java",
+            containsIdentifier(allGenerated, "ClassifyPayloadVo"));
+        assertFalse("no template-named ClassifyPromptPayload copy should exist",
             containsIdentifier(allGenerated, "ClassifyPromptPayload"));
         // ...and the skipped categories' names are absent from the generated output.
         assertFalse("no ClassifyPromptRenderHelper should exist",
@@ -376,7 +379,9 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
             containsIdentifier(allGenerated, "AnswerPromptResponseFormat"));
         assertTrue("documented AnswerPromptParser must appear in generated Java",
             containsIdentifier(allGenerated, "AnswerPromptParser"));
-        assertTrue("documented AnswerPromptResponse record must appear in generated Java",
+        assertTrue("documented AnswerResponseVo record must appear in generated Java",
+            containsIdentifier(allGenerated, "AnswerResponseVo"));
+        assertFalse("no template-named AnswerPromptResponse copy should exist",
             containsIdentifier(allGenerated, "AnswerPromptResponse"));
         // The render helper stays outbound-only.
         assertFalse("no AnswerPromptRenderHelper should exist",
@@ -410,7 +415,7 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
         run(new SpringRepositoryGenerator(), Map.of("outputDir", dir));
         run(new SpringControllerGenerator(), Map.of("outputDir", dir));
         run(new SpringFilterAllowlistGenerator(), Map.of("outputDir", dir));
-        run(new SpringPayloadGenerator(), Map.of("outputDir", dir, "templateRoot", tpl));
+        run(new SpringValueObjectGenerator(), Map.of("outputDir", dir, "templateRoot", tpl));
         // The render-helper / output-prompt generators run the build-time render against
         // the on-disk templates (drift gate), so they need the templateRoot.
         run(new SpringRenderHelperGenerator(), Map.of("outputDir", dir, "templateRoot", tpl));

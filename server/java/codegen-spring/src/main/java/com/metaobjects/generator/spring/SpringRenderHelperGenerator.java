@@ -62,16 +62,19 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  * {@link FilesystemProvider} (build-time ref resolution), and
  * {@link com.metaobjects.render.EmailDocument} (email return type). The payload
  * {@link PayloadField} tree is walked from the VO's {@code getMetaFields()} the
- * same way {@code SpringPayloadGenerator} walks it (object-ref fields recurse,
- * cycle-guarded) — mirroring the TS port's {@code derivePayloadFieldTree}.
+ * with object-ref fields recursing, cycle-guarded — mirroring the TS port's
+ * {@code derivePayloadFieldTree}.
+ *
+ * <p>The typed {@code render(payload, provider)} takes the {@code @payloadRef} value object's
+ * own record — the one {@link SpringValueObjectGenerator} emits, referenced fully qualified
+ * (ADR-0056). <b>Requires {@link SpringValueObjectGenerator} in the same run.</b>
  *
  * <p>The emitted {@code <fieldTree>} literal is baked into the {@code RenderRequest}
  * {@code verify} argument so {@link com.metaobjects.render.Renderer}'s runtime
  * drift check matches the build-time gate that ran when this file was generated.
  *
- * <p>Skips (same contract as {@code SpringOutputPromptGenerator} /
- * {@code SpringPayloadGenerator}): missing {@code @payloadRef}, or a
- * {@code @payloadRef} that doesn't resolve to an {@code object.value}.
+ * <p>Skips: missing {@code @payloadRef}, or a {@code @payloadRef} that doesn't resolve to an
+ * {@code object.value} or sourceless {@code object.projection}.
  *
  * <p>Args:
  * <ul>
@@ -142,7 +145,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       FilesystemProvider provider) {
         if (!appliesTo(template, loader)) {
-            return; // missing @payloadRef, or not a VO — same contract as SpringPayloadGenerator
+            return; // missing @payloadRef, or not a value shape
         }
         MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
             com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template));
@@ -152,10 +155,10 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         String templateShort = split[1];
         String outPkg = SpringNaming.promptsPackage(templatePkg);
         String helperClass = SpringNaming.renderHelperName(templateShort);
-        // SpringPayloadGenerator names the payload record <CapitalizedTemplateShortName>Payload
-        // (derived from the template short name, NOT the VO name) into the same
-        // <pkg>.prompts package — reference it by its same-package short name.
-        String payloadClass = SpringNaming.payloadName(templateShort);
+        // ADR-0056 — the payload IS the @payloadRef value object's own record, emitted by
+        // SpringValueObjectGenerator in the value object's package; referenced fully qualified.
+        SpringNaming.requireReferenceable(outPkg, payloadVo, "template '" + template.getName() + "'");
+        String payloadClass = SpringNaming.valueObjectRef(payloadVo);
 
         // Payload field tree — reused by both the build-time gate AND baked into
         // the emitted RenderRequest.verify so the runtime check matches the gate.
@@ -235,7 +238,8 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — render helper for template.output `")
            .append(template.getName()).append("`\n");
-        src.append("package ").append(outPkg).append(";\n\n");
+        // A no-package template emits into the root package (see SpringNaming.promptsPackage).
+        if (!outPkg.isEmpty()) src.append("package ").append(outPkg).append(";\n\n");
         src.append("/** Typed render helper for the `").append(templateShort)
            .append("` template.output. Wraps the render() engine; the payload field tree is\n")
            .append(" *  baked into the RenderRequest so render()'s runtime drift check matches the\n")
@@ -284,7 +288,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     }
 
     // -------------------------------------------------------------------------
-    // Payload field-tree walk (mirrors SpringPayloadGenerator field iteration +
+    // Payload field-tree walk (the value object's field iteration +
     // the TS derivePayloadFieldTree). Object-ref fields recurse; a `seen` set
     // guards reference cycles. Decoupled from origin/aggregate type resolution —
     // Verify only needs the field NAME tree + which fields push a context.

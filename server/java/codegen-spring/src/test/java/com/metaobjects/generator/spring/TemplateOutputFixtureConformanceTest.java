@@ -153,10 +153,10 @@ public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase
         // repair happened, which is not a contract anyone can reason about.
         if (expectStrictTier) {
             assertTrue("[" + fixtureName + "] expected the strict `parse(` tier; saw:\n" + parserSrc,
-                parserSrc.contains("public static SupportAnswerPromptResponse parse(String text)"));
+                parserSrc.contains("public static acme.support.SupportAnswer parse(String text)"));
         } else {
             assertTrue("[" + fixtureName + "] XML reply must get NO strict parse tier; saw:\n" + parserSrc,
-                !parserSrc.contains("public static SupportAnswerPromptResponse parse(String text)"));
+                !parserSrc.contains("public static acme.support.SupportAnswer parse(String text)"));
             assertTrue("[" + fixtureName + "] XML reply must not import Jackson; saw:\n" + parserSrc,
                 !parserSrc.contains("com.fasterxml.jackson"));
         }

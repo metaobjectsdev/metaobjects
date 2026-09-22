@@ -114,9 +114,10 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
         assertEquals("String", nameShape.type());
         assertEquals(false, nameShape.optional());
 
-        // PAYLOAD symbol carries the resolved payload-VO field shapes.
+        // PAYLOAD symbol is the @payloadRef value object's own record (ADR-0056) and carries its
+        // field shapes.
         ApiUnit summary = unit(m, "SummaryOutput");
-        ApiSymbol payload = symbol(summary, ApiSymbolKind.PAYLOAD, "SummaryOutputPayload");
+        ApiSymbol payload = symbol(summary, ApiSymbolKind.PAYLOAD, "SummaryPayloadVo");
         assertTrue("PAYLOAD fields non-empty", !payload.fields().isEmpty());
 
         ApiUnit address = unit(m, "Address");
@@ -124,7 +125,7 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
 
         ApiUnit tmpl = unit(m, "SummaryOutput");
         assertEquals("template unit kind", "template", tmpl.kind());
-        assertTrue("PAYLOAD SummaryOutputPayload", has(tmpl, ApiSymbolKind.PAYLOAD, "SummaryOutputPayload"));
+        assertTrue("PAYLOAD SummaryPayloadVo", has(tmpl, ApiSymbolKind.PAYLOAD, "SummaryPayloadVo"));
         assertTrue("RENDER SummaryOutputRenderHelper", has(tmpl, ApiSymbolKind.RENDER, "SummaryOutputRenderHelper"));
         // ADR-0052: SummaryOutput is a template.output — OUTBOUND ONLY. The fragment and
         // the parser describe how to READ a model's reply, so they belong to a responding

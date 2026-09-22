@@ -5,19 +5,14 @@ import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringNaming;
-import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
 import com.metaobjects.util.MetaDataUtil;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Derives {@link FieldShape} lists for the api-docs IR by REUSING the real
@@ -42,15 +37,14 @@ import java.util.Set;
  * </ul>
  *
  * <h2>Payload field shapes</h2>
- * {@link #payloadFields(MetaData, MetaDataLoader)} resolves the template's
- * {@code @payloadRef} value-object and maps each of its fields via
- * {@link SpringPayloadGenerator#resolveFieldType} (the same per-field type
- * resolution the payload generator uses — declared-type-authoritative per #270,
- * incl. nested {@code field.object} refs and enums). Optionality mirrors the payload generator's nullable
- * rule: a field is optional iff the generator would emit a {@code hasXxx()}
- * helper for it ({@link SpringPayloadGenerator#hasHelperBody(String, String)}
- * returns non-null) — i.e. String / List / reference types are optional, bare
- * primitive scalars are not. Enum notes carry the allowed values.
+ * A template's payload and a responding prompt's reply are the value object's own record
+ * ({@link com.metaobjects.generator.spring.SpringValueObjectGenerator}, ADR-0056), so
+ * {@link #payloadFieldsOf(MetaObject, MetaDataLoader)} documents that record with the SAME
+ * rules the record generator uses: <b>type</b> =
+ * {@link SpringDtoGenerator#componentType(MetaField, MetaObject)}; <b>optional</b> unless the
+ * component carries {@code @NotNull} / {@code @NotBlank}
+ * ({@link SpringDtoGenerator#validationAnnotations(MetaField)}); enum notes carry the allowed
+ * values.
  */
 public final class JavaFieldShapes {
 
@@ -78,57 +72,33 @@ public final class JavaFieldShapes {
     }
 
     /**
-     * The payload record's documented field shapes for {@code template}: one
-     * {@link FieldShape} per field of the resolved {@code @payloadRef}
-     * value-object, typed via {@link SpringPayloadGenerator#resolveFieldType}.
-     * Returns an empty list when the template carries no resolvable payload VO
-     * (defensive — callers normally gate on
-     * {@link SpringPayloadGenerator#appliesTo(MetaData, MetaDataLoader)} first).
-     *
-     * <p>The payload generator's {@code resolveFieldType} may recursively emit
-     * nested payload records to disk as a side effect (the declared
-     * {@code field.object} arm). Since this is a docs-derivation path, those writes are
-     * directed to a throwaway temp directory so the real output tree is never
-     * touched.</p>
+     * The documented field shapes of a template's {@code @payloadRef} value object — see
+     * {@link #payloadFieldsOf(MetaObject, MetaDataLoader)}. Empty when the template carries no
+     * resolvable payload (defensive — callers gate on a resolvable ref first).
      */
     public static List<FieldShape> payloadFields(MetaData template, MetaDataLoader loader) {
         if (!(template instanceof MetaTemplate tmpl)) return List.of();
         String payloadRef = tmpl.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) return List.of();
-        MetaObject vo = SpringPayloadGenerator.resolveValueObject(
+        MetaObject vo = SpringNaming.resolveValueObjectRef(
             loader, payloadRef, MetaDataUtil.findPackageForMetaData(tmpl));
         if (vo == null) return List.of();
         return payloadFieldsOf(vo, loader);
     }
 
     /**
-     * The documented field shapes of an already-resolved payload value-object.
-     *
-     * <p>ADR-0052 gives a responding {@code template.prompt} a SECOND record — the
-     * {@code @responseRef} shape its parser returns — so the api-docs builder needs to
-     * derive field shapes from a VO it resolved itself, not only from a template's
-     * {@code @payloadRef}. Same derivation, same generator methods; only the entry point
-     * differs, so the two records can never be documented by different rules.
+     * The documented field shapes of a value object's record — the type a template renders as
+     * its payload, or a responding prompt parses its reply into. Uses the record generator's own
+     * component typing and validation derivation, so the docs cannot drift from the record.
      */
     public static List<FieldShape> payloadFieldsOf(MetaObject vo, MetaDataLoader loader) {
         if (vo == null) return List.of();
-
-        SpringPayloadGenerator gen = new SpringPayloadGenerator();
-        Path scratch = scratchDir();
-        Set<String> emittedNestedFqns = new HashSet<>();
-        String nestedPkg = SpringNaming.promptsPackage(SpringNaming.splitFqn(vo.getName())[0]);
-
         List<FieldShape> out = new ArrayList<>();
-        // api-docs documents field shapes only (bare nested names are fine here); pass
-        // an empty ADR-0044 name map so emitNestedAndReturnType uses its bare fallback.
-        java.util.Map<String, String> nameMap = java.util.Map.of();
         for (MetaField field : vo.getMetaFields()) {
-            String type = gen.resolveFieldType(field, vo, loader, nestedPkg, scratch, emittedNestedFqns, nameMap);
-            // Optional iff the payload generator would emit a hasXxx() helper for
-            // this component (String / List / reference → optional; bare scalar
-            // primitive → not). Mirror that determination exactly.
-            boolean optional = SpringPayloadGenerator.hasHelperBody(type, field.getName()) != null;
-            out.add(new FieldShape(field.getName(), type, optional, enumNote(field)));
+            String type = SpringDtoGenerator.componentType(field, vo);
+            String annotations = SpringDtoGenerator.validationAnnotations(field);
+            boolean required = annotations.contains("@NotNull") || annotations.contains("@NotBlank");
+            out.add(new FieldShape(field.getName(), type, !required, enumNote(field)));
         }
         return out;
     }
@@ -139,16 +109,5 @@ public final class JavaFieldShapes {
         List<String> values = SpringTypeMapper.effectiveEnumValues(ef);
         if (values.isEmpty()) return null;
         return "allowed: " + String.join(" | ", values);
-    }
-
-    /** A throwaway directory for the payload generator's nested-record side-effect writes. */
-    private static Path scratchDir() {
-        try {
-            return Files.createTempDirectory("apidocs-payload-scratch");
-        } catch (Exception e) {
-            // Fall back to the JVM temp dir root; the generator only writes nested
-            // payloads here when the payload VO actually has nested arms.
-            return Path.of(System.getProperty("java.io.tmpdir"));
-        }
     }
 }

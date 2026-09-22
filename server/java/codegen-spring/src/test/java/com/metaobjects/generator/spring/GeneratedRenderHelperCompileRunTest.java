@@ -159,9 +159,8 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
 
         // Drive ONLY the render-helper generator — this task scopes the nested
         // @objectRef bare-name resolution to the render-helper's own field-tree
-        // walk. (SpringPayloadGenerator independently package-folds nested refs and
-        // is out of scope here; the render-helper's build-time drift gate derives
-        // its OWN field-tree and is fully self-contained.)
+        // walk. (The render-helper's build-time drift gate derives its OWN field-tree
+        // and is fully self-contained.)
         // Clean nested-section template must NOT throw — the bare "Customer" ref
         // must resolve so {{customer.name}} is recognized as on-payload.
         generateRenderHelperOnly(loader, gen, templates);
@@ -217,7 +216,7 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            Class<?> payloadClass = cl.loadClass("acme.ai.prompts.WelcomePagePayload");
+            Class<?> payloadClass = cl.loadClass("acme.ai.WelcomeVO");
             Object payload = payloadClass.getConstructor(String.class).newInstance("Ada");
 
             Class<?> helperClass = cl.loadClass("acme.ai.prompts.WelcomePageRenderHelper");
@@ -258,7 +257,7 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
         try (URLClassLoader cl = new URLClassLoader(
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
 
-            Class<?> payloadClass = cl.loadClass("acme.ai.prompts.WelcomeEmailPayload");
+            Class<?> payloadClass = cl.loadClass("acme.ai.WelcomeVO");
             Object payload = payloadClass.getConstructor(String.class).newInstance("Ada");
 
             Class<?> helperClass = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper");
@@ -377,17 +376,17 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
 
     // -------------------------------------------------------------------------
     // Symmetry lock (spec test 4) — the {{#has<Field>}} sections the STATIC
-    // render-helper drift gate (render.Verify) accepts are EXACTLY the has<Field>()
-    // accessors SpringPayloadGenerator emits on the payload record, because both
-    // consult the one shared rule (render.PayloadAccessors). If the generator's
-    // accessor-naming rule and the verifier's acceptance rule ever diverge, this
-    // fails.
+    // render-helper drift gate (render.Verify) accepts are EXACTLY the ones the
+    // ENGINE derives when it renders, because both consult the one shared rule
+    // (render.PayloadAccessors). Since ADR-0056 the payload is the value object's own
+    // record, which declares no has<Field>() methods, so the engine derives them for a
+    // record exactly as it does for a map. Rendering a real generated record proves it.
     // -------------------------------------------------------------------------
 
     @Test
-    public void generatedHasAccessorsMatchStaticVerifyAcceptance() throws Exception {
+    public void derivedHasAccessorsRenderForARecordAndMatchStaticVerifyAcceptance() throws Exception {
         // Three accessor-eligibility classes: bio (String) + items (array-of-object)
-        // get a has*() accessor; count (int primitive) does not.
+        // get a derived has* section; count (int) does not.
         String fixture = """
             {
               "metadata.root": { "package": "acme::ai", "children": [
@@ -421,24 +420,33 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
         // Must NOT throw — static Verify accepts the generator's derived accessors.
         generate(loader, gen, templates);
 
-        // Parse the emitted has*() method names off the generated payload record.
-        File payload = collectSources(gen).stream()
-            .filter(f -> f.getName().equals("AccessorDocPayload.java"))
-            .findFirst().orElseThrow(() -> new AssertionError("AccessorDocPayload.java not generated"));
-        String src = Files.readString(payload.toPath());
+        // Render the value object's OWN record: the derived sections must resolve on it.
+        Path classes = compile(collectSources(gen));
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
+            Class<?> itemClass = cl.loadClass("acme.ai.Item");
+            Class<?> voClass = cl.loadClass("acme.ai.AccessorVO");
+            Class<?> helperClass = cl.loadClass("acme.ai.prompts.AccessorDocRenderHelper");
+            Class<?> providerClass = Class.forName("com.metaobjects.render.Provider");
+            Method render = helperClass.getMethod("render", voClass, providerClass);
+            Object provider = newFilesystemProvider(cl, templates);
 
-        java.util.Set<String> emitted = new java.util.TreeSet<>();
-        java.util.regex.Matcher mm =
-            java.util.regex.Pattern.compile("public boolean (has\\w+)\\(\\)").matcher(src);
-        while (mm.find()) emitted.add(mm.group(1));
+            Object item = itemClass.getConstructor(String.class).newInstance("A1");
+            Object present = voClass.getConstructor(String.class, Integer.class, java.util.List.class)
+                .newInstance("hi", 3, java.util.List.of(item));
+            assertEquals("hiA1", render.invoke(null, present, provider));
 
-        // The generator emits accessors for the String + array-of-object fields, named
-        // by the shared rule; the int scalar gets none.
-        assertEquals(new java.util.TreeSet<>(java.util.List.of(
+            Object absent = voClass.getConstructor(String.class, Integer.class, java.util.List.class)
+                .newInstance("  ", 0, java.util.List.of());
+            assertEquals("a blank String and an empty list gate their sections off",
+                "", render.invoke(null, absent, provider));
+        }
+
+        java.util.Set<String> emitted = new java.util.TreeSet<>(java.util.List.of(
             com.metaobjects.render.PayloadAccessors.hasAccessorName("bio"),
-            com.metaobjects.render.PayloadAccessors.hasAccessorName("items"))), emitted);
+            com.metaobjects.render.PayloadAccessors.hasAccessorName("items")));
 
-        // And every emitted accessor verifies clean through the SAME static engine.
+        // And every derived accessor verifies clean through the SAME static engine.
         var tree = java.util.List.of(
             com.metaobjects.render.PayloadField.scalar("bio"),
             com.metaobjects.render.PayloadField.object("items",
@@ -462,8 +470,8 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
         args.put("outputDir", gen.toString());
         args.put("templateRoot", templates.toString());
 
-        // Payload record first so the render helper can reference the typed payload.
-        SpringPayloadGenerator payloadGen = new SpringPayloadGenerator();
+        // The value object's record first (ADR-0056) — the render helper references it.
+        SpringValueObjectGenerator payloadGen = new SpringValueObjectGenerator();
         payloadGen.setArgs(args);
         payloadGen.execute(loader);
 
@@ -473,11 +481,10 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
     }
 
     /**
-     * Drive ONLY {@link SpringRenderHelperGenerator} (no payload generator). Used
+     * Drive ONLY {@link SpringRenderHelperGenerator} (no value-object records). Used
      * by the packaged-nested {@code @objectRef} cases, which assert the render
      * helper's OWN build-time drift gate (bare short-name nested resolution) in
-     * isolation — {@code SpringPayloadGenerator}'s independent package-folding
-     * nested-ref resolution is out of scope for this task.
+     * isolation.
      */
     private static void generateRenderHelperOnly(MetaDataLoader loader, Path gen, Path templates) {
         Map<String, String> args = new HashMap<>();

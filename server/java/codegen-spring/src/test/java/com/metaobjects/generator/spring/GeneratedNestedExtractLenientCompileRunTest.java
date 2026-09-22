@@ -57,7 +57,7 @@ public class GeneratedNestedExtractLenientCompileRunTest extends SharedRegistryT
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", gen.toString());
 
-        SpringPayloadGenerator payloadGen = new SpringPayloadGenerator();
+        SpringValueObjectGenerator payloadGen = new SpringValueObjectGenerator();
         payloadGen.setArgs(args);
         payloadGen.execute(loader);
 

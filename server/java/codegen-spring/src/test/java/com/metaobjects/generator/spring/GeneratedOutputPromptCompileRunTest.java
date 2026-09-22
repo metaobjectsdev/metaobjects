@@ -72,7 +72,7 @@ public class GeneratedOutputPromptCompileRunTest extends SharedRegistryTestBase 
 
         // Generate the payload record so the prompt class has something to reference
         // in the same package (same-package import, always safe to include).
-        SpringPayloadGenerator payloadGen = new SpringPayloadGenerator();
+        SpringValueObjectGenerator payloadGen = new SpringValueObjectGenerator();
         payloadGen.setArgs(args);
         payloadGen.execute(loader);
 
@@ -161,13 +161,13 @@ public class GeneratedOutputPromptCompileRunTest extends SharedRegistryTestBase 
             assertTrue("guide fragment must contain '(required)'; got:\n" + guideFragment,
                 guideFragment.contains("(required)"));
 
-            // @responseFormat: xml → skeleton uses the RESPONSE record as root element.
-            // ADR-0052: the fragment describes the shape of the REPLY, so its root name is
-            // AnswerOutputResponse (from @responseRef) — not the @payloadRef request record.
-            assertTrue("guide fragment must contain '<AnswerOutputResponse>'; got:\n" + guideFragment,
-                guideFragment.contains("<AnswerOutputResponse>"));
-            assertTrue("guide fragment must contain '</AnswerOutputResponse>'; got:\n" + guideFragment,
-                guideFragment.contains("</AnswerOutputResponse>"));
+            // @responseFormat: xml → the skeleton's root element is the RESPONSE value object's
+            // name (ADR-0052: it describes the reply; ADR-0056: the value object's own name, as
+            // TS and C# already use).
+            assertTrue("guide fragment must contain '<AnswerOutputPayload>'; got:\n" + guideFragment,
+                guideFragment.contains("<AnswerOutputPayload>"));
+            assertTrue("guide fragment must contain '</AnswerOutputPayload>'; got:\n" + guideFragment,
+                guideFragment.contains("</AnswerOutputPayload>"));
 
             // Comment-free — no XML comments emitted
             assertFalse("guide fragment must contain no XML comments; got:\n" + guideFragment,

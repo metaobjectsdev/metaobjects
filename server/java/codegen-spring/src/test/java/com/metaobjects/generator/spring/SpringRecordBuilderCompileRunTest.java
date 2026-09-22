@@ -36,10 +36,10 @@ import static org.junit.Assert.fail;
  * generated SOURCE, where that cost is invisible; this one compiles a real Java caller against
  * the generated records and runs it, so it fails exactly the way an adopter's call site would.</p>
  *
- * <p>Covers the three record emitters — an entity's wire DTO, an {@code object.value} (emitted
- * because the entity's jsonb {@code address} column reaches it), and a
- * {@code template.prompt} payload — and the one deliberate exclusion: a projection's read DTO,
- * which arrives from a query and which nothing should construct.</p>
+ * <p>Covers both record emitters — an entity's wire DTO and an {@code object.value}'s record, which
+ * is also what a {@code template.prompt} payload is (ADR-0056: {@code GreetArgs} is the value
+ * object's own record, no template-named copy) — and the one deliberate exclusion: a projection's
+ * read DTO, which arrives from a query and which nothing should construct.</p>
  */
 public class SpringRecordBuilderCompileRunTest extends SharedRegistryTestBase {
 
@@ -86,13 +86,11 @@ public class SpringRecordBuilderCompileRunTest extends SharedRegistryTestBase {
     private static final String CALLER = """
         package acme.shop;
 
-        import acme.shop.prompts.GreetCustomerPayload;
-
         public final class Caller {
             public static String run() {
                 CustomerDto c = CustomerDto.builder().email("ada@example.com").name("Ada").build();
                 Address a = Address.builder().street("1 Main St").zip(12345).build();
-                GreetCustomerPayload p = GreetCustomerPayload.builder().name("Ada").build();
+                GreetArgs p = GreetArgs.builder().name("Ada").build();
                 return c.email() + "|" + c.name() + "|" + c.id() + "|" + c.status()
                     + "|" + a.street() + "|" + a.zip() + "|" + a.city()
                     + "|" + p.name() + "|" + p.tone();
@@ -105,7 +103,7 @@ public class SpringRecordBuilderCompileRunTest extends SharedRegistryTestBase {
         Path gen = tmp.newFolder("gen").toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("ws").toPath(), "shop", FIXTURE);
         for (MultiFileDirectGeneratorBase<?> g : List.<MultiFileDirectGeneratorBase<?>>of(
-                new SpringDtoGenerator(), new SpringValueObjectGenerator(), new SpringPayloadGenerator())) {
+                new SpringDtoGenerator(), new SpringValueObjectGenerator())) {
             Map<String, String> args = new HashMap<>();
             args.put("outputDir", gen.toString());
             g.setArgs(args);

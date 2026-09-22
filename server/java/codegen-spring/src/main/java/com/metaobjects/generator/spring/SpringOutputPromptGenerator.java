@@ -63,9 +63,8 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  *   <li>A {@code @responseRef} that does not resolve to a payload target.</li>
  * </ul>
  *
- * <p>The {@code SPEC}'s {@code rootName} is the capitalized payload class name
- * (e.g. {@code "AnswerOutputPayload"}) — matches the convention used by Plan 2's
- * extract codegen so both artifacts agree on the root name.
+ * <p>The {@code SPEC}'s {@code rootName} is the response value object's short name
+ * (e.g. {@code "AnswerOutputPayload"}), the rule the TS and C# ports use (ADR-0056).
  *
  * <p>Args:
  * <ul>
@@ -118,18 +117,17 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         String templateShort = split[1];
         String outPkg = SpringNaming.promptsPackage(templatePkg);
         String promptClass = SpringNaming.responseFormatName(templateShort);
-        // ADR-0052: the fragment describes the RESPONSE shape, so its root name is the
-        // response record — never the @payloadRef record, which types the request.
-        String responseClass = SpringNaming.responseName(templateShort);
-
-        // The SPEC rootName agrees with the response record name so the fragment and the
-        // parser agree on the root element name.
-        String specLiteral = OutputFormatSpecEmitter.specLiteral(payloadVo, template, responseClass);
+        // ADR-0052: the fragment describes the RESPONSE shape — never the @payloadRef one, which
+        // types the request. ADR-0056: its root name is the response value object's short name,
+        // the rule the TS and C# ports already use.
+        String rootName = SpringNaming.splitFqn(payloadVo.getName())[1];
+        String specLiteral = OutputFormatSpecEmitter.specLiteral(payloadVo, template, rootName);
 
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — response-format fragment for template.prompt `")
            .append(template.getName()).append("`\n");
-        src.append("package ").append(outPkg).append(";\n\n");
+        // A no-package template emits into the root package (see SpringNaming.promptsPackage).
+        if (!outPkg.isEmpty()) src.append("package ").append(outPkg).append(";\n\n");
         src.append("import com.metaobjects.render.prompt.OutputFormatSpec;\n");
         src.append("import com.metaobjects.render.prompt.OutputFormatRenderer;\n");
         src.append("import com.metaobjects.render.prompt.PromptField;\n");

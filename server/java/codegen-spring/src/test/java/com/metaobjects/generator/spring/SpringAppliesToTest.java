@@ -227,22 +227,6 @@ public class SpringAppliesToTest {
     // === template-based predicates ==========================================
 
     @Test
-    public void payloadAppliesToAnyTemplateWithValueObjectPayloadRef() throws Exception {
-        MetaDataLoader loader = loader();
-        MetaTemplate summaryOutput = template(loader, "SummaryOutput");
-        MetaTemplate plainPrompt = template(loader, "PlainPrompt");
-        MetaObject author = loader.getMetaObjectByName("acme::shop::Author");
-        assertNotNull(summaryOutput);
-
-        // Payload records are emitted for EVERY template subtype (prompt/output/toolcall)
-        // that carries a VO @payloadRef — both the output and the prompt apply here.
-        assertTrue(SpringPayloadGenerator.appliesTo(summaryOutput, loader));
-        assertTrue(SpringPayloadGenerator.appliesTo(plainPrompt, loader));
-        // A non-template node never applies.
-        assertFalse("an object.entity is not a template", SpringPayloadGenerator.appliesTo(author, loader));
-    }
-
-    @Test
     public void renderHelperAppliesToOutputWithValueObjectPayloadRef() throws Exception {
         MetaDataLoader loader = loader();
         MetaTemplate summaryOutput = template(loader, "SummaryOutput");

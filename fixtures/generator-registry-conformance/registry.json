@@ -118,7 +118,7 @@
       "ports": ["java"]
     },
     "value-object": {
-      "concept": "Per-value-object Spring record with jakarta constraints (the DTO/Patch bind target for a field.object jsonb column).",
+      "concept": "Per-value-object Spring record with jakarta constraints (the DTO/Patch bind target for a field.object jsonb column, and a template's payload/response type).",
       "tier": "native",
       "layer": "model",
       "ports": ["java"]

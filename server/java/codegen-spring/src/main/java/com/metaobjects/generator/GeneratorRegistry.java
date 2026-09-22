@@ -9,7 +9,6 @@ import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
 import com.metaobjects.generator.spring.SpringNamesGenerator;
 import com.metaobjects.generator.spring.SpringOutputParserGenerator;
 import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
-import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.generator.spring.SpringValueObjectGenerator;
@@ -157,15 +156,14 @@ public final class GeneratorRegistry {
                     + "Maven-wirable declarative form over the conformance-pinned renderer.", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "filter-allowlist", SpringFilterAllowlistGenerator.class.getName(),
                 "Per-entity REST filter allowlist (queryable-field guard).", Tier.NATIVE, Layer.API);
-        register(m, "payload", SpringPayloadGenerator.class.getName(),
-                "Per-template payload value object (the strict payload type).", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "repository", SpringRepositoryGenerator.class.getName(),
                 "Per-entity Spring Data repository.", Tier.NATIVE, Layer.PERSISTENCE);
         register(m, "dto", SpringDtoGenerator.class.getName(),
                 "Per-entity Spring DTO record.", Tier.NATIVE, Layer.MODEL);
         register(m, "value-object", SpringValueObjectGenerator.class.getName(),
                 "Per-value-object Spring record with jakarta constraints — the typed "
-                    + "component the DTO/Patch bind for a field.object @storage:jsonb column.", Tier.NATIVE, Layer.MODEL);
+                    + "component the DTO/Patch bind for a field.object @storage:jsonb column, "
+                    + "and a template's payload/response type.", Tier.NATIVE, Layer.MODEL);
         register(m, "trace-helper", LlmTraceHelperGenerator.class.getName(),
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
                     + "LlmCallBase-derived entities only).", Tier.NATIVE, Layer.CAPABILITY);

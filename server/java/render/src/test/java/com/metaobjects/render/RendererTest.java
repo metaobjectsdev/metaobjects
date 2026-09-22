@@ -27,6 +27,38 @@ public class RendererTest {
         assertEquals("- a\n- b\n- c\n", new Renderer().render(req));
     }
 
+    /** A value object's generated record, as a template's payload (ADR-0056). */
+    public record Tag(String label) {}
+    public record Profile(String bio, Integer count, List<Tag> tags, Tag sponsor) {}
+
+    @Test
+    public void derivedHasSectionsResolveOnARecordPayload() {
+        // A record declares no has<Field>() methods, so the engine derives them exactly as it
+        // does for a map — the same data renders the same whatever its shape.
+        String tpl = "{{#hasBio}}[{{bio}}]{{/hasBio}}{{^hasBio}}[no bio]{{/hasBio}}"
+            + "{{#hasTags}}{{#tags}}<{{label}}>{{/tags}}{{/hasTags}}{{^hasTags}}<none>{{/hasTags}}"
+            + "{{#hasSponsor}}{{sponsor.label}}{{/hasSponsor}}{{count}}";
+        var full = new RenderRequest(tpl, null,
+            new Profile("hi", 3, List.of(new Tag("a"), new Tag("b")), new Tag("s")),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("[hi]<a><b>s3", new Renderer().render(full));
+
+        var empty = new RenderRequest(tpl, null,
+            new Profile("  ", 0, List.of(), null),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("[no bio]<none>0", new Renderer().render(empty));
+
+        // The map form of the same data renders identically.
+        java.util.Map<String, Object> asMap = new java.util.LinkedHashMap<>();
+        asMap.put("bio", "hi");
+        asMap.put("count", 3);
+        asMap.put("tags", List.of(Map.of("label", "a"), Map.of("label", "b")));
+        asMap.put("sponsor", Map.of("label", "s"));
+        var mapReq = new RenderRequest(tpl, null, asMap,
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals(new Renderer().render(full), new Renderer().render(mapReq));
+    }
+
     @Test
     public void partialResolvedViaProvider() {
         var req = new RenderRequest(

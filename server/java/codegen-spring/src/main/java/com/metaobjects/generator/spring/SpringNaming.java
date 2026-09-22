@@ -159,7 +159,7 @@ public final class SpringNaming {
     /**
      * Capitalize the first character. Mirrors the {@code capitalizeFirst}
      * helper duplicated across the template-helper generators
-     * ({@code SpringRenderHelperGenerator}, {@code SpringPayloadGenerator},
+     * ({@code SpringRenderHelperGenerator},
      * {@code SpringOutputPromptGenerator}, {@code SpringOutputParserGenerator},
      * {@code LlmTraceHelperGenerator}).
      */
@@ -214,22 +214,45 @@ public final class SpringNaming {
     }
 
     /**
-     * Output package for template-helper artifacts:
-     * {@code pkg.isEmpty() ? "prompts" : pkg + ".prompts"}. Shared verbatim by
-     * the render-helper / payload / output-prompt / output-parser generators.
+     * Output package for TEMPLATE-keyed artifacts: {@code pkg + ".prompts"}, or the root
+     * package when the template has no package. Shared verbatim by the render-helper /
+     * output-prompt / output-parser generators. A value object's own record never lands here
+     * (ADR-0056): {@link SpringValueObjectGenerator} writes it into the value object's package.
+     *
+     * <p>A no-package template stays in the root package, rather than a bare {@code prompts}
+     * package, because its artifacts reference the value object's record — and a no-package
+     * value object lives in the root package, which Java cannot import from a named one.</p>
      */
     public static String promptsPackage(String pkg) {
-        return pkg.isEmpty() ? "prompts" : pkg + ".prompts";
+        return pkg.isEmpty() ? "" : pkg + ".prompts";
+    }
+
+    /**
+     * The fully-qualified reference to the record {@link SpringValueObjectGenerator} emits for
+     * {@code vo} — what every template-tier generator names a payload or response by (ADR-0056).
+     * Bare when {@code vo} has no package.
+     */
+    public static String valueObjectRef(MetaObject vo) {
+        String[] split = splitFqn(vo.getName());
+        return split[0].isEmpty() ? split[1] : split[0] + "." + split[1];
+    }
+
+    /**
+     * Fail codegen when a file in {@code fromPkg} would have to name {@code vo}'s root-package
+     * record: Java cannot import a class from the root package into a named one, so the emitted
+     * file would not compile. {@code what} names the referring template, for the message.
+     */
+    public static void requireReferenceable(String fromPkg, MetaObject vo, String what) {
+        if (fromPkg.isEmpty() || !splitFqn(vo.getName())[0].isEmpty()) return;
+        throw new com.metaobjects.generator.GeneratorException(
+            what + " references value object '" + vo.getName() + "', which has no package. Java "
+                + "cannot reference a root-package class from the named package '" + fromPkg
+                + "' — declare '" + vo.getName() + "' in a package");
     }
 
     /** {@code SpringRenderHelperGenerator}: {@code capitalize(templateShort) + "RenderHelper"}. */
     public static String renderHelperName(String templateShort) {
         return capitalize(templateShort) + "RenderHelper";
-    }
-
-    /** {@code SpringPayloadGenerator}: {@code capitalize(templateShort) + "Payload"}. */
-    public static String payloadName(String templateShort) {
-        return capitalize(templateShort) + "Payload";
     }
 
     /**
@@ -244,25 +267,6 @@ public final class SpringNaming {
      */
     public static String responseFormatName(String templateShort) {
         return capitalize(templateShort) + "ResponseFormat";
-    }
-
-    /**
-     * {@code SpringPayloadGenerator} / {@code SpringOutputParserGenerator}: the RESPONSE
-     * record for a responding prompt — {@code capitalize(templateShort) + "Response"}.
-     *
-     * <p>ADR-0052 gives a responding prompt a SECOND strict record: {@code @payloadRef}
-     * types the request it renders outbound, {@code @responseRef} the reply it parses, and
-     * the two are different shapes. Java's primary record is TEMPLATE-named
-     * ({@link #payloadName}), so the response record is template-named too — that keeps
-     * ONE naming convention in this generator rather than mixing a template-derived name
-     * with a value-object-derived one. It also matches the port's existing behaviour for
-     * two templates sharing a {@code @payloadRef}: each gets its own record.
-     *
-     * <p>(C# diverges deliberately: its records are named after the resolved VALUE-OBJECT,
-     * so there the response record is simply the VO's record, deduped by VO FQN.)
-     */
-    public static String responseName(String templateShort) {
-        return capitalize(templateShort) + "Response";
     }
 
     /** {@code SpringOutputParserGenerator}: {@code capitalize(templateShort) + "Parser"}. */
