@@ -20,4 +20,5 @@ public class Post
     [MinLength(1)]
     public string Title { get; set; } = default!;
     public ICollection<Tag> Tags { get; set; } = new List<Tag>();
+    public ICollection<ReferralAuth> Referrals { get; set; } = new List<ReferralAuth>();
 }

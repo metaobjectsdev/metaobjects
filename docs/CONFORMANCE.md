@@ -84,11 +84,13 @@ manifest contains without moving the boundary between the two halves.
 
 - *Not a corpus, so it has no row.* It reuses
   `fixtures/persistence-conformance/canonical/meta.fitness.json` rather than adding a
-  kitchen sink beside the one that already exists — 16 entities, two view-backed
-  projections, two M:N junctions including a self-join, a 4-entity TPH hierarchy, jsonb,
-  isArray, currency, decimal, and `AllTypes` carrying every persistable field subtype.
-  A second such model would drift from the first, and this one is maintained by the
-  other corpora already.
+  kitchen sink beside the one that already exists — 18 entities, two view-backed
+  projections (one restating an entity's enum through `extends`), M:N junctions including
+  a self-join, a 5-entity TPH hierarchy whose subtypes are an FK and M:N target and declare
+  an M:N of their own, a `@required` + `@default` subtype field, jsonb, isArray, currency,
+  decimal, and `AllTypes` carrying every persistable field subtype. A second such model
+  would drift from the first, and this one is maintained by the other corpora already.
+  Shapes an adopter's build tripped over are folded INTO it, not into a second model.
 - *Why it exists.* Every corpus above gates BEHAVIOUR. None asks whether the emitted
   code builds — so four "generated code does not compile" defects shipped in 1.0.4 with
   the whole matrix green, because `gen` exits 0 in all four cases and the adopter's

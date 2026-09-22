@@ -93,8 +93,15 @@ CREATE TABLE "auths" (
   "quantity" INTEGER,
   "copayAmount" NUMERIC(10,2),
   "approver" VARCHAR(80),
+  "urgency" VARCHAR(16),
   CONSTRAINT "auths_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Copay', 'PriorAuth'))
+  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Copay', 'PriorAuth', 'Referral'))
+);
+
+CREATE TABLE "post_referrals" (
+  "postId" BIGINT NOT NULL,
+  "referralId" BIGINT NOT NULL,
+  CONSTRAINT "post_referrals_pkey" PRIMARY KEY ("postId", "referralId")
 );
 
 CREATE TABLE "all_types" (
@@ -143,6 +150,10 @@ ALTER TABLE "follows" ADD CONSTRAINT "follows_followeeId_fk" FOREIGN KEY ("follo
 ALTER TABLE "friendships" ADD CONSTRAINT "friendships_personAId_fk" FOREIGN KEY ("personAId") REFERENCES "people" ("id");
 
 ALTER TABLE "friendships" ADD CONSTRAINT "friendships_personBId_fk" FOREIGN KEY ("personBId") REFERENCES "people" ("id");
+
+ALTER TABLE "post_referrals" ADD CONSTRAINT "post_referrals_postId_fk" FOREIGN KEY ("postId") REFERENCES "posts" ("id");
+
+ALTER TABLE "post_referrals" ADD CONSTRAINT "post_referrals_referralId_fk" FOREIGN KEY ("referralId") REFERENCES "auths" ("id");
 
 CREATE VIEW "v_program" AS
   SELECT

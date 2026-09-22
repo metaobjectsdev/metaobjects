@@ -21,8 +21,8 @@
 // WHY THIS IS NOT DbContextCompileTests. That test compiles a HAND-BUILT model chosen to
 // corner specific EF API surfaces, and it is the right tool for that. This one compiles
 // the shared corpus every other port also generates from, so a defect that needs the real
-// model's shape — 16 entities resolving against each other, two view-backed projections,
-// a self-joining M:N, a 4-entity TPH hierarchy — is caught by the same fixture in five
+// model's shape — 18 entities resolving against each other, two view-backed projections,
+// a self-joining M:N, a 5-entity TPH hierarchy with a subtype as an FK / M:N target — is caught by the same fixture in five
 // languages rather than by whichever port happened to hand-write a case for it.
 //
 // WHY THIS IS NOT IntegrationFixtureDriftTests. That one already loads this corpus and

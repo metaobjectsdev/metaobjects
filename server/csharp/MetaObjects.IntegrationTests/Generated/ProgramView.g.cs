@@ -17,5 +17,5 @@ public class ProgramView
     [Column(ProgramViewNames.TitleColumn)]
     public string? Title { get; set; }
     [Column(ProgramViewNames.StatusColumn)]
-    public ProgramViewStatus? Status { get; set; }
+    public ProgramViewStatus Status { get; set; }
 }

@@ -47,6 +47,8 @@ expect:
     - 'CHECK ("intEnumVal" IN (0, 5, 9))'
     - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
     - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
+    # An identity.reference onto a TPH subtype binds the base's table (a subtype has none).
+    - 'ALTER TABLE "post_referrals" ADD CONSTRAINT "post_referrals_referralId_fk" FOREIGN KEY ("referralId") REFERENCES "auths" ("id")'
     # Match both TS (`CREATE VIEW`) and C# (`CREATE OR REPLACE VIEW`, idempotent)
     # via the common suffix substring.
     - 'VIEW "v_program" AS'
@@ -71,6 +73,9 @@ expect:
       - { table_name: "measurements" }
       - { table_name: "nodes" }
       - { table_name: "people" }
+      # post_referrals: an M:N junction whose second reference targets a TPH SUBTYPE
+      # (ReferralAuth) — its FK must land on the base's single table, "auths".
+      - { table_name: "post_referrals" }
       - { table_name: "post_tags" }
       - { table_name: "posts" }
       - { table_name: "programs" }

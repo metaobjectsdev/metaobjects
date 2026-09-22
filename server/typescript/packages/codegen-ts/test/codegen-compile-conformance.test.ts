@@ -19,8 +19,9 @@
 // the adopter the gate. This closes that.
 //
 // WHY THE FITNESS CORPUS rather than a fixture of its own: it is already the shared
-// cross-port model (16 entities, 2 view-backed projections, 2 value objects, two M:N
-// through-junctions incl. a self-join, a 4-entity TPH hierarchy, jsonb storage, isArray,
+// cross-port model (18 entities, 2 view-backed projections, 2 value objects, M:N
+// through-junctions incl. a self-join, a 5-entity TPH hierarchy whose subtypes are an FK
+// and M:N target and declare an M:N of their own, jsonb storage, isArray,
 // field.currency, field.decimal, and an AllTypes entity carrying every persistable field
 // subtype incl. @intValueMap). A second kitchen sink would drift from the first, and the
 // coverage this gate has is exactly the coverage the other corpora already maintain.

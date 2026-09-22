@@ -203,6 +203,15 @@ TPH behavior is gated separately by the **api-contract** generated-controller la
 (e.g. Kotlin's `TphGeneratedApiContractConformanceTest` boots the unmodified
 generated controller over HTTP).
 
+A fourth subtype, `ReferralAuth`, is in the model for the **codegen-compile gate**, not
+for these scenarios, and no `tph-*` scenario touches it. It carries the shapes an
+adopter's build broke on: it is the target of an `identity.reference` and of an M:N
+(`Post.referrals` through `PostReferral`), it declares an M:N of its own
+(`ReferralAuth.posts`), and it has a `@required` + `@default` field (`urgency`).
+`ProgramView.status` restates `Program.status` through `extends` for the same reason.
+Keeping these shapes on a subtype no scenario reads means existing scenario rows do not
+change.
+
 ### `op: roundtrip` — runtime WRITE round-trip
 
 `roundtrip` is the **all-types write** gate: the runner INSERTS the `insert:` row

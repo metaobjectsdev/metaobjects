@@ -73,7 +73,7 @@
           { "field.long":   { "name": "id", "extends": "Program.id",
                               "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
           { "field.string": { "name": "title",  "children": [ { "origin.passthrough": { "@from": "Program.title" } } ] } },
-          { "field.enum":   { "name": "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+          { "field.enum":   { "name": "status", "extends": "Program.status",
                               "children": [ { "origin.passthrough": { "@from": "Program.status" } } ] } },
           { "identity.primary": { "name": "id", "extends": "Program.id", "@fields": "id" } }
         ]
@@ -115,6 +115,7 @@
           { "field.long":   { "name": "id" } },
           { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
           { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
+          { "relationship.association": { "name": "referrals", "@cardinality": "many", "@objectRef": "ReferralAuth", "@through": "PostReferral" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }},
@@ -179,7 +180,7 @@
         "children": [
           { "source.rdb": { "@table": "auths" } },
           { "field.long":   { "name": "id" } },
-          { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"] } },
+          { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth", "Referral"] } },
           { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
@@ -206,6 +207,26 @@
         "@discriminatorValue": "PriorAuth",
         "children": [
           { "field.string": { "name": "approver", "@maxLength": 80 } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "ReferralAuth",
+        "extends": "Auth",
+        "@discriminatorValue": "Referral",
+        "children": [
+          { "field.string": { "name": "urgency", "@required": true, "@default": "routine", "@maxLength": 16 } },
+          { "relationship.association": { "name": "posts", "@cardinality": "many", "@objectRef": "Post", "@through": "PostReferral" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "PostReferral",
+        "children": [
+          { "source.rdb": { "@table": "post_referrals" } },
+          { "field.long": { "name": "postId",     "@required": true } },
+          { "field.long": { "name": "referralId", "@required": true } },
+          { "identity.primary":   { "name": "id", "@fields": ["postId", "referralId"] } },
+          { "identity.reference": { "name": "fkPost",     "@fields": "postId",     "@references": "Post" } },
+          { "identity.reference": { "name": "fkReferral", "@fields": "referralId", "@references": "ReferralAuth" } }
         ]
       }},
       { "object.value": {

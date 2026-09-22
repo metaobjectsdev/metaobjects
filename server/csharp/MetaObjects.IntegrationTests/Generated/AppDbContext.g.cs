@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<Node> Nodes { get; set; } = default!;
     public DbSet<Person> Persons { get; set; } = default!;
     public DbSet<Post> Posts { get; set; } = default!;
+    public DbSet<PostReferral> PostReferrals { get; set; } = default!;
     public DbSet<PostTag> PostTags { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
@@ -45,7 +46,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => System.Guid.Parse(v!), g => g.ToString("D"));
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
         modelBuilder.Entity<Auth>().Property(x => x.Type).HasConversion<string>();
-        modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth);
+        modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth).HasValue<ReferralAuth>(Auth.AuthType.Referral);
         modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FollowerId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FolloweeId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(e => e.PersonAId).OnDelete(DeleteBehavior.NoAction);
@@ -53,6 +54,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
         modelBuilder.Entity<Node>().HasOne<Node>().WithMany().HasForeignKey(e => e.ParentId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(j => j.TagId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
+        modelBuilder.Entity<Post>().HasMany(x => x.Referrals).WithMany().UsingEntity<PostReferral>(l => l.HasOne<ReferralAuth>().WithMany().HasForeignKey(j => j.ReferralId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<Week>().HasOne<Program>().WithMany().HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);
