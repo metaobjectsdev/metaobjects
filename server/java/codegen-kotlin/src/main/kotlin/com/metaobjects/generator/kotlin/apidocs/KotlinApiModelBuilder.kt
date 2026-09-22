@@ -313,6 +313,8 @@ class KotlinApiModelBuilder {
         rest("GET $base/{id}", "fetch one by id")
         rest("POST $base", "create")
         rest("PATCH $base/{id}", "update")
+        // One handler serves both verbs (`method = [PATCH, PUT]` in the emitted controller).
+        rest("PUT $base/{id}", "update (PUT alias)")
         rest("DELETE $base/{id}", "delete")
         // FR-018 M:N traversal — GET /<source-plural>/{id}/<relation>.
         for (nav in KotlinM2mSupport.resolve(obj, loader)) {

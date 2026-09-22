@@ -223,6 +223,29 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **TypeScript: two `@metaobjectsdev/runtime-ts` writable mounts answered `PUT` with a 404.**
+  The cross-port REST contract (FR-008) makes the update verb reachable via BOTH `PATCH`
+  and `PUT`, routed to one handler, and every other port's controller maps both. The
+  Drizzle Fastify mount already registered both by default; the **Hono** mount and the
+  ObjectManager **Fastify** mount registered `PATCH` alone unless `updateMethod` said
+  otherwise, so a `PUT` the contract promises fell through to the framework's own 404.
+  Neither api-contract lane runs those mounts, which is how it survived — the same blind
+  spot the Hono error-code defect sat in. Both now mount both verbs by default. **Additive,
+  nothing to do on upgrade:** `updateMethod: "patch"` or `"put"` still restricts the update
+  verb to exactly the one it names, and now says so in its doc comment rather than claiming
+  a `"patch"` default that the Drizzle mount had not honoured for some time. One case is
+  not silent: a consumer that registered its OWN `PUT` handler at `<path>/:id` beside the
+  ObjectManager Fastify mount now gets Fastify's duplicate-route error at startup — pass
+  `updateMethod: "patch"` to keep that handler.
+
+- **API docs: TypeScript, Java and Kotlin did not document `PUT` on a writable entity.** The
+  generated update route serves `PATCH` and `PUT` from one handler in all five ports; C#
+  and Python documented both, the other three documented `PATCH` only, so an adopter (or
+  an agent reading `meta docs --agent`) was told an address the server answers did not
+  exist. Each builder now emits a `PUT` row beside `PATCH`, and the accuracy tests that
+  check every documented verb against the emitted routes count it. **Generated docs gain
+  one REST row per writable entity**; nothing else in the output moves.
+
 - **Java: a database constraint violation answered a bare 500 instead of the cross-port
   `409 {"error":"constraint_violation","constraint":"unique"|"foreign_key"}`.** The generated
   CRUD routes had no try/catch around their writes at all, so a driver failure reached Spring's

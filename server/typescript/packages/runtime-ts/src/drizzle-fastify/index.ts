@@ -67,8 +67,9 @@ export interface CrudRoutesOptions {
    */
   routeOptions?: RouteShorthandOptions;
   /**
-   * HTTP method for the update verb. Defaults to "patch". Set to "put" to
-   * preserve a legacy API contract that already uses PUT for updates.
+   * Restrict the update verb to ONE HTTP method. Absent (the default) mounts
+   * the update handler on both PATCH and PUT, as the cross-port REST contract
+   * requires.
    */
   updateMethod?: "patch" | "put";
   filterAllowlist?: FilterAllowlist;

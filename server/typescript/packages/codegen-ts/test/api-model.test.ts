@@ -182,6 +182,7 @@ describe("buildApiModel — entity with a PK", () => {
         "GET /api/products/:id",
         "PATCH /api/products/:id",
         "POST /api/products",
+        "PUT /api/products/:id",
       ].sort(),
     );
     // ...and absent, the paths are unchanged — the default is "" and stays byte-identical.
@@ -195,7 +196,8 @@ describe("buildApiModel — entity with a PK", () => {
     const root = await loadRoot([PRODUCT]);
     const model = buildApiModel(root, { loadedRoot: root });
     const rest = unit(model, "Product").symbols.filter((s) => s.kind === "rest");
-    // The routes generator mounts the 5 standard verbs. Assert the verb+path set.
+    // The routes generator mounts the 5 standard verbs; update answers on BOTH PATCH and
+    // PUT (the cross-port contract), so six addresses. Assert the verb+path set.
     const methodsPaths = rest.map((s) => s.signature).sort();
     expect(methodsPaths).toEqual(
       [
@@ -204,6 +206,7 @@ describe("buildApiModel — entity with a PK", () => {
         "GET /products/:id",
         "PATCH /products/:id",
         "POST /products",
+        "PUT /products/:id",
       ].sort(),
     );
   });

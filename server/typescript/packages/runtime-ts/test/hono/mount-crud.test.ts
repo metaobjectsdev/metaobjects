@@ -233,3 +233,55 @@ describe("Hono mountCrudRoutes — get / create / update / delete", () => {
     expect((r.body as { error: string }).error).toBe("not_found");
   });
 });
+
+// The cross-port REST contract (FR-008) makes the update verb reachable via BOTH
+// PATCH and PUT, routed to one handler — every other port's controller maps both,
+// and the drizzle-fastify flavor mounts both by default. This flavor used to mount
+// PATCH alone unless told otherwise, so a PUT the contract promises fell through to
+// a 404, and nothing noticed: neither api-contract lane runs Hono.
+describe("Hono mountCrudRoutes — update verb (PATCH and PUT)", () => {
+  async function put(url: string, body: unknown): Promise<{ status: number; body: unknown }> {
+    const res = await app.request(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    return { status: res.status, body: text ? JSON.parse(text) : null };
+  }
+
+  test("put — 200 with updated row, same handler as patch", async () => {
+    const r = await put("/subscribers/2", { firstName: "Robert" });
+    expect(r.status).toBe(200);
+    expect((r.body as { firstName: string }).firstName).toBe("Robert");
+  });
+
+  test("put — 404 envelope when missing", async () => {
+    const r = await put("/subscribers/9999", { firstName: "X" });
+    expect(r.status).toBe(404);
+    expect((r.body as { error: string }).error).toBe("not_found");
+  });
+
+  test("updateMethod restricts the surface to the one verb it names", async () => {
+    const client = createClient({ url: ":memory:" });
+    await client.execute(
+      `CREATE TABLE subscribers (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, first_name TEXT NOT NULL, subscribed INTEGER NOT NULL DEFAULT 1)`,
+    );
+    await client.execute(`INSERT INTO subscribers (email, first_name) VALUES ('a@x.com', 'A')`);
+    const db = drizzle(client);
+    const send = (a: Hono, method: string) =>
+      a.request("/subscribers/1", {
+        method, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstName: "B" }),
+      });
+    for (const [only, other] of [["patch", "PUT"], ["put", "PATCH"]] as const) {
+      const a = new Hono();
+      mountCrudRoutes({
+        app: a, path: "/subscribers", db, table: subscribers,
+        insertSchema: InsertSchema, updateSchema: UpdateSchema, updateMethod: only,
+      });
+      expect((await send(a, only.toUpperCase())).status, `${only} mounted`).toBe(200);
+      expect((await send(a, other)).status, `${other} not mounted`).toBe(404);
+    }
+  });
+});

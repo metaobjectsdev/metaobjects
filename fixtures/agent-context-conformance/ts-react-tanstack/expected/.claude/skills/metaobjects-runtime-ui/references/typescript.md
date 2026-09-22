@@ -205,8 +205,9 @@ mountGetRoute({ ...opts });                            // a single verb
 
 `CrudRoutesOptions` = `{ fastify, path, db, table, insertSchema, updateSchema }`
 plus `expose?` (limit verbs), `routeOptions?` (Fastify hooks — e.g.
-`{ preHandler: requireAuthHook }` for auth), and `updateMethod?` (`"patch"` default
-/ `"put"`). So **mount the standard verbs with these helpers and hand-write only the
+`{ preHandler: requireAuthHook }` for auth), and `updateMethod?` (`"patch"` or
+`"put"` restricts update to that one verb; absent mounts both, as the cross-port
+contract requires). So **mount the standard verbs with these helpers and hand-write only the
 custom routes** (HTML pages, nested resources, computed fields) — calling the
 generated query helpers, and a projection's generated query for derived/aggregate
 data. Generate the data layer; hand-write only what's genuinely custom.

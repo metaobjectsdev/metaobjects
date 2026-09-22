@@ -204,8 +204,10 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
                 controller.contains(expectedMapping));
             restChecked++;
         }
-        // The fixture's Author yields the 5 CRUD verbs + 1 M:N traversal.
-        assertEquals("expected 6 REST symbols on Author (5 CRUD + 1 M:N)", 6, restChecked);
+        // The fixture's Author yields the 5 CRUD verbs — update documented under BOTH verbs it
+        // answers, PATCH and PUT — + 1 M:N traversal.
+        assertEquals("expected 7 REST symbols on Author (5 CRUD, update as PATCH + PUT, + 1 M:N)",
+            7, restChecked);
     }
 
     /** The exact Spring mapping annotation the controller emits for a verb + sub-path. */
@@ -219,6 +221,7 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
             case "DELETE":
                 return "@DeleteMapping(\"" + sub + "\")";
             case "PATCH":
+            case "PUT":
                 // PATCH + PUT share one composed @RequestMapping with method={PATCH, PUT}.
                 return "@RequestMapping(value = \"" + sub
                     + "\", method = { RequestMethod.PATCH, RequestMethod.PUT })";

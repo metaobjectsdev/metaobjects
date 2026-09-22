@@ -227,6 +227,8 @@ public final class JavaApiModelBuilder {
         addRest(symbols, controllerFqn, "GET " + base + "/{id}", "fetch one by id");
         addRest(symbols, controllerFqn, "POST " + base, "create");
         addRest(symbols, controllerFqn, "PATCH " + base + "/{id}", "update");
+        // One handler serves both verbs (`method = { PATCH, PUT }` in the emitted controller).
+        addRest(symbols, controllerFqn, "PUT " + base + "/{id}", "update (PUT alias)");
         addRest(symbols, controllerFqn, "DELETE " + base + "/{id}", "delete");
         for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(obj, loader)) {
             addRest(symbols, controllerFqn,

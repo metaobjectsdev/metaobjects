@@ -244,7 +244,8 @@ class KotlinApiDocsAccuracyKtTest {
             restChecked++
         }
         // 5 CRUD verbs + 1 M:N traversal (tags).
-        assertEquals(6, restChecked, "expected 6 REST symbols on Author (5 CRUD + 1 M:N)")
+        // Update is documented under BOTH verbs it answers, PATCH and PUT.
+        assertEquals(7, restChecked, "expected 7 REST symbols on Author (5 CRUD, update as PATCH + PUT, + 1 M:N)")
     }
 
     /** The exact Spring mapping the Kotlin controller emits for a verb + sub-path. */
@@ -252,7 +253,7 @@ class KotlinApiDocsAccuracyKtTest {
         "GET" -> if (sub.isEmpty()) "@GetMapping\n" else "@GetMapping(\"$sub\")"
         "POST" -> "@PostMapping\n"
         "DELETE" -> "@DeleteMapping(\"$sub\")"
-        "PATCH" -> "@RequestMapping(value = [\"$sub\"], method = [RequestMethod.PATCH, RequestMethod.PUT])"
+        "PATCH", "PUT" -> "@RequestMapping(value = [\"$sub\"], method = [RequestMethod.PATCH, RequestMethod.PUT])"
         else -> throw AssertionError("unexpected REST verb: $verb")
     }
 

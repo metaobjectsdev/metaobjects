@@ -635,6 +635,7 @@ function restSymbols(
     symbols.push(
       ep("POST", path, `Create a ${name} (body validated by ${name}InsertSchema).`, createShape),
       ep("PATCH", `${path}/:id`, `Partially update a ${name} by id (body validated by ${name}UpdateSchema).`, updateShape),
+      ep("PUT", `${path}/:id`, `PUT alias of PATCH — the same handler and partial body (validated by ${name}UpdateSchema).`, updateShape),
       ep("DELETE", `${path}/:id`, `Delete a ${name} by id.`),
     );
   }
@@ -840,6 +841,7 @@ function restHonoSymbols(
     symbols.push(
       ep("POST", path, `[Hono] Create a ${name} (body validated by ${name}InsertSchema).`, createShape),
       ep("PATCH", `${path}/:id`, `[Hono] Partially update a ${name} by id (body validated by ${name}UpdateSchema).`, updateShape),
+      ep("PUT", `${path}/:id`, `[Hono] PUT alias of PATCH — the same handler and partial body (validated by ${name}UpdateSchema).`, updateShape),
       ep("DELETE", `${path}/:id`, `[Hono] Delete a ${name} by id.`),
     );
   }

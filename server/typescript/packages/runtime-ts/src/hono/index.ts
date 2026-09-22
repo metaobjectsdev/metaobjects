@@ -7,8 +7,8 @@
 //   GET    {path}      list with ?filter / ?sort / ?limit / ?offset / ?withCount=1
 //   GET    {path}/:id  findById, 404 if missing
 //   POST   {path}      create, 400 on Zod validation error, 201 on success
-//   PATCH  {path}/:id  update (default), 400 / 404 envelopes
-//   PUT    {path}/:id  update (when updateMethod === "put")
+//   PATCH  {path}/:id  update, 400 / 404 envelopes
+//   PUT    {path}/:id  update — the same handler (restrict with updateMethod)
 //   DELETE {path}/:id  delete, 204 on success, 404 if missing
 //
 // Filter / sort / withCount semantics are shared with drizzle-fastify via
@@ -83,8 +83,9 @@ export interface CrudRoutesOptions {
   /** Limit which verbs are mounted. Defaults to all five. */
   expose?: readonly CrudVerb[];
   /**
-   * HTTP method for the update verb. Defaults to "patch". Set to "put" to
-   * preserve a legacy API contract that already uses PUT for updates.
+   * Restrict the update verb to ONE HTTP method. Absent (the default) mounts
+   * the update handler on both PATCH and PUT, as the cross-port REST contract
+   * requires.
    */
   updateMethod?: "patch" | "put";
   filterAllowlist?: FilterAllowlist;
@@ -278,10 +279,17 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     return row ? c.json(await reReadThroughView(opts, row)) : c.json({ error: "not_found" }, 404);
   };
   const path = `${opts.path}/:id`;
+  // Cross-port REST contract (FR-008): the update verb is reachable via BOTH PATCH
+  // and PUT, each routed to the same handler — as the drizzle-fastify flavor and
+  // every other port's controller do. `updateMethod` stays an explicit single-verb
+  // override for a consumer that wants to restrict the surface.
   if (opts.updateMethod === "put") {
     opts.app.put(path, handler);
+  } else if (opts.updateMethod === "patch") {
+    opts.app.patch(path, handler);
   } else {
     opts.app.patch(path, handler);
+    opts.app.put(path, handler);
   }
 }
 

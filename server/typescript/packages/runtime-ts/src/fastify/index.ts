@@ -59,9 +59,9 @@ export interface CrudRoutesOptions {
    */
   routeOptions?: RouteShorthandOptions;
   /**
-   * HTTP method for the update verb. Defaults to "patch" (semantic partial-
-   * update). Set to "put" to preserve a legacy API contract that already
-   * uses PUT for updates.
+   * Restrict the update verb to ONE HTTP method. Absent (the default) mounts
+   * the update handler on both PATCH and PUT, as the cross-port REST contract
+   * requires.
    */
   updateMethod?: "patch" | "put";
   /**
@@ -227,11 +227,19 @@ export function mountUpdateRoute(opts: SingleVerbOptions): void {
   };
   const path = `${opts.path}/:id`;
   const ro = routeOpts(opts);
+  // Cross-port REST contract (FR-008): the update verb is reachable via BOTH PATCH
+  // and PUT, each routed to the same handler — as the drizzle-fastify flavor and
+  // every other port's controller do. `updateMethod` stays an explicit single-verb
+  // override for a consumer that wants to restrict the surface.
   // biome-ignore lint/suspicious/noExplicitAny: handler signature is generic by design
+  const h = handler as any;
   if (opts.updateMethod === "put") {
-    opts.fastify.put(path, ro, handler as any);
+    opts.fastify.put(path, ro, h);
+  } else if (opts.updateMethod === "patch") {
+    opts.fastify.patch(path, ro, h);
   } else {
-    opts.fastify.patch(path, ro, handler as any);
+    opts.fastify.patch(path, ro, h);
+    opts.fastify.put(path, ro, h);
   }
 }
 

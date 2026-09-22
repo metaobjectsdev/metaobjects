@@ -91,6 +91,7 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
         assertTrue("REST POST", hasName(author, ApiSymbolKind.REST, "POST /api/authors"));
         assertTrue("REST GET by id", hasName(author, ApiSymbolKind.REST, "GET /api/authors/{id}"));
         assertTrue("REST PATCH", hasName(author, ApiSymbolKind.REST, "PATCH /api/authors/{id}"));
+        assertTrue("REST PUT", hasName(author, ApiSymbolKind.REST, "PUT /api/authors/{id}"));
         assertTrue("REST DELETE", hasName(author, ApiSymbolKind.REST, "DELETE /api/authors/{id}"));
         assertTrue("REST M:N traversal", hasName(author, ApiSymbolKind.REST, "GET /api/authors/{id}/tags"));
         assertTrue("FILTER AuthorFilterAllowlist", has(author, ApiSymbolKind.FILTER, "AuthorFilterAllowlist"));

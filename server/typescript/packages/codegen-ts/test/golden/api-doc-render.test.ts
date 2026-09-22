@@ -257,6 +257,22 @@ Request body:
 
 Mount: \`await productRoutes(fastify)\`
 
+### \`PUT /products/:id\`
+
+PUT alias of PATCH — the same handler and partial body (validated by ProductUpdateSchema).
+
+\`\`\`ts
+import { productRoutes } from "./Product.routes"
+\`\`\`
+
+Request body:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| \`name\` | \`string\` |  |  |
+
+Mount: \`await productRoutes(fastify)\`
+
 ### \`DELETE /products/:id\`
 
 Delete a Product by id.
@@ -385,7 +401,7 @@ Generated public API surface, one page per entity and output template.
 
 ## Entities
 
-- [Product](./Product.md) — model, 5 data access, 5 REST, 2 validation (13 symbols)
+- [Product](./Product.md) — model, 5 data access, 6 REST, 2 validation (14 symbols)
 - [SummaryVO](./SummaryVO.md) — model (1 symbol)
 
 ## Templates
@@ -423,7 +439,7 @@ describe("renderApiIndex — consolidated human index", () => {
     const { model } = await loadModel();
     const out = renderApiIndex(model, "flat", provider);
     expect(out).toContain("(1 symbol)"); // SummaryVO — exactly one
-    expect(out).toContain("(13 symbols)"); // Product — many
+    expect(out).toContain("(14 symbols)"); // Product — many
   });
 });
 
@@ -461,6 +477,7 @@ Generated API reference for this project; call these exactly as written. Imports
 - \`GET /products/:id -> { id: number; name?: string }\` — Fetch a single Product by id (404 when not found).
 - \`POST /products body: { name?: string }\` — Create a Product (body validated by ProductInsertSchema).
 - \`PATCH /products/:id body: { name?: string }\` — Partially update a Product by id (body validated by ProductUpdateSchema).
+- \`PUT /products/:id body: { name?: string }\` — PUT alias of PATCH — the same handler and partial body (validated by ProductUpdateSchema).
 - \`DELETE /products/:id\` — Delete a Product by id.
 
 Example:
