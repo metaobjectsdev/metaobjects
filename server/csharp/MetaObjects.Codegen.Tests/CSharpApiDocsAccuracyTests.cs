@@ -26,7 +26,8 @@ namespace MetaObjects.Codegen.Tests;
 ///   • Address value object referenced by an Author object-field → MODEL only (its POCO IS
 ///     emitted because it is referenced);
 ///   • BaseNode abstract entity → NO unit (no symbols);
-///   • SummaryOutput responding template.prompt → PAYLOAD/PROMPT/OUTPUT_PARSER (ADR-0052 inbound);
+///   • SummaryOutput responding template.prompt → RENDER/PAYLOAD/PROMPT/OUTPUT_PARSER
+///     (ADR-0052: the inbound tier, plus the render every template gets);
 ///   • SummaryDoc template.output → RENDER + PAYLOAD (ADR-0052 outbound — no parser, ever).
 /// </summary>
 public sealed class CSharpApiDocsAccuracyTests
@@ -321,6 +322,10 @@ public sealed class CSharpApiDocsAccuracyTests
     {
         // ADR-0052: the INBOUND symbols belong to the responding prompt. The documented
         // Payload is the @responseRef shape — what the parser above it actually returns.
+        // Render rides alongside them: every renderable template gets a render helper, and a
+        // prompt renders its outbound body just as an output does. (This expectation omitted
+        // Render while the render helper filtered template.output, which is what left a
+        // prompt with no generated way to produce its own text on this port.)
         var tpl = WriteTemplates();
         try
         {
@@ -330,7 +335,8 @@ public sealed class CSharpApiDocsAccuracyTests
             Assert.Equal(
                 new HashSet<ApiSymbolKind>
                 {
-                    ApiSymbolKind.Payload, ApiSymbolKind.Prompt, ApiSymbolKind.OutputParser,
+                    ApiSymbolKind.Render, ApiSymbolKind.Payload,
+                    ApiSymbolKind.Prompt, ApiSymbolKind.OutputParser,
                 },
                 kinds);
         }

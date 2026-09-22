@@ -113,8 +113,15 @@ class KotlinTemplateTierValueObjectTest {
             val promptFiles = paths.filter { "/prompts/" in it }.map { it.substringAfterLast('/') }.toSet()
             assertEquals(
                 setOf(
-                    "AlphaAskParser.kt", "AlphaAskExtractor.kt", "AlphaDocRenderHelper.kt",
-                    "BetaAskParser.kt", "BetaAskExtractor.kt", "BetaDocRenderHelper.kt",
+                    // The `Ask` pair are template.prompt nodes and the `Doc` pair are
+                    // template.output: every one of them renders, so every one gets a
+                    // render helper (ADR-0052). The invariant under test is unchanged —
+                    // each of these is keyed to a TEMPLATE, while the shared value object
+                    // stays in acme.shared above.
+                    "AlphaAskParser.kt", "AlphaAskExtractor.kt",
+                    "AlphaAskRenderHelper.kt", "AlphaDocRenderHelper.kt",
+                    "BetaAskParser.kt", "BetaAskExtractor.kt",
+                    "BetaAskRenderHelper.kt", "BetaDocRenderHelper.kt",
                 ),
                 promptFiles,
                 "the prompts packages hold only template-keyed artifacts; files=$paths")

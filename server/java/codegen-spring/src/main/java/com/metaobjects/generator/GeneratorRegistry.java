@@ -147,7 +147,7 @@ public final class GeneratorRegistry {
         register(m, "output-prompt", SpringOutputPromptGenerator.class.getName(),
                 "Per-template output-format prompt fragment generator.", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "render-helper", SpringRenderHelperGenerator.class.getName(),
-                "Per-template.output render helper (document/email typed wrappers).", Tier.NATIVE, Layer.CAPABILITY);
+                "Per-renderable-template render helper (typed wrappers; document/email for a template.output, the document shape for a template.prompt).", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "extractor", ExtractorCodeGenerator.class.getName(),
                 "Per-template strict typed extract<Name> helper. FUSED into `entity` on this "
                     + "port — emitted by JavaObjectCodeGenerator, not separately wirable.", Tier.NATIVE, Layer.CAPABILITY);

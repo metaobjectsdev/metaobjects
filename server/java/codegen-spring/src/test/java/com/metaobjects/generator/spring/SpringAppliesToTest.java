@@ -31,7 +31,8 @@ import static org.junit.Assert.assertTrue;
  *   <li>{@code SummaryOutput} — a {@code template.output @format=json} with a
  *       {@code @payloadRef} resolving to an {@code object.value}.</li>
  *   <li>{@code PlainPrompt} — a valid {@code template.prompt} (its {@code @payloadRef}
- *       resolves to a VO). It exercises the {@code template.output}-only predicates'
+ *       resolves to a VO) declaring NO {@code @responseRef}. It renders (so the
+ *       render-helper predicate accepts it) and exercises the inbound predicates'
  *       negative path: the output parser / render-helper / output-prompt generators
  *       skip prompts. The loader enforces {@code @payloadRef} present + VO-resolving
  *       at load time, so a non-VO / missing-payloadRef template cannot be constructed
@@ -227,13 +228,26 @@ public class SpringAppliesToTest {
     // === template-based predicates ==========================================
 
     @Test
-    public void renderHelperAppliesToOutputWithValueObjectPayloadRef() throws Exception {
+    public void renderHelperAppliesToEveryRenderableTemplate() throws Exception {
         MetaDataLoader loader = loader();
         MetaTemplate summaryOutput = template(loader, "SummaryOutput");
         MetaTemplate plainPrompt = template(loader, "PlainPrompt");
 
-        assertTrue(SpringRenderHelperGenerator.appliesTo(summaryOutput, loader));
-        assertFalse(SpringRenderHelperGenerator.appliesTo(plainPrompt, loader));
+        // BOTH subtypes render (ADR-0052 — the subtype axis is direction, and a prompt
+        // renders an outbound body just as an output does). This assertion used to read
+        // assertFalse for the prompt, which is what left a template.prompt with no
+        // generated render helper on this port: an adopter could parse a model's reply
+        // from generated code but had to hand-roll the call that produced the prompt.
+        assertTrue("a template.output renders",
+            SpringRenderHelperGenerator.appliesTo(summaryOutput, loader));
+        assertTrue("a template.prompt renders too — only what comes BACK differs",
+            SpringRenderHelperGenerator.appliesTo(plainPrompt, loader));
+        // The remaining negative is the only one the loader permits: it enforces
+        // @payloadRef present and VO-resolving, so a non-VO / payload-less template
+        // cannot be constructed, and a non-template node is what is left.
+        assertFalse("a non-template node renders nothing",
+            SpringRenderHelperGenerator.appliesTo(
+                loader.getMetaObjectByName("acme::shop::Author"), loader));
     }
 
     // ADR-0052 — the two inbound predicates. Both negatives matter and they fail for

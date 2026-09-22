@@ -40,8 +40,9 @@ import com.metaobjects.template.TemplateConstants
  *   MODEL + a single read-only DATA_ACCESS surface (the Exposed `Table` for a view kind, or the
  *   `<Name>Proc` callable for a storedProc kind); no write surfaces. A value object → MODEL only. An
  *   abstract object / a TPH subtype yields no instance artifacts.
- * - **Templates** (`template.output` only): each → PAYLOAD / RENDER / OUTPUT_PARSER, plus PROMPT +
- *   EXTRACTOR when `@format` is json/xml — each gated by the matching generator's applies-predicate.
+ * - **Templates** (both subtypes): each → PAYLOAD / RENDER, since every renderable template gets
+ *   a render helper (ADR-0052); a RESPONDING `template.prompt` adds PROMPT / OUTPUT_PARSER /
+ *   EXTRACTOR — each gated by the matching generator's applies-predicate.
  *
  * An object that yields no symbols (e.g. an abstract object) produces NO unit at all (never an
  * empty unit).
@@ -350,10 +351,17 @@ class KotlinApiModelBuilder {
                 )
             )
 
-            // RENDER — the typed render helper wrapping the JVM render engine. OUTBOUND ONLY:
-            // KotlinRenderHelperGenerator emits only for a template.output, so documenting it
-            // for a prompt would name a class that is never generated.
-            if (tmpl is com.metaobjects.template.OutputTemplate) {
+            // RENDER — the typed render helper wrapping the JVM render engine. Emitted for
+            // EVERY renderable template, prompts included: KotlinRenderHelperGenerator
+            // collects both OutputTemplate and PromptTemplate, because both render an
+            // outbound body (ADR-0052). Only an email output returns an EmailDocument; a
+            // prompt carries no @kind and renders to String.
+            //
+            // This block used to be guarded by `tmpl is OutputTemplate`, mirroring the
+            // generator's own filter at the time. When the generator widened, this did not
+            // follow — so the reference under-documented a class codegen really emits. The
+            // guard is gone rather than widened: there is no renderable template this
+            // builder reaches that the generator skips.
             val render = KotlinNaming.renderHelperName(shortName)
             symbols.add(
                 ApiSymbol(
@@ -361,11 +369,10 @@ class KotlinApiModelBuilder {
                     kind = ApiSymbolKind.RENDER,
                     importLine = importLine(promptsPkg, render),
                     signature = "object $render",
-                    usage = "renders the output template against a typed payload",
+                    usage = "renders the template's outbound body against a typed payload",
                     returns = if (isEmailKind(tmpl)) "EmailDocument" else "String",
                 )
             )
-            }
 
         }
 

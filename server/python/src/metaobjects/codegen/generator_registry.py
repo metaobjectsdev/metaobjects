@@ -149,7 +149,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     ),
     "render-helper": GeneratorEntry(
         name="render-helper",
-        description="Per-template.output render helper (document/email typed wrappers).",
+        description="Per-renderable-template render helper (typed wrappers; document/email for a template.output, the document shape for a template.prompt).",
         tier="native",
         layer="capability",
         factory=_render_helper_default,

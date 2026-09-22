@@ -31,8 +31,9 @@ import java.util.Set;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
- * Generator: one {@code <TemplateShortName>RenderHelper} Java class per
- * {@code template.output} declaration, wrapping the EXISTING JVM
+ * Generator: one {@code <TemplateShortName>RenderHelper} Java class per RENDERABLE
+ * template declaration — {@code template.output} AND {@code template.prompt}, since both
+ * render an outbound body (ADR-0052) — wrapping the EXISTING JVM
  * {@link com.metaobjects.render.Renderer} engine with a typed
  * {@code render(payload, provider)} entry point — and enforcing the mustache↔VO
  * drift check ({@link Verify}) at BUILD time.
@@ -112,34 +113,52 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
 
         // Stable name order — matches the other ports' deterministic emission.
         // ADR-0039: root-scan discipline — resolving children accessor.
-        List<MetaTemplate> outputs = new ArrayList<>();
+        List<MetaTemplate> renderable = new ArrayList<>();
         for (MetaTemplate t : loader.getRoot().getChildren(MetaTemplate.class, true)) {
-            if (TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
-                outputs.add(t);
+            if (isRenderable(t)) {
+                renderable.add(t);
             }
         }
-        outputs.sort(Comparator.comparing(MetaTemplate::getName));
+        renderable.sort(Comparator.comparing(MetaTemplate::getName));
 
-        for (MetaTemplate tmpl : outputs) {
+        for (MetaTemplate tmpl : renderable) {
             emit(tmpl, loader, outRoot, provider);
         }
     }
 
     /**
      * True iff this generator emits a render helper for {@code node}: the node is a
-     * {@code template.output} carrying a {@code @payloadRef} that resolves (against
-     * {@code loader}) to an {@code object.value}. The render helper wraps the JVM
-     * Renderer for {@code @kind=document|email} output templates. Extracted from
-     * the {@link #execute(MetaDataLoader)} {@code SUBTYPE_OUTPUT} filter combined
-     * with the per-template {@link #emit} skip guard.
+     * renderable template ({@link #isRenderable}) carrying a {@code @payloadRef} that
+     * resolves (against {@code loader}) to an {@code object.value}. The render helper wraps
+     * the JVM Renderer — {@code @kind=document|email} for an output template, and the
+     * document shape for a prompt, which carries no {@code @kind}. Extracted from the
+     * {@link #execute(MetaDataLoader)} filter combined with the per-template
+     * {@link #emit} skip guard.
      */
     public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
         if (!(node instanceof MetaTemplate template)) return false;
-        if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
+        if (!isRenderable(template)) return false;
         String payloadRef = template.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) return false;
         return resolveValueObject(loader, payloadRef,
             com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template)) != null;
+    }
+
+    /**
+     * True iff {@code t} is a template this generator renders. BOTH template subtypes
+     * render — ADR-0052 makes the subtype axis DIRECTION, and a {@code template.prompt}
+     * renders an outbound body exactly as a {@code template.output} does; only what comes
+     * back differs, and that inbound tier belongs to the parser/extractor generators.
+     *
+     * <p>This used to be {@code SUBTYPE_OUTPUT} alone, which left a {@code template.prompt}
+     * with no generated render helper on this port at all — an adopter could parse a model's
+     * reply from generated code but had to hand-roll the call that produced the prompt.
+     * A prompt carries no {@code @kind}, so it takes the document branch of {@link #emit}
+     * naturally and the email branch stays output-only.
+     */
+    private static boolean isRenderable(MetaTemplate t) {
+        return TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())
+            || TemplateConstants.SUBTYPE_PROMPT.equals(t.getSubType());
     }
 
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
@@ -216,8 +235,8 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
             String textRef = attrPresent(template, TemplateConstants.ATTR_TEXT_REF)
                 ? attr(template, TemplateConstants.ATTR_TEXT_REF) : null;
             if (textRef == null) {
-                throw new GeneratorException("template.output \"" + template.getName()
-                    + "\" (document) missing @textRef");
+                throw new GeneratorException("template." + template.getSubType() + " \""
+                    + template.getName() + "\" missing @textRef");
             }
             String format = template.getFormat();
             Integer maxChars = template.getMaxChars();
@@ -236,11 +255,13 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         }
 
         StringBuilder src = new StringBuilder();
-        src.append("// GENERATED — DO NOT EDIT — render helper for template.output `")
+        src.append("// GENERATED — DO NOT EDIT — render helper for template.")
+           .append(template.getSubType()).append(" `")
            .append(template.getName()).append("`\n");
         src.append(SpringNaming.packageHeader(outPkg));
         src.append("/** Typed render helper for the `").append(templateShort)
-           .append("` template.output. Wraps the render() engine; the payload field tree is\n")
+           .append("` template.").append(template.getSubType())
+           .append(". Wraps the render() engine; the payload field tree is\n")
            .append(" *  baked into the RenderRequest so render()'s runtime drift check matches the\n")
            .append(" *  build-time gate enforced when this file was generated. */\n");
         src.append("public final class ").append(helperClass).append(" {\n\n");

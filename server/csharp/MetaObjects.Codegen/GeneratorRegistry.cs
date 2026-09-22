@@ -174,7 +174,7 @@ public static class GeneratorRegistry
             ["render-helper"] = new()
             {
                 Name = "render-helper",
-                Description = "Per-template.output render helper (document/email typed wrappers).",
+                Description = "Per-renderable-template render helper (typed wrappers; document/email for a template.output, the document shape for a template.prompt).",
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = RenderHelper,

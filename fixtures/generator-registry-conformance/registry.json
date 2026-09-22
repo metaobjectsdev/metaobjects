@@ -27,7 +27,7 @@
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "render-helper": {
-      "concept": "Per-template.output render helper (document/email typed wrappers).",
+      "concept": "Per-renderable-template render helper (typed render wrappers). BOTH template subtypes render (ADR-0052), so on csharp/java/kotlin/python this covers template.output AND template.prompt; on typescript a prompt's render handle is the separate `prompt-render` generator instead, so typescript's render-helper is template.output only. Same stable name, one concept, one per-port split — stated here because the concept line is shared and the split is not.",
       "tier": "native",
       "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
@@ -81,7 +81,7 @@
       "ports": ["typescript", "csharp", "kotlin", "python", "java"]
     },
     "prompt-render": {
-      "concept": "Per-template prompt-render helper over the render engine.",
+      "concept": "Per-template.prompt render handle over the render engine, aggregated into one module. TYPESCRIPT ONLY by design: the other four ports emit a prompt's render helper from `render-helper` (see its note) rather than a second generator.",
       "tier": "native",
       "layer": "capability",
       "ports": ["typescript"]

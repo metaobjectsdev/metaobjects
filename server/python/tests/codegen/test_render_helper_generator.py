@@ -379,14 +379,26 @@ def test_generator_skips_unresolved_payload_ref(tmp_path) -> None:
     assert files == []
 
 
-def test_generator_ignores_prompt_subtype(tmp_path) -> None:
+def test_generator_emits_for_prompt_subtype(tmp_path) -> None:
+    """A template.prompt renders too (ADR-0052).
+
+    This test used to be ``test_generator_ignores_prompt_subtype`` and asserted
+    ``files == []``. That is what left a template.prompt with no generated render
+    helper on this port at all: an adopter could parse a model's reply from
+    generated code, but had to call the render engine by hand to produce the prompt
+    that elicited it. The subtype axis is DIRECTION — both directions render, and
+    only what comes back differs.
+    """
+    _write_mustache(tmp_path, "greet", "Hello {{name}}")
     payload = _payload_vo("Welcome", [_field("name")])
     prompt = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT, "Greet")
     prompt.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "Welcome")
     prompt.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "greet")
     root = _root([payload, prompt])
     files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
-    assert files == []
+    assert len(files) == 1
+    # The document shape, not the email shape: a prompt carries no @kind.
+    assert "def render_greet(payload: Welcome, provider) -> str:" in files[0].content
 
 
 def test_factory_returns_generator_with_expected_name(tmp_path) -> None:

@@ -1,7 +1,8 @@
 """Render-helper codegen — one ``<template_name_snake>_render_helper.py`` per
-``template.output`` declaration (render-helper phase 2).
+renderable template declaration — ``template.output`` AND ``template.prompt``, since
+both render an outbound body (ADR-0052) — (render-helper phase 2).
 
-For each ``template.output`` this emits a typed ``render_<name>(payload, provider)``
+For each renderable template this emits a typed ``render_<name>(payload, provider)``
 function that WRAPS the existing :func:`metaobjects.render.renderer.render` engine,
 and enforces the mustache↔payload-VO drift check (the existing
 :func:`metaobjects.render.verify.verify`) at BUILD time.
@@ -174,7 +175,7 @@ def _max_chars_of(tmpl: MetaData) -> int | None:
 
 
 class RenderHelperGenerator:
-    """Generator wrapping the per-``template.output`` render-helper emit. Construct with
+    """Generator wrapping the per-renderable-template render-helper emit. Construct with
     the on-disk template root the build-time drift gate resolves each referenced
     mustache against — required, without it the gate cannot run.
 
@@ -216,22 +217,29 @@ class RenderHelperGenerator:
         root = ctx.loaded_root
         if root is None:
             return []
-        outputs = sorted(
+        # BOTH renderable subtypes: ADR-0052 makes the template axis DIRECTION, and a
+        # template.prompt renders an outbound body exactly as a template.output does —
+        # only what comes back differs, and that inbound tier belongs to the parser and
+        # output-prompt generators. Filtering TEMPLATE_SUBTYPE_OUTPUT here left a prompt
+        # with no generated render helper on this port at all. A prompt carries no @kind,
+        # so it takes the document branch and the email branch stays output-only.
+        renderable = sorted(
             (
                 # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
                 c
                 for c in root.own_children()
                 if c.type == TYPE_TEMPLATE
-                and c.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT
+                and c.sub_type
+                in (tc.TEMPLATE_SUBTYPE_OUTPUT, tc.TEMPLATE_SUBTYPE_PROMPT)
             ),
             key=lambda c: c.name,
         )
         files: list[EmittedFile] = []
-        for tmpl in outputs:
+        for tmpl in renderable:
             payload_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
             if not isinstance(payload_ref, str) or not payload_ref:
                 ctx.warn(
-                    f"{_GENERATOR_NAME}: template.output '{tmpl.name}' missing "
+                    f"{_GENERATOR_NAME}: template.{tmpl.sub_type} '{tmpl.name}' missing "
                     "@payloadRef — skipped."
                 )
                 continue
@@ -240,7 +248,7 @@ class RenderHelperGenerator:
             vo = resolve_payload_vo(root, payload_ref, pkg_of(tmpl))
             if vo is None:
                 ctx.warn(
-                    f"{_GENERATOR_NAME}: template.output '{tmpl.name}' @payloadRef "
+                    f"{_GENERATOR_NAME}: template.{tmpl.sub_type} '{tmpl.name}' @payloadRef "
                     f"'{payload_ref}' does not resolve to an object.value or "
                     f"sourceless object.projection — skipped."
                 )
@@ -326,7 +334,7 @@ class RenderHelperGenerator:
         text_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_TEXT_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         if not isinstance(text_ref, str) or not text_ref:
             raise ValueError(
-                f'template.output "{template_name}" (document) missing @textRef'
+                f'template.{tmpl.sub_type} "{template_name}" missing @textRef'
             )
         fmt = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         fmt = fmt if isinstance(fmt, str) and fmt else tc.TEMPLATE_FORMAT_DEFAULT

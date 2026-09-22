@@ -342,11 +342,14 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
     public void aPromptWithNoResponseIsDocumentedAsPayloadOnly() {
         // ADR-0052: a prompt is inbound only when it DECLARES a response. With no
         // @responseRef there is nothing to instruct the model about and nothing to parse,
-        // so PROMPT/OUTPUT_PARSER are absent — and RENDER is absent because the render
-        // helper stays outbound (template.output) only.
+        // so PROMPT/OUTPUT_PARSER are absent. RENDER is PRESENT: every renderable
+        // template gets a render helper, and a prompt renders its outbound body just as
+        // an output does. (This assertion read PAYLOAD alone while the render helper
+        // filtered template.output, which is what left a prompt with no generated way to
+        // produce its own text on this port.)
         ApiUnit classify = unit("ClassifyPrompt");
-        assertEquals("a template.prompt with no @responseRef → PAYLOAD only",
-            EnumSet.of(ApiSymbolKind.PAYLOAD), kinds(classify));
+        assertEquals("a non-responding template.prompt → RENDER + PAYLOAD, no inbound kinds",
+            EnumSet.of(ApiSymbolKind.RENDER, ApiSymbolKind.PAYLOAD), kinds(classify));
 
         // Forward-confirm the one PAYLOAD it DOES document is real — the @payloadRef value
         // object's own record (ADR-0056), not a template-named copy...
@@ -355,7 +358,7 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
         assertFalse("no template-named ClassifyPromptPayload copy should exist",
             containsIdentifier(allGenerated, "ClassifyPromptPayload"));
         // ...and the skipped categories' names are absent from the generated output.
-        assertFalse("no ClassifyPromptRenderHelper should exist",
+        assertTrue("documented ClassifyPromptRenderHelper must appear in generated Java",
             containsIdentifier(allGenerated, "ClassifyPromptRenderHelper"));
         assertFalse("no ClassifyPromptResponseFormat should exist",
             containsIdentifier(allGenerated, "ClassifyPromptResponseFormat"));
@@ -369,8 +372,9 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
         // records — the @payloadRef request AND the @responseRef reply, which are
         // different shapes here on purpose.
         ApiUnit answer = unit("AnswerPrompt");
-        assertEquals("a responding template.prompt → PAYLOAD/PROMPT/OUTPUT_PARSER",
-            EnumSet.of(ApiSymbolKind.PAYLOAD, ApiSymbolKind.PROMPT, ApiSymbolKind.OUTPUT_PARSER),
+        assertEquals("a responding template.prompt → RENDER/PAYLOAD/PROMPT/OUTPUT_PARSER",
+            EnumSet.of(ApiSymbolKind.RENDER, ApiSymbolKind.PAYLOAD, ApiSymbolKind.PROMPT,
+                ApiSymbolKind.OUTPUT_PARSER),
             kinds(answer));
 
         // Every documented symbol must be a real generated identifier — the invariant that
@@ -383,8 +387,10 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
             containsIdentifier(allGenerated, "AnswerResponseVo"));
         assertFalse("no template-named AnswerPromptResponse copy should exist",
             containsIdentifier(allGenerated, "AnswerPromptResponse"));
-        // The render helper stays outbound-only.
-        assertFalse("no AnswerPromptRenderHelper should exist",
+        // The render helper covers every renderable template, prompts included — this is
+        // the outbound half of a responding prompt, and it is what lets an adopter produce
+        // the prompt text from generated code rather than calling the engine by hand.
+        assertTrue("documented AnswerPromptRenderHelper must appear in generated Java",
             containsIdentifier(allGenerated, "AnswerPromptRenderHelper"));
     }
 
@@ -428,10 +434,16 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
     }
 
     /**
-     * Write the on-disk Mustache templates the fixture's {@code template.output} refs
-     * point at. Each references ONLY fields present on the matching payload VO so the
-     * render-helper's build-time drift gate passes. {@code ClassifyPrompt} is a
-     * {@code template.prompt} (skipped by the output-only generators), so it needs none.
+     * Write the on-disk Mustache templates every RENDERABLE template in the fixture
+     * refers to — {@code template.output} AND {@code template.prompt}, since both render
+     * (ADR-0052) and the render-helper's build-time drift gate resolves the ref of each.
+     * Each body references ONLY fields present on the matching payload VO so the gate
+     * passes.
+     *
+     * <p>The two prompt bodies used to be absent, with a comment saying a prompt is
+     * "skipped by the output-only generators, so it needs none". That was true while the
+     * render helper filtered {@code template.output}; the moment a prompt started
+     * rendering, the gate correctly refused a {@code @textRef} with nothing behind it.
      */
     private static void writeTemplates(Path root) throws IOException {
         // SummaryOutput → SummaryPayloadVo { summary }
@@ -440,6 +452,9 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
         writeTemplate(root, "email/welcome.subject.mustache", "Welcome {{name}}");
         writeTemplate(root, "email/welcome.html.mustache", "<p>{{headline}}</p>");
         writeTemplate(root, "email/welcome.text.mustache", "{{headline}}");
+        // ClassifyPrompt and AnswerPrompt → ClassifyPayloadVo { question }
+        writeTemplate(root, "blog/classify.mustache", "<q>{{question}}</q>");
+        writeTemplate(root, "blog/answer.mustache", "Answer this: {{question}}");
     }
 
     private static void writeTemplate(Path root, String relative, String body) throws IOException {

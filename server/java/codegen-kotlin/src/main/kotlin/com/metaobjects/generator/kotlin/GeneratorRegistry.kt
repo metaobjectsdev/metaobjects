@@ -131,7 +131,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
     ),
     "render-helper" to GeneratorInfo(
         name = "render-helper",
-        description = "Per-template.output render helper (document/email typed wrappers).",
+        description = "Per-renderable-template render helper (typed wrappers; document/email for a template.output, the document shape for a template.prompt).",
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinRenderHelperGenerator,

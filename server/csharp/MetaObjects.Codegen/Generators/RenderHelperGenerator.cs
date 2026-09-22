@@ -1,4 +1,5 @@
-// render-helper-generator — for each `template.output` declaration, emits a
+// render-helper-generator — for each RENDERABLE template declaration (`template.output`
+// AND `template.prompt`, since both render an outbound body — ADR-0052), emits a
 // `<TemplateName>.render.cs` file declaring a static `<TemplateName>RenderHelper`
 // class with a typed `Render(payload, provider)` entry point that wraps the
 // EXISTING MetaObjects.Render `Renderer.Render(...)` engine — AND enforces the
@@ -53,7 +54,8 @@ using static MetaObjects.Template.TemplateConstants;
 namespace MetaObjects.Codegen.Generators;
 
 /// <summary>
-/// Emits one <c>&lt;Template&gt;RenderHelper</c> class per <c>template.output</c>,
+/// Emits one <c>&lt;Template&gt;RenderHelper</c> class per renderable template
+/// (<c>template.output</c> or <c>template.prompt</c>),
 /// wrapping <see cref="Renderer"/> with a typed <c>Render(payload, provider)</c>
 /// entry point and enforcing the mustache↔VO drift check (<see cref="Verify"/>) at
 /// BUILD time. Construct with the on-disk template root the drift gate resolves each
@@ -87,8 +89,12 @@ public class RenderHelperGenerator : IGenerator
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        // BOTH renderable subtypes: ADR-0052 makes the template axis DIRECTION, and a
+        // template.prompt renders an outbound body exactly as a template.output does.
+        // Filtering TEMPLATE_SUBTYPE_OUTPUT here left a prompt with no generated render
+        // helper on this port at all.
         var outputs = ctx.Root.Children()
-            .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
+            .Where(c => IsRenderable(c))
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
 
@@ -98,7 +104,7 @@ public class RenderHelperGenerator : IGenerator
             // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
             if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
             {
-                ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
+                ctx.Warn($"{Name}: template.{tmpl.SubType} \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
             // @payloadRef must resolve to an object.value or sourceless
@@ -134,8 +140,19 @@ public class RenderHelperGenerator : IGenerator
     }
 
     /// <summary>
+    /// True iff <paramref name="node"/> is a template this generator renders. Both template
+    /// subtypes render (ADR-0052 — the subtype axis is DIRECTION); only what comes back
+    /// differs, and that inbound tier belongs to the parser / output-prompt generators. A
+    /// prompt carries no <c>@kind</c>, so it takes the document branch and the email branch
+    /// stays output-only.
+    /// </summary>
+    private static bool IsRenderable(MetaData node) =>
+        node.Type == TYPE_TEMPLATE
+        && (node.SubType == TEMPLATE_SUBTYPE_OUTPUT || node.SubType == TEMPLATE_SUBTYPE_PROMPT);
+
+    /// <summary>
     /// True iff this generator emits a render helper for <paramref name="tmpl"/>: a
-    /// <c>template.output</c> whose <c>@payloadRef</c> resolves to a root-level
+    /// renderable template whose <c>@payloadRef</c> resolves to a root-level
     /// <c>object.value</c> or sourceless <c>object.projection</c> (#210 — delegates to
     /// the widened <see cref="ResolveValueObject"/>). Single source of truth shared by
     /// the generator loop AND the api-docs builder (so docs never claim a suppressed
@@ -143,7 +160,7 @@ public class RenderHelperGenerator : IGenerator
     /// </summary>
     public static bool AppliesTo(MetaData tmpl, MetaRoot root)
     {
-        if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
+        if (!IsRenderable(tmpl)) return false;
         // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
         // ADR-0042: a bare @payloadRef resolves in the template's package.
@@ -175,7 +192,7 @@ public class RenderHelperGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
-        sb.AppendLine($"/// <summary>Typed render helper for the <c>{templateName}</c> template.output.</summary>");
+        sb.AppendLine($"/// <summary>Typed render helper for the <c>{templateName}</c> template.{tmpl.SubType}.</summary>");
         sb.AppendLine($"public static class {helperClass}");
         sb.AppendLine("{");
 

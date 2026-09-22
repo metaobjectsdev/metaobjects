@@ -148,6 +148,13 @@ class KotlinApiDocsAccuracyKtTest {
         outDir = Files.createTempDirectory("kapidocs-gen-")
         templateRoot = Files.createTempDirectory("kapidocs-tpl-")
         writeTemplate(templateRoot, "blog/summary.mustache", "Summary: {{summary}}")
+        // Every RENDERABLE template's @textRef must resolve — prompts included, since a
+        // template.prompt renders its outbound body too (ADR-0052) and the render helper's
+        // build-time drift gate resolves the ref of each. Each body references ONLY fields
+        // on its OWN @payloadRef: ClassifyPrompt takes ClassifyPayload { label },
+        // AnswerPrompt takes SummaryPayload { summary }.
+        writeTemplate(templateRoot, "blog/classify.mustache", "{\"label\": \"{{label}}\"}")
+        writeTemplate(templateRoot, "blog/answer.mustache", "Summarise: {{summary}}")
 
         runGenerators()
 
@@ -368,17 +375,18 @@ class KotlinApiDocsAccuracyKtTest {
     @Test
     fun promptWithNoResponseIsDocumentedAsPayloadOnly() {
         // ADR-0052: a template.prompt IS documented — it carries a @payloadRef record like any
-        // template. What a prompt with NO @responseRef does not get is the INBOUND tier: nothing
-        // elicits a typed reply, so no fragment and no parser. (RENDER is absent too: the render
-        // helper is template.output-only in every port.)
+        // template, and it RENDERS. What a prompt with NO @responseRef does not get is the
+        // INBOUND tier: nothing elicits a typed reply, so no fragment and no parser.
+        // (RENDER used to be absent here because the render helper filtered template.output,
+        // which left a prompt with no generated way to produce its own text.)
         val classify = unit("ClassifyPrompt")
         assertEquals(
-            setOf(ApiSymbolKind.PAYLOAD),
+            setOf(ApiSymbolKind.PAYLOAD, ApiSymbolKind.RENDER),
             kinds(classify),
-            "a template.prompt with no @responseRef → PAYLOAD only",
+            "a non-responding template.prompt → PAYLOAD/RENDER, no inbound kinds",
         )
-        // And the output-only helpers are not generated for a prompt template.
-        assertFalse(containsIdentifier(allGenerated, "ClassifyPromptRenderHelper"), "no ClassifyPromptRenderHelper")
+        // The render helper covers it; the inbound helpers do not.
+        assertTrue(containsIdentifier(allGenerated, "ClassifyPromptRenderHelper"), "ClassifyPromptRenderHelper")
         assertFalse(containsIdentifier(allGenerated, "ClassifyPromptParser"), "no ClassifyPromptParser")
         assertFalse(containsIdentifier(allGenerated, "ClassifyPromptPrompt"), "no ClassifyPromptPrompt")
         assertFalse(containsIdentifier(allGenerated, "ClassifyPromptExtractor"), "no ClassifyPromptExtractor")
@@ -400,15 +408,16 @@ class KotlinApiDocsAccuracyKtTest {
     @Test
     fun respondingPromptDocumentsTheInboundKinds() {
         // The other half: the inbound symbols belong to a prompt that declares @responseRef.
-        // RENDER is absent because the render helper is template.output-only in every port.
+        // RENDER rides alongside them — a responding prompt has BOTH halves, and the render
+        // helper is what produces the text the parser's reply answers.
         val answer = unit("AnswerPrompt")
         assertEquals(
             setOf(
-                ApiSymbolKind.PAYLOAD, ApiSymbolKind.PROMPT,
+                ApiSymbolKind.PAYLOAD, ApiSymbolKind.RENDER, ApiSymbolKind.PROMPT,
                 ApiSymbolKind.OUTPUT_PARSER, ApiSymbolKind.EXTRACTOR,
             ),
             kinds(answer),
-            "responding template.prompt → PAYLOAD/PROMPT/OUTPUT_PARSER/EXTRACTOR",
+            "responding template.prompt → PAYLOAD/RENDER/PROMPT/OUTPUT_PARSER/EXTRACTOR",
         )
     }
 

@@ -12,6 +12,7 @@ import com.metaobjects.render.Verify
 import com.metaobjects.render.VerifyOptions
 import com.metaobjects.template.MetaTemplate
 import com.metaobjects.template.OutputTemplate
+import com.metaobjects.template.PromptTemplate
 import com.metaobjects.template.TemplateConstants
 import java.io.OutputStream
 import java.io.PrintWriter
@@ -21,8 +22,9 @@ import java.nio.file.Paths
 import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
- * Generator: one `<TemplateShortName>RenderHelper.kt` per `template.output`
- * declaration, wrapping the EXISTING JVM [com.metaobjects.render.Renderer] engine
+ * Generator: one `<TemplateShortName>RenderHelper.kt` per RENDERABLE template
+ * declaration — `template.output` AND `template.prompt`, since both render an outbound
+ * body (ADR-0052) — wrapping the EXISTING JVM [com.metaobjects.render.Renderer] engine
  * (Kotlin reuses the shared JVM render lib) with a typed `render(payload, provider)`
  * entry point — and enforcing the mustache↔VO drift check ([Verify]) at BUILD time.
  *
@@ -81,10 +83,18 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         // Stable name order — matches the other ports' deterministic emission.
         // ADR-0039: root-scan discipline — resolving children accessor.
-        val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
-            .sortedBy { it.name }
+        //
+        // BOTH renderable subtypes: ADR-0052 makes the template axis DIRECTION, and a
+        // PromptTemplate renders an outbound body exactly as an OutputTemplate does —
+        // only what comes back differs, and that inbound tier belongs to the parser and
+        // output-prompt generators. Collecting OutputTemplate alone left a
+        // template.prompt with no generated render helper on this port at all.
+        val renderable: List<MetaTemplate> =
+            (loader.root.getChildren(OutputTemplate::class.java, true).toList() +
+                loader.root.getChildren(PromptTemplate::class.java, true).toList())
+                .sortedBy { it.name }
 
-        for (tmpl in outputs) {
+        for (tmpl in renderable) {
             emit(tmpl, loader, outRoot, provider)
         }
     }
@@ -154,7 +164,7 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         } else {
             val textRef = attr(template, TemplateConstants.ATTR_TEXT_REF)
                 ?: throw GeneratorException(
-                    "template.output \"${template.name}\" (document) missing @textRef")
+                    "template.${template.subType} \"${template.name}\" missing @textRef")
             val format = template.format
             val maxChars = template.maxChars
 
@@ -171,13 +181,17 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
 
         val src = buildString {
-            append("// GENERATED — DO NOT EDIT — render helper for template.output `")
+            append("// GENERATED — DO NOT EDIT — render helper for template.")
+            append(template.subType)
+            append(" `")
             append(template.name)
             append("`\n")
             append(KotlinNaming.packageHeader(outPkg))
             append("/** Typed render helper for the `")
             append(templateShort)
-            append("` template.output. Wraps the JVM render() engine; the payload field tree is\n")
+            append("` template.")
+            append(template.subType)
+            append(". Wraps the JVM render() engine; the payload field tree is\n")
             append(" *  baked into the RenderRequest so render()'s runtime drift check matches the\n")
             append(" *  build-time gate enforced when this file was generated. */\n")
             append("object ")

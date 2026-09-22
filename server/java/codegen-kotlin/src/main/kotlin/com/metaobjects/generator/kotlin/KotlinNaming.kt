@@ -186,13 +186,13 @@ object KotlinNaming {
      * Renamed from `<Short>Prompt`: generated FROM a `template.prompt` now, the old suffix
      * produced `ClassifyPromptPrompt`. Mirrors Java's `SpringNaming.responseFormatName`.
      */
-    fun responseFormatName(templateShort: String): String = templateShort + "ResponseFormat"
+    fun responseFormatName(templateShort: String): String = capitalizeFirst(templateShort) + "ResponseFormat"
 
     /** [KotlinOutputParserGenerator]: `templateShort + "Parser"`. */
-    fun parserName(templateShort: String): String = templateShort + "Parser"
+    fun parserName(templateShort: String): String = capitalizeFirst(templateShort) + "Parser"
 
     /** [KotlinExtractorGenerator]: `templateShort + "Extractor"`. */
-    fun extractorName(templateShort: String): String = templateShort + "Extractor"
+    fun extractorName(templateShort: String): String = capitalizeFirst(templateShort) + "Extractor"
 
     // ---------------------------------------------------------------------
     // ADR-0038 — reverse-relationship navigation via explicit FK finders.
