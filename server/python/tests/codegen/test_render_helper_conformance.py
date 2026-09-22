@@ -15,6 +15,10 @@ README outputs byte-for-byte:
   * email WelcomeEmail with an XSS-bearing name → html part ESCAPED, text parts RAW
   * email OrderEmail (nested customer + array items section loop + partial footer)
   * the drift/ case → codegen FAILS (ValueError) with ERR_VAR_NOT_ON_PAYLOAD + field/ref/template.
+
+ADR-0056: each helper's ``payload`` parameter is typed as the ``@payloadRef`` value
+object's own model and imports it from the entity generator's module, so every package
+materialized here carries the entity models too (the pair a real run generates).
 """
 from __future__ import annotations
 
@@ -30,9 +34,10 @@ import metaobjects.core_types  # noqa: F401  — side-effect: registers attr cla
 from metaobjects import InMemoryStringSource, MetaDataLoader
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
-from metaobjects.codegen.generators.payload_vo_generator import PayloadVoGenerator
+from metaobjects.codegen.generators.entity_model import EntityModelGenerator
 from metaobjects.codegen.generators.render_helper_generator import RenderHelperGenerator
 from metaobjects.render.email_document import EmailDocument
+from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.render.filesystem_provider import FilesystemProvider
 
 # tests/codegen/<file> -> parents[0]=codegen, [1]=tests, [2]=python, [3]=server, [4]=repo-root
@@ -56,12 +61,17 @@ def _load_root_from_files(*meta_jsons: Path):
 
 def _ctx(root) -> GenContext:
     return GenContext(
-        entities=[],
+        entities=[c for c in root.own_children() if isinstance(c, MetaObject)],
         loaded_root=root,
         matches=lambda _e: True,
         config=GenConfig(out_dir="/tmp/out"),
         warn=lambda _m: None,
     )
+
+
+def _models(root) -> list:
+    """The entity generator's models — what every generated render helper imports."""
+    return EntityModelGenerator().generate(_ctx(root))
 
 
 def _materialize_and_import(files, tmp_path):
@@ -89,11 +99,14 @@ def test_document_welcome_page_matches_corpus_oracle(tmp_path) -> None:
     files = RenderHelperGenerator(templates).generate(_ctx(root))
     files = [f for f in files if f.path == "welcome_page_render_helper.py"]
     assert len(files) == 1
-    _materialize_and_import(files, tmp_path)
+    _materialize_and_import([*files, *_models(root)], tmp_path)
     helper = import_module("_rh_conf_pkg.welcome_page_render_helper")
 
     out = helper.render_welcome_page({"name": "Ada"}, FilesystemProvider(templates))
     assert out == "Hello Ada"
+    # The typed payload the helper is annotated with renders identically.
+    welcome = import_module("_rh_conf_pkg.Welcome").Welcome
+    assert helper.render_welcome_page(welcome(name="Ada"), FilesystemProvider(templates)) == "Hello Ada"
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +120,7 @@ def test_email_welcome_email_matches_corpus_oracle(tmp_path) -> None:
     files = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
              if f.path == "welcome_email_render_helper.py"]
     assert len(files) == 1
-    _materialize_and_import(files, tmp_path)
+    _materialize_and_import([*files, *_models(root)], tmp_path)
     helper = import_module("_rh_conf_pkg.welcome_email_render_helper")
 
     doc = helper.render_welcome_email({"name": "Ada"}, FilesystemProvider(templates))
@@ -127,7 +140,7 @@ def test_email_welcome_email_escapes_html_but_text_raw(tmp_path) -> None:
     templates = str(CORPUS / "templates")
     files = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
              if f.path == "welcome_email_render_helper.py"]
-    _materialize_and_import(files, tmp_path)
+    _materialize_and_import([*files, *_models(root)], tmp_path)
     helper = import_module("_rh_conf_pkg.welcome_email_render_helper")
 
     doc = helper.render_welcome_email({"name": "<b>A & Co</b>"}, FilesystemProvider(templates))
@@ -153,7 +166,7 @@ def test_email_order_email_renders_nested_array_loop_and_partial(tmp_path) -> No
     files = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
              if f.path == "order_email_render_helper.py"]
     assert len(files) == 1
-    _materialize_and_import(files, tmp_path)
+    _materialize_and_import([*files, *_models(root)], tmp_path)
     helper = import_module("_rh_conf_pkg.order_email_render_helper")
 
     payload = {"customer": {"name": "Ada"}, "items": [{"sku": "A1", "qty": 2}, {"sku": "B2", "qty": 1}]}
@@ -186,7 +199,7 @@ def test_document_digest_doc_resolves_fqn_nested_object_ref_across_collision(tmp
     files = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
              if f.path == "digest_doc_render_helper.py"]
     assert len(files) == 1
-    _materialize_and_import(files, tmp_path)
+    _materialize_and_import([*files, *_models(root)], tmp_path)
     helper = import_module("_rh_conf_pkg.digest_doc_render_helper")
 
     payload = {"fromAlpha": {"alphaText": "AA"}, "fromBeta": {"betaText": "BB"}}
@@ -194,46 +207,41 @@ def test_document_digest_doc_resolves_fqn_nested_object_ref_across_collision(tmp
     assert out == "Alpha=AA Beta=BB"
 
 
-def test_payload_vo_collision_emits_distinct_package_qualified_classes(tmp_path) -> None:
-    """ADR-0044 — the two colliding ``Note`` VOs (``acme::alpha`` / ``acme::beta``)
-    reachable from one payload module MUST emit as TWO distinct classes under their
-    package-qualified derived names (``AcmeAlphaNotePayload`` / ``AcmeBetaNotePayload``),
-    never one shadowed ``NotePayload`` (which dropped ``betaText`` and typed BOTH
-    fields against the alpha shape). The payload record is GENERATOR-emitted and
-    exercised by construction — the corpus README prohibits hand-authoring it."""
+def test_value_object_collision_types_the_helper_with_distinct_models(tmp_path) -> None:
+    """ADR-0044/0056 — the two colliding ``Note`` value objects (``acme::alpha`` /
+    ``acme::beta``) emit as TWO distinct models under their package-qualified names
+    (``AcmeAlphaNote`` / ``AcmeBetaNote``), never one shadowed ``Note``, and the
+    helper's typed ``Digest`` payload composes them and renders."""
     dir_root = CORPUS / "xpkg-collision"
     root = _load_root_from_files(
         dir_root / "meta.alpha.json",
         dir_root / "meta.beta.json",
         dir_root / "meta.app.json",
     )
-    files = [f for f in PayloadVoGenerator().generate(_ctx(root))
-             if f.path == "digest_doc_payload.py"]
-    assert len(files) == 1
-    src = files[0].content
-    # Two DISTINCT package-qualified classes — and never the shadowed bare name.
-    assert "class AcmeAlphaNotePayload(BaseModel):" in src
-    assert "class AcmeBetaNotePayload(BaseModel):" in src
-    assert "class NotePayload(BaseModel):" not in src
+    templates = str(CORPUS / "templates")
+    models = _models(root)
+    by_path = {f.path: f.content for f in models}
+    assert "Note.py" not in by_path
+    assert "class AcmeAlphaNote(BaseModel):" in by_path["AcmeAlphaNote.py"]
+    assert "class AcmeBetaNote(BaseModel):" in by_path["AcmeBetaNote.py"]
     # Each field binds to its OWN package's shape.
-    assert "fromAlpha: AcmeAlphaNotePayload | None = None" in src
-    assert "fromBeta: AcmeBetaNotePayload | None = None" in src
+    assert "fromAlpha: AcmeAlphaNote | None = None" in by_path["Digest.py"]
+    assert "fromBeta: AcmeBetaNote | None = None" in by_path["Digest.py"]
 
-    _materialize_and_import(files, tmp_path)
-    mod = import_module("_rh_conf_pkg.digest_doc_payload")
-    # The classes are real and DISTINCT: alpha carries alphaText, beta betaText.
-    alpha = mod.AcmeAlphaNotePayload(alphaText="AA")
-    beta = mod.AcmeBetaNotePayload(betaText="BB")
-    assert "alphaText" in mod.AcmeAlphaNotePayload.model_fields
-    assert "betaText" not in mod.AcmeAlphaNotePayload.model_fields
-    assert "betaText" in mod.AcmeBetaNotePayload.model_fields
-    assert "alphaText" not in mod.AcmeBetaNotePayload.model_fields
-    # No shadowed bare class leaked into the module namespace.
-    assert not hasattr(mod, "NotePayload")
-    # The primary payload composes the two distinct shapes.
-    digest = mod.DigestDocPayload(fromAlpha=alpha, fromBeta=beta)
-    assert digest.fromAlpha.alphaText == "AA"
-    assert digest.fromBeta.betaText == "BB"
+    helpers = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
+               if f.path == "digest_doc_render_helper.py"]
+    assert "def render_digest_doc(payload: Digest, provider) -> str:" in helpers[0].content
+    _materialize_and_import([*helpers, *models], tmp_path)
+    alpha_cls = import_module("_rh_conf_pkg.AcmeAlphaNote").AcmeAlphaNote
+    beta_cls = import_module("_rh_conf_pkg.AcmeBetaNote").AcmeBetaNote
+    digest_cls = import_module("_rh_conf_pkg.Digest").Digest
+    # The models are real and DISTINCT: alpha carries alphaText, beta betaText.
+    assert set(alpha_cls.model_fields) == {"alphaText"}
+    assert set(beta_cls.model_fields) == {"betaText"}
+
+    digest = digest_cls(fromAlpha=alpha_cls(alphaText="AA"), fromBeta=beta_cls(betaText="BB"))
+    helper = import_module("_rh_conf_pkg.digest_doc_render_helper")
+    assert helper.render_digest_doc(digest, FilesystemProvider(templates)) == "Alpha=AA Beta=BB"
 
 
 # ---------------------------------------------------------------------------

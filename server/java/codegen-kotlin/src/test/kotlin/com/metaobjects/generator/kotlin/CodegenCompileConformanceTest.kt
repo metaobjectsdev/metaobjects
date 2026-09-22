@@ -52,9 +52,9 @@ import kotlin.test.assertTrue
  * compiled and booted over MockMvc in `integration-tests-kotlin`, which has Spring and the
  * newer kctfork compiler on its test classpath.
  *
- * The prompt-tier generators (payload / output-parser / output-prompt / render-helper /
- * extractor) are absent because they key off `template.*` nodes and this corpus declares
- * none — including them would emit nothing and read as coverage that is not there.
+ * The prompt-tier generators (output-parser / output-prompt / render-helper / extractor)
+ * are absent because they key off `template.*` nodes and this corpus declares none —
+ * including them would emit nothing and read as coverage that is not there.
  *
  * The peer lanes are the same test in each port. If one port drops out, that port keeps
  * precisely the bug class this exists to catch — so a skip here is never "just this lane".

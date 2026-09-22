@@ -47,7 +47,7 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.generators.find_inbound import response_format_of
-from metaobjects.codegen.generators.payload_vo_generator import resolve_payload_vo
+from metaobjects.codegen.value_objects import resolve_payload_vo
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.meta_data import MetaData

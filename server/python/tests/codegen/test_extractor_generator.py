@@ -2,9 +2,10 @@
 
 The ``extract`` tier sits OVER the existing tolerant extract: it runs the
 nested-capable ``extract_<snake>_with_loader``, raises when a ``@required`` field
-was lost, and otherwise maps the all-nullable ``<Name>ResponseExtracted`` mirror
-graph onto the STRICT ``<Name>Response`` Pydantic graph via a generated recursive
-mirror→strict mapper (recursing nested objects + arrays-of-objects).
+was lost, and otherwise maps the all-nullable ``<Vo>Extracted`` mirror graph onto the
+response value object's own Pydantic model (ADR-0056 — emitted by the entity generator)
+via a generated recursive mirror→strict mapper (recursing nested objects +
+arrays-of-objects).
 
 ADR-0052 — the tier binds ``@responseRef`` on a ``template.prompt``. The fixture
 declares a request shape (``OrderBrief``) and a reply shape (``Order``) that share
@@ -27,8 +28,11 @@ from metaobjects.codegen.generators.extractor_generator import (
     extractor_generator,
     render_extractor,
 )
+from metaobjects.codegen.generators.entity_model import (
+    EntityModelGenerator,
+    render_entity_model,
+)
 from metaobjects.codegen.generators.output_parser_generator import OutputParserGenerator
-from metaobjects.codegen.generators.payload_vo_generator import PayloadVoGenerator
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -183,7 +187,7 @@ def _order_root() -> MetaRoot:
 
 def _ctx(root: MetaRoot, *, out_dir: str = "/tmp/out") -> GenContext:
     return GenContext(
-        entities=[],
+        entities=[c for c in root.own_children() if isinstance(c, MetaObject)],
         loaded_root=root,
         matches=lambda _e: True,
         config=GenConfig(out_dir=out_dir),
@@ -200,8 +204,9 @@ def test_render_emits_extract_and_extract_and_mappers() -> None:
     root = _order_root()
     out = render_extractor(_template(root, "OrderPrompt"), root)
     assert out is not None
-    # extract returns the STRICT response type, routes through the with-loader extract.
-    assert "def extract_order_prompt(root, text, opts=None) -> OrderPromptResponse:" in out
+    # extract returns the response value object's model, routes through the with-loader
+    # extract.
+    assert "def extract_order_prompt(root, text, opts=None) -> Order:" in out
     assert "extract_lenient_order_prompt_with_loader(root, text, opts)" in out
     assert "if r.report.has_lost_required():" in out
     # re-exposed extract under the public name, delegating to the nested-capable path.
@@ -211,9 +216,11 @@ def test_render_emits_extract_and_extract_and_mappers() -> None:
         "from .order_prompt_response_parser import extract_lenient_order_prompt_with_loader"
         in out
     )
-    assert "from .order_prompt_response import" in out
-    # ADR-0052 — the REQUEST record is never referenced by the extract tier.
-    assert "order_prompt_payload" not in out
+    # ADR-0056 — each model comes from the entity generator's own module.
+    assert "from .Order import Order" in out
+    assert "from .Customer import Customer" in out
+    assert "from .Line import Line" in out
+    # ADR-0052 — the REQUEST shape is never referenced by the extract tier.
     assert "OrderBrief" not in out
     # one mapper per type in the graph (root + nested).
     assert "def _to_strict_order(" in out
@@ -301,7 +308,7 @@ def _all_files(root: MetaRoot) -> list:
     return (
         ExtractorGenerator().generate(_ctx(root))
         + OutputParserGenerator().generate(_ctx(root))
-        + PayloadVoGenerator().generate(_ctx(root))
+        + EntityModelGenerator().generate(_ctx(root))
     )
 
 
@@ -443,13 +450,12 @@ def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypat
 
 
 def test_payload_types_enum_field_as_literal_scalar_and_array() -> None:
-    """The STRICT record annotates an enum field as ``Literal[...]`` (scalar) and an
-    enum array as ``list[Literal[...]]`` — NOT bare ``str`` / ``list[str]``."""
-    from metaobjects.codegen.generators.payload_vo_generator import render_response_vo
-
+    """The response value object's model annotates an enum field as ``Literal[...]``
+    (scalar) and an enum array as ``list[Literal[...]]`` — NOT bare ``str`` /
+    ``list[str]``."""
     root = _order_root()
-    payload_src = render_response_vo(_template(root, "OrderPrompt"), root)
-    assert payload_src is not None
+    order = next(c for c in root.own_children() if c.name == "Order")
+    payload_src = render_entity_model(order)
     # Inline enum (no shared super) → inline Literal, NOT a bare str.
     assert 'priority: Literal["LOW", "HIGH"]' in payload_src
     assert "priority: str" not in payload_src
@@ -469,11 +475,11 @@ def test_payload_literal_is_pydantic_runtime_enforced(tmp_path, monkeypatch) -> 
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    payload_mod = import_module("_gen_pkg.order_prompt_response")
-    OrderPromptResponse = payload_mod.OrderPromptResponse
+    payload_mod = import_module("_gen_pkg.Order")
+    Order = payload_mod.Order
 
     # A valid member constructs fine.
-    ok = OrderPromptResponse(
+    ok = Order(
         customer={"name": "Ada"},
         lines=[{"sku": "A", "qty": 2}],
         tags=["x"],
@@ -484,7 +490,7 @@ def test_payload_literal_is_pydantic_runtime_enforced(tmp_path, monkeypatch) -> 
     assert ok.priority == "HIGH"
     # An OFF-set member raises — the Literal is enforced by Pydantic at construction.
     with pytest.raises(pydantic.ValidationError):
-        OrderPromptResponse(
+        Order(
             customer={"name": "Ada"},
             lines=[{"sku": "A", "qty": 2}],
             tags=["x"],
@@ -505,7 +511,7 @@ def test_lenient_mirror_enum_leaf_stays_str(tmp_path, monkeypatch) -> None:
     parser = import_module("_gen_pkg.order_prompt_response_parser")
     import dataclasses
 
-    mirror = parser.OrderPromptResponseExtracted
+    mirror = parser.OrderExtracted
     ann = {f.name: f.type for f in dataclasses.fields(mirror)}
     # enum scalar mirror stays str (no Literal).
     assert ann["priority"] == "str | None"
@@ -514,10 +520,10 @@ def test_lenient_mirror_enum_leaf_stays_str(tmp_path, monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Shared abstract-enum alias dedup — TWO payload fields that ``extends`` ONE
-# abstract ``field.enum`` collapse to a SINGLE module-level ``<Super> = Literal[...]``
-# alias (keyed on the SUPER's Pascal name), referenced by both fields — NOT one
-# alias per field, NOT two copies. Proves the cross-port shared-enum naming/dedup.
+# Shared abstract enum — TWO value-object fields that ``extends`` ONE package-level
+# abstract ``field.enum`` are both typed as the ONE materialized ``Priority`` enum
+# (FR-019, the shared ``enums.py``) — the entity tier's own shared-enum rule, which
+# the response model now follows because it IS the entity tier's model (ADR-0056).
 # ---------------------------------------------------------------------------
 
 
@@ -564,51 +570,85 @@ def test_effective_values_resolve_through_extends() -> None:
     assert type_map.effective_enum_values(fields["escalation"]) == ["LOW", "HIGH"]
 
 
-def test_shared_abstract_enum_emits_single_deduped_alias() -> None:
-    """Both extending fields reference ONE module-level ``Priority = Literal[...]`` alias,
-    named for the SUPER (``Priority``) — NOT per-field (``OrderPriority``/``OrderEscalation``)
-    and NOT duplicated."""
-    from metaobjects.codegen.generators.payload_vo_generator import render_payload_vo
-
-    root = _shared_enum_root()
-    tmpl = root.own_children()[2]
-    src = render_payload_vo(tmpl, root)
-    assert src is not None
-
-    # Exactly ONE module-level alias line, named for the SUPER.
-    alias_lines = [
-        ln for ln in src.splitlines() if ln.strip() == 'Priority = Literal["LOW", "HIGH"]'
-    ]
-    assert alias_lines == ['Priority = Literal["LOW", "HIGH"]'], src
-    # Dedup: no per-field aliases, no second copy.
-    assert "OrderPriority" not in src
-    assert "OrderEscalation" not in src
-    assert src.count("= Literal[") == 1
-    # BOTH fields are typed as the shared alias (required → bare; optional → ``| None``).
+def test_shared_abstract_enum_types_both_fields_as_one_enum() -> None:
+    """Both extending fields are typed as ONE shared ``Priority`` enum, named for the
+    SUPER — NOT per-field (``TicketPriority``/``TicketEscalation``) and NOT an inline
+    ``Literal`` per field."""
+    files = {f.path: f.content for f in EntityModelGenerator().generate(_ctx(_shared_enum_root()))}
+    src = files["Ticket.py"]
+    assert "from .enums import Priority" in src
+    # required → bare; optional → ``| None``.
     assert "priority: Priority" in src
     assert "escalation: Priority | None = None" in src
-    # The fields reference the alias, NOT an inline Literal.
-    assert 'priority: Literal[' not in src
-    assert "from typing import Literal" in src
+    assert "Literal[" not in src
+    assert "TicketPriority" not in src
+    # ONE materialized enum, in the shared module.
+    assert files["enums.py"].count("class Priority(str, Enum):") == 1
 
 
-def test_shared_abstract_enum_alias_round_trips(tmp_path, monkeypatch) -> None:
-    """Materialize + import the alias-typed payload and confirm a value round-trips into
-    the alias-typed field (the ``Priority`` alias is a usable, Pydantic-validated type)."""
+def test_shared_abstract_enum_round_trips(tmp_path, monkeypatch) -> None:
+    """Materialize + import the enum-typed model and confirm a member round-trips into
+    the enum-typed field (the shared ``Priority`` is a usable, Pydantic-validated type)."""
     from importlib import import_module
 
     import pydantic
 
     root = _shared_enum_root()
-    pkg_dir = _materialize_package(PayloadVoGenerator().generate(_ctx(root)), tmp_path)
+    pkg_dir = _materialize_package(EntityModelGenerator().generate(_ctx(root)), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    payload_mod = import_module("_gen_pkg.ticket_out_payload")
-    TicketOutPayload = payload_mod.TicketOutPayload
+    Ticket = import_module("_gen_pkg.Ticket").Ticket
 
-    # A valid member round-trips into the alias-typed field.
-    ok = TicketOutPayload(priority="HIGH", escalation="LOW")
+    # A valid member round-trips into the enum-typed field.
+    ok = Ticket(priority="HIGH", escalation="LOW")
     assert ok.priority == "HIGH"
     assert ok.escalation == "LOW"
-    # The alias is Pydantic-validated (an off-set member raises).
+    # The enum is Pydantic-validated (an off-set member raises).
     with pytest.raises(pydantic.ValidationError):
-        TicketOutPayload(priority="BOGUS")
+        Ticket(priority="BOGUS")
+
+
+# ---------------------------------------------------------------------------
+# A literal @default — the model types the field ``T`` (not ``T | None``) with that
+# default, so the mapper must OMIT a missing value rather than pass ``None``.
+# ---------------------------------------------------------------------------
+
+
+def _defaulted_root() -> MetaRoot:
+    reply = _value_object(
+        "Verdict",
+        [
+            _field("text", fc.FIELD_SUBTYPE_STRING, **{fc.FIELD_ATTR_REQUIRED: True}),
+            _field(
+                "tone",
+                fc.FIELD_SUBTYPE_ENUM,
+                **{fc.FIELD_ATTR_VALUES: ["CALM", "LOUD"], fc.FIELD_ATTR_DEFAULT: "CALM"},
+            ),
+        ],
+    )
+    brief = _value_object("Ask", [_field("q", fc.FIELD_SUBTYPE_STRING)])
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
+    root.package = "acme::ai"
+    for c in (reply, brief, _responding_prompt("JudgePrompt", "Ask", "Verdict")):
+        root.add_child(c)
+    return root
+
+
+def test_mapper_omits_a_missing_defaulted_field() -> None:
+    root = _defaulted_root()
+    out = render_extractor(_template(root, "JudgePrompt"), root)
+    assert out is not None
+    assert '**({"tone": m.tone} if m.tone is not None else {}),' in out
+
+
+def test_extract_fills_a_missing_defaulted_field_from_the_model(tmp_path, monkeypatch) -> None:
+    from importlib import import_module
+
+    root = _defaulted_root()
+    pkg_dir = _materialize_package(_all_files(root), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    ex = import_module("_gen_pkg.judge_prompt_extractor")
+
+    # Absent: the model's own default applies (passing None would fail validation).
+    assert ex.extract_judge_prompt(root, '{"text": "ok"}').tone == "CALM"
+    # Present: the extracted value wins.
+    assert ex.extract_judge_prompt(root, '{"text": "ok", "tone": "LOUD"}').tone == "LOUD"

@@ -31,10 +31,10 @@
 // compiled. Both goldens and their generator can be wrong together — and were.
 //
 // WHAT IT RUNS: entity + db-context + filter-allowlist + callable, plus names on the
-// selection that includes it. The prompt-tier generators (payload / output-parser /
-// output-prompt / render-helper / extractor) are absent because they key off
-// `template.*` nodes and this corpus declares none — adding them would emit nothing and
-// read as coverage that is not there.
+// selection that includes it. The prompt-tier generators (output-parser / output-prompt /
+// render-helper / extractor) are absent because they key off `template.*` nodes and this
+// corpus declares none — adding them would emit nothing and read as coverage that is not
+// there.
 //
 // WHAT IT EXCLUDES: RoutesGenerator, the one generator here whose output imports the
 // ASP.NET Core shared framework, which is not in the TRUSTED_PLATFORM_ASSEMBLIES sandbox

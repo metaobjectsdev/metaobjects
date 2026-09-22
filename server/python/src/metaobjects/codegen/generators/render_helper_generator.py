@@ -31,6 +31,11 @@ is resolved FQN-exact when fully-qualified (ADR-0041) else by short name (cross-
 render-helper consensus: TS ``refMatchesObject`` / Java+Kotlin ``resolveNestedObjectRef``
 / C# ``ResolveNestedObjectRef``), only recursing into ``object.value`` targets, cycle-guarded.
 
+ADR-0056: the ``payload`` parameter is typed as the ``@payloadRef`` value object's own
+model, imported from the module the ``entity`` generator emits (``<Name>.py``); this
+generator declares no payload type. A plain ``dict`` still renders — the annotation is for
+the caller, and the render engine reads a model and a mapping alike.
+
 Python divergence vs TS / Java / C#: Python's ``RenderRequest`` has NO ``verify``
 field — the Python render engine does not run a runtime drift pass — so the emitted
 helper does NOT pass a runtime ``verify`` field-tree. The BUILD-TIME gate that runs
@@ -50,9 +55,7 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
-from metaobjects.codegen.generators.payload_vo_generator import (
-    resolve_payload_vo as _shared_resolve_payload_vo,
-)
+from metaobjects.codegen.value_objects import model_class_name, resolve_payload_vo
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -160,28 +163,8 @@ def _field_tree_literal(fields: list[PayloadField]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Resolution + emission.
+# Emission.
 # ---------------------------------------------------------------------------
-
-
-def _resolve_payload_vo(
-    root: MetaData, payload_ref: str, referrer_pkg: str
-) -> MetaObject | None:
-    """``@payloadRef`` must resolve to an ``object.value`` or sourceless
-    ``object.projection`` (#210) — delegates to the ONE shared canonical resolver
-    every other generator uses
-    (:func:`~metaobjects.codegen.generators.payload_vo_generator.resolve_payload_vo`),
-    which routes through ``naming_refs.resolve_object_ref`` (ADR-0042 package-local:
-    an FQN resolves exactly; a bare ref resolves in *referrer_pkg* first, else a
-    root-level object).
-
-    #228 — this used to be a LOCAL bare-tail-fallback matcher (``child.name ==
-    payload_ref.rsplit("::", 1)[-1]``) that mis-bound even an FULLY-QUALIFIED ref
-    under a cross-package bare-name collision — the same #244 "wrong node" class
-    the entity tier already closed elsewhere. Collapsed onto the shared resolver
-    rather than re-deriving a second, subtly-different copy that could (and did)
-    drift out of sync."""
-    return _shared_resolve_payload_vo(root, payload_ref, referrer_pkg)
 
 
 def _max_chars_of(tmpl: MetaData) -> int | None:
@@ -207,10 +190,12 @@ class RenderHelperGenerator:
     EXTENSION SEAM (open-for-extension). Adopters subclass this and override one of
     the protected emit hooks to customize the emitted helper without forking:
 
-    * ``_emit_document(header, template_name, snake, payload_ref, tmpl, fields)`` —
-      the ``document``-kind helper (single ``str`` return).
-    * ``_emit_email(header, template_name, snake, payload_ref, tmpl, fields)`` — the
-      ``email``-kind helper (``EmailDocument`` return).
+    * ``_emit_document(header, template_name, snake, payload_ref, tmpl, fields,
+      *, payload_class)`` — the ``document``-kind helper (single ``str`` return).
+    * ``_emit_email(header, template_name, snake, payload_ref, tmpl, fields,
+      *, payload_class)`` — the ``email``-kind helper (``EmailDocument`` return).
+      ``payload_class`` is the value object's model class the ``payload`` parameter is
+      typed as (ADR-0056).
     * ``_emit_helper(tmpl, vo, payload_ref, root)`` — the per-template dispatch
       (runs the build-time drift gate, then routes to document/email).
 
@@ -261,7 +246,7 @@ class RenderHelperGenerator:
                 continue
             # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
             # resolves in ITS OWN package first.
-            vo = _resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
+            vo = resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
             if vo is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: template.output '{tmpl.name}' @payloadRef "
@@ -324,10 +309,17 @@ class RenderHelperGenerator:
             else template_name
         )
         header = generated_header(template_name, fqn)
+        payload_class = model_class_name(vo)
 
         if kind == tc.TEMPLATE_KIND_EMAIL:
-            return self._emit_email(header, template_name, snake, payload_ref, tmpl, fields)
-        return self._emit_document(header, template_name, snake, payload_ref, tmpl, fields)
+            return self._emit_email(
+                header, template_name, snake, payload_ref, tmpl, fields,
+                payload_class=payload_class,
+            )
+        return self._emit_document(
+            header, template_name, snake, payload_ref, tmpl, fields,
+            payload_class=payload_class,
+        )
 
     def _emit_document(
         self,
@@ -337,6 +329,8 @@ class RenderHelperGenerator:
         payload_ref: str,
         tmpl: MetaData,
         fields: list[PayloadField],
+        *,
+        payload_class: str,
     ) -> str:
         text_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_TEXT_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         if not isinstance(text_ref, str) or not text_ref:
@@ -367,8 +361,10 @@ class RenderHelperGenerator:
             "",
             "from metaobjects.render.renderer import render, RenderRequest",
             "",
+            f"from .{payload_class} import {payload_class}",
             "",
-            f"def render_{snake}(payload, provider) -> str:",
+            "",
+            f"def render_{snake}(payload: {payload_class}, provider) -> str:",
             f'    """Render the ``{template_name}`` document from a typed '
             f"``{payload_ref}`` payload.",
             "",
@@ -392,6 +388,8 @@ class RenderHelperGenerator:
         payload_ref: str,
         tmpl: MetaData,
         fields: list[PayloadField],
+        *,
+        payload_class: str,
     ) -> str:
         subject_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_SUBJECT_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         html_body_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_HTML_BODY_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
@@ -432,8 +430,10 @@ class RenderHelperGenerator:
             "from metaobjects.render.email_document import EmailDocument",
             "from metaobjects.render.renderer import render, RenderRequest",
             "",
+            f"from .{payload_class} import {payload_class}",
             "",
-            f"def render_{snake}(payload, provider) -> EmailDocument:",
+            "",
+            f"def render_{snake}(payload: {payload_class}, provider) -> EmailDocument:",
             f'    """Render the ``{template_name}`` email (subject + html body'
             f'{" + text body" if has_text else ""}) from a typed ``{payload_ref}`` payload.',
             "",

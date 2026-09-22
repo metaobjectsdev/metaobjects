@@ -21,12 +21,11 @@ a DIFFERENT package's same-bare-named ``Note`` (``acme::alpha::Note`` /
 generated code must extract each nested value-object into its OWN shape (never
 the other's, never dropped).
 
-Design: Python's canonical STRICT extract-tier artifact is the payload record
-(``AcmeAlphaNotePayload`` / ``AcmeBetaNotePayload``, Pydantic ``BaseModel``s) — the
-SAME collision-scoped name-map ``payload_vo_generator`` computes for the payload
-module (promoted to ``metaobjects.codegen.collision_names``), reused (not
-re-derived) by the extract tier so an extractor's import can never diverge from
-the payload module's own emitted class name.
+Design (ADR-0056): the STRICT extract-tier artifact is each value object's own model,
+emitted once by the entity generator (``AcmeAlphaNote.py`` / ``AcmeBetaNote.py``,
+Pydantic ``BaseModel``s). The collision-qualified names come from
+``metaobjects.codegen.value_objects``, which the entity generator AND the extract tier
+both ask, so an extractor's import can never diverge from the module that declares it.
 """
 from __future__ import annotations
 
@@ -44,8 +43,8 @@ from metaobjects import InMemoryStringSource, MetaDataLoader
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
 from metaobjects.codegen.generators.extractor_generator import ExtractorGenerator
+from metaobjects.codegen.generators.entity_model import EntityModelGenerator
 from metaobjects.codegen.generators.output_parser_generator import OutputParserGenerator
-from metaobjects.codegen.generators.payload_vo_generator import PayloadVoGenerator
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -81,7 +80,7 @@ def _load_corpus_root() -> MetaRoot:
 
 def _ctx(root: MetaRoot) -> GenContext:
     return GenContext(
-        entities=[],
+        entities=[c for c in root.own_children() if isinstance(c, MetaObject)],
         loaded_root=root,
         matches=lambda _e: True,
         config=GenConfig(out_dir="/tmp/out"),
@@ -93,7 +92,7 @@ def _all_files(root: MetaRoot) -> list:
     return (
         ExtractorGenerator().generate(_ctx(root))
         + OutputParserGenerator().generate(_ctx(root))
-        + PayloadVoGenerator().generate(_ctx(root))
+        + EntityModelGenerator().generate(_ctx(root))
     )
 
 
@@ -149,12 +148,11 @@ def test_output_parser_emits_both_colliding_mirrors_and_mappers() -> None:
 
 
 # ---------------------------------------------------------------------------
-# extractor — imports + mappers for both colliding STRICT payload classes
-# (Python's canonical strict artifact).
+# extractor — imports + mappers for both colliding value objects' own models.
 # ---------------------------------------------------------------------------
 
 
-def test_extractor_imports_and_maps_both_colliding_strict_payload_classes() -> None:
+def test_extractor_imports_and_maps_both_colliding_value_object_models() -> None:
     files = [
         f
         for f in ExtractorGenerator().generate(_ctx(_load_corpus_root()))
@@ -163,39 +161,33 @@ def test_extractor_imports_and_maps_both_colliding_strict_payload_classes() -> N
     assert len(files) == 1
     src = files[0].content
 
-    # Imports BOTH qualified strict payload classes from the sibling payload
-    # module — never a shadowed bare `NotePayload` import (checked as the exact
-    # indented import-list line so `AcmeAlphaNotePayload,` — which CONTAINS
-    # `NotePayload,` as a trailing substring — can't false-positive the negative
-    # assertion).
-    assert "    AcmeAlphaNotePayload,\n" in src
-    assert "    AcmeBetaNotePayload,\n" in src
-    assert "    NotePayload,\n" not in src
+    # Imports BOTH qualified models from the entity generator's own modules — never a
+    # bare `Note` (which would bind whichever `Note.py` was written last).
+    assert "from .AcmeAlphaNote import AcmeAlphaNote\n" in src
+    assert "from .AcmeBetaNote import AcmeBetaNote\n" in src
+    assert "from .Note import" not in src
 
-    # BOTH mirror->strict mappers present, named after the qualified base.
+    # BOTH mirror->strict mappers present, named after the qualified model.
     assert "def _to_strict_acme_alpha_note(" in src
     assert "def _to_strict_acme_beta_note(" in src
     assert "def _to_strict_note(" not in src
 
-    # Each mapper constructs its OWN payload class from its OWN mirror field.
-    assert "return AcmeAlphaNotePayload(" in src
-    assert "return AcmeBetaNotePayload(" in src
+    # Each mapper constructs its OWN model from its OWN mirror field.
+    assert "return AcmeAlphaNote(" in src
+    assert "return AcmeBetaNote(" in src
 
 
-def test_payload_module_emits_both_colliding_classes_never_bare_note() -> None:
-    """Sanity: the sibling payload module (imported by the extractor above) emits
-    the SAME two qualified classes — proves the extract tier reuses (not
-    re-derives) the payload tier's own name-map."""
-    files = [
-        f
-        for f in PayloadVoGenerator().generate(_ctx(_load_corpus_root()))
-        if f.path == "digest_prompt_response.py"
-    ]
-    assert len(files) == 1
-    src = files[0].content
-    assert "class AcmeAlphaNotePayload(BaseModel):" in src
-    assert "class AcmeBetaNotePayload(BaseModel):" in src
-    assert "class NotePayload(BaseModel):" not in src
+def test_entity_tier_emits_both_colliding_models_never_bare_note() -> None:
+    """Sanity: the entity generator (whose modules the extractor above imports) emits
+    the SAME two qualified models, one module each — the extract tier asks the same
+    naming authority rather than deriving its own."""
+    files = {f.path: f.content for f in EntityModelGenerator().generate(_ctx(_load_corpus_root()))}
+    assert "Note.py" not in files
+    assert "class AcmeAlphaNote(BaseModel):" in files["AcmeAlphaNote.py"]
+    assert "class AcmeBetaNote(BaseModel):" in files["AcmeBetaNote.py"]
+    digest = files["Digest.py"]
+    assert "from .AcmeAlphaNote import AcmeAlphaNote" in digest
+    assert "from .AcmeBetaNote import AcmeBetaNote" in digest
 
 
 # ---------------------------------------------------------------------------
@@ -223,14 +215,15 @@ def test_extract_and_extract_lenient_run_each_nested_vo_into_its_own_shape(
     assert lenient.data.fromAlpha.alphaText == "AA"
     assert lenient.data.fromBeta.betaText == "BB"
 
-    # Strict extract — full type fidelity end-to-end (payload module + output
+    # Strict extract — full type fidelity end-to-end (entity models + output
     # parser + extractor all agree on the SAME qualified classes).
     strict = ex.extract_digest_prompt(root, text)
     assert strict.fromAlpha.alphaText == "AA"
     assert strict.fromBeta.betaText == "BB"
-    assert type(strict.fromAlpha).__name__ == "AcmeAlphaNotePayload"
-    assert type(strict.fromBeta).__name__ == "AcmeBetaNotePayload"
-    # Each nested payload carries ONLY its own package's field — proves fromBeta
+    assert type(strict).__name__ == "Digest"
+    assert type(strict.fromAlpha).__name__ == "AcmeAlphaNote"
+    assert type(strict.fromBeta).__name__ == "AcmeBetaNote"
+    # Each nested model carries ONLY its own package's field — proves fromBeta
     # was never cross-wired onto alpha's shape (the pre-fix wrong-node bug).
     assert not hasattr(strict.fromAlpha, "betaText")
     assert not hasattr(strict.fromBeta, "alphaText")
@@ -289,22 +282,20 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
 
     parser_src = OutputParserGenerator().generate(_ctx(root))[0].content
     extractor_src = ExtractorGenerator().generate(_ctx(root))[0].content
-    payload_src = next(
-        f
-        for f in PayloadVoGenerator().generate(_ctx(root))
-        if f.path == "widget_prompt_response.py"
-    ).content
+    models = {f.path: f.content for f in EntityModelGenerator().generate(_ctx(root))}
 
     assert "class DetailExtracted:" in parser_src
+    assert "class WidgetExtracted:" in parser_src
     assert "def _from_detail_extracted(" in parser_src
     assert "AcmeDemo" not in parser_src
 
-    assert "DetailPayload" in extractor_src
+    assert "from .Detail import Detail" in extractor_src
+    assert "from .Widget import Widget" in extractor_src
     assert "def _to_strict_detail(" in extractor_src
     assert "AcmeDemo" not in extractor_src
 
-    assert "class DetailPayload(BaseModel):" in payload_src
-    assert "AcmeDemo" not in payload_src
+    assert "class Detail(BaseModel):" in models["Detail.py"]
+    assert "AcmeDemo" not in models["Detail.py"]
 
 
 # ---------------------------------------------------------------------------
@@ -419,11 +410,12 @@ def test_colliding_own_payload_name_binds_own_package_bakes_fqn(
     ).content
 
     # Each template's STRICT parser binds its OWN package's shape — proves
-    # round 2's build-time resolve_payload_vo fix (never load-order-dependent).
-    assert "def parse_report_doc_alpha(text: str) -> ReportDocAlphaResponse:" in alpha_src
-    assert "from .report_doc_alpha_response import ReportDocAlphaResponse" in alpha_src
-    assert "def parse_report_doc_beta(text: str) -> ReportDocBetaResponse:" in beta_src
-    assert "from .report_doc_beta_response import ReportDocBetaResponse" in beta_src
+    # round 2's build-time resolve_payload_vo fix (never load-order-dependent). The
+    # two `Report` value objects collide, so each model is package-qualified.
+    assert "def parse_report_doc_alpha(text: str) -> AcmeAlphaReport:" in alpha_src
+    assert "from .AcmeAlphaReport import AcmeAlphaReport" in alpha_src
+    assert "def parse_report_doc_beta(text: str) -> AcmeBetaReport:" in beta_src
+    assert "from .AcmeBetaReport import AcmeBetaReport" in beta_src
 
     # Each bakes ITS OWN FQN — never the bare "Report", never the other's FQN.
     assert 'PAYLOAD_NAME = "acme::alpha::Report"' in alpha_src
@@ -450,7 +442,7 @@ def test_colliding_own_payload_name_binds_own_package_bakes_fqn(
 def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
     tmp_path, beta_first: bool
 ) -> None:
-    """The strongest proof: generate BOTH output parsers (+ the payload module)
+    """The strongest proof: generate BOTH output parsers (+ the entity models)
     from a bare, same-package ``@payloadRef`` on each side, materialize + import
     + RUN both against ONE shared MetaRoot. Each must extract via ITS OWN
     payload shape — never the other's, and never dependent on load order (the
@@ -460,7 +452,7 @@ def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
     root = _load_two_package_report_collision_root(beta_first=beta_first)
     files = (
         OutputParserGenerator().generate(_ctx(root))
-        + PayloadVoGenerator().generate(_ctx(root))
+        + EntityModelGenerator().generate(_ctx(root))
     )
     _materialize_and_import(files, tmp_path, "_payload_collision_pkg")
     alpha_mod = import_module(

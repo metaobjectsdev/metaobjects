@@ -17,12 +17,11 @@ as needed. No dual API — TS uses ``parseX``/``safeParseX`` because Zod's
 Python's ecosystem (Pydantic, Instructor, FastAPI, LangChain structured-output)
 is throw-only and a dual surface would feel un-Pythonic.
 
-Import-style emit: the parser module is a thin ``parse_<name>(text) -> Response``
-wrapper that imports the Pydantic ``<TemplateName>Response`` model from the
-sibling ``<template_name_snake>_response.py`` (emitted by
-``payload_vo_generator``). This matches the cross-port story where one generated
-record is shared by the parser and the extract tier — TS / C# / Java / Kotlin all
-do the same.
+Import-style emit (ADR-0056): the parser module is a thin ``parse_<name>(text) -> <Vo>``
+wrapper that imports the ``@responseRef`` value object's own Pydantic model from the
+module the ``entity`` generator emits (``<Vo>.py``) and declares no model of its own. The
+same model is what the extract tier builds — one type per value object, in every port.
+A run that wires this generator therefore needs ``entity`` too.
 
 The strict ``parse_*`` tier is JSON-ONLY, per ADR-0053: an XML reply gets the
 tolerant extract and nothing strict (see
@@ -41,30 +40,11 @@ from metaobjects.codegen.generators.find_inbound import (
     is_xml,
     response_shape,
 )
-from metaobjects.codegen.generators.payload_vo_generator import (
-    response_class_name,
-    response_module_name,
-)
+from metaobjects.codegen.value_objects import model_class_name, pkg_of
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "output-parser-generator"
-
-
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of a node — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
-    match the existing per-generator convention (``payload_vo_generator.py`` /
-    ``render_helper_generator.py`` / ``extract_delegate_emitter.py`` each carry
-    their own identical copy). Used to derive a template's referrer package for
-    ``resolve_payload_vo`` — see that function's docstring for why this
-    ancestor-walk-aware form is used instead of the loader's bare
-    ``tpl.package or tpl.file_default_package or ""`` (equivalent for any
-    loader-parsed tree; ALSO correct for this generator's hand-built test trees)."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
 
 
 def _payload_name_collides(root: MetaData, payload: MetaObject) -> bool:
@@ -82,12 +62,10 @@ def _payload_name_collides(root: MetaData, payload: MetaObject) -> bool:
     shape that shares a bare name, that scan could silently bind whichever object
     the loader happened to iterate first.
 
-    Mirrors the TS reference (``output-parser.ts``'s ``payloadNameCollides``,
-    driven there by the entity-domain name map Task 3 built for the whole
-    run). Python's payload-record tier has no equivalent whole-run name map to
-    reuse for this signal (its ADR-0044 closure is scoped per-payload, not
-    global) — so this computes the identical collision FACT directly against
-    ``root.own_children()``, the actual domain the generated scan searches."""
+    Mirrors the TS reference (``output-parser.ts``'s ``payloadNameCollides``).
+    Computed directly against ``root.own_children()`` — the actual domain the
+    generated scan searches — rather than read off the value-object name map,
+    whose domain is value objects only."""
     return (
         sum(
             1
@@ -101,17 +79,17 @@ def _payload_name_collides(root: MetaData, payload: MetaObject) -> bool:
 def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     """Render one parser module for a responding ``template.prompt`` node.
 
-    The emitted module imports ``<TemplateName>Response`` from the sibling
-    response module (emitted by ``payload_vo_generator``) and exposes a
-    throw-only ``parse_<name>(text)`` entry point.
+    The emitted module imports the ``@responseRef`` value object's model from the
+    entity generator's ``<Vo>.py`` and exposes a throw-only ``parse_<name>(text)``
+    entry point.
 
     Returns ``None`` when the template declares no ``@responseRef`` or the ref
     does not resolve (defensive; the loader's template-validation pass would
     normally catch an unresolvable ref first)."""
     # ADR-0052: the shape parsed INTO is @responseRef — the reply. `response_shape`
     # resolves it through the SAME value-object target rule @payloadRef obeys, so a
-    # parser can never bind a record the payload tier refused to emit.
-    shape = response_shape(root, template, _pkg_of(template))
+    # parser can never bind a shape that has no generated model.
+    shape = response_shape(root, template, pkg_of(template))
     if shape is None:
         return None
     payload = shape.vo
@@ -124,8 +102,9 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
 
     template_name = template.name
     snake = _snake_case(template_name)
-    payload_class = response_class_name(template_name)  # <Name>Response
-    payload_module = response_module_name(template_name)  # <name>_response
+    # ADR-0056: the strict result IS the response value object's own model; the entity
+    # generator writes it as `<Vo>.py`, so the module name is the class name.
+    payload_class = model_class_name(payload)
     parse_fn = f"parse_{snake}"
 
     fqn = (
@@ -147,7 +126,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     # not a contract anyone can reason about. So an XML reply gets the tolerant
     # extract and nothing strict.
     emit_strict = not is_xml(shape.format)
-    extracted_class = f"{payload_class}Extracted"
+    extracted_class = rde.mirror_name(payload)
     extract_lenient_fn = f"extract_lenient_{snake}"
 
     lines: list[str] = [
@@ -185,12 +164,11 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     lines.append("from metaobjects.meta.meta_root import MetaRoot")
     lines.append("")
 
-    # The strict record is imported ONLY by the strict tier — an XML reply's module
-    # would otherwise carry an unused import (the tolerant tier's return type is the
-    # all-nullable ``…Extracted`` mirror declared right here). The record itself is
-    # still emitted: the extract tier maps that mirror onto it.
+    # The model is imported ONLY by the strict tier — an XML reply's module would
+    # otherwise carry an unused import (the tolerant tier's return type is the
+    # all-nullable ``…Extracted`` mirror declared right here).
     if emit_strict:
-        lines.append(f"from .{payload_module} import {payload_class}")
+        lines.append(f"from .{payload_class} import {payload_class}")
     lines.append("")
     lines.append("")
     if emit_strict:
@@ -208,19 +186,10 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
             ]
         )
 
-    # ADR-0044 (#228) — the collision-scoped BASE name map for the payload's
-    # reachable nested-VO closure (bare unless a cross-package bare-name
-    # collision requires package-qualification). Computed ONCE and threaded
-    # through both the mirror dataclasses and the mappers below so a nested
-    # VO's ``<Base>Extracted`` name and its `_from_<base>_extracted` mapper
-    # agree — and so the STRICT payload class the extractor tier imports for
-    # the SAME base (see extractor_generator.py) can never diverge.
-    name_map = rde.build_name_map(payload, root)
-
-    # FR-010 nested-AWARE extracted mirror: the payload mirror keeps the canonical
-    # ``<Name>PayloadExtracted`` name, and a mirror dataclass is emitted for every
-    # reachable nested value-object. The single (delegating) extract path returns it.
-    lines.extend(rde.nested_mirror_dataclasses(payload, root, extracted_class, name_map))
+    # FR-010 nested-AWARE extracted mirror: one ``<Vo>Extracted`` dataclass for the
+    # response value object and every reachable nested one, each named after its value
+    # object's model (ADR-0056 rule 3). The single (delegating) extract path returns it.
+    lines.extend(rde.nested_mirror_dataclasses(payload, root))
     lines.append("")
     lines.append("")
 
@@ -240,7 +209,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     # scan. A non-colliding payload keeps the bare name + the scan — byte-identical
     # to pre-#228 output.
     format_enum = "Format.XML" if is_xml(shape.format) else "Format.JSON"
-    root_mapper = rde.root_mapper_name(template_name)
+    root_mapper = rde.mapper_name(payload)
     extract_lenient_with_fn = f"{extract_lenient_fn}_with_loader"
     baked_payload_name = (
         payload.resolution_key() if payload_name_collides else payload.name
@@ -255,9 +224,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     lines.append(f'PAYLOAD_NAME = "{baked_payload_name}"')
     lines.append("")
     lines.append("")
-    lines.extend(
-        rde.nested_mappers(payload, root, root_mapper, extracted_class, name_map)
-    )
+    lines.extend(rde.nested_mappers(payload, root))
     lines.append("")
     lines.append("")
     lines.extend(rde.delegate_helpers(rde.used_helpers(payload, root)))

@@ -4,13 +4,13 @@
 
 The ``extract`` tier (cross-port parity with the Java ``ExtractorCodeGenerator``, the
 TS ``renderExtractor``, and the Kotlin / C# ports) sits OVER the existing tolerant
-extract. It turns dirty LLM text into the STRICT typed payload graph (nested objects +
+extract. It turns dirty LLM text into the STRICT typed response graph (nested objects +
 arrays-of-objects populated) in ONE call:
 
-    extract_<snake>(root, text, opts=None) -> <Template>Payload
-        r = extract_<snake>_with_loader(root, text, opts)   # nested-capable extract
+    extract_<snake>(root, text, opts=None) -> <Vo>
+        r = extract_lenient_<snake>_with_loader(root, text, opts)  # nested-capable extract
         if r.report.has_lost_required(): raise ValueError(...)
-        return _to_strict_<RootVo>(r.data)                  # mirror -> strict mapper
+        return _to_strict_<vo>(r.data)                             # mirror -> strict mapper
 
 Why the loaded ``root``: the SELF-CONTAINED ``extract_<snake>(text)`` leaves nested
 objects ``None`` (the historical FR-010 gap — it only maps a flat dict). The
@@ -20,13 +20,13 @@ assembles the FULL nested graph reflection-free. So ``extract`` / the re-exposed
 ``extract`` are loader (``MetaRoot``)-driven, mirroring the Java ``extract(loader, text)``
 and the TS ``extract<Name>(root, text)``.
 
-The extract engine returns an all-nullable ``<Template>PayloadExtracted`` mirror (nested
-VOs as ``<Vo>Extracted``, arrays as ``list[...]``). ``extract`` maps that onto the strict
-``<Template>Payload`` Pydantic model (nested VOs as ``<Vo>Payload``, arrays as
-``list[<Vo>Payload]``) via a generated recursive ``_to_strict_<vo>`` mapper — one per
-value-object reachable through nested ``@objectRef`` fields (deduped, cycle-safe). The
-mapper one-shot-constructs each Pydantic model (harmless for Pydantic's mutable models,
-required-by-contract for the C#/Kotlin record ports).
+The extract engine returns an all-nullable ``<Vo>Extracted`` mirror (nested VOs as
+``<Nested>Extracted``, arrays as ``list[...]``). ``extract`` maps that onto the value
+objects' own Pydantic models (ADR-0056 — imported from the entity generator's ``<Vo>.py``
+modules; this generator declares none) via a generated recursive ``_to_strict_<vo>``
+mapper — one per value-object reachable through nested ``@objectRef`` fields (deduped,
+cycle-safe). The mapper one-shot-constructs each model (harmless for Pydantic's mutable
+models, required-by-contract for the C#/Kotlin record ports).
 
 NO registry / binding-provider / factory and NO new flavored object-class generation —
 codegen walks the whole type graph statically (the same MetaObject walk the
@@ -47,116 +47,65 @@ from metaobjects.codegen.generators.find_inbound import (
     inbound_templates,
     response_shape,
 )
-from metaobjects.codegen.generators.payload_vo_generator import (
-    is_field_required,
-    payload_class_name,
-    response_class_name,
-    response_module_name,
-)
+from metaobjects.codegen.generators.entity_model import has_literal_default
+from metaobjects.codegen.value_objects import is_field_required, model_class_name, pkg_of
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "extractor-generator"
 
 
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of a node — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
-    match the existing per-generator convention. Used to derive a template's
-    referrer package for ``resolve_payload_vo`` (#228) — see that function's
-    docstring for why this ancestor-walk-aware form is used instead of the
-    loader's bare ``tpl.package or tpl.file_default_package or ""``."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
+def _mapper_name(vo: MetaData) -> str:
+    """``_to_strict_<model_snake>`` — the recursive mirror→strict mapper for a VO, named
+    after the value object's emitted model (ADR-0056 rule 3)."""
+    return f"_to_strict_{_snake_case(model_class_name(vo))}"
 
 
-def _strict_class(
-    vo: MetaData, root_vo: MetaData, template_name: str, name_map: dict[str, str]
-) -> str:
-    """The strict Pydantic class name for a value-object. The ROOT response VO
-    (matched by ``resolution_key()`` — NOT bare ``name``, so a nested VO that
-    happens to share the root's bare name across packages is never mistaken for
-    the root) maps to the template-named ``<Template>Response`` (payload_vo emits
-    the primary class of the response module under the template name); every
-    OTHER (nested) VO maps to its ADR-0044 (#228) *name_map* base + ``Payload`` —
-    bare when unique in the response's nested-VO closure, package-qualified on a
-    cross-package short-name collision (see
-    :func:`~metaobjects.codegen.extract_delegate_emitter.build_name_map`, which
-    reuses the SAME naming pass ``payload_vo_generator`` runs, so this name always
-    matches the response module's own emitted class)."""
-    if vo.resolution_key() == root_vo.resolution_key():
-        return response_class_name(template_name)
-    base = name_map.get(vo.resolution_key(), vo.name)
-    return payload_class_name(base)
-
-
-def _mapper_name(vo: MetaData, name_map: dict[str, str]) -> str:
-    """``_to_strict_<base_snake>`` — the recursive mirror→strict mapper for a VO,
-    *base* per the ADR-0044 (#228) *name_map* (see :func:`_strict_class`)."""
-    base = name_map.get(vo.resolution_key(), vo.name)
-    return f"_to_strict_{_snake_case(base)}"
-
-
-def _strict_arg(field: MetaData, root: MetaData, name_map: dict[str, str]) -> str:
-    """The strict-payload initializer expression for one field, reading the mirror
-    member ``m.<name>`` and mapping it onto the strict payload's exact optionality
-    (``is_field_required`` — shared with payload_vo so there is no skew).
-
-    * required scalar/enum   → ``m.f`` (extract guarantees presence when not lost)
-    * optional scalar/enum   → ``m.f`` (the strict field is ``T | None``)
-    * scalar ARRAY           → ``[x for x in (m.f or []) if x is not None]`` (drop the
-                               mirror's possible-null elements; the strict type is
-                               ``list[T]`` / ``list[T] | None``)
-    * single nested object   → ``_to_strict_<Vo>(m.f)`` (None-guarded when optional)
-    * array-of-objects       → ``[_to_strict_<Vo>(e) for e in (m.f or [])]``
-    """
-    name = field.name
-    required = is_field_required(field)
-
+def _value_expr(field: MetaData, root: MetaData, source: str) -> str:
+    """The strict value built from the mirror value *source* (an expression known not to
+    be ``None``): a nested object goes through its ``_to_strict_*`` mapper, an array drops
+    the mirror's null elements, and a scalar/enum passes straight through."""
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         target = rde.ref_vo(field, root)
         if target is None:
-            return f"m.{name}"  # unresolved @objectRef — pass the mirror value through
-        fn = _mapper_name(target, name_map)
-        if fm.is_array(field):
-            # Required or optional array-of-objects: map present elements (drop Nones).
-            return f"[{fn}(e) for e in (m.{name} or [])]" if required else (
-                f"([{fn}(e) for e in m.{name}] if m.{name} is not None else None)"
-            )
-        # Single nested object.
-        if required:
-            return f"{fn}(m.{name})"
-        return f"({fn}(m.{name}) if m.{name} is not None else None)"
-
-    # Scalar ARRAY: mirror is list[T | None] | None; strict is list[T] (/ | None).
+            return source  # unresolved @objectRef — pass the mirror value through
+        fn = _mapper_name(target)
+        return f"[{fn}(e) for e in {source}]" if fm.is_array(field) else f"{fn}({source})"
     if fm.is_array(field):
-        if required:
-            return f"[x for x in (m.{name} or []) if x is not None]"
-        return (
-            f"([x for x in m.{name} if x is not None] "
-            f"if m.{name} is not None else None)"
-        )
-
-    # Scalar / enum (single): pass the mirror value straight through. The strict field
-    # is ``T`` when required (extract guarantees presence — lost-required already
-    # raised) and ``T | None`` when optional, so a bare ``m.f`` fits both.
-    return f"m.{name}"
+        return f"[x for x in {source} if x is not None]"
+    return source
 
 
-def _emit_mapper(
-    vo: MetaData,
-    root: MetaData,
-    root_vo: MetaData,
-    template_name: str,
-    name_map: dict[str, str],
-) -> list[str]:
-    """One ``_to_strict_<base>(m) -> <Strict>`` mapper, one-shot-constructing the strict
-    Pydantic model from the mirror ``m``."""
-    fn = _mapper_name(vo, name_map)
-    strict = _strict_class(vo, root_vo, template_name, name_map)
+def _strict_kwarg(field: MetaData, root: MetaData) -> str:
+    """The keyword argument that builds one field of the value object's model from the
+    mirror ``m``, matched to the model's own optionality:
+
+    * ``@required``          → ``f=<value>`` (extract guarantees presence when not lost;
+                               a lost array reads as empty through ``or []``)
+    * literal ``@default``   → ``**({"f": <value>} if m.f is not None else {})`` — the
+                               model types the field ``T`` with that default, so a missing
+                               value must be OMITTED; passing ``None`` fails validation
+    * otherwise optional     → ``f=m.f``, or ``f=(<value> if m.f is not None else None)``
+    """
+    name = field.name
+    mirror = f"m.{name}"
+    if is_field_required(field):
+        source = f"({mirror} or [])" if fm.is_array(field) else mirror
+        return f"{name}={_value_expr(field, root, source)}"
+    value = _value_expr(field, root, mirror)
+    if has_literal_default(field):
+        return f'**({{"{name}": {value}}} if {mirror} is not None else {{}})'
+    if value == mirror:
+        return f"{name}={mirror}"
+    return f"{name}=({value} if {mirror} is not None else None)"
+
+
+def _emit_mapper(vo: MetaData, root: MetaData) -> list[str]:
+    """One ``_to_strict_<vo>(m) -> <Vo>`` mapper, one-shot-constructing the value object's
+    model from the mirror ``m``."""
+    fn = _mapper_name(vo)
+    strict = model_class_name(vo)
     lines: list[str] = [
         f"def {fn}(m) -> {strict}:",
         f'    """Map the all-nullable extracted mirror onto the strict ``{strict}``.',
@@ -164,7 +113,7 @@ def _emit_mapper(
         f"    return {strict}(",
     ]
     for f in fm.fields(vo):
-        lines.append(f"        {f.name}={_strict_arg(f, root, name_map)},")
+        lines.append(f"        {_strict_kwarg(f, root)},")
     lines.append("    )")
     return lines
 
@@ -186,7 +135,7 @@ def render_extractor(
     ``@responseFormat`` is a closed json|xml set, so every responding prompt has a
     tolerant ``extract_lenient_*_with_loader`` to sit over."""
     # ADR-0052: the extract tier reads a REPLY, so it binds @responseRef.
-    shape = response_shape(root, template, _pkg_of(template))
+    shape = response_shape(root, template, pkg_of(template))
     if shape is None:
         return None
     payload = shape.vo
@@ -194,37 +143,26 @@ def render_extractor(
     template_name = template.name
     snake = _snake_case(template_name)
     parser_module = f"{snake}_response_parser"
-    payload_module = response_module_name(template_name)
     extract_lenient_with_fn = f"extract_lenient_{snake}_with_loader"
     extract_lenient_fn = f"extract_lenient_{snake}"
     extract_fn = f"extract_{snake}"
-    root_strict = response_class_name(template_name)
+    root_strict = model_class_name(payload)
 
     fqn = f"{payload.package}::{template_name}" if payload.package else template_name
 
-    # The strict payload graph: root payload class (template-named) + every nested
-    # VO's ADR-0044 (#228) collision-scoped ``<Base>Payload`` (reachable through
-    # @objectRef, deduped/cycle-safe — the SAME walk + the SAME shared name-map
-    # payload_vo emits the nested classes for, so each import resolves to the exact
-    # class payload_vo_generator declared).
+    # The strict graph (ADR-0056): the response value object's model and every nested
+    # value object's model, each imported from the entity generator's `<Vo>.py` (the
+    # module name IS the class name). Reachable through @objectRef, deduped, cycle-safe.
     vos = rde.reachable_vos(payload, root)
-    name_map = rde.build_name_map(payload, root)
-    root_mapper = _mapper_name(payload, name_map)
-    strict_imports = {root_strict}
-    for vo in vos:
-        if vo.resolution_key() != payload.resolution_key():
-            base = name_map.get(vo.resolution_key(), vo.name)
-            strict_imports.add(payload_class_name(base))
+    root_mapper = _mapper_name(payload)
+    strict_imports = sorted({model_class_name(vo) for vo in vos})
 
     lines: list[str] = [
         generated_header(template_name, fqn),
         "from __future__ import annotations\n",
         f"from .{parser_module} import {extract_lenient_with_fn}",
-        f"from .{payload_module} import (",
+        *(f"from .{cls} import {cls}" for cls in strict_imports),
     ]
-    for cls in sorted(strict_imports):
-        lines.append(f"    {cls},")
-    lines.append(")")
     lines.append("")
     lines.append("")
 
@@ -251,7 +189,7 @@ def render_extractor(
 
     # extract — re-exposed under the public name, delegating to the nested-capable path.
     lines.append(f"def {extract_lenient_fn}(root, text, opts=None):")
-    lines.append(f'    """Extract a best-effort ``{root_strict}Extracted`` mirror from dirty')
+    lines.append(f'    """Extract a best-effort ``{rde.mirror_name(payload)}`` mirror from dirty')
     lines.append("    ``text`` using the loaded ``root``; never raises. Re-exposes the")
     lines.append("    nested-capable extract; inspect ``report`` for lost / defaulted fields.")
     lines.append('    """')
@@ -265,7 +203,7 @@ def render_extractor(
         if i > 0:
             lines.append("")
             lines.append("")
-        lines.extend(emit_mapper(vo, root, payload, template_name, name_map))
+        lines.extend(emit_mapper(vo, root))
 
     lines.append("")
     lines.append("")
@@ -283,20 +221,12 @@ class ExtractorGenerator:
     def __init__(self, *, filter: Callable[[MetaObject], bool] | None = None) -> None:
         self.filter = filter
 
-    def _emit_mapper(
-        self,
-        vo: MetaData,
-        root: MetaData,
-        root_vo: MetaData,
-        template_name: str,
-        name_map: dict[str, str],
-    ) -> list[str]:
-        """EXTENSION SEAM — one ``_to_strict_<base>(m) -> <Strict>`` mirror→strict
-        mapper block. Defaults to the module-level :func:`_emit_mapper`; override to
-        customize how the extracted mirror graph is mapped onto the strict Pydantic
-        payload (e.g. coercion, post-validation, default-filling). *name_map* is the
-        ADR-0044 (#228) collision-scoped name map (see :func:`_strict_class`)."""
-        return _emit_mapper(vo, root, root_vo, template_name, name_map)
+    def _emit_mapper(self, vo: MetaData, root: MetaData) -> list[str]:
+        """EXTENSION SEAM — one ``_to_strict_<vo>(m) -> <Vo>`` mirror→strict mapper
+        block. Defaults to the module-level :func:`_emit_mapper`; override to customize
+        how the extracted mirror graph is mapped onto the value objects' models (e.g.
+        coercion, post-validation, default-filling)."""
+        return _emit_mapper(vo, root)
 
     def _render_module(self, template: MetaData, root: MetaData) -> str | None:
         """EXTENSION SEAM — render the whole extractor module for one responding

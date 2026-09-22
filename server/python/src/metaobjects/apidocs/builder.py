@@ -43,10 +43,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.find_inbound import is_xml, response_shape
-from metaobjects.codegen.generators.payload_vo_generator import (
-    is_field_required,
-    resolve_payload_vo,
-)
+from metaobjects.codegen.value_objects import is_field_required, resolve_payload_vo
 from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, is_abstract
 from metaobjects.source_resolution import primary_rdb_source
@@ -160,12 +157,12 @@ class PythonApiModelBuilder:
         # MODEL — only for concrete objects (an abstract object cannot be
         # instantiated → documented ⊆ generated). A value object → MODEL only.
         if not is_abstract(obj):
-            model = naming.model_class_name(obj.name)
+            model = naming.model_class_name(obj)
             symbols.append(
                 ApiSymbol(
                     name=model,
                     kind=ApiSymbolKind.MODEL,
-                    module=f"from .{module} import {model}",
+                    module=naming.model_import(obj),
                     signature=f"class {model}(BaseModel)",
                     usage=(
                         "the Pydantic v2 entity model"
@@ -178,12 +175,12 @@ class PythonApiModelBuilder:
         if entity and _is_writable_table_entity(obj, object_index):
             # VALIDATION — the Pydantic field constraints carried on the model
             # (required / max-length / range / pattern). Names the model class.
-            model = naming.model_class_name(obj.name)
+            model = naming.model_class_name(obj)
             symbols.append(
                 ApiSymbol(
                     name=model,
                     kind=ApiSymbolKind.VALIDATION,
-                    module=f"from .{module} import {model}",
+                    module=naming.model_import(obj),
                     signature=f"class {model}(BaseModel)",
                     usage="Pydantic field validation on the create/update shape",
                     fields=self._model_fields(obj),
@@ -285,15 +282,14 @@ class PythonApiModelBuilder:
         payload_vo = _payload_resolves(tmpl, root)
 
         if payload_vo is not None:
-            # PAYLOAD — the typed Pydantic record for the shape this template RENDERS.
-            payload_class = naming.payload_class_name(name)
+            # PAYLOAD — the shape this template RENDERS. ADR-0056: it IS the @payloadRef
+            # value object's own model, emitted by the entity generator.
+            payload_class = naming.model_class_name(payload_vo)
             symbols.append(
                 ApiSymbol(
                     name=payload_class,
                     kind=ApiSymbolKind.PAYLOAD,
-                    module=(
-                        f"from .{naming.payload_module_name(name)} import {payload_class}"
-                    ),
+                    module=naming.model_import(payload_vo),
                     signature=f"class {payload_class}(BaseModel)",
                     usage="the typed payload projection bound to the template",
                     fields=self._payload_fields(payload_vo),
@@ -310,7 +306,7 @@ class PythonApiModelBuilder:
                         name=render_fn,
                         kind=ApiSymbolKind.RENDER,
                         module=f"from .{module}_render_helper import {render_fn}",
-                        signature=f"def {render_fn}(payload, provider)",
+                        signature=f"def {render_fn}(payload: {payload_class}, provider)",
                         usage="renders the output template against a typed payload",
                         returns="EmailDocument" if _is_email_kind(tmpl) else "str",
                     )
@@ -322,21 +318,21 @@ class PythonApiModelBuilder:
         # claim a symbol codegen suppressed.
         inbound = response_shape(root, tmpl, _pkg_of(tmpl))
         if inbound is not None:
-            # The RESPONSE record the parser actually returns — not the @payloadRef
-            # request record documented above, which types what this prompt renders out.
-            response_class = naming.response_class_name(name)
-            symbols.append(
-                ApiSymbol(
-                    name=response_class,
-                    kind=ApiSymbolKind.PAYLOAD,
-                    module=(
-                        f"from .{naming.response_module_name(name)} import {response_class}"
-                    ),
-                    signature=f"class {response_class}(BaseModel)",
-                    usage="the typed response shape a model reply is parsed into",
-                    fields=self._payload_fields(inbound.vo),
+            # The RESPONSE shape the parser actually returns — the @responseRef value
+            # object's own model (ADR-0056). Documented once: when the prompt renders and
+            # parses the SAME value object, the model above already is it.
+            response_class = naming.model_class_name(inbound.vo)
+            if payload_vo is None or inbound.vo.resolution_key() != payload_vo.resolution_key():
+                symbols.append(
+                    ApiSymbol(
+                        name=response_class,
+                        kind=ApiSymbolKind.PAYLOAD,
+                        module=naming.model_import(inbound.vo),
+                        signature=f"class {response_class}(BaseModel)",
+                        usage="the typed response shape a model reply is parsed into",
+                        fields=self._payload_fields(inbound.vo),
+                    )
                 )
-            )
 
             # OUTPUT_PARSER — the strict ``parse_*``. ADR-0053: JSON-only, so an XML
             # reply gets no strict tier and documenting one would name a missing fn.
@@ -403,8 +399,8 @@ class PythonApiModelBuilder:
 
     def _payload_fields(self, vo: MetaObject) -> list[FieldShape]:
         """The payload model's documented field shapes — one row per field of the
-        ``@payloadRef`` value object, with optionality from ``is_field_required``
-        (shared with the payload-VO generator, so there is no skew)."""
+        value object, with optionality from ``is_field_required`` (the boundary the
+        value object's model draws between ``T`` and ``T | None``)."""
         rows: list[FieldShape] = []
         for f in vo.fields():
             if not isinstance(f, MetaField):

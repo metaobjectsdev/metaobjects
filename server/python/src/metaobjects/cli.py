@@ -91,18 +91,18 @@ from metaobjects.codegen.generators.output_parser_generator import (
 from metaobjects.codegen.generators.output_prompt_generator import (
     output_prompt_generator,
 )
-from metaobjects.codegen.generators.payload_vo_generator import payload_vo_generator
 from metaobjects.codegen.generators.router_generator import router_generator
 from metaobjects.codegen.generator_registry import (
     GENERATOR_REGISTRY,
     get_generator,
     list_generators,
+    unsatisfied_requires,
 )
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.generators.render_helper_generator import (
     _derive_payload_field_tree,
-    _resolve_payload_vo,
 )
+from metaobjects.codegen.value_objects import resolve_payload_vo
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.naming import COLUMN_NAMING_STRATEGIES, DEFAULT_COLUMN_NAMING, package_of_resolution_key
 from metaobjects.render.filesystem_provider import FilesystemProvider
@@ -119,7 +119,7 @@ def _pkg_of(node: MetaData) -> str:
     """The effective package of a node — its ``resolution_key()`` minus the
     trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
     match the existing per-generator convention. Used to derive a template's
-    referrer package for ``_resolve_payload_vo`` (#228)."""
+    referrer package for ``resolve_payload_vo`` (#228)."""
     key = node.resolution_key()
     i = key.rfind(PACKAGE_SEP)
     return "" if i == -1 else key[:i]
@@ -467,6 +467,9 @@ def _resolve_generators(names: str) -> tuple[list[Generator], list[str]]:
         gens.append(entry.factory())
     if not errors and not gens:
         errors.append("no generators selected (empty --generators list)")
+    if not errors:
+        for warning in unsatisfied_requires(requested):
+            print(f"warning: {warning}", file=sys.stderr)
     return gens, errors
 
 
@@ -910,7 +913,8 @@ def _cmd_list(_args: argparse.Namespace) -> int:
     Does NOT run codegen — pure discoverability (ADR-0021 D3).
     """
     for entry in list_generators():
-        print(f"{entry.name} — {entry.description}")
+        requires = f" (requires: {', '.join(entry.requires)})" if entry.requires else ""
+        print(f"{entry.name} — {entry.description}{requires}")
     return 0
 
 
@@ -1863,7 +1867,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
             continue
         # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
         # resolves in ITS OWN package first.
-        vo = _resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
+        vo = resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
         if vo is None:
             print(
                 f"error: [{tmpl.name}] @payloadRef '{payload_ref}' did not "

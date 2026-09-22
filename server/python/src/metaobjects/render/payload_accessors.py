@@ -91,9 +91,19 @@ def with_derived_accessors(payload: Any, depth: int = 0) -> Any:
     Recursion follows Mustache's own scoping: every nested mapping and every sequence
     ELEMENT becomes a context in its own right, so a section over ``abilities`` sees the
     accessors of the ability it is currently iterating.
+
+    A Pydantic model (the generated value-object models a render helper is typed with,
+    ADR-0056) is viewed as its JSON-mode dump: a mapping keyed by field name, with enums
+    as their wire values and nested models as mappings. Without this the renderer, which
+    looks names up in mappings only, resolved every slot of a model payload to nothing and
+    rendered an empty body without complaint. Duck-typed on ``model_dump`` so the render
+    runtime takes no dependency on pydantic.
     """
     if depth > _MAX_DEPTH:
         return payload  # pathological graph; render is not a validator
+    dump = getattr(payload, "model_dump", None)
+    if callable(dump) and not isinstance(payload, type):
+        payload = dump(mode="json")
     if isinstance(payload, Mapping):
         out: dict[str, Any] = {
             k: with_derived_accessors(v, depth + 1) for k, v in payload.items()

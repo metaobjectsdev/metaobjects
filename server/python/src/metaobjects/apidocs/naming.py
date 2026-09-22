@@ -12,19 +12,15 @@ reproduces the old inline ``name.lower() + "s"``, because that spelling diverged
 from the other ports (see its docstring). Every other function reproduces exactly
 what the corresponding generator used to compute inline (``_snake_case`` /
 ``<Name>Repository`` / ``<ENTITY>_FILTER_FIELDS`` / ``parse_<snake>`` /
-``render_<snake>`` / ``render_<snake>_format`` / ``extract_<snake>`` …). The
-payload-class / payload-module names already lived in
-``payload_vo_generator`` (``payload_class_name`` / ``payload_module_name``); this
-seam re-exports them so the builder has one import surface.
+``render_<snake>`` / ``render_<snake>_format`` / ``extract_<snake>`` …). A model's
+class name — which, the generated package being flat, is also its module name — comes
+from :mod:`metaobjects.codegen.value_objects`, the module the entity generator itself
+asks (ADR-0056: a template's payload and response types ARE its value objects' models).
 """
 from __future__ import annotations
 
-from metaobjects.codegen.generators.payload_vo_generator import (
-    payload_class_name,
-    payload_module_name,
-    response_class_name,
-    response_module_name,
-)
+from metaobjects.codegen import value_objects
+from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import to_snake_case
 
 __all__ = [
@@ -38,10 +34,7 @@ __all__ = [
     "filter_ops_const",
     "route_path",
     "pk_param",
-    "payload_class_name",
-    "payload_module_name",
-    "response_class_name",
-    "response_module_name",
+    "model_import",
     "render_helper_fn",
     "output_prompt_fn",
     "output_parser_fn",
@@ -98,9 +91,16 @@ def pluralize(name: str) -> str:
     return name + "s"
 
 
-def model_class_name(obj_name: str) -> str:
-    """The emitted Pydantic model class name — the object's own short name."""
-    return obj_name
+def model_class_name(obj: MetaData) -> str:
+    """The emitted Pydantic model class name — the object's own short name, or a value
+    object's collision-qualified one (ADR-0044/0056)."""
+    return value_objects.model_class_name(obj)
+
+
+def model_import(obj: MetaData) -> str:
+    """``from .<Name> import <Name>`` — the import of *obj*'s generated model (the entity
+    generator writes ``<Name>.py``, so the module IS the class name)."""
+    return value_objects.model_import(obj)
 
 
 def router_module_name(obj_name: str) -> str:

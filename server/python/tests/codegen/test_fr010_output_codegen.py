@@ -20,7 +20,8 @@ from metaobjects.codegen import (
     extract_schema_emitter as rse,
 )
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.generator import EmittedFile, GenContext
+from metaobjects.codegen.generator import GenContext
+from metaobjects.codegen.generators.entity_model import EntityModelGenerator
 from metaobjects.codegen.generators.output_parser_generator import (
     OutputParserGenerator,
     render_output_parser,
@@ -29,7 +30,6 @@ from metaobjects.codegen.generators.output_prompt_generator import (
     OutputPromptGenerator,
     render_output_prompt,
 )
-from metaobjects.codegen.generators.payload_vo_generator import PayloadVoGenerator
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -116,7 +116,7 @@ def _rich_root(response_fmt: str = "json", style: str = "guide") -> MetaRoot:
 
 def _ctx(root: MetaRoot) -> GenContext:
     return GenContext(
-        entities=[],
+        entities=[c for c in root.own_children() if isinstance(c, MetaObject)],
         loaded_root=root,
         matches=lambda _e: True,
         config=GenConfig(out_dir="/tmp/out"),
@@ -212,7 +212,7 @@ def test_a_text_bodied_prompt_gets_the_full_inbound_tier() -> None:
 def test_generated_extract_folds_alias_and_classifies(tmp_path, monkeypatch) -> None:
     root = _rich_root()
     parser_files = OutputParserGenerator().generate(_ctx(root))
-    payload_files = PayloadVoGenerator().generate(_ctx(root))
+    payload_files = EntityModelGenerator().generate(_ctx(root))
     prompt_files = OutputPromptGenerator().generate(_ctx(root))
     assert len(parser_files) == 1
     assert len(prompt_files) == 1
@@ -262,7 +262,7 @@ def test_generated_extract_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
 
 def test_generated_render_format_emits_comment_free_guide(tmp_path, monkeypatch) -> None:
     root = _rich_root(style="guide")
-    payload_files = PayloadVoGenerator().generate(_ctx(root))
+    payload_files = EntityModelGenerator().generate(_ctx(root))
     parser_files = OutputParserGenerator().generate(_ctx(root))
     prompt_files = OutputPromptGenerator().generate(_ctx(root))
 
@@ -346,7 +346,7 @@ def test_generated_extract_folds_coerce_default_and_classifies_defaulted(
 ) -> None:
     root = _fr011_root()
     parser_files = OutputParserGenerator().generate(_ctx(root))
-    payload_files = PayloadVoGenerator().generate(_ctx(root))
+    payload_files = EntityModelGenerator().generate(_ctx(root))
     prompt_files = OutputPromptGenerator().generate(_ctx(root))
 
     pkg_dir = str(tmp_path / "_fr010_pkg")
@@ -435,24 +435,6 @@ def _nested_root() -> MetaRoot:
     return root
 
 
-def _stub_order_response() -> list[EmittedFile]:
-    """A minimal importable strict-parser response module for the nested proof.
-
-    The generated parser's strict ``parse_*`` does ``from .order_prompt_response
-    import OrderPromptResponse``, so SOME record module must exist on import. The
-    strict Pydantic emit for *nested-object* record fields is an orthogonal,
-    pre-existing payload-VO codegen concern; this proof targets ONLY the
-    runtime-delegating extract path, which never touches the strict record class.
-    A hand-written stub keeps the proof focused and import-clean."""
-    src = (
-        "from __future__ import annotations\n\n"
-        "from pydantic import BaseModel\n\n\n"
-        "class OrderPromptResponse(BaseModel):\n"
-        "    customer: str\n"
-    )
-    return [EmittedFile(path="order_prompt_response.py", content=src)]
-
-
 def test_nested_mirror_dataclasses_are_typed_not_object() -> None:
     """The emitted parser types the nested mirror fields as the nested ``*Extracted``
     dataclasses (+ ``list[...]``), not a flat ``object``/``str`` — the gap-closing shape."""
@@ -483,7 +465,7 @@ def test_delegating_extract_populates_nested_and_array_of_objects(
     assert len(parser_files) == 1
 
     pkg_dir = str(tmp_path / "_fr010_pkg")
-    _materialize(pkg_dir, [*_stub_order_response(), *parser_files])
+    _materialize(pkg_dir, [*EntityModelGenerator().generate(_ctx(root)), *parser_files])
     _import_pkg(pkg_dir, monkeypatch)
 
     parser_mod = importlib.import_module("_fr010_pkg.order_prompt_response_parser")
@@ -531,7 +513,7 @@ def test_delegating_extract_raises_on_unknown_payload(tmp_path, monkeypatch) -> 
     parser_files = OutputParserGenerator().generate(_ctx(root))
 
     pkg_dir = str(tmp_path / "_fr010_pkg")
-    _materialize(pkg_dir, [*_stub_order_response(), *parser_files])
+    _materialize(pkg_dir, [*EntityModelGenerator().generate(_ctx(root)), *parser_files])
     _import_pkg(pkg_dir, monkeypatch)
 
     parser_mod = importlib.import_module("_fr010_pkg.order_prompt_response_parser")

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from metaobjects.codegen.value_objects import object_ref_class_name
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.persistence.db import db_constants as dbc
@@ -81,21 +82,22 @@ def py_type_for(field: MetaField) -> PyType:
         # (@objectRef → bare class name) or a scalar (@valueType, defaulting to
         # str). A map is stored as a single jsonb/object column and is NEVER
         # wrapped in list[...] (isArray does not apply), so return directly.
-        ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
-        if ref:
-            # @objectRef is expanded to a package-qualified FQN at load time; the
-            # emitted VOs live flat in one generated package, so type by the bare
-            # class name (mirrors the field.object branch below).
-            return PyType(f"dict[str, {str(ref).split('::')[-1]}]")
+        ref_class = object_ref_class_name(field)
+        if ref_class is not None:
+            # The referenced model's emitted class name (ADR-0056: the value object's
+            # own model, collision-qualified by the entity tier — mirrors the
+            # field.object branch below).
+            return PyType(f"dict[str, {ref_class}]")
         value_type = field.attrs().get(fc.FIELD_ATTR_VALUE_TYPE)
         value = _SCALAR.get(str(value_type), PyType("str")) if value_type else PyType("str")
         return PyType(f"dict[str, {value.expr}]", value.imports)
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-        ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
-        # @objectRef is expanded to a package-qualified FQN at load time
-        # (e.g. ``app::pkg::Thing``); the emitted VOs all live flat in one
-        # generated package, so type by the bare class name.
-        base = PyType(str(ref).split("::")[-1]) if ref else PyType("object")
+        # The emitted models live flat in one generated package, so a field.object
+        # types as the referenced model's class — resolved package-local (ADR-0042)
+        # and collision-qualified for a value object (ADR-0044/0056), never the
+        # ref's bare tail, which names the wrong class under a short-name collision.
+        ref_class = object_ref_class_name(field)
+        base = PyType(ref_class) if ref_class is not None else PyType("object")
     elif field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         values = effective_enum_values(field)
         if values:

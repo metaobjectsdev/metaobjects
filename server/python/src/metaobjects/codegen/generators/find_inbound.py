@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from metaobjects.codegen.generators.payload_vo_generator import resolve_payload_vo
+from metaobjects.codegen.value_objects import resolve_payload_vo
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_TEMPLATE
@@ -76,7 +76,7 @@ def response_shape(root: MetaData, template: MetaData, referrer_pkg: str) -> Inb
     payload ref.
 
     Resolution goes through ``resolve_payload_vo``, the SAME target rule ``@payloadRef``
-    obeys, so a parser can never bind a record the payload tier refused to emit. (C# used the
+    obeys, so a parser can never bind a shape that has no generated model. (C# used the
     any-object resolver here and shipped exactly that defect: a ``@responseRef`` naming an
     ``object.entity`` produced a parser returning a type nobody declared.)
     """

@@ -13,9 +13,10 @@ instruct the model about the syntax of its REPLY, so a text-bodied prompt asking
 JSON answer — the common case — got no fragment at all. Both reply formats now get one;
 ``@responseFormat`` only selects which.
 
-The baked :class:`~metaobjects.render.OutputFormatSpec`'s ``root_name`` is the RESPONSE
-record's class name, so the fragment and the ``extract_<name>()`` codegen agree on the
-root element/object name. Mirrors the C# ``OutputPromptGenerator`` / Java
+The baked :class:`~metaobjects.render.OutputFormatSpec`'s ``root_name`` is the response
+value object's short name — the same root element/object name every port's fragment
+teaches and the tolerant extract locates (ADR-0056; it used to be a template-derived
+record name). Mirrors the C# ``OutputPromptGenerator`` / Java
 ``SpringOutputPromptGenerator``.
 """
 from __future__ import annotations
@@ -31,24 +32,11 @@ from metaobjects.codegen.generators.find_inbound import (
     inbound_templates,
     response_shape,
 )
-from metaobjects.codegen.generators.payload_vo_generator import response_class_name
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "output-prompt-generator"
-
-
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of a node — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
-    match the existing per-generator convention. Used to derive a template's
-    referrer package for ``resolve_payload_vo`` (#228) — see that function's
-    docstring for why this ancestor-walk-aware form is used instead of the
-    loader's bare ``tpl.package or tpl.file_default_package or ""``."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
 
 
 def _emit_format_spec(
@@ -76,7 +64,7 @@ def render_output_prompt(
     parser generator share this contract)."""
     # ADR-0052: the fragment describes the RESPONSE shape, so it binds @responseRef —
     # never @payloadRef, which types the request this prompt renders outbound.
-    shape = response_shape(root, template, _pkg_of(template))
+    shape = response_shape(root, template, pkg_of(template))
     if shape is None:
         return None
     payload = shape.vo
@@ -84,8 +72,9 @@ def render_output_prompt(
     template_name = template.name
     snake = _snake_case(template_name)
     render_fn = f"render_{snake}_format"
-    # root_name == the RESPONSE record's class name so the fragment and extract() agree.
-    root_name = response_class_name(template_name)
+    # root_name == the response value object's short name, as in every port, so the
+    # fragment and extract() agree on the root element/object.
+    root_name = payload.name
     emit_spec = generator._emit_format_spec if generator is not None else _emit_format_spec
     spec_literal = emit_spec(payload, template, root_name)
 

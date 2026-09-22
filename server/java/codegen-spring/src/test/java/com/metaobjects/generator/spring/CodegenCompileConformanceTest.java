@@ -59,8 +59,8 @@ import static org.junit.Assert.assertTrue;
  * rather than a local concession. The generated controller is compiled and booted over
  * real HTTP in {@code integration-tests}, which does have Spring on its test classpath.
  *
- * <p>The capability-tier generators (payload / output-parser / output-prompt /
- * render-helper / extractor / trace-helper) are absent because they key off
+ * <p>The capability-tier generators (output-parser / output-prompt / render-helper /
+ * extractor / trace-helper) are absent because they key off
  * {@code template.*} nodes and this corpus declares none — including them would emit
  * nothing and read as coverage that is not there.
  *

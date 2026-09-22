@@ -43,7 +43,6 @@ from metaobjects.codegen.generators.output_parser_generator import (
 from metaobjects.codegen.generators.output_prompt_generator import (
     output_prompt_generator,
 )
-from metaobjects.codegen.generators.payload_vo_generator import payload_vo_generator
 from metaobjects.codegen.generators.render_helper_generator import (
     render_helper_generator,
 )
@@ -123,7 +122,6 @@ def _build_and_generate():
         entity_model(),
         router_generator(),
         filter_allowlist_generator(),
-        payload_vo_generator(),
         output_parser_generator(),
         output_prompt_generator(),
         extractor_generator(),
@@ -242,9 +240,11 @@ def test_responding_prompt_documents_payload_prompt_parser_extractor() -> None:
         ApiSymbolKind.OUTPUT_PARSER,
         ApiSymbolKind.EXTRACTOR,
     }
-    # TWO payload records: the request it renders outbound and the reply it parses.
-    payloads = sorted(s.name for s in prompt.symbols if s.kind == ApiSymbolKind.PAYLOAD)
-    assert payloads == ["SummaryPromptPayload", "SummaryPromptResponse"]
+    # ADR-0056: the payload IS the value object's own model. This prompt renders and
+    # parses the same value object, so it is documented once, not as two records.
+    payloads = [s for s in prompt.symbols if s.kind == ApiSymbolKind.PAYLOAD]
+    assert [s.name for s in payloads] == ["SummaryPayload"]
+    assert payloads[0].module == "from .SummaryPayload import SummaryPayload"
     # ...and no RENDER: render_helper_generator emits for template.output alone, so
     # documenting one here would name a function that is never generated.
     assert ApiSymbolKind.RENDER not in kinds

@@ -36,7 +36,6 @@ from metaobjects.codegen.generators.output_parser_generator import (
 from metaobjects.codegen.generators.output_prompt_generator import (
     output_prompt_generator,
 )
-from metaobjects.codegen.generators.payload_vo_generator import payload_vo_generator
 from metaobjects.codegen.generators.render_helper_generator import (
     render_helper_generator,
 )
@@ -79,6 +78,12 @@ class GeneratorEntry:
     layer: GeneratorLayer
     #: Constructs the generator with sensible defaults. Calling it must not throw.
     factory: Callable[[], Generator]
+    #: Stable names of the generators whose output this one imports. ADR-0056: the template
+    #: tier imports a value object's model from the ``entity`` generator's module and
+    #: declares none of its own, so wiring it without ``entity`` emits a dangling import.
+    #: Not gated cross-port (the manifest carries no such column); surfaced by ``--list``
+    #: and warned about by :func:`unsatisfied_requires`.
+    requires: tuple[str, ...] = ()
 
 
 def _template_primitive() -> Generator:
@@ -109,7 +114,7 @@ def _render_helper_default() -> Generator:
     return render_helper_generator(template_root="templates")
 
 
-#: Stable name -> GeneratorEntry. The 11 native generators whose manifest `ports`
+#: Stable name -> GeneratorEntry. The 10 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set equality, tier AND layer are conformance-tested
 #: against the manifest.
 GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
@@ -133,6 +138,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="capability",
         factory=output_parser_generator,
+        requires=("entity",),
     ),
     "output-prompt": GeneratorEntry(
         name="output-prompt",
@@ -147,6 +153,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="capability",
         factory=_render_helper_default,
+        requires=("entity",),
     ),
     "extractor": GeneratorEntry(
         name="extractor",
@@ -154,6 +161,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="capability",
         factory=extractor_generator,
+        requires=("entity",),
     ),
     "template": GeneratorEntry(
         name="template",
@@ -176,13 +184,6 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="model",
         factory=names_generator,
     ),
-    "payload": GeneratorEntry(
-        name="payload",
-        description="Per-template payload value object (the strict payload type).",
-        tier="native",
-        layer="capability",
-        factory=payload_vo_generator,
-    ),
     "trace-helper": GeneratorEntry(
         name="trace-helper",
         description="Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist).",
@@ -201,3 +202,27 @@ def list_generators() -> list[GeneratorEntry]:
 def get_generator(name: str) -> GeneratorEntry | None:
     """Resolve a generator entry by its stable id, or ``None`` if unknown."""
     return GENERATOR_REGISTRY.get(name)
+
+
+def unsatisfied_requires(names: list[str]) -> list[str]:
+    """One warning per selected generator whose ``requires`` is not also selected.
+
+    Advisory, never an error: an adopter may keep a hand-written module at the path the
+    missing generator would have emitted. Mirrors the TS ``warnUnsatisfiedRequires``."""
+    selected = set(names)
+    warnings: list[str] = []
+    for name in names:
+        entry = GENERATOR_REGISTRY.get(name)
+        if entry is None:
+            continue
+        missing = [dep for dep in entry.requires if dep not in selected]
+        if not missing:
+            continue
+        listed = ", ".join(f'"{m}"' for m in missing)
+        warnings.append(
+            f'"{name}" is selected but {listed} {"is" if len(missing) == 1 else "are"} not. '
+            f'The code "{name}" emits imports the value-object models {listed} would have '
+            f"emitted, so importing it will fail. Add {listed} to --generators, or keep your "
+            "own hand-written models at those module paths."
+        )
+    return warnings

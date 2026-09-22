@@ -39,10 +39,12 @@ RoutesGenerator, Java omits SpringControllerGenerator) — the framework tier is
 the api-contract integration lane, which boots the generated router over real HTTP. It
 also keeps this file runnable without ``--extra integration``.
 
-The prompt-tier generators (payload / output-parser / output-prompt / render-helper /
-extractor / trace-helper) are absent because they key off ``template.*`` nodes and this
-corpus declares none — including them would emit nothing and read as coverage that is
-not there.
+The prompt-tier generators (output-parser / output-prompt / render-helper / extractor /
+trace-helper) are absent because they key off ``template.*`` nodes and this corpus
+declares none — including them would emit nothing and read as coverage that is not
+there. That tier imports the entity tier's value-object models (ADR-0056); the pair is
+generated, imported and run together by ``test_extract_tier_collision.py`` and
+``test_render_helper_conformance.py``.
 
 The peer lanes are the same test in each port. If one port drops out, that port keeps
 precisely the bug class this exists to catch — so a skip here is never "just this lane".

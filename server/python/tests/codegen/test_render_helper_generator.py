@@ -23,12 +23,13 @@ from importlib import import_module
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
+from metaobjects.codegen.generators.entity_model import EntityModelGenerator
 from metaobjects.codegen.generators.render_helper_generator import (
     RenderHelperGenerator,
-    _resolve_payload_vo,
     _snake_case,
     render_helper_generator,
 )
+from metaobjects.codegen.value_objects import resolve_payload_vo
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -112,7 +113,7 @@ def _root(children: list[MetaObject | MetaTemplate]) -> MetaRoot:
 
 def _ctx(root: MetaRoot) -> GenContext:
     return GenContext(
-        entities=[],
+        entities=[c for c in root.own_children() if isinstance(c, MetaObject)],
         loaded_root=root,
         matches=lambda _e: True,
         config=GenConfig(out_dir="/tmp/out"),
@@ -128,6 +129,11 @@ def _write_mustache(tmp_path, rel: str, body: str) -> None:
     os.makedirs(os.path.dirname(full), exist_ok=True)
     with open(full, "w") as fh:
         fh.write(body)
+
+
+def _models(root: MetaRoot) -> list:
+    """The entity generator's models — ADR-0056: a render helper imports its payload's."""
+    return EntityModelGenerator().generate(_ctx(root))
 
 
 def _materialize_and_import(files, tmp_path, monkeypatch):
@@ -163,7 +169,7 @@ def test_document_render_helper_returns_str(tmp_path, monkeypatch) -> None:
 
     files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
     assert [f.path for f in files] == ["welcome_page_render_helper.py"]
-    mod = _materialize_and_import(files, tmp_path, monkeypatch)
+    mod = _materialize_and_import([*files, *_models(root)], tmp_path, monkeypatch)
     helper = import_module("_rh_pkg.welcome_page_render_helper")
 
     from metaobjects.render.filesystem_provider import FilesystemProvider
@@ -191,7 +197,10 @@ def test_document_helper_signature_returns_str() -> None:
             fh.write("Hi {{name}}")
         files = RenderHelperGenerator(d).generate(_ctx(root))
     src = files[0].content
-    assert "def render_welcome_page(payload, provider) -> str:" in src
+    # ADR-0056 — typed as the @payloadRef value object's own model, imported from the
+    # entity generator's module.
+    assert "def render_welcome_page(payload: Welcome, provider) -> str:" in src
+    assert "from .Welcome import Welcome" in src
     # ruff sorts the import members alphabetically (RenderRequest before render).
     assert "from metaobjects.render.renderer import RenderRequest, render" in src
 
@@ -211,7 +220,7 @@ def test_email_render_helper_returns_email_document(tmp_path, monkeypatch) -> No
 
     files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
     assert [f.path for f in files] == ["welcome_email_render_helper.py"]
-    _materialize_and_import(files, tmp_path, monkeypatch)
+    _materialize_and_import([*files, *_models(root)], tmp_path, monkeypatch)
     helper = import_module("_rh_pkg.welcome_email_render_helper")
 
     from metaobjects.render.email_document import EmailDocument
@@ -233,7 +242,7 @@ def test_email_helper_without_text_body_ref(tmp_path, monkeypatch) -> None:
     root = _root([payload, tmpl])
 
     files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
-    _materialize_and_import(files, tmp_path, monkeypatch)
+    _materialize_and_import([*files, *_models(root)], tmp_path, monkeypatch)
     helper = import_module("_rh_pkg.welcome_email_render_helper")
 
     from metaobjects.render.filesystem_provider import FilesystemProvider
@@ -252,7 +261,8 @@ def test_email_helper_signature_returns_email_document(tmp_path) -> None:
     root = _root([payload, tmpl])
     files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
     src = files[0].content
-    assert "def render_welcome_email(payload, provider) -> EmailDocument:" in src
+    assert "def render_welcome_email(payload: Welcome, provider) -> EmailDocument:" in src
+    assert "from .Welcome import Welcome" in src
     assert "from metaobjects.render.email_document import EmailDocument" in src
 
 
@@ -401,7 +411,7 @@ def test_resolve_payload_vo_matches_short_and_fully_qualified_ref() -> None:
     """FR-026 expands @payloadRef to a fully-qualified ``a::b::Name`` while the
     object.value child still carries the short ``name`` — both forms must resolve.
 
-    #228 fix round 2: ``_resolve_payload_vo`` now requires an explicit
+    #228 fix round 2: ``resolve_payload_vo`` now requires an explicit
     ``referrer_pkg`` (package-local, ADR-0042) — a SHORT (bare) ref resolves
     against the referrer's OWN package (here ``"acme::blog"``, the SAME package
     ``WelcomePayload`` is declared in — the common same-package case this test
@@ -420,6 +430,6 @@ def test_resolve_payload_vo_matches_short_and_fully_qualified_ref() -> None:
             id="m.json", format=MetaDataFormat.JSON,
         )
     ]).root
-    assert _resolve_payload_vo(root, "WelcomePayload", "acme::blog") is not None  # short ref, same-package referrer
-    assert _resolve_payload_vo(root, "acme::blog::WelcomePayload", "") is not None  # FQN ref
-    assert _resolve_payload_vo(root, "acme::blog::Missing", "") is None
+    assert resolve_payload_vo(root, "WelcomePayload", "acme::blog") is not None  # short ref, same-package referrer
+    assert resolve_payload_vo(root, "acme::blog::WelcomePayload", "") is not None  # FQN ref
+    assert resolve_payload_vo(root, "acme::blog::Missing", "") is None

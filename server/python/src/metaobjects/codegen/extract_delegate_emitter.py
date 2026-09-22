@@ -26,31 +26,24 @@ Bounded by the cross-port ``MAX_NEST_DEPTH`` via the runtime — codegen here on
 the runtime's resolved object graph, so depth/cycle guarding lives in ``object_extract``.
 The emitter dedupes mirrors/mappers by ``resolution_key()`` (the package-qualified FQN,
 cycle-safe) — NOT the bare VO ``name``, which would silently collapse two same-short-name
-value-objects from different packages into one (ADR-0044, #228). A bare-name collision
-resolves to a package-qualified emitted name via the shared
-:func:`~metaobjects.codegen.collision_names.assign_nested_names` pass (see
-:func:`build_name_map`) — the SAME naming pass the payload-record tier
-(``payload_vo_generator``) runs, so this tier's names never diverge from the payload
-module's own.
+value-objects from different packages into one (ADR-0044, #228).
+
+ADR-0056 rule 3: a mirror is keyed by the VALUE OBJECT, never the template. Every mirror
+and mapper — the root's included — is named after the value object's emitted model name
+(:func:`~metaobjects.codegen.value_objects.model_class_name`: ``<Vo>Extracted`` /
+``_from_<vo>_extracted``), the same name the entity generator declares the model under, so
+a cross-package short-name collision qualifies the mirror exactly as it qualifies the
+model. Mirrors stay module-local (declared in each parser module that needs them), like
+TypeScript's: a Python module scopes them, so two parsers over one response each carry
+their own copy without clashing.
 """
 from __future__ import annotations
 
 from metaobjects.codegen import fr010_field_mapping as fm
-from metaobjects.codegen.collision_names import assign_nested_names
+from metaobjects.codegen.value_objects import model_class_name, pkg_of
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming_refs import resolve_object_ref
-from metaobjects.shared.separators import PACKAGE_SEP
-
-
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of an object — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level object). Duplicated (not imported) to
-    match the existing per-generator convention — ``payload_vo_generator.py`` and
-    ``render_helper_generator.py`` each carry their own identical copy."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
 
 
 def ref_vo(field: MetaData, root: MetaData) -> MetaData | None:
@@ -66,12 +59,11 @@ def ref_vo(field: MetaData, root: MetaData) -> MetaData | None:
     whichever same-named object happens to load first, regardless of which package
     the ref actually pointed at. *referrer_pkg* is the field's OWN declaring
     package (which differs from the VO's when the field is inherited via `extends`
-    from an abstract VO in another package) — mirrors payload_vo_generator's
-    `_resolve_object_field_type`."""
+    from an abstract VO in another package)."""
     ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
     if not isinstance(ref, str) or not ref:
         return None
-    referrer_pkg = _pkg_of(field.parent) if field.parent is not None else ""
+    referrer_pkg = pkg_of(field.parent) if field.parent is not None else ""
     return resolve_object_ref(root, ref, referrer_pkg)
 
 
@@ -81,26 +73,16 @@ def _is_object_field(field: MetaData) -> bool:
     return field.sub_type == fc.FIELD_SUBTYPE_OBJECT
 
 
-def mirror_name(vo: MetaData, name_map: dict[str, str]) -> str:
-    """The extracted-mirror dataclass name for a value-object
-    (``<Base>Extracted``) — ADR-0044 (#228) collision-scoped: *base* is the bare
-    ``vo.name`` unless a cross-package bare-name collision requires the
-    package-qualified derived form (see :func:`build_name_map`)."""
-    base = name_map.get(vo.resolution_key(), vo.name)
-    return f"{base}Extracted"
+def mirror_name(vo: MetaData) -> str:
+    """The extracted-mirror dataclass name for a value-object: ``<Model>Extracted``, where
+    ``<Model>`` is the value object's emitted model name (collision-qualified when another
+    object shares its short name)."""
+    return f"{model_class_name(vo)}Extracted"
 
 
-def _mapper_name(vo: MetaData, name_map: dict[str, str]) -> str:
-    """The mapper function name for a value-object (``_from_<base_snake>_extracted``)
-    — *base* per :func:`mirror_name`."""
-    base = name_map.get(vo.resolution_key(), vo.name)
-    return f"_from_{_snake(base)}_extracted"
-
-
-def root_mapper_name(template_name: str) -> str:
-    """The root mapper's name — derived from the TEMPLATE (so it returns the
-    canonically-named ``<Template>Extracted`` mirror)."""
-    return f"_from_{_snake(template_name)}_extracted"
+def mapper_name(vo: MetaData) -> str:
+    """The mapper function name for a value-object (``_from_<model_snake>_extracted``)."""
+    return f"_from_{_snake(model_class_name(vo))}_extracted"
 
 
 def _snake(name: str) -> str:
@@ -119,12 +101,12 @@ def _snake(name: str) -> str:
 # =============================================================================
 
 
-def _nested_mirror_type(field: MetaData, root: MetaData, name_map: dict[str, str]) -> str:
+def _nested_mirror_type(field: MetaData, root: MetaData) -> str:
     """The nullable mirror annotation for one field — nested-aware (nested objects
     become ``<Nested>Extracted``; array-of-objects become ``list[...]``)."""
     if _is_object_field(field):
         target = ref_vo(field, root)
-        base = f'"{mirror_name(target, name_map)}"' if target is not None else "object"
+        base = f'"{mirror_name(target)}"' if target is not None else "object"
         elem = f"{base} | None"
         return f"list[{elem}] | None" if fm.is_array(field) else elem
     if fm.is_array(field):
@@ -183,68 +165,33 @@ def has_nested(vo: MetaData, root: MetaData) -> bool:
     return False
 
 
-def build_name_map(vo: MetaData, root: MetaData) -> dict[str, str]:
-    """ADR-0044 (#228) — the collision-scoped BASE name map for ``vo``'s reachable
-    nested-VO closure, keyed by ``resolution_key()``. ``vo`` itself (the PRIMARY —
-    named after the enclosing template/payload, never its own bare name) is
-    excluded from the collision domain, mirroring payload_vo_generator's
-    `_collect_nested_closure` (which seeds ``seen`` with the primary's own key for
-    the identical reason).
-
-    Reuses the SAME shared :func:`~metaobjects.codegen.collision_names.assign_nested_names`
-    pass the payload-record tier runs, so a nested VO's derived BASE here agrees
-    exactly with the payload module's own emitted class name (modulo the
-    ``Payload``/``Extracted`` suffix each tier applies on top) — the extractor's
-    imports and the payload module's declarations can never diverge."""
-    primary_key = vo.resolution_key()
-    closure: dict[str, MetaData] = {
-        cur.resolution_key(): cur
-        for cur in reachable_vos(vo, root)
-        if cur.resolution_key() != primary_key
-    }
-    return assign_nested_names(closure)
-
-
 # =============================================================================
 # Nested-aware mirror dataclasses
 # =============================================================================
 
 
-def nested_mirror_dataclasses(
-    vo: MetaData, root: MetaData, payload_mirror: str, name_map: dict[str, str]
-) -> list[str]:
+def nested_mirror_dataclasses(vo: MetaData, root: MetaData) -> list[str]:
     """Emit the nested-aware mirror dataclass for ``vo`` and every reachable nested VO
-    (deduped). The payload mirror keeps the canonical ``<Template>Extracted`` name
-    (``payload_mirror``) so the existing self-contained ``extract_<name>()`` initializer
-    and the delegating path share ONE mirror type. The nested mirrors carry their own
-    ADR-0044 (#228) collision-scoped ``<Base>Extracted`` name (*name_map*, from
-    :func:`build_name_map`). Returns source lines (blank-line separated)."""
+    (deduped), each named :func:`mirror_name`. Returns source lines (blank-line
+    separated)."""
     lines: list[str] = []
     for i, cur in enumerate(reachable_vos(vo, root)):
         if i > 0:
             lines.append("")
             lines.append("")
-        name = payload_mirror if i == 0 else mirror_name(cur, name_map)
-        lines.extend(_one_mirror(cur, root, name, name_map))
+        lines.extend(_one_mirror(cur, root))
     return lines
 
 
-def _one_mirror(
-    vo: MetaData, root: MetaData, record_name: str, name_map: dict[str, str]
-) -> list[str]:
-    base = (
-        record_name[: -len("Extracted")]
-        if record_name.endswith("Extracted")
-        else record_name
-    )
+def _one_mirror(vo: MetaData, root: MetaData) -> list[str]:
     lines: list[str] = [
         "@dataclass(frozen=True, slots=True)",
-        f"class {record_name}:",
-        f'    """Best-effort extracted twin of ``{base}`` — every field nullable',
+        f"class {mirror_name(vo)}:",
+        f'    """Best-effort extracted twin of ``{model_class_name(vo)}`` — every field nullable',
         '    (``None`` where the value was lost or malformed)."""',
     ]
     field_lines = [
-        f"    {f.name}: {_nested_mirror_type(f, root, name_map)} = None"
+        f"    {f.name}: {_nested_mirror_type(f, root)} = None"
         for f in fm.fields(vo)
     ]
     lines.extend(field_lines or ["    pass"])
@@ -256,33 +203,22 @@ def _one_mirror(
 # =============================================================================
 
 
-def nested_mappers(
-    vo: MetaData,
-    root: MetaData,
-    root_mapper_fn: str,
-    root_mirror: str,
-    name_map: dict[str, str],
-) -> list[str]:
-    """Emit one ``_from_<base>_extracted(o)`` mapper per reachable VO (payload +
-    nested, deduped). The ROOT mapper is overridden to the template-derived
-    ``root_mapper_fn`` / ``root_mirror`` so it returns the canonically-named root
-    mirror. Nested mappers use the ADR-0044 (#228) collision-scoped *name_map* (from
-    :func:`build_name_map`). Returns source lines (blank-line separated)."""
+def nested_mappers(vo: MetaData, root: MetaData) -> list[str]:
+    """Emit one ``_from_<model>_extracted(o)`` mapper per reachable VO (payload +
+    nested, deduped), each named :func:`mapper_name`. Returns source lines
+    (blank-line separated)."""
     lines: list[str] = []
-    vos = reachable_vos(vo, root)
-    for i, cur in enumerate(vos):
+    for i, cur in enumerate(reachable_vos(vo, root)):
         if i > 0:
             lines.append("")
             lines.append("")
-        fn = root_mapper_fn if i == 0 else _mapper_name(cur, name_map)
-        mir = root_mirror if i == 0 else mirror_name(cur, name_map)
-        lines.extend(_one_mapper(cur, root, fn, mir, name_map))
+        lines.extend(_one_mapper(cur, root))
     return lines
 
 
-def _one_mapper(
-    vo: MetaData, root: MetaData, fn: str, mirror: str, name_map: dict[str, str]
-) -> list[str]:
+def _one_mapper(vo: MetaData, root: MetaData) -> list[str]:
+    fn = mapper_name(vo)
+    mirror = mirror_name(vo)
     lines: list[str] = [
         f'def {fn}(o: object | None) -> "{mirror} | None":',
         f"    \"\"\"Map an assembled ValueObject graph into a typed ``{mirror}`` mirror;"
@@ -292,19 +228,19 @@ def _one_mapper(
         f"    return {mirror}(",
     ]
     for f in fm.fields(vo):
-        lines.append(f"        {f.name}={_mapper_arg(f, root, name_map)},")
+        lines.append(f"        {f.name}={_mapper_arg(f, root)},")
     lines.append("    )")
     return lines
 
 
-def _mapper_arg(field: MetaData, root: MetaData, name_map: dict[str, str]) -> str:
+def _mapper_arg(field: MetaData, root: MetaData) -> str:
     """The mirror-field initializer that reads ``field`` from the assembled object ``o``."""
     key = f'"{field.name}"'
     if _is_object_field(field):
         target = ref_vo(field, root)
         if target is None:
             return "None  # unresolved @objectRef"
-        fn = _mapper_name(target, name_map)
+        fn = mapper_name(target)
         if fm.is_array(field):
             return f"_map_object_list(_read_prop(o, {key}), {fn})"
         return f"{fn}(_read_prop(o, {key}))"

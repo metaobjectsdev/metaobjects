@@ -36,8 +36,14 @@ def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
     # Every registered stable name appears in the listing.
     for name in GENERATOR_REGISTRY:
         assert name in out, f"--list omitted {name!r}"
-    # Exactly the 11 python-slice names are registered.
-    assert len(GENERATOR_REGISTRY) == 11
+    # Exactly the 10 python-slice names are registered (ADR-0056 removed `payload`).
+    assert len(GENERATOR_REGISTRY) == 10
+    assert "payload" not in GENERATOR_REGISTRY
+    # A template-tier generator says it needs the entity generator's models.
+    assert "output-parser — " in out
+    assert [ln for ln in out.splitlines() if ln.startswith("output-parser — ")][0].endswith(
+        "(requires: entity)"
+    )
     # One line per generator, "<name> — <description>".
     listed = [e.name for e in list_generators()]
     assert sorted(listed) == sorted(GENERATOR_REGISTRY.keys())
@@ -79,3 +85,23 @@ def test_unknown_generator_name_is_clear_error(capsys, tmp_path: Path) -> None:
     assert rc != 0
     err = capsys.readouterr().err
     assert "bogus" in err
+
+
+def test_template_tier_without_entity_warns(capsys, tmp_path: Path) -> None:
+    """ADR-0056 rule 6 — the template tier imports the value objects' models from the
+    entity generator's modules, so selecting it without ``entity`` warns (advisory: an
+    adopter may keep hand-written models at those paths)."""
+    meta_dir = _meta_dir(tmp_path)
+    rc = main(["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "extractor"])
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert 'warning: "extractor" is selected but "entity" is not.' in err
+
+
+def test_template_tier_with_entity_does_not_warn(capsys, tmp_path: Path) -> None:
+    meta_dir = _meta_dir(tmp_path)
+    rc = main(
+        ["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "entity,extractor"]
+    )
+    assert rc == 0
+    assert "is selected but" not in capsys.readouterr().err

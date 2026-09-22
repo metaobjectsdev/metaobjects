@@ -1,4 +1,11 @@
-"""object.* → Pydantic v2 model module (sub-project A)."""
+"""object.* → Pydantic v2 model module (sub-project A).
+
+ADR-0056: this is also the ONE place a value object's model is declared. The template
+tier (response parsers, extractors, render helpers) imports ``<Name>.py`` from here and
+declares no model of its own, so a run that wires a template-tier generator needs this
+one too. A value object's emitted name comes from
+:func:`metaobjects.codegen.value_objects.model_class_name` (collision-qualified when
+another object shares its short name)."""
 from __future__ import annotations
 
 import re
@@ -32,7 +39,6 @@ from metaobjects.meta.persistence.origin.origin_constants import (
     ORIGIN_SUBTYPE_AGGREGATE,
 )
 from metaobjects.shared.base_types import TYPE_ORIGIN, TYPE_VALIDATOR
-from metaobjects.shared.separators import PACKAGE_SEP
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.type_map import field_is_array, py_type_for
@@ -44,6 +50,11 @@ from metaobjects.codegen.generators.m2m_codegen import (
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.tph_plan import tph_subtype_binding
+from metaobjects.codegen.value_objects import (
+    model_class_name,
+    model_import,
+    object_ref_class_name,
+)
 
 
 def _is_int(value: object) -> bool:
@@ -70,6 +81,15 @@ def _is_sql_expr_default(value: object) -> bool:
     """True iff *value* is a server-side SQL expression default (DB-filled), not a
     Python literal. Only string defaults can be expressions."""
     return isinstance(value, str) and any(p.search(value) for p in _SQL_EXPR_DEFAULT_PATTERNS)
+
+
+def has_literal_default(field: MetaField) -> bool:
+    """True iff the read model gives *field* a Python default: a ``@default`` that is not a
+    server-side SQL expression. Such a field is annotated ``T`` (not ``T | None``) with that
+    default, so code that builds the model without a value for it must OMIT the keyword
+    rather than pass ``None`` — the extractor's mapper relies on exactly this."""
+    default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
+    return default_raw is not None and not _is_sql_expr_default(default_raw)
 
 
 # ADR-0036/0037 Wave 3 — the CANONICAL hostname matcher for @stringFormat: hostname.
@@ -262,13 +282,13 @@ def _type_expr_for_field(
         type_expr = "list[EmailStr]" if field_is_array(field) else "EmailStr"
     if field.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
         # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO]) both
-        # reference a value-object by name; import it so the emitted annotation resolves.
-        # @objectRef is FQN-expanded at load; the generated VOs live flat in one package,
-        # so import by the bare class name. #224 — a WIRE context binds the referenced
-        # VO's <Ref>Create instead (see docstring above).
-        ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
-        if ref:
-            ref_name = str(ref).split("::")[-1]
+        # reference a value-object; import its model so the emitted annotation resolves.
+        # The generated models live flat in one package, under the name the value object
+        # emits as (ADR-0056 — collision-qualified, resolved package-local; the same
+        # name py_type_for typed the annotation with). #224 — a WIRE context binds the
+        # referenced VO's <Ref>Create instead (see docstring above).
+        ref_name = object_ref_class_name(field)
+        if ref_name is not None:
             bound_name = f"{ref_name}Create" if wire else ref_name
             imports.add(f"from .{ref_name} import {bound_name}")
             if wire:
@@ -320,7 +340,7 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     # A server-side expression default (now(), gen_random_uuid(), CURRENT_TIMESTAMP)
     # is filled by the DB — the Python model carries no default for it (the field keeps
     # its required/optional shape). Only literal defaults become Pydantic defaults.
-    has_default = default_raw is not None and not _is_sql_expr_default(default_raw)
+    has_default = has_literal_default(field)
 
     parts = _constraint_parts(_validator_constraints(field, wire=False))
     uses_field = bool(parts)
@@ -522,9 +542,11 @@ class EntityModelGenerator:
     name = "entity-model"
 
     def _emit_class_header(self, entity: MetaObject, base_class: str) -> str:
-        """The ``class <Name>(<Base>):`` declaration line. Override to inject a
-        decorator, a metaclass, or an alternate base."""
-        return f"class {entity.name}({base_class}):"
+        """The ``class <Name>(<Base>):`` declaration line. ``<Name>`` is the object's
+        emitted model name (``model_class_name`` — a value object's may be
+        collision-qualified). Override to inject a decorator, a metaclass, or an
+        alternate base."""
+        return f"class {model_class_name(entity)}({base_class}):"
 
     def _emit_field_lines(
         self,
@@ -672,8 +694,8 @@ class EntityModelGenerator:
         imports: set[str] = set()
         base_class = "BaseModel"
         if entity.super_data is not None:
-            base_class = entity.super_data.name
-            imports.add(f"from .{base_class} import {base_class}")
+            base_class = model_class_name(entity.super_data)
+            imports.add(model_import(entity.super_data))
 
         lines, uses_field = self._emit_field_lines(entity, imports, object_index, config)
 
@@ -776,7 +798,7 @@ class EntityModelGenerator:
             parts += [
                 "",
                 "",
-                f"class {entity.name}Create(BaseModel):",
+                f"class {model_class_name(entity)}Create(BaseModel):",
                 '    """GENERATED — CREATE input: auto-gen PK / @mutability readOnly omitted '
                 '(writeOnce is settable here, once); @default/@autoSet optional; present '
                 'values validated (FR-036)."""',
@@ -842,7 +864,7 @@ class EntityModelGenerator:
         index = build_object_index(ctx.entities)
         files = per_entity(
             lambda e, _c: EmittedFile(
-                path=f"{e.name}.py",
+                path=f"{model_class_name(e)}.py",
                 content=ruff_format(self.render_entity_model(e, index, ctx.config)),
             )
         )(ctx)
