@@ -800,9 +800,19 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             )
         }
 
+        // Each assignment is joined with KotlinPoet's NON-BREAKING SPACE (U+00B7), which it
+        // renders as an ordinary space but never treats as a line-break candidate. That matters
+        // because this text is handed to addStatement as raw format-string content: KotlinPoet
+        // wraps at column 100 on any plain space it sees, and it cannot tell that the spaces in
+        // `"<name> is required"` are INSIDE a string literal. A property name long enough to push
+        // the line past the margin therefore had its message wrapped mid-literal, emitting Kotlin
+        // that does not parse (a regular string literal has no line continuation) — see #388.
+        // Making the whole assignment atomic leaves the explicit ",\n  " separators below as the
+        // only break points, which are the ones that are actually safe.
         val args = params.joinToString(",\n  ") { p ->
-            if (p.type.isNullable) "%1N = %1N".replace("%1N", p.name)
-            else "${p.name} = requireNotNull(${p.name}) { \"${p.name} is required\" }"
+            if (p.type.isNullable) "${p.name}\u00b7=\u00b7${p.name}"
+            else "${p.name}\u00b7=\u00b7requireNotNull(${p.name})\u00b7{\u00b7" +
+                "\"${p.name}\u00b7is\u00b7required\"\u00b7}"
         }
         builder.addFunction(
             FunSpec.builder("build")

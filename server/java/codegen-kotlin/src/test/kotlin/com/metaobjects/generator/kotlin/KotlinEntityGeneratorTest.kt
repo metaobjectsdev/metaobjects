@@ -407,4 +407,50 @@ class KotlinEntityGeneratorTest {
         }
     }
 
+    /**
+     * #388 — the builder's `requireNotNull` message must not be line-wrapped inside its string
+     * literal. The statement is handed to KotlinPoet as raw format-string text, and KotlinPoet
+     * wraps at column 100 on any plain space; it cannot see that the spaces in
+     * `"<name> is required"` are inside a literal, and a regular Kotlin string has no line
+     * continuation, so a break there emits source that does not parse.
+     *
+     * Whether it breaks inside the literal depends on where column 100 lands, which is a function
+     * of the property name's LENGTH — so this sweeps a range rather than pinning one name. On the
+     * unfixed generator the window is roughly 20-23 characters; a name shorter than that never
+     * reaches the margin and a longer one breaks harmlessly BEFORE the literal, which is exactly
+     * why a single hand-picked name is not a reliable gate.
+     */
+    @Test fun `no required property name length wraps the requireNotNull message mid-literal`() {
+        for (n in 16..30) {
+            val longName = "a".repeat(n - 2) + "Id"
+            val fx = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.entity": { "name": "LaunchState", "children": [
+                    { "field.string": { "name": "$longName", "@required": true } },
+                    { "field.string": { "name": "state", "@required": true } }
+                ] } }
+              ] }
+            }""".trimIndent()
+
+            val outDir = Files.createTempDirectory("kgen-wrap-$n-")
+            try {
+                val gen = KotlinEntityGenerator()
+                gen.setArgs(mapOf("outputDir" to outDir.toString()))
+                gen.execute(loadString("wrap$n", fx))
+                val src = Files.readString(outDir.resolve("acme/demo/LaunchState.kt"))
+
+                assertTrue("\"$longName is required\"" in src,
+                    "name length $n: the requireNotNull message was split across lines:\n$src")
+
+                // No emitted line may leave a regular string literal unterminated. This fixture
+                // emits no escaped quotes and no triple-quoted blocks, so an odd count of `"` on
+                // a line means a split literal.
+                val offenders = src.lines().filter { it.count { c -> c == '"' } % 2 != 0 }
+                assertTrue(offenders.isEmpty(),
+                    "name length $n: lines ending inside an unterminated literal: $offenders\n$src")
+            } finally {
+                outDir.toFile().deleteRecursively()
+            }
+        }
+    }
 }
