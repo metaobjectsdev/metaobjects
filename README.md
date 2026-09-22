@@ -135,7 +135,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | `field.currency` / `field.enum` | Yes | Yes | Yes | Yes | Yes |
 | `field.object` + `@storage=flattened` | Yes | Yes | Yes (per-sub-field columns) | Yes (EF Core `OwnsOne`) | Loader yes; codegen partial |
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
-| Payload-VO codegen | Yes (via projection) | Yes (`SpringPayloadGenerator`) | Yes (`@Serializable`) | Yes | Yes (`payload_vo_generator`) |
+| Payload-VO codegen (the value object's own type, ADR-0056) | Yes (`entityFile()`) | Yes (`SpringValueObjectGenerator`) | Yes (`KotlinEntityGenerator`) | Yes (`EntityGenerator`) | Yes (`entity`) |
 | Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (ADR-0015) | Via TS toolchain (ADR-0015) |
 | DB-drift verify | `meta verify --db <url>` | Template-drift: `Verify.check`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Verify.check`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
 | Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |

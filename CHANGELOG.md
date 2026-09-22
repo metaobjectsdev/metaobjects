@@ -15,6 +15,36 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Changed
 
+- **A template's payload and response types are now its value objects' own types, in every
+  port — the `payload` generator is removed ([ADR-0056](spec/decisions/ADR-0056-value-object-types-are-generated-once.md),
+  #387). This changes generated output for every adopter who uses templates.** Each port used
+  to generate a value object twice: its own type, and a template-named copy
+  (`<Template>Payload`, `<Template>Response`, `<Short>Payload`, the `prompts.ts` interfaces)
+  written into the template's package. In Java and Kotlin, a nested value object shared by
+  templates in two packages landed in whichever package sorted first, and the other package
+  did not compile. Now the value-object generator — TS `entity`, C# `entity`, Java
+  `value-object`, Kotlin `entity`, Python `entity` — emits one type per concrete
+  `object.value` and sourceless `object.projection`, at the value object's own location,
+  and render helpers, parsers, extractors and output-format fragments reference it.
+
+  **Adopters must regenerate, update their imports, and wire the value-object generator**
+  in any run that wires a template-tier generator. Remove `payload` from C#/Python
+  `--generators` and `SpringPayloadGenerator` / `KotlinPayloadGenerator` from Maven
+  `<generators>`. Delete generated files that are no longer emitted (`meta gen` never deletes
+  one; `meta verify --codegen` names them) — including a TS `prompts.ts` that held only
+  interfaces. Types are named after the value object; where a port emits every value object
+  into one flat namespace (TS, C#, Python), a colliding short name is package-qualified
+  (`AcmeAlphaNote`). The lenient mirror is `<Vo>Extracted`. Other visible changes: TS
+  optional fields are `name?: T` (not `T | null`) and the removed exports are
+  `generatePayloadInterfaces`, `generatePayloadInterfacesBatch` and `generateRenderHandle`;
+  C# payloads are the `<Vo>.g.cs` POCOs with PascalCase members, and the extractor is
+  `<Prompt>Extractor`; Java drops the generated `hasFoo()` methods (the render engine derives
+  them) and now collides `entity` with `value-object` on every value object; Kotlin's strict
+  parser decodes with Jackson; the Java, Kotlin, C# and Python output-format root name is the
+  value object's short name, so rendered prompt text changes; Python's request model no
+  longer rejects unknown keywords. Full list:
+  [migration guide](docs/features/migrations/value-object-types-are-generated-once.md).
+
 - **The filter/sort 400 envelope now NAMES the rejected field, in every port — `field` is
   REQUIRED, not optional.** `invalid_filter_field`, `invalid_filter_op`,
   `invalid_filter_value` and `invalid_sort` each carry
@@ -283,6 +313,26 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   answered an empty patch as a read (200 with the row, or 404) since the TPH discriminator
   work, and Hono now does the same. The generated api-contract lane runs on Fastify, so the
   corpus's `patch-empty-noop` scenario never reached Hono.
+
+- **Kotlin: a generated builder could emit Kotlin that does not parse (#388).** The
+  `build()` function's `requireNotNull(x) { "x is required" }` could be wrapped by KotlinPoet
+  at a space INSIDE the string literal, and a Kotlin string has no line continuation. The
+  assignment is now joined with KotlinPoet's non-breaking space, so it never splits.
+
+- **Python: the render engine rendered a Pydantic model payload as an empty body.** It
+  looked names up in mappings only, so every slot of a model payload resolved to nothing and
+  no error was raised. It now reads a model through its JSON-mode dump (enums render as
+  their values; `{{#hasField}}` applies), which matters because generated render helpers are
+  now typed with the value object's model.
+
+- **Python: two value objects with one short name wrote one module.** The entity generator
+  named every model `<name>.py`, so `acme::alpha::Note` and `acme::beta::Note` — or a value
+  object and an entity sharing a name — collided. A colliding value object is now
+  package-qualified (`AcmeAlphaNote.py`), and `field.object` / `field.map` references resolve
+  package-local instead of by the ref's bare tail.
+
+- **Python api-docs documented every model's import wrong.** They said
+  `from .<snake_name> import <Name>`; the module is `<Name>.py`.
 
 - **Web client: every filtered request 400'd against a Spring Boot backend.**
   `@metaobjectsdev/runtime-web`'s `buildFilterQs` — which every generated TanStack hook

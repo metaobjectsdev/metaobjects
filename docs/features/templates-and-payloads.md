@@ -232,10 +232,11 @@ const out: string = await render({
 ### Java
 
 `metaobjects-render` ships `Renderer` + `Provider` (Classpath, Filesystem,
-InMemory) + `Verify`. `SpringPayloadGenerator` (in `metaobjects-codegen-spring`)
-emits a Java 21 `record` payload per template, typing every component from its
-declared field (#270; matches the Kotlin reference). Host code may also pass a
-`Map<String,Object>` to the renderer if it doesn't want the generated type.
+InMemory) + `Verify`. The payload is the value object's own Java 21 `record`, emitted
+by `SpringValueObjectGenerator` (in `metaobjects-codegen-spring`) in the value object's
+package (ADR-0056) — the template tier declares no copy. Host code may also pass a
+`Map<String,Object>` to the renderer if it doesn't want the generated type; either way
+`{{#hasPosts}}` resolves, because the renderer derives `has<Field>` for a record too.
 
 ```java
 import com.metaobjects.render.*;
@@ -243,29 +244,29 @@ import com.metaobjects.render.*;
 Provider provider = new FilesystemProvider(Path.of("./prompts"));
 String out = Renderer.render(RenderRequest.builder()
     .ref("lobby/welcome")
-    .payload(new WelcomePromptPayload("Ada", 12L, List.of(new PostSummaryPayload("Hello"))))
+    .payload(new WelcomePayload("Ada", 12L, List.of(new PostSummary("Hello"))))
     .provider(provider)
     .format("xml")
     .build());
 ```
 
 ```java
-// generated/acme/blog/prompts/WelcomePromptPayload.java
-public record WelcomePromptPayload(
+// generated/acme/blog/WelcomePayload.java  (bean-validation annotations elided)
+public record WelcomePayload(
     String displayName,
     Long postCount,
-    java.util.List<PostSummaryPayload> posts
+    @Valid java.util.List<PostSummary> posts
 ) {}
 
-// generated/acme/blog/prompts/PostSummaryPayload.java
-public record PostSummaryPayload(String title) {}
+// generated/acme/blog/PostSummary.java
+public record PostSummary(String title) {}
 ```
 
 ### Kotlin
 
-`metaobjects-metadata-ktx` wraps `Renderer` in an idiomatic Kotlin builder.
-`KotlinPayloadGenerator` (in `codegen-kotlin`) emits a `@Serializable` payload data
-class per template, typing every property from its declared field (#270).
+`metaobjects-metadata-ktx` wraps `Renderer` in an idiomatic Kotlin builder. The payload
+is the value object's own data class, emitted by `KotlinEntityGenerator` (in
+`codegen-kotlin`) in the value object's package (ADR-0056).
 
 ```kotlin
 import com.metaobjects.metadata.ktx.render
@@ -274,10 +275,10 @@ import java.nio.file.Path
 
 val out = render {
     ref = "lobby/welcome"
-    payload = WelcomePromptPayload(
+    payload = WelcomePayload(
         displayName = "Ada",
         postCount = 12,
-        posts = listOf(PostSummaryPayload("Hello")),
+        posts = listOf(PostSummary("Hello")),
     )
     provider = FilesystemProvider(Path.of("./prompts"))
     format = "xml"
@@ -285,28 +286,26 @@ val out = render {
 ```
 
 ```kotlin
-// generated/acme/blog/prompts/WelcomePromptPayload.kt
-@Serializable
-data class WelcomePromptPayload(
-    val displayName: String,
-    val postCount: Long,
-    val posts: List<PostSummaryPayload>,
+// generated/acme/blog/WelcomePayload.kt
+data class WelcomePayload(
+    val displayName: String? = null,
+    val postCount: Long? = null,
+    val posts: List<PostSummary>? = null,
 )
 
-// generated/acme/blog/prompts/PostSummaryPayload.kt
-@Serializable
-data class PostSummaryPayload(val title: String)
+// generated/acme/blog/PostSummary.kt
+data class PostSummary(val title: String? = null)
 ```
 
 ### C#
 
-`MetaObjects.Render` ships the render engine + verify. `MetaObjects.Codegen`
-ships payload-VO codegen for every declared template — the strict record is named
-after the **value object**, not the template (for this model: `record WelcomePayload` /
-`record PostSummary`), with `required` init-only properties named verbatim after the
-metadata fields (`displayName`, `postCount`, `posts`). Because the name comes from the
-VO, a responding prompt's `@responseRef` record simply IS that VO's record; there is no
-second convention. You can still hand the renderer a plain object/array graph instead:
+`MetaObjects.Render` ships the render engine + verify. The payload is the value
+object's own POCO, emitted by `EntityGenerator` in `MetaObjects.Codegen` (ADR-0056; for
+this model `class WelcomePayload` / `class PostSummary` in `<Vo>.g.cs`), with PascalCase
+properties carrying each metadata field name in `[JsonPropertyName]`. The renderer reads
+the POCO through those wire names, so `{{displayName}}` resolves against `DisplayName`.
+A responding prompt's `@responseRef` type is likewise that value object's POCO. You can
+still hand the renderer a plain object/array graph instead:
 
 ```csharp
 using MetaObjects.Render;
@@ -331,11 +330,10 @@ string output = Renderer.Render(new RenderRequest
 ### Python
 
 `metaobjects.render` ships the Mustache engine + `Verify`. The Python loader
-recognizes `template.*` + `origin.*`. Payload-VO codegen **is** emitted (the
-`payload` generator emits a Pydantic `BaseModel` per template, typed from the
-declared fields (#270) — see
-[Response parsing (FR-006)](#response-parsing-fr-006)), so a consumer can render from
-the generated payload type or from a plain `dict`.
+recognizes `template.*` + `origin.*`. The payload is the value object's own Pydantic
+`BaseModel`, emitted by the `entity` generator as `<Name>.py` (ADR-0056), so a consumer
+can render from that model or from a plain `dict` — the engine reads a model through its
+JSON-mode dump.
 
 `render` takes a `RenderRequest` (only `payload` + `provider` are required; `ref`
 defaults to `None`, `format` to `"text"`):
@@ -367,9 +365,11 @@ the direction rule, [ADR-0010](../../spec/decisions/ADR-0010-template-output-par
 for the cross-port principle and [FR-006](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)
 for the design.
 
-A responding prompt therefore carries TWO declared shapes and gets TWO records: the
-`@payloadRef` request it renders outbound, and the `@responseRef` reply it parses. They
-are usually different — the question and the answer rarely have the same fields.
+A responding prompt therefore carries TWO declared shapes: the `@payloadRef` request it
+renders outbound, and the `@responseRef` reply it parses. They are usually different —
+the question and the answer rarely have the same fields. Each is a value object, and
+each value object's type is generated once, by the port's value-object generator
+(ADR-0056) — the template tier references it and never declares a copy.
 
 ### Cross-port API
 
@@ -381,12 +381,12 @@ Result-style "safe" variant where the language has an idiomatic precedent:
 | TypeScript | `parseXxx(text): T` | `safeParseXxx(text)` → `{ success, data \| error }` | Zod |
 | C# | `XxxParser.Parse(string): T` | `XxxParser.TryParse(text, out T, out string)` → `bool` | `System.Text.Json` |
 | Python | `parse_xxx(text: str) -> T` | — (Pythonic norm is throw-only; consumers `try/except`) | Pydantic v2 |
-| Kotlin | `XxxParser.parseXxx(text): TPayload` | `XxxParser.safeParseXxx(text): Result<TPayload>` | `kotlinx.serialization.json` |
+| Kotlin | `XxxParser.parseXxx(text): TResponse` | `XxxParser.safeParseXxx(text): Result<TResponse>` | Jackson (`jackson-module-kotlin`) |
 | Java | `XxxParser.parse(text): TPayload` (throws `JsonProcessingException`) | — (throw-only; the FR-010 `extractLenient(loader, text)` tolerant-extraction variant ships alongside `parse()`) | Jackson `ObjectMapper` (`SpringOutputParserGenerator`) |
 
 The throwing API matches the substrate's native deserialization exception
-(Zod `ZodError`, `JsonException`, `ValidationError`, `SerializationException`,
-`JsonProcessingException`). The Result-style API wraps the throwing API and
+(Zod `ZodError`, `JsonException`, `ValidationError`, `JsonProcessingException` on
+both JVM ports). The Result-style API wraps the throwing API and
 does not throw on validation failure. All five shipped ports satisfy the same
 conformance fixtures
 ([`template-prompt-response-json`](../../fixtures/conformance/template-prompt-response-json/)
@@ -401,14 +401,14 @@ is not a contract anyone can reason about.
 ### Consumer-side usage (Kotlin example)
 
 ```kotlin
+import acme.ai.NpcBrief              // the @payloadRef value object's own data class
 import acme.ai.prompts.NpcResponseParser
-import acme.ai.prompts.WelcomePromptPayload
 import com.metaobjects.metadata.ktx.render
 
 // 1. Render the prompt
 val promptText = render {
     ref = "ai/npc-prompt"
-    payload = WelcomePromptPayload(scenario = "tavern-encounter", playerLevel = 4)
+    payload = NpcBrief(scenario = "tavern-encounter", playerLevel = 4)
     provider = FilesystemProvider(Path.of("./prompts"))
 }
 
@@ -417,7 +417,7 @@ val llmResponse: String = myLlmClient.complete(promptText)
 
 // 3. Parse the response
 val npc = NpcResponseParser.parseNpcResponse(llmResponse)         // throws
-val safe = NpcResponseParser.safeParseNpcResponse(llmResponse)    // Result<NpcResponsePayload>
+val safe = NpcResponseParser.safeParseNpcResponse(llmResponse)    // Result<NpcReply>
 safe.onSuccess { npc -> /* use it */ }.onFailure { ex -> /* log */ }
 ```
 
@@ -433,18 +433,17 @@ the generated parser.
 | TypeScript | `<PromptName>.response.ts` | `parse<PromptName>` + `safeParse<PromptName>` functions |
 | C# | `<PromptName>.response.cs` | `static class <PromptName>Parser` |
 | Python | `<prompt_name>_response_parser.py` | `parse_<prompt_name>` function |
-| Kotlin | `<PromptShortName>Parser.kt` | `object <PromptShortName>Parser` (same package as the record) |
+| Kotlin | `<PromptShortName>Parser.kt` | `object <PromptShortName>Parser` (in the prompt's `<pkg>.prompts` package) |
 | Java | `<PromptShortName>Parser.java` | `final class <PromptShortName>Parser` |
 
-The parser file is a companion to (not a replacement for) the record file — the parser
-imports the response record rather than redeclaring it. Where that record comes from
-differs by port, because the ports do not share a naming convention: **C#** names records
-after the resolved VALUE OBJECT, so the response record simply IS the VO's record;
-**Java, Kotlin and Python** name them after the TEMPLATE, so a responding prompt gets a
-SECOND record, `<Prompt>Response`, beside `<Prompt>Payload` (Python puts it in its own
-`<prompt_name>_response.py`, since the request record rejects unknown fields and a reply
-record must tolerate them); **TypeScript** types the payload from `entityFile()`, which
-emits per `object.value` regardless of any template.
+The parser imports the `@responseRef` value object's own type rather than redeclaring
+it — the same type in every port's sense of the word (ADR-0056): TS `entityFile()`'s
+interface, C# `EntityGenerator`'s POCO, Java `SpringValueObjectGenerator`'s record,
+Kotlin `KotlinEntityGenerator`'s data class, Python `entity`'s `BaseModel`. So wire the
+value-object generator whenever you wire the parser. Only what the TEMPLATE owns — the
+parser, the render function, the output-format fragment, the extractor — is named after
+the template. The tolerant tier's all-nullable mirror is named after the value object
+(`<Vo>Extracted`).
 
 `meta verify` walks both subtypes, catching payload ↔ template drift at build time.
 
@@ -590,4 +589,5 @@ for the per-port pass/skip ledger.
 - [migrations-and-drift.md](migrations-and-drift.md) — the verify pillar
 - [migrations/value-assembly-origins-and-source-role-shrink.md](migrations/value-assembly-origins-and-source-role-shrink.md) — migrating a pre-#210 payload (assembly origins on a value; nested non-value targets)
 - [migrations/template-direction-outbound-vs-inbound.md](migrations/template-direction-outbound-vs-inbound.md) — migrating a pre-ADR-0052 model (`@promptStyle` on an output; the inbound tier moving to `@responseRef`)
+- [migrations/value-object-types-are-generated-once.md](migrations/value-object-types-are-generated-once.md) — migrating generated code from the removed `payload` tier to the value objects' own types (ADR-0056)
 - FR-004 spec: [2026-05-22-fr-004-cross-language-prompt-construction-design.md](../superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md)

@@ -6,10 +6,9 @@ Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emit
 
 | Generator | Output | Per |
 |---|---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity` AND `object.value` |
+| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`). A value object's data class is also its template payload/response type (ADR-0056) | every `object.entity`, `object.value` AND `object.projection` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | every entity with `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with `cardinality=many` composition relationships |
-| `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
 
@@ -67,17 +66,17 @@ fun AuthorTable.postsQuery(authorId: Long): Query =
 
 so consumers can write `AuthorTable.postsQuery(author.id).toList()` (or chain `.orderBy(...)` / `.limit(...)` first). One helper fn per to-many composition; the file is skipped entirely for entities with no to-many relationships.
 
-## FR-004 payload codegen
+## FR-004 payload types
 
-`KotlinPayloadGenerator` emits a `@Serializable` payload data class per
-`template.*`, typing every property from its **declared field only** (#270 —
-declared-type-authoritative): a property's type comes from the field's
-`field.<subType>` + `isArray`, and a nested payload is a declared `field.object
-@objectRef` to another `object.value` (`isArray: true` → a `List<…>`). The
-caller supplies the field values at render time; an `origin.*` child on a
-payload field is ignored for typing (derivation/assembly origins live on
-`object.projection` read models, not payload VOs). Nested payload classes are
-generated recursively and deduplicated per run. See
+A template declares no payload type of its own (ADR-0056). Its `@payloadRef` and
+`@responseRef` types ARE the value objects' own data classes, emitted once by
+`KotlinEntityGenerator` in each value object's package, so wire that generator whenever
+you wire a template-tier generator (render helper, output parser, output prompt,
+extractor). The response parser decodes into the `@responseRef` data class with Jackson;
+its lenient mirror `<Vo>Extracted.kt` is written once per run beside the value object.
+The removed `KotlinPayloadGenerator` used to copy each value object into every consuming
+template's `<pkg>.prompts` package — which is how a nested value object shared by two
+packages ended up in only one of them (#387). See
 [`docs/features/templates-and-payloads.md`](../../../docs/features/templates-and-payloads.md)
 for the cross-port contract and a worked example.
 
@@ -98,10 +97,6 @@ for the cross-port contract and a worked example.
       </generator>
       <generator>
         <classname>com.metaobjects.generator.kotlin.KotlinExposedTableGenerator</classname>
-        <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
-      </generator>
-      <generator>
-        <classname>com.metaobjects.generator.kotlin.KotlinPayloadGenerator</classname>
         <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
       </generator>
       <generator>
@@ -180,7 +175,7 @@ No hand-written Exposed wiring needed.
 | Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
 | DB-vs-metadata, Migration-vs-metadata | TypeScript toolchain (`@metaobjectsdev/cli migrate`) — schema migrations and live-DB schema-drift verification are TS-only | Build time / CI |
 | Generated-edited | `@generated` headers in KotlinPoet output | Code review |
-| Prompt-vs-payload | `KotlinPayloadGenerator` + Java `Renderer.verify` | Build time + runtime |
+| Prompt-vs-payload | `KotlinRenderHelperGenerator`'s build-time drift gate + Java `Renderer.verify` | Build time + runtime |
 | Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
 
 ## Schema migrations

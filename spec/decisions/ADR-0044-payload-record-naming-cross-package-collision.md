@@ -2,7 +2,12 @@
 
 ## Status
 
-**Accepted** (2026-07-20). Fixes #219 (C#), closes #220 (the Java/Kotlin collision-conformance gap). Extends [ADR-0041](ADR-0041-cross-package-reference-resolution.md) / [ADR-0042](ADR-0042-bare-references-are-package-local.md) (FQN-exact, package-local reference resolution) from the *metadata resolution* tier to the *codegen emission/naming* tier. Stage 1 (this decision + the TS reference fix + the C# fix) ships now; the Java/Kotlin/Python follow-up is tracked separately.
+**Accepted** (2026-07-20); **payload-tier half superseded by
+[ADR-0056](ADR-0056-value-object-types-are-generated-once.md)** (2026-09-21). The template
+tier no longer emits payload records, so the per-closure naming this ADR designed for them
+is gone; its naming RULE lives on for the value objects' own types in the ports that emit
+them into one flat namespace or directory (TypeScript, C#, Python — see ADR-0056
+Amendment 1). Fixes #219 (C#), closes #220 (the Java/Kotlin collision-conformance gap). Extends [ADR-0041](ADR-0041-cross-package-reference-resolution.md) / [ADR-0042](ADR-0042-bare-references-are-package-local.md) (FQN-exact, package-local reference resolution) from the *metadata resolution* tier to the *codegen emission/naming* tier. Stage 1 (this decision + the TS reference fix + the C# fix) ships now; the Java/Kotlin/Python follow-up is tracked separately.
 
 ## Context
 

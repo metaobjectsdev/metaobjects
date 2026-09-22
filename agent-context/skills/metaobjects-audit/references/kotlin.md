@@ -53,7 +53,7 @@ The active generator list is declared in `pom.xml` under the plugin `<configurat
 | Hand-written `data class` with same fields as a modeled entity | `KotlinEntityGenerator` should own this (`<Entity>.kt`) |
 | Hand-written `object ... : Table(` | `KotlinExposedTableGenerator` should own this (`<Entity>Table.kt`) |
 | Hand-written `@RestController` on a CRUD entity | `KotlinSpringControllerGenerator` should own this |
-| `@Serializable` on a payload class not in generated sources | `KotlinPayloadGenerator` should own this; check `pom.xml` generator list |
+| A hand-written data class mirroring a template's `@payloadRef` / `@responseRef` value object | `KotlinEntityGenerator` emits that value object's data class, and it IS the payload type (ADR-0056); check `pom.xml` wires it |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `transaction(db) {` bodies that duplicate every CRUD operation | hand-written Exposed transactions are expected (see Calibration), but if they duplicate generated-CRUD logic exactly, audit further |
 | a table/column string in `exec("…")` raw SQL or a Flyway script | reference `<Entity>Names` (`KotlinNamesGenerator`, opt-in); `AuthorTable.name` inside the Exposed DSL is the typed handle — correct, not a finding |

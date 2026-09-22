@@ -101,17 +101,56 @@ compile error by making the duplication worse: N non-interchangeable classes for
 ## Consequences
 
 - **#387 is fixed by construction.** No type's location depends on which template reached it.
-- **ADR-0044's payload-tier naming retires.** On the JVM and in C#, packages and namespaces
-  disambiguate by themselves. In TypeScript and Python, the value-object generator already applies
-  ADR-0044's collision naming to its own flat modules (#228), and the template tier asks it for
-  the emitted name instead of computing one. `ERR_PAYLOAD_NAME_COLLISION` survives only where
-  that generator still needs it.
+- **ADR-0044's payload-tier naming retires.** On the JVM, packages disambiguate by
+  themselves. TypeScript, C# and Python emit value-object types into one flat namespace or
+  directory, so there the value-object generator applies ADR-0044's collision naming to its own
+  types and the template tier asks it for the emitted name instead of computing one.
+  `ERR_PAYLOAD_NAME_COLLISION` survives only there. (This paragraph originally said C#
+  disambiguated by namespace and that Python already applied the naming; both were wrong — see
+  Amendment 1.)
 - **Generated output changes for every adopter who uses templates.** Payload types move from
   `<pkg>.prompts.XPayload` (or `prompts.ts`, or a template's module) to the value object's own
   location. Callers change their imports, and render helpers take the value object's type. The
   release notes and migration guide say so.
 - **The generator catalog shrinks.** `payload` disappears from `generator-registry-conformance`
   and from the C# and Python CLIs' `--generators` vocabulary.
+
+## Amendment 1 (2026-09-22) — what the ports actually do
+
+Written when the five ports had been implemented, to correct three statements above that the
+implementation proved wrong.
+
+1. **Collision naming is needed in C# and was added to Python.** C#'s default package binding
+   (`UnmappedStrategy.Flatten`) puts every package into one namespace and every generated file
+   into one directory, so two value objects named `Note` — or a value object `Report` and an
+   entity `Report` in another package — collided on the type and on the file name. C#
+   (`ValueObjectNames`) and Python (`codegen/value_objects.py`) qualify a value object whose
+   short name ANY top-level object shares (`acme::alpha::Note` → `AcmeAlphaNote`); entities and
+   projections keep their names. TypeScript qualifies only among value objects. Python's entity
+   generator had applied no collision naming before this change: its value-object modules were
+   written as `<name>.py`, so two `Note`s both wrote `Note.py`.
+
+2. **Rule 3's mirror placement differs by port.** Kotlin and C# emit each `<X>Extracted` mirror
+   once per run, as its own file beside the value object, exactly as rule 3 says. TypeScript and
+   Python keep the mirror module-local — declared inside each parser module that needs it — and
+   name it after the value object. A module scopes the name, so two parsers over one response
+   each carry a copy without clashing, and where it lands still never depends on which template
+   reached it first. Java has no mirror type: its tolerant tier maps into the record directly.
+   The rule's intent — keyed by the value object, independent of template order — holds in all
+   five; its "emitted into the value object's own package" clause holds in Kotlin and C# only.
+
+3. **Rule 6 is enforced, advisorily, in three ports — and no compile gate proves the pair.**
+   TypeScript's catalog marks `prompt-render`, `output-parser`, `render-helper` and
+   `trace-helper` `requires: ["entity"]`, and the runner warns when one is wired without it.
+   Python marks `output-parser`, `extractor` and `render-helper` the same way; `gen --list` shows
+   it and `--generators` warns. C#'s `--list` notes the requirement for `output-parser`,
+   `extractor` and `render-helper`. Java and Kotlin say so in documentation only. The closing
+   sentence of rule 6 was also wrong: every port's codegen-compile gate generates from
+   `persistence-conformance/canonical/meta.fitness.json`, which declares no `template.*`, so the
+   gate never runs the template tier. What proves the pair compiles is each port's template-tier
+   tests, which generate both tiers together and compile, import or run the result — for
+   example Kotlin's `KotlinTemplateTierValueObjectTest`, Java's
+   `OutputParserExtractTierCollisionTest`, and Python's `test_extract_tier_collision.py`.
 
 ## Alternatives considered
 

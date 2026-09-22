@@ -35,8 +35,9 @@ metaobjects verify --templates  # {{field}} refs vs payload VO
 ```
 
 `--generators` accepts stable generator names: `entity`, `routes`, `filter-allowlist`,
-`payload`, `output-parser`, `extractor`, `output-prompt`, `render-helper`, `trace-helper`,
-`template`. Schema migration + live-DB drift run through the **Node `meta` CLI**
+`names`, `output-parser`, `extractor`, `output-prompt`, `render-helper`, `trace-helper`,
+`template`. (There is no `payload` generator since ADR-0056: a template's payload and
+response types are the value objects' own `entity` models.) Schema migration + live-DB drift run through the **Node `meta` CLI**
 regardless of server language — see the migration reference.
 
 ---

@@ -121,8 +121,7 @@ separate `metaobjects-codegen-base` module instead.)
 | `SpringControllerGenerator` | `<Entity>Controller.java` per writable entity (`source.rdb` `@kind="table"`) — Spring Web MVC, five CRUD endpoints on the cross-port REST contract (`?filter[field][op]=`, `?sort`, `?limit`/`?offset`, `?withCount=1` envelope, 404/400 envelopes). A TPH `@discriminator` base emits ONE controller: polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete scoped to the subtype (cross-subtype → 404); discriminator immutable. |
 | `SpringDtoGenerator` | `<Entity>Dto.java` as a Java 21 `record`; wrapped primitives (`Long`/`Integer`/`Boolean`) so missing JSON props deserialise to `null`; currency = `Long` (integer minor units). A TPH `@discriminator` base's DTO is the **union** of every subtype's columns (subtype-only fields folded nullable, validation dropped), so one wire shape backs the polymorphic + per-subtype endpoints. |
 | `SpringRepositoryGenerator` | `<Entity>Repository.java` — a hand-stubbed `interface` the consumer implements with their persistence layer (Spring Data JPA / jOOQ / JDBC). For a TPH base the interface is polymorphic + per-subtype-scoped (`listByType`/`findByIdAndType`/`createWithType`/`updateByIdAndType`/`deleteByIdAndType`) over the single table; subtype entities emit no own controller/DTO/repository — they fold into the base. |
-| `SpringValueObjectGenerator` | a Java 21 `record` per `object.value` reached through a `field.object @storage: jsonb` column (single or `@isArray`, transitively through nested VOs) — the typed component the Jackson jsonb codec serializes to/from (carries jakarta validation, unlike a plain payload record). Program D typed-jsonb VOs. |
-| `SpringPayloadGenerator` | a Java 21 `record` per `template` payload VO |
+| `SpringValueObjectGenerator` | a Java 21 `record` per concrete `object.value` and sourceless `object.projection`, in the value object's own package — THE Java type for it (ADR-0056): the typed component the Jackson jsonb codec serializes to/from (with jakarta validation), the render helper's payload and the parser's return type. Wire it with any template-tier generator. |
 | `SpringOutputParserGenerator` | the strict parser-on-receipt for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: INBOUND; a `template.output` emits no parser). See the prompts reference. |
 | `SpringOutputPromptGenerator` | the FR-010 output-format prompt fragment for a responding `template.prompt` (presentation via `@promptStyle: guide`/`inline`/`exampleOnly`) |
 | `SpringRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
@@ -201,8 +200,8 @@ fails on the `MetaObject` back-reference** — the inherited `getMetaData()` get
 leads a bean-style mapper into the metadata graph, and on a modular JVM into
 `InaccessibleObjectException`. This is expected, not a bug to work around. If you
 want a type that serializes cleanly with a bare default mapper, use the
-`codegen-spring` record surface (`SpringDtoGenerator` / `SpringPayloadGenerator` /
-`SpringValueObjectGenerator`) instead — never `pojoAware`.
+`codegen-spring` record surface (`SpringDtoGenerator` / `SpringValueObjectGenerator`)
+instead — never `pojoAware`.
 
 Serialize any `MetaObjectAware` instance through the MetaObjects JSON layer's
 `JsonObjectWriter`/`JsonObjectReader`, not a bare mapper — it applies the temporal

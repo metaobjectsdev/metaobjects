@@ -52,6 +52,7 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0053 — The reply's syntax is `@responseFormat` on `template.prompt`](ADR-0053-inbound-response-format.md) — *Accepted*
 - [ADR-0054 — A `<type>.base` subtype is a registry anchor, not an authorable node](ADR-0054-base-subtypes-are-not-authorable.md) — *Accepted*
 - [ADR-0055 — Overlay application is a deferred pass — plain declarations first, then overlays, each in source order](ADR-0055-deferred-overlay-application.md) — *Accepted*
+- [ADR-0056 — A value object's type is generated once — the template tier references it](ADR-0056-value-object-types-are-generated-once.md) — *Accepted* (supersedes the payload-tier half of ADR-0044)
 
 > **Index gap — ADR-0031 through ADR-0051 are on disk but not listed above.** The index stopped
 > being maintained after ADR-0030; the files are authoritative, this list is not. Read

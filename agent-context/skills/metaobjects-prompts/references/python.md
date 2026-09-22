@@ -5,8 +5,9 @@ For every RESPONDING `template.prompt` — one declaring `@responseRef` — the
 validates a model's reply against that shape's Pydantic model. ADR-0052: the tier binds
 `@responseRef`, never `@payloadRef` (which types the request the prompt renders
 outbound), and a `template.output` gets no parser at all. This is the receive side only —
-codegen emits **no** provider/LLM-call layer; you compose the call yourself. The record
-class comes from the sibling `payload` generator, so the parser and the record can't
+codegen emits **no** provider/LLM-call layer; you compose the call yourself. The model
+it returns is the `@responseRef` value object's own, from the `entity` generator
+(ADR-0056 — the template tier declares no copy), so the parser and the model can't
 silently drift.
 
 ## Contents
@@ -20,11 +21,12 @@ silently drift.
 
 ## Wire the generators
 
-Select `output-parser` (the `payload` generator that emits the `<Name>Response` it
-parses into runs alongside it):
+Select `output-parser` with `entity`, which emits the `@responseRef` value object's
+Pydantic model it parses into (ADR-0056 — the template tier declares no copy; `--list`
+marks the parser `(requires: entity)` and a run without `entity` warns):
 
 ```bash
-metaobjects gen ./metadata --out ./generated --generators payload,output-parser
+metaobjects gen ./metadata --out ./generated --generators entity,output-parser
 ```
 
 `metaobjects gen --list` shows every generator name; the programmatic
@@ -40,10 +42,10 @@ un-Pythonic.
 
 ```python
 # generated <template_name>_response_parser.py (shape)
-from .npc_response_response import NpcResponseResponse   # the @responseRef record (Pydantic v2 BaseModel)
+from .NpcReply import NpcReply   # the @responseRef value object's model (entity generator)
 
-def parse_npc_response(text: str) -> NpcResponseResponse:
-    """Validates text against the payload model.
+def parse_npc_response(text: str) -> NpcReply:
+    """Validates text against the response model.
 
     Raises:
         pydantic.ValidationError: when the input does not match the schema.
@@ -52,10 +54,11 @@ def parse_npc_response(text: str) -> NpcResponseResponse:
 ```
 
 Every responding prompt ALSO gets a **tolerant** best-effort variant —
-`extract_lenient_<name>_with_loader(root, text) -> ExtractionResult[<Name>ResponseExtracted]`
+`extract_lenient_<name>_with_loader(root, text) -> ExtractionResult[<Vo>Extracted]`
 (from the `metaobjects` render `extract` engine) for cases where you want a classified
-per-field report rather than a raise. The lenient mirror (`<Name>ResponseExtracted`) uses
-`Optional[...]` fields — a missing/malformed component is `None`, not a raise.
+per-field report rather than a raise. The lenient mirror (`<Vo>Extracted`, named after the
+value object and declared in the parser module) uses `Optional[...]` fields — a
+missing/malformed component is `None`, not a raise.
 
 The STRICT `parse_*` is JSON-only (ADR-0053): an `@responseFormat: xml` reply gets the
 tolerant path and no `parse_*` at all, because strict all-or-nothing semantics layered
@@ -70,7 +73,7 @@ For every responding `template.prompt`, the `output-prompt` generator (run via
 model:
 
 ```bash
-metaobjects gen ./metadata --out ./generated --generators payload,output-prompt
+metaobjects gen ./metadata --out ./generated --generators output-prompt
 ```
 
 `@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)
@@ -79,7 +82,7 @@ controls the fragment's presentation; guidance is never emitted as comments. Ski
 `output-parser` generator. There is NO format gate: the old `@format ∈ {json,xml}` test
 read the syntax of the outbound body to decide whether to describe the reply, so a
 text-bodied prompt asking for a JSON answer got no fragment. The baked spec's root name
-is the response class name, agreeing with the parser's `extract_<name>()` root.
+is the response value object's short name, as in every port.
 
 ## The three-step consumer pattern
 

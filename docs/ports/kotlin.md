@@ -92,14 +92,13 @@ The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity`, `object.value`, and `object.projection` |
+| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`). For a value object this data class IS the template tier's payload/response type (ADR-0056); a value object a responding prompt parses into also gets `<Vo>Extracted.kt` (the lenient mirror, written by the parser tier once per run, beside it) | every `object.entity`, `object.value`, and `object.projection` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | entities with `source.rdb` |
 | `KotlinNamesGenerator` | `<Entity>Names.kt` — physical database name constants mirroring the metadata tree (per-role source name + kind + schema, columns, identity/index names) | every object with a declared/inherited primary `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — persistence repository base (row-mapper + CRUD + patch) | writable entities (`source.rdb @kind="table"`) |
 | `KotlinFilterAllowlistGenerator` | `<Entity>FilterAllowlist.kt` — FR-009 filter allowlist (filterable field names + allowed ops per field) | writable entities (`source.rdb @kind="table"`) |
-| `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` record from `@payloadRef`; plus `<Prompt>Response.kt` from `@responseRef` (ADR-0052) | every `template.*`; the Response class on a responding `template.prompt` |
-| `KotlinOutputParserGenerator` | `<Prompt>Parser.kt` — `object` with `parseXxx` (throws `SerializationException`) + `safeParseXxx` (returns `Result<TResponse>`) | every responding `template.prompt` (FR-006); strict tier JSON-only |
+| `KotlinOutputParserGenerator` | `<Prompt>Parser.kt` — `object` with `parseXxx` (Jackson; throws on a malformed or mismatched reply) + `safeParseXxx` (returns `Result<TResponse>`), where `TResponse` is the `@responseRef` value object's own data class | every responding `template.prompt` (FR-006); strict tier JSON-only |
 | `KotlinOutputPromptGenerator` | `<Prompt>ResponseFormat.kt` — response-format prompt fragment (FR-010) | every responding `template.prompt` |
 | `KotlinRenderHelperGenerator` | `<Template>RenderHelper.kt` — typed `render()` wrappers (document/email, keyed off `@kind`) | every `template.output` |
 | `KotlinExtractorGenerator` | `<Prompt>Extractor.kt` — strict typed `extract<Name>` response helper (FR-010) | every responding `template.prompt` |
@@ -130,10 +129,6 @@ Maven wiring:
       </generator>
       <generator>
         <classname>com.metaobjects.generator.kotlin.KotlinRelationsGenerator</classname>
-        <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
-      </generator>
-      <generator>
-        <classname>com.metaobjects.generator.kotlin.KotlinPayloadGenerator</classname>
         <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
       </generator>
       <generator>
@@ -397,9 +392,9 @@ acquire one.
 
 ## FR-004 — render
 
-`metadata-ktx` wraps the Java `Renderer` in an idiomatic Kotlin builder.
-`KotlinPayloadGenerator` emits the `@Serializable` payload data class per
-template, so the builder is type-safe end-to-end.
+`metadata-ktx` wraps the Java `Renderer` in an idiomatic Kotlin builder. The payload is
+the `@payloadRef` value object's own data class from `KotlinEntityGenerator` (ADR-0056),
+so the builder is type-safe end-to-end.
 
 ```kotlin
 import com.metaobjects.metadata.ktx.render
@@ -421,9 +416,9 @@ val out = render {
 ## FR-006 — response parsing
 
 `KotlinOutputParserGenerator` emits a typed parser per responding `template.prompt` —
-one declaring `@responseRef` — beside the `<Prompt>Response` class. The dual-API matches
-kotlinx.serialization's exception model (`SerializationException`) plus the Kotlin
-stdlib's `Result<T>` Result-style convention.
+one declaring `@responseRef`. It decodes into the `@responseRef` value object's own data
+class (ADR-0056) with Jackson (`jackson-module-kotlin`), the codec those data classes are
+built for, and pairs the throwing entry with the stdlib's `Result<T>` convention.
 
 ADR-0052: the shape parsed INTO is `@responseRef`, never `@payloadRef` (which types the
 request the prompt renders outbound), and `template.output` gets no parser at all. The
@@ -432,15 +427,17 @@ nothing strict.
 
 ```kotlin
 // generated/acme/ai/prompts/NpcResponseParser.kt
-object NpcResponseParser {
-    private val json: Json = Json { ignoreUnknownKeys = false }
+import acme.ai.NpcReply   // the @responseRef value object's own data class
 
-    /** Throws kotlinx.serialization.SerializationException on bad input. */
-    fun parseNpcResponse(text: String): NpcResponsePayload =
-        json.decodeFromString<NpcResponsePayload>(text)
+object NpcResponseParser {
+    private val mapper = jacksonObjectMapper().findAndRegisterModules()
+
+    /** @throws com.fasterxml.jackson.core.JsonProcessingException on bad input. */
+    fun parseNpcResponse(text: String): NpcReply =
+        mapper.readValue(text, NpcReply::class.java)
 
     /** Result-style — does not throw. */
-    fun safeParseNpcResponse(text: String): Result<NpcResponsePayload> =
+    fun safeParseNpcResponse(text: String): Result<NpcReply> =
         runCatching { parseNpcResponse(text) }
 }
 ```
@@ -459,18 +456,17 @@ NpcResponseParser.safeParseNpcResponse(response)
     .onFailure { ex -> log.warn("LLM returned malformed payload", ex) }
 ```
 
-**Consumer dependency.** The emitted parser uses `kotlinx.serialization.json.Json`.
-Consumers must add the JSON artifact + the serialization plugin:
+**Consumer dependency.** The emitted strict parser uses Jackson with the Kotlin module:
 
 ```kotlin
-plugins { kotlin("plugin.serialization") version "1.9.x" }
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.x")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.x")
 }
 ```
 
-The `kotlinx-serialization-core` artifact alone (which `@Serializable` needs)
-does NOT include the JSON format. See
+No kotlinx-serialization plugin is needed for the template tier: the value objects' data
+classes carry no `@Serializable` (it was decorative — no build enabled the compiler plugin
+it needs). See
 [`codegen-kotlin/KNOWN_GAPS.md`](../../server/java/codegen-kotlin/KNOWN_GAPS.md)
 for the full consumer-wiring contract. Cross-port design is at
 [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
@@ -507,7 +503,7 @@ the contract is universal.
 | DB-vs-metadata | `MetadataStartupValidator.validate(loader)` at Spring `ApplicationReadyEvent`; live-DB schema drift: TS toolchain `meta verify --db` | App startup; CI on every PR (TS) |
 | Migration-vs-metadata | TS toolchain `meta migrate` emits from metadata diffs (`meta:migrate` Maven goal was removed) | Build time |
 | Generated-edited | `@generated` KotlinPoet headers | Code review |
-| Prompt-vs-payload | `KotlinPayloadGenerator` + Java `Renderer.verify` | Build time + runtime |
+| Prompt-vs-payload | `KotlinRenderHelperGenerator`'s build-time drift gate + Java `Renderer.verify` | Build time + runtime |
 | Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
 
 ## Capability snapshot
@@ -520,8 +516,8 @@ the contract is universal.
 | REST controllers (Spring `@RestController`) | Yes — `KotlinSpringControllerGenerator` per writable entity; cross-port API contract |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. `flattened` per-sub-field columns) |
 | Templates + render (FR-004) | Yes (wraps the Java engine) |
-| Output parser codegen (FR-006) | Yes (`KotlinOutputParserGenerator` — kotlinx.serialization + `Result<T>` dual API) |
-| Payload-VO codegen | Yes (`KotlinPayloadGenerator`) |
+| Output parser codegen (FR-006) | Yes (`KotlinOutputParserGenerator` — Jackson + `Result<T>` dual API) |
+| Payload-VO codegen | Yes — the payload IS the value object's own data class, from `KotlinEntityGenerator` (ADR-0056); no separate payload generator |
 | Migrations | Via the TS toolchain (`@metaobjectsdev/cli migrate`) |
 | Drift verify | Template-drift: `Renderer.verify` (build-time); generated-table drift: `MetadataStartupValidator` (startup) |
 | Runtime metadata | Via Java OMDB (or hand-written Exposed transactions) |

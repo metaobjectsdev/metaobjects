@@ -129,42 +129,51 @@ Rendered with `{ fromAlpha: { alphaText: "AA" }, fromBeta: { betaText: "BB" } }`
 
 - `renderDigestDoc(...)` = `"Alpha=AA Beta=BB"`
 
-### Payload-record naming contract (ADR-0044)
+### Value-object type naming contract (ADR-0044, ADR-0056)
 
-The two colliding VOs share the BARE short name `Note`. [ADR-0044](../../spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md)
-is the binding contract for what each port's payload emitter must do about that —
-this sub-corpus is the executable oracle for it, in addition to gating the
-`@objectRef` **resolver** above:
+The two colliding VOs share the BARE short name `Note`. Since
+[ADR-0056](../../spec/decisions/ADR-0056-value-object-types-are-generated-once.md) a
+template declares no payload type of its own: the payload IS the value object's own
+type, emitted once by the port's value-object generator (TS `entity`, C# `entity`,
+Java `value-object`, Kotlin `entity`, Python `entity`) and referenced by the render
+helper. [ADR-0044](../../spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md)'s
+naming rule now applies to those types, and this sub-corpus is the executable oracle
+for it, in addition to gating the `@objectRef` **resolver** above:
 
-1. **Payload records/types/interfaces used by a port's conformance runner MUST be
-   GENERATOR-emitted — hand-authoring (or any other manual reconciliation) is
-   PROHIBITED.** A hand-written merged record (`{ alphaText?; betaText? }`, both
-   optional, both shapes folded into one) is exactly the silently-wrong-adjacent
-   shape ADR-0044 rejects: it erases `@required` and lets a typo against either
-   real shape type-check. Construct the render-time payload instance from the
-   port's REAL generated payload type(s) for this fixture.
-2. **Naming rule:** a value-object whose bare short name is unique within the
-   emitted artifact's `@objectRef` closure emits bare, in the port's existing
-   convention; a value-object whose bare short name COLLIDES with another
-   closure member emits under its package-qualified derived name — PascalCase
-   each `::`-segment of its package, concatenate, append the bare short name,
-   then apply the port's suffix convention. A still-colliding derived name is a
-   hard generator error, `ERR_PAYLOAD_NAME_COLLISION`.
+1. **The types a port's conformance runner uses MUST be GENERATOR-emitted —
+   hand-authoring (or any other manual reconciliation) is PROHIBITED.** A
+   hand-written merged type (`{ alphaText?; betaText? }`, both optional, both shapes
+   folded into one) is exactly the silently-wrong-adjacent shape ADR-0044 rejects:
+   it erases `@required` and lets a typo against either real shape type-check.
+   Construct the render-time payload instance from the port's REAL generated
+   value-object types for this fixture.
+2. **Naming rule:** a value object's type lives at the value object's own location.
+   Where that location is a package the language keeps separate (Java, Kotlin), the
+   package disambiguates and nothing is renamed. Where every value object lands in one
+   flat namespace or directory (TypeScript's flat layout, C#'s default package
+   binding, Python's flat generated package), a value object whose short name
+   collides emits under its package-qualified derived name — PascalCase each
+   `::`-segment of its package, concatenate, append the bare short name.
+   TypeScript counts a collision among value objects; C# and Python count it against
+   every top-level object, because an entity shares their namespace or module
+   directory. A still-colliding derived name is a hard generator error,
+   `ERR_PAYLOAD_NAME_COLLISION`.
 3. **Expected emitted names for this fixture, per port** (`Digest` itself does
    not collide and stays bare in every port):
 
    | Port | `acme::alpha::Note` | `acme::beta::Note` |
    |---|---|---|
    | TypeScript (`interface`) | `AcmeAlphaNote` | `AcmeBetaNote` |
-   | C# (`record`) | `AcmeAlphaNote` | `AcmeBetaNote` |
-   | Java / Kotlin (`record`/data class) | `AcmeAlphaNotePayload` | `AcmeBetaNotePayload` |
-   | Python (`class`) | `AcmeAlphaNotePayload` | `AcmeBetaNotePayload` |
+   | C# (POCO) | `AcmeAlphaNote` | `AcmeBetaNote` |
+   | Java (`record`) | `acme.alpha.Note` | `acme.beta.Note` |
+   | Kotlin (data class) | `acme.alpha.Note` | `acme.beta.Note` |
+   | Python (Pydantic model, `<Name>.py`) | `AcmeAlphaNote` | `AcmeBetaNote` |
 
 The render-output pins above (`"Alpha=AA Beta=BB"`) are UNCHANGED by this contract
 — the render engine and the build-time verify field-tree resolve against
-**metadata**, never against record names. Payload-record *source* stays per-port
-idiomatic (Tier-1 codegen); this sub-corpus gates it by compile + construct +
-render + name assertions, strengthening the gate rather than weakening it.
+**metadata**, never against type names. Type *source* stays per-port idiomatic
+(Tier-1 codegen); this sub-corpus gates it by compile + construct + render + name
+assertions, strengthening the gate rather than weakening it.
 
 ## Cross-package short-name collision with extract/output-parser tier — `xpkg-collision-json/`
 
@@ -183,17 +192,18 @@ response-format fragment at all, so `DigestDoc` drives the render helper and
 nothing else.
 
 The prompt was ADDED beside the output rather than replacing it, deliberately:
-this corpus is the outbound render oracle AND the payload tier's optionality
+this corpus is the outbound render oracle AND the value-object optionality
 oracle, so converting `DigestDoc` would have traded two guarantees for a third.
 Ports implementing this fixture should expect BOTH nodes, and should emit
 inbound artifacts named for `DigestPrompt`, not `DigestDoc`.
 
-The generated render helper, collision-aware payload naming, and render output
+The generated render helper, collision-aware value-object naming, and render output
 remain identical — see
 [Cross-package short-name collision](#cross-package-short-name-collision--xpkg-collision-digestdoc)
-above for the full contract and expected payload names
-(`AcmeAlphaNotePayload`/`AcmeBetaNotePayload` for Java/Kotlin/Python;
-`AcmeAlphaNote`/`AcmeBetaNote` for TS/C#).
+above for the full contract and expected names (`AcmeAlphaNote`/`AcmeBetaNote` for
+TS/C#/Python; `acme.alpha.Note`/`acme.beta.Note` for Java/Kotlin). The inbound tier's
+lenient mirrors follow the same names (`AcmeAlphaNoteExtracted` in the flat ports),
+keyed by the value object rather than the template (ADR-0056 rule 3).
 
 ## Expected build-time drift FAILURE — `drift/`
 

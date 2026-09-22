@@ -17,12 +17,13 @@ a model's reply against that shape. ADR-0052: the tier binds `@responseRef`, nev
 
 ## Wire the generator
 
-Add `SpringOutputParserGenerator` (alongside `SpringPayloadGenerator`, which emits
-the payload record it parses into) to the Maven plugin's `<generators>` list:
+Add `SpringOutputParserGenerator` (alongside `SpringValueObjectGenerator`, which emits
+the value object's own record it parses into — ADR-0056: the template tier declares no
+copy) to the Maven plugin's `<generators>` list:
 
 ```xml
 <generator>
-  <classname>com.metaobjects.generator.spring.SpringPayloadGenerator</classname>
+  <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
   <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
 </generator>
 <generator>
@@ -34,9 +35,8 @@ the payload record it parses into) to the Maven plugin's `<generators>` list:
 ## What it emits
 
 Per responding `template.prompt`, `mvn metaobjects:generate` writes a `<Name>Parser`
-class with a static `parse` method returning the `<Name>Response` record — this port's
-records are TEMPLATE-named, so a responding prompt gets a SECOND record beside
-`<Name>Payload`. The strict path throws
+class with a static `parse` method returning the `@responseRef` value object's own
+record, imported from the value object's package. The strict path throws
 `com.fasterxml.jackson.core.JsonProcessingException` on malformed input, and is
 JSON-only: an `@responseFormat: xml` reply gets the tolerant extract and no `parse`:
 
@@ -45,18 +45,17 @@ JSON-only: an `@responseFormat: xml` reply gets the tolerant extract and no `par
 public final class NpcResponseParser {
     private NpcResponseParser() { }   // no instances
 
-    public static NpcResponseResponse parse(String text) throws JsonProcessingException {
+    public static NpcReply parse(String text) throws JsonProcessingException {
         // Jackson-backed: validates the text against the @responseRef record
     }
 }
 ```
 
-For `@format: json|xml` outputs the generator also emits a tolerant best-effort
-variant (`extractLenient(...)` returning an `ExtractionResult<NpcResponsePayload>`
-from `com.metaobjects.render.extract`) for cases where you want classification
-rather than a throw. The payload record itself comes from `SpringPayloadGenerator`
-— the parser is a companion to it, so the parser and payload VO can't silently
-drift.
+The generator also emits a tolerant best-effort variant (`extractLenient(...)` returning
+an `ExtractionResult<NpcReply>` from `com.metaobjects.render.extract`) for cases where
+you want classification rather than a throw. The record itself comes from
+`SpringValueObjectGenerator` — the parser references it, so the parser and the value
+object can't silently drift.
 
 Both `parse()` and `extractLenient(...)` here return **plain Java 21 records** —
 safe with any mapper, nothing special needed. That's specific to this

@@ -132,14 +132,13 @@ All live in `metaobjects-codegen-kotlin` under
 
 | Generator | Output |
 |---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — `data class` (no `@Serializable`; Jackson-compatible) per `object.entity` / `object.value`. A TPH `@discriminator` base's data class is the **union** of every subtype's columns (each folded nullable, validation dropped) so one wire shape backs the polymorphic + per-subtype endpoints. |
+| `KotlinEntityGenerator` | `<Entity>.kt` — `data class` (no `@Serializable`; Jackson-compatible) per `object.entity` / `object.value` / `object.projection`. A value object's data class is also the template tier's payload/response type (ADR-0056) — wire this generator with any template-tier one. A TPH `@discriminator` base's data class is the **union** of every subtype's columns (each folded nullable, validation dropped) so one wire shape backs the polymorphic + per-subtype endpoints. |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object (PK + FK + `@storage` columns) for entities with `source.rdb`. A TPH `@discriminator` base emits ONE `Table` for the whole hierarchy — every subtype-only column folded in `.nullable()` (a row of another subtype stores null there) — single-table inheritance; subtype entities emit no table of their own. |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `@cardinality="many"` query helpers |
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController`, five CRUD endpoints on the cross-port REST contract, for writable entities (`source.rdb` `@kind="table"`). A TPH `@discriminator` base emits ONE controller: polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete are scoped to the subtype (cross-subtype → 404); the discriminator is immutable. |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — an `open class` consumer persistence seam per writable entity (the Kotlin peer of Java's `SpringRepositoryGenerator`, but with method bodies). Carries the #203 `@autoSet` CRUD stamping: `onCreate` columns stamped once at insert, `onUpdate` columns re-stamped on every write, both excluded from the caller-supplied set. |
-| `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload data class from a template's `@payloadRef` |
 | `KotlinOutputParserGenerator` | the strict parser-on-receipt for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: INBOUND; a `template.output` emits no parser). See the prompts reference. |
-| `KotlinExtractorGenerator` | the FR-010 tolerant `extract` mapper for a responding `template.prompt` (all-nullable mirror → strict payload) |
+| `KotlinExtractorGenerator` | the FR-010 strict `extract` for a responding `template.prompt` (the value object's all-nullable `<Vo>Extracted` mirror → its data class) |
 | `KotlinOutputPromptGenerator` | the FR-010 output-format prompt fragment for a responding `template.prompt` (presentation via `@promptStyle: guide`/`inline`/`exampleOnly`) |
 | `KotlinRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` (once per project) |

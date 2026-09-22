@@ -5,10 +5,10 @@ For every RESPONDING `template.prompt` — one declaring `@responseRef` —
 a model's reply against that shape. ADR-0052: the tier binds `@responseRef`, never
 `@payloadRef` (which types the request the prompt renders outbound), and a
 `template.output` gets no parser at all. This is the receive side only — codegen emits
-**no** provider/LLM-call layer; you compose the call yourself. The data class itself comes
-from `KotlinPayloadGenerator` (a `@Serializable data class`) — this port's classes are
-TEMPLATE-named, so a responding prompt gets a SECOND one, `<Name>Response`, beside
-`<Name>Payload`, and the parser and the record can't silently drift.
+**no** provider/LLM-call layer; you compose the call yourself. The data class it returns
+is the `@responseRef` value object's own, from `KotlinEntityGenerator` in the value
+object's package (ADR-0056 — the template tier declares no copy), so the parser and the
+data class can't silently drift.
 
 ## Contents
 - Wire the generators
@@ -21,12 +21,12 @@ TEMPLATE-named, so a responding prompt gets a SECOND one, `<Name>Response`, besi
 
 ## Wire the generators
 
-Add `KotlinOutputParserGenerator` (alongside `KotlinPayloadGenerator`, which emits
-the payload it parses into) to the Maven plugin's `<generators>` list:
+Add `KotlinOutputParserGenerator` (alongside `KotlinEntityGenerator`, which emits the
+value object's data class it parses into) to the Maven plugin's `<generators>` list:
 
 ```xml
 <generator>
-  <classname>com.metaobjects.generator.kotlin.KotlinPayloadGenerator</classname>
+  <classname>com.metaobjects.generator.kotlin.KotlinEntityGenerator</classname>
   <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
 </generator>
 <generator>
@@ -38,34 +38,37 @@ the payload it parses into) to the Maven plugin's `<generators>` list:
 ## What it emits
 
 Per responding `template.prompt`, `mvn metaobjects:generate` writes a
-`<Name>Parser.kt` `object` with a dual API matching kotlinx.serialization's exception
-model plus the Kotlin stdlib `Result<T>` convention. The strict tier is JSON-only — an
+`<Name>Parser.kt` `object` with a dual API: a Jackson-backed throwing parse plus the
+Kotlin stdlib `Result<T>` convention. The strict tier is JSON-only — an
 `@responseFormat: xml` reply gets the tolerant extract and neither strict function:
 
 ```kotlin
 // generated <Name>Parser.kt (shape)
-object NpcResponseParser {
-    private val json: Json = Json { ignoreUnknownKeys = false }
+import acme.ai.NpcReply   // the @responseRef value object's own data class
 
-    /** Throws kotlinx.serialization.SerializationException on bad input. */
-    fun parseNpcResponse(text: String): NpcResponseResponse =
-        json.decodeFromString<NpcResponseResponse>(text)
+object NpcResponseParser {
+    private val mapper = jacksonObjectMapper().findAndRegisterModules()
+
+    /** @throws com.fasterxml.jackson.core.JsonProcessingException on bad input. */
+    fun parseNpcResponse(text: String): NpcReply =
+        mapper.readValue(text, NpcReply::class.java)
 
     /** Result-style — does not throw. */
-    fun safeParseNpcResponse(text: String): Result<NpcResponsePayload> =
+    fun safeParseNpcResponse(text: String): Result<NpcReply> =
         runCatching { parseNpcResponse(text) }
 }
 ```
 
-For `@format: json|xml` outputs the generator additionally emits a **tolerant**
-best-effort variant — `extractLenient(...)` returning an
-`ExtractionResult<NpcResponseExtracted>` (from `com.metaobjects.render.extract`) for
+The generator additionally emits a **tolerant** best-effort variant —
+`extractLenient(...)` returning an `ExtractionResult<NpcReplyExtracted>` (from
+`com.metaobjects.render.extract`) for
 cases where you want a classified per-field report rather than a throw. There are
 two overloads: a self-contained one (scalars/enums only; nested components stay
 null) and a `extractLenient(loader, text)` overload that delegates to the runtime
 `MetaObjectExtractor` to fully populate nested-object and array-of-object
-components. The lenient mirror type (`<Name>Extracted`) uses nullable fields per
-the Kotlin null-safety port — a missing/malformed component is `null`, not a throw.
+components. The lenient mirror type (`<Vo>Extracted`, named after the value object and
+written once per run beside it) uses nullable fields per the Kotlin null-safety port — a
+missing/malformed component is `null`, not a throw.
 
 ## The response-format prompt fragment (FR-010)
 
@@ -88,7 +91,7 @@ controls the fragment's presentation; guidance is never emitted as comments. Ski
 `template.output` nodes and an unresolved `@responseRef` — the same skip contract as the
 parser generator. There is NO format gate: the old `@format ∈ {json,xml}` test read the
 syntax of the outbound body to decide whether to describe the reply. The `SPEC`'s root
-name is the response class's, agreeing with the parser's extract-codegen root.
+name is the response value object's short name, as in every port.
 
 ## The three-step consumer pattern
 
@@ -109,17 +112,17 @@ NpcResponseParser.safeParseNpcResponse(response)
 
 ## Consumer dependency
 
-The emitted parser imports `kotlinx.serialization.json.Json` and calls
-`Json.decodeFromString<T>(text)`. The `kotlinx-serialization-core` artifact alone
-(which `@Serializable` needs) does NOT include the JSON format — add the JSON
-artifact + the serialization plugin:
+The emitted strict parser decodes with Jackson's Kotlin module
+(`jacksonObjectMapper().readValue(...)`), the codec the value objects' data classes are
+built for — add it if your build does not already have it:
 
 ```kotlin
-plugins { kotlin("plugin.serialization") version "1.9.x" }
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.x")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.x")
 }
 ```
+
+No kotlinx-serialization plugin is needed: the data classes carry no `@Serializable`.
 
 ## Recommended LLM caller (bring-your-own)
 

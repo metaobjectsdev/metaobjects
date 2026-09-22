@@ -275,10 +275,13 @@ public class AuthorService(AppDbContext db)
 using MetaObjects.Render;
 
 var provider = new FilesystemProvider("./prompts");
-var payload = new WelcomePayload(
-    DisplayName: "Ada",
-    PostCount: 12,
-    Posts: new[] { new PostSummary("Hello") });
+// The @payloadRef value object's own POCO, emitted by EntityGenerator (ADR-0056).
+var payload = new WelcomePayload
+{
+    DisplayName = "Ada",
+    PostCount = 12,
+    Posts = new List<PostSummary> { new() { Title = "Hello" } },
+};
 
 string output = Renderer.Render(new RenderRequest {
     Ref = "lobby/welcome",
@@ -290,6 +293,8 @@ string output = Renderer.Render(new RenderRequest {
 
 `Verify` in `MetaObjects.Render` drift-checks every `template.*` against its
 `@payloadRef`. Wire it into your CI step or invoke `dotnet meta verify` directly.
+The renderer reads a POCO through its `[JsonPropertyName]` wire names, so `{{postCount}}`
+resolves against the `PostCount` property and `{{#hasPosts}}` works.
 
 ## FR-006 — response parsing
 
@@ -300,10 +305,12 @@ dual-API convention — `Parse` throws on bad input, `TryParse` returns a bool p
 out-error string.
 
 ADR-0052: the shape parsed INTO is `@responseRef`, never `@payloadRef` (which types the
-request the prompt renders outbound), and `template.output` gets no parser at all. This
-port's records are VALUE-OBJECT-named, so the response record simply IS the VO's record —
-no second naming convention. The strict tier is JSON-only: an `@responseFormat: xml`
-reply gets the tolerant extract and nothing strict.
+request the prompt renders outbound), and `template.output` gets no parser at all. The
+parser returns the `@responseRef` value object's own POCO (`<Vo>.g.cs`, from
+`EntityGenerator`; ADR-0056) — so wire `entity` in the same run. A `@required` member is
+enforced by a generated `JsonTypeInfo` modifier rather than the C# `required` keyword,
+because the REST tier shares the POCO. The strict tier is JSON-only: an
+`@responseFormat: xml` reply gets the tolerant extract and nothing strict.
 
 ```csharp
 // generated/NpcResponse.response.cs
@@ -439,7 +446,7 @@ projections (`source.rdb @kind: view/...`) don't get filter routes today — see
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. EF Core `OwnsOne` for `flattened`; `OwnsMany(...).ToJson(...)` for `@isArray` array-of-VO jsonb) |
 | Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
-| Payload-VO codegen | Yes (`MetaObjects.Codegen`) |
+| Payload-VO codegen | Yes — the payload IS the value object's own POCO from `EntityGenerator` (ADR-0056); no separate payload generator |
 | Declarative template-codegen | Yes — `dotnet meta gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
 | Migrations | Owned by the Node `meta` CLI (ADR-0015) — no C# migrate surface |
 | Drift verify | `dotnet meta verify` (template drift, FR-004) |

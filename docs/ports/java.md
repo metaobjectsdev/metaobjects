@@ -278,11 +278,10 @@ name in every port.
 | `dto` | `SpringDtoGenerator` | `metaobjects-codegen-spring` | One `<Entity>Dto.java` per entity as a Java 21 `record`. Wrapped-primitive components (`Long`, `Integer`, `Boolean`) so missing JSON properties deserialise to `null`. Currency = `Long` (integer minor units cross-port invariant). Used as both request and response body. |
 | `repository` | `SpringRepositoryGenerator` | `metaobjects-codegen-spring` | One `<Entity>Repository.java` per writable entity as a hand-stubbed Java `interface` the consumer implements with their preferred persistence layer (Spring Data JPA / jOOQ / plain JDBC — all out of MetaObjects' concern). Nests the `SortClause` record the controller calls into. |
 | `filter-allowlist` | `SpringFilterAllowlistGenerator` | `metaobjects-codegen-spring` | One `<Entity>FilterAllowlist.java` per writable entity: the filterable field set plus the operator set permitted per field, gated by field subtype (FR-009 §5, identical across ports). Only `@filterable: true` fields appear. Emitted even when no field is filterable (with empty constants), so the generated controller delegates to it unconditionally. |
-| `value-object` | `SpringValueObjectGenerator` | `metaobjects-codegen-spring` | One Java 21 `record` per `object.value` reachable from an entity's value-object jsonb column (`field.object @objectRef @storage: jsonb`, single or `@isArray`), transitively through nested members. Unlike a payload record it carries jakarta bean-validation constraints plus `@Valid` on nested members, so a VO column POSTs and PATCHes with validation cascading to depth ≥ 2. This is what `<Entity>Dto` / `<Entity>Patch` bind to. |
+| `value-object` | `SpringValueObjectGenerator` | `metaobjects-codegen-spring` | One Java 21 `record` per concrete `object.value` and per sourceless `object.projection`, in the value object's own package. It carries jakarta bean-validation constraints plus `@Valid` on nested members, so a VO jsonb column POSTs and PATCHes with validation cascading to depth ≥ 2. It is THE Java type for the value object (ADR-0056): `<Entity>Dto` / `<Entity>Patch` bind to it, a render helper takes it, and a response parser returns it. The template tier declares no copy, so it needs this generator in the same run. |
 | `names` | `SpringNamesGenerator` | `metaobjects-codegen-spring` | One `<Entity>Names.java` per object with a declared/inherited primary `source.rdb` — `public static final` physical database name constants (table/view name, schema, per-field columns). See "`<Entity>Names`" below. |
 | `entity` | `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a `<Name>Extractor` and a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
-| `payload` | `SpringPayloadGenerator` | `metaobjects-codegen-spring` | One `<Template>Payload` Java 21 `record` per `template.*` declaration, derived from the template's `@payloadRef` `object.value` field tree. No annotations — Jackson binds by name. This is the typed payload every other template-tier generator below builds on; none of them re-declares the shape. |
-| `output-parser` | `SpringOutputParserGenerator` | `metaobjects-codegen-spring` | One `<Template>Parser` per **responding** `template.prompt` (ADR-0052: one carrying `@responseRef`) — a Jackson-backed throw-only parser returning the `<Template>Response` record. FR-006 / ADR-0010; the Java sibling of TS's `outputParser()`. See [FR-006 — response parsing](#fr-006--response-parsing) below. |
+| `output-parser` | `SpringOutputParserGenerator` | `metaobjects-codegen-spring` | One `<Template>Parser` per **responding** `template.prompt` (ADR-0052: one carrying `@responseRef`) — a Jackson-backed throw-only parser returning the `@responseRef` value object's own record (ADR-0056). FR-006 / ADR-0010; the Java sibling of TS's `outputParser()`. See [FR-006 — response parsing](#fr-006--response-parsing) below. |
 | `output-prompt` | `SpringOutputPromptGenerator` | `metaobjects-codegen-spring` | One `<Template>ResponseFormat` per responding `template.prompt` — a static `renderFormat()` / `renderFormat(PromptOverrides)` pair emitting the output-format prompt fragment (FR-010). The reply's syntax comes from `@responseFormat`, never `@format` (which is the syntax of the rendered prompt BODY). |
 | `render-helper` | `SpringRenderHelperGenerator` | `metaobjects-codegen-spring` | One `<Template>RenderHelper` per `template.output`, wrapping the JVM `Renderer` with a typed `render(payload, provider)`. `@kind: document` renders `@textRef` to a `String`; `@kind: email` renders subject + html (+ optional text) into an `EmailDocument`. **It also runs the mustache↔payload drift check at BUILD time** — an unresolvable text, or one with a non-warning `Verify` error, fails the build rather than emitting. |
 | `extractor` | `ExtractorCodeGenerator` | `metaobjects-codegen-base` | One `<Name>Extractor` wrapping the runtime tolerant extract, turning dirty LLM text into a fully-typed flavored object graph (nested objects + arrays-of-objects populated) in one call. It names `MetaObjectExtractor` (in `metaobjects-om`) by FQN string only, so `codegen-base` keeps no compile dependency on `om` — the reference resolves on the consumer's classpath. |
@@ -530,8 +529,10 @@ carries (the inherited `getMetaData()` getter leads a bean-style mapper into
 the metadata graph, and on a modular JVM into `InaccessibleObjectException`)
 — **this is expected, not a bug to work around.** If you want a type that
 serializes cleanly with a bare default mapper, generate the `codegen-spring`
-record surface instead (`SpringDtoGenerator` / `SpringPayloadGenerator` /
-`SpringValueObjectGenerator`) — never `pojoAware`.
+record surface instead (`SpringDtoGenerator` / `SpringValueObjectGenerator`) —
+never `pojoAware`. Wire only one of `entity` and `value-object` for a given value object:
+both emit a type named after it in its package, and the run's collision guard refuses
+the pair.
 
 **Wire form** (`field.date` / `field.timestamp`) — a Java rendering of the cross-port contract in [`normalization.md`](../../fixtures/persistence-conformance/normalization.md) (the single source of truth):
 
@@ -581,7 +582,7 @@ configuration model that has not yet been specced.
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
 | Templates + render (FR-004) | Yes (`metaobjects-render`) |
-| Payload-VO codegen | Yes — `SpringPayloadGenerator` (in `metaobjects-codegen-spring`) emits a Java 21 `record` per template, mirrors the Kotlin shape |
+| Payload-VO codegen | Yes — the payload IS the value object's own `record`, from `SpringValueObjectGenerator` (ADR-0056); no separate payload generator |
 | Output parser codegen (FR-006) | Yes — `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) — see usage below |
 | Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |
 | Drift verify | `Verify.check` / `Verify.checkOutputPrompt` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
@@ -592,25 +593,28 @@ configuration model that has not yet been specced.
 
 `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) emits one
 `<PromptShortName>Parser` Java class per responding `template.prompt` — one declaring
-`@responseRef` — a Jackson-backed, throw-only parser around the `<Prompt>Response`
-record `SpringPayloadGenerator` emits for that ref (no shape re-declaration).
+`@responseRef` — a Jackson-backed, throw-only parser around the `@responseRef` value
+object's own record, which `SpringValueObjectGenerator` emits in the value object's
+package (ADR-0056; no shape re-declaration).
 Registered in the module's generator registry as `output-parser`.
 
 ADR-0052: the shape parsed INTO is `@responseRef`, never `@payloadRef` (which types the
-request the prompt renders outbound), and `template.output` gets no parser at all. This
-port's records are TEMPLATE-named, so a responding prompt gets a SECOND record —
-`<Prompt>Response` beside `<Prompt>Payload`.
+request the prompt renders outbound), and `template.output` gets no parser at all. Both
+types are the value objects' own records, named after the value objects (ADR-0056) —
+nothing is named after the template.
 
 ```java
-// generated/NpcResponseParser.java
+// generated/acme/ai/prompts/NpcResponseParser.java
+import acme.ai.NpcReply;   // the @responseRef value object's own record
+
 public final class NpcResponseParser {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private NpcResponseParser() {}
 
     /** @throws JsonProcessingException on malformed JSON or a schema mismatch. */
-    public static NpcResponsePayload parse(String text) throws JsonProcessingException {
-        return MAPPER.readValue(text, NpcResponsePayload.class);
+    public static NpcReply parse(String text) throws JsonProcessingException {
+        return MAPPER.readValue(text, NpcReply.class);
     }
 }
 ```
@@ -621,7 +625,7 @@ Consumer wiring:
 String llmResponse = myLlmClient.complete(promptText);
 
 try {
-    NpcResponsePayload npc = NpcResponseParser.parse(llmResponse);
+    NpcReply npc = NpcResponseParser.parse(llmResponse);
     return ResponseEntity.ok(npc);
 } catch (JsonProcessingException e) {
     return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

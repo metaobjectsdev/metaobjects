@@ -451,22 +451,23 @@ output against the shared `fixtures/render-conformance/` corpus.
 
 ## FR-006 — output parsing
 
-Two generators ship together for the full prompt+parse story:
+A template declares no payload type of its own (ADR-0056). Its request and response
+types ARE the value objects' own Pydantic models, which the `entity` generator emits once
+each as `<Name>.py`. So the prompt+parse story is two generators:
 
-- `payload_vo_generator` emits one `<template_name>_payload.py` per declared
-  `template.*` (prompt / output / toolcall) — a Pydantic v2 `<TemplateName>Payload`
-  `BaseModel` typed from the DECLARED fields only (#270 — any `origin.*` child a
-  payload field carries is ignored for typing; a nested payload is a declared
-  `field.object @objectRef` to another `object.value`). Mirrors the Kotlin
-  reference shape.
-  A responding `template.prompt` (one declaring `@responseRef`, ADR-0052) gets a
-  SECOND record in its own module: `<template_name>_response.py` holding
-  `<TemplateName>Response`. It is a separate module because strictness is per-module
-  here — the REQUEST payload emits `extra="forbid"` so a mistyped render slot fails at
-  construction, while a reply record must tolerate unknown fields.
+- `entity` emits one Pydantic v2 `BaseModel` per value object — and per sourceless
+  `object.projection` — including every `@payloadRef` and `@responseRef` target and every
+  value object nested in them (`field.object @objectRef`). The package is flat, so a value
+  object whose short name another top-level object shares is package-qualified:
+  `acme::alpha::Note` emits `AcmeAlphaNote.py` / `class AcmeAlphaNote`.
 - `output_parser_generator` emits one `<template_name>_response_parser.py` per
-  responding `template.prompt`, importing the response class from the sibling response
-  module. `template.output` gets no parser at all — it renders outbound.
+  responding `template.prompt` (one declaring `@responseRef`, ADR-0052). It imports the
+  `@responseRef` value object's model from its `<Name>.py`. `template.output` gets no
+  parser at all — it renders outbound.
+
+Every template-tier generator that imports a model (`output-parser`, `extractor`,
+`render-helper`) needs `entity` in the same run: `metaobjects gen --list` marks them
+`(requires: entity)`, and `--generators` warns when `entity` is missing.
 
 Pythonic single-API throw-only convention — Pydantic raises `ValidationError`
 on bad input; callers wrap in `try/except` per their own error policy (matches
@@ -474,13 +475,13 @@ the pydantic / Instructor / FastAPI / LangChain norm; a Result-style wrapper
 would be un-Pythonic).
 
 ```python
-# generated/npc_response_payload.py
+# generated/NpcReply.py — emitted by the entity generator
 from typing import Literal
 
 from pydantic import BaseModel
 
 
-class NpcResponsePayload(BaseModel):
+class NpcReply(BaseModel):
     name: str
     level: int
     role: Literal["merchant", "guard", "elder"]
@@ -488,19 +489,19 @@ class NpcResponsePayload(BaseModel):
 
 ```python
 # generated/npc_response_response_parser.py
-from .npc_response_response import NpcResponseResponse
+from .NpcReply import NpcReply
 
 
-def parse_npc_response(text: str) -> NpcResponseResponse:
-    """Parse an LLM response into a typed ``NpcResponseResponse``.
+def parse_npc_response(text: str) -> NpcReply:
+    """Parse an LLM response into a typed ``NpcReply``.
 
     Raises:
         pydantic.ValidationError: when the input does not match the schema.
     """
-    return NpcResponseResponse.model_validate_json(text)
+    return NpcReply.model_validate_json(text)
 
 
-__all__ = ["parse_npc_response"]
+__all__ = ["parse_npc_response", ...]
 ```
 
 The strict `parse_*` is JSON-only (ADR-0053): an `@responseFormat: xml` reply gets the
@@ -521,20 +522,28 @@ except ValidationError as e:
     return None
 ```
 
-`<TemplateName>Payload` types what a template RENDERS (the consumer constructs it and
-passes it to `render(...)`); `<TemplateName>Response` types what its parser RETURNS. The
-split is ADR-0052's: `@payloadRef` is the request, `@responseRef` the reply, and they are
-usually different shapes. `metaobjects.render.verify` walks both subtypes. Cross-port
-design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
-the feature reference is at
+The `@payloadRef` model types what a template RENDERS (the consumer constructs it and
+passes it to the render helper, whose `payload` parameter is annotated with it); the
+`@responseRef` model types what its parser RETURNS. The split is ADR-0052's: `@payloadRef`
+is the request, `@responseRef` the reply, and they are usually different shapes.
+`metaobjects.render.verify` walks both subtypes. The render engine reads a model payload
+as readily as a `dict` (through its JSON-mode dump, so an enum renders as its value).
+Cross-port design is at
+[ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md) and
+[ADR-0056](../../spec/decisions/ADR-0056-value-object-types-are-generated-once.md); the
+feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#response-parsing-fr-006).
 
-**Per-file dedupe note.** When two templates' payloads reference the same nested
-`field.object @objectRef` target, each template's payload file contains its own
-copy of the nested class (per-file, not per-run dedupe). This differs from
-Kotlin's cross-run dedupe (KotlinPoet → one class per `.kt` file). The Python
-choice keeps each generated payload module self-contained — see the
-docstring on `payload_vo_generator.py` for the full rationale.
+**The request model accepts unknown keywords.** The payload tier's copy used to carry
+`extra="forbid"`; the value object's model keeps pydantic's default, so a mistyped keyword
+argument is ignored rather than rejected. Payload bloat stays visible through `verify`'s
+mustache-versus-payload check. The model does carry the value object's declared
+validators (`validator.*`, `@maxLength`), so construction enforces them.
+
+**The lenient mirror is keyed by the value object.** The response parser's tolerant tier
+returns `<Vo>Extracted` (for example `NpcReplyExtracted`), declared in the parser module
+itself, with one mirror per nested value object. Two parsers over the same response each
+carry their own copy; a Python module scopes it.
 
 **Consumer dependency.** Both generators emit code that imports `pydantic` (v2).
 Add it via `pip install pydantic>=2` or `uv add pydantic` if you don't
@@ -554,8 +563,8 @@ import lines are stable.
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |
-| Payload-VO codegen | Yes (`payload_vo_generator` — Pydantic v2 `BaseModel` per template, declared-type-authoritative per #270) |
-| Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the payload class from the sibling payload module) |
+| Payload-VO codegen | Yes — the `entity` generator's model for each value object IS the payload type (ADR-0056); no separate payload generator |
+| Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the `@responseRef` value object's model) |
 | Declarative template-codegen | Yes — `metaobjects gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
 | Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |

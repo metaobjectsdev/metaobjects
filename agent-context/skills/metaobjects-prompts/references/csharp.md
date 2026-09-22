@@ -21,11 +21,11 @@ naming convention, and the parser and the record can't silently drift.
 ## Wire the generator
 
 `OutputParserGenerator` (stable name `output-parser`) runs as part of
-`dotnet meta gen`, alongside the payload generator that emits the record it parses
-into:
+`dotnet meta gen`, alongside `entity`, which emits the `@responseRef` value object's POCO
+it parses into (ADR-0056 — the template tier declares no copy):
 
 ```bash
-dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
+dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog --generators entity,output-parser
 ```
 
 ## What it emits
@@ -52,11 +52,13 @@ public static class NpcResponseParser
 ```
 
 The `[NotNullWhen]` attrs let nullable-flow analysis use `value` without a null-check
-after a `true` return (and `error` after `false`). For `@format: json|xml` outputs the
-generator also emits a tolerant `Extract(string[, ExtractOptions])` (self-contained) +
-`Extract(MetaObject, string, ...)` (runtime-delegating, fully populating nested
-components) returning an `ExtractionResult` with a nullable `<Payload>Extracted` mirror
-— a classified per-field report rather than a throw.
+after a `true` return (and `error` after `false`). `NpcResponse` here is the
+`@responseRef` value object's own POCO from `entity`, and a `@required` member is
+enforced by a generated `JsonTypeInfo` modifier. The generator also emits a tolerant
+`Extract(string[, ExtractOptions])` (self-contained) + `Extract(MetaObject, string, ...)`
+(runtime-delegating, fully populating nested components) returning an `ExtractionResult`
+with the nullable `<Vo>Extracted` mirror — its own file, once per value object per run —
+for a classified per-field report rather than a throw.
 
 ## The response-format prompt fragment (FR-010)
 
@@ -64,11 +66,11 @@ For every responding `template.prompt`, `MetaObjects.Codegen`'s `OutputPromptGen
 (stable name `output-prompt-generator`) emits a `<PromptName>.responseFormat.cs`
 declaring a static `<PromptName>ResponseFormat` class with a `RenderFormat()` /
 `RenderFormat(PromptOverrides)` pair, backed by the render engine's
-`OutputFormatRenderer` — the "produce your answer like this" fragment for the model. It runs as part of the same `dotnet meta gen` invocation as the payload
+`OutputFormatRenderer` — the "produce your answer like this" fragment for the model. It runs as part of the same `dotnet meta gen` invocation as the entity
 and parser generators:
 
 ```bash
-dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
+dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog --generators entity,output-parser,output-prompt
 ```
 
 `@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)
