@@ -292,6 +292,15 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   reject both; the answers are truthful, and an adopter who wants the 400 owns that generator.
   **Adopters with committed generated code should run `mvn metaobjects:generate`.**
 
+- **Maven plugin: a relative `<sourceDir>` resolved against the shell's working directory,
+  not the module.** The documented `<sourceDir>src/main/metaobjects</sourceDir>` therefore
+  failed `SourceDir [src/main/metaobjects] does not exist` in any multi-module reactor build
+  run from the parent (Maven keeps the root as the working directory for every module) and
+  under `mvn -f <module>/pom.xml`. It now resolves against `${project.basedir}`, as every
+  relative path in a pom does; an absolute `<sourceDir>` is unchanged. The plugin's own test
+  had pinned the old behavior in a comment ("paths here are ABSOLUTE on purpose") instead of
+  fixing it. Nothing to do on upgrade.
+
 - **TypeScript: two `@metaobjectsdev/runtime-ts` writable mounts answered `PUT` with a 404.**
   The cross-port REST contract (FR-008) makes the update verb reachable via BOTH `PATCH`
   and `PUT`, routed to one handler, and every other port's controller maps both. The

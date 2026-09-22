@@ -278,7 +278,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         String sourceDir = null;
         File srcDir = getSourceDir();
         if (srcDir != null) {
-            sourceDir = loaderConfig.getSourceDir();
+            sourceDir = srcDir.getPath(); // basedir-resolved, not the pom's raw string
         }
 
         // Precedence ladder (spec §5): when the pom names neither <sourceDir> nor
@@ -532,11 +532,21 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         if ( f.exists() ) classpathElements.add( f.getPath() );
     }
 
+    /**
+     * The pom's {@code <sourceDir>}, a relative one resolved against the module basedir the
+     * way every relative path in a pom is. {@code new File(relative)} alone resolves against
+     * the JVM's working directory, which in a reactor build is the PARENT for every module —
+     * so the documented {@code <sourceDir>src/main/metaobjects</sourceDir>} failed "does not
+     * exist" from the root, and under {@code mvn -f <module>/pom.xml}.
+     */
     protected File getSourceDir() {
         String srcDir = loaderConfig.getSourceDir();
         File sourceDir = null;
         if ( srcDir != null ) {
-            sourceDir = new File( loaderConfig.getSourceDir() );
+            sourceDir = new File( srcDir );
+            if ( !sourceDir.isAbsolute() && project != null && project.getBasedir() != null ) {
+                sourceDir = new File( project.getBasedir(), srcDir );
+            }
             if ( !sourceDir.exists() ) {
                 getLog().error( "SourceDir ["+srcDir+"] did not exist: "+sourceDir.getPath() );
                 throw new IllegalArgumentException( "SourceDir [" + srcDir + "] does not exist" );

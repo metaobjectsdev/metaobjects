@@ -39,9 +39,11 @@ import static org.junit.Assert.fail;
  * that does not exist (already loud, an {@code IllegalArgumentException} naming the
  * path), and one that exists but holds no metadata at all.
  *
- * <p>Paths here are ABSOLUTE on purpose — {@code <sourceDir>} resolves against the
- * process working directory, not the module basedir, so a relative path in a test
- * would be measuring the runner's cwd rather than the mojo.
+ * <p>A RELATIVE {@code <sourceDir>} resolves against the module basedir, as every
+ * relative path in a pom does. It used to resolve against the process working
+ * directory, so the documented {@code src/main/metaobjects} failed with "does not
+ * exist" in any reactor build run from the parent — {@code mvn} keeps the root as the
+ * working directory for every module — and under {@code mvn -f <module>/pom.xml}.
  */
 public class SourceDirWithoutSourcesTest {
 
@@ -87,6 +89,25 @@ public class SourceDirWithoutSourcesTest {
 
             assertEquals("a <sourceDir> with no <sources> must load the directory, not nothing",
                     1, loaded.getMetaObjects().size());
+            assertEquals("Widget", loaded.getMetaObjects().get(0).getShortName());
+        } finally {
+            deleteRecursive(root);
+        }
+    }
+
+    @Test
+    public void aRelativeSourceDirResolvesAgainstTheModuleBasedirNotTheWorkingDirectory() throws IOException {
+        Path root = Files.createTempDirectory("mo-mojo-srcdir-relative-").toAbsolutePath().normalize();
+        try {
+            Path metaDir = root.resolve("src/main/metaobjects");
+            Files.createDirectories(metaDir);
+            Files.write(metaDir.resolve("meta.widget.json"), WIDGET_JSON.getBytes(StandardCharsets.UTF_8));
+
+            // The test JVM's working directory is this plugin module, never `root`.
+            MetaDataGeneratorMojo mojo = mojoWithSourceDirOnly(root, "src/main/metaobjects");
+            MetaDataLoader loaded = mojo.createLoader(mojo.createProjectClassLoader());
+
+            assertEquals(1, loaded.getMetaObjects().size());
             assertEquals("Widget", loaded.getMetaObjects().get(0).getShortName());
         } finally {
             deleteRecursive(root);
