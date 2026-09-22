@@ -444,6 +444,23 @@ Spot-check `dist` reflects the change (a deleted source's `.js` is gone, new cod
 >
 > Remember what it costs: an RC version is permanent. Once anything depends on it,
 > `npm unpublish` is refused outright and deprecating it does not free the number.
+>
+> **One public RC per batch, never one per fix.** Verify each fix against a LOCAL build as
+> it lands, and cut the public RC once, when the batch is done, for step 2c. For the JVM
+> ports, install the reactor into an ISOLATED local repository and build the consumer
+> against it at the reactor's own version:
+>
+> ```bash
+> mvn -f server/java/pom.xml -Dmaven.repo.local=<isolated-repo> -DskipTests \
+>     -pl maven-plugin,codegen-spring -am install
+> mvn -Dmaven.repo.local=<isolated-repo> -Dmetaobjects.version=<reactor version> package   # in the consumer
+> ```
+>
+> Never install into the shared `~/.m2`. Between releases the reactor sits at the last
+> RELEASED version, not a `-SNAPSHOT`, so the install silently replaces that release for
+> every other build on the machine. The 1.0.5 cycle reached `-rc.7` mostly by cutting a
+> candidate to check one fix at a time; almost none of those checks needed a published
+> artifact.
 
 ```bash
 # bump the candidate set to <version>-rc.N (sed the "version" field in each publish-candidate package.json)
