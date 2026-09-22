@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY
+from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY, GeneratorBuildContext
 
 PORT = "python"
 
@@ -114,7 +114,9 @@ def test_registry_python_slice_is_all_native() -> None:
 
 
 def test_registry_factories_construct_without_throwing() -> None:
-    # Each registered factory must build a Generator (with a .name) without raising.
+    # Each registered factory must build a Generator (with a .name) without raising —
+    # given an EMPTY build context, which is what `--list` has. `render-helper` needs a
+    # template root for its drift gate and must still construct without one.
     for name, entry in GENERATOR_REGISTRY.items():
-        gen = entry.factory()
+        gen = entry.factory(GeneratorBuildContext())
         assert hasattr(gen, "name"), f"{name}: factory produced a non-Generator"

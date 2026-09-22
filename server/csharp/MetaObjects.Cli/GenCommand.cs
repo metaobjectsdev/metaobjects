@@ -128,9 +128,55 @@ public static class GenCommand
         if (specPath is null) return [];
         using var doc = JsonDocument.Parse(File.ReadAllText(specPath));
         var spec = TemplateSpec.Parse(doc.RootElement);
-        var provider = new FilesystemProvider(templateRoot ?? "templates");
+        var provider = new FilesystemProvider(templateRoot ?? DefaultTemplateRoot());
         return TemplateSpec.ToGenerators(spec, provider).ToList();
     }
+
+    /// <summary>The canonical directory name for authored template bodies.</summary>
+    /// <remarks>
+    /// Named <c>prompts</c> because that is what the Node CLI has always called it
+    /// (<c>DEFAULT_PROMPTS_DIR</c>), and the Node CLI is the schema door every project
+    /// meets first.
+    /// </remarks>
+    public const string DefaultPromptsDir = "prompts";
+
+    /// <summary>
+    /// The name this port defaulted to before 1.0.5, kept as the FALLBACK rather than
+    /// replaced.
+    /// </summary>
+    public const string LegacyTemplatesDir = "templates";
+
+    /// <summary>
+    /// The template root to use when the caller named none: <c>prompts</c> when that
+    /// directory exists, else <c>templates</c>.
+    /// </summary>
+    /// <remarks>
+    /// The two halves of the toolchain disagreed about this. The Node CLI has always
+    /// defaulted to <c>prompts</c>, while this port and the Python one defaulted to
+    /// <c>templates</c>, so a project following the Node CLI's layout — which this
+    /// repo's own adopter estate does — had a <c>gen</c> looking somewhere its
+    /// <c>prompts/</c> was not.
+    /// <para>A FALLBACK, never a flip: a project whose bodies are in <c>templates/</c>
+    /// behaves exactly as it did, because <c>prompts/</c> has to exist before it wins.
+    /// Flipping outright would move where an existing project's refs resolve from and
+    /// could have it silently find nothing.</para>
+    /// <para>Probed against, and returned relative to, the CURRENT DIRECTORY — the
+    /// same base <c>templateRoot ?? "templates"</c> resolved against before, and the
+    /// same base the Python port probes. Anchoring the probe on the project root while
+    /// the provider still resolved relative to the process directory would let this
+    /// answer "prompts" for a directory the provider then fails to find.</para>
+    /// </remarks>
+    /// <param name="baseDir">
+    /// The directory to probe, for tests. Defaults to the current directory, which is
+    /// what every caller uses. It exists so a test can exercise the rule WITHOUT
+    /// changing the process directory — xUnit runs collections in parallel, so a test
+    /// that moved the CWD would be changing it under every other class at once.
+    /// </param>
+    public static string DefaultTemplateRoot(string? baseDir = null) =>
+        Directory.Exists(
+            Path.Combine(baseDir ?? Directory.GetCurrentDirectory(), DefaultPromptsDir))
+            ? DefaultPromptsDir
+            : LegacyTemplatesDir;
 
     /// <summary>
     /// Same as the <c>metadataDir</c> overload above, but starting from an
@@ -162,7 +208,14 @@ public static class GenCommand
         List<IGenerator> generators;
         try
         {
-            generators = GeneratorRegistry.Resolve(names, new GeneratorBuildContext(templateRoot)).ToList();
+            // The SAME default the template-spec pass below uses: `render-helper` needs an
+            // on-disk root for its build-time drift gate, and with none supplied the
+            // registry falls back to a temp dir — a drift error naming an unresolved ref
+            // rather than the directory nobody named. Give it the resolved default so the
+            // two passes of one command look in one place.
+            generators = GeneratorRegistry
+                .Resolve(names, new GeneratorBuildContext(templateRoot ?? DefaultTemplateRoot()))
+                .ToList();
             // Explicit flag, else the conventional <projectRoot>/template-spec.json.
             // Resolved through the SAME helper verify uses — that shared call is the fix.
             generators.AddRange(TemplateSpecGenerators(projectRoot, templateSpecPath, templateRoot));

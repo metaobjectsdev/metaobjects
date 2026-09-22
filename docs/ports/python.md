@@ -469,6 +469,27 @@ Every template-tier generator that imports a model (`output-parser`, `extractor`
 `render-helper`) needs `entity` in the same run: `metaobjects gen --list` marks them
 `(requires: entity)`, and `--generators` warns when `entity` is missing.
 
+`render-helper` additionally needs an on-disk template root for its build-time drift
+gate, and takes it from **`--templates <dir>`** — the same flag the `--template-spec`
+pass uses. Pass it whenever `render-helper` is in the selection:
+
+```
+metaobjects gen metaobjects/ --out src/app/generated \
+  --generators entity,render-helper --templates prompts
+```
+
+Omit it and the root is `prompts/` when that directory exists, else `templates/` — the
+same rule `dotnet meta` uses, and `prompts` is the name the Node CLI has always used.
+
+Until 1.0.5 that flag did not reach the generator: the registry factory took no
+arguments and hardcoded `template_root="templates"`, so the drift gate read a directory
+the caller had never named and the generator could not be aimed at a project whose
+bodies live anywhere else. On `verify --codegen` the directory is `--prompts`
+(`--templates-root` is its deprecated alias; there `--templates` is the boolean
+prompt-drift subverb), and it MUST name the same root `gen` used — otherwise verify
+regenerates `render-helper` against a different directory and reports the committed
+helpers as stale.
+
 Pythonic single-API throw-only convention — Pydantic raises `ValidationError`
 on bad input; callers wrap in `try/except` per their own error policy (matches
 the pydantic / Instructor / FastAPI / LangChain norm; a Result-style wrapper

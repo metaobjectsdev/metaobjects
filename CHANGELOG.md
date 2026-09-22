@@ -330,6 +330,34 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **Python: the `render-helper` generator could not be pointed at your templates.**
+  `GeneratorEntry.factory` took no arguments and the registry's render-helper factory
+  hardcoded `template_root="templates"`, so `metaobjects gen`'s `--templates <dir>`
+  reached the `--template-spec` pass and nothing else. The generator was registered,
+  listed by `--list`, selectable by name — and resolved every `@textRef` against a
+  directory the caller had never named, which in a project whose bodies live elsewhere
+  is a directory that does not exist. The only way to give it a real root was the
+  factory-array config path, which the `metaobjects` console script does not expose.
+  Fixed by porting C#'s `GeneratorBuildContext` rather than inventing a second shape:
+  every factory now takes one, and `gen`, the per-target config path and
+  `verify --codegen` all fill it from **one** resolver — because a `verify` that
+  resolved the root differently would regenerate `render-helper` elsewhere and convict
+  the committed helpers of being stale, with a remedy that loops. `--templates` is an
+  existing flag, so the CLI surface is unchanged. Its help text said "for
+  --template-spec" and now says what it actually governs.
+
+- **The default template directory is `prompts/` again, everywhere it has a default**
+  (falling back to `templates/`). The Node CLI has always defaulted to `prompts`
+  (`DEFAULT_PROMPTS_DIR`), while `dotnet meta gen` and `metaobjects gen` defaulted to
+  `templates`, so a project laid out the way the Node CLI documents — this repo's own
+  adopter estate among them — had a `gen` looking where its bodies were not. **A
+  fallback, not a flip:** `prompts/` must EXIST before it wins, so a project whose
+  bodies are in `templates/` resolves exactly where it always did, which is what makes
+  the correction a PATCH rather than a move that could silently find nothing. C#
+  applies it in `gen` and in `verify --codegen`'s regen, from one shared value, for the
+  same agree-or-loop reason. The Maven plugin is unchanged: it has no default and
+  refuses without an explicit `<templateRoot>` — a stricter answer to the same question.
+
 - **A `children` entry that is not a node no longer loads — four ports, four answers,
   now one** (new `ERR_CHILD_NOT_OBJECT`). Every child is one
   `{ "<type>.<subType>": { …node body… } }` pair, so `{ "field.string": "label" }` has no

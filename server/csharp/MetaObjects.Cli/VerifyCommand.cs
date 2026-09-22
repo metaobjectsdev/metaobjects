@@ -271,8 +271,15 @@ public static class VerifyCommand
         IReadOnlyList<IGenerator> generators;
         try
         {
+            // The same default `gen` applies when no --template-root is named: prompts/
+            // when it exists, else templates/. Resolved ONCE and shared by both halves
+            // below, because `gen` and this regen have to agree about where template
+            // bodies are — disagree, and render-helper regenerates against a different
+            // directory and verify convicts the committed helpers of being stale, with a
+            // remedy that loops.
+            var templateRoot = opts.TemplateRoot ?? GenCommand.DefaultTemplateRoot();
             var resolved = GeneratorRegistry
-                .Resolve(names, new GeneratorBuildContext(opts.TemplateRoot))
+                .Resolve(names, new GeneratorBuildContext(templateRoot))
                 .ToList();
             // The declarative template generators, resolved by the SAME rule `gen` uses.
             // Without this, verify regenerated only the built-in suite and then convicted
@@ -280,7 +287,7 @@ public static class VerifyCommand
             // on a tree `gen` had just produced, with a remedy that loops. `verify` takes
             // no --template-spec flag, so discovery is the whole mechanism here.
             resolved.AddRange(GenCommand.TemplateSpecGenerators(
-                GenCommand.ProjectRootFor(opts.MetadataDir), null, opts.TemplateRoot));
+                GenCommand.ProjectRootFor(opts.MetadataDir), null, templateRoot));
             generators = resolved;
         }
         catch (Exception ex) when (ex is ArgumentException or IOException

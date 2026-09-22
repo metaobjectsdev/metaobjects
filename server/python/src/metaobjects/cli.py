@@ -3,13 +3,18 @@
 Two subcommands:
 
   metaobjects gen    <metadataDir> --out <dir> [--package <pkg>]
-                     [--template-spec <json> [--templates <dir>]]
+                     [--templates <dir>] [--template-spec <json>]
       Load metadata, run the Python codegen generator suite, and write files
       under ``--out`` (guarded by the @generated header). Prints each written
       file. Non-zero exit on a load error. ``--template-spec`` appends the
       declarative Mustache template generators (scope perEntity/perPackage/
-      perModel + outputPattern) described by a JSON spec, resolving template
-      refs under ``--templates`` (default ``templates``).
+      perModel + outputPattern) described by a JSON spec.
+
+      ``--templates <dir>`` is the on-disk root every template ref resolves
+      under. It feeds BOTH the ``--template-spec`` pass and the ``render-helper``
+      generator's build-time drift gate; until 1.0.5 it reached only the former,
+      so ``--generators render-helper`` read a hardcoded ``templates`` whatever
+      this flag said.
 
   metaobjects verify <metadataDir> [--codegen] [--templates] [--db URL] ...
       Drift gate with explicit subverbs (ADR-0021 D2 — one verify vocabulary
@@ -94,6 +99,7 @@ from metaobjects.codegen.generators.output_prompt_generator import (
 from metaobjects.codegen.generators.router_generator import router_generator
 from metaobjects.codegen.generator_registry import (
     GENERATOR_REGISTRY,
+    GeneratorBuildContext,
     get_generator,
     list_generators,
     unsatisfied_requires,
@@ -438,12 +444,78 @@ def _strict_load_hint() -> str:
     )
 
 
-def _resolve_generators(names: str) -> tuple[list[Generator], list[str]]:
+#: The canonical directory name for authored template bodies. Named `prompts` because
+#: that is what the Node CLI has always called it (`DEFAULT_PROMPTS_DIR`), and the Node
+#: CLI is the schema door every project meets first.
+DEFAULT_PROMPTS_DIR = "prompts"
+
+#: The name this port defaulted to before 1.0.5, kept as the FALLBACK rather than
+#: replaced. Flipping the default outright would move where an existing project's
+#: template refs resolve from, and a project whose bodies are in `templates/` would
+#: start finding nothing — a silent drift-gate failure, or worse a `verify --codegen`
+#: that convicts committed output. A fallback breaks nobody: a project with
+#: `templates/` and no `prompts/` behaves exactly as it did.
+LEGACY_TEMPLATES_DIR = "templates"
+
+
+def _default_template_root(base: str | Path = ".") -> str:
+    """The template root to use when the caller named none.
+
+    `prompts` when it exists, else `templates`. The two halves of the toolchain
+    disagreed about this: the Node CLI has always defaulted to `prompts`, while this
+    port and C#'s `GenCommand` defaulted to `templates`, so a project following the
+    Node CLI's layout — which this repo's own adopter estate does — had a `gen` that
+    looked somewhere its `prompts/` was not.
+    """
+    return (DEFAULT_PROMPTS_DIR if Path(base, DEFAULT_PROMPTS_DIR).is_dir()
+            else LEGACY_TEMPLATES_DIR)
+
+
+def _template_root_for(args: argparse.Namespace) -> str:
+    """The on-disk template root for THIS invocation. Never ``None``.
+
+    EVERY path that builds a generator list must call this, for the same reason the C#
+    port says it of its template-spec resolution: ``gen`` and ``verify --codegen``
+    regenerate the same suite and diff the result, so if they resolve the template root
+    differently, ``verify`` builds ``render-helper`` against another directory and
+    reports the committed helpers as stale — with a remedy that loops, since
+    regenerating cannot fix a disagreement about where the templates are. That is also
+    why the fallback applies to BOTH commands: a default on one and not the other is the
+    same disagreement wearing a different hat.
+
+    The two commands spell the directory differently, and that is not cosmetic. On
+    ``gen`` it is ``--templates <dir>``. On ``verify`` ``--templates`` is the BOOLEAN
+    prompt-drift subverb and the directory is ``--prompts <dir>`` (F101's converged
+    spelling; ``--templates-root`` is its deprecated alias, and argparse lands both on
+    ``templates_root``). Hence the isinstance check rather than a plain ``or`` chain:
+    ``getattr(args, "templates")`` is a ``True`` on one of these commands, and ``or``
+    would hand a boolean to a path join.
+    """
+    gen_dir = getattr(args, "templates", None)
+    if isinstance(gen_dir, str) and gen_dir:
+        return gen_dir
+    explicit_verify = getattr(args, "templates_root", None)
+    if explicit_verify:
+        return explicit_verify
+    return _default_template_root()
+
+
+def _resolve_generators(
+    names: str, ctx: GeneratorBuildContext | None = None,
+) -> tuple[list[Generator], list[str]]:
     """Resolve a comma-separated list of STABLE generator names via the registry.
 
     Returns ``(generators, errors)``. An unknown name produces a clear error and
     no generators (so the caller can fail with exit code != 0).
+
+    *ctx* carries what a factory needs beyond the metadata — today the on-disk template
+    root, which ``render-helper`` requires for its build-time drift gate. It used to be
+    absent entirely: the registry hardcoded ``template_root="templates"``, so
+    ``--templates`` reached the template-spec pass and nothing else, and selecting
+    ``render-helper`` read a directory the user had never named.
     """
+    if ctx is None:
+        ctx = GeneratorBuildContext()
     requested = [n.strip() for n in names.split(",") if n.strip()]
     gens: list[Generator] = []
     errors: list[str] = []
@@ -453,7 +525,7 @@ def _resolve_generators(names: str) -> tuple[list[Generator], list[str]]:
             known = ", ".join(sorted(GENERATOR_REGISTRY))
             errors.append(f"unknown generator {n!r}; known: {known}")
             continue
-        gens.append(entry.factory())
+        gens.append(entry.factory(ctx))
     if not errors and not gens:
         errors.append("no generators selected (empty --generators list)")
     if not errors:
@@ -950,7 +1022,8 @@ def _cmd_gen(args: argparse.Namespace) -> int:
 
     generators: list[Generator] | None = None
     if args.generators:
-        generators, gen_errors = _resolve_generators(args.generators)
+        generators, gen_errors = _resolve_generators(
+            args.generators, GeneratorBuildContext(_template_root_for(args)))
         if gen_errors:
             print("error: invalid --generators selection:", file=sys.stderr)
             for msg in gen_errors:
@@ -968,7 +1041,8 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     # into their (possibly non-Python) output tree. Templates resolve under
     # --templates via a FilesystemProvider.
     spec_gens, spec_err = template_spec_generators(
-        args.metadata_dir, getattr(args, "template_spec", None), args.templates,
+        args.metadata_dir, getattr(args, "template_spec", None),
+        _template_root_for(args),
     )
     if spec_err is not None:
         print(spec_err, file=sys.stderr)
@@ -993,11 +1067,27 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
     baseline = getattr(args, "baseline", None) or "default"
     refused: list[str] = []
-    written = _run_suite(
-        root, args.out, generators, entities,
-        gen_state_dir=gen_state, column_naming=column_naming,
-        project_root=gen_project_root, baseline=baseline, refused_out=refused,
-    )
+    try:
+        written = _run_suite(
+            root, args.out, generators, entities,
+            gen_state_dir=gen_state, column_naming=column_naming,
+            project_root=gen_project_root, baseline=baseline, refused_out=refused,
+        )
+    except ValueError as exc:
+        # A generator refused the model — a run_gen output collision, or
+        # `render-helper`'s build-time drift gate. The targets path below has caught
+        # this since #267; this path did not, and the gap only became reachable when
+        # `--templates` started reaching `render-helper` at all: before that the gate
+        # ran against a hardcoded "templates" and a CLI user could not aim it.
+        print(f"error: codegen failed: {exc}", file=sys.stderr)
+        if "render-helper drift" in str(exc):
+            root_shown = _template_root_for(args)
+            print(
+                f"  template refs resolved under {root_shown!r} — pass "
+                f"--templates <dir> to point at the directory holding them",
+                file=sys.stderr,
+            )
+        return 1
     if spec_gens:
         # The template-spec pass renders user-supplied templates: a bad ref or a
         # wrong --templates dir raises RenderError (not OSError/ValueError, so it
@@ -1013,7 +1103,7 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         except RenderError as exc:
             print(
                 f"error: --template-spec render failed (check the template refs and "
-                f"--templates dir {args.templates!r}): {exc}",
+                f"--templates dir {_template_root_for(args)!r}): {exc}",
                 file=sys.stderr,
             )
             return 1
@@ -1045,6 +1135,7 @@ def _run_gen_targets(
     baseline: str = "default",
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
+    build_ctx: GeneratorBuildContext | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's suite into its ``outDir``. Returns (all_written, errors).
 
@@ -1069,7 +1160,8 @@ def _run_gen_targets(
     for t in targets:
         gens: list[Generator] | None = None
         if t.generators is not None:
-            gens, gen_errors = _resolve_generators(",".join(t.generators))
+            gens, gen_errors = _resolve_generators(
+                ",".join(t.generators), build_ctx or GeneratorBuildContext())
             if gen_errors:
                 errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
                 continue
@@ -1124,7 +1216,8 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
 
     generators: list[Generator] | None = None
     if args.generators:
-        generators, gen_errors = _resolve_generators(args.generators)
+        generators, gen_errors = _resolve_generators(
+            args.generators, GeneratorBuildContext(_template_root_for(args)))
         if gen_errors:
             print("error: invalid --generators selection:", file=sys.stderr)
             for msg in gen_errors:
@@ -1252,6 +1345,7 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         baseline=getattr(args, "baseline", None) or "default",
         refused_out=refused,
         select=collection.in_scope,
+        build_ctx=GeneratorBuildContext(_template_root_for(args)),
     )
     if errors:
         for msg in errors:
@@ -1462,7 +1556,8 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     # convicting every file of being missing.
     selection: list[Generator] | None = None
     if getattr(args, "generators", None):
-        selection, gen_errors = _resolve_generators(args.generators)
+        selection, gen_errors = _resolve_generators(
+            args.generators, GeneratorBuildContext(_template_root_for(args)))
         if gen_errors:
             print("error: invalid --generators selection:", file=sys.stderr)
             for msg in gen_errors:
@@ -1566,7 +1661,8 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
             "(metaobjects gen --list is the catalog).",
         )
         return 0
-    selection, gen_errors = _resolve_generators(args.generators)
+    selection, gen_errors = _resolve_generators(
+        args.generators, GeneratorBuildContext(_template_root_for(args)))
     if gen_errors:
         print("error: invalid --generators selection:", file=sys.stderr)
         for msg in gen_errors:
@@ -1713,7 +1809,12 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         # gen_state_dir stays None: this regenerates into a temp tree purely to
         # diff, so recording a manifest would mutate the user's project from a
         # read-only drift check, keyed to a directory deleted seconds later.
-        _written, errors = _run_gen_targets(config, remapped, root, select=collection.in_scope)
+        # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
+        # template root differently would regenerate render-helper against another
+        # directory and convict the committed output of being stale.
+        _written, errors = _run_gen_targets(
+            config, remapped, root, select=collection.in_scope,
+            build_ctx=GeneratorBuildContext(_template_root_for(args)))
         if errors:
             for msg in errors:
                 print(f"error: {msg}", file=sys.stderr)
@@ -2055,8 +2156,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     gen.add_argument(
         "--templates",
-        default="templates",
-        help="templates root for --template-spec (default: templates)",
+        default=None,
+        help=(
+            "on-disk root that template refs resolve under — used by "
+            "--template-spec AND by the render-helper generator's drift gate "
+            "(default: prompts/ when it exists, else templates/)"
+        ),
     )
     gen.add_argument(
         "--package",

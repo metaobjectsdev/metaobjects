@@ -20,6 +20,7 @@ entries whose ``ports`` array includes ``python``. All Python entries are
 """
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass
 from typing import Callable
 
@@ -65,6 +66,28 @@ GeneratorLayer = str  # one of GENERATOR_LAYERS
 
 
 @dataclass(frozen=True)
+class GeneratorBuildContext:
+    """Extra inputs a factory may need to construct a generator.
+
+    Today only the on-disk template root, required by ``render-helper``'s build-time
+    drift gate and used by the ``template`` primitive. Optional so ``--list`` can
+    construct every entry without supplying one — a factory must never throw.
+
+    Ported from the C# port's ``GeneratorBuildContext`` rather than invented here, so
+    the two registries answer "what does a factory need" the same way. Before this, the
+    Python factory took no arguments at all and ``_render_helper_default`` hardcoded
+    ``template_root="templates"``: the CLI's ``--templates`` never reached the
+    generator, so ``metaobjects gen --generators render-helper`` resolved templates from
+    a directory the user had not named and, in a project that keeps them anywhere else,
+    from a directory that does not exist.
+    """
+
+    #: The on-disk directory template refs resolve under. ``None`` = not supplied
+    #: (``--list``, registry identity), which every factory must tolerate.
+    template_root: str | None = None
+
+
+@dataclass(frozen=True)
 class GeneratorEntry:
     """A registry entry: stable name + one-line description + tier + layer + factory."""
 
@@ -76,8 +99,9 @@ class GeneratorEntry:
     tier: GeneratorTier
     #: The selection axis — one of :data:`GENERATOR_LAYERS`. Gated cross-port.
     layer: GeneratorLayer
-    #: Constructs the generator with sensible defaults. Calling it must not throw.
-    factory: Callable[[], Generator]
+    #: Constructs the generator. Calling it — even with an empty
+    #: :class:`GeneratorBuildContext` — must not throw; ``--list`` relies on that.
+    factory: Callable[[GeneratorBuildContext], Generator]
     #: Stable names of the generators whose output this one imports. ADR-0056: the template
     #: tier imports a value object's model from the ``entity`` generator's module and
     #: declares none of its own, so wiring it without ``entity`` emits a dangling import.
@@ -86,7 +110,7 @@ class GeneratorEntry:
     requires: tuple[str, ...] = ()
 
 
-def _template_primitive() -> Generator:
+def _template_primitive(_ctx: GeneratorBuildContext) -> Generator:
     """A no-op default for the ``template`` PRIMITIVE generator.
 
     ``template_generator`` requires caller-supplied ``template`` / ``walk`` /
@@ -103,15 +127,20 @@ def _template_primitive() -> Generator:
     )
 
 
-def _render_helper_default() -> Generator:
-    """Construct ``render-helper`` with a default ``template_root``.
+def _render_helper_default(ctx: GeneratorBuildContext) -> Generator:
+    """Construct ``render-helper`` against the caller's on-disk template root.
 
-    The factory ctor only requires ``template_root`` to be non-empty (it builds a
-    ``FilesystemProvider`` lazily; no disk access at construction). Real use passes
-    the caller's on-disk template root via the factory-array config path; this
-    default exists only so registry identity + ``--list`` construct without throwing.
+    The ctor requires ``template_root`` to be non-empty for its build-time drift gate
+    (it builds a ``FilesystemProvider`` lazily; no disk access at construction). With
+    no root supplied — ``--list``, registry identity — we hand it a harmless temp dir
+    so construction never throws, exactly as the C# registry does.
+
+    It used to hardcode ``"templates"`` here and the CLI never passed anything, so the
+    generator was effectively unreachable: selecting it resolved templates from a
+    directory the user had not named, whatever ``--templates`` said.
     """
-    return render_helper_generator(template_root="templates")
+    return render_helper_generator(
+        template_root=ctx.template_root or tempfile.gettempdir())
 
 
 #: Stable name -> GeneratorEntry. The 10 native generators whose manifest `ports`
@@ -123,21 +152,21 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-entity model/class — the entity module (table-backed or value object).",
         tier="native",
         layer="model",
-        factory=entity_model,
+        factory=lambda _ctx: entity_model(),
     ),
     "routes": GeneratorEntry(
         name="routes",
         description="Per-entity REST endpoint surface (controllers / routes / router).",
         tier="native",
         layer="api",
-        factory=router_generator,
+        factory=lambda _ctx: router_generator(),
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",
         description="Per-template tolerant output parser (recover-on-receipt).",
         tier="native",
         layer="capability",
-        factory=output_parser_generator,
+        factory=lambda _ctx: output_parser_generator(),
         requires=("entity",),
     ),
     "output-prompt": GeneratorEntry(
@@ -145,7 +174,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-template output-format prompt fragment generator.",
         tier="native",
         layer="capability",
-        factory=output_prompt_generator,
+        factory=lambda _ctx: output_prompt_generator(),
     ),
     "render-helper": GeneratorEntry(
         name="render-helper",
@@ -160,7 +189,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-template strict typed extract<Name> helper (strict payload extraction).",
         tier="native",
         layer="capability",
-        factory=extractor_generator,
+        factory=lambda _ctx: extractor_generator(),
         requires=("entity",),
     ),
     "template": GeneratorEntry(
@@ -175,21 +204,21 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-entity REST filter allowlist (queryable-field guard).",
         tier="native",
         layer="api",
-        factory=filter_allowlist_generator,
+        factory=lambda _ctx: filter_allowlist_generator(),
     ),
     "names": GeneratorEntry(
         name="names",
         description="Per-entity physical database name constants (table/view name, schema, column names).",
         tier="native",
         layer="model",
-        factory=names_generator,
+        factory=lambda _ctx: names_generator(),
     ),
     "trace-helper": GeneratorEntry(
         name="trace-helper",
         description="Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist).",
         tier="native",
         layer="capability",
-        factory=trace_helper_generator,
+        factory=lambda _ctx: trace_helper_generator(),
     ),
 }
 

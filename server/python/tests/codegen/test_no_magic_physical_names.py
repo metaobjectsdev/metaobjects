@@ -52,7 +52,7 @@ from pathlib import Path
 
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.generator_registry import list_generators
+from metaobjects.codegen.generator_registry import GeneratorBuildContext, list_generators
 from metaobjects.codegen.runner import run_gen
 from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
 
@@ -624,7 +624,7 @@ def _generate(tmp_path: Path) -> dict[str, str]:
     root = result.root
 
     out = tmp_path / "gen"
-    generators = [e.factory() for e in list_generators() if e.tier == "native"]
+    generators = [e.factory(GeneratorBuildContext()) for e in list_generators() if e.tier == "native"]
     run_gen(
         GenConfig(out_dir=str(out), column_naming="snake_case"),
         root,
