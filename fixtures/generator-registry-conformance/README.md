@@ -36,7 +36,7 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 | `api` | routes, routes-hono, filter-allowlist, validator, spring-config | app shape |
 | `client` | form, hooks, grid, grid-hook | app shape |
 | `docs` | docs, mermaid-er, api-docs | on by default (`meta docs`) |
-| `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, payload, trace-helper, requirement-tests, shared-model, template, callable | `meta gen --list --probe` |
+| `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, shared-model, template, callable | `meta gen --list --probe` |
 
 Six, not ten. An earlier draft split `capability` into `trace` / `requirements` /
 `publish` / `primitive`, each with **one member** — a layer with one member does
@@ -59,7 +59,8 @@ not a defect to be tidied. Do not add a seventh value to make it look tidier.
 
 These concepts MUST use the same stable name wherever a port implements them:
 `entity`, `routes`, `output-parser`, `output-prompt`, `render-helper`,
-`extractor`, `template`, `filter-allowlist`, `payload`.
+`extractor`, `template`, `filter-allowlist`. (`payload` was one until ADR-0056 removed it: a value
+object's type now comes from the value-object generator, so the template tier declares none.)
 
 ## Changing the surface
 

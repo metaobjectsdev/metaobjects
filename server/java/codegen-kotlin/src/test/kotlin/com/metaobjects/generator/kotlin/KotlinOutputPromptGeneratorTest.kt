@@ -331,9 +331,9 @@ class KotlinOutputPromptGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 9. SPEC rootName is the payload class name (templateShort + "Payload").
+    // 9. SPEC rootName is the response value object's short name (ADR-0056, as TS and C#).
     // ---------------------------------------------------------------------------
-    @Test fun specRootNameIsPayloadClassName() {
+    @Test fun specRootNameIsResponseValueObjectName() {
         val fx = """{
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "AnswerOutputPayload", "children": [
@@ -353,9 +353,9 @@ class KotlinOutputPromptGeneratorTest {
             gen.execute(loadString("test-rootname-prompt", fx))
 
             val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerResponseFormat.kt"))
-            // SPEC rootName = templateShort + "Payload" = "AnswerPayload"
-            assertTrue("\"AnswerPayload\"" in src,
-                "SPEC rootName must be the payload class name 'AnswerPayload'; src:\n$src")
+            assertTrue("OutputFormatSpec(Format.JSON, \"AnswerOutputPayload\"" in src,
+                "SPEC rootName must be the response value object's name 'AnswerOutputPayload'; src:\n$src")
+            assertFalse("\"AnswerPayload\"" in src, "no template-derived root name; src:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

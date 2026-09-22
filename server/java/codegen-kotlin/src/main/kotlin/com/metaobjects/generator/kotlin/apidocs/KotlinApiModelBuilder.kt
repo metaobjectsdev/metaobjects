@@ -336,15 +336,16 @@ class KotlinApiModelBuilder {
         val format = (tmpl.format ?: "").lowercase()
 
         if (payloadVo != null) {
-            // PAYLOAD — the @Serializable typed payload data class the parser/render bind to.
-            val payload = KotlinNaming.payloadName(shortName)
+            // PAYLOAD — the @payloadRef value object's OWN data class (ADR-0056): emitted by the
+            // entity generator in the value object's package, never a template-named copy.
+            val (payloadPkg, payload) = PackageMapping.splitFqn(payloadVo.name)
             symbols.add(
                 ApiSymbol(
                     name = payload,
                     kind = ApiSymbolKind.PAYLOAD,
-                    importLine = importLine(promptsPkg, payload),
+                    importLine = importLine(payloadPkg, payload),
                     signature = "data class $payload",
-                    usage = "the typed payload projection bound to the template",
+                    usage = "the typed payload value object the template renders",
                     fields = payloadFields(payloadVo),
                 )
             )
@@ -373,19 +374,22 @@ class KotlinApiModelBuilder {
         // FindInbound with the generators, so docs can never claim a symbol codegen suppressed.
         val inbound = FindInbound.responseShape(loader, tmpl)
         if (inbound != null) {
-            // The RESPONSE record the parser actually returns — not the @payloadRef request
-            // record documented above, which types what this prompt renders outbound.
-            val response = KotlinNaming.responseName(shortName)
-            symbols.add(
-                ApiSymbol(
-                    name = response,
-                    kind = ApiSymbolKind.PAYLOAD,
-                    importLine = importLine(promptsPkg, response),
-                    signature = "data class $response",
-                    usage = "the typed response shape a model reply is parsed into",
-                    fields = payloadFields(inbound.vo),
+            // The RESPONSE value object the parser returns — the @responseRef object's own data
+            // class (ADR-0056), not the @payloadRef one documented above. When the two refs name
+            // the same value object it is documented once.
+            val (responsePkg, response) = PackageMapping.splitFqn(inbound.vo.name)
+            if (inbound.vo.name != payloadVo?.name) {
+                symbols.add(
+                    ApiSymbol(
+                        name = response,
+                        kind = ApiSymbolKind.PAYLOAD,
+                        importLine = importLine(responsePkg, response),
+                        signature = "data class $response",
+                        usage = "the typed response value object a model reply is parsed into",
+                        fields = payloadFields(inbound.vo),
+                    )
                 )
-            )
+            }
 
             // OUTPUT_PARSER — the typed parse<Name> / safeParse<Name> back into the response.
             val parser = KotlinNaming.parserName(shortName)
@@ -453,10 +457,8 @@ class KotlinApiModelBuilder {
     }
 
     /**
-     * The payload data class's documented field shapes — one row per field of the `@payloadRef`
-     * value object. The payload generator emits every field NON-NULLABLE, so optionality is
-     * reported from the field's own `@required` (matching the documented shape, not the strict
-     * payload's all-required construction).
+     * A template's value object's documented field shapes — one row per field of the
+     * `@payloadRef` / `@responseRef` value object. Optionality is the field's own `@required`.
      */
     private fun payloadFields(vo: MetaObject): List<FieldShape> {
         val rows = mutableListOf<FieldShape>()

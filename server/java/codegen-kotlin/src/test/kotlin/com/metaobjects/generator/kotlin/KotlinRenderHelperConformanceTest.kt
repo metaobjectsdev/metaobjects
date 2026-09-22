@@ -20,7 +20,7 @@ import kotlin.test.fail
  * the Java port loads (`GeneratedRenderHelperConformanceTest`), and the oracle pinned in
  * the corpus README. The expected strings here are IDENTICAL to the TS/Java/C#/Python halves.
  *
- * Generate Payload + RenderHelper → compile with `KotlinCompilation(inheritClassPath=true)`
+ * Generate the value objects' data classes (entity generator) + RenderHelper → compile with `KotlinCompilation(inheritClassPath=true)`
  * → reflectively invoke `render(payload, provider)` against the on-disk templates via the
  * shared JVM [com.metaobjects.render.FilesystemProvider], asserting the README outputs
  * byte-for-byte:
@@ -44,7 +44,7 @@ class KotlinRenderHelperConformanceTest {
 
     private fun compile(outDir: Path): KotlinCompilation.Result {
         val sources = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
-            .map { path -> SourceFile.kotlin(path.parent.relativize(path).toString().replace('/', '_'), path.readText()) }
+            .map { path -> SourceFile.kotlin(outDir.relativize(path).toString().replace('/', '_'), path.readText()) }
         return KotlinCompilation().apply {
             this.sources = sources
             inheritClassPath = true
@@ -54,7 +54,7 @@ class KotlinRenderHelperConformanceTest {
 
     private fun generate(metaJson: Path, outDir: Path, templates: Path) {
         val loader = loadString("rh-conf", Files.readString(metaJson))
-        KotlinPayloadGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
+        KotlinEntityGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
         KotlinRenderHelperGenerator().apply {
             setArgs(mapOf("outputDir" to outDir.toString(), "templateRoot" to templates.toString()))
         }.execute(loader)
@@ -76,7 +76,7 @@ class KotlinRenderHelperConformanceTest {
             assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
             val cl = result.classLoader
 
-            val payloadClass = cl.loadClass("acme.ai.prompts.WelcomePagePayload")
+            val payloadClass = cl.loadClass("acme.ai.Welcome")
             val payload = payloadClass.getDeclaredConstructor(String::class.java).newInstance("Ada")
             val providerClass = cl.loadClass("com.metaobjects.render.Provider")
             val helperClass = cl.loadClass("acme.ai.prompts.WelcomePageRenderHelper")
@@ -100,7 +100,7 @@ class KotlinRenderHelperConformanceTest {
             assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
             val cl = result.classLoader
 
-            val payloadClass = cl.loadClass("acme.ai.prompts.WelcomeEmailPayload")
+            val payloadClass = cl.loadClass("acme.ai.Welcome")
             val payload = payloadClass.getDeclaredConstructor(String::class.java).newInstance("Ada")
             val providerClass = cl.loadClass("com.metaobjects.render.Provider")
             val helperClass = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper")
@@ -129,7 +129,7 @@ class KotlinRenderHelperConformanceTest {
             assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
             val cl = result.classLoader
 
-            val payloadClass = cl.loadClass("acme.ai.prompts.WelcomeEmailPayload")
+            val payloadClass = cl.loadClass("acme.ai.Welcome")
             val payload = payloadClass.getDeclaredConstructor(String::class.java).newInstance("<b>A & Co</b>")
             val providerClass = cl.loadClass("com.metaobjects.render.Provider")
             val helperClass = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper")
@@ -152,8 +152,9 @@ class KotlinRenderHelperConformanceTest {
 
     // -------------------------------------------------------------------------
     // email OrderEmail — nested customer + array items {{#items}} loop + partial.
-    // nested/meta.json is a NO-PACKAGE sub-corpus → generated classes land in the
-    // bare `prompts` package; the bare @objectRef resolves by short-name. Shares templates/.
+    // nested/meta.json is a NO-PACKAGE sub-corpus → the value objects' data classes land in
+    // the root package, and so does the helper (Kotlin cannot reach root from a named package); the bare @objectRef
+    // resolves by short-name. Shares templates/.
     // -------------------------------------------------------------------------
     @Test fun `email OrderEmail renders nested array loop and partial`() {
         val outDir = Files.createTempDirectory("krhc-order-")
@@ -165,21 +166,21 @@ class KotlinRenderHelperConformanceTest {
             assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
             val cl = result.classLoader
 
-            val customerClass = cl.loadClass("prompts.CustomerPayload")
+            val customerClass = cl.loadClass("Customer")
             val customer = customerClass.getDeclaredConstructor(String::class.java).newInstance("Ada")
 
-            // field.int → kotlin Int (primitive) in the generated payload data class.
-            val itemClass = cl.loadClass("prompts.ItemPayload")
+            // field.int → kotlin Int (primitive) in the generated value-object data class.
+            val itemClass = cl.loadClass("Item")
             val itemCtor = itemClass.getDeclaredConstructor(String::class.java, Int::class.javaPrimitiveType)
             val itemA = itemCtor.newInstance("A1", 2)
             val itemB = itemCtor.newInstance("B2", 1)
 
-            val payloadClass = cl.loadClass("prompts.OrderEmailPayload")
+            val payloadClass = cl.loadClass("Order")
             val payload = payloadClass.getDeclaredConstructor(customerClass, List::class.java)
                 .newInstance(customer, listOf(itemA, itemB))
 
             val providerClass = cl.loadClass("com.metaobjects.render.Provider")
-            val helperClass = cl.loadClass("prompts.OrderEmailRenderHelper")
+            val helperClass = cl.loadClass("OrderEmailRenderHelper")
             val instance = helperClass.getDeclaredField("INSTANCE").get(null)
             val email = helperClass.getDeclaredMethod("render", payloadClass, providerClass)
                 .invoke(instance, payload, fsProvider(cl, templates))
@@ -225,31 +226,25 @@ class KotlinRenderHelperConformanceTest {
             ))
             loader.register()
             // Must NOT throw: the FQN refs resolve to their own package's Note.
-            KotlinPayloadGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
+            KotlinEntityGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
             KotlinRenderHelperGenerator().apply {
                 setArgs(mapOf("outputDir" to outDir.toString(), "templateRoot" to templates.toString()))
             }.execute(loader)
 
-            val produced = Files.walk(outDir).filter { it.isRegularFile() }.toList()
-            val names = produced.map { it.fileName.toString() }.toSet()
-            assertTrue("DigestDocRenderHelper.kt" in names,
-                "DigestDocRenderHelper.kt must be generated; files=$produced")
-            // ADR-0044 — the two colliding Notes emit as DISTINCT package-qualified data
-            // classes, never one clobbered NotePayload.kt (the pre-fix bug wrote both to
-            // the same path via KotlinPoet, last-wins, dropping the alpha shape).
-            assertTrue("AcmeAlphaNotePayload.kt" in names, "expected AcmeAlphaNotePayload.kt; files=$names")
-            assertTrue("AcmeBetaNotePayload.kt" in names, "expected AcmeBetaNotePayload.kt; files=$names")
-            assertTrue("NotePayload.kt" !in names,
-                "must NOT emit a clobbered bare NotePayload.kt; files=$names")
-            val alphaSrc = produced.first { it.fileName.toString() == "AcmeAlphaNotePayload.kt" }.readText()
-            val betaSrc = produced.first { it.fileName.toString() == "AcmeBetaNotePayload.kt" }.readText()
-            assertTrue("alphaText" in alphaSrc, "AcmeAlphaNotePayload must carry alphaText")
-            assertTrue("betaText" in betaSrc, "AcmeBetaNotePayload must carry betaText")
-            val digestSrc = produced.first { it.fileName.toString() == "DigestDocPayload.kt" }.readText()
-            assertTrue("AcmeAlphaNotePayload" in digestSrc,
-                "DigestDocPayload.fromAlpha must type AcmeAlphaNotePayload; saw:\n$digestSrc")
-            assertTrue("AcmeBetaNotePayload" in digestSrc,
-                "DigestDocPayload.fromBeta must type AcmeBetaNotePayload; saw:\n$digestSrc")
+            val rel = Files.walk(outDir).filter { it.isRegularFile() }
+                .map { outDir.relativize(it).toString() }.toList().toSet()
+            assertTrue("acme/app/prompts/DigestDocRenderHelper.kt" in rel,
+                "DigestDocRenderHelper.kt must be generated; files=$rel")
+            // ADR-0056 — each Note is its own package's data class; the packages tell them apart,
+            // so no renaming is needed and nothing value-shaped lands in the prompts package.
+            assertTrue("acme/alpha/Note.kt" in rel && "acme/beta/Note.kt" in rel, "files=$rel")
+            assertTrue(outDir.resolve("acme/alpha/Note.kt").readText().contains("alphaText"))
+            assertTrue(outDir.resolve("acme/beta/Note.kt").readText().contains("betaText"))
+            val digestSrc = outDir.resolve("acme/app/Digest.kt").readText()
+            assertTrue("acme.alpha.Note" in digestSrc && "acme.beta.Note" in digestSrc,
+                "Digest must type fromAlpha/fromBeta as each package's own Note; saw:\n$digestSrc")
+            val helperSrc = outDir.resolve("acme/app/prompts/DigestDocRenderHelper.kt").readText()
+            assertTrue("payload: acme.app.Digest" in helperSrc, helperSrc)
             // The generated output COMPILES — proves the two distinct classes are real,
             // valid Kotlin (the prior test could only assert a file existed).
             val result = compile(outDir)

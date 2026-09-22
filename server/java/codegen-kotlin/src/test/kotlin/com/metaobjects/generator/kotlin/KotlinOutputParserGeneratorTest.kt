@@ -11,13 +11,13 @@ import kotlin.test.assertTrue
  * Tests for [KotlinOutputParserGenerator] — FR-006 typed parser codegen for
  * `template.output` nodes. Mirrors the cross-port semantics:
  *
- *  - one `<TemplateShortName>Parser.kt` per `template.output` (NOT per `template.prompt`),
- *  - emitted into the same package as the payload class (`<entity-pkg>.prompts`),
- *  - dual API: `parseXxx` (throws `SerializationException`) + `safeParseXxx`
- *    (returns `kotlin.Result<XxxPayload>`),
- *  - return type references the payload data class emitted by
- *    [KotlinPayloadGenerator] (no re-declaration of the payload shape),
- *  - skips defensively when `@payloadRef` cannot be resolved.
+ *  - one `<TemplateShortName>Parser.kt` per RESPONDING `template.prompt` (ADR-0052),
+ *  - emitted into the template's `<pkg>.prompts` package,
+ *  - dual API: `parseXxx` (Jackson; throws `JsonProcessingException`) + `safeParseXxx`
+ *    (returns `kotlin.Result<ResponseVo>`),
+ *  - return type is the `@responseRef` value object's own data class, emitted by
+ *    [KotlinEntityGenerator] (ADR-0056 — the parser declares no type of its own),
+ *  - the value object's `<Vo>Extracted` mirror is written beside the value object.
  */
 class KotlinOutputParserGeneratorTest {
 
@@ -79,16 +79,17 @@ class KotlinOutputParserGeneratorTest {
 
             // Dual API surface
             assertTrue("object ReplyParser" in src, src)
-            assertTrue("fun parseReply(text: String): ReplyResponse" in src, src)
-            assertTrue("fun safeParseReply(text: String): Result<ReplyResponse>" in src, src)
+            assertTrue("fun parseReply(text: String): acme.demo.Greeting" in src, src)
+            assertTrue("fun safeParseReply(text: String): Result<acme.demo.Greeting>" in src, src)
 
-            // Imports — only the Json import is needed; SerializationException
-            // is referenced via FQN in the KDoc so consumers with `-Werror`
-            // don't trip on an unused-import warning.
-            assertTrue("import kotlinx.serialization.json.Json" in src, src)
-            assertTrue("@throws kotlinx.serialization.SerializationException" in src, src)
+            // The strict tier decodes with Jackson (the codec the data classes are built for);
+            // JsonProcessingException is referenced via FQN in the KDoc so consumers with
+            // `-Werror` don't trip on an unused-import warning.
+            assertTrue("import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper" in src, src)
+            assertTrue("@throws com.fasterxml.jackson.core.JsonProcessingException" in src, src)
+            assertFalse("kotlinx.serialization" in src, "no kotlinx on the strict path; src:\n$src")
 
-            // Package matches KotlinPayloadGenerator's `<entity-pkg>.prompts` convention.
+            // The template-keyed parser lives in the template's `<pkg>.prompts` package.
             assertTrue("package acme.demo.prompts" in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
@@ -96,7 +97,7 @@ class KotlinOutputParserGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 3. Return type references the existing payload class (no re-declaration).
+    // 3. Return type references the value object's own data class (no re-declaration).
     // ---------------------------------------------------------------------------
     @Test fun returnTypeReferencesExistingPayloadClass() {
         val fx = """{
@@ -117,11 +118,11 @@ class KotlinOutputParserGeneratorTest {
 
             val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
 
-            // No data class redeclaration — the payload shape belongs to KotlinPayloadGenerator.
-            assertFalse("data class ReplyResponse" in src,
-                "parser file must NOT redeclare the payload data class; got:\n$src")
-            // The decode call site uses the existing payload class.
-            assertTrue("decodeFromString<ReplyResponse>(text)" in src, src)
+            // No data class declaration — the shape belongs to the value object (ADR-0056).
+            assertFalse("data class" in src,
+                "parser file must NOT declare any data class; got:\n$src")
+            // The decode call site uses the value object's own class.
+            assertTrue("mapper.readValue(text, acme.demo.Greeting::class.java)" in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -133,7 +134,7 @@ class KotlinOutputParserGeneratorTest {
     //    because the loader's ValidationPhase hard-rejects those metadata
     //    configurations at load time (ERR_INVALID_TEMPLATE). The generator's
     //    null-guards therefore exist as cross-port-symmetric belt-and-suspenders
-    //    code paths (mirroring KotlinPayloadGenerator, C# OutputParserGenerator,
+    //    code paths (mirroring the C# OutputParserGenerator,
     //    Python output_parser_generator), but can't be tested end-to-end without
     //    bypassing the loader — out of scope for this unit suite.
     // ---------------------------------------------------------------------------
@@ -190,12 +191,9 @@ class KotlinOutputParserGeneratorTest {
 
             val reply = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
             val goodbye = Files.readString(outDir.resolve("acme/demo/prompts/GoodbyeParser.kt"))
-            // The payload class name is derived from the TEMPLATE short name
-            // (ADR-0052: the parser binds `<TemplateShortName>Response` — the @responseRef shape),
-            // NOT from the @payloadRef VO name. The parser file therefore decodes into
-            // <TemplateShortName>Response regardless of which VO was the @responseRef target.
-            assertTrue("decodeFromString<ReplyResponse>" in reply, reply)
-            assertTrue("decodeFromString<GoodbyeResponse>" in goodbye, goodbye)
+            // ADR-0056: each parser decodes into its @responseRef value object's own class.
+            assertTrue("readValue(text, acme.demo.Greeting::class.java)" in reply, reply)
+            assertTrue("readValue(text, acme.demo.Farewell::class.java)" in goodbye, goodbye)
             // Sanity — the parser names follow the template, not the VO.
             assertTrue("object ReplyParser" in reply, reply)
             assertTrue("object GoodbyeParser" in goodbye, goodbye)
@@ -262,8 +260,12 @@ class KotlinOutputParserGeneratorTest {
 
             val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerParser.kt"))
 
-            // Extracted data class emitted at top level.
-            assertTrue("data class AnswerExtracted(" in src, "missing Extracted class decl; src:\n$src")
+            // ADR-0056: the mirror is the value object's, written beside it — not in the parser.
+            val mirror = Files.readString(outDir.resolve("acme/ai/AnswerOutputPayloadExtracted.kt"))
+            assertTrue("data class AnswerOutputPayloadExtracted(" in mirror, "missing mirror decl; mirror:\n$mirror")
+            assertTrue("import com.metaobjects.render.extract.ExtractMap" in mirror,
+                "the mirror's fromMap reads through ExtractMap; mirror:\n$mirror")
+            assertTrue("fun toStrict(): AnswerOutputPayload" in mirror, mirror)
 
             // The single metadata-driven extract path: loader-delegating overload only.
             assertTrue("fun extractLenient(loader: MetaDataLoader, text: String" in src,
@@ -284,8 +286,6 @@ class KotlinOutputParserGeneratorTest {
                 "missing ExtractionResult import; src:\n$src")
             assertTrue("import com.metaobjects.render.extract.ExtractOptions" in src,
                 "missing ExtractOptions import; src:\n$src")
-            assertTrue("import com.metaobjects.render.extract.ExtractMap" in src,
-                "missing ExtractMap import; src:\n$src")
             assertTrue("import com.metaobjects.render.extract.Format" in src,
                 "missing Format import; src:\n$src")
             assertTrue("import com.metaobjects.loader.MetaDataLoader" in src,
@@ -308,9 +308,9 @@ class KotlinOutputParserGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 8. FR-010: Extracted class name follows <TemplateShort>Extracted convention.
+    // 8. FR-010: the mirror is named for the VALUE OBJECT (ADR-0056), not the template.
     // ---------------------------------------------------------------------------
-    @Test fun extractedClassNameFollowsTemplateShortConvention() {
+    @Test fun extractedMirrorIsNamedForTheValueObject() {
         val fx = """{
           "metadata.root": { "package": "acme::ai", "children": [
             { "object.value": { "name": "AnswerOutputPayload", "children": [
@@ -331,15 +331,16 @@ class KotlinOutputParserGeneratorTest {
 
             val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerParser.kt"))
 
-            // Extracted class name = templateShort + "Extracted" = "AnswerExtracted".
-            assertTrue("data class AnswerExtracted(" in src,
-                "Extracted class name must be <TemplateShort>Extracted = AnswerExtracted; src:\n$src")
-            assertTrue("ExtractionResult<AnswerExtracted>" in src,
-                "extractLenient() return type must be ExtractionResult<AnswerExtracted>; src:\n$src")
+            // Mirror = <VoShort>Extracted, in the value object's package.
+            assertTrue(Files.exists(outDir.resolve("acme/ai/AnswerOutputPayloadExtracted.kt")),
+                "mirror must be written beside the value object; files=${Files.walk(outDir).toList()}")
+            assertTrue("ExtractionResult<acme.ai.AnswerOutputPayloadExtracted>" in src,
+                "extractLenient() must return the value object's mirror; src:\n$src")
+            assertFalse(Files.exists(outDir.resolve("acme/ai/prompts/AnswerExtracted.kt")),
+                "no template-named mirror; files=${Files.walk(outDir).toList()}")
 
-            // Must NOT redeclare the payload data class.
-            assertFalse("data class AnswerPayload" in src,
-                "parser must not redeclare the payload data class; src:\n$src")
+            // Must NOT declare any data class of its own.
+            assertFalse("data class" in src, "parser must not declare a data class; src:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -413,8 +414,9 @@ class KotlinOutputParserGeneratorTest {
 
             val src = Files.readString(outDir.resolve("acme/reports/prompts/SummaryParser.kt"))
 
-            assertTrue("data class SummaryExtracted(" in src,
-                "xml format must emit Extracted class; src:\n$src")
+            assertTrue(Files.exists(outDir.resolve("acme/reports/SummaryOutputPayloadExtracted.kt")),
+                "xml format must emit the value object's mirror; files=${Files.walk(outDir).toList()}")
+            assertFalse("jacksonObjectMapper" in src, "xml replies get no strict tier; src:\n$src")
             assertFalse("EXTRACT_SCHEMA" in src,
                 "xml format must NOT emit a baked EXTRACT_SCHEMA (Move 1); src:\n$src")
             assertTrue("Format.XML" in src,

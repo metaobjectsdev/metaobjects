@@ -161,9 +161,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // the kotlinx-serialization compiler plugin for these, and the moment one did, every
         // class carrying a java.util.UUID / java.time.* / java.math.BigDecimal / java.net.* field
         // would fail to compile (kotlinx has no built-in serializer for those). Jackson (the codec
-        // every consumer actually uses) round-trips them with zero per-type plumbing. Only
-        // KotlinPayloadGenerator's prompt payloads + KotlinEnumEmitter's enums keep @Serializable
-        // (FR-006 parse()/safeParse() genuinely kotlinx-decode those).
+        // every consumer actually uses) round-trips them with zero per-type plumbing — including the
+        // response parser, which decodes a model's reply straight into these classes (ADR-0056).
+        // Only KotlinEnumEmitter's enums keep @Serializable, where it is harmless.
         val typeBuilder = TypeSpec.classBuilder(shortName)
             .addModifiers(KModifier.DATA)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
@@ -207,9 +207,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             // hid it; a `UUID` cannot.) Same relaxation as a derived field on a write-through
             // entity: nullable, default null, no @field:NotNull. Rows read back always carry it.
             val serverOwned = KotlinGenUtil.isServerOwnedOnCreate(field, obj)
-            val nullable = tphBase || derivedReadOnly || serverOwned ||
-                (!KotlinGenUtil.isRequiredField(field) && !KotlinGenUtil.originGuaranteedNonNull(field)
-                    && !KotlinGenUtil.isAssignedPrimaryKeyField(field))
+            val nullable = tphBase || derivedReadOnly || serverOwned || KotlinGenUtil.isNullableShapeProperty(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
             val param = ParameterSpec.builder(propName, propType)

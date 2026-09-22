@@ -7,7 +7,6 @@ import com.metaobjects.generator.kotlin.KotlinExtractorGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
 import com.metaobjects.generator.kotlin.KotlinOutputParserGenerator
 import com.metaobjects.generator.kotlin.KotlinOutputPromptGenerator
-import com.metaobjects.generator.kotlin.KotlinPayloadGenerator
 import com.metaobjects.generator.kotlin.KotlinRelationsGenerator
 import com.metaobjects.generator.kotlin.KotlinRenderHelperGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
@@ -426,7 +425,6 @@ class KotlinApiDocsAccuracyKtTest {
         run(KotlinSpringControllerGenerator(), mapOf("outputDir" to dir))
         run(KotlinFilterAllowlistGenerator(), mapOf("outputDir" to dir))
         run(KotlinRelationsGenerator(), mapOf("outputDir" to dir))
-        run(KotlinPayloadGenerator(), mapOf("outputDir" to dir))
         run(KotlinRenderHelperGenerator(), mapOf("outputDir" to dir, "templateRoot" to tpl))
         run(KotlinOutputPromptGenerator(), mapOf("outputDir" to dir))
         run(KotlinOutputParserGenerator(), mapOf("outputDir" to dir))

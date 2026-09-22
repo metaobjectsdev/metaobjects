@@ -118,22 +118,23 @@ object KotlinNaming {
     fun controllerPath(shortName: String): String = "/api/" + collectionSegment(shortName)
 
     /**
-     * Output package for template-helper artifacts: `if (pkg.isEmpty()) "prompts" else "$pkg.prompts"`.
-     * Shared verbatim by the payload / render-helper / output-prompt / output-parser / extractor
-     * generators.
+     * Output package for TEMPLATE-keyed artifacts: `"$pkg.prompts"`, or the root package when the
+     * template has no package. Shared verbatim by the render-helper / output-prompt / output-parser /
+     * extractor generators. A value object's own types never land here (ADR-0056): its data class
+     * and its extraction mirror live in the value object's package.
+     *
+     * A no-package template stays in the root package, rather than a bare `prompts` package,
+     * because its artifacts reference the value object's own data class — and a no-package value
+     * object lives in the root package, which Kotlin cannot reference from a named one.
      */
-    fun promptsPackage(pkg: String): String = if (pkg.isEmpty()) "prompts" else "$pkg.prompts"
-
-    /** [KotlinPayloadGenerator]: `templateShort + "Payload"`. */
-    fun payloadName(templateShort: String): String = templateShort + "Payload"
+    fun promptsPackage(pkg: String): String = if (pkg.isEmpty()) "" else "$pkg.prompts"
 
     /**
-     * [KotlinExtractSchemaEmitter] / [KotlinOutputParserGenerator] / [KotlinExtractorGenerator]:
-     * `templateShort + "Extracted"` — the all-nullable extract mirror class name. The peer of
-     * [payloadName] for the lenient `...Extracted` mirror family; the SSOT so the root mirror,
-     * the nested mirrors, and the extractor's mirror references stay in lockstep.
+     * [KotlinExtractSchemaEmitter]: `voShort + "Extracted"` — the all-nullable extraction mirror
+     * of a value object, emitted beside it (ADR-0056). Keyed by the VALUE OBJECT's short name,
+     * never a template's.
      */
-    fun extractedName(templateShort: String): String = templateShort + "Extracted"
+    fun extractedName(voShort: String): String = voShort + "Extracted"
 
     /** [KotlinRenderHelperGenerator]: `capitalizeFirst(templateShort) + "RenderHelper"`. */
     fun renderHelperName(templateShort: String): String = capitalizeFirst(templateShort) + "RenderHelper"
@@ -145,14 +146,6 @@ object KotlinNaming {
      * produced `ClassifyPromptPrompt`. Mirrors Java's `SpringNaming.responseFormatName`.
      */
     fun responseFormatName(templateShort: String): String = templateShort + "ResponseFormat"
-
-    /**
-     * ADR-0052 — a responding prompt's SECOND record: the `@responseRef` shape its parser
-     * returns, distinct from the `@payloadRef` request record [payloadName] emits.
-     * TEMPLATE-named, keeping ONE naming convention in this generator (Java does the same;
-     * C# diverges because its records are named for the value-object).
-     */
-    fun responseName(templateShort: String): String = templateShort + "Response"
 
     /** [KotlinOutputParserGenerator]: `templateShort + "Parser"`. */
     fun parserName(templateShort: String): String = templateShort + "Parser"

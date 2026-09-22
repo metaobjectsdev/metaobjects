@@ -18,7 +18,7 @@ import kotlin.test.fail
  * Compile-and-run proof for [KotlinRenderHelperGenerator] — the Kotlin port of the
  * cross-port render-helper (Java `SpringRenderHelperGenerator`, TS/C#/Python siblings).
  *
- * Mirrors [KotlinExtractorCompilesTest]: generate Payload + RenderHelper into a temp
+ * Mirrors [KotlinExtractorCompilesTest]: generate the value object's data class + RenderHelper into a temp
  * dir, compile together with `KotlinCompilation(inheritClassPath=true)`, then
  * reflectively invoke the emitted helper against the EXISTING JVM render engine.
  *
@@ -38,7 +38,7 @@ class KotlinRenderHelperCompilesTest {
 
     private fun compile(outDir: Path): KotlinCompilation.Result {
         val sources = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
-            .map { path -> SourceFile.kotlin(path.parent.relativize(path).toString().replace('/', '_'), path.readText()) }
+            .map { path -> SourceFile.kotlin(outDir.relativize(path).toString().replace('/', '_'), path.readText()) }
         return KotlinCompilation().apply {
             this.sources = sources
             inheritClassPath = true
@@ -67,7 +67,7 @@ class KotlinRenderHelperCompilesTest {
         try {
             writeTemplate(tplRoot, "pages/welcome", "Hello {{name}}")
             val loader = loadString("krh-doc", fx)
-            KotlinPayloadGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
+            KotlinEntityGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
             KotlinRenderHelperGenerator().apply {
                 setArgs(mapOf("outputDir" to outDir.toString(), "templateRoot" to tplRoot.toString()))
             }.execute(loader)
@@ -76,9 +76,9 @@ class KotlinRenderHelperCompilesTest {
             assertTrue(Files.exists(helper), "expected $helper; files=${Files.walk(outDir).toList()}")
             val src = helper.readText()
             assertTrue("object WelcomePageRenderHelper" in src, src)
-            // Payload class is <TemplateShort>Payload (KotlinPayloadGenerator convention),
-            // derived from the template short name (WelcomePage), NOT the VO name (Welcome).
-            assertTrue("fun render(payload: WelcomePagePayload" in src, src)
+            // ADR-0056 — the payload is the @payloadRef value object's own data class
+            // (acme.demo.Welcome), never a template-named copy.
+            assertTrue("fun render(payload: acme.demo.Welcome" in src, src)
             assertTrue(": String =" in src, "document helper must return String; src:\n$src")
 
             val result = compile(outDir)
@@ -86,8 +86,8 @@ class KotlinRenderHelperCompilesTest {
                 "render-helper generated Kotlin failed to compile:\n${result.messages}")
             val cl = result.classLoader
 
-            // payload(name="Ada") — class is <TemplateShort>Payload = WelcomePagePayload.
-            val payloadClass = cl.loadClass("acme.demo.prompts.WelcomePagePayload")
+            // payload(name="Ada") — the value object's own data class.
+            val payloadClass = cl.loadClass("acme.demo.Welcome")
             val payload = payloadClass.getDeclaredConstructor(String::class.java).newInstance("Ada")
 
             // FilesystemProvider rooted at the template dir.
@@ -131,7 +131,7 @@ class KotlinRenderHelperCompilesTest {
             writeTemplate(tplRoot, "email/html", "<p>Hello {{name}}</p>")
             writeTemplate(tplRoot, "email/text", "Hello {{name}}")
             val loader = loadString("krh-email", fx)
-            KotlinPayloadGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
+            KotlinEntityGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
             KotlinRenderHelperGenerator().apply {
                 setArgs(mapOf("outputDir" to outDir.toString(), "templateRoot" to tplRoot.toString()))
             }.execute(loader)
@@ -145,7 +145,7 @@ class KotlinRenderHelperCompilesTest {
                 "email render-helper generated Kotlin failed to compile:\n${result.messages}")
             val cl = result.classLoader
 
-            val payloadClass = cl.loadClass("acme.demo.prompts.WelcomeEmailPayload")
+            val payloadClass = cl.loadClass("acme.demo.Welcome")
             val payload = payloadClass.getDeclaredConstructor(String::class.java).newInstance("Ada")
             val providerClass = cl.loadClass("com.metaobjects.render.Provider")
             val fsProvider = cl.loadClass("com.metaobjects.render.FilesystemProvider")

@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  * <p>`docs/features/own-your-codegen.md` states that on Java and Kotlin "every generator
  * writes through one guard that refuses any existing file carrying no `GENERATED` marker,
  * so a hand-written file at a generated path is never clobbered." That was true of the
- * generators that hand-roll their bodies as strings and FALSE of the six that build a
+ * generators that hand-roll their bodies as strings and FALSE of the six that built a
  * KotlinPoet [FileSpec] — `FileSpec.writeTo(dir)` opens the output with
  * `Files.newOutputStream`'s defaults (CREATE, TRUNCATE_EXISTING, WRITE) and never looks at
  * what was there.
@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
  *
  * <p>These tests assert the guarantee at RUNTIME rather than asserting that a particular
  * function is called, so they stay honest if the plumbing is refactored again. Each of the
- * six emitters is driven for real and checked on three things:
+ * KotlinPoet emitters is driven for real and checked on three things:
  *
  * <ol>
  *   <li>a second run REWRITES its own output — proving the emitted content actually carries
@@ -81,19 +81,7 @@ class KotlinPoetWriteGuardTest {
       ] }
     }""".trimIndent()
 
-    /** A prompt payload record. */
-    private val payloadFixture = """{
-      "metadata.root": { "package": "acme::demo", "children": [
-        { "object.value": { "name": "Author", "children": [
-            { "field.long":   { "name": "id" } },
-            { "field.string": { "name": "name" } }
-        ] } },
-        { "template.prompt": { "name": "WelcomePrompt",
-            "@payloadRef": "Author", "@textRef": "demo/welcome" } }
-      ] }
-    }""".trimIndent()
-
-    // === the six KotlinPoet write sites ====================================
+    // === the KotlinPoet write sites ========================================
 
     /**
      * One emitter, the path it writes, and how to run it. [relPath] is the file this case
@@ -118,10 +106,6 @@ class KotlinPoetWriteGuardTest {
             KotlinEntityGenerator().apply {
                 setArgs(mapOf("outputDir" to out.toString(), "emitAbstractShapes" to "true"))
             }.execute(loadString("abstract", abstractFixture))
-        },
-        Case("KotlinPayloadGenerator", "acme/demo/prompts/WelcomePromptPayload.kt") { out ->
-            KotlinPayloadGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }
-                .execute(loadString("payload", payloadFixture))
         },
         Case("KotlinSpringConfigGenerator", "acme/demo/MetadataExposedConfig.kt") { out ->
             KotlinSpringConfigGenerator().apply {
@@ -180,7 +164,7 @@ class KotlinPoetWriteGuardTest {
     fun `deleting the marker takes ownership and the edit survives regeneration`() {
         // The whole point of the change: on this port there is no three-way merge and no hash
         // manifest, so deleting the marker line IS the ownership gesture. Before the fix these
-        // six paths ignored it and overwrote the file anyway.
+        // KotlinPoet paths ignored it and overwrote the file anyway.
         for (case in cases()) withTempDir { out ->
             case.emit(out)
             val file = out.resolve(case.relPath)

@@ -136,10 +136,11 @@ class KotlinOutputCompilesTest {
     }
 
     /**
-     * FR-010 compile-proof: generates OpinionPayload.kt (KotlinPayloadGenerator),
-     * OpinionParser.kt with the loader-delegating extractLenient(loader, text) + OpinionExtracted
+     * FR-010 compile-proof: generates the response value object's own data class
+     * OpinionOutputPayload.kt (KotlinEntityGenerator), OpinionParser.kt with the loader-delegating
+     * extractLenient(loader, text) plus the value object's OpinionOutputPayloadExtracted mirror
      * (KotlinOutputParserGenerator), and OpinionResponseFormat.kt with renderFormat()
-     * (KotlinOutputPromptGenerator), then compiles all three together and
+     * (KotlinOutputPromptGenerator), then compiles them together and
      * behaviorally exercises extractLenient(loader, ...) and renderFormat() via reflection.
      *
      * Behavioral assertions (the extract delegates to MetaObjectExtractor, reading FR-011
@@ -156,18 +157,18 @@ class KotlinOutputCompilesTest {
             val loader = loadString("fr010-test", fr010Fixture)
 
             // Run all three generators into the same output dir.
-            for (gen in listOf(KotlinPayloadGenerator(), KotlinOutputParserGenerator(), KotlinOutputPromptGenerator())) {
+            for (gen in listOf(KotlinEntityGenerator(), KotlinOutputParserGenerator(), KotlinOutputPromptGenerator())) {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
             }
 
-            // Collect all emitted .kt files — expect 5: OpinionPayload, OpinionParser, OpinionResponseFormat,
-            // plus one typed enum-class file per `field.enum` payload field (confidence, priority).
-            // The strict payload types those fields as the generated enum class (the lenient mirror
-            // leaf stays String — asserted below), so the enum files must be emitted + compile.
+            // Collect all emitted .kt files — expect 6: the value object's data class and its
+            // mirror, OpinionParser, OpinionResponseFormat, plus one typed enum-class file per
+            // `field.enum` field (confidence, priority). The strict data class types those fields as
+            // the generated enum class (the lenient mirror leaf stays String — asserted below).
             val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
             assertEquals(6, emitted.size,
-                "expected 6 generated files (payload + response + parser + fragment + 2 enum classes); got: ${emitted.map { it.fileName }}")
+                "expected 6 generated files (data class + mirror + parser + fragment + 2 enum classes); got: ${emitted.map { it.fileName }}")
             val emittedNames = emitted.map { it.fileName.toString() }.toSet()
             assertTrue("OpinionOutputPayloadConfidence.kt" in emittedNames,
                 "typed enum class for `confidence` must be emitted; got $emittedNames")
@@ -219,11 +220,11 @@ class KotlinOutputCompilesTest {
                 ExtractOptions.defaults()
             ) as ExtractionResult<*>
 
-            // data: OpinionExtracted — access fields via Kotlin data class properties (getters).
+            // data: the value object's mirror — access fields via Kotlin data class properties (getters).
             val extracted = extractionResult.data
             assertNotNull(extracted, "ExtractionResult.data must not be null")
 
-            val extractedClass = cl.loadClass("acme.ai.prompts.OpinionExtracted")
+            val extractedClass = cl.loadClass("acme.ai.OpinionOutputPayloadExtracted")
             val confidenceGetter = extractedClass.getDeclaredMethod("getConfidence")
             val textGetter = extractedClass.getDeclaredMethod("getText")
             val priorityGetter = extractedClass.getDeclaredMethod("getPriority")

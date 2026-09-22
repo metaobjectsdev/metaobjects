@@ -129,29 +129,23 @@ sections point at
 for the full reasoning rather than restating it. The gap itself lives in
 the Kotlin codepath; only the rationale is shared.
 
-## Consumer dependency: `kotlinx-serialization-json` is required for FR-006 output
+## Consumer dependency: `jackson-module-kotlin` is required for FR-006 output
 
 **Status:** consumer-wired, not a code gap — documented here so adopters know what to add.
 
-`KotlinOutputParserGenerator` emits files that import
-`kotlinx.serialization.json.Json` and call `Json.decodeFromString<T>(text)`.
-The `kotlinx-serialization-core` artifact (already pulled in transitively
-by anything using `@Serializable`) does NOT include the JSON format.
-Consumers using FR-006 output-parser generation must add to their build:
+`KotlinOutputParserGenerator`'s strict tier decodes a model's reply straight into the
+`@responseRef` value object's own data class (ADR-0056) with Jackson:
+`jacksonObjectMapper().findAndRegisterModules().readValue(text, Vo::class.java)`. Consumers
+using FR-006 output-parser generation must have `com.fasterxml.jackson.module:jackson-module-kotlin`
+on the classpath (Spring Boot's web starter brings Jackson; the Kotlin module may need adding),
+plus `jackson-datatype-jsr310` if the response shape carries a `java.time` field.
 
-```kotlin
-plugins { kotlin("plugin.serialization") version "1.9.x" }
-dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.x")
-}
-```
-
-`KotlinPayloadGenerator` (which emits the `@Serializable` data class the
-parser returns) needs the same plugin + the `core` artifact. The codegen
-module itself depends only on `kotlinx-serialization-core-jvm` for its own
-tests; **consumer-side wiring is the consumer's responsibility**, in line
-with the cross-port pattern (TS consumers add `zod`; C# uses BCL
-`System.Text.Json` — no add needed there; Python consumers add `pydantic`).
+It used to be kotlinx: a template-tier `@Serializable` copy of the value object decoded with
+`Json.decodeFromString`. That copy is gone, and the entity-tier data classes are Jackson
+classes (see the next section for why they carry no `@Serializable`), so the parser uses the
+codec those classes are built for. **Consumer-side wiring is the consumer's responsibility**, in
+line with the cross-port pattern (TS consumers add `zod`; C# uses BCL `System.Text.Json` — no
+add needed there; Python consumers add `pydantic`).
 
 ## Consumer dependency: Jackson is required for typed jsonb columns
 
@@ -223,20 +217,13 @@ the typed split once the partial-update story converges.
 
 ## `EnumField` on payload VOs emitted as `String` (RESOLVED)
 
-**Status:** RESOLVED — the payload-VO codepath now emits the typed enum class too,
-so this former Day-1 gap is closed on every path.
-
-`KotlinPayloadGenerator.resolveFieldType`'s `field.enum` arm types the STRICT
-payload property as the generated enum class
-(`KotlinTypeMapper.enumTypeName(field, owner)`; single → `<Enum>`, array →
-`List<<Enum>>`) and emits the enum file per run via `KotlinEnumEmitter`. The
-lenient `<Name>Extracted` mirror deliberately stays `String` / `List<String?>`
-(the extract mapper bridges `String` → enum via `valueOf`). Entity data classes
-([`KotlinEntityGenerator.kt`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinEntityGenerator.kt))
-and Exposed columns
-([`KotlinExposedTableGenerator.kt`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinExposedTableGenerator.kt))
-were typed all along. Kept as a resolved entry (rather than deleted) because
-external notes referenced this section by title.
+**Status:** RESOLVED — and since ADR-0056 there is no separate payload codepath left to
+regress: a template's payload and response ARE the value object's own data class, emitted by
+[`KotlinEntityGenerator.kt`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinEntityGenerator.kt),
+which has typed `field.enum` as the generated enum class all along. The lenient `<Vo>Extracted`
+mirror deliberately stays `String` / `List<String>`; its `toStrict()` bridges `String` → enum via
+`valueOf`. Kept as a resolved entry (rather than deleted) because external notes referenced this
+section by title.
 
 ## Composite-FK relationships not emitted
 

@@ -13,7 +13,7 @@
 //
 // Stable names mirror the canonical manifest exactly for the kotlin slice:
 //   entity, routes, output-parser, output-prompt, render-helper, extractor,
-//   filter-allowlist, payload, names, exposed-table, relations, spring-config,
+//   filter-allowlist, names, exposed-table, relations, spring-config,
 //   stored-proc, validator. (Kotlin has NO `template` generator — the manifest
 //   deliberately omits kotlin from it.)
 
@@ -149,13 +149,6 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.API,
         factory = ::KotlinFilterAllowlistGenerator,
-    ),
-    "payload" to GeneratorInfo(
-        name = "payload",
-        description = "Per-template payload value object (the strict payload type).",
-        tier = GeneratorTier.NATIVE,
-        layer = GeneratorLayer.CAPABILITY,
-        factory = ::KotlinPayloadGenerator,
     ),
     "names" to GeneratorInfo(
         name = "names",

@@ -2,17 +2,21 @@ package com.metaobjects.generator.kotlin
 
 import com.metaobjects.loader.InMemoryStringSource
 import com.metaobjects.loader.MetaDataLoader
-import com.metaobjects.template.MetaTemplate
+import com.metaobjects.`object`.MetaObject
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for [KotlinGenUtil] helpers. Covers [KotlinGenUtil.camelToSnake]
  * — the column-name normaliser used by [KotlinExposedTableGenerator] so generated
  * Exposed columns match the snake_case convention nearly every Postgres schema uses —
- * and the #270 / ADR-0044 name-map closure gates on [KotlinGenUtil.computePayloadNameMap]
- * (the closure walks ONLY declared `field.object @objectRef` -> `object.value` edges).
+ * and the #270 closure gates on the extraction-mirror walk
+ * ([KotlinExtractSchemaEmitter.emitMirrorFiles] — it walks ONLY declared
+ * `field.object @objectRef` -> `object.value` edges).
  */
 class KotlinGenUtilTest {
 
@@ -59,12 +63,11 @@ class KotlinGenUtilTest {
     }
 
     // -----------------------------------------------------------------------
-    // #270 / ADR-0044 — name-map closure gates on computePayloadNameMap.
-    // The closure walks ONLY declared `field.object @objectRef` -> object.value
-    // edges: an origin child on a field.object does NOT remove its declared
-    // edge (positive), and a field carrying ONLY an origin contributes nothing
-    // (negative). Both directions gate the nestedTargetOf edit that retired the
-    // origin closure edge.
+    // #270 — closure gates on the extraction-mirror walk (ADR-0056 moved the closure here
+    // from the retired ADR-0044 payload name map). The walk follows ONLY declared
+    // `field.object @objectRef` -> object.value edges: an origin child on a field.object does
+    // NOT remove its declared edge (positive), and a field carrying ONLY an origin contributes
+    // nothing (negative).
     //
     // FR-037 R2 (#336) retired `origin.collection`, which is what these gates
     // used to carry. The replacements are SHARPER: `origin.passthrough @from`
@@ -98,20 +101,24 @@ class KotlinGenUtilTest {
         return loader
     }
 
-    private fun payloadNameMap(loader: MetaDataLoader): Map<String, String> {
-        // ADR-0039: root-scan discipline — resolving children accessor (mirrors
-        // KotlinPayloadGenerator.execute's template scan).
-        val templates = loader.root.getChildren(MetaTemplate::class.java, true).sortedBy { it.name }
-        return KotlinGenUtil.computePayloadNameMap(templates, loader)
+    /** The mirror files the walk writes for `acme::app::Digest`, relative to the output root. */
+    private fun mirrorFiles(loader: MetaDataLoader): Set<String> {
+        val outDir: Path = Files.createTempDirectory("kgu-mirrors-")
+        try {
+            val digest = loader.getMetaObjectByName("acme::app::Digest") as MetaObject
+            KotlinExtractSchemaEmitter.emitMirrorFiles(digest, outDir, mutableSetOf())
+            return Files.walk(outDir).filter { Files.isRegularFile(it) }
+                .map { outDir.relativize(it).toString() }.toList().toSet()
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
     }
 
-    @Test fun `origin-carrying object field stays in the name-map closure (issue-270 positive gate)`() {
+    @Test fun `origin-carrying object field stays in the mirror closure (issue-270 positive gate)`() {
         // fromAlpha DECLARES acme::alpha::Note AND carries an origin.passthrough whose
         // @from names Post.attachment — an object column pointing at the Attachment
-        // value object; fromBeta declares acme::beta::Note plainly. Both
-        // same-short-named Notes must be package-qualified — if the origin child
-        // dropped the declared edge from the closure, the collision would go
-        // undetected and both would fall back to a clobbered bare NotePayload.
+        // value object; fromBeta declares acme::beta::Note plainly. Both Notes must get a
+        // mirror; the origin's Attachment must not.
         val appFixture = """{
           "metadata.root": { "package": "acme::app", "children": [
             { "object.value": { "name": "Attachment", "children": [
@@ -141,26 +148,24 @@ class KotlinGenUtilTest {
           ] }
         }""".trimIndent()
 
-        val loader = loadPackages("kgu-namemap-pos", alphaNoteFixture, betaNoteFixture, appFixture)
-        val nameMap = payloadNameMap(loader)
+        val loader = loadPackages("kgu-mirror-pos", alphaNoteFixture, betaNoteFixture, appFixture)
+        val files = mirrorFiles(loader)
 
-        assertEquals("AcmeAlphaNotePayload", nameMap["acme::alpha::Note"],
-            "origin-carrying declared edge must stay in the closure and qualify; map=$nameMap")
-        assertEquals("AcmeBetaNotePayload", nameMap["acme::beta::Note"],
-            "the plain declared edge must qualify against the colliding alpha Note; map=$nameMap")
-        assertFalse(nameMap.containsKey("acme::app::Attachment"),
+        assertTrue("acme/alpha/NoteExtracted.kt" in files,
+            "origin-carrying declared edge must stay in the closure; files=$files")
+        assertTrue("acme/beta/NoteExtracted.kt" in files,
+            "the plain declared edge must stay in the closure; files=$files")
+        assertFalse("acme/app/AttachmentExtracted.kt" in files,
             "the @from target is an object.value — the kind the closure DOES walk — so it " +
-                "must be excluded on the EDGE, not on the node kind; map=$nameMap")
-        assertFalse(nameMap.containsKey("acme::app::Post"),
-            "the ignored @via entity must NOT enter the closure; map=$nameMap")
+                "must be excluded on the EDGE, not on the node kind; files=$files")
+        assertFalse(files.any { "Post" in it },
+            "the ignored @via entity must NOT enter the closure; files=$files")
     }
 
-    @Test fun `origin-only field contributes nothing to the name-map (issue-270 negative gate)`() {
+    @Test fun `origin-only field contributes nothing to the mirror closure (issue-270 negative gate)`() {
         // The `posts` field carries ONLY an origin (no @objectRef of its own); its
-        // @via walks to acme::beta::Note, which shares a bare short name with the
-        // DECLARED acme::alpha::Note. Were an origin edge in the closure, the two
-        // would collide and both would qualify. Instead: the declared Note stays
-        // BARE and the origin target never enters the map.
+        // @of names acme::beta::Note. Were an origin edge in the closure, that Note would get
+        // a mirror. Instead only the DECLARED acme::alpha::Note does.
         val appFixture = """{
           "metadata.root": { "package": "acme::app", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -181,12 +186,12 @@ class KotlinGenUtilTest {
           ] }
         }""".trimIndent()
 
-        val loader = loadPackages("kgu-namemap-neg", alphaNoteFixture, betaNoteFixture, appFixture)
-        val nameMap = payloadNameMap(loader)
+        val loader = loadPackages("kgu-mirror-neg", alphaNoteFixture, betaNoteFixture, appFixture)
+        val files = mirrorFiles(loader)
 
-        assertEquals("NotePayload", nameMap["acme::alpha::Note"],
-            "no collision without the origin edge — the declared Note keeps its bare name; map=$nameMap")
-        assertFalse(nameMap.containsKey("acme::beta::Note"),
-            "an origin-only field must contribute nothing to the closure; map=$nameMap")
+        assertTrue("acme/alpha/NoteExtracted.kt" in files,
+            "the declared edge must be walked; files=$files")
+        assertFalse("acme/beta/NoteExtracted.kt" in files,
+            "an origin-only field must contribute nothing to the closure; files=$files")
     }
 }

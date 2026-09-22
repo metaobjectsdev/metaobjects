@@ -50,12 +50,6 @@
       "layer": "api",
       "ports": ["csharp", "java", "kotlin", "python"]
     },
-    "payload": {
-      "concept": "Per-template payload value object (the strict payload type).",
-      "tier": "native",
-      "layer": "capability",
-      "ports": ["csharp", "java", "kotlin", "python"]
-    },
     "queries": {
       "concept": "Per-entity typed query helpers (findById/create/...).",
       "tier": "native",

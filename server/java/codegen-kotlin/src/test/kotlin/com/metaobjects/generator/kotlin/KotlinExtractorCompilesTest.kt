@@ -17,10 +17,11 @@ import kotlin.test.fail
 /**
  * Cross-port Extractor codegen (Kotlin port) — compile-and-run proof for [KotlinExtractorGenerator].
  *
- * Mirrors [KotlinOutputCompilesTest]: generate Payload + Parser + Extractor into a temp dir,
- * compile all together with `KotlinCompilation(inheritClassPath=true)`, then reflectively invoke.
+ * Mirrors [KotlinOutputCompilesTest]: generate the value objects' data classes (entity generator)
+ * + Parser (which also writes each value object's mirror) + Extractor into a temp dir, compile all
+ * together with `KotlinCompilation(inheritClassPath=true)`, then reflectively invoke.
  *
- * The fixture exercises the full nested type graph the extractor must map mirror->strict:
+ * The fixture exercises the full nested type graph a mirror's `toStrict()` must map:
  *  - REQUIRED single nested object (customer -> Customer{name})
  *  - REQUIRED array-of-objects (lines -> Line{sku, qty})
  *  - REQUIRED string scalar-array (tags: List<String>)
@@ -75,7 +76,7 @@ class KotlinExtractorCompilesTest {
         try {
             val loader = loadString("extractor-test", fixture)
 
-            for (gen in listOf(KotlinPayloadGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
+            for (gen in listOf(KotlinEntityGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
             }
@@ -121,18 +122,17 @@ class KotlinExtractorCompilesTest {
             val order = extractMethod.invoke(extractorInstance, loader, dirty)
             assertNotNull(order, "extract must return a strict Order payload")
 
-            // ADR-0052: the extract tier targets the RESPONSE record (@responseRef), so the
-            // strict root is OrderOutResponse. Nested records keep their VO-derived
-            // <VOShort>Payload names — only the template-named ROOT moves.
-            val orderClass = cl.loadClass("acme.shop.prompts.OrderOutResponse")
+            // ADR-0052 + ADR-0056: the extract tier returns the @responseRef value object's OWN
+            // data class (acme.shop.Order), and nested values are their own data classes too.
+            val orderClass = cl.loadClass("acme.shop.Order")
             val customer = orderClass.getDeclaredMethod("getCustomer").invoke(order)
-            val customerClass = cl.loadClass("acme.shop.prompts.CustomerPayload")
+            val customerClass = cl.loadClass("acme.shop.Customer")
             assertEquals("Ada", customerClass.getDeclaredMethod("getName").invoke(customer),
                 "nested customer.name must populate")
 
             val lines = orderClass.getDeclaredMethod("getLines").invoke(order) as List<*>
             assertEquals(2, lines.size, "lines array must have 2 elements")
-            val lineClass = cl.loadClass("acme.shop.prompts.LinePayload")
+            val lineClass = cl.loadClass("acme.shop.Line")
             assertEquals("A", lineClass.getDeclaredMethod("getSku").invoke(lines[0]),
                 "lines[0].sku must populate")
             assertEquals(2, lineClass.getDeclaredMethod("getQty").invoke(lines[1]),
@@ -203,7 +203,7 @@ class KotlinExtractorCompilesTest {
                 "optional scalar note must populate")
 
             // ---- lenient mirror leaf STAYS String / List<String?> (only strict changes) ----
-            val mirrorClass = cl.loadClass("acme.shop.prompts.OrderOutExtracted")
+            val mirrorClass = cl.loadClass("acme.shop.OrderExtracted")
             assertEquals(String::class.java, mirrorClass.getDeclaredMethod("getPriority").returnType,
                 "lenient mirror priority must stay String (only the strict payload is enum-typed)")
             assertTrue(List::class.java.isAssignableFrom(mirrorClass.getDeclaredMethod("getLabels").returnType),
@@ -240,7 +240,7 @@ class KotlinExtractorCompilesTest {
      * stray "Unnecessary non-null assertion" (e.g. a per-element `it!!` on the array-of-objects map)
      * cannot regress for `-Werror` consumers.
      *
-     * Approach: compile the FULL generated set (Payload + Parser + Extractor) with
+     * Approach: compile the FULL generated set (data classes + mirrors + Parser + Extractor) with
      * `allWarningsAsErrors = true`. If the build is clean this is the strongest gate. If
      * pre-existing warnings in the payload/parser (which this fix does not own) trip the global
      * flag, fall back to asserting specifically that the extractor produced no "Unnecessary non-null
@@ -250,7 +250,7 @@ class KotlinExtractorCompilesTest {
         val outDir = Files.createTempDirectory("compile-extractor-werror-")
         try {
             val loader = loadString("extractor-werror-test", fixture)
-            for (gen in listOf(KotlinPayloadGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
+            for (gen in listOf(KotlinEntityGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
             }
@@ -314,7 +314,7 @@ class KotlinExtractorCompilesTest {
         try {
             val loader = loadString("shared-enum-test", sharedEnumFixture)
 
-            for (gen in listOf(KotlinPayloadGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
+            for (gen in listOf(KotlinEntityGenerator(), KotlinOutputParserGenerator(), KotlinExtractorGenerator())) {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
             }
@@ -342,7 +342,7 @@ class KotlinExtractorCompilesTest {
                 "shared-enum generated Kotlin failed to compile:\n${result.messages}")
 
             val cl = result.classLoader
-            val ticketPayload = cl.loadClass("acme.orders.prompts.TicketOutPayload")
+            val ticketPayload = cl.loadClass("acme.orders.Ticket")
             val priorityEnum = cl.loadClass("acme.orders.Priority")
             assertTrue(priorityEnum.isEnum, "Priority must be a generated enum class")
             assertEquals(listOf("LOW", "HIGH"), priorityEnum.enumConstants.map { (it as Enum<*>).name },

@@ -9,10 +9,10 @@ import java.nio.file.Path
 
 /**
  * Shared emitter for the standalone `@Serializable enum class <Name>` file backing a
- * `field.enum`. Used by BOTH [KotlinEntityGenerator] (entity enums) and
- * [KotlinPayloadGenerator] (typed payload enums) so the enum class — its name (via
- * [KotlinTypeMapper.enumTypeName]) and its members (the `@values` verbatim) — is emitted
- * by exactly one piece of code. Keeps the entity and payload enum types byte-identical.
+ * `field.enum`. Used by [KotlinEntityGenerator] for every value-shaped and entity object, so the
+ * enum class — its name (via [KotlinTypeMapper.enumTypeName]) and its members (the `@values`
+ * verbatim) — is emitted by exactly one piece of code, owned by the object that declares the field
+ * (the template tier references these enums and emits none, ADR-0056).
  *
  * <p>Cross-port parity: the Kotlin sibling of the C# `PayloadCodegen.CollectEnumDecls`,
  * the TS union emitter, and the Python `Literal` emitter — all of which reuse the entity

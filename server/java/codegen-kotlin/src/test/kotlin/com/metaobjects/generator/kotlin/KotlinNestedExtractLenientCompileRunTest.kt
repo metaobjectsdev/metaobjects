@@ -17,8 +17,8 @@ import kotlin.test.assertTrue
  * the Java pilot's `GeneratedNestedExtractLenientCompileRunTest`.
  *
  * <p>Generates the parser for a payload with a single nested object field AND an
- * array-of-objects field (the nested extracted mirrors are emitted into the same parser
- * file by [KotlinOutputParserGenerator] / [KotlinExtractSchemaEmitter]), COMPILES it,
+ * array-of-objects field (each value object's extracted mirror is emitted beside it by
+ * [KotlinOutputParserGenerator] / [KotlinExtractSchemaEmitter], ADR-0056), COMPILES it,
  * loads the parser object, and invokes the runtime-delegating
  * `extractLenient(loader: MetaDataLoader, text: String)` on DIRTY nested JSON.</p>
  *
@@ -65,12 +65,11 @@ class KotlinNestedExtractLenientCompileRunTest {
         try {
             val loader = loadString("nested-cr", nestedFixture)
 
-            // The parser emits the root + nested Extracted mirrors itself (and the
-            // runtime-delegating extract assembles the graph from the loader's MetaObject,
-            // not the payload classes). The payload generator is also run so the parser's
-            // parse()/safeParse() serialization surface (which references <X>Payload + its
-            // nested payload classes) compiles alongside.
-            for (gen in listOf(KotlinPayloadGenerator(), KotlinOutputParserGenerator())) {
+            // The parser emits the value objects' Extracted mirrors itself (and the
+            // runtime-delegating extract assembles the graph from the loader's MetaObject).
+            // The entity generator is also run: the strict parse and each mirror's toStrict()
+            // reference the value objects' own data classes (ADR-0056).
+            for (gen in listOf(KotlinEntityGenerator(), KotlinOutputParserGenerator())) {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
             }

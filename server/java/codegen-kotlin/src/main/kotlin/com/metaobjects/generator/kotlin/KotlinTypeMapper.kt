@@ -309,7 +309,7 @@ object KotlinTypeMapper {
 
     /**
      * Map a MetaField to its KotlinPoet TypeName for a REST/serialization **payload** property
-     * (the `@Serializable` projection data classes emitted by [KotlinPayloadGenerator]).
+     * (the value-object data classes the template tier binds to, ADR-0056).
      *
      * For the `field.string @dbColumnType=jsonb` open bag this is the parsed JSON value
      * [JSON_VALUE_TYPE] (issue #98). As of the #98 uniform-parsed-value cutover this now AGREES

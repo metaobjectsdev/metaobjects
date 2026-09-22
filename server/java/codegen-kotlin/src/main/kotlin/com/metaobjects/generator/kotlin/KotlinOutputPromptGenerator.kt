@@ -47,21 +47,13 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  * }
  * ```
  *
- * Skips:
- * - `template.prompt` nodes — only outputs need prompt-fragment codegen.
- * - Missing or non-VO `@payloadRef`.
- * - `@format` values other than `json` or `xml` (e.g. `text`).
+ * Emitted only for a RESPONDING `template.prompt` (one whose `@responseRef` resolves to a
+ * value object, ADR-0052); every other template is skipped.
  *
- * The SPEC's `rootName` is the payload class name derived from the template short name
- * (e.g. `"AnswerPayload"`) — matches the convention used by [KotlinOutputParserGenerator]'s
- * extract codegen so both artifacts agree on the root name.
+ * The SPEC's `rootName` is the response value object's short name (e.g. `"Answer"`), the same
+ * rule the TS and C# ports use (ADR-0056).
  *
- * Class-name convention: `<TemplateShort>OutputPrompt` (e.g. template `AnswerOutput` →
- * class `AnswerOutputOutputPrompt` is avoided by using `<TemplateShort>Prompt` form only
- * when the short name already ends in `Output`, otherwise `<TemplateShort>OutputPrompt`).
- * Actually, the simpler consistent convention: suffix is always `Prompt` appended to the
- * capitalized template short name (matching the Java `SpringOutputPromptGenerator`'s
- * `<TemplateShort>Prompt` naming). Example: template `AnswerOutput` → `AnswerOutputPrompt`.
+ * Class-name convention: `<TemplateShort>ResponseFormat` ([KotlinNaming.responseFormatName]).
  *
  * Args:
  * - `outputDir` (required): output directory root.
@@ -99,19 +91,18 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
         val promptClass = KotlinNaming.responseFormatName(templateShort)
-        val payloadClass = KotlinNaming.payloadName(templateShort)
+        // The SPEC rootName is the response value object's short name, matching TS and C#
+        // (ADR-0056 — there is no template-named response class any more for it to agree with).
+        val rootName = PackageMapping.splitFqn(payloadVo.name).second
 
-        // The SPEC rootName agrees with the payload class name so both prompt and
-        // extract artifacts share the same root element name.
-        val specLiteral = KotlinOutputFormatSpecEmitter.specLiteral(payloadVo, template, payloadClass)
+        val specLiteral = KotlinOutputFormatSpecEmitter.specLiteral(payloadVo, template, rootName)
 
         val src = buildString {
             append("// GENERATED — DO NOT EDIT — output-format prompt for template.output `")
             append(template.name)
             append("`\n")
-            append("package ")
-            append(outPkg)
-            append("\n\n")
+            // A no-package template emits into the root package (see KotlinNaming.promptsPackage).
+            if (outPkg.isNotEmpty()) append("package ").append(outPkg).append("\n\n")
             append("import com.metaobjects.render.prompt.OutputFormatRenderer\n")
             append("import com.metaobjects.render.prompt.OutputFormatSpec\n")
             append("import com.metaobjects.render.prompt.PromptField\n")

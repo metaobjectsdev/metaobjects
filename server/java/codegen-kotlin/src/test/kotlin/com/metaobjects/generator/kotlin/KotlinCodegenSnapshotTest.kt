@@ -50,7 +50,6 @@ class KotlinCodegenSnapshotTest {
                 val gen = when (g) {
                     "entity"     -> KotlinEntityGenerator()
                     "table"      -> KotlinExposedTableGenerator()
-                    "payload"    -> KotlinPayloadGenerator()
                     "validator"  -> KotlinValidatorGenerator()
                     "relations"  -> KotlinRelationsGenerator()
                     "storedproc" -> KotlinStoredProcGenerator()

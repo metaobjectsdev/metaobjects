@@ -23,7 +23,7 @@ class KotlinEntityGeneratorTest {
         // Entity/value/projection data classes are Jackson-compatible plain data classes —
         // NO kotlinx @Serializable (that annotation was decorative, and enabling the
         // kotlinx compiler plugin it needs would break every entity with a java.* field).
-        // Only KotlinPayloadGenerator's payloads + KotlinEnumEmitter's enums keep @Serializable.
+        // Only KotlinEnumEmitter's enums keep @Serializable.
         val outDir = Files.createTempDirectory("kgen-")
         try {
             val gen = KotlinEntityGenerator()
