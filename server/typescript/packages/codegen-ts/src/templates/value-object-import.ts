@@ -22,6 +22,16 @@ export interface ValueObjectImport {
 }
 
 /**
+ * The emitted type name of `vo` — with a `ctx` (every real run) the ADR-0044 name
+ * entityFile() declared it under; without one (a bare unit-test call) the bare `vo.name`.
+ * This is the name {@link valueObjectImport} resolves to; a site that needs only the name
+ * asks here rather than re-spelling the conditional.
+ */
+export function emittedVoName(ctx: RenderContext | undefined, vo: MetaData): string {
+  return ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+}
+
+/**
  * The import of `vo`'s own interface (entityFile()'s output) from a template-tier file emitted at
  * `fromPath` — a path relative to the emitting generator's target root.
  *
@@ -36,7 +46,7 @@ export function valueObjectImport(
   fromPath: string,
   extStyle: ExtStyle = ctx?.extStyle ?? "js",
 ): ValueObjectImport {
-  const name = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  const name = emittedVoName(ctx, vo);
   const pkg = effectivePackage(vo);
   if (ctx && ctx.selfTarget.name !== ctx.entityModuleTarget.name) {
     return { name, specifier: entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, pkg, name, extStyle) };

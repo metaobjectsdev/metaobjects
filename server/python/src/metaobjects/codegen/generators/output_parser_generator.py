@@ -40,7 +40,7 @@ from metaobjects.codegen.generators.find_inbound import (
     is_xml,
     response_shape,
 )
-from metaobjects.codegen.value_objects import model_class_name, pkg_of
+from metaobjects.codegen.value_objects import model_class_name, model_import, pkg_of
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 
@@ -168,7 +168,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     # otherwise carry an unused import (the tolerant tier's return type is the
     # all-nullable ``…Extracted`` mirror declared right here).
     if emit_strict:
-        lines.append(f"from .{payload_class} import {payload_class}")
+        lines.append(model_import(payload))
     lines.append("")
     lines.append("")
     if emit_strict:

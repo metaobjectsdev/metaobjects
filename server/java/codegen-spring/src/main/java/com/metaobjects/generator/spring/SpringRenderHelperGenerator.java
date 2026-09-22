@@ -238,8 +238,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — render helper for template.output `")
            .append(template.getName()).append("`\n");
-        // A no-package template emits into the root package (see SpringNaming.promptsPackage).
-        if (!outPkg.isEmpty()) src.append("package ").append(outPkg).append(";\n\n");
+        src.append(SpringNaming.packageHeader(outPkg));
         src.append("/** Typed render helper for the `").append(templateShort)
            .append("` template.output. Wraps the render() engine; the payload field tree is\n")
            .append(" *  baked into the RenderRequest so render()'s runtime drift check matches the\n")

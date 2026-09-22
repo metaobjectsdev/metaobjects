@@ -14,7 +14,7 @@ import java.nio.file.Path
  * verbatim) — is emitted by exactly one piece of code, owned by the object that declares the field
  * (the template tier references these enums and emits none, ADR-0056).
  *
- * <p>Cross-port parity: the Kotlin sibling of the C# `PayloadCodegen.CollectEnumDecls`,
+ * <p>Cross-port parity: the Kotlin sibling of the C# `EntityGenerator` enum emission,
  * the TS union emitter, and the Python `Literal` emitter — all of which reuse the entity
  * enum naming/members for the payload path.</p>
  */

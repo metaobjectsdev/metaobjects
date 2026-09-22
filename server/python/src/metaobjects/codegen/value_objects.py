@@ -37,6 +37,7 @@ from metaobjects.meta.core.object.object_constants import (
     OBJECT_SUBTYPE_VALUE,
 )
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.naming import package_of_resolution_key
 from metaobjects.naming_refs import resolve_object_ref
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 from metaobjects.shared.separators import PACKAGE_SEP
@@ -50,9 +51,7 @@ def pkg_of(node: MetaData) -> str:
     ``::<name>`` ("" for a root-level node). Derived from the resolution key so it is correct
     for BOTH loaded trees (``file_default_package``) and hand-built trees (package only on
     an ancestor)."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
+    return package_of_resolution_key(node.resolution_key())
 
 
 def root_of(node: MetaData) -> MetaData:
@@ -180,6 +179,18 @@ def model_import(obj: MetaData) -> str:
     return f"from .{name} import {name}"
 
 
+# Sentinel separating "never resolved" from "resolved to nothing" in the cache below.
+_MISSING = object()
+
+# The target of a field's ``@objectRef`` is a pure function of the (read-only) tree, so
+# the package-local resolution — which scans every root object per call — is cached per
+# field node. Same never-mutate-after-load premise as ``_NAMES``; the model, type-map and
+# read/create/patch tiers resolve the same field ref several times per gen run.
+_REF_TARGET: "weakref.WeakKeyDictionary[MetaData, MetaObject | None]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
 def object_ref_target(field: MetaData) -> MetaObject | None:
     """The object a field's ``@objectRef`` names, resolved FQN-exact / package-local
     (ADR-0042) in the FIELD's declaring package — which differs from the owner's when the
@@ -188,9 +199,14 @@ def object_ref_target(field: MetaData) -> MetaObject | None:
     ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
     if not isinstance(ref, str) or not ref:
         return None
+    hit = _REF_TARGET.get(field, _MISSING)
+    if hit is not _MISSING:
+        return hit
     referrer_pkg = pkg_of(field.parent) if field.parent is not None else ""
     target = resolve_object_ref(root_of(field), ref, referrer_pkg)
-    return target if isinstance(target, MetaObject) else None
+    result = target if isinstance(target, MetaObject) else None
+    _REF_TARGET[field] = result
+    return result
 
 
 def object_ref_class_name(field: MetaData) -> str | None:

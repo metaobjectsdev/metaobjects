@@ -158,22 +158,23 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         SpringNaming.requireReferenceable(outPkg, payloadVo, "template '" + template.getName() + "'");
         // Per-template coercion state. Carried as fields rather than added parameters so every
         // protected seam here (emitMapperMethods / emitMapper / mapperArgForField — ADR-0002
-        // extension points) keeps its signature: a subclass overriding mapperArgForField still
-        // participates, which a new overload would have quietly bypassed. Reset per template
-        // because one loader run emits a parser per responding prompt.
+        // extension points) can participate without a signature change for them. Reset per
+        // template because one loader run emits a parser per responding prompt.
         this.usedCoercions = new java.util.LinkedHashSet<>();
         this.currentParserClass = parserClass;
         // ADR-0052: the shape parsed INTO is @responseRef — the reply — never @payloadRef,
         // which types the request this prompt renders outbound. ADR-0056: it is the response
         // value object's own record, referenced fully qualified.
         String payloadClass = SpringNaming.valueObjectRef(payloadVo);
-        this.currentMapperNames = mapperNames(payloadVo);
+        // The mapper-name map is a PURE function of the response VO — threaded through the
+        // emit chain rather than parked on the instance (ADR-0056's name rule; a field here
+        // would let an emitMapper called outside emit() read a stale template's names).
+        Map<String, String> mapperNames = mapperNames(payloadVo);
 
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — response parser for template.prompt `")
            .append(template.getName()).append("`\n");
-        // A no-package template emits into the root package (see SpringNaming.promptsPackage).
-        if (!outPkg.isEmpty()) src.append("package ").append(outPkg).append(";\n\n");
+        src.append(SpringNaming.packageHeader(outPkg));
         // ADR-0053: the reply's syntax is @responseFormat (json|xml, default json) — never
         // @format, which is the syntax of the rendered prompt BODY. The old @format gate is
         // what made a text-bodied prompt with a JSON reply emit a strict parser and no
@@ -244,11 +245,11 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             src.append("        // ValueObjects / List<ValueObject> — map it into the value objects' records.\n");
             src.append("        @SuppressWarnings(\"unchecked\")\n");
             src.append("        java.util.Map<String, Object> d = (java.util.Map<String, Object>) raw.data();\n");
-            src.append("        return new com.metaobjects.render.extract.ExtractionResult<>(from").append(currentMapperNames.get(payloadVo.getName())).append("(d), raw.report());\n");
+            src.append("        return new com.metaobjects.render.extract.ExtractionResult<>(from").append(mapperNames.get(payloadVo.getName())).append("(d), raw.report());\n");
             src.append("    }\n");
 
             // ---- Generated ValueObject(Map) -> value-object record mappers (root + nested, deduped) ----
-            emitMapperMethods(src, payloadVo, loader);
+            emitMapperMethods(src, payloadVo, mapperNames);
             // AFTER the mappers: emitting them is what populates usedCoercions.
             appendMapperHelpers(src, usedCoercions);
         }
@@ -278,12 +279,12 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      * bounding is handled upstream by {@code MetaObjectExtractor}, so the per-FQN dedupe set
      * here also stops the emitter from recursing forever on a cyclic value-object graph.</p>
      */
-    protected void emitMapperMethods(StringBuilder src, MetaObject rootVo, MetaDataLoader loader) {
+    protected void emitMapperMethods(StringBuilder src, MetaObject rootVo, Map<String, String> mapperNames) {
         Set<String> emitted = new LinkedHashSet<>();
-        emitMapper(src, rootVo, loader, emitted);
+        emitMapper(src, rootVo, mapperNames, emitted);
     }
 
-    protected void emitMapper(StringBuilder src, MetaObject vo, MetaDataLoader loader, Set<String> emitted) {
+    protected void emitMapper(StringBuilder src, MetaObject vo, Map<String, String> mapperNames, Set<String> emitted) {
         if (!emitted.add(vo.getName())) {
             return; // already emitted (dedupe + cycle guard) — vo.getName() is already the
                      // FQN (Java's MetaObject.getName() is package-qualified), so this key
@@ -302,7 +303,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         body.append("    /** Map an assembled ValueObject (Map) into a typed {@link ")
             .append(payloadClass).append("}. Generated; null-tolerant. */\n");
         body.append("    private static ").append(payloadClass)
-            .append(" from").append(currentMapperNames.get(vo.getName()))
+            .append(" from").append(mapperNames.get(vo.getName()))
             .append("(java.util.Map<String, Object> d) {\n");
         body.append("        if (d == null) return null;\n");
         body.append("        return new ").append(payloadClass).append("(\n");
@@ -310,7 +311,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         List<MetaField> fields = new ArrayList<>(vo.getMetaFields());
         for (int i = 0; i < fields.size(); i++) {
             MetaField<?> field = fields.get(i);
-            String arg = mapperArgForField(field, vo, payloadClass, loader, nestedVos);
+            String arg = mapperArgForField(field, vo, payloadClass, mapperNames, nestedVos);
             body.append("                ").append(arg);
             if (i < fields.size() - 1) body.append(',');
             body.append('\n');
@@ -321,7 +322,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
         // Recurse into nested value objects (post-order, deduped).
         for (MetaObject nested : nestedVos) {
-            emitMapper(src, nested, loader, emitted);
+            emitMapper(src, nested, mapperNames, emitted);
         }
     }
 
@@ -333,7 +334,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      */
     @SuppressWarnings("rawtypes")
     protected String mapperArgForField(MetaField<?> field, MetaObject owner, String payloadClass,
-                                     MetaDataLoader loader, List<MetaObject> nestedVos) {
+                                     Map<String, String> mapperNames, List<MetaObject> nestedVos) {
         String name = field.getName();
 
         // A keyed map of values is not something the lenient extract populates: leave it null,
@@ -348,7 +349,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             MetaObject target = MetaDataUtil.getObjectRef(field);
             if (target != null && MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
                 nestedVos.add(target);
-                String nestedMapper = "from" + currentMapperNames.get(target.getName());
+                String nestedMapper = "from" + mapperNames.get(target.getName());
                 if (field.isArrayType()) {
                     // List<Nested>: map each element Map; the assembled value is a List.
                     // from<Nested> is a static method in scope within this generated parser class.
@@ -483,9 +484,6 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
                 ? "coerceInet" : COERCE_STRING;
         return COERCE_STRING;
     }
-
-    /** The current template's {@link #mapperNames}, keyed by value-object FQN. */
-    private Map<String, String> currentMapperNames = Map.of();
 
     /**
      * The {@code from<Name>} mapper-method suffix for each value object reachable from

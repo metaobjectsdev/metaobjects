@@ -126,8 +126,7 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — response-format fragment for template.prompt `")
            .append(template.getName()).append("`\n");
-        // A no-package template emits into the root package (see SpringNaming.promptsPackage).
-        if (!outPkg.isEmpty()) src.append("package ").append(outPkg).append(";\n\n");
+        src.append(SpringNaming.packageHeader(outPkg));
         src.append("import com.metaobjects.render.prompt.OutputFormatSpec;\n");
         src.append("import com.metaobjects.render.prompt.OutputFormatRenderer;\n");
         src.append("import com.metaobjects.render.prompt.PromptField;\n");

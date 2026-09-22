@@ -1,5 +1,7 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.`object`.MetaObject
+import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.util.RouteNaming
 
 /**
@@ -128,6 +130,45 @@ object KotlinNaming {
      * object lives in the root package, which Kotlin cannot reference from a named one.
      */
     fun promptsPackage(pkg: String): String = if (pkg.isEmpty()) "" else "$pkg.prompts"
+
+    /**
+     * The `package` file header for a template-tier emission into [pkg]. A no-package template
+     * emits into the ROOT package (see [promptsPackage]), where no `package` declaration may
+     * appear — the one spelling of that rule for every template-tier generator.
+     */
+    fun packageHeader(pkg: String): String = if (pkg.isEmpty()) "" else "package $pkg\n\n"
+
+    /**
+     * The strict value-object data-class reference for [vo], as [KotlinEntityGenerator] names it —
+     * fully qualified unless [vo] has no package. The ONE way any tier names the entity-side type
+     * (ADR-0056); mirrors Java's `SpringNaming.valueObjectRef`.
+     */
+    fun strictRef(vo: MetaObject): String {
+        val (pkg, short) = PackageMapping.splitFqn(vo.name)
+        return if (pkg.isEmpty()) short else "$pkg.$short"
+    }
+
+    /** The mirror class reference for [vo] — [strictRef]'s package with [extractedName]'s name;
+     *  the mirror is emitted beside its value object (ADR-0056). */
+    fun mirrorRef(vo: MetaObject): String {
+        val (pkg, short) = PackageMapping.splitFqn(vo.name)
+        val name = extractedName(short)
+        return if (pkg.isEmpty()) name else "$pkg.$name"
+    }
+
+    /**
+     * Fail codegen when a file in [fromPkg] would have to reference [vo]'s root-package types:
+     * Kotlin cannot name a root-package class from a named package, so the emitted file would not
+     * compile. [what] names the referring site, for the message.
+     */
+    fun requireReferenceable(fromPkg: String, vo: MetaObject, what: String) {
+        if (fromPkg.isEmpty() || PackageMapping.splitFqn(vo.name).first.isNotEmpty()) return
+        throw GeneratorException(
+            "$what references value object '${vo.name}', which has no package. Kotlin cannot " +
+                "reference a root-package class from the named package '$fromPkg' — declare " +
+                "'${vo.name}' in a package"
+        )
+    }
 
     /**
      * [KotlinExtractSchemaEmitter]: `voShort + "Extracted"` — the all-nullable extraction mirror

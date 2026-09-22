@@ -55,7 +55,7 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
-from metaobjects.codegen.value_objects import model_class_name, resolve_payload_vo
+from metaobjects.codegen.value_objects import model_class_name, pkg_of, resolve_payload_vo
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -88,15 +88,6 @@ def _py_str(s: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of an object — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level object). Derived from the resolution
-    key so it is correct for BOTH loaded trees (file_default_package) and
-    programmatically-built trees (package only on the root, folded via the ancestor
-    walk in ``resolution_key()``)."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
 
 
 def _resolve_nested_object_ref(
@@ -132,7 +123,7 @@ def _derive_payload_field_tree(
     # A nested @objectRef resolves in the FIELD's own declaring package (below),
     # which differs from this VO's when the field is inherited via extends from an
     # abstract VO in another package (the bare ref was authored there).
-    vo_pkg = _pkg_of(vo)
+    vo_pkg = pkg_of(vo)
     fields: list[PayloadField] = []
     for f in vo.children():
         if f.type != TYPE_FIELD or not isinstance(f, MetaField):
@@ -140,7 +131,7 @@ def _derive_payload_field_tree(
         if f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
             ref = f.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
             if isinstance(ref, str) and ref:
-                field_pkg = _pkg_of(f.parent) if f.parent is not None else vo_pkg
+                field_pkg = pkg_of(f.parent) if f.parent is not None else vo_pkg
                 target = _resolve_nested_object_ref(root, ref, field_pkg)
                 if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE:
                     children = _derive_payload_field_tree(root, target, next_seen)
@@ -246,7 +237,7 @@ class RenderHelperGenerator:
                 continue
             # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
             # resolves in ITS OWN package first.
-            vo = resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
+            vo = resolve_payload_vo(root, payload_ref, pkg_of(tmpl))
             if vo is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: template.output '{tmpl.name}' @payloadRef "

@@ -28,6 +28,7 @@ import {
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { fields, isArray, scalarKind, jsonStringLiteral } from "./fr010-field-mapping.js";
+import { emittedVoName } from "./value-object-import.js";
 import type { RenderContext } from "../render-context.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
@@ -57,13 +58,13 @@ function isObjectField(field: MetaData): boolean {
  *  entity module AND its extract mirror identically (`AcmeAlphaNoteExtracted`). Omitted →
  *  the bare `vo.name` (bare template unit-test calls; byte-identical to pre-#228 output). */
 export function mirrorName(vo: MetaData, ctx?: RenderContext): string {
-  const name = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  const name = emittedVoName(ctx, vo);
   return `${name}Extracted`;
 }
 
 /** The mapper function name for a value-object (`from<Name>Extracted`). See {@link mirrorName}. */
 export function mapperName(vo: MetaData, ctx?: RenderContext): string {
-  const name = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  const name = emittedVoName(ctx, vo);
   return `from${name}Extracted`;
 }
 

@@ -101,8 +101,7 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
             append("// GENERATED — DO NOT EDIT — output-format prompt for template.output `")
             append(template.name)
             append("`\n")
-            // A no-package template emits into the root package (see KotlinNaming.promptsPackage).
-            if (outPkg.isNotEmpty()) append("package ").append(outPkg).append("\n\n")
+            append(KotlinNaming.packageHeader(outPkg))
             append("import com.metaobjects.render.prompt.OutputFormatRenderer\n")
             append("import com.metaobjects.render.prompt.OutputFormatSpec\n")
             append("import com.metaobjects.render.prompt.PromptField\n")

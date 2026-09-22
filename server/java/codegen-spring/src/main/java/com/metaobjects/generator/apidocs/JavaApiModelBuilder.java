@@ -53,9 +53,10 @@ import java.util.List;
  * <ul>
  *   <li>DTO and VALIDATION symbols carry the entity's per-field shape via
  *       {@link JavaFieldShapes#dtoFields(MetaObject)}; PAYLOAD symbols carry the
- *       template's payload shape via
- *       {@link JavaFieldShapes#payloadFields(com.metaobjects.MetaData, MetaDataLoader)}.
- *       Both derive types/optionality from the real generators (drift-proof).</li>
+ *       response/payload value object's own record shape via
+ *       {@link JavaFieldShapes#payloadFieldsOf(com.metaobjects.object.MetaObject, MetaDataLoader)},
+ *       the record {@link #payloadValueObject} resolves to. Both derive types/optionality
+ *       from the real generators (drift-proof).</li>
  *   <li>A VALIDATION symbol is emitted alongside each DTO (the Jakarta
  *       constraints live on the DTO record), carrying the same required/optional
  *       field shape.</li>

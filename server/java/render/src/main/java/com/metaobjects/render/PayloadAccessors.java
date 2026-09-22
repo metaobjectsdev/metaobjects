@@ -88,6 +88,29 @@ public final class PayloadAccessors {
         return withDerivedAccessors(payload, 0);
     }
 
+    // A record class's accessors, resolved ONCE per class. getRecordComponents() returns a
+    // defensive copy per call and getAccessor() re-resolves the Method each time — without
+    // this cache a record payload was reflected component-by-component on every render of
+    // every node. Class shapes are immutable, so no eviction. Mirrors the C# port's
+    // WireNameCache (MetaObjects.Render/PayloadAccessors.cs).
+    private static final java.util.concurrent.ConcurrentHashMap<Class<?>, RecordAccessor[]> ACCESSORS =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record RecordAccessor(String name, java.lang.reflect.Method getter) {}
+
+    private static RecordAccessor[] accessorsFor(Class<?> recordClass) {
+        return ACCESSORS.computeIfAbsent(recordClass, c -> {
+            var components = c.getRecordComponents();
+            var accessors = new RecordAccessor[components.length];
+            for (int i = 0; i < components.length; i++) {
+                var getter = components[i].getAccessor();
+                getter.setAccessible(true);
+                accessors[i] = new RecordAccessor(components[i].getName(), getter);
+            }
+            return accessors;
+        });
+    }
+
     private static Object withDerivedAccessors(Object payload, int depth) {
         if (depth > 32 || payload == null) return payload; // pathological graph
         // A Java RECORD is viewed as the map of its components. Since ADR-0056 a template's payload
@@ -96,11 +119,9 @@ public final class PayloadAccessors {
         // exactly as it does for a map — the same data renders the same whatever its shape.
         if (payload instanceof Record rec) {
             java.util.Map<String, Object> components = new java.util.LinkedHashMap<>();
-            for (java.lang.reflect.RecordComponent rc : rec.getClass().getRecordComponents()) {
+            for (RecordAccessor a : accessorsFor(rec.getClass())) {
                 try {
-                    java.lang.reflect.Method accessor = rc.getAccessor();
-                    accessor.setAccessible(true);
-                    components.put(rc.getName(), accessor.invoke(rec));
+                    components.put(a.name(), a.getter().invoke(rec));
                 } catch (ReflectiveOperationException | RuntimeException e) {
                     // An inaccessible component is left out rather than failing the render;
                     // Mustache would not have resolved it on the record either.

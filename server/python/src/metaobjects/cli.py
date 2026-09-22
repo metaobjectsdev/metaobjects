@@ -102,7 +102,7 @@ from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.generators.render_helper_generator import (
     _derive_payload_field_tree,
 )
-from metaobjects.codegen.value_objects import resolve_payload_vo
+from metaobjects.codegen.value_objects import pkg_of, resolve_payload_vo
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.naming import COLUMN_NAMING_STRATEGIES, DEFAULT_COLUMN_NAMING, package_of_resolution_key
 from metaobjects.render.filesystem_provider import FilesystemProvider
@@ -112,17 +112,6 @@ from metaobjects.render.verify import (
     verify as render_verify,
 )
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
-from metaobjects.shared.separators import PACKAGE_SEP
-
-
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of a node — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
-    match the existing per-generator convention. Used to derive a template's
-    referrer package for ``resolve_payload_vo`` (#228)."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
 
 
 #: The error a run with no generator selection reports.
@@ -1867,7 +1856,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
             continue
         # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
         # resolves in ITS OWN package first.
-        vo = resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
+        vo = resolve_payload_vo(root, payload_ref, pkg_of(tmpl))
         if vo is None:
             print(
                 f"error: [{tmpl.name}] @payloadRef '{payload_ref}' did not "

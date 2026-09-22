@@ -54,29 +54,9 @@ internal object KotlinExtractSchemaEmitter {
     fun mirrorName(vo: MetaObject): String =
         KotlinNaming.extractedName(PackageMapping.splitFqn(vo.name).second)
 
-    /** The mirror class reference for [vo], fully qualified unless [vo] has no package. */
-    fun mirrorRef(vo: MetaObject): String =
-        qualified(PackageMapping.splitFqn(vo.name).first, mirrorName(vo))
-
-    /** The strict value-object data-class reference for [vo], as [KotlinEntityGenerator] names it. */
-    fun strictRef(vo: MetaObject): String {
-        val (pkg, short) = PackageMapping.splitFqn(vo.name)
-        return qualified(pkg, short)
-    }
-
-    /**
-     * Fail codegen when a file in [fromPkg] would have to reference [vo]'s root-package types:
-     * Kotlin cannot name a root-package class from a named package, so the emitted file would not
-     * compile. [what] names the referring template, for the message.
-     */
-    fun requireReferenceable(fromPkg: String, vo: MetaObject, what: String) {
-        if (fromPkg.isEmpty() || PackageMapping.splitFqn(vo.name).first.isNotEmpty()) return
-        throw GeneratorException(
-            "$what references value object '${vo.name}', which has no package. Kotlin cannot " +
-                "reference a root-package class from the named package '$fromPkg' — declare " +
-                "'${vo.name}' in a package"
-        )
-    }
+    // strictRef / mirrorRef / requireReferenceable now live in KotlinNaming — the naming
+    // layer every tier asks to reference a value object's types (ADR-0056); this emitter is
+    // a consumer like the others.
 
     /**
      * Write the mirror file for [rootVo] and for every value object it reaches through a declared
@@ -90,7 +70,7 @@ internal object KotlinExtractSchemaEmitter {
         GeneratedFileWriter.write(outFile, mirrorSource(rootVo))
         for (field in rootVo.metaFields) {
             val nested = objectRefValueObject(field) ?: continue
-            requireReferenceable(pkg, nested, "value object '${rootVo.name}'")
+            KotlinNaming.requireReferenceable(pkg, nested, "value object '${rootVo.name}'")
             emitMirrorFiles(nested, outRoot, emitted)
         }
     }
@@ -166,7 +146,7 @@ internal object KotlinExtractSchemaEmitter {
     private fun mirrorPropertyType(field: MetaField<*>): String {
         val target = objectRefValueObject(field)
         if (target != null) {
-            return if (field.isArrayType()) "List<${mirrorRef(target)}>?" else "${mirrorRef(target)}?"
+            return if (field.isArrayType()) "List<${KotlinNaming.mirrorRef(target)}>?" else "${KotlinNaming.mirrorRef(target)}?"
         }
         return when {
             // ADR-0039: resolving array-ness (isArray is the own-only native flag).
@@ -192,7 +172,7 @@ internal object KotlinExtractSchemaEmitter {
         val key = "\"${kotlinStringLiteral(field.name)}\""
         val target = objectRefValueObject(field)
         if (target != null) {
-            val nested = mirrorRef(target)
+            val nested = KotlinNaming.mirrorRef(target)
             // `it` is a non-null Map here, so fromMap never returns null — `!!` keeps the element
             // type non-null to match the List<Nested> mirror property.
             return if (field.isArrayType()) "mapObjectList(d, $key) { $nested.fromMap(it)!! }"
@@ -314,8 +294,6 @@ internal object KotlinExtractSchemaEmitter {
             }
         }
     }
-
-    private fun qualified(pkg: String, name: String): String = if (pkg.isEmpty()) name else "$pkg.$name"
 
     // -------------------------------------------------------------------------
     // Shared source-emission utilities

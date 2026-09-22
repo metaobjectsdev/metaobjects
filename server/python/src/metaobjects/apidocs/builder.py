@@ -43,7 +43,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.find_inbound import is_xml, response_shape
-from metaobjects.codegen.value_objects import is_field_required, resolve_payload_vo
+from metaobjects.codegen.value_objects import is_field_required, pkg_of, resolve_payload_vo
 from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, is_abstract
 from metaobjects.source_resolution import primary_rdb_source
@@ -55,19 +55,6 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
-from metaobjects.shared.separators import PACKAGE_SEP
-
-
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of a node — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
-    match the existing per-generator convention. Used to derive a template's
-    referrer package for ``resolve_payload_vo`` (#228) — see that function's
-    docstring for why this ancestor-walk-aware form is used instead of the
-    loader's bare ``tpl.package or tpl.file_default_package or ""``."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +89,7 @@ def _payload_resolves(tmpl: MetaData, root: MetaData) -> MetaObject | None:
         return None
     # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
     # in ITS OWN package first.
-    return resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
+    return resolve_payload_vo(root, payload_ref, pkg_of(tmpl))
 
 
 def _is_email_kind(tmpl: MetaData) -> bool:
@@ -316,7 +303,7 @@ class PythonApiModelBuilder:
         # to an output, and the gate is @responseRef PRESENCE rather than a format
         # value. Shares `response_shape` with the generators, so the docs can never
         # claim a symbol codegen suppressed.
-        inbound = response_shape(root, tmpl, _pkg_of(tmpl))
+        inbound = response_shape(root, tmpl, pkg_of(tmpl))
         if inbound is not None:
             # The RESPONSE shape the parser actually returns — the @responseRef value
             # object's own model (ADR-0056). Documented once: when the prompt renders and

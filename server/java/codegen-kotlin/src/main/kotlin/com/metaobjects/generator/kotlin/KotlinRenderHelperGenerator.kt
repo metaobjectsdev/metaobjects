@@ -105,8 +105,8 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         // ADR-0056 — the payload IS the @payloadRef value object's own data class, the one
         // KotlinEntityGenerator emits in the value object's package. Referenced fully qualified;
         // this generator declares no payload type of its own.
-        KotlinExtractSchemaEmitter.requireReferenceable(outPkg, payloadVo, "template '${template.name}'")
-        val payloadClass = KotlinExtractSchemaEmitter.strictRef(payloadVo)
+        KotlinNaming.requireReferenceable(outPkg, payloadVo, "template '${template.name}'")
+        val payloadClass = KotlinNaming.strictRef(payloadVo)
 
         // Payload field tree — reused by the build-time gate AND baked into the emitted
         // RenderRequest.verify so the runtime check matches the gate.
@@ -174,8 +174,7 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
             append("// GENERATED — DO NOT EDIT — render helper for template.output `")
             append(template.name)
             append("`\n")
-            // A no-package template emits into the root package (see KotlinNaming.promptsPackage).
-            if (outPkg.isNotEmpty()) append("package ").append(outPkg).append("\n\n")
+            append(KotlinNaming.packageHeader(outPkg))
             append("/** Typed render helper for the `")
             append(templateShort)
             append("` template.output. Wraps the JVM render() engine; the payload field tree is\n")

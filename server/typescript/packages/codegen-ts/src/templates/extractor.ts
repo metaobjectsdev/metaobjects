@@ -38,7 +38,7 @@ import { mirrorName } from "./extract-delegate-emitter.js";
 import { enumUnionAliasName } from "./inferred-types.js";
 import { enumValues } from "../enum-meta.js";
 import type { RenderContext } from "../render-context.js";
-import { valueObjectImport } from "./value-object-import.js";
+import { emittedVoName, valueObjectImport } from "./value-object-import.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 // ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
@@ -94,7 +94,7 @@ function isFieldRequired(field: MetaData): boolean {
  *  entity module), so the mapper name agrees with the strict payload type it targets under a
  *  cross-package short-name collision (`toStrictAcmeAlphaNote`). Omitted → bare `vo.name`. */
 function mapperName(vo: MetaData, ctx?: RenderContext): string {
-  const name = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  const name = emittedVoName(ctx, vo);
   return `toStrict${name}`;
 }
 
@@ -189,7 +189,7 @@ function emitMapper(
   seen.add(vo.resolutionKey());
 
   const fn = mapperName(vo, ctx);
-  const strict = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  const strict = emittedVoName(ctx, vo);
   const mir = mirrorName(vo, ctx);
   const assigns = fields(vo).map((f) => `    ${f.name}: ${strictArg(f, root, strict, ctx)},`);
   out.push(
@@ -328,7 +328,7 @@ export function renderExtractor(
   // ADR-0044/#228: the strict payload TYPE name is the entity-domain EMITTED name (Task 3's
   // `valueObjectEmittedName`) — the SAME name entityFile() declared the interface under, so a
   // cross-package short-name collision emits e.g. `AcmeAlphaNote`, matching `./AcmeAlphaNote.js`.
-  const strictType = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  const strictType = emittedVoName(ctx, vo);
   const extractLenientWithName = `extractLenient${templateName}WithLoader`; // the nested-capable lenient extract (output-parser)
   const extractLenientPublic = `extractLenient${templateName}`; // re-exposed never-throws lenient tier name
   const extractName = `extract${templateName}`;

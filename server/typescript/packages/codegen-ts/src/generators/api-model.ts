@@ -928,6 +928,13 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
  *  top-level collection (root children filtered to TYPE_TEMPLATE +
  *  TEMPLATE_SUBTYPE_PROMPT). A prompt nested INSIDE an entity is not collected by
  *  the generator, so the builder must not document it either (no over-doc). */
+function templatePrompts(root: MetaRoot): MetaData[] {
+  // ADR-0039: resolving — root has no super (children()==ownChildren()).
+  return root
+    .children()
+    .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT);
+}
+
 /**
  * The TS type name a template's payload/response is documented under — the resolved value
  * object's own name (ADR-0056: it IS the type), falling back to the ref's short name when the
@@ -936,13 +943,6 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
 function valueObjectTypeName(root: MetaRoot, tmpl: MetaData, ref: string): string {
   const vo = resolveObjectRef(root, ref, tmpl.package ?? tmpl.fileDefaultPackage ?? "").node;
   return vo !== undefined ? vo.name : stripPackage(ref);
-}
-
-function templatePrompts(root: MetaRoot): MetaData[] {
-  // ADR-0039: resolving — root has no super (children()==ownChildren()).
-  return root
-    .children()
-    .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT);
 }
 
 /**

@@ -147,7 +147,7 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
  *  to `fallbackPkg` (the referring object's package). THE single source of truth for
  *  the referrer package passed to `RenderContext.resolveValueObjectName`, so every
  *  value-object reference site resolves a cross-package short-name collision
- *  identically (they cannot drift). Mirrors payload-codegen's `collectClosure`. */
+ *  identically (they cannot drift). */
 export function fieldDeclaringPackage(field: MetaField, fallbackPkg: string | undefined): string | undefined {
   return field.parent?.package ?? field.parent?.fileDefaultPackage ?? fallbackPkg;
 }

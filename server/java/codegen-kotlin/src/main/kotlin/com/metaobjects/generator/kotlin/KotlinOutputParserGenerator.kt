@@ -97,10 +97,10 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
         val parserClass = KotlinNaming.parserName(templateShort)
-        KotlinExtractSchemaEmitter.requireReferenceable(outPkg, responseVo, "template '${template.name}'")
+        KotlinNaming.requireReferenceable(outPkg, responseVo, "template '${template.name}'")
         // ADR-0056 — the parse result IS the response value object's own data class.
-        val responseClass = KotlinExtractSchemaEmitter.strictRef(responseVo)
-        val mirrorClass = KotlinExtractSchemaEmitter.mirrorRef(responseVo)
+        val responseClass = KotlinNaming.strictRef(responseVo)
+        val mirrorClass = KotlinNaming.mirrorRef(responseVo)
         val parseFn = "parse$templateShort"
         val safeParseFn = "safeParse$templateShort"
 
@@ -119,8 +119,7 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
             append("// GENERATED — DO NOT EDIT — response parser for template.prompt `")
             append(template.name)
             append("`\n")
-            // A no-package template emits into the root package (see KotlinNaming.promptsPackage).
-            if (outPkg.isNotEmpty()) append("package ").append(outPkg).append("\n\n")
+            append(KotlinNaming.packageHeader(outPkg))
             if (emitStrict) append("import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper\n")
             append("import com.metaobjects.loader.MetaDataLoader\n")
             append("import com.metaobjects.`object`.extract.MetaObjectExtractor\n")

@@ -72,24 +72,11 @@ public final class JavaFieldShapes {
     }
 
     /**
-     * The documented field shapes of a template's {@code @payloadRef} value object — see
-     * {@link #payloadFieldsOf(MetaObject, MetaDataLoader)}. Empty when the template carries no
-     * resolvable payload (defensive — callers gate on a resolvable ref first).
-     */
-    public static List<FieldShape> payloadFields(MetaData template, MetaDataLoader loader) {
-        if (!(template instanceof MetaTemplate tmpl)) return List.of();
-        String payloadRef = tmpl.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) return List.of();
-        MetaObject vo = SpringNaming.resolveValueObjectRef(
-            loader, payloadRef, MetaDataUtil.findPackageForMetaData(tmpl));
-        if (vo == null) return List.of();
-        return payloadFieldsOf(vo, loader);
-    }
-
-    /**
      * The documented field shapes of a value object's record — the type a template renders as
-     * its payload, or a responding prompt parses its reply into. Uses the record generator's own
-     * component typing and validation derivation, so the docs cannot drift from the record.
+     * its payload, or a responding prompt parses its reply into (ADR-0056: the record is the
+     * value object's own, so the builder resolves the {@code @payloadRef} and hands the target
+     * here). Uses the record generator's own component typing and validation derivation, so
+     * the docs cannot drift from the record.
      */
     public static List<FieldShape> payloadFieldsOf(MetaObject vo, MetaDataLoader loader) {
         if (vo == null) return List.of();

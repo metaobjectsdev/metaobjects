@@ -47,7 +47,7 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.generators.find_inbound import response_format_of
-from metaobjects.codegen.value_objects import resolve_payload_vo
+from metaobjects.codegen.value_objects import pkg_of, resolve_payload_vo
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.meta_data import MetaData
@@ -55,7 +55,6 @@ from metaobjects.meta.template import template_constants as tc
 from metaobjects.meta.template.meta_template import MetaTemplate
 from metaobjects.shared.base_types import TYPE_TEMPLATE
 from metaobjects.library.library_sources import LIBRARY_MANIFESTS
-from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "trace-helper"
 
@@ -79,18 +78,6 @@ def _anchor_fqns() -> frozenset[str]:
 #: The anchor FQNs, resolved once per process from the embedded manifests.
 #: Mirrors TS ``anchorFqns()`` / Java ``LlmTraceHelperGenerator.ANCHOR_FQNS``.
 ANCHOR_FQNS = _anchor_fqns()
-
-
-def _pkg_of(node: MetaData) -> str:
-    """The effective package of a node — its ``resolution_key()`` minus the
-    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
-    match the existing per-generator convention. Used to derive the referring
-    ``template.prompt``'s package for ``resolve_payload_vo`` (#228) — see that
-    function's docstring for why this ancestor-walk-aware form is used instead of
-    the loader's bare ``tpl.package or tpl.file_default_package or ""``."""
-    key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
 
 
 def _snake_case(name: str) -> str:
@@ -176,7 +163,7 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     # its own package first — the prompt is nested inside `entity` but carries its
     # OWN effective package via resolution_key()'s ancestor walk).
     response_vo = (
-        resolve_payload_vo(root, response_ref, _pkg_of(prompt)) if response_ref else None
+        resolve_payload_vo(root, response_ref, pkg_of(prompt)) if response_ref else None
     )
     if response_ref is not None and response_vo is None:
         raise ValueError(

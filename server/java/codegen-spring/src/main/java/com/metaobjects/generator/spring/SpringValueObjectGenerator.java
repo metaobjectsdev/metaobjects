@@ -77,12 +77,11 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         List<MetaObject> out = new ArrayList<>();
         for (MetaObject obj : loader.getMetaObjects()) {
             if (GeneratorUtil.isAbstract(obj)) continue;
-            boolean value = MetaObject.SUBTYPE_VALUE.equals(obj.getSubType());
-            // ADR-0039: resolving — a source anywhere in the extends chain binds a projection to a
-            // backing store, and then its type is the entity tier's DTO, not a value record.
-            boolean sourcelessProjection = MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())
-                && obj.getSources(true).isEmpty();
-            if (value || sourcelessProjection) out.add(obj);
+            // #210 — value, or SOURCELESS projection (ADR-0039: a source anywhere in the
+            // extends chain binds it to a backing store, and then its type is the entity
+            // tier's DTO, not a value record). The same predicate the template tier's
+            // @payloadRef resolution applies.
+            if (SpringNaming.isLegalPayloadTarget(obj)) out.add(obj);
         }
         out.sort(java.util.Comparator.comparing(MetaObject::getName));
         return out;
