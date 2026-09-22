@@ -159,6 +159,55 @@ describe("ObjectManager — create", () => {
       errors: [{ field: "title", rule: "required" }],
     });
   });
+
+  // The shape every real model has: a shared BaseEntity declares `id` @required, and the
+  // key is server-generated. @required is a true statement about the ROW; the store fills
+  // the key on insert exactly as it fills a @default column, so an ABSENT key is not a
+  // required failure. (A present null still is — nulling a required field is never a fill.)
+  function makeRequiredIncrementPost(): MetaData {
+    const post = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Post");
+    const id = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id");
+    id.setAttr(FIELD_ATTR_REQUIRED, true);
+    post.addChild(id);
+    const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+    title.setAttr(FIELD_ATTR_REQUIRED, true);
+    post.addChild(title);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr(IDENTITY_ATTR_FIELDS, ["id"]);
+    primary.setAttr(IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT);
+    post.addChild(primary);
+    return post;
+  }
+
+  test("a @required increment PK is not demanded from the caller", async () => {
+    const om2 = new ObjectManager({
+      metadata: makeRoot([makeRequiredIncrementPost()]),
+      driver: inMemoryDriver({ pkFields: { posts: ["id"] } }),
+    });
+    const row = await om2.create("Post", { title: "New" });
+    expect(typeof row.id).toBe("number");
+    expect(row.title).toBe("New");
+  });
+
+  test("a @required increment PK sent as an explicit null is still a required failure", async () => {
+    const om2 = new ObjectManager({
+      metadata: makeRoot([makeRequiredIncrementPost()]),
+      driver: inMemoryDriver({ pkFields: { posts: ["id"] } }),
+    });
+    await expect(om2.create("Post", { id: null, title: "New" })).rejects.toMatchObject({
+      name: "ValidationError",
+      errors: [{ field: "id", rule: "required" }],
+    });
+  });
+
+  test("createMany: a @required increment PK is not demanded from the caller", async () => {
+    const om2 = new ObjectManager({
+      metadata: makeRoot([makeRequiredIncrementPost()]),
+      driver: inMemoryDriver({ pkFields: { posts: ["id"] } }),
+    });
+    const rows = await om2.createMany("Post", [{ title: "A" }, { title: "B" }]);
+    expect(rows).toHaveLength(2);
+  });
 });
 
 describe("ObjectManager — update", () => {

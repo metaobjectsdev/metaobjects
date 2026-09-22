@@ -41,6 +41,13 @@ const INT64_STRING_RE = /^-?\d+$/;
 export interface RunValidatorsOpts {
   /** Partial-update mode: required-checks only fire for fields whose key is present in `data`. */
   partial?: boolean;
+  /**
+   * Fields the store fills on insert — a driver-generated primary key. Exempt from
+   * required-on-insert when ABSENT, exactly like a `@default` column: `@required` on a
+   * server-generated key is a true statement about the ROW, not a demand on the caller.
+   * A present null is still a required failure.
+   */
+  storeFilled?: readonly string[];
 }
 
 export function runValidators(
@@ -70,6 +77,7 @@ export function runValidators(
       // EXPLICIT present null — nulling a required field is a deliberate clear the
       // default cannot cover (FR-035 PATCH-2: present-null on @required → error).
       if (hasDefault && !present) continue;
+      if (!present && opts.storeFilled?.includes(field.name)) continue;
       errors.push({
         field: field.name,
         rule: "required",

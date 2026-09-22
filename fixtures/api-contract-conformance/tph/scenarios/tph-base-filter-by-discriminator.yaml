@@ -1,0 +1,46 @@
+name: tph-base-filter-by-discriminator
+description: >
+  FR-017: the polymorphic base collection filters by its own discriminator.
+  The base allowlist includes the discriminator field (`type` is
+  `@filterable`), so `GET /auths?filter[type][eq]=Bridge` narrows the union to
+  one subtype and `filter[type][in]=Bridge,Copay` to two — the query a list
+  page with a "kind" facet sends on its first render.
+
+  The JVM generators removed the discriminator from the base allowlist, so both
+  forms answered `400 invalid_filter_field` on Java and Kotlin while the other
+  three ports answered 200; Kotlin's TPH controller also dropped it from its
+  coercion and WHERE arms. No scenario here filtered the base by the
+  discriminator, so all five ports stayed green.
+
+  Per-subtype routes are deliberately NOT asserted here: on the JVM they share
+  the base allowlist and answer the discriminator with a truthful no-op or an
+  empty list, where the other ports reject it — a ruled difference, not a
+  defect.
+requests:
+  - id: r1
+    method: GET
+    path: /api/auths?filter[type][eq]=Bridge&sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [1]
+        length: 1
+
+  - id: r2
+    method: GET
+    path: /api/auths?filter[type][in]=Bridge,Copay&sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [1, 2]
+        length: 2
+
+  # Bare-value sugar for `eq`.
+  - id: r3
+    method: GET
+    path: /api/auths?filter[type]=PriorAuth
+    expect:
+      status: 200
+      body:
+        ids: [3]
+        length: 1

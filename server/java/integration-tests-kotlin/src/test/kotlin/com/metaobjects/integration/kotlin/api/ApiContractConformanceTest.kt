@@ -48,7 +48,7 @@ internal class ApiContractConformanceTest {
     private fun runScenario(server: AuthorApiServer, scenario: ApiScenario) {
         val client = HttpClient.newHttpClient()
         for (req in scenario.requests) {
-            val builder = HttpRequest.newBuilder(URI.create(server.baseUrl + req.path))
+            val builder = HttpRequest.newBuilder(URI.create(server.baseUrl + ApiContractWire.escapeStrayPercent(req.path)))
             val bodyPublisher = if (req.body != null) {
                 builder.header("Content-Type", "application/json")
                 HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(req.body))

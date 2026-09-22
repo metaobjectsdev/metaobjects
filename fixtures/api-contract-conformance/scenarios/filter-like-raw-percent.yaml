@@ -1,0 +1,58 @@
+name: filter-like-raw-percent
+description: >
+  A `like` wildcard typed as a RAW `%`, the way a browser and Node's fetch send
+  it: GET /api/authors?filter[name][like]=A% — not `A%25`. A raw `%` that does
+  not start a valid `%XX` escape is kept LITERAL, which is what WHATWG
+  percent-decode, fast-querystring (TS), ASP.NET (C#) and `unquote_plus`
+  (Python) all do; `%XX` is still a byte and `+` still a space. So `A%` means
+  exactly what `A%25` means in `filter-like`.
+
+  The failure modes this pins are real, and each was invisible to a corpus that
+  only ever sent `%25`: Java's FilterParser decoded every pair with
+  java.net.URLDecoder, which throws on a malformed escape (a 500 on ANY such
+  request); Kotlin's list handlers read Spring's parameter map, and Tomcat
+  drops a parameter whose value holds a malformed escape, so the filter
+  vanished and every row came back with a 200.
+
+    - r1: trailing raw `%` — `A%` matches Ada Lovelace (1) and Alan Turing (2).
+    - r2: a malformed pair mid-pattern — `%_o` is not an escape (`_` is not a
+          hex digit), so `Ada%_ovelace` is the LIKE pattern verbatim and matches
+          Ada Lovelace only. A port that DROPPED the parameter returns all five
+          rows. (Mid-pattern because the TS routes reject a LEADING `%` with a
+          400 by default — leading-wildcard gating.)
+    - r3: a parameter AFTER the raw `%` still parses — `limit=1` applies.
+
+  Runner note: this scenario is only a gate where the runner puts the `%` on
+  the wire unescaped. .NET's Uri escapes it to `%25` unless the runner opts out
+  (DangerousDisablePathAndQueryCanonicalization), and java.net.URI refuses to
+  hold it at all, so the JVM generated lanes hand it to the controller the way
+  Tomcat does. The JVM REFERENCE lanes cannot: the JDK's HttpServer answers a
+  raw `%` in the request line with `400 Bad request URI` before any handler
+  runs, so those lanes send `%25` and pin only the meaning of the value.
+requests:
+  - id: r1
+    method: GET
+    path: /api/authors?filter[name][like]=A%
+    expect:
+      status: 200
+      body:
+        ids: [1, 2]
+        length: 2
+
+  - id: r2
+    method: GET
+    path: /api/authors?filter[name][like]=Ada%_ovelace
+    expect:
+      status: 200
+      body:
+        ids: [1]
+        length: 1
+
+  - id: r3
+    method: GET
+    path: /api/authors?filter[name][like]=A%&limit=1
+    expect:
+      status: 200
+      body:
+        ids: [1]
+        length: 1

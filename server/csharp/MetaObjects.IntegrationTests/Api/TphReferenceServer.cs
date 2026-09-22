@@ -116,10 +116,17 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             return;
         }
 
-        // GET /api/auths — polymorphic list.
+        // GET /api/auths — polymorphic list, filterable by the base's own columns (FR-017:
+        // the base allowlist includes the discriminator).
         if (method == "GET" && segs.Length == 2)
         {
-            await SendJsonAsync(ctx, 200, await ListAsync(discriminator: null, query));
+            var (filters, error, field) = ParseBaseFilters(query);
+            if (error is not null)
+            {
+                await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = error, ["field"] = field });
+                return;
+            }
+            await SendJsonAsync(ctx, 200, await ListAsync(discriminator: null, query, filters));
             return;
         }
 
@@ -210,10 +217,63 @@ internal sealed class TphReferenceServer : IAsyncDisposable
 
     // -------- data ops (raw Npgsql) --------
 
-    private async Task<List<object?>> ListAsync(string? discriminator, System.Collections.Specialized.NameValueCollection query)
+    // The base's filterable columns and the ops each admits (the enum `type` takes the string
+    // band). Hand-declared, as every allowlist in this reference server is.
+    private static readonly Dictionary<string, string[]> BaseFilterOps = new(StringComparer.Ordinal)
+    {
+        ["id"] = new[] { "eq", "ne", "gt", "gte", "lt", "lte", "in" },
+        ["type"] = new[] { "eq", "ne", "in" },
+        ["reference"] = new[] { "eq", "ne", "in" },
+    };
+
+    private sealed record BaseFilter(string Field, string Op, string[] Values);
+
+    private static (List<BaseFilter> Filters, string? Error, string? Field) ParseBaseFilters(
+        System.Collections.Specialized.NameValueCollection query)
+    {
+        var filters = new List<BaseFilter>();
+        foreach (string? key in query.AllKeys)
+        {
+            if (key is null) continue;
+            var m = System.Text.RegularExpressions.Regex.Match(key, @"^filter\[([^\]]+)\](?:\[([^\]]+)\])?$");
+            if (!m.Success) continue;
+            string field = m.Groups[1].Value;
+            string op = m.Groups[2].Success ? m.Groups[2].Value : "eq";
+            if (!BaseFilterOps.TryGetValue(field, out var ops)) return (filters, "invalid_filter_field", field);
+            if (!ops.Contains(op)) return (filters, "invalid_filter_op", field);
+            string raw = query[key] ?? "";
+            string[] values = op == "in" ? raw.Split(',') : new[] { raw };
+            if (field == "id" && values.Any(v => !long.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
+            filters.Add(new BaseFilter(field, op, values));
+        }
+        return (filters, null, null);
+    }
+
+    private async Task<List<object?>> ListAsync(
+        string? discriminator,
+        System.Collections.Specialized.NameValueCollection query,
+        IReadOnlyList<BaseFilter>? filters = null)
     {
         var sql = new StringBuilder("SELECT * FROM \"auths\"");
-        if (discriminator is not null) sql.Append(" WHERE \"type\" = @disc");
+        var where = new List<string>();
+        var binds = new List<(string Name, object Value)>();
+        if (discriminator is not null) { where.Add("\"type\" = @disc"); binds.Add(("@disc", discriminator)); }
+        foreach (var f in filters ?? Array.Empty<BaseFilter>())
+        {
+            object Bind(string v) => f.Field == "id" ? long.Parse(v) : v;
+            var names = new List<string>();
+            foreach (var v in f.Values)
+            {
+                string name = "@f" + binds.Count;
+                binds.Add((name, Bind(v)));
+                names.Add(name);
+            }
+            string sqlOp = f.Op switch { "eq" => "=", "ne" => "<>", "gt" => ">", "gte" => ">=", "lt" => "<", "lte" => "<=", _ => "IN" };
+            where.Add(f.Op == "in"
+                ? $"\"{f.Field}\" IN ({string.Join(", ", names)})"
+                : $"\"{f.Field}\" {sqlOp} {names[0]}");
+        }
+        if (where.Count > 0) sql.Append(" WHERE ").Append(string.Join(" AND ", where));
         // ?sort=field:dir — only the corpus's `id` sort is exercised; gate to known columns.
         var sort = query["sort"];
         if (!string.IsNullOrWhiteSpace(sort))
@@ -230,7 +290,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
         cmd.CommandText = sql.ToString();
-        if (discriminator is not null) cmd.Parameters.AddWithValue("@disc", discriminator);
+        foreach (var (name, value) in binds) cmd.Parameters.AddWithValue(name, value);
         await using var rdr = await cmd.ExecuteReaderAsync();
         var rows = new List<object?>();
         while (await rdr.ReadAsync()) rows.Add(RowFrom(rdr));

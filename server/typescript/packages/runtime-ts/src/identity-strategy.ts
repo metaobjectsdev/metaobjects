@@ -13,7 +13,8 @@ import {
 import { MetadataError, ValidationError } from "./errors.js";
 
 export type IdentityResolution =
-  | { kind: "driver-generated"; values: Record<string, unknown> }
+  /** `fields` are the PK fields the store fills on insert — absent from `values` by design. */
+  | { kind: "driver-generated"; values: Record<string, unknown>; fields: readonly string[] }
   | { kind: "preset"; values: Record<string, unknown> };
 
 export function resolveIdentity(entity: MetaData, data: Record<string, unknown>): IdentityResolution {
@@ -67,7 +68,7 @@ export function resolveIdentity(entity: MetaData, data: Record<string, unknown>)
       for (const f of pkFields) values[f] = data[f];
       return { kind: "preset", values };
     }
-    return { kind: "driver-generated", values: {} };
+    return { kind: "driver-generated", values: {}, fields: pkFields };
   }
 
   if (generation === GENERATION_UUID) {

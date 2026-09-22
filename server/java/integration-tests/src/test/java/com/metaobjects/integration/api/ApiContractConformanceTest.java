@@ -89,7 +89,7 @@ final class ApiContractConformanceTest {
     private void runScenario(AuthorApiServer server, ApiScenario scenario) throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         for (ApiRequest req : scenario.requests()) {
-            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(server.baseUrl() + req.path()));
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(server.baseUrl() + ApiContractWire.escapeStrayPercent(req.path())));
             HttpRequest.BodyPublisher publisher;
             if (req.body() != null) {
                 builder.header("Content-Type", "application/json");

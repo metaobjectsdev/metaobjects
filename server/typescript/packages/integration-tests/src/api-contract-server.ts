@@ -309,13 +309,10 @@ function parseFilterFromUrl(
   const search = url.slice(qIdx + 1);
 
   const entries: { field: string; op: string; value: string }[] = [];
-  for (const pair of search.split("&")) {
-    if (!pair) continue;
-    const eqIdx = pair.indexOf("=");
-    const rawKey = eqIdx === -1 ? pair : pair.slice(0, eqIdx);
-    const rawValue = eqIdx === -1 ? "" : pair.slice(eqIdx + 1);
-    const key = decodeURIComponent(rawKey.replace(/\+/g, "%20"));
-    const value = decodeURIComponent(rawValue.replace(/\+/g, "%20"));
+  // URLSearchParams is the WHATWG form-urlencoded parse: `+` is a space, `%XX` a byte, and a
+  // `%` that starts no valid escape stays LITERAL (`like=A%` is the pattern `A%`) — never the
+  // URIError decodeURIComponent throws on it. See filter-like-raw-percent.yaml.
+  for (const [key, value] of new URLSearchParams(search)) {
     if (!key.startsWith("filter[")) continue;
     // Match filter[field] or filter[field][op]
     const match = key.match(/^filter\[([^\]]+)\](?:\[([^\]]+)\])?$/);

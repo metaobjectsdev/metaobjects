@@ -13,6 +13,7 @@ import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
 import com.metaobjects.generator.kotlin.KotlinNamesGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
+import com.metaobjects.integration.kotlin.api.ApiContractWire
 import com.metaobjects.loader.uri.URIHelper
 import com.metaobjects.metadata.ktx.loadUris
 import com.tschuchort.compiletesting.KotlinCompilation
@@ -27,7 +28,6 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.net.URI
 import java.nio.charset.StandardCharsets
@@ -250,7 +250,7 @@ class GeneratedAuthorControllerHarness(
     /** Issue a scenario request and return the (status, body-string) pair. */
     fun exchange(method: String, path: String, jsonBody: Any?): Response {
         val mvc = mockMvc ?: error("reset(...) must be called before exchange(...)")
-        val builder = request(HttpMethod.valueOf(method), URI.create(path))
+        val builder = ApiContractWire.mockMvcRequest(HttpMethod.valueOf(method), path)
         if (jsonBody != null) {
             builder.contentType(MediaType.APPLICATION_JSON)
                 .content(mapper.writeValueAsString(jsonBody))

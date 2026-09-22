@@ -11,6 +11,7 @@ import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
+import com.metaobjects.integration.api.ApiContractWire;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
@@ -44,8 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 /**
  * SP-F Unit 1 — host the GENERATED Java Spring {@code @RestController} for the
@@ -201,8 +200,8 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
 
     /** Issue a scenario request and return the (status, body-string) pair. */
     public Response exchange(String method, String path, Object jsonBody) throws Exception {
-        MockHttpServletRequestBuilder builder = request(
-            org.springframework.http.HttpMethod.valueOf(method), URI.create(path));
+        MockHttpServletRequestBuilder builder = ApiContractWire.mockMvcRequest(
+            org.springframework.http.HttpMethod.valueOf(method), path);
         if (jsonBody != null) {
             builder.contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                    .content(mapper.writeValueAsString(jsonBody));

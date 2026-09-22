@@ -25,6 +25,20 @@ public sealed record ApiScenario(
     bool Truncate,                                  // true when setup.truncate is set
     IReadOnlyList<ApiRequest> Requests);
 
+/// <summary>
+/// Builds the request URI for a scenario path so the path reaches the server EXACTLY as the
+/// corpus spells it. A plain <c>new HttpRequestMessage(method, path)</c> goes through
+/// <see cref="Uri"/> canonicalization, which rewrites a raw <c>%</c> that does not start a
+/// valid escape to <c>%25</c> — so a scenario sending <c>like=A%</c> would never put the
+/// raw form on the wire, and would pass whatever the server does with it.
+/// </summary>
+public static class ApiContractWire
+{
+    public static Uri VerbatimUri(HttpClient client, string path) =>
+        new(client.BaseAddress!.ToString().TrimEnd('/') + path,
+            new UriCreationOptions { DangerousDisablePathAndQueryCanonicalization = true });
+}
+
 public static class ApiContractScenarioLoader
 {
     public static IReadOnlyList<ApiScenario> LoadScenarios(string dir) =>

@@ -19,12 +19,23 @@ open-bag field plus three value-object columns:
 
 | Field            | Type                                                      | Notes                                    |
 |------------------|----------------------------------------------------------|------------------------------------------|
-| `id`             | `field.long`                                             | `identity.primary @generation=increment` |
+| `id`             | `field.long @required`                                   | `identity.primary @generation=increment` — required AND server-generated (see below) |
 | `title`          | `field.string`                                           | `@required` + `@maxLength 200`           |
 | `payload`        | `field.string @dbColumnType=jsonb`                       | open JSON bag — parsed value over the wire |
 | `primaryMarker`  | `field.object @objectRef=Marker @storage=jsonb @required`| required single VO — present-null → 400   |
 | `optionalMarker` | `field.object @objectRef=Marker @storage=jsonb`          | nullable single VO — FR-035 tristate      |
 | `markers`        | `field.object @objectRef=Marker @storage=jsonb isArray`  | nullable array of VO — `[]` ≠ null        |
+
+**Why `id` is `@required`.** It is the shape every real model has — a shared
+`BaseEntity` declares `id` required — and the one no other api-contract entity
+had. A required, server-generated key is a true statement about a RESPONSE; a
+generator that reads it onto the REQUEST rejects every POST that (correctly)
+omits the key. The Java generated controller did exactly that: its vanilla
+create validated the whole DTO, so `@NotNull` on `id` answered every create
+with `400 {"error":"validation"}`, while TPH creates (which validate only the
+settable fields) passed. `r2`/`r4` below POST without an `id` and expect `201`,
+and `jsonb-value-object-patch`'s nested-constraint `400` pins that the fix still
+cascades validation into the value objects.
 
 The `Marker` value object (`object.value`) is `{ label: field.string @required
 @maxLength 40; score: field.int }` — so a nested-constraint violation

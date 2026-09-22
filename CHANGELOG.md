@@ -274,9 +274,12 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   ignored`), so the filter vanished and every row came back. Both now parse the raw query
   string and keep a malformed escape literal (`%XX` is still a byte, `+` still a space),
   which is what the TypeScript, C# and Python servers already did. Found by the adopter estate:
-  11 of its 12 remaining Java contract failures. The in-repo corpus sends `%25`, and the JVM
-  lanes run no Tomcat, so neither could see it; pinned by `FilterParserDecodingTest` and a
-  Kotlin controller run test that hands the request over the way Tomcat does. **Kotlin
+  11 of its 12 remaining Java contract failures. The in-repo corpus sent only `%25`, and the JVM
+  lanes run no Tomcat, so neither could see it; pinned by `FilterParserDecodingTest`, a
+  Kotlin controller run test that hands the request over the way Tomcat does, and now the
+  api-contract corpus's `filter-like-raw-percent` scenario in both lanes of all five ports
+  (the C# runners put the raw `%` on the wire — .NET's `Uri` had been rewriting it to `%25`
+  — and the JVM generated lanes hand it to the controller the way Tomcat does). **Kotlin
   adopters with committed generated code should run `mvn metaobjects:generate`** — the list
   handlers now take `HttpServletRequest` instead of `@RequestParam allParams`. Java needs no
   regen: the fix is in the `codegen-spring` runtime.
@@ -290,7 +293,11 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   still share the base's allowlist, so they also accept the discriminator (a no-op or an
   empty list) and another subtype's columns (an empty list), where FR-017 has each subtype
   reject both; the answers are truthful, and an adopter who wants the 400 owns that generator.
-  **Adopters with committed generated code should run `mvn metaobjects:generate`.**
+  **Adopters with committed generated code should run `mvn metaobjects:generate`.** Gated by
+  the api-contract `tph/` scenario `tph-base-filter-by-discriminator` (`eq`, `in` and the bare
+  form). Its first run caught three test doubles that disagreed with the generated code: the C#
+  reference server and the Python in-memory seam ignored the filter and returned every row,
+  and the TS reference server's allowlist gave the discriminator no operators.
 
 - **Maven plugin: a relative `<sourceDir>` resolved against the shell's working directory,
   not the module.** The documented `<sourceDir>src/main/metaobjects</sourceDir>` therefore
@@ -400,7 +407,21 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   **No corpus could have caught it**, which is worth recording: the api-contract corpus's only
   entity declares `Author.id` with no `@required`, so no port's DTO ever annotated the key and
   both lanes stayed green everywhere. Found by building a Java adopter app, where a shared
-  `BaseEntity` declares `id` required — the shape real models actually have.
+  `BaseEntity` declares `id` required — the shape real models actually have. **Now gated:** the
+  `jsonb/` sub-corpus's `Document.id` is `@required`, so its POSTs without a key run through
+  both lanes of all five ports — and on its first run it found the same defect in the
+  TypeScript runtime (next entry).
+
+- **TypeScript runtime: `ObjectManager.create` refused a record that omitted a `@required`,
+  server-generated primary key.** `resolveIdentity` knew an `@generation: increment` key is the
+  store's to fill — it resolves it as driver-generated — but the required check that followed
+  ran over the merged row, found no `id`, and threw `ValidationError (id: required)`. So every
+  create through `ObjectManager`, including the ObjectManager-driven Fastify adapter
+  (`@metaobjectsdev/runtime-ts/fastify`), answered an entity whose `BaseEntity` declares `id`
+  required with a 400: the Java defect above, in a second port. A driver-generated key is now
+  exempt from required-on-insert when ABSENT, exactly like a `@default` column; an explicit
+  `null` is still a required failure. `createMany` follows the same rule. The generated
+  Drizzle/Zod routes were never affected — their insert schema already omits a generated key.
 
 - **Java/Kotlin: a `<loader><libraries>` entry naming a LAYER (`iam/db`) failed the build,
   so the JVM could opt into a library's design but never its tables.** Libraries are

@@ -53,7 +53,7 @@ public sealed class ApiContractTphConformanceTest
         using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
         foreach (var req in scenario.Requests)
         {
-            var request = new HttpRequestMessage(new HttpMethod(req.Method), req.Path);
+            var request = new HttpRequestMessage(new HttpMethod(req.Method), ApiContractWire.VerbatimUri(client, req.Path));
             if (req.Body is not null)
             {
                 string json = JsonSerializer.Serialize(req.Body, JsonOpts);

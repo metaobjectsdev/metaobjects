@@ -37,6 +37,8 @@ from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
 
+from .generated_router_app import filter_rows
+
 
 def _load_entities(meta_json: Path) -> dict[str, MetaObject]:
     tmp = Path(tempfile.mkdtemp(prefix="tph-gen-meta-"))
@@ -155,7 +157,7 @@ class InMemoryTphRepository:
     def list(
         self, subtype: str | None, limit: int, offset: int, sort: Any, filters: list[Any]
     ) -> list[Any]:
-        rows = list(self._scoped(subtype))
+        rows = filter_rows(self._scoped(subtype), filters)
         if sort is not None:
             rows.sort(
                 key=lambda r: (r.get(sort.field) is None, r.get(sort.field)),
@@ -164,7 +166,7 @@ class InMemoryTphRepository:
         return rows[offset: offset + limit]
 
     def count(self, subtype: str | None, filters: list[Any]) -> int:
-        return len(self._scoped(subtype))
+        return len(filter_rows(self._scoped(subtype), filters))
 
     def find_by_id(self, subtype: str | None, id: int) -> Any | None:
         for r in self._scoped(subtype):

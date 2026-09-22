@@ -44,6 +44,7 @@ tph/
     ├── tph-per-subtype-list-and-create.yaml   # per-subtype list (discriminator-filtered) + create (discriminator from the URL)
     ├── tph-per-subtype-update-and-delete.yaml # per-subtype PATCH / DELETE happy paths
     ├── tph-cross-subtype-404.yaml             # per-subtype get/update/delete on ANOTHER subtype's row → 404
+    ├── tph-base-filter-by-discriminator.yaml  # the base collection filters by its own discriminator (eq / in / bare)
     ├── tph-autoset-patch.yaml                 # #203/ADR-0045 TPH leg: @autoSet on PATCH (onUpdate bumped, onCreate preserved)
     ├── tph-writeonce-patch-stripped.yaml      # FR-037: inherited @mutability "writeOnce" stripped on the per-subtype PATCH
     ├── tph-update-explicit-null-clears.yaml   # FR-035 tristate: present null clears; omitted @required untouched; null on @required → 400

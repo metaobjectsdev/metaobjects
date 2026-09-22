@@ -45,7 +45,7 @@ public sealed class ApiContractM2mConformanceTest
         using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
         foreach (var req in scenario.Requests)
         {
-            var request = new HttpRequestMessage(new HttpMethod(req.Method), req.Path);
+            var request = new HttpRequestMessage(new HttpMethod(req.Method), ApiContractWire.VerbatimUri(client, req.Path));
             var response = await client.SendAsync(request);
             string bodyText = await response.Content.ReadAsStringAsync();
             object? parsed = string.IsNullOrEmpty(bodyText) ? null : ToObject(JsonNode.Parse(bodyText));

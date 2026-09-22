@@ -57,7 +57,10 @@ const AuthInsertSchema = z.object({
 const AuthUpdateSchema = AuthInsertSchema.partial();
 const AuthFilterAllowlist = {
   id: { ops: ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"] as const, subType: "number" as const, leadingWildcard: false },
-  type: { ops: [] as const, subType: "string" as const, leadingWildcard: false },
+  // The discriminator is a string-backed enum, so it takes the enum band — FR-017 has the
+  // base collection filter by it (tph-base-filter-by-discriminator.yaml). An empty op list
+  // here answered that with invalid_filter_op while the generated lane answered 200.
+  type: { ops: ["eq", "ne", "in", "like", "isNull"] as const, subType: "string" as const, leadingWildcard: false },
   reference: { ops: ["eq", "ne", "in", "like", "isNull"] as const, subType: "string" as const, leadingWildcard: false },
 } as const satisfies FilterAllowlist;
 const AuthSortAllowlist = { id: {}, type: {}, reference: {} } as const satisfies SortAllowlist;

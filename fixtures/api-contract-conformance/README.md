@@ -44,6 +44,7 @@ fixtures/api-contract-conformance/
     ├── filter-in.yaml
     ├── filter-in-over-cap-400.yaml # `in`-list over the 100-element cap → 400
     ├── filter-like.yaml
+    ├── filter-like-raw-percent.yaml # a RAW `%` (and a malformed `%XX`) is kept literal, never a 500/drop
     ├── filter-isnull-true.yaml
     ├── filter-and.yaml
     ├── filter-invalid-field.yaml
@@ -123,6 +124,7 @@ sugar = `eq`). Coverage:
 | `filter-lt` | `lt` (numeric) | `?filter[id][lt]=3` |
 | `filter-in` | `in` (comma-sep) | `?filter[name][in]=Ada%20Lovelace,Alan%20Turing` |
 | `filter-like` | `like` (SQL `%` wildcard, URL-encoded `%25`) | `?filter[name][like]=A%25` |
+| `filter-like-raw-percent` | `like`, wildcard sent as a RAW `%` | `?filter[name][like]=A%` |
 | `filter-isnull-true` | `isNull=true` | `?filter[bio][isNull]=true` |
 | `filter-and` | implicit-AND combinator across multiple `filter[...]` params | `?filter[name][like]=A%25&filter[id][gt]=1` |
 | `filter-invalid-field` | error: unknown field → 400 `{"error":"invalid_filter_field","field":"unknown"}` | `?filter[unknown][eq]=x` |

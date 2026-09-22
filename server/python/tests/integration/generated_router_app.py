@@ -138,37 +138,32 @@ def _like_to_regex(pattern: str) -> re.Pattern[str]:
     return re.compile("".join(out))
 
 
-class InMemoryAuthorRepository:
-    """In-memory impl of the GENERATED ``AuthorRepository`` Protocol (test seam)."""
+def filter_rows(rows: list[dict[str, Any]], filters: list[FilterPredicate]) -> list[dict[str, Any]]:
+    """Apply the generated router's parsed predicates to in-memory rows (implicit AND).
 
-    def __init__(self) -> None:
-        self._rows: list[dict[str, Any]] = []
+    Predicate values arrive as str; each is coerced to the column's native type, read off the
+    first non-null value in ``rows``, so comparisons match the seeded data (``id`` is int).
+    Shared by every in-memory seam here — a seam that ignores ``filters`` answers every
+    filtered list with every row, which is exactly the silent failure a filter scenario exists
+    to catch.
+    """
 
-    # --- seeding / reset (test harness, not part of the generated Protocol) ---
-    def reset(self) -> None:
-        self._rows = []
-
-    def seed(self, rows: list[dict[str, Any]]) -> None:
-        self._rows = [dict(r) for r in rows]
-
-    # --- value coercion: predicate values arrive as str; coerce to the column's
-    #     native type so comparisons match the seeded data (id is int). ---
-    def _field_type(self, field: str) -> type:
-        for r in self._rows:
+    def field_type(field: str) -> type:
+        for r in rows:
             v = r.get(field)
             if v is not None:
                 return type(v)
         return str
 
-    def _coerce(self, field: str, raw: str) -> Any:
-        t = self._field_type(field)
+    def coerce(field: str, raw: str) -> Any:
+        t = field_type(field)
         if t is int:
             return int(raw)
         if t is float:
             return float(raw)
         return raw
 
-    def _matches(self, row: dict[str, Any], p: FilterPredicate) -> bool:
+    def matches(row: dict[str, Any], p: FilterPredicate) -> bool:
         actual = row.get(p.field)
         if p.op == "isNull":
             want_null = bool(p.value)
@@ -177,11 +172,11 @@ class InMemoryAuthorRepository:
         if actual is None:
             return False
         if p.op == "in":
-            wants = {self._coerce(p.field, str(v)) for v in p.value}
+            wants = {coerce(p.field, str(v)) for v in p.value}
             return actual in wants
         if p.op == "like":
             return _like_to_regex(str(p.value)).match(str(actual)) is not None
-        want = self._coerce(p.field, str(p.value))
+        want = coerce(p.field, str(p.value))
         if p.op == "eq":
             return actual == want
         if p.op == "ne":
@@ -196,11 +191,27 @@ class InMemoryAuthorRepository:
             return actual <= want
         raise ValueError(f"unsupported op: {p.op}")
 
+    out = rows
+    for p in filters:
+        out = [r for r in out if matches(r, p)]
+    return out
+
+
+class InMemoryAuthorRepository:
+    """In-memory impl of the GENERATED ``AuthorRepository`` Protocol (test seam)."""
+
+    def __init__(self) -> None:
+        self._rows: list[dict[str, Any]] = []
+
+    # --- seeding / reset (test harness, not part of the generated Protocol) ---
+    def reset(self) -> None:
+        self._rows = []
+
+    def seed(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = [dict(r) for r in rows]
+
     def _filtered(self, filters: list[FilterPredicate]) -> list[dict[str, Any]]:
-        rows = self._rows
-        for p in filters:
-            rows = [r for r in rows if self._matches(r, p)]
-        return rows
+        return filter_rows(self._rows, filters)
 
     # --- the GENERATED AuthorRepository Protocol surface ---
     def list(self, limit: int, offset: int, sort: Any, filters: list[FilterPredicate]) -> list[Any]:

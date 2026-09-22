@@ -21,7 +21,7 @@ import {
 import { coerceRowOnRead, coerceRowOnWrite } from "./type-coercer.js";
 import { decodeRef, encodeRef } from "./ref-codec.js";
 import { runValidators } from "./validator-runner.js";
-import { resolveIdentity } from "./identity-strategy.js";
+import { resolveIdentity, type IdentityResolution } from "./identity-strategy.js";
 import {
   viewFieldNames,
   fieldViewSpec, entityViewSpec,
@@ -185,7 +185,7 @@ export class ObjectManager {
     const ident = resolveIdentity(entity, restricted);
     const merged: Row = { ...restricted, ...ident.values };
 
-    const validation = runValidators(entity, merged);
+    const validation = runValidators(entity, merged, storeFilledOpts(ident));
     if (!validation.ok) {
       throw new ValidationError(formatValidationMessage(entityName, validation.errors), { entity: entityName, errors: validation.errors });
     }
@@ -252,7 +252,7 @@ export class ObjectManager {
       const restricted = this.applyViewRestriction(entity, data, opts.view);
       const ident = resolveIdentity(entity, restricted);
       const merged: Row = { ...restricted, ...ident.values };
-      const v = runValidators(entity, merged);
+      const v = runValidators(entity, merged, storeFilledOpts(ident));
       if (!v.ok) {
         throw new ValidationError(formatValidationMessage(entityName, v.errors), { entity: entityName, errors: v.errors });
       }
@@ -500,6 +500,11 @@ function requireNonEmptyFilter(
     );
   }
   return where;
+}
+
+/** A driver-generated key is filled by the store on insert, so an absent one is not a required failure. */
+function storeFilledOpts(ident: IdentityResolution): { storeFilled?: readonly string[] } {
+  return ident.kind === "driver-generated" ? { storeFilled: ident.fields } : {};
 }
 
 function formatValidationMessage(entityName: string, errors: { field: string; rule: string }[]): string {
