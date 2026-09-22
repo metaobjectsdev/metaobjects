@@ -114,6 +114,35 @@ shape is wrong, the generator is the file to open, and you do not need to ask fi
 
 Hand-writing something the metadata already describes is step 3 used as step 1.
 
+### A defect in generated code is a defect in your generator
+
+When generated output does not compile, has the wrong shape, or collides with code you
+wrote, the defect is in the generator that emitted it — and that generator is yours. Fix
+it there, in the same change, and keep going:
+
+| Port | Where the fix goes |
+|---|---|
+| **TypeScript** | Your ejected copy under `codegen/generators/`. If you are running a generator you never ejected, `meta eject <name>` it first. |
+| **Java / Kotlin** | Your own generator class. Subclass the reference generator and override the `protected` method that emits the wrong piece; when that piece is `private`, copy the reference generator's source (Apache-2.0) into your own package and edit it. Put the class in a codegen module that the module running `metaobjects:generate` depends on — the plugin loads `<classname>` from that module's compile classpath, and `provided` scope keeps it out of your packaged app — then point `<classname>` at it. Full steps: the Java and Kotlin references. |
+| **C# / Python** | Your template spec (`--template-spec`): stop selecting the built-in generator for that artifact and emit it from your own template instead. These two ports have no generator-registration seam, so a template is the whole path. |
+
+Then do **not**:
+
+- file an issue against MetaObjects for it, or draft one "for upstream";
+- pin an older MetaObjects release, or wait for a newer one, to get past it;
+- branch, patch, or rebuild a clone of the MetaObjects repository.
+
+The reference generators are starting points you take a copy of. They are
+conformance-gated so the copy starts out correct — not so that each project's output
+becomes the library's problem. Once you run a generator in your build, what it emits for
+your model is yours, exactly as if you had written it.
+
+**What is legitimately upstream** is only what you cannot own: the **loader and
+metamodel** (valid metadata rejected, invalid metadata accepted, a wrong resolution), the
+**runtime packages** your app imports, the **codegen engine itself** (the runner, the
+three-way merge, `verify`), and **`meta migrate`**. The test is mechanical: if changing
+a generator fixes it, it is yours.
+
 **The converse, so ownership does not become sprawl:** wire a generator only for output
 you will actually consume. Decide per generator, narrow one with its own `filter`, and
 own the ones you keep — an emitted file nobody imports still reads as an invitation to

@@ -224,6 +224,27 @@ Python that answer is a template, not generator code — which is a real path, n
 consolation prize: it renders against the same neutral, byte-gated data dict every port
 shares, so one template emits identically on all five.
 
+### When a generator's output is wrong, the fix is yours
+
+Output that does not compile, has the wrong shape, or collides with your own code is a
+defect in the generator that emitted it. Once you run that generator in your build, it is
+yours. Fix it in your build, in the same change, and keep going:
+
+- **TypeScript:** edit your ejected copy (`meta eject <name>` first if you never ejected
+  it).
+- **Java / Kotlin:** subclass the reference generator, or copy its source (Apache-2.0,
+  in the `-sources` jar) into a codegen module the generating module depends on. Point
+  `<classname>` at your class. The plugin loads it from that module's compile classpath.
+- **C# / Python:** emit that artifact from your own template spec instead of the
+  built-in.
+
+Do not file it upstream, pin or wait for a MetaObjects release, or patch a clone of this
+repository. The reference generators are conformance-gated so that the copy you start
+from is correct. That gate does not make your project's output the library's
+responsibility. What *is* upstream is only what you cannot own: the loader and metamodel,
+the runtime packages, the codegen engine itself (runner, merge, `verify`), and `meta
+migrate`. The test is mechanical: if changing a generator fixes it, it is yours.
+
 **Choosing between the two paths** where you have both: reach for a template when the
 output *shape* is what you are iterating on, or when you want the same output across
 languages; reach for a generator when the logic is gnarly or the run is hot. Full

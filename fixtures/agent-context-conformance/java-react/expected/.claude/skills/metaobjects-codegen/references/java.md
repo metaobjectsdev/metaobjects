@@ -74,6 +74,28 @@ A `metaobjects:verify` Maven goal exists for **codegen-drift** (re-generate and 
 committed output). Schema migration and live-DB drift are NOT Java goals — they run
 through the Node `meta` tool (see the migration reference).
 
+## When a generator's output is wrong — own the generator
+
+A generator named in `<classname>` is one you chose to run, and its output for your model
+is yours. When it emits Java that does not compile, the wrong shape, or a declaration that
+collides with yours, fix the generator in your own build and keep going. Do not file it
+upstream, wait for or pin a MetaObjects release, or patch a clone of the MetaObjects
+repository.
+
+1. **Add a codegen module** to your build (for example `<app>-codegen`) that depends on
+   `metaobjects-codegen-spring`.
+2. **Take ownership of the generator** in that module:
+   - **Subclass** it when the wrong piece sits behind a `protected` method.
+   - **Copy** its source into your own package and edit it when the wrong piece is
+     `private`. The source ships in the `-sources` jar and is Apache-2.0.
+3. **Wire it.** In the module that runs `metaobjects:generate`, add a dependency on your
+   codegen module (`provided` scope keeps it out of the packaged app). The plugin loads
+   `<classname>` from that module's compile classpath. Point `<classname>` at your class.
+4. **Re-run `mvn metaobjects:generate`** and compile.
+
+When a later MetaObjects release changes the reference generator, diff it against your
+copy and take what you want. Nothing in your build changes until you do.
+
 ## Docs — `mvn metaobjects:docs`
 
 A separate `docs` goal (`DocsMojo` — NOT a `<generator>`) emits this project's SDK api
