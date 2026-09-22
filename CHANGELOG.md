@@ -150,6 +150,31 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Added
 
+- **A view-only projection has a REST surface in all five ports.** An `object.projection`
+  whose only source is a read-only view used to get routes in TypeScript and C# and nothing
+  at all in Java, Kotlin and Python — a 2-vs-3 split that was documented per port rather
+  than decided, because no corpus covered the one shape that diverged. Every port now
+  emits a READ-ONLY surface: GET list and GET by id with the filter and sort allowlists
+  built from the projection's own fields, and POST / PATCH / PUT / DELETE each answering
+  `405 {"error": "method_not_allowed"}` (405, not 404: the same path answers GET). The
+  refusals are mounted explicitly in every port, because left to the framework ASP.NET and
+  Spring answer with an EMPTY body and FastAPI with `{"detail": …}`. A keyless projection
+  mounts no `/{id}` read and so refuses only the collection verb. Gated by the new
+  `fixtures/api-contract-conformance/projection/` sub-corpus (seven scenarios), on the
+  generated lane in all five ports.
+
+  **What an upgrade asks of you, per port:**
+  - **Java — action required.** Each projection now has a generated controller and a
+    read-only `<Projection>Repository` of three methods (`list`, `count`, `findById`).
+    Spring's component scan picks the controller up, so until a bean implements that
+    interface the application **does not start** (`required a bean of type
+    '…<Projection>Repository' that could not be found`).
+  - **Kotlin** — nothing to do: the controller reads through the generated Exposed object.
+  - **Python** — a new `<projection>_router.py`; it serves nothing until you include it.
+  - **C#** — the routes you already mount now refuse writes with the envelope instead of
+    ASP.NET's bodiless 405.
+  - **TypeScript** — the read-only mount now also refuses PUT (it fell through to a 404).
+
 - **`GET /_meta` — a per-port metadata endpoint contract, plus a browser read-model that
   consumes it.** Every backend can now serve its loaded model as a single
   `GET {apiPrefix}/_meta` document: the response body is that port's **effective**
@@ -222,6 +247,22 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   rule, not four local concessions. The fan-out found five further real defects, fixed below.
 
 ### Fixed
+
+- **Web client: every filtered request 400'd against a Spring Boot backend.**
+  `@metaobjectsdev/runtime-web`'s `buildFilterQs` — which every generated TanStack hook
+  calls — sent the filter grammar with raw brackets (`filter[email][like]=…`). RFC 3986
+  admits no `[` or `]` in a query, and Tomcat, Spring Boot's default server, enforces it:
+  a raw bracket gets Tomcat's own HTML 400 before the controller runs. So the generated
+  Java and Kotlin controllers could not serve one filtered, sorted-and-filtered or
+  counted-and-filtered request from the MetaObjects client, and a browser does not rescue
+  it — the WHATWG URL parser leaves brackets in a query unencoded too. The brackets are now
+  percent-encoded (`filter%5Bemail%5D%5Blike%5D=…`); every port's server decodes before it
+  parses, so the request means exactly what it did. No corpus could see this: the Java
+  and Kotlin generated lanes drive the controller over MockMvc, and their reference lanes
+  serve over the JDK's own HTTP server — none has Tomcat in the path. An adopter estate running the
+  generated controller in a real Spring Boot app found it. Clients you do not control can
+  still send raw brackets; the Java and Kotlin runtime references now name the one property
+  that admits them (`server.tomcat.relaxed-query-chars=[,]`).
 
 - **TypeScript: two `@metaobjectsdev/runtime-ts` writable mounts answered `PUT` with a 404.**
   The cross-port REST contract (FR-008) makes the update verb reachable via BOTH `PATCH`

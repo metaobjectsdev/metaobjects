@@ -111,6 +111,24 @@ writable entity, on the cross-port REST contract (five CRUD endpoints, `?sort`,
 persistence layer) — wire the controller to call it. The same universal TS/Angular
 web client consumes those controllers unchanged.
 
+A view-only `object.projection` gets a READ-ONLY controller (list + get by id; every
+write verb answers `405 {"error": "method_not_allowed"}`) and a read-only
+`<Projection>Repository` of three methods — `list`, `count`, `findById`. **Implement it:**
+the controller is picked up by component scan like any other, so a projection with no bean
+behind its repository stops the application from starting
+(`required a bean of type '…ShipmentSummaryRepository' that could not be found`).
+
+**Filter brackets and Tomcat.** The filter grammar is `?filter[field][op]=value`, and
+Tomcat — Spring Boot's default server — rejects a RAW `[` or `]` in a query with its own
+HTML 400, before your controller runs (RFC 3986 admits neither there). The MetaObjects web
+client percent-encodes them (`filter%5Bname%5D%5Beq%5D=…`), which Tomcat accepts and
+Spring decodes. Any other client that sends them raw — `curl -g`, a hand-built URL in a
+test, another team's frontend — needs the server to allow them:
+
+```properties
+server.tomcat.relaxed-query-chars=[,]
+```
+
 ## Physical names in your repository implementation
 
 OMDB resolves columns itself — `setString("name", …)` and `getObjects` key by field — and

@@ -119,3 +119,19 @@ Compute with `BigDecimal`/`Instant` in-process; let the HTTP layer encode.
 contract (five CRUD endpoints, `?sort`, `?limit`/`?offset`, `?withCount=1`
 envelope). The same universal TS/Angular web client consumes those controllers
 unchanged — the wire format matches the C# and Java backends byte-for-byte.
+
+A view-only `object.projection` gets a READ-ONLY controller over its generated Exposed
+object: list + get by id, and every write verb answering
+`405 {"error": "method_not_allowed"}`. It reads through Exposed directly, so there is
+nothing to implement.
+
+**Filter brackets and Tomcat.** The filter grammar is `?filter[field][op]=value`, and
+Tomcat — Spring Boot's default server — rejects a RAW `[` or `]` in a query with its own
+HTML 400, before your controller runs (RFC 3986 admits neither there). The MetaObjects web
+client percent-encodes them (`filter%5Bname%5D%5Beq%5D=…`), which Tomcat accepts and
+Spring decodes. Any other client that sends them raw — `curl -g`, a hand-built URL in a
+test, another team's frontend — needs the server to allow them:
+
+```properties
+server.tomcat.relaxed-query-chars=[,]
+```
