@@ -80,11 +80,18 @@ nothing about the emitted artifact, which is the thing that was missing.
 | Python | **wired, green (7/7)** | `tests/integration/test_api_contract_projection.py` |
 | C# | **wired, green (7/7)** | `MetaObjects.IntegrationTests/Api/ApiContractProjectionConformanceTest.cs` |
 | Java | **wired, green (7/7)** | `integration-tests/.../ProjectionGeneratedApiContractConformanceTest.java` |
-| Kotlin | not yet wired | same gate as Java (`!writeThrough && kind != KIND_TABLE`) |
+| Kotlin | **wired, green (7/7)** | `integration-tests-kotlin/.../ProjectionGeneratedApiContractConformanceTest.kt` |
 
-The corpus was committed ahead of the remaining ports deliberately: it is
-the contract those ports are being changed to satisfy, and it has already
-earned its place by failing against a port that was supposed to pass. On its
-first run it caught TypeScript rejecting `POST`, `PATCH` and `DELETE` with a
-405 envelope while letting **`PUT`** fall through to a 404 — the writable mount
-serves `PUT`, so the projection mount has to refuse it.
+All five ports are wired. The corpus was committed ahead of four of them
+deliberately: it is the contract they were changed to satisfy, and it had
+already earned its place by failing against a port that was supposed to pass.
+On its first run it caught TypeScript rejecting `POST`, `PATCH` and `DELETE`
+with a 405 envelope while letting **`PUT`** fall through to a 404 — the writable
+mount serves `PUT`, so the projection mount has to refuse it.
+
+Every port needed the write verbs mounted EXPLICITLY, and each framework
+demonstrated why on its own: with the refusals removed, ASP.NET, Spring MVC and
+FastAPI each answer the corpus's `POST` with a 405 carrying a body no other port
+sends — an empty one in the first two, `{"detail": ...}` in the third. That is
+the un-gateable shape F20 closed one layer down, which is why the envelope is
+asserted and not just the status.

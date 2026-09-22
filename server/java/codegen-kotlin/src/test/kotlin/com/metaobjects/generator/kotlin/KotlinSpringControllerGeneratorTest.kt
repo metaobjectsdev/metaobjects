@@ -244,7 +244,7 @@ class KotlinSpringControllerGeneratorTest {
         }
     }
 
-    @Test fun viewKindSkipped() {
+    @Test fun viewKindProjectionGetsAReadOnlyController() {
         // SalesReport has @kind="view" — must NOT produce a controller (read-only).
         val viewFixture = """{
           "metadata.root": { "package": "acme::report", "children": [
@@ -262,9 +262,25 @@ class KotlinSpringControllerGeneratorTest {
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loadString("ctrl-view", viewFixture))
 
+            // F22: INVERTED. A view-kind projection used to produce NO controller — so Kotlin
+            // served no REST surface for one at all, while TypeScript and C# did. It now
+            // produces a READ-ONLY controller: reads served, every write verb answering
+            // 405 {"error": "method_not_allowed"}.
+            //
+            // SalesReport is KEYLESS (no identity.primary), so this is also the arm that pins
+            // the no-item-route shape: no /{id} read, and therefore no /{id} refusal either —
+            // refusing one would advertise an address the port never serves.
             val controller = outDir.resolve("acme/report/SalesReportController.kt")
-            assertTrue(!Files.exists(controller),
-                "view-kind entities must NOT produce a controller; saw $controller present")
+            assertTrue(Files.exists(controller),
+                "a view-kind projection must produce a read-only controller; saw $controller absent")
+            val src = controller.toFile().readText()
+            assertTrue(src.contains("fun list("), "reads are served")
+            assertTrue(src.contains("\"error\" to \"method_not_allowed\""),
+                "the collection write is refused with the cross-port envelope")
+            assertTrue(!src.contains("fun get("), "keyless — no item read")
+            assertTrue(!src.contains("RequestMethod.PATCH"), "keyless — no item refusal")
+            assertTrue(!src.contains(".insert"), "no write path")
+            assertTrue(!src.contains("deleteWhere"), "no delete path")
         } finally {
             outDir.toFile().deleteRecursively()
         }

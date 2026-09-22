@@ -11,6 +11,7 @@ import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
 import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.generator.util.RestSurfaceGate
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.source.MetaSource
 import com.metaobjects.template.MetaTemplate
@@ -124,11 +125,31 @@ class KotlinApiModelBuilder {
             )
         }
 
-        // A read-only projection has no write surface (no controller/filter/validation). Its data-
-        // access surface IS what codegen-kotlin emits for its source @kind: a read-only Exposed
-        // Table object (view / materializedView) or a stored-proc callable object (storedProc).
+        // A projection's data-access surface IS what codegen-kotlin emits for its source
+        // @kind: a read-only Exposed Table object (view / materializedView) or a stored-proc
+        // callable object (storedProc).
         if (projection && !KotlinGenUtil.isAbstractEntity(obj)) {
             projectionDataAccess(obj)?.let { symbols.add(it) }
+        }
+
+        // F22 — a VIEW-kind projection now gets a read-only controller + filter allowlist,
+        // so it gets the REST and FILTER symbols too. Gated by the same RestSurfaceGate the
+        // generators ask, which is what keeps documented == generated: hardcoding either
+        // side is how the docs come to describe a POST the emitted controller does not have.
+        // A proc-kind projection stays out — the gate declines it, and its callable is the
+        // DATA_ACCESS symbol above.
+        if (RestSurfaceGate.isReadOnly(obj)) {
+            addRestSymbols(symbols, obj, pkg, shortName, loader)
+            val filter = KotlinNaming.filterAllowlistName(shortName)
+            symbols.add(
+                ApiSymbol(
+                    name = filter,
+                    kind = ApiSymbolKind.FILTER,
+                    importLine = importLine(pkg, filter),
+                    signature = "object $filter",
+                    usage = "the filterable-field (FIELDS) + per-field operator (OPS_BY_FIELD) allowlist",
+                )
+            )
         }
 
         if (entity && isWritableTableEntity(obj, loader)) {
@@ -274,6 +295,21 @@ class KotlinApiModelBuilder {
             )
         }
         rest("GET $base", "list with pagination / sort / filters")
+        // F22 — a read-only projection serves the reads and REFUSES every write verb with
+        // 405. Documenting it with the writable verb list would be the precise drift this
+        // builder exists to prevent; and a keyless projection has no /{id} route at all.
+        if (RestSurfaceGate.isReadOnly(obj)) {
+            val hasItem = RestSurfaceGate.hasItemRoute(obj)
+            if (hasItem) rest("GET $base/{id}", "fetch one by id")
+            val refused = "405 {\"error\": \"method_not_allowed\"} — read-only projection"
+            rest("POST $base", refused)
+            if (hasItem) {
+                rest("PATCH $base/{id}", refused)
+                rest("PUT $base/{id}", refused)
+                rest("DELETE $base/{id}", refused)
+            }
+            return   // a projection declares no M:N relationships to traverse
+        }
         rest("GET $base/{id}", "fetch one by id")
         rest("POST $base", "create")
         rest("PATCH $base/{id}", "update")

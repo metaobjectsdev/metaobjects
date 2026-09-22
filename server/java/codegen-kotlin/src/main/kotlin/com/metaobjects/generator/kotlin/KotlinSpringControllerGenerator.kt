@@ -29,6 +29,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.RestSurfaceGate
 import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
@@ -90,7 +91,6 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val outRoot = Paths.get(outDir.absolutePath)
 
         for (entity in loader.metaObjects) {
-            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // Abstract entities are inheritance scaffolding — never emit a CRUD controller.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // FR-017 TPH: a subtype is folded into its base's single table + base controller (it
@@ -99,20 +99,21 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // ADR-0039: resolving source lookup (inherited source.rdb via extends).
             val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
             val kind = sourceRdb.effectiveKind
-            // #214 FR-024 §7: a write-through entity read-view IS writable (own table source), so it
-            // gets a CRUD controller — reads route to the `<Short>View`, writes to the `<Short>Table`.
-            // Detected order-independently (NEVER firstRdbSource, which the pre-#214 gate wrongly
-            // used — it would skip a view-source-first write-through entity).
-            val writeThrough = entity.isWriteThrough
-            // Only writable tables get a CRUD controller. View / materializedView are
-            // read-only (would need a different controller shape — list + get only);
-            // storedProc is handled by KotlinStoredProcGenerator; tableFunction has no
-            // dedicated controller story today.
-            if (!writeThrough && kind != MetaSource.KIND_TABLE) {
+            // THE shared gate (codegen-base RestSurfaceGate), the same CALL
+            // KotlinFilterAllowlistGenerator makes — the generated controller references
+            // <Short>FilterAllowlist by name, so two predicates that merely agree today are
+            // a compile failure waiting for one of them to move. It admits a writable table
+            // entity, a write-through entity (detected order-independently, NEVER
+            // firstRdbSource — the pre-#214 gate used that and skipped a view-source-first
+            // one), and since F22 a view-kind object.projection.
+            if (!RestSurfaceGate.emitsRestSurface(entity)) {
                 when (kind) {
+                    // A read-only kind reaching here is a projection the gate declined (a
+                    // proc-kind one) or an ENTITY over a view — ADR-0028 forbids the latter,
+                    // but the message stays accurate either way.
                     MetaSource.KIND_VIEW, MetaSource.KIND_MATERIALIZED_VIEW -> {
                         LOG.debug(
-                            "skipping controller for {} — source.rdb @kind='{}' is read-only",
+                            "skipping controller for {} — source.rdb @kind='{}' is read-only and this is not a projection",
                             entity.name, kind
                         )
                     }
@@ -129,6 +130,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         )
                     }
                 }
+                continue
+            }
+            // F22 — a view-only projection gets a READ-ONLY controller: reads served, every
+            // write verb answering the cross-port 405 envelope.
+            if (RestSurfaceGate.isReadOnly(entity)) {
+                emitReadOnly(entity, outRoot, loader)
                 continue
             }
             // FR-017 TPH: a discriminator base emits ONE controller mounting the polymorphic
@@ -306,36 +313,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import java.time.LocalTime\n")
             append("import java.time.format.DateTimeFormatter\n")
             append("\n")
-            // Sort allowlist — static set; unknown fields → 400. Emitted at file level so it
-            // remains accessible to the handler functions without polluting the controller's
-            // surface.
-            append("/** GENERATED — sort allowlist for ${shortName} (cross-port API contract). */\n")
-            append("private val ${shortName}SortAllowlist = setOf(\n")
-            for (field in sortFields) {
-                append("    \"$field\",\n")
-            }
-            append(")\n\n")
-            appendSortDefaultOrders(this, shortName, entity, sortFields)
-
-            // parseSort: returns (field, asc|desc) or null for malformed/disallowed input.
-            // Returning null lets the handler emit the 400 envelope itself rather than
-            // throwing — cleaner separation. Inlined per-entity so the allowlist closes
-            // over the right set without a runtime parameter.
-            append("private fun parse${shortName}Sort(raw: String): Pair<String, SortOrder>? {\n")
-            append("    val parts = raw.split(\":\", limit = 2)\n")
-            append("    val field = parts.getOrNull(0) ?: return null\n")
-            append("    if (field !in ${shortName}SortAllowlist) return null\n")
-            // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
-            // The "asc" fallback stays at the READ, one place per port.
-            append("    val dirRaw = parts.getOrNull(1)?.lowercase()\n")
-            append("        ?: ${shortName}SortDefaultOrder[field] ?: \"asc\"\n")
-            append("    val dir = when (dirRaw) {\n")
-            append("        \"asc\" -> SortOrder.ASC\n")
-            append("        \"desc\" -> SortOrder.DESC\n")
-            append("        else -> return null\n")
-            append("    }\n")
-            append("    return field to dir\n")
-            append("}\n\n")
+            appendSortSurface(this, shortName, entity, sortFields)
 
             // FR-009 filter pipeline. Three stages:
             //   1. data class ${shortName}FilterPredicate — parsed + validated one
@@ -352,23 +330,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // write-through entity), so its per-field Exposed dispatch binds against `readObj`.
             emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
 
-            // rowTo<Entity>: ResultRow → data class. Program D: a field.object value-object jsonb
-            // column IS read here — the Exposed Column<VO> codec (the shared Jackson metaJsonbMapper)
-            // already decodes the jsonb text to the VO record / List<VO>, so `row[Table.col]` yields
-            // the typed value the data-class property expects. MapField (dict-of-VO) stays skipped
-            // (staged out). The `field.string @dbColumnType=jsonb` open bag is a StringField, so it is
-            // read here too (its column decodes to a kotlinx JsonElement).
-            // #214: reads route to `readObj` (the view for a write-through entity), which carries the
-            // DERIVED columns — so a derived scalar field (a StringField / etc.) maps here too.
-            append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
-            append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
-            for (field in entity.metaFields) {
-                // MapField (staged out) and a flattened object field (materialised as per-subfield
-                // columns, no single `Table.<field>`) are skipped — the data class defaults them.
-                if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
-                append("    ${field.name} = row[${readObj}.${field.name}],\n")
-            }
-            append(")\n\n")
+            appendRowToMapper(this, shortName, entity, readObj)
 
             append("/** GENERATED — REST controller for ${shortName} entity. Implements the cross-port API contract. */\n")
             append("@RestController\n")
@@ -384,50 +346,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("class ${shortName}Controller(private val validator: Validator) {\n\n")
             }
 
-            // List handler — pagination + sort + withCount + FR-009 filter operators.
-            //
-            // `allParams: Map<String, String>` is Spring's collapsed view of every query
-            // parameter; the bracketed filter keys survive (Spring does not strip [ ] /
-            // they are URL-decoded but otherwise opaque). Same-key collisions in repeat
-            // params would only retain one value — none of the cross-port FR-009
-            // scenarios exercise that case (each filter[<f>][<op>] occurs at most once
-            // per request).
-            append("    @GetMapping\n")
-            append("    fun list(\n")
-            append("        @RequestParam(required = false) limit: Int?,\n")
-            append("        @RequestParam(required = false) offset: Int?,\n")
-            append("        @RequestParam(required = false) sort: String?,\n")
-            append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
-            append("        @RequestParam allParams: Map<String, String>,\n")
-            append("    ): ResponseEntity<Any> = transaction {\n")
-            append("        // FR-009 filter operators — short-circuit 400 on invalid field/op/value.\n")
-            append("        val filterResult = parse${shortName}Filter(allParams)\n")
-            append("        if (filterResult.error != null) {\n")
-            append("            return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
-            append("        }\n")
-            append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
-            append("        var q = if (whereOp != null) ${readObj}.selectAll().where { whereOp } else ${readObj}.selectAll()\n")
-            append("        if (sort != null) {\n")
-            append("            val parsed = parse${shortName}Sort(sort)\n")
-            append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
-            append("            val (field, dir) = parsed\n")
-            append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields)} to dir)\n")
-            append("        }\n")
-            append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
-            append("        val effectiveLimit = limit ?: 50\n")
-            append("        val effectiveOffset = (offset ?: 0).toLong()\n")
-            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
-            append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
-            append("        else ResponseEntity.ok(rows as Any)\n")
-            append("    }\n\n")
+            appendListHandler(this, shortName, readObj, sortFields)
 
-            // GET /{id}
-            append("    @GetMapping(\"/{id}\")\n")
-            append("    fun get(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
-            append("        val row = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq id }.singleOrNull()\n")
-            append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-            append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
-            append("    }\n\n")
+            appendGetHandler(this, shortName, readObj, pkFieldName, pkParamType)
 
             // POST — create. FR-036: validate the bound body through the jakarta Validator and
             // 400 with the cross-port envelope on any violation BEFORE the insert. (@Valid's
@@ -1615,6 +1536,270 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
         return target?.let { PackageMapping.toKotlin(it.name) }
             ?: "com.fasterxml.jackson.databind.JsonNode"
+    }
+
+
+    /**
+     * F22 — emit the READ-ONLY controller for a view-only `object.projection`: GET list +
+     * GET by id, with `POST` on the collection and `PATCH` / `PUT` / `DELETE` on the item
+     * each answering `405 {"error": "method_not_allowed"}`.
+     *
+     * 405 and not 404: the resource plainly exists — the same path answers GET — and a 404
+     * would tell a caller the collection is absent when it is merely not writable. The verbs
+     * are mounted EXPLICITLY. They cannot be left to Spring, and they cannot be routed
+     * through this port's `@ExceptionHandler`: Spring signals an unmatched verb with
+     * `HttpRequestMethodNotSupportedException`, which extends `ServletException` and so is
+     * never caught by the `@ExceptionHandler(RuntimeException::class)` the writable
+     * controller carries. What Spring answers unaided is a 405 with an EMPTY body — a fifth
+     * body shape on a wire the other four ports spell one way.
+     *
+     * A SEPARATE assembly rather than `if (writable)` branches through [emit]. That method
+     * carries the FR-035 present-key patch bind, `@autoSet` stamping, the FR-037 frozen-field
+     * strip, DTO validation and constraint classification — none of which a projection can
+     * ever run. What the two genuinely share (the sort surface, the filter pipeline, rowTo,
+     * list, get) they share by calling the same emitters.
+     *
+     * The item verbs follow the item GET: a projection's identity is OPTIONAL (ADR-0028),
+     * and a keyless one mounts no `/{id}` read, so it refuses only the collection verb
+     * rather than advertising an address it never serves.
+     */
+    protected open fun emitReadOnly(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+        val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
+        val readObj = KotlinNaming.tableObjectName(shortName)
+        val routeBase = KotlinNaming.controllerPath(shortName)
+
+        // ADR-0039: resolving — a projection's identity.primary typically EXTENDS the base
+        // entity's, and an own-only read would silently drop GET /{id} from the controller.
+        val primary = entity.getIdentities(true)
+            .filterIsInstance<MetaIdentity>()
+            .firstOrNull { it.isPrimary }
+        val hasItem = RestSurfaceGate.hasItemRoute(entity)
+        val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
+        val pkParamType = primaryKeyParamType(entity, pkFieldName)
+
+        val sortFields = entity.metaFields
+            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .map { it.name }
+        val scalarFields: List<ScalarFieldSpec> = entity.metaFields
+            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
+        val allowlistName = "${shortName}FilterAllowlist"
+
+        val source = buildString {
+            if (pkg.isNotEmpty()) {
+                append("package $pkg\n\n")
+            }
+            // The same import set the writable controller emits, MINUS everything only a
+            // write path reaches (insert / update / deleteWhere, the Jackson patch bind, the
+            // Validator, DeleteMapping / RequestBody, and the constraint @ExceptionHandler).
+            // Kept in the same order so a reader diffing the two files sees only the absences.
+            append("import org.jetbrains.exposed.sql.Op\n")
+            append("import org.jetbrains.exposed.sql.SortOrder\n")
+            append("import org.jetbrains.exposed.sql.ResultRow\n")
+            append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            append("import org.jetbrains.exposed.sql.and\n")
+            append("import org.jetbrains.exposed.sql.selectAll\n")
+            append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            append("import org.springframework.http.HttpStatus\n")
+            append("import org.springframework.http.ResponseEntity\n")
+            append("import org.springframework.web.bind.annotation.GetMapping\n")
+            if (hasItem) {
+                append("import org.springframework.web.bind.annotation.PathVariable\n")
+            }
+            append("import org.springframework.web.bind.annotation.PostMapping\n")
+            append("import org.springframework.web.bind.annotation.RequestMapping\n")
+            if (hasItem) {
+                append("import org.springframework.web.bind.annotation.RequestMethod\n")
+            }
+            append("import org.springframework.web.bind.annotation.RequestParam\n")
+            append("import org.springframework.web.bind.annotation.RestController\n")
+            append("import java.net.URLDecoder\n")
+            append("import java.nio.charset.StandardCharsets\n")
+            append("import java.sql.Timestamp\n")
+            if (scalarFields.any { it.elementType == "Instant" }) {
+                append("import java.time.Instant\n")
+            }
+            if (pkParamType == "UUID" || scalarFields.any { it.elementType == "UUID" }) {
+                append("import java.util.UUID\n")
+            }
+            if (scalarFields.any { it.subType == EnumField.SUBTYPE_ENUM }) {
+                append("import org.jetbrains.exposed.sql.TextColumnType\n")
+                append("import org.jetbrains.exposed.sql.castTo\n")
+            }
+            append("import java.time.LocalDate\n")
+            append("import java.time.LocalDateTime\n")
+            append("import java.time.LocalTime\n")
+            append("import java.time.format.DateTimeFormatter\n")
+            append("\n")
+
+            appendSortSurface(this, shortName, entity, sortFields)
+            emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
+            appendRowToMapper(this, shortName, entity, readObj)
+
+            append("/** GENERATED — READ-ONLY REST controller for the ${shortName} projection. */\n")
+            append("@RestController\n")
+            append("@RequestMapping(\"$routeBase\")\n")
+            // No constructor at all: nothing here binds a request body, so injecting an
+            // ObjectMapper or a Validator would make a consumer wire beans this controller
+            // can never use.
+            append("class ${shortName}Controller {\n\n")
+
+            appendListHandler(this, shortName, readObj, sortFields)
+            if (hasItem) {
+                appendGetHandler(this, shortName, readObj, pkFieldName, pkParamType)
+            }
+
+            append("    @PostMapping\n")
+            append("    fun create(): ResponseEntity<Any> = methodNotAllowed()\n\n")
+            if (hasItem) {
+                // One mapping for all three item verbs: the bodies are identical. Stacking
+                // @PatchMapping + @PutMapping on one method does NOT register both in Spring
+                // MVC (see emit()), so the method= list is the form that works. The path
+                // variable is deliberately unbound — the row is never read.
+                append("    @RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT, RequestMethod.DELETE])\n")
+                append("    fun rejectItemWrite(): ResponseEntity<Any> = methodNotAllowed()\n\n")
+            }
+            // `message` is free prose and deliberately outside the asserted contract, so this
+            // port spells it once rather than threading the verb through every handler.
+            append("    private fun methodNotAllowed(): ResponseEntity<Any> =\n")
+            append("        ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(\n")
+            append("            mapOf(\n")
+            append("                \"error\" to \"method_not_allowed\",\n")
+            append("                \"message\" to \"writes are not supported on a projection (read-only).\",\n")
+            append("            ) as Any\n")
+            append("        )\n")
+            append("}\n")
+        }
+
+        val outFile = outRoot.resolve(pkg.replace('.', '/'))
+            .resolve(KotlinNaming.controllerName(shortName) + ".kt")
+        GeneratedFileWriter.write(outFile, source)
+    }
+
+    // -----------------------------------------------------------------------
+    // Emitters shared by the WRITABLE controller (emit) and the READ-ONLY one
+    // (emitReadOnly). Extracted verbatim from emit(), split at exactly the points that
+    // keep its output byte-identical — the snapshot fixtures under
+    // src/test/resources/snapshots/ are the proof of that.
+    //
+    // A read-only projection serves the same list + get + sort + rowTo surface a table
+    // entity does, and the F22 change must not be able to reword one of them and not the
+    // other. emitTph() keeps its own copies: a TPH base's list and get are
+    // DISCRIMINATOR-scoped, so they are not the same emitter wearing a flag.
+    // -----------------------------------------------------------------------
+
+    /** The file-level sort allowlist + declared-default map + `parse<Entity>Sort` helper. */
+    private fun appendSortSurface(
+        sb: StringBuilder, shortName: String, entity: MetaObject, sortFields: List<String>
+    ) = with(sb) {
+        // Sort allowlist — static set; unknown fields → 400. Emitted at file level so it
+        // remains accessible to the handler functions without polluting the controller's
+        // surface.
+        append("/** GENERATED — sort allowlist for ${shortName} (cross-port API contract). */\n")
+        append("private val ${shortName}SortAllowlist = setOf(\n")
+        for (field in sortFields) {
+            append("    \"$field\",\n")
+        }
+        append(")\n\n")
+        appendSortDefaultOrders(this, shortName, entity, sortFields)
+
+        // parseSort: returns (field, asc|desc) or null for malformed/disallowed input.
+        // Returning null lets the handler emit the 400 envelope itself rather than
+        // throwing — cleaner separation. Inlined per-entity so the allowlist closes
+        // over the right set without a runtime parameter.
+        append("private fun parse${shortName}Sort(raw: String): Pair<String, SortOrder>? {\n")
+        append("    val parts = raw.split(\":\", limit = 2)\n")
+        append("    val field = parts.getOrNull(0) ?: return null\n")
+        append("    if (field !in ${shortName}SortAllowlist) return null\n")
+        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+        // The "asc" fallback stays at the READ, one place per port.
+        append("    val dirRaw = parts.getOrNull(1)?.lowercase()\n")
+        append("        ?: ${shortName}SortDefaultOrder[field] ?: \"asc\"\n")
+        append("    val dir = when (dirRaw) {\n")
+        append("        \"asc\" -> SortOrder.ASC\n")
+        append("        \"desc\" -> SortOrder.DESC\n")
+        append("        else -> return null\n")
+        append("    }\n")
+        append("    return field to dir\n")
+        append("}\n\n")
+    }
+
+    /** `rowTo<Entity>` — an Exposed ResultRow mapped to the generated data class. */
+    private fun appendRowToMapper(
+        sb: StringBuilder, shortName: String, entity: MetaObject, readObj: String
+    ) = with(sb) {
+        // rowTo<Entity>: ResultRow → data class. Program D: a field.object value-object jsonb
+        // column IS read here — the Exposed Column<VO> codec (the shared Jackson metaJsonbMapper)
+        // already decodes the jsonb text to the VO record / List<VO>, so `row[Table.col]` yields
+        // the typed value the data-class property expects. MapField (dict-of-VO) stays skipped
+        // (staged out). The `field.string @dbColumnType=jsonb` open bag is a StringField, so it is
+        // read here too (its column decodes to a kotlinx JsonElement).
+        // #214: reads route to `readObj` (the view for a write-through entity), which carries the
+        // DERIVED columns — so a derived scalar field (a StringField / etc.) maps here too.
+        append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
+        append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
+        for (field in entity.metaFields) {
+            // MapField (staged out) and a flattened object field (materialised as per-subfield
+            // columns, no single `Table.<field>`) are skipped — the data class defaults them.
+            if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
+            append("    ${field.name} = row[${readObj}.${field.name}],\n")
+        }
+        append(")\n\n")
+    }
+
+    /** GET (list) — pagination + sort + withCount + the FR-009 filter operators. */
+    private fun appendListHandler(
+        sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>
+    ) = with(sb) {
+        // List handler — pagination + sort + withCount + FR-009 filter operators.
+        //
+        // `allParams: Map<String, String>` is Spring's collapsed view of every query
+        // parameter; the bracketed filter keys survive (Spring does not strip [ ] /
+        // they are URL-decoded but otherwise opaque). Same-key collisions in repeat
+        // params would only retain one value — none of the cross-port FR-009
+        // scenarios exercise that case (each filter[<f>][<op>] occurs at most once
+        // per request).
+        append("    @GetMapping\n")
+        append("    fun list(\n")
+        append("        @RequestParam(required = false) limit: Int?,\n")
+        append("        @RequestParam(required = false) offset: Int?,\n")
+        append("        @RequestParam(required = false) sort: String?,\n")
+        append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
+        append("        @RequestParam allParams: Map<String, String>,\n")
+        append("    ): ResponseEntity<Any> = transaction {\n")
+        append("        // FR-009 filter operators — short-circuit 400 on invalid field/op/value.\n")
+        append("        val filterResult = parse${shortName}Filter(allParams)\n")
+        append("        if (filterResult.error != null) {\n")
+        append("            return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
+        append("        }\n")
+        append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
+        append("        var q = if (whereOp != null) ${readObj}.selectAll().where { whereOp } else ${readObj}.selectAll()\n")
+        append("        if (sort != null) {\n")
+        append("            val parsed = parse${shortName}Sort(sort)\n")
+        append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
+        append("            val (field, dir) = parsed\n")
+        append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields)} to dir)\n")
+        append("        }\n")
+        append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
+        append("        val effectiveLimit = limit ?: 50\n")
+        append("        val effectiveOffset = (offset ?: 0).toLong()\n")
+        append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+        append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
+        append("        else ResponseEntity.ok(rows as Any)\n")
+        append("    }\n\n")
+    }
+
+    /** GET /{id} — single row by primary key, 404 envelope on a miss. */
+    private fun appendGetHandler(
+        sb: StringBuilder, shortName: String, readObj: String, pkFieldName: String, pkParamType: String
+    ) = with(sb) {
+        // GET /{id}
+        append("    @GetMapping(\"/{id}\")\n")
+        append("    fun get(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
+        append("        val row = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq id }.singleOrNull()\n")
+        append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
+        append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+        append("    }\n\n")
     }
 
     private companion object {

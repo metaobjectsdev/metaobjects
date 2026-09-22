@@ -130,7 +130,7 @@ class KotlinFilterAllowlistGeneratorTest {
         }
     }
 
-    @Test fun viewKindSkipped() {
+    @Test fun viewKindProjectionGetsAFilterAllowlist() {
         // source.rdb @kind="view" → read-only, must NOT produce a filter allowlist
         // (controller is also skipped — keeping the two generators aligned).
         val viewFixture = """{
@@ -148,9 +148,15 @@ class KotlinFilterAllowlistGeneratorTest {
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loadString("fa-view", viewFixture))
 
+            // F22: INVERTED. The allowlist moves in LOCK-STEP with the controller and cannot
+            // do otherwise: the generated controller references <Short>FilterAllowlist by
+            // name, so a view-kind projection that got a controller and no allowlist would
+            // emit Kotlin with an unresolved reference — and codegen would still exit 0.
             val allowlist = outDir.resolve("acme/report/SalesReportFilterAllowlist.kt")
-            assertTrue(!Files.exists(allowlist),
-                "view-kind entities must NOT produce a filter allowlist; saw $allowlist present")
+            assertTrue(Files.exists(allowlist),
+                "a view-kind projection must produce a filter allowlist; saw $allowlist absent")
+            assertTrue(allowlist.toFile().readText().contains("regionName"),
+                "the allowlist carries the projection's own @filterable fields")
         } finally {
             outDir.toFile().deleteRecursively()
         }

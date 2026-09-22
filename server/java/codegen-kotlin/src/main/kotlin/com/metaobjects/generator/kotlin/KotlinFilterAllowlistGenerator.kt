@@ -14,6 +14,7 @@ import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import com.metaobjects.generator.util.RestSurfaceGate
 import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
@@ -55,24 +56,19 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
         for (entity in loader.metaObjects) {
-            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // FR-017 TPH: a discriminator subtype folds into its base — the base's allowlist
             // (unioned across subtype columns via isTphBase) is the only one the polymorphic
             // controller uses; a per-subtype allowlist is dead. Mirror the controller/table skip.
             if (KotlinTphPlan.isTphSubtype(entity)) continue
-            // #214 FR-024 §7: a write-through entity read-view is writable and gets a CRUD
-            // controller, which references this <Short>FilterAllowlist — so the allowlist MUST be
-            // emitted for it too (else the generated controller references a missing symbol). Match
-            // the controller/repository gate: order-independent (NEVER firstRdbSource, which would
-            // skip a view-source-first write-through entity while the controller still emitted).
-            if (!entity.isWriteThrough) {
-                // ADR-0039: resolving source lookup (inherited source.rdb via extends).
-                val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
-                // Only writable tables get a filter allowlist (the controller is also
-                // table-only). View / materializedView are read-only; storedProc has its
-                // own dispatch; tableFunction has no controller surface today.
-                if (sourceRdb.effectiveKind != MetaSource.KIND_TABLE) continue
-            }
+            // THE shared gate (codegen-base RestSurfaceGate) — the same predicate
+            // KotlinSpringControllerGenerator asks. It must be the same CALL and not merely the
+            // same rule: the generated controller references this <Short>FilterAllowlist by
+            // name, so a gate widened there and not here emits a controller with an unresolved
+            // reference, and codegen still exits 0. It covers the writable arm (table kind, or
+            // a write-through entity detected order-independently — NEVER firstRdbSource, which
+            // would skip a view-source-first one) AND, since F22, the read-only arm: a view-kind
+            // object.projection has a list route, so it filters.
+            if (!RestSurfaceGate.emitsRestSurface(entity)) continue
             emit(entity, outRoot, loader)
         }
     }

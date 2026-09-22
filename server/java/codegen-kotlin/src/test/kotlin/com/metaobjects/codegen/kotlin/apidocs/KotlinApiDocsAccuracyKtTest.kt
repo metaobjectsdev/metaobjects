@@ -295,27 +295,44 @@ class KotlinApiDocsAccuracyKtTest {
         )
     }
 
+    /**
+     * F22: INVERTED. A view-kind `object.projection` used to be documented as MODEL + a
+     * read-only Exposed Table only, because the controller and filter generators skipped
+     * it. They no longer do — it gets a READ-ONLY REST surface — so the docs gain REST and
+     * FILTER, and the forward-confirmations flip with them. VALIDATION stays out: nothing
+     * here binds a create/update body.
+     *
+     * The point of the test is unchanged and is why it flips rather than being relaxed:
+     * what is DOCUMENTED must be what is GENERATED. A gate widened in the generators and
+     * not in the model builder leaves the docs silent about routes that exist — the same
+     * drift as documenting ones that do not.
+     */
     @Test
-    fun viewProjectionIsDocumentedAsReadModelWithExposedTable() {
-        // A view-kind object.projection → MODEL (read-model data class) + a read-only Exposed
-        // Table DATA_ACCESS surface. NO write surfaces (no REST/FILTER/VALIDATION — the controller
-        // / filter / validation gates require a writable table entity).
+    fun viewProjectionIsDocumentedAsAReadOnlyRestSurface() {
         val sales = unit("SalesReport")
         assertEquals("projection", sales.kind, "view projection SalesReport → projection unit kind")
         assertEquals(
-            setOf(ApiSymbolKind.MODEL, ApiSymbolKind.DATA_ACCESS), kinds(sales),
-            "view projection SalesReport → MODEL + read-only Exposed table only",
+            setOf(ApiSymbolKind.MODEL, ApiSymbolKind.DATA_ACCESS, ApiSymbolKind.REST, ApiSymbolKind.FILTER),
+            kinds(sales),
+            "view projection SalesReport → read model + Exposed table + read-only REST surface",
         )
-        // Forward-confirm both documented symbols are really generated...
+        // Forward-confirm every documented symbol is really generated...
         assertTrue(containsIdentifier(allGenerated, "SalesReport"), "documented SalesReport model must be generated")
         val dataAccess = symbol(sales, ApiSymbolKind.DATA_ACCESS, "SalesReportTable")
         assertTrue(
             containsIdentifier(allGenerated, dataAccess.name),
             "documented projection Exposed table '${dataAccess.name}' must be generated",
         )
-        // ...and NO controller / filter allowlist is generated for the projection.
-        assertFalse(containsIdentifier(allGenerated, "SalesReportController"), "no SalesReportController")
-        assertFalse(containsIdentifier(allGenerated, "SalesReportFilterAllowlist"), "no SalesReportFilterAllowlist")
+        assertTrue(containsIdentifier(allGenerated, "SalesReportController"), "documented controller must be generated")
+        assertTrue(containsIdentifier(allGenerated, "SalesReportFilterAllowlist"), "documented allowlist must be generated")
+
+        // ...and the documented REST surface must be the READ-ONLY one.
+        val rest = sales.symbols.filter { it.kind == ApiSymbolKind.REST }
+        assertTrue(rest.any { it.name == "GET /api/sales_reports" }, "list route documented: $rest")
+        assertTrue(
+            rest.filterNot { it.name.startsWith("GET ") }.all { it.usage.contains("method_not_allowed") },
+            "every write verb documented as refused: $rest",
+        )
     }
 
     @Test

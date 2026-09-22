@@ -279,13 +279,24 @@ class KotlinProjectionCompileTest {
         }
     }
 
-    @Test fun `write-surface generators skip the projection`() {
+    /**
+     * F22: INVERTED, and narrowed to what it actually meant. A view-kind projection now
+     * gets a controller and a filter allowlist — both READ-ONLY — so "the write-surface
+     * generators skip it" is no longer the contract. What is still true, and is the thing
+     * this test was protecting, is that the projection gets no WRITE surface: no validator
+     * (nothing binds a create/update body) and a controller with no insert / update /
+     * delete path in it.
+     *
+     * The controller and the allowlist are asserted TOGETHER on purpose. The generated
+     * controller references <Short>FilterAllowlist by name, so "one emitted, the other
+     * not" is the half-widened-gate failure, and it produces Kotlin that does not compile
+     * while codegen still exits 0.
+     */
+    @Test fun `the projection gets a read-only surface and no write surface`() {
         val outDir = Files.createTempDirectory("kproj-skip-")
         try {
             val loader = loadString("projection-skip", projectionFixture)
 
-            // Controller / validator / filter-allowlist generators only emit for
-            // object.entity — they must NOT produce any artifact for the projection.
             for (gen in listOf(
                 KotlinSpringControllerGenerator(),
                 KotlinValidatorGenerator(),
@@ -305,14 +316,26 @@ class KotlinProjectionCompileTest {
                     .map { it.fileName.toString() }.toList()
             } else emptyList()
 
-            // No projection-named write-surface artifact may exist.
-            assertFalse(emitted.any { it.startsWith("ProgramSummary") },
-                "write-surface generators must SKIP the projection; emitted=$emitted")
-            // Specifically: no controller / validator / filter-allowlist for the projection.
-            for (suffix in listOf("Controller.kt", "Validator.kt", "FilterAllowlist.kt")) {
-                assertFalse(Files.exists(outDir.resolve("acme/commerce/ProgramSummary$suffix")),
-                    "must NOT emit ProgramSummary$suffix for a read-only projection; emitted=$emitted")
-            }
+            val controller = outDir.resolve("acme/commerce/ProgramSummaryController.kt")
+            assertTrue(Files.exists(controller),
+                "the projection must get a read-only controller; emitted=$emitted")
+            assertTrue(Files.exists(outDir.resolve("acme/commerce/ProgramSummaryFilterAllowlist.kt")),
+                "and its allowlist, in lock-step — the controller names it; emitted=$emitted")
+
+            // A validator exists only to enforce a create/update body's constraints, and a
+            // projection has no such body.
+            assertFalse(Files.exists(outDir.resolve("acme/commerce/ProgramSummaryValidator.kt")),
+                "must NOT emit ProgramSummaryValidator for a read-only projection; emitted=$emitted")
+
+            // No WRITE path inside the controller: reads + refusals only.
+            val src = controller.readText()
+            assertTrue(src.contains("fun list("), "reads are served")
+            assertTrue(src.contains("\"error\" to \"method_not_allowed\""),
+                "every write verb answers the cross-port 405 envelope")
+            assertFalse(src.contains(".insert {"), "no insert path; saw:\n$src")
+            assertFalse(src.contains(".update {"), "no update path; saw:\n$src")
+            assertFalse(src.contains("deleteWhere"), "no delete path; saw:\n$src")
+            assertFalse(src.contains("Validator"), "no validator injection; saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
