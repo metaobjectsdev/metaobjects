@@ -110,11 +110,12 @@ describe("outputParser() factory — ADR-0052 direction split", () => {
     // An XML reply gets the tolerant extract and NOTHING strict. The strict tier is
     // `Schema.parse(JSON.parse(text))` and has no XML equivalent — the TS runtime
     // ships no XML parser, which is why it used to emit a `parseAsk` that could
-    // never work. Its typed shape is the nullable `AskExtracted` mirror instead.
+    // never work. Its typed shape is the nullable `ResExtracted` mirror instead.
     expect(parsers[0]!.content).not.toContain("export function parseAsk");
     expect(parsers[0]!.content).not.toContain("export function safeParseAsk");
     expect(parsers[0]!.content).not.toContain('from "zod"');
-    expect(parsers[0]!.content).toContain("export interface AskExtracted");
+    // ADR-0056: the mirror is named for the @responseRef value object (Res), not the template.
+    expect(parsers[0]!.content).toContain("export interface ResExtracted");
     expect(parsers[0]!.content).toContain("export function extractLenientAskWithLoader");
     // The reply syntax comes from @responseFormat, NOT from @format — which is
     // "text" here and would have yielded no extract path at all before ADR-0053.

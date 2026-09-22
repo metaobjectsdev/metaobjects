@@ -39,7 +39,8 @@
 //   • template.prompt (T5):
 //       - prompt       : render<Name> (payload, provider): string — the prompt
 //                        render handle promptRender() emits into a single
-//                        aggregated `prompts.ts` (payload-codegen generateRenderHandle).
+//                        aggregated `prompts.ts`, typed by the @payloadRef value
+//                        object's own interface (ADR-0056).
 //                        ONLY for TOP-LEVEL template.prompt nodes (matching
 //                        prompt-render-file.ts's top-level template collection).
 //
@@ -103,6 +104,7 @@ import {
   TYPE_SOURCE,
   SOURCE_ATTR_PARAMETER_REF,
   resolveObjectRef,
+  stripPackage,
 } from "@metaobjectsdev/metadata";
 import {
   findByIdFnName,
@@ -870,6 +872,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
   // ADR-0039: resolving — a template may inherit @payloadRef/@kind via extends.
   const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   const payload = typeof payloadRef === "string" ? payloadRef : undefined;
+  const payloadType = payload !== undefined ? valueObjectTypeName(root, tmpl, payload) : undefined;
   const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT).toLowerCase();
 
   // ADR-0052: a template.output documents its RENDER and nothing else. The
@@ -890,12 +893,12 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
       name: render,
       kind: "render",
       importPath: renderMod,
-      signature: `${render}(payload: ${payload}, provider: Provider): ${returns}`,
-      params: [`payload: ${payload}`, `provider: Provider`],
+      signature: `${render}(payload: ${payloadType}, provider: Provider): ${returns}`,
+      params: [`payload: ${payloadType}`, `provider: Provider`],
       returns,
       usage: isEmail
-        ? `Render the ${name} email (subject + bodies) from a typed ${payload} payload.`
-        : `Render the ${name} document from a typed ${payload} payload.`,
+        ? `Render the ${name} email (subject + bodies) from a typed ${payloadType} payload.`
+        : `Render the ${name} document from a typed ${payloadType} payload.`,
     };
     // The payload shape used to reach this unit only via the extractor symbol.
     // ADR-0052 moved that away, which left the render example with no field shape
@@ -925,6 +928,16 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
  *  top-level collection (root children filtered to TYPE_TEMPLATE +
  *  TEMPLATE_SUBTYPE_PROMPT). A prompt nested INSIDE an entity is not collected by
  *  the generator, so the builder must not document it either (no over-doc). */
+/**
+ * The TS type name a template's payload/response is documented under — the resolved value
+ * object's own name (ADR-0056: it IS the type), falling back to the ref's short name when the
+ * ref does not resolve. ADR-0042: a bare ref resolves in the template's package first.
+ */
+function valueObjectTypeName(root: MetaRoot, tmpl: MetaData, ref: string): string {
+  const vo = resolveObjectRef(root, ref, tmpl.package ?? tmpl.fileDefaultPackage ?? "").node;
+  return vo !== undefined ? vo.name : stripPackage(ref);
+}
+
 function templatePrompts(root: MetaRoot): MetaData[] {
   // ADR-0039: resolving — root has no super (children()==ownChildren()).
   return root
@@ -933,13 +946,11 @@ function templatePrompts(root: MetaRoot): MetaData[] {
 }
 
 /**
- * The render handle promptRender() emits per template.prompt — generateRenderHandle
- * (payload-codegen.ts) produces
- *   `export function render<Name>(payload: <payloadRef>, provider: Provider): string`
- * and promptRender aggregates every handle into a SINGLE file (default outFile
- * "prompts.ts"), so the import module is the bare `prompts` (no package folding;
- * the generator writes the outFile verbatim). The payload field shape is the
- * @payloadRef VO interface (same walk the payload-interface emitter uses), so an
+ * The render handle promptRender() emits per template.prompt —
+ *   `export function render<Name>(payload: <Vo>, provider: Provider): string`
+ * — aggregated into a SINGLE file (default outFile "prompts.ts"), so the import module is the
+ * bare `prompts` (no package folding; the generator writes the outFile verbatim). `<Vo>` is the
+ * @payloadRef value object's OWN interface (ADR-0056), and its field shape is documented so an
  * agent sees what to pass.
  */
 function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
@@ -954,14 +965,15 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
 
   if (payload) {
     const render = `render${name}`;
+    const payloadType = valueObjectTypeName(root, tmpl, payload);
     const sym: ApiSymbol = {
       name: render,
       kind: "prompt",
       importPath: promptsMod,
-      signature: `${render}(payload: ${payload}, provider: Provider): string`,
-      params: [`payload: ${payload}`, `provider: Provider`],
+      signature: `${render}(payload: ${payloadType}, provider: Provider): string`,
+      params: [`payload: ${payloadType}`, `provider: Provider`],
       returns: "string",
-      usage: `Render the ${name} prompt text from a typed ${payload} payload (ready to send to an LLM).`,
+      usage: `Render the ${name} prompt text from a typed ${payloadType} payload (ready to send to an LLM).`,
     };
     const payloadShape = payloadFieldShapes(root, payload);
     if (payloadShape !== undefined) sym.fields = payloadShape;
@@ -979,29 +991,29 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
     const extractorMod = templateModulePath(`${name}.extractor`);
     const extract = `extract${name}`;
     const extractLenient = `extractLenient${name}`;
-    // The strict return IS the @responseRef value-object's interface — document
-    // its field shape so an agent sees what `extract<Name>` yields, not just a
+    // The strict return IS the @responseRef value-object's own interface (ADR-0056) —
+    // document its field shape so an agent sees what `extract<Name>` yields, not just a
     // type name. `vo` is the resolved node; `responseRef` is the authored ref.
-    void vo;
+    const responseType = vo.name;
     const responseFieldShape = payloadFieldShapes(root, responseRef);
     const extractSym: ApiSymbol = {
       name: extract,
       kind: "extractor",
       importPath: extractorMod,
-      signature: `${extract}(root: MetaRoot, text: string): ${responseRef}`,
+      signature: `${extract}(root: MetaRoot, text: string): ${responseType}`,
       params: [`root: MetaRoot`, `text: string`],
-      returns: responseRef,
+      returns: responseType,
       throws: `Error when a @required field is lost (the strict opt-in gate).`,
-      usage: `Parse the model's ${format} reply to ${name} into a strict, fully-typed ${responseRef} graph.`,
+      usage: `Parse the model's ${format} reply to ${name} into a strict, fully-typed ${responseType} graph.`,
     };
     if (responseFieldShape !== undefined) extractSym.fields = responseFieldShape;
     symbols.push(extractSym, {
       name: extractLenient,
       kind: "extractor",
       importPath: extractorMod,
-      signature: `${extractLenient}(root: MetaRoot, text: string): ExtractionResult<${name}Extracted>`,
+      signature: `${extractLenient}(root: MetaRoot, text: string): ExtractionResult<${responseType}Extracted>`,
       params: [`root: MetaRoot`, `text: string`],
-      returns: `ExtractionResult<${name}Extracted>`,
+      returns: `ExtractionResult<${responseType}Extracted>`,
       usage: `Never-throwing extract of the ${name} reply; inspect report for lost/defaulted fields.`,
     });
   }

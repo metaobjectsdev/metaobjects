@@ -43,7 +43,6 @@ import {
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
   resolveObjectRef,
-  stripPackage,
 } from "@metaobjectsdev/metadata";
 import {
   verify,
@@ -55,6 +54,8 @@ import {
 import { templateSymbolBase } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ExtStyle } from "../metaobjects-config.js";
+import type { RenderContext } from "../render-context.js";
+import { valueObjectImport } from "./value-object-import.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 // ADR-0042: package-local — resolveObjectRef binds a bare @objectRef in `referrerPkg` first (else root-level), an FQN exactly.
@@ -73,12 +74,15 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
  * email and document kinds below — only the `@metaobjectsdev/render` type import
  * differs (email additionally needs `EmailDocument`), so that piece is a parameter
  * rather than a second near-copy of this block.
+ *
+ * ADR-0056: the payload type is the @payloadRef value object's OWN interface, imported from
+ * the module entityFile() declares it in (`payloadSpecifier`).
  */
-function renderHelperHeader(typeImports: string, payloadTypeName: string, ext: string): string {
+function renderHelperHeader(typeImports: string, payloadTypeName: string, payloadSpecifier: string): string {
   return `// ${GENERATED_HEADER} — DO NOT EDIT.
 import { render } from "@metaobjectsdev/render";
 import type { ${typeImports} } from "@metaobjectsdev/render";
-import type { ${payloadTypeName} } from "./${payloadTypeName}${ext}";`;
+import type { ${payloadTypeName} } from ${JSON.stringify(payloadSpecifier)};`;
 }
 
 /**
@@ -176,6 +180,13 @@ export function renderRenderHelper(
    * ended up with one file spelling its imports differently from every other.
    */
   extStyle: ExtStyle = "js",
+  /**
+   * ADR-0056 — the run's render context, and where THIS helper is written (relative to its
+   * target root). Together they locate the payload value object's own module. Omitted (a bare
+   * unit-test call) → the value object's bare name, imported as a flat sibling.
+   */
+  ctx?: RenderContext,
+  outPath = `${templateName}.render.ts`,
 ): string {
   const tmpl = findTemplate(root, templateName);
   if (!tmpl) {
@@ -204,17 +215,11 @@ export function renderRenderHelper(
   const ft = fieldTreeLiteral(fields);
   // Same base as promptRender()'s handle and outputParser()'s symbols (naming.ts).
   const fnName = `render${templateSymbolBase(templateName)}`;
-  // @payloadRef may arrive package-qualified (FQN) once resolved — a bare
-  // `::`-free name is required everywhere it's emitted as a TS identifier /
-  // import specifier below (mirrors the same stripPackage() call every other
-  // TS-identifier-emitting generator makes on a resolved ref, e.g.
-  // payload-codegen.ts / entity-file.ts / drizzle-schema.ts). Package-scoped
-  // resolution above (findObject/derivePayloadFieldTree) intentionally keeps
-  // using the raw `payloadRef`.
-  const payloadTypeName = stripPackage(payloadRef);
-  // The emitted relative import's extension, from the project's setting rather than
-  // hardcoded — see the `extStyle` parameter doc.
-  const ext = extStyle === "none" ? "" : ".js";
+  // ADR-0056 — the payload is the value object's own interface: its emitted name and module
+  // come from the one helper every template-tier file uses. Package-scoped resolution above
+  // (findObject/derivePayloadFieldTree) intentionally keeps using the raw `payloadRef`.
+  const { name: payloadTypeName, specifier: payloadSpecifier } =
+    valueObjectImport(ctx, vo, outPath, extStyle);
 
   // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
   const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT)
@@ -244,7 +249,7 @@ export function renderRenderHelper(
         ? `\n    textBody: render({ ref: ${JSON.stringify(textBodyRef)}, payload, format: "text", provider, verify: ${ft} }),`
         : "";
 
-    return `${renderHelperHeader("Provider, EmailDocument", payloadTypeName, ext)}
+    return `${renderHelperHeader("Provider, EmailDocument", payloadTypeName, payloadSpecifier)}
 
 /**
  * Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a
@@ -282,7 +287,7 @@ export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): Emai
   const maxCharsArg =
     maxChars !== undefined && Number.isFinite(maxChars) ? `, maxChars: ${maxChars}` : "";
 
-  return `${renderHelperHeader("Provider", payloadTypeName, ext)}
+  return `${renderHelperHeader("Provider", payloadTypeName, payloadSpecifier)}
 
 /**
  * Render the ${templateName} document from a typed ${payloadTypeName} payload. Wraps the

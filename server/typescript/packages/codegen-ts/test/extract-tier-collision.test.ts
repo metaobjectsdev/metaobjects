@@ -175,7 +175,8 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
     expect([...files.keys()]).not.toContain("DemoWidget.ts");
 
     const outputSrc = files.get("WidgetOut.response.ts")!;
-    expect(outputSrc).toContain("export interface WidgetOutExtracted {");
+    // ADR-0056: the mirror is named for the value object (Widget), not the template.
+    expect(outputSrc).toContain("export interface WidgetExtracted {");
     expect(outputSrc).toContain('export const WIDGETOUT_PAYLOAD_NAME = "Widget";');
     expect(outputSrc).toContain("root.findObject(WIDGETOUT_PAYLOAD_NAME)");
     expect(outputSrc).not.toContain("resolveObjectRef");

@@ -4,10 +4,11 @@
 // value-object into a Zod schema and emits a dual-API parser (parse + safeParse)
 // alongside the schema, plus (for json/xml outputs) a single tolerant
 // loader-delegating `extractLenient<Name>WithLoader(root, text)` that delegates to
-// the metadata-driven runtime extract. The emitted file derives a local data type
-// via `z.infer<typeof Schema>` and exports it as `<TemplateName>Data`. Consumers
-// wiring `promptRender()` get a structurally identical payload-VO interface in
-// `prompts.ts`; either type can be used interchangeably with parse results.
+// the metadata-driven runtime extract. ADR-0056: the strict parse returns the
+// `@responseRef` value object's OWN interface, imported from the module entityFile()
+// declares it in — this file declares no strict type of its own, so wire entityFile()
+// in the same run. The Zod schema is the reply's wire VALIDATOR; `tsc` checks its output
+// is assignable to that interface.
 
 import {
   type MetaData,
@@ -29,12 +30,14 @@ import { isRequired } from "./fr010-field-mapping.js";
 import {
   nestedMirrorInterfaces,
   nestedMappers,
-  rootMapperName,
+  mirrorName,
+  mapperName,
   delegateHelpers,
   usedHelpers,
   hasNested,
 } from "./extract-delegate-emitter.js";
 import type { RenderContext } from "../render-context.js";
+import { valueObjectImport } from "./value-object-import.js";
 
 /**
  * Wire-shape validators per field subtype, for a JSON reply from a model.
@@ -160,7 +163,14 @@ function renderObjectSchema(vo: MetaData, root: MetaData, seen: ReadonlySet<stri
  * trace helper has always drawn ("@responseRef types the result; @payloadRef types
  * the request") and the inbound tier used to ignore.
  */
-export function renderOutputParser(root: MetaData, templateName: string, ctx?: RenderContext): string {
+export function renderOutputParser(
+  root: MetaData,
+  templateName: string,
+  ctx?: RenderContext,
+  /** Where this parser is written, relative to its target root — locates the response value
+   *  object's own module (ADR-0056). */
+  outPath = `${templateName}.response.ts`,
+): string {
   const tmpl = findTemplate(root, templateName);
   if (!tmpl) {
     throw new Error(`template "${templateName}" not found in metadata root`);
@@ -185,7 +195,10 @@ export function renderOutputParser(root: MetaData, templateName: string, ctx?: R
   // three template emitters used to spell the same node three ways (see naming.ts).
   const base = templateSymbolBase(templateName);
   const schemaName = `${base}Schema`;
-  const dataName = `${base}Data`;
+  // ADR-0056: the strict parse returns the @responseRef value object's OWN interface (declared by
+  // entityFile()). The wire schema below validates the reply; the interface types it. `tsc` checks
+  // the schema's output is assignable to the interface, so the two cannot drift silently.
+  const { name: dataName, specifier: dataSpecifier } = valueObjectImport(ctx, vo, outPath);
   const errorName = `${base}ValidationError`;
   const parseName = `parse${base}`;
   const safeParseName = `safeParse${base}`;
@@ -218,7 +231,6 @@ export function renderOutputParser(root: MetaData, templateName: string, ctx?: R
 
   const strictBody = `const ${schemaName} = ${schema};
 
-export type ${dataName} = z.infer<typeof ${schemaName}>;
 export type ${errorName} = z.ZodError;
 
 /**
@@ -256,18 +268,18 @@ export function ${safeParseName}(
   // Unconditional since ADR-0052: a declared @responseRef IS the request for the
   // tolerant path, and @responseFormat is a closed json|xml set, so there is no
   // longer a third case to gate on.
-  const extractedName = `${templateSymbolBase(templateName)}Extracted`;
+  // ADR-0056: the mirror is named for the value object, like every nested one.
+  const extractedName = mirrorName(vo, ctx);
   const extractLenientWithName = `extractLenient${templateSymbolBase(templateName)}WithLoader`;
   const payloadFqnConst = `${templateName.toUpperCase()}_PAYLOAD_NAME`;
   const formatEnum = format === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
 
   // The nullable mirror is the return shape of the delegating extract. Use the nested-aware
-  // emitter so the payload mirror's nested-object / array-of-object components are typed (not
+  // emitter so the mirror's nested-object / array-of-object components are typed (not
   // `unknown`), and so a mirror interface is emitted for every reachable nested value-object.
-  // The payload mirror keeps the canonical `<Template>Extracted` name. ADR-0044/#228: `ctx`
-  // qualifies a nested mirror's name/dedupe when its VO's bare short name collides across
-  // packages, matching Task 3's entity-domain emitted name (e.g. `AcmeAlphaNoteExtracted`).
-  const mirrorDecls = nestedMirrorInterfaces(vo, root, extractedName, ctx);
+  // ADR-0044/#228: `ctx` qualifies a mirror's name when its VO's bare short name collides across
+  // packages, matching the entity-domain emitted name (e.g. `AcmeAlphaNoteExtracted`).
+  const mirrorDecls = nestedMirrorInterfaces(vo, root, ctx);
 
   // Render-package imports the (single, loader-delegating) extract block needs. Kept minimal so
   // the file has no unused imports (tsc noUnusedLocals-safe).
@@ -299,7 +311,7 @@ export function ${safeParseName}(
   const emittedPayloadName = ctx ? ctx.valueObjectEmittedName(vo) : payloadName;
   const payloadNameCollides = emittedPayloadName !== payloadName;
   const bakedPayloadName = payloadNameCollides ? vo.resolutionKey() : payloadName;
-  const rootMapper = rootMapperName(templateName);
+  const rootMapper = mapperName(vo, ctx);
   void hasNested;
   const lookupExpr = payloadNameCollides
     ? `resolveObjectRef(root, ${payloadFqnConst}, "").node`
@@ -314,7 +326,7 @@ export const ${payloadFqnConst} = ${JSON.stringify(bakedPayloadName)};
 
 ${mirrorDecls}
 
-${nestedMappers(vo, root, rootMapper, extractedName, ctx)}
+${nestedMappers(vo, root, ctx)}
 
 ${delegateHelpers(usedHelpers(vo, root))}
 
@@ -353,6 +365,7 @@ export function ${extractLenientWithName}(
   // would otherwise carry an unused import (tsc noUnusedLocals-unsafe).
   return (
     (emitStrict ? `import { z } from "zod";\n` : "") +
+    (emitStrict ? `import type { ${dataName} } from ${JSON.stringify(dataSpecifier)};\n` : "") +
     `import {\n  ${renderImports.join(",\n  ")},\n} from "@metaobjectsdev/render";\n` +
     metadataImport +
     runtimeImport +

@@ -97,14 +97,15 @@ describe("FR-010 nested extract codegen — source shape", () => {
     expect(src).not.toContain("ExtractSchema =");
 
     // nested-aware mirror types (NOT `unknown`)
-    expect(src).toContain("export interface OrderOutExtracted {");
+    // ADR-0056: every mirror — the root included — is named for its value object.
+    expect(src).toContain("export interface OrderExtracted {");
     expect(src).toContain("customer: CustomerExtracted | null;");
     expect(src).toContain("items: (LineItemExtracted | null)[] | null;");
     expect(src).toContain("export interface CustomerExtracted {");
     expect(src).toContain("export interface LineItemExtracted {");
 
     // nested mappers — root mapper is template-named (`from<Template>Extracted`); nested use VO names
-    expect(src).toContain("function fromOrderOutExtracted(");
+    expect(src).toContain("function fromOrderExtracted(");
     expect(src).toContain("function fromCustomerExtracted(");
     expect(src).toContain("function fromLineItemExtracted(");
     expect(src).toContain("mapObjectList(readProp(o,");

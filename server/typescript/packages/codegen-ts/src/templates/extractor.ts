@@ -38,6 +38,7 @@ import { mirrorName } from "./extract-delegate-emitter.js";
 import { enumUnionAliasName } from "./inferred-types.js";
 import { enumValues } from "../enum-meta.js";
 import type { RenderContext } from "../render-context.js";
+import { valueObjectImport } from "./value-object-import.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 // ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
@@ -166,13 +167,12 @@ function strictArg(field: MetaData, root: MetaData, ownerName: string, ctx?: Ren
 /**
  * Emit one `toStrict<VO>(m)` mapper per value-object reachable from `vo` (payload + nested,
  * deduped, cycle-safe). Each maps the all-nullable `<VO>Extracted` mirror onto the strict `<VO>`
- * payload interface. The ROOT mapper reads the canonically-named root mirror (`<Template>Extracted`)
- * since the template name may differ from the payload VO name.
+ * interface. ADR-0056: the root mirror is named for its value object like every nested one.
  */
-function emitMappers(payloadVo: MetaData, root: MetaData, rootMirror: string, ctx?: RenderContext): string {
+function emitMappers(payloadVo: MetaData, root: MetaData, ctx?: RenderContext): string {
   const out: string[] = [];
   const seen = new Set<string>();
-  emitMapper(payloadVo, root, seen, out, rootMirror, ctx);
+  emitMapper(payloadVo, root, seen, out, ctx);
   return out.join("\n\n");
 }
 
@@ -181,7 +181,6 @@ function emitMapper(
   root: MetaData,
   seen: Set<string>,
   out: string[],
-  mirrorOverride?: string,
   ctx?: RenderContext,
 ): void {
   // ADR-0044/#228: dedupe by resolutionKey() — see extract-delegate-emitter's emitMirror for why
@@ -191,7 +190,7 @@ function emitMapper(
 
   const fn = mapperName(vo, ctx);
   const strict = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
-  const mir = mirrorOverride ?? mirrorName(vo, ctx);
+  const mir = mirrorName(vo, ctx);
   const assigns = fields(vo).map((f) => `    ${f.name}: ${strictArg(f, root, strict, ctx)},`);
   out.push(
     [
@@ -207,7 +206,7 @@ function emitMapper(
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
       const target = refVo(f, root);
-      if (target !== undefined) emitMapper(target, root, seen, out, undefined, ctx);
+      if (target !== undefined) emitMapper(target, root, seen, out, ctx);
     }
   }
 }
@@ -217,8 +216,8 @@ function emitMapper(
  * union-aliases) imported from a single VO entity module.
  */
 interface PayloadImportGroup {
-  /** The VO whose entity module exports these types (`./<module>.js`). */
-  module: string;
+  /** The module specifier of the VO's entity module (ADR-0056 — `valueObjectImport`). */
+  specifier: string;
   /** The strict type names exported by that module, in discovery order. */
   types: string[];
 }
@@ -232,7 +231,12 @@ interface PayloadImportGroup {
  * VO's interface AND the aliases for its own enum fields are imported from `./<VO>.js` — NOT from a
  * single `payloads.ts` (which no generator emits). Deduped, in discovery order, one group per VO.
  */
-function reachablePayloadGroups(vo: MetaData, root: MetaData, ctx?: RenderContext): PayloadImportGroup[] {
+function reachablePayloadGroups(
+  vo: MetaData,
+  root: MetaData,
+  ctx: RenderContext | undefined,
+  outPath: string,
+): PayloadImportGroup[] {
   const groups: PayloadImportGroup[] = [];
   const seenVo = new Set<string>();
   const seenAlias = new Set<string>();
@@ -245,7 +249,7 @@ function reachablePayloadGroups(vo: MetaData, root: MetaData, ctx?: RenderContex
     // is the ADR-0044/#228 entity-domain EMITTED name (Task 3's entityFile() writes `<emitted>.ts`),
     // so a cross-package short-name collision imports from the SAME qualified module the entity
     // tier emits (e.g. `AcmeAlphaNote` from `./AcmeAlphaNote.js`, never bare `Note`).
-    const emittedName = ctx ? ctx.valueObjectEmittedName(cur) : cur.name;
+    const { name: emittedName, specifier } = valueObjectImport(ctx, cur, outPath);
     const types: string[] = [emittedName];
     for (const f of fields(cur)) {
       const alias = enumAlias(f, emittedName);
@@ -254,7 +258,7 @@ function reachablePayloadGroups(vo: MetaData, root: MetaData, ctx?: RenderContex
         types.push(alias);
       }
     }
-    groups.push({ module: emittedName, types });
+    groups.push({ specifier, types });
     // Recurse into nested object refs (their interfaces live in their own modules).
     for (const f of fields(cur)) {
       if (isObjectField(f)) {
@@ -268,8 +272,8 @@ function reachablePayloadGroups(vo: MetaData, root: MetaData, ctx?: RenderContex
 }
 
 /** Collect the mirror-interface names reachable from `vo` (root mirror + nested VO mirrors). */
-function reachableMirrorTypes(vo: MetaData, root: MetaData, rootMirror: string, ctx?: RenderContext): string[] {
-  const out: string[] = [rootMirror];
+function reachableMirrorTypes(vo: MetaData, root: MetaData, ctx?: RenderContext): string[] {
+  const out: string[] = [mirrorName(vo, ctx)];
   const seen = new Set<string>([vo.resolutionKey()]);
   const visit = (cur: MetaData) => {
     for (const f of fields(cur)) {
@@ -293,7 +297,14 @@ function reachableMirrorTypes(vo: MetaData, root: MetaData, rootMirror: string, 
  * doesn't resolve. ADR-0052: no format gate remains — @responseFormat is a closed
  * json|xml set, so every responding prompt has an extract<Name> API to sit over.
  */
-export function renderExtractor(root: MetaData, templateName: string, ctx?: RenderContext): string {
+export function renderExtractor(
+  root: MetaData,
+  templateName: string,
+  ctx?: RenderContext,
+  /** Where this extractor is written, relative to its target root — locates each value
+   *  object's own module (ADR-0056). */
+  outPath = `${templateName}.extractor.ts`,
+): string {
   const tmpl = findTemplate(root, templateName);
   if (!tmpl) {
     throw new Error(`template "${templateName}" not found in metadata root`);
@@ -318,20 +329,20 @@ export function renderExtractor(root: MetaData, templateName: string, ctx?: Rend
   // `valueObjectEmittedName`) — the SAME name entityFile() declared the interface under, so a
   // cross-package short-name collision emits e.g. `AcmeAlphaNote`, matching `./AcmeAlphaNote.js`.
   const strictType = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
-  const rootMirror = `${templateName}Extracted`;
   const extractLenientWithName = `extractLenient${templateName}WithLoader`; // the nested-capable lenient extract (output-parser)
   const extractLenientPublic = `extractLenient${templateName}`; // re-exposed never-throws lenient tier name
   const extractName = `extract${templateName}`;
   const rootMapper = mapperName(vo, ctx);
 
-  const payloadGroups = reachablePayloadGroups(vo, root, ctx);
-  const mirrorTypes = reachableMirrorTypes(vo, root, rootMirror, ctx);
-  const mappers = emitMappers(vo, root, rootMirror, ctx);
+  const rootMirror = mirrorName(vo, ctx);
+  const payloadGroups = reachablePayloadGroups(vo, root, ctx, outPath);
+  const mirrorTypes = reachableMirrorTypes(vo, root, ctx);
+  const mappers = emitMappers(vo, root, ctx);
 
   // One type-only import per VO entity module (the VO interface + its own enum
-  // union-aliases co-located there). NOT a single non-existent `./payloads.js`.
+  // union-aliases co-located there), at the module entityFile() writes it to.
   const payloadImports = payloadGroups
-    .map((g) => `import type { ${g.types.join(", ")} } from "./${g.module}.js";`)
+    .map((g) => `import type { ${g.types.join(", ")} } from ${JSON.stringify(g.specifier)};`)
     .join("\n");
 
   const lostMsg =

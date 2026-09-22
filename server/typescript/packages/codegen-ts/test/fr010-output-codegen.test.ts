@@ -20,7 +20,6 @@ import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
 import { renderOutputPrompt } from "../src/templates/output-prompt.js";
-import { generatePayloadInterfaces } from "../src/payload-codegen.js";
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
@@ -88,7 +87,8 @@ describe("FR-010 codegen — extract-schema + output-format-spec emitters (sourc
     // extract API — the single, loader-delegating path (Move 1: no baked self-contained overload)
     expect(src).toContain('from "@metaobjectsdev/render"');
     expect(src).toContain('import { extractObject } from "@metaobjectsdev/runtime-ts";');
-    expect(src).toContain("export interface TicketOutExtracted {");
+    // ADR-0056: the mirror is named for the value object (Ticket), not the template.
+    expect(src).toContain("export interface TicketExtracted {");
     expect(src).toContain("export function extractLenientTicketOutWithLoader(");
     // nullable mirror
     expect(src).toContain("priority: string | null;");
@@ -172,11 +172,9 @@ describe("FR-011 codegen — @coerceDefault/@normalize via the loader-delegating
   test("extractLenientTaskOutWithLoader() folds an off-vocab value to @coerceDefault and classifies DEFAULTED", async () => {
     const root = await loadRoot(MODEL_FR011);
     const parserSrc = renderOutputParser(root, "TaskOut");
-    const payloadSrc = generatePayloadInterfaces(root, "Task");
 
     const dir = mkdtempSync(join(import.meta.dir, "fr011-emit-"));
     TEMP_DIRS.push(dir);
-    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
     writeFileSync(join(dir, "TaskOut.output.ts"), parserSrc);
 
     const parser = await import(join(dir, "TaskOut.output.ts"));
@@ -199,11 +197,9 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
     const root = await loadRoot(MODEL);
     const parserSrc = renderOutputParser(root, "TicketOut");
     const promptSrc = renderOutputPrompt(root, "TicketOut");
-    const payloadSrc = generatePayloadInterfaces(root, "Ticket");
 
     const dir = mkdtempSync(join(import.meta.dir, "fr010-emit-"));
     TEMP_DIRS.push(dir);
-    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
     writeFileSync(join(dir, "TicketOut.output.ts"), parserSrc);
     writeFileSync(join(dir, "TicketOut.prompt.ts"), promptSrc);
 

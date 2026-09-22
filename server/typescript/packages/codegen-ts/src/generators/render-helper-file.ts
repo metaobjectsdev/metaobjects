@@ -9,6 +9,9 @@
 // on the payload VO. Skips template.output nodes whose @payloadRef doesn't
 // resolve to a value-object (same contract as the prompt/parser generators).
 //
+// ADR-0056: the helper's payload parameter is the value object's OWN interface, imported from
+// the module entityFile() declares it in — wire entityFile() in the same run.
+//
 // Consumer wiring (metaobjects.config.ts):
 //   generators: [..., renderHelper()]
 //
@@ -60,11 +63,12 @@ export const renderHelper = function renderHelper(opts?: RenderHelperOpts): Gene
         // ADR-0042: a bare @payloadRef resolves in the template's package.
         const vo = resolveObjectRef(root, payloadRef, t.package ?? t.fileDefaultPackage ?? "").node;
         if (!vo) continue;
+        const path = `${dirPrefix}${t.name}.render.ts`;
         files.push({
           // renderRenderHelper THROWS (fails codegen) on a mustache↔VO drift —
           // intentionally NOT caught: a drifted template is a build error.
-          path: `${dirPrefix}${t.name}.render.ts`,
-          content: renderRenderHelper(root, t.name, provider, ctx.config.extStyle ?? "js"),
+          path,
+          content: renderRenderHelper(root, t.name, provider, ctx.config.extStyle ?? "js", ctx.renderContext, path),
         });
       }
       return files;

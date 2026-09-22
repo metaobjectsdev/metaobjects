@@ -17,7 +17,6 @@ import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
 import { renderExtractor } from "../src/templates/extractor.js";
-import { generatePayloadInterfaces } from "../src/payload-codegen.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
@@ -210,62 +209,9 @@ describe("Extractor codegen — source shape", () => {
     expect(src).toContain("m.shipTo ? toStrictCustomer(m.shipTo) : undefined");
   });
 
-  test("payload typing: field.enum is a value-constrained union alias (not unknown), single + array", async () => {
-    const root = await loadRoot(MODEL);
-    const payloadSrc = generatePayloadInterfaces(root, "Order", "acme::ai");
-
-    // Inline enum naming = <Entity><FieldPascal> (reused from renderEnumTypeAliases).
-    expect(payloadSrc).toContain(`export type OrderPriority = "LOW" | "HIGH";`);
-    expect(payloadSrc).toContain(`export type OrderLabels = "A" | "B";`);
-    // Field typed as the union alias — NOT `unknown`, NOT bare `string`.
-    expect(payloadSrc).toContain("priority: OrderPriority;");
-    expect(payloadSrc).toContain("labels: OrderLabels[];");
-    expect(payloadSrc).not.toContain("priority: unknown");
-    expect(payloadSrc).not.toContain("labels: unknown");
-  });
-
-  test("shared abstract field.enum on the payload path → ONE union alias (super-named), both fields typed it", async () => {
-    // Cross-port parity (mirrors the Python/C#/Kotlin/Java extractor shared-enum
-    // dedup proof): an abstract `field.enum` `Priority` with two PAYLOAD fields
-    // (`priority` REQUIRED + `escalation` OPTIONAL) that BOTH `extends` it and carry
-    // no own values. The union alias must be named for the SUPER (`Priority`, not
-    // `SharedOrderPriority`/`SharedOrderEscalation`) and emitted exactly ONCE; both
-    // fields must be typed `Priority` (the effective `@values` resolve through `extends`).
-    const sharedRoot = await loadRoot([
-      // Abstract enum declared at root so `extends: "Priority"` resolves the super + its @values.
-      { "field.enum": { name: "Priority", abstract: true, "@values": ["LOW", "HIGH"] } },
-      {
-        "object.value": {
-          name: "SharedOrder",
-          children: [
-            // priority: REQUIRED, extends the abstract → inherits @values, no own values.
-            { "field.enum": { name: "priority", "@required": true, extends: "Priority" } },
-            // escalation: OPTIONAL, also extends the SAME abstract → must collapse to one alias.
-            { "field.enum": { name: "escalation", extends: "Priority" } },
-          ],
-        },
-      },
-    ]);
-    const payloadSrc = generatePayloadInterfaces(sharedRoot, "SharedOrder", "acme::ai");
-
-    // Exactly ONE union alias, named for the SUPER (`Priority`) — not per-field, not duplicated.
-    expect(payloadSrc).toContain(`export type Priority = "LOW" | "HIGH";`);
-    expect(payloadSrc.match(/export type Priority =/g)?.length).toBe(1);
-    // The per-field/per-owner naming (`<Owner><FieldPascal>`) must NOT appear.
-    expect(payloadSrc).not.toContain("SharedOrderPriority");
-    expect(payloadSrc).not.toContain("SharedOrderEscalation");
-    // BOTH fields typed as the shared `Priority` alias (REQUIRED bare; OPTIONAL `| null`).
-    expect(payloadSrc).toContain("priority: Priority;");
-    expect(payloadSrc).toContain("escalation?: Priority | null;");
-
-    // tsc --strict gate: the shared alias + both field typings compile cleanly.
-    const dir = mkdtempSync(join(import.meta.dir, "shared-enum-tsc-"));
-    TEMP_DIRS.push(dir);
-    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
-    writeFileSync(join(dir, "engine.d.ts"), ENGINE_STUBS);
-    const diagnostics = compile(dir, ["payloads.ts", "engine.d.ts"]);
-    expect(diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
-  });
+  // ADR-0056: the payload type IS the value object's own interface (entityFile()), so its
+  // enum-union typing is the entity tier's and is tested there; the gate below compiles the
+  // extractor against those real modules.
 
   test("tsc --strict gate: emitted payload + parser + extractor type-check with ZERO diagnostics", async () => {
     const root = await loadRoot(MODEL);

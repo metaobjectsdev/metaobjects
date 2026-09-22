@@ -21,7 +21,12 @@ import { join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { verify, ERR_VAR_NOT_ON_PAYLOAD, type PayloadField } from "@metaobjectsdev/render";
-import { generatePayloadInterfaces, generateRenderHandle } from "../src/payload-codegen.js";
+import { entityFile } from "../src/generators/entity-file.js";
+import { promptRender } from "../src/generators/prompt-render-file.js";
+import { makeRenderContext } from "../src/render-context.js";
+import { buildPkMap } from "../src/pk-resolver.js";
+import { buildRelationMap } from "../src/relation-resolver.js";
+import type { GenContext } from "../src/generator.js";
 
 // The AuthorBrief projection over the trainerWebsite test entities (Plan #3 T3/T4).
 const model = [
@@ -77,6 +82,26 @@ const RENDER_STUB = `declare module "@metaobjectsdev/render" {
 }
 `;
 
+/** The generator context a real run hands entityFile() and promptRender(). */
+function genContext(root: Awaited<ReturnType<typeof loadRoot>>): GenContext {
+  return {
+    entities: root.objects(),
+    loadedRoot: root,
+    matches: () => true,
+    projectRoot: "/tmp",
+    config: { outDir: "/tmp", extStyle: "js", dbImport: "~/db", dialect: "sqlite" } as never,
+    renderContext: makeRenderContext({
+      dialect: "sqlite",
+      loadedRoot: root,
+      outDir: "/tmp",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    }),
+    warn: () => {},
+  };
+}
+
 function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
   const program = ts.createProgram(
     files.map((f) => join(dir, f)),
@@ -95,25 +120,32 @@ function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
 describe("FR-004 T7 — THE DEMO (both failures)", () => {
   test("(a) compile-time: a wrong-shaped payload is rejected by the generated handle", async () => {
     const root = await loadRoot();
-    const payloads = generatePayloadInterfaces(root, "AuthorBrief", "acme::ai");
-    const handle = generateRenderHandle(root, "contentStrategyPrompt");
+    const ctx = genContext(root);
+    // ADR-0056: the payload type is the value object's OWN interface (entityFile()); the
+    // handle imports it from there rather than re-declaring it.
+    const entityFiles = await entityFile().generate(ctx);
+    const [prompts] = await promptRender().generate(ctx);
 
     // Sanity: the generators produced the demo inputs the plan describes.
-    expect(payloads).toContain("export interface AuthorBrief {");
-    expect(payloads).toContain("posts: PostBrief[];");
-    expect(handle).toContain(
+    const authorBrief = entityFiles.find((f) => f.path === "AuthorBrief.ts")!.content;
+    expect(authorBrief).toContain("export interface AuthorBrief {");
+    expect(authorBrief).toContain("posts: PostBrief[];");
+    expect(prompts!.content).toContain(`import type { AuthorBrief } from "./AuthorBrief.js";`);
+    expect(prompts!.content).not.toContain("export interface");
+    expect(prompts!.content).toContain(
       "export function renderContentStrategyPrompt(payload: AuthorBrief, provider: Provider): string",
     );
 
-    const dir = mkdtempSync(join(tmpdir(), "fr004-t7-"));
+    // Under the package dir so the entity modules' own `zod` import resolves.
+    const dir = mkdtempSync(join(import.meta.dir, "fr004-t7-"));
     try {
-      writeFileSync(join(dir, "payloads.ts"), payloads);
-      writeFileSync(join(dir, "handles.ts"), handle);
+      for (const f of entityFiles) writeFileSync(join(dir, f.path), f.content);
+      writeFileSync(join(dir, "prompts.ts"), prompts!.content);
       writeFileSync(join(dir, "render.d.ts"), RENDER_STUB);
 
       const header = [
-        `import { renderContentStrategyPrompt } from "./handles.js";`,
-        `import type { AuthorBrief } from "./payloads.js";`,
+        `import { renderContentStrategyPrompt } from "./prompts.js";`,
+        `import type { AuthorBrief } from "./AuthorBrief.js";`,
         `import type { Provider } from "@metaobjectsdev/render";`,
         `const provider: Provider = { resolve: () => undefined };`,
         `const good: AuthorBrief = { displayName: "Ada", postCount: 1, posts: [] };`,
@@ -127,7 +159,7 @@ describe("FR-004 T7 — THE DEMO (both failures)", () => {
         join(dir, "consumer.ts"),
         `${header}\n// @ts-expect-error — wrong payload shape is a compile error\nvoid renderContentStrategyPrompt({ nope: 1 }, provider);\n`,
       );
-      const withDirective = compile(dir, ["consumer.ts", "handles.ts", "payloads.ts", "render.d.ts"]);
+      const withDirective = compile(dir, ["consumer.ts", "prompts.ts", "render.d.ts"]);
       expect(withDirective.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
 
       // WITHOUT the directive: the wrong-shape call must surface a type error —
@@ -136,12 +168,7 @@ describe("FR-004 T7 — THE DEMO (both failures)", () => {
         join(dir, "consumer-bad.ts"),
         `${header}\nvoid renderContentStrategyPrompt({ nope: 1 }, provider);\n`,
       );
-      const withoutDirective = compile(dir, [
-        "consumer-bad.ts",
-        "handles.ts",
-        "payloads.ts",
-        "render.d.ts",
-      ]);
+      const withoutDirective = compile(dir, ["consumer-bad.ts", "prompts.ts", "render.d.ts"]);
       expect(withoutDirective.length).toBeGreaterThan(0);
       // The error is a payload-shape mismatch (excess prop / not assignable), not
       // a resolution failure — guard against a false positive from a broken setup.

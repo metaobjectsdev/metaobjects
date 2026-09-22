@@ -48,7 +48,7 @@ export const extractor = function extractor(opts?: ExtractorOpts): Generator {
           // a payload/nested value-object whose bare name collides across packages emits/imports
           // the entity-domain qualified name (Task 3's valueObjectEmittedName), matching
           // entityFile()'s module.
-          content: renderExtractor(ctx.loadedRoot, t.name, ctx.renderContext),
+          content: renderExtractor(ctx.loadedRoot, t.name, ctx.renderContext, `${dirPrefix}${t.name}.extractor.ts`),
         });
       }
       return files;

@@ -313,6 +313,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => promptRender(),
     options: "filter?, target?",
+    // ADR-0056: the handles take each payload value object's OWN interface, which entityFile() emits.
+    requires: ["entity"],
     runtimePackages: ["@metaobjectsdev/render"],
     ejectable: ejectable("prompt-render"),
   },
@@ -324,6 +326,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => outputParser(),
     options: "filter?, target?",
+    // ADR-0056: the strict parse returns the response value object's OWN interface (entityFile()).
+    requires: ["entity"],
     runtimePackages: ["@metaobjectsdev/metadata", "@metaobjectsdev/render", "@metaobjectsdev/runtime-ts"],
     runtimePeers: ["zod"],
     ejectable: ejectable("output-parser"),
@@ -359,6 +363,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => renderHelper(),
     options: "filter?, target?",
+    // ADR-0056: the helper takes the payload value object's OWN interface (entityFile()).
+    requires: ["entity"],
     runtimePackages: ["@metaobjectsdev/render"],
     configKeys: ["extStyle"],
     ejectable: ejectable("render-helper"),
@@ -382,6 +388,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => traceHelperFile(),
     options: "outDir?, target?",
+    // ADR-0056: typed by the request/response value objects' OWN interfaces (entityFile()).
+    requires: ["entity"],
     ejectable: ejectable("trace-helper"),
   },
   "requirement-tests": {

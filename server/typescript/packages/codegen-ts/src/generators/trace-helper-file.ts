@@ -7,7 +7,8 @@
 // The emitted helper exports an async function `record<Entity>(om, responseMo, input)`
 // that EXTRACTS the typed response VO itself and persists ONE row = base envelope +
 // raw I/O (via buildLlmCallRow) PLUS the typed voRequest/voResponse columns. The
-// helper is typed against the generated payload interfaces (request + response VOs)
+// helper is typed against the request and response value objects' OWN interfaces
+// (ADR-0056 — imported from the modules entityFile() declares them in, never inlined),
 // so call-sites get compile-time checks.
 //
 // NOTE: ObjectManager does not expose its loaded metadata root, so the caller must
@@ -26,6 +27,7 @@ import {
   TEMPLATE_ATTR_FORMAT,
   RESPONSE_FORMAT_XML,
   TEMPLATE_ATTR_TEXT_REF,
+  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { responseFormatOf } from "../templates/find-inbound.js";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
@@ -37,7 +39,7 @@ import {
   type GeneratorFactory,
   perEntity,
 } from "../generator.js";
-import { generatePayloadInterfacesBatch } from "../payload-codegen.js";
+import { valueObjectImport, valueObjectImportLines } from "../templates/value-object-import.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { tphDiscriminatorPin } from "../templates/zod-validators.js";
 
@@ -138,6 +140,19 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
 
       const entityName = entity.name;
       const fnName = `record${pascal(entityName)}`;
+      const outPath = `${dirPrefix}${entityName}.trace.ts`;
+
+      // ADR-0056: the request and response types are the value objects' OWN interfaces. ADR-0042:
+      // a bare ref resolves in the prompt's package first.
+      const promptPkg = prompt.package ?? prompt.fileDefaultPackage ?? "";
+      const requestVo = resolveObjectRef(ctx.loadedRoot, payloadRef, promptPkg).node;
+      const responseVo = resolveObjectRef(ctx.loadedRoot, responseRef, promptPkg).node;
+      if (requestVo === undefined || responseVo === undefined) return [];
+      const extStyle = ctx.config.extStyle ?? "js";
+      const requestImport = valueObjectImport(ctx.renderContext, requestVo, outPath, extStyle);
+      const responseImport = valueObjectImport(ctx.renderContext, responseVo, outPath, extStyle);
+      const requestType = requestImport.name;
+      const responseType = responseImport.name;
 
       // STI: a trace entity that is a TPH subtype stamps its declared
       // discriminator value as callType and drops callType from the caller input
@@ -172,17 +187,6 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       const formatLiteral =
         responseFormatOf(prompt) === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
 
-      // Collect VO names for interface emission (dedupe via batch emitter).
-      // Both refs are guaranteed strings by the guards above. ADR-0042: a bare
-      // ref resolves in the prompt's package.
-      const interfaces = generatePayloadInterfacesBatch(
-        ctx.loadedRoot,
-        [payloadRef, responseRef],
-        prompt.package ?? prompt.fileDefaultPackage ?? "",
-      );
-
-      const requestType = payloadRef;
-
       // A renderable prompt (carries @textRef) gets an additional call<Entity> helper
       // that renders the prompt text, calls the LLM, then parses + persists a trace row.
       // ADR-0039: resolving — a prompt may inherit @textRef via extends.
@@ -214,6 +218,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
           ? `import { extract, render, type Provider } from "@metaobjectsdev/render";`
           : `import { extract } from "@metaobjectsdev/render";`,
         `import type { MetaObject } from "@metaobjectsdev/metadata";`,
+        ...valueObjectImportLines([requestImport, responseImport]),
       ];
       if (renderable) {
         importLines.push(
@@ -235,10 +240,6 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         ``,
         ...importLines,
         ``,
-        `// ---- Payload interfaces (inlined) ------------------------------------------`,
-        ``,
-        interfaces.trimEnd(),
-        ``,
         `// ---- Typed result -----------------------------------------------------------`,
         ``,
         `export interface ${entityName}TraceResult {`,
@@ -246,7 +247,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `  errorDetail: string | null;`,
         `  /** Parsed response VO, or null when extraction reported a lost-required field. */`,
         `  /** Note: voResponse is the plain extracted record typed as the response shape (structural, not an instance). */`,
-        `  voResponse: ${responseRef} | null;`,
+        `  voResponse: ${responseType} | null;`,
         `}`,
         ``,
         `// ---- Record helper ----------------------------------------------------------`,
@@ -279,7 +280,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `  const base = buildLlmCallRow(${recordBuildArg});`,
         `  const row = { ...base, voRequest: input.llmRequest, voResponse: failed ? null : outcome.data };`,
         `  await persistLlmCallRow(new LlmCallDbRecorder(om, "${entityName}"), row, opts?.redact ? { redact: opts.redact } : undefined);`,
-        `  return { status, errorDetail, voResponse: failed ? null : (outcome.data as ${responseRef}) };`,
+        `  return { status, errorDetail, voResponse: failed ? null : (outcome.data as ${responseType}) };`,
         `}`,
         ``,
       ];
@@ -333,7 +334,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
           `  if (deps.clock !== undefined) runDeps.clock = deps.clock;`,
           `  if (deps.ids !== undefined) runDeps.ids = deps.ids;`,
           `  const { input: recInput, completion } = await runLlmCall(runInput, runDeps);`,
-          `  let voResponse: ${responseRef} | null = null;`,
+          `  let voResponse: ${responseType} | null = null;`,
           `  let status = recInput.status;`,
           `  let errorDetail = recInput.errorDetail;`,
           `  if (completion !== undefined) {`,
@@ -342,7 +343,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
           `      status = "error";`,
           '      errorDetail = `lost required: ${outcome.report.lostRequired().join(", ")}`;',
           `    } else {`,
-          `      voResponse = outcome.data as ${responseRef};`,
+          `      voResponse = outcome.data as ${responseType};`,
           `    }`,
           `  }`,
           `  const row = { ...buildLlmCallRow({ ...recInput, status, errorDetail }), voRequest: payload, voResponse };`,
@@ -353,7 +354,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       }
 
       return [{
-        path: `${dirPrefix}${entityName}.trace.ts`,
+        path: outPath,
         content: lines.join("\n"),
       }];
     }),

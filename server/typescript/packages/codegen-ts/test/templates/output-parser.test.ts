@@ -50,15 +50,17 @@ describe("renderOutputParser()", () => {
     ]);
     const out = renderOutputParser(root, "NpcResponseOutput");
     expect(out).toContain('import { z } from "zod"');
-    // Self-contained: no cross-file payload import.
+    // ADR-0056: the parse result is the @responseRef value object's OWN interface, imported
+    // from the module entityFile() declares it in — never a template-named copy.
+    expect(out).toContain('import type { NpcResponsePayload } from "./NpcResponsePayload.js";');
     expect(out).not.toContain('./payloads');
+    expect(out).not.toContain("NpcResponseOutputData");
     expect(out).toContain("const NpcResponseOutputSchema = z.object({");
     expect(out).toContain("name: z.string()");
     expect(out).toContain("age: z.number().int()");
-    expect(out).toContain("export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;");
-    expect(out).toContain("export function parseNpcResponseOutput(text: string): NpcResponseOutputData");
+    expect(out).toContain("export function parseNpcResponseOutput(text: string): NpcResponsePayload");
     expect(out).toContain("export function safeParseNpcResponseOutput(");
-    expect(out).toContain("{ success: true; data: NpcResponseOutputData }");
+    expect(out).toContain("{ success: true; data: NpcResponsePayload }");
     expect(out).toContain("{ success: false; error: NpcResponseOutputValidationError }");
   });
 

@@ -252,8 +252,11 @@ export type { EmitOptions as ViewDdlEmitOptions } from "./projection/view-ddl-em
 export { buildProjectionViews } from "./projection/build-projection-views.js";
 export type { ExpectedView, BuildProjectionViewsOptions } from "./projection/build-projection-views.js";
 export type { JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec } from "./projection/view-spec.js";
-// Prompt construction (FR-004): typed payload + render-handle codegen.
-export { generatePayloadInterfaces, generatePayloadInterfacesBatch, generateRenderHandle } from "./payload-codegen.js";
+// Prompt construction (FR-004): ADR-0056 — a template's payload is its value object's own
+// interface (entityFile()), so there is no template-tier payload emitter to export. The one
+// way a template-tier generator imports that interface:
+export { valueObjectImport, valueObjectImportLines } from "./templates/value-object-import.js";
+export type { ValueObjectImport } from "./templates/value-object-import.js";
 
 // Template-driven codegen (rc.12). Factory + framework Provider for adopters
 // who want to wire their own templateGenerator instances. The default

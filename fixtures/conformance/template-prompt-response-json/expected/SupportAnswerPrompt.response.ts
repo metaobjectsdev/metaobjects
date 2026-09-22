@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SupportAnswer } from "./SupportAnswer.js";
 import {
   Format,
   type ExtractOptions,
@@ -13,14 +14,13 @@ const SupportAnswerPromptSchema = z.object({
   note: z.string().optional(),
 });
 
-export type SupportAnswerPromptData = z.infer<typeof SupportAnswerPromptSchema>;
 export type SupportAnswerPromptValidationError = z.ZodError;
 
 /**
- * Parse an LLM response into a typed SupportAnswerPromptData.
+ * Parse an LLM response into a typed SupportAnswer.
  * @throws ZodError on validation failure.
  */
-export function parseSupportAnswerPrompt(text: string): SupportAnswerPromptData {
+export function parseSupportAnswerPrompt(text: string): SupportAnswer {
   return SupportAnswerPromptSchema.parse(JSON.parse(text));
 }
 
@@ -30,7 +30,7 @@ export function parseSupportAnswerPrompt(text: string): SupportAnswerPromptData 
  */
 export function safeParseSupportAnswerPrompt(
   text: string,
-): { success: true; data: SupportAnswerPromptData } | { success: false; error: SupportAnswerPromptValidationError } {
+): { success: true; data: SupportAnswer } | { success: false; error: SupportAnswerPromptValidationError } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -50,15 +50,15 @@ export function safeParseSupportAnswerPrompt(
 /** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime. */
 export const SUPPORTANSWERPROMPT_PAYLOAD_NAME = "SupportAnswer";
 
-/** Best-effort extracted twin of `SupportAnswerPrompt` — every field nullable (null where lost/malformed). */
-export interface SupportAnswerPromptExtracted {
+/** Best-effort extracted twin of `SupportAnswer` — every field nullable (null where lost/malformed). */
+export interface SupportAnswerExtracted {
   text: string | null;
   confidence: string | null;
   note: string | null;
 }
 
-/** Map an assembled ValueObject graph into a typed `SupportAnswerPromptExtracted` mirror. Generated; null-tolerant. */
-function fromSupportAnswerPromptExtracted(o: unknown): SupportAnswerPromptExtracted | null {
+/** Map an assembled ValueObject graph into a typed `SupportAnswerExtracted` mirror. Generated; null-tolerant. */
+function fromSupportAnswerExtracted(o: unknown): SupportAnswerExtracted | null {
   if (o == null) return null;
   return {
     text: dlgString(readProp(o, "text")),
@@ -86,7 +86,7 @@ function dlgString(v: unknown): string | null {
  * nested-object and array-of-object components by delegating to the metadata-driven runtime
  * `extractObject` (which assembles the whole graph reflection-free via the Phase A object
  * model, reading the live metadata directly), then maps the assembled graph into the typed
- * `SupportAnswerPromptExtracted` mirror.
+ * `SupportAnswerExtracted` mirror.
  *
  * @param root a loaded MetaRoot (e.g. `(await new MetaDataLoader().load(...)).root`) that declares
  *             the `SupportAnswer` value-object.
@@ -95,11 +95,11 @@ export function extractLenientSupportAnswerPromptWithLoader(
   root: MetaRoot,
   text: string,
   opts?: Partial<ExtractOptions> | null,
-): ExtractionResult<SupportAnswerPromptExtracted> {
+): ExtractionResult<SupportAnswerExtracted> {
   const mo = root.findObject(SUPPORTANSWERPROMPT_PAYLOAD_NAME);
   if (mo === undefined) {
     throw new Error(`extractLenientSupportAnswerPromptWithLoader: payload "${SUPPORTANSWERPROMPT_PAYLOAD_NAME}" not found in the supplied MetaRoot`);
   }
   const outcome = extractObject(mo, text, Format.JSON, opts);
-  return { data: fromSupportAnswerPromptExtracted(outcome.data), report: outcome.report };
+  return { data: fromSupportAnswerExtracted(outcome.data), report: outcome.report };
 }

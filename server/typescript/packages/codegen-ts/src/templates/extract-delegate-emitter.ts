@@ -62,7 +62,7 @@ export function mirrorName(vo: MetaData, ctx?: RenderContext): string {
 }
 
 /** The mapper function name for a value-object (`from<Name>Extracted`). See {@link mirrorName}. */
-function mapperName(vo: MetaData, ctx?: RenderContext): string {
+export function mapperName(vo: MetaData, ctx?: RenderContext): string {
   const name = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
   return `from${name}Extracted`;
 }
@@ -95,19 +95,18 @@ function nestedMirrorType(field: MetaData, root: MetaData, ctx?: RenderContext):
 
 /**
  * Emit the nested-aware mirror interface for `vo` and every value-object reachable from it
- * (deduped by simple name; cycle-safe). The payload mirror keeps the canonical `<Payload>Extracted`
- * name (passed in) so the existing self-contained extract<Name>() and the delegating overload
- * share one mirror type. Returns the joined interface declarations in stable (BFS) order.
+ * (deduped by resolutionKey(); cycle-safe). ADR-0056: every mirror — the root included — is named
+ * for its VALUE OBJECT (`<Vo>Extracted`), never for a template, so two prompts replying with one
+ * shape name one mirror type. Returns the joined interface declarations in stable order.
  */
 export function nestedMirrorInterfaces(
   vo: MetaData,
   root: MetaData,
-  payloadMirror: string,
   ctx?: RenderContext,
 ): string {
   const out: string[] = [];
   const seen = new Set<string>();
-  emitMirror(vo, root, payloadMirror, seen, out, ctx);
+  emitMirror(vo, root, mirrorName(vo, ctx), seen, out, ctx);
   return out.join("\n\n");
 }
 
@@ -156,27 +155,14 @@ function emitMirror(
 /**
  * Emit one `from<VO>Extracted(o)` mapper per value-object reachable from `vo` (payload + nested,
  * deduped). Each mapper reads the assembled object via readProp() and recurses into nested
- * mappers for object/array-of-object components. Nested mappers use `from<NestedName>Extracted`
- * returning `<NestedName>Extracted`. The ROOT mapper is overridden to the template-derived names
- * (`rootMapperFn` / `rootMirror`) so it matches the canonically-named root mirror interface — the
- * payload VO's own name may differ from the template name.
+ * mappers for object/array-of-object components. ADR-0056: the root is named for its value object
+ * like every nested one — `from<Vo>Extracted` returning `<Vo>Extracted`.
  */
-export function nestedMappers(
-  vo: MetaData,
-  root: MetaData,
-  rootMapperFn: string,
-  rootMirror: string,
-  ctx?: RenderContext,
-): string {
+export function nestedMappers(vo: MetaData, root: MetaData, ctx?: RenderContext): string {
   const out: string[] = [];
   const seen = new Set<string>();
-  emitMapper(vo, root, seen, out, { fn: rootMapperFn, mirror: rootMirror }, ctx);
+  emitMapper(vo, root, seen, out, ctx);
   return out.join("\n\n");
-}
-
-/** The root mapper's name + mirror — derived from the template, not the payload VO. */
-export function rootMapperName(template: string): string {
-  return `from${template}Extracted`;
 }
 
 function emitMapper(
@@ -184,7 +170,6 @@ function emitMapper(
   root: MetaData,
   seen: Set<string>,
   out: string[],
-  override?: { fn: string; mirror: string },
   ctx?: RenderContext,
 ): void {
   // ADR-0044/#228: dedupe by resolutionKey() — see emitMirror for why bare-name dedupe drops
@@ -193,8 +178,8 @@ function emitMapper(
   if (seen.has(vo.resolutionKey())) return;
   seen.add(vo.resolutionKey());
 
-  const fn = override?.fn ?? mapperName(vo, ctx);
-  const mir = override?.mirror ?? mirrorName(vo, ctx);
+  const fn = mapperName(vo, ctx);
+  const mir = mirrorName(vo, ctx);
   const assigns = fields(vo).map((f) => `    ${f.name}: ${mapperArg(f, root, ctx)},`);
   const body = [
     `/** Map an assembled ValueObject graph into a typed \`${mir}\` mirror. Generated; null-tolerant. */`,
@@ -210,7 +195,7 @@ function emitMapper(
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
       const target = refVo(f, root);
-      if (target !== undefined) emitMapper(target, root, seen, out, undefined, ctx);
+      if (target !== undefined) emitMapper(target, root, seen, out, ctx);
     }
   }
 }

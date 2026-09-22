@@ -510,7 +510,7 @@ const output = renderProductSummary({ headline: "…" }, provider);
 
 \`import { extractSummarizeProduct, extractLenientSummarizeProduct } from "./SummarizeProduct.extractor"\`
 - \`extractSummarizeProduct(root: MetaRoot, text: string): SummaryVO // SummaryVO: { headline: string }\` — Parse the model's json reply to SummarizeProduct into a strict, fully-typed SummaryVO graph. [throws: Error when a @required field is lost (the strict opt-in gate).]
-- \`extractLenientSummarizeProduct(root: MetaRoot, text: string): ExtractionResult<SummarizeProductExtracted>\` — Never-throwing extract of the SummarizeProduct reply; inspect report for lost/defaulted fields.
+- \`extractLenientSummarizeProduct(root: MetaRoot, text: string): ExtractionResult<SummaryVOExtracted>\` — Never-throwing extract of the SummarizeProduct reply; inspect report for lost/defaulted fields.
 
 Example:
 \`\`\`ts

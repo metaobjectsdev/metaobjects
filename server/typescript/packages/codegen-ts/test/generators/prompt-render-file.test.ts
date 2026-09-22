@@ -34,7 +34,7 @@ describe("promptRender() factory", () => {
     expect(out).toEqual([]);
   });
 
-  test("emits one file aggregating payload interfaces + render handles", async () => {
+  test("emits one file of render handles that import each payload's own interface (ADR-0056)", async () => {
     const root = await loadRoot([
       {
         "object.value": {
@@ -58,10 +58,13 @@ describe("promptRender() factory", () => {
     const out = await gen.generate(makeCtx(root));
     expect(out).toHaveLength(1);
     expect(out[0]!.path).toBe("prompts.ts");
-    expect(out[0]!.content).toContain("export interface NpcPromptPayload");
-    expect(out[0]!.content).toContain("name: string;");
-    expect(out[0]!.content).toContain("mood: string;");
-    expect(out[0]!.content).toMatch(/npcTurn/i);
+    // The payload type is the value object's OWN interface, declared by entityFile() in its
+    // module — imported, never re-declared here.
+    expect(out[0]!.content).toContain('import type { NpcPromptPayload } from "./NpcPromptPayload.js";');
+    expect(out[0]!.content).not.toContain("export interface");
+    expect(out[0]!.content).toContain(
+      "export function renderNpcTurn(payload: NpcPromptPayload, provider: Provider): string",
+    );
   });
 
   test("honors a custom outFile option", async () => {
@@ -75,7 +78,7 @@ describe("promptRender() factory", () => {
     expect(out[0]!.path).toBe("src/render/generated/prompts.ts");
   });
 
-  test("emits payload interface when there are payloads but no prompts", async () => {
+  test("emits nothing when there are value objects but no prompts (it declares no types)", async () => {
     const root = await loadRoot([
       {
         "object.value": {
@@ -86,9 +89,7 @@ describe("promptRender() factory", () => {
     ]);
     const gen = promptRender();
     const out = await gen.generate(makeCtx(root));
-    expect(out).toHaveLength(1);
-    expect(out[0]!.content).toContain("export interface JustAPayload");
-    expect(out[0]!.content).toContain("msg: string;");
+    expect(out).toEqual([]);
   });
 
   test("emits render handle when there are prompts but no payload VOs", async () => {
@@ -152,7 +153,7 @@ describe("promptRender() factory", () => {
     expect(content).toMatch(/renderDelta/);
   });
 
-  test("strips the standalone payloads.js import that generateRenderHandle emits", async () => {
+  test("never imports a payloads.js module no generator emits", async () => {
     const root = await loadRoot([
       { "object.value": { name: "P", children: [{ "field.string": { name: "x", "@required": true } }] } },
       { "template.prompt": { name: "p1", "@payloadRef": "P", "@textRef": "p/1", "@format": "text" } },
@@ -161,9 +162,9 @@ describe("promptRender() factory", () => {
     expect(out[0]!.content).not.toContain('from "./payloads.js"');
   });
 
-  test("emits each shared nested payload interface exactly once across multiple payloads", async () => {
-    // Two payloads each reference a Lens. The lens shape should appear in the
-    // emitted file only once (no duplicate interface declaration).
+  test("declares no nested interface either — a shared nested value object stays in its own module", async () => {
+    // Two payloads each reference a Lens. ADR-0056: none of the three shapes is declared here;
+    // the handles import PayloadA / PayloadB, and Lens stays in the module entityFile() writes.
     const root = await loadRoot([
       {
         "object.value": {
@@ -197,10 +198,9 @@ describe("promptRender() factory", () => {
     ]);
     const out = await promptRender().generate(makeCtx(root));
     const content = out[0]!.content;
-    const lensMatches = content.match(/export interface Lens \{/g);
-    expect(lensMatches).toHaveLength(1);
-    // Sanity: both payload interfaces still emit.
-    expect(content).toContain("export interface PayloadA {");
-    expect(content).toContain("export interface PayloadB {");
+    expect(content).not.toContain("export interface");
+    expect(content).toContain('import type { PayloadA } from "./PayloadA.js";');
+    expect(content).toContain('import type { PayloadB } from "./PayloadB.js";');
+    expect(content).not.toContain("Lens");
   });
 });

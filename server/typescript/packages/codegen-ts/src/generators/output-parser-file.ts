@@ -46,7 +46,7 @@ export const outputParser = function outputParser(opts?: OutputParserOpts): Gene
           // a payload/nested value-object whose bare name collides across packages emits the
           // entity-domain qualified mirror type (Task 3's valueObjectEmittedName), and the
           // payload runtime lookup baked FQN-safe.
-          content: renderOutputParser(ctx.loadedRoot, t.name, ctx.renderContext),
+          content: renderOutputParser(ctx.loadedRoot, t.name, ctx.renderContext, `${dirPrefix}${t.name}.response.ts`),
         });
       }
       return files;
