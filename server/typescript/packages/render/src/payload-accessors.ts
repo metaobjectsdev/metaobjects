@@ -6,10 +6,10 @@
 // `hasAbilities` follows from it. Declaring both would let them disagree.
 //
 // THE RULE IS SHARED ON PURPOSE. The JVM has carried this since 7.7.7
-// (`com.metaobjects.render.PayloadAccessors`, emitted by `SpringPayloadGenerator`
-// onto every generated payload record and accepted by `render.Verify`), and its
-// comment says the emitter and the verifier share one rule so they "can never drift
-// apart". TypeScript had neither half, which is why the same template verified clean
+// (`com.metaobjects.render.PayloadAccessors`, accepted by `render.Verify`; it was once
+// emitted as `has<Field>()` methods on every generated payload record, and since
+// ADR-0056 the JVM engine derives it from the record instead), and its comment says
+// the two sides share one rule so they "can never drift apart". TypeScript had neither half, which is why the same template verified clean
 // on the JVM and reported drift here — and, worse, RENDERED WRONG rather than
 // failing: `{{#hasAbilities}}` resolved to nothing on a populated payload, so the
 // section silently vanished. This module is the TS half of that shared rule.

@@ -310,7 +310,8 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
 #
 # Fix round 2 (#228 Important, fable-adjudicated in-scope) — this originally
 # authored each `@payloadRef` as an FQN to sidestep a SEPARATE bug found while
-# writing this test: `payload_vo_generator.resolve_payload_vo` (the BUILD-TIME
+# writing this test: `resolve_payload_vo` (then in `payload_vo_generator`, now in
+# `metaobjects.codegen.value_objects`; the BUILD-TIME
 # `@payloadRef` -> object.value resolver — the loader's own `_validate_templates`
 # pass ALREADY resolves this exact ref package-local, so codegen silently
 # emitting a DIFFERENT object than the loader validated was in-charter) was not

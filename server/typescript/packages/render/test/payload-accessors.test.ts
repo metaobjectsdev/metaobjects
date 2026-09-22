@@ -1,10 +1,11 @@
 // Derived `has<Field>` accessors — the TS half of a rule the JVM has carried since 7.7.7.
 //
 // A prompt needs conditional sections, and the payload contract answers that with a
-// DERIVED accessor: declare `abilities`, get `hasAbilities`. The JVM emits
-// `has<Field>()` onto every generated payload record (SpringPayloadGenerator) and
-// accepts `{{#has<Field>}}` in its static drift check (render.Verify), sharing one
-// naming rule so the two can never disagree.
+// DERIVED accessor: declare `abilities`, get `hasAbilities`. The JVM derives
+// `has<Field>` for a payload in its render engine (it used to emit `has<Field>()` onto
+// every generated payload record, until ADR-0056 removed that copy) and accepts
+// `{{#has<Field>}}` in its static drift check (render.Verify), sharing one naming rule
+// so the two can never disagree.
 //
 // TypeScript had NEITHER half, and the consequence was not a loud one. Verify reported
 // ERR_VAR_NOT_ON_PAYLOAD for a template the JVM verified clean — and render silently
