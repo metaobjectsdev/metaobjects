@@ -109,8 +109,9 @@ public sealed class Fr010DelegatingMirrorLockStepTests
     [Fact]
     public void Nested_decimal_reads_through_DlgDecimal_not_DlgString()
     {
-        var src = Assert.Single(
-            new OutputParserGenerator().Generate(Ctx(Load(NestedScalarModel(FIELD_SUBTYPE_DECIMAL, false))))).Content;
+        // The parser and the mirror files it emits, read as one (the mirror is its own file).
+        var src = string.Concat(
+            new OutputParserGenerator().Generate(Ctx(Load(NestedScalarModel(FIELD_SUBTYPE_DECIMAL, false)))).Select(f => f.Content));
 
         // The mirror types it decimal? ...
         Assert.Contains("public decimal? v { get; init; }", src);
@@ -123,8 +124,9 @@ public sealed class Fr010DelegatingMirrorLockStepTests
     [Fact]
     public void Nested_decimal_array_reads_through_DlgDecimal_elements()
     {
-        var src = Assert.Single(
-            new OutputParserGenerator().Generate(Ctx(Load(NestedScalarModel(FIELD_SUBTYPE_DECIMAL, true))))).Content;
+        // The parser and the mirror files it emits, read as one (the mirror is its own file).
+        var src = string.Concat(
+            new OutputParserGenerator().Generate(Ctx(Load(NestedScalarModel(FIELD_SUBTYPE_DECIMAL, true)))).Select(f => f.Content));
 
         // NestedMirrorType kind-types array elements via ScalarMirrorType (NOT
         // ScalarArrayElementType, which is the SELF-CONTAINED mirror's rule), so the
@@ -203,11 +205,11 @@ public sealed class Fr010DelegatingMirrorLockStepTests
 
     private static Assembly Compile(MetaRoot root)
     {
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n"
-                       + PayloadCodegen.GeneratePayloadRecords(root, "Probe");
+        // The parser, the mirrors it emits once per run, and the value objects' own POCOs.
+        var sources = new OutputParserGenerator().Generate(Ctx(root)).Select(f => f.Content)
+            .Concat(GeneratedValueObjects.Sources(root));
 
-        var trees = new[] { parserSrc, payloadSrc }.Select(s =>
+        var trees = sources.Select(s =>
             CSharpSyntaxTree.ParseText(s, new CSharpParseOptions(LanguageVersion.CSharp12))).ToArray();
 
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)

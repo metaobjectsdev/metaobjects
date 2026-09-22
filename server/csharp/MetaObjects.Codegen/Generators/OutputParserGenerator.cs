@@ -9,17 +9,20 @@
 // a JSON parser for text the system had just rendered. `template.output` is
 // outbound only and emits nothing here.
 //
-// The emitted parser RETURNS the RESPONSE-VO record emitted by PayloadCodegen
-// from the same `@responseRef` (never the `@payloadRef` record, which types the
-// REQUEST this prompt renders outbound). It does NOT redeclare the shape; this
-// generator emits parser glue only.
+// ADR-0056: the emitted parser RETURNS the `@responseRef` value object's own POCO,
+// the one EntityGenerator emits (never the `@payloadRef` object, which types the
+// REQUEST this prompt renders outbound). It declares no type for the shape, so a
+// run that wires it must also wire EntityGenerator (`entity`). The one type it
+// does own is the value object's all-nullable mirror (`<Vo>Extracted`), and that
+// is keyed by the value object: emitted ONCE per run, in the value object's own
+// namespace, however many prompts parse into it.
 //
 // Ported from typescript/packages/codegen-ts/src/generators/output-parser-file.ts
 // (renderer in typescript/packages/codegen-ts/src/templates/output-parser.ts).
-// TS uses Zod; C# uses System.Text.Json + the `required` keyword for
-// presence enforcement (.NET 7+). No DataAnnotations / Validator pass —
-// `required`-keyword construction + STJ's strict deserialization cover
-// presence + type in BCL-native form.
+// TS uses Zod; C# uses System.Text.Json. Presence is enforced by a generated
+// JsonTypeInfo modifier that marks each @required field required (the POCO's
+// members are shared with the REST tier, so they cannot carry the `required`
+// keyword themselves), and enums travel as their member symbols.
 //
 // FR-010 tolerant extraction — one metadata-driven path (Plan 2.1). Every
 // responding prompt also emits tolerant best-effort extraction (never throws;
@@ -61,18 +64,26 @@ public class OutputParserGenerator : IGenerator
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         var files = new List<EmittedFile>();
+        // ADR-0056 rule 3: each mirrored value object's <Vo>Extracted record is emitted ONCE per
+        // run, in its own namespace — so two prompts parsing into one shape share it, and where it
+        // lands never depends on which prompt came first.
+        var mirrored = new Dictionary<string, MetaData>(StringComparer.Ordinal);
         // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
         foreach (var tmpl in FindInbound.InboundTemplates(ctx.Root))
         {
             // Skip on RESOLUTION, not just presence. InboundTemplates filters on @responseRef
             // presence (it has no root to resolve against), so this loop is the only place the
             // ref's target is checked — and it was not checking. A @responseRef naming an
-            // object.entity therefore emitted `static Answer Parse(string)` while PayloadGenerator,
-            // which resolves value-only, emitted no such record: CS0246. Every sibling inbound
+            // object.entity therefore emitted `static Answer Parse(string)` naming a type no
+            // value-object generator declares: CS0246. Every sibling inbound
             // generator already skipped on ResponseShape; this one alone did not.
             if (FindInbound.ResponseShape(ctx.Root, tmpl) is not { } shape) continue;
             files.Add(EmitParser(tmpl, shape.Ref, ctx));
+            foreach (var vo in ExtractDelegateEmitter.MirrorClosure(shape.Vo, ctx.Root))
+                mirrored.TryAdd(vo.ResolutionKey(), vo);
         }
+        foreach (var vo in mirrored.Values)
+            files.Add(ExtractDelegateEmitter.MirrorFile(vo, ctx.Root, ctx.Config));
         return files;
     }
 
@@ -98,15 +109,12 @@ public class OutputParserGenerator : IGenerator
         // a DIFFERENT node than what was validated.
         var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
         var vo = global::MetaObjects.NamingRefs.ResolveObjectRef(ctx.Root, payloadRef, referrerPkg);
-        // FR-032/ADR-0044: @payloadRef may be an FQN after the desugar/sweep; the generated C#
-        // TYPE NAME is PayloadCodegen's OWN emitted name for the resolved VO — bare unless its
-        // within-closure short name collides (never a raw StripPkg of the possibly-FQN attribute
-        // string, which would diverge from the ACTUAL record PayloadGenerator/PayloadCodegen
-        // emits under a collision). Falls back to StripPkg only when payloadRef is unresolvable
-        // (mirrors the pre-#228 permissive behavior for a dangling/malformed @payloadRef).
-        var payloadType = PayloadCodegen.ResolveEmittedName(ctx.Root, payloadRef, referrerPkg)
-            ?? CSharpNaming.StripPkg(payloadRef);
-        var extractedType = $"{payloadType}Extracted";
+        // ADR-0056: the parsed type IS the value object's own POCO, named the way every generator
+        // names it (never the raw ref string, which may be an FQN).
+        var ns = ctx.Config.Namespace;
+        var payloadType = vo is not null
+            ? ValueObjectNames.TypeRef(vo, ctx.Root, ctx.Config, ns)
+            : CSharpNaming.StripPkg(payloadRef);
 
         // ADR-0053: the reply's syntax is @responseFormat (json|xml, default json) — never
         // @format, which is the syntax of the rendered prompt BODY. The old @format gate is
@@ -136,9 +144,12 @@ public class OutputParserGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         if (emitStrict) sb.AppendLine("using System.Diagnostics.CodeAnalysis;");
         if (emitStrict) sb.AppendLine("using System.Text.Json;");
+        if (emitStrict) sb.AppendLine("using System.Text.Json.Serialization;");
+        var required = emitStrict && vo is not null ? RequiredFields(vo, ctx) : [];
+        if (required.Count > 0) sb.AppendLine("using System.Text.Json.Serialization.Metadata;");
         if (emitExtract) sb.AppendLine("using MetaObjects.Render.Extract;");
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {ns};");
         sb.AppendLine();
         sb.AppendLine($"/// <summary>Parser for LLM responses matching the <c>{templateName}</c> template.prompt.</summary>");
         sb.AppendLine($"public static class {parserClass}");
@@ -147,12 +158,32 @@ public class OutputParserGenerator : IGenerator
         {
             sb.AppendLine("    private static readonly JsonSerializerOptions Options = new()");
             sb.AppendLine("    {");
-            // Case-sensitive (default) — the response-VO property names are emitted as
-            // the exact metadata field names (typically camelCase), which matches the
-            // JSON the LLM is expected to produce.
+            // Case-sensitive (default) — every value-object POCO member carries its metadata
+            // field name in [JsonPropertyName], which is the key the model is asked to produce.
             sb.AppendLine("        PropertyNameCaseInsensitive = false,");
+            // A field.enum travels as its member symbol, as the output-format prompt says.
+            sb.AppendLine("        Converters = { new JsonStringEnumConverter() },");
+            if (required.Count > 0)
+                sb.AppendLine("        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { RequireDeclaredFields } },");
             sb.AppendLine("    };");
             sb.AppendLine();
+            if (required.Count > 0)
+            {
+                sb.AppendLine("    /// <summary>A reply that omits a <c>@required</c> field fails to parse. The value-object POCOs");
+                sb.AppendLine("    /// cannot say so themselves: their members are shared with the REST tier, where presence is a");
+                sb.AppendLine("    /// validation concern.</summary>");
+                sb.AppendLine("    private static void RequireDeclaredFields(JsonTypeInfo info)");
+                sb.AppendLine("    {");
+                sb.AppendLine("        string[]? required =");
+                foreach (var (type, names) in required)
+                    sb.AppendLine($"            info.Type == typeof({type}) ? new[] {{ {string.Join(", ", names.Select(n => $"\"{n}\""))} }} :");
+                sb.AppendLine("            null;");
+                sb.AppendLine("        if (required is null) return;");
+                sb.AppendLine("        foreach (var p in info.Properties)");
+                sb.AppendLine("            if (Array.IndexOf(required, p.Name) >= 0) p.IsRequired = true;");
+                sb.AppendLine("    }");
+                sb.AppendLine();
+            }
             sb.AppendLine($"    /// <summary>Parse an LLM response into a typed <see cref=\"{payloadType}\"/>.</summary>");
             sb.AppendLine($"    /// <param name=\"text\">The raw response text — expected to be JSON.</param>");
             sb.AppendLine("    /// <returns>The deserialized, validated response.</returns>");
@@ -186,25 +217,31 @@ public class OutputParserGenerator : IGenerator
         // FR-010: emit the single metadata-driven extract path — the runtime-DELEGATING
         // ExtractLenient(MetaObject/MetaRoot, text) overloads (delegating to
         // MetaObjects.Codegen.Runtime.ExtractObject, which assembles the full object graph
-        // reflection-free by reading the live metadata directly), plus the nested-aware nullable
-        // mirror records + mappers. No baked ExtractSchema snapshot.
+        // reflection-free by reading the live metadata directly) and the mappers into the
+        // value objects' mirrors. The mirror records themselves are emitted once per run
+        // (see Generate). No baked ExtractSchema snapshot.
         string formatEnum = FindInbound.IsXml(format) ? "Format.Xml" : "Format.Json";
 
         if (emitExtract)
-            sb.Append(ExtractDelegateEmitter.DelegatingMembers(vo!, ctx.Root, payloadType, extractedType, formatEnum));
+            sb.Append(ExtractDelegateEmitter.DelegatingMembers(vo!, ctx.Root, ctx.Config, ns, formatEnum));
 
         sb.AppendLine("}");
-
-        if (emitExtract)
-        {
-            sb.AppendLine();
-            // The payload mirror is emitted nested-aware (object fields typed as nested mirrors)
-            // along with every reachable nested mirror record.
-            sb.Append(ExtractDelegateEmitter.NestedMirrorRecords(vo!, ctx.Root, extractedType));
-        }
 
         // ADR-0052 D4: the artifact name follows the DIRECTION axis. A parser file named
         // `.output.cs` generated from a prompt reproduces the confusion being removed.
         return new EmittedFile($"{templateName}.response.cs", sb.ToString());
     }
+
+    /// <summary>
+    /// The <c>@required</c> fields of every value object the strict parse decodes — the response
+    /// value object and each one nested under it — as (type reference, JSON names) pairs. Value
+    /// objects with no required field are omitted.
+    /// </summary>
+    private static List<(string Type, List<string> Names)> RequiredFields(MetaData vo, GenContext ctx) =>
+        ExtractDelegateEmitter.MirrorClosure(vo, ctx.Root)
+            .Select(v => (
+                Type: ValueObjectNames.TypeRef(v, ctx.Root, ctx.Config, ctx.Config.Namespace),
+                Names: Fr010FieldMapping.Fields(v).Where(Fr010FieldMapping.IsRequired).Select(f => f.Name).ToList()))
+            .Where(r => r.Names.Count > 0)
+            .ToList();
 }

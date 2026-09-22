@@ -363,7 +363,7 @@ public static class VerifyCommand
             // never whichever same-short-named object.value another package happens to declare
             // (the loader validates @payloadRef package-locally too; verify must agree).
             var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-            var fields = PayloadCodegen.BuildPayloadFieldTree(load.Root, payloadRef, referrerPkg);
+            var fields = PayloadFieldTree.Build(load.Root, payloadRef, referrerPkg);
             if (fields.Count == 0)
             {
                 errors.Add(new Drift(tmpl.Name, kind, ERR_PAYLOAD_REF_UNRESOLVED, payloadRef));

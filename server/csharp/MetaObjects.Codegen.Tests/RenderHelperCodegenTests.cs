@@ -71,14 +71,13 @@ public sealed class RenderHelperCodegenTests
         Assert.Contains("public static class WelcomePageRenderHelper", file.Content);
         Assert.Contains("public static string Render(Welcome payload, global::MetaObjects.Render.IProvider provider)", file.Content);
 
-        // Compile the helper alongside the payload record, then reflectively render.
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        // Compile the helper alongside the value object's POCO (ADR-0056), then reflectively render.
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomePageRenderHelper")!;
         var payloadType = asm.GetType("Acme.Generated.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
-        payloadType.GetProperty("name")!.SetValue(payload, "Ada");
+        payloadType.GetProperty("Name")!.SetValue(payload, "Ada");
 
         var provider = new FilesystemProvider(templateRoot);
         var render = helper.GetMethod("Render")!;
@@ -106,8 +105,7 @@ public sealed class RenderHelperCodegenTests
         // The named init must be emitted exactly as the engine property name.
         Assert.Contains("MaxChars = 8", file.Content);
 
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomePageRenderHelper")!;
         var payloadType = asm.GetType("Acme.Generated.Welcome")!;
@@ -116,13 +114,13 @@ public sealed class RenderHelperCodegenTests
 
         // Under budget: "Hello Ada" is 9 chars > 8 → over budget; "Hello Al" is 8 → within.
         var underPayload = Activator.CreateInstance(payloadType)!;
-        payloadType.GetProperty("name")!.SetValue(underPayload, "Al"); // "Hello Al" = 8 chars
+        payloadType.GetProperty("Name")!.SetValue(underPayload, "Al"); // "Hello Al" = 8 chars
         var outText = (string)render.Invoke(null, new object[] { underPayload, provider })!;
         Assert.Equal("Hello Al", outText);
 
         // Over budget: "Hello Ada" = 9 chars > 8 → the engine throws (unwrapped from reflection).
         var overPayload = Activator.CreateInstance(payloadType)!;
-        payloadType.GetProperty("name")!.SetValue(overPayload, "Ada"); // "Hello Ada" = 9 chars
+        payloadType.GetProperty("Name")!.SetValue(overPayload, "Ada"); // "Hello Ada" = 9 chars
         var ex = Assert.Throws<TargetInvocationException>(() =>
             render.Invoke(null, new object[] { overPayload, provider }));
         Assert.IsType<RenderException>(ex.InnerException);
@@ -154,13 +152,12 @@ public sealed class RenderHelperCodegenTests
         Assert.Equal("WelcomeEmail.render.cs", file.Path);
         Assert.Contains("public static global::MetaObjects.Render.EmailDocument Render(Welcome payload", file.Content);
 
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!;
         var payloadType = asm.GetType("Acme.Generated.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
-        payloadType.GetProperty("name")!.SetValue(payload, "Ada");
+        payloadType.GetProperty("Name")!.SetValue(payload, "Ada");
 
         var provider = new FilesystemProvider(templateRoot);
         var render = helper.GetMethod("Render")!;
@@ -187,13 +184,12 @@ public sealed class RenderHelperCodegenTests
             ("email/html", "<p>Hello {{name}}</p>"));
 
         var file = Assert.Single(new RenderHelperGenerator(templateRoot).Generate(Ctx(root)));
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!;
         var payloadType = asm.GetType("Acme.Generated.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
-        payloadType.GetProperty("name")!.SetValue(payload, "Ada");
+        payloadType.GetProperty("Name")!.SetValue(payload, "Ada");
 
         var email = (EmailDocument)helper.GetMethod("Render")!
             .Invoke(null, new object[] { payload, new FilesystemProvider(templateRoot) })!;

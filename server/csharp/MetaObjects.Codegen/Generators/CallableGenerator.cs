@@ -84,7 +84,8 @@ public class CallableGenerator : PerEntityGenerator
         MetaObject? argsObject = null;
         if (argsObjectName is not null)
         {
-            argsObject = ctx.Root.FindObject(CSharpNaming.StripPkg(argsObjectName));
+            argsObject = global::MetaObjects.NamingRefs.ResolveObjectRef(
+                ctx.Root, argsObjectName, global::MetaObjects.NamingRefs.EffectivePackage(entity)) as MetaObject;
             if (argsObject is null)
                 ctx.Warn(
                     $"{Name}: callable \"{entity.Name}\" @parameterRef \"{argsObjectName}\" did not resolve — " +
@@ -114,7 +115,7 @@ public class CallableGenerator : PerEntityGenerator
         // Use the resolved args VO's C# type name — @parameterRef (and source.ParameterRef)
         // can be a package-qualified FQN ("acme::reporting::FooArgs"), and the "::" separator
         // is invalid in a C# parameter type (CS7000). Pascal(Name) yields the emitted type.
-        var argsType = hasArgs ? CSharpNaming.Pascal(argsObject!.Name) : null;
+        var argsType = hasArgs ? ValueObjectNames.TypeName(argsObject!, ctx.Root) : null;
         var signature = hasArgs ? $"{ctxType} db, {argsType} args" : $"{ctxType} db";
 
         var sb = new StringBuilder();

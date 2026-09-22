@@ -20,7 +20,7 @@ internal static class GenSuite
     internal static readonly IReadOnlyList<string> Names =
     [
         "entity", "names", "db-context", "routes", "filter-allowlist",
-        "payload", "output-parser", "output-prompt", "extractor",
+        "output-parser", "output-prompt", "extractor",
     ];
 
     /// <summary>`GenCommand.Run` over <see cref="Names"/> — the old 4-arg convenience

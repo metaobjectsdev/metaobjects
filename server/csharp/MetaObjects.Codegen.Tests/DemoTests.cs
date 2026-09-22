@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects;
 using MetaObjects.Codegen;
+using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using MetaObjects.Render;
@@ -12,10 +13,14 @@ namespace MetaObjects.Codegen.Tests;
 /// <summary>
 /// THE DEMO (FR-004 Plan #3, T7) — the acceptance criterion for the fourth pillar.
 /// Proves BOTH enforcement mechanisms close the loop for the C# port:
-///   (a) compile-time: a payload VO codegen'd from the projection metadata makes a
-///       wrong-shaped caller fail to COMPILE (verified here with Roslyn).
+///   (a) compile-time: the payload type is the value object's own POCO (ADR-0056 —
+///       EntityGenerator emits it from the projection metadata), so a caller naming a
+///       member the metadata does not declare fails to COMPILE (verified here with Roslyn).
 ///   (b) build-time:  verify() parses the opaque template text and catches a
 ///       variable the payload doesn't declare ("a renamed field broke a prompt").
+/// Omitting a @required member is NOT a compile error in C#: the POCO is shared with the
+/// REST tier, where presence is a validation concern, so its members carry no `required`
+/// keyword. The strict response parser enforces presence instead.
 /// </summary>
 public class DemoTests
 {
@@ -46,10 +51,10 @@ public class DemoTests
         return result.Root;
     }
 
-    // Compile a source string against the framework + MetaObjects.Render; return error diagnostics.
-    private static IReadOnlyList<string> CompileErrors(string source)
+    // Compile sources against the framework + MetaObjects.Render; return error diagnostics.
+    private static IReadOnlyList<string> CompileErrors(IEnumerable<string> sources)
     {
-        var tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp12));
+        var trees = sources.Select(src => CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12)));
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Where(p => p.Length > 0)
@@ -59,7 +64,7 @@ public class DemoTests
 
         var compilation = CSharpCompilation.Create(
             "demo_" + Guid.NewGuid().ToString("N"),
-            [tree], refs,
+            trees, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         return compilation.GetDiagnostics()
@@ -68,75 +73,79 @@ public class DemoTests
             .ToList();
     }
 
-    private static string GeneratedSource(MetaRoot root)
+    // The value objects' POCOs, as `dotnet meta gen --generators entity` emits them, plus a caller.
+    private static IEnumerable<string> WithGeneratedPayload(MetaRoot root, string caller)
     {
-        var records = PayloadCodegen.GeneratePayloadRecords(root, "AuthorBrief");
-        // Hoist the handle's `using` to the top so it can sit after the record decls.
-        var handle = PayloadCodegen.GenerateRenderHandle(root, "contentStrategyPrompt")
-            .Replace("using MetaObjects.Render;", "").TrimStart();
-        return "using System.Collections.Generic;\nusing MetaObjects.Render;\n\n"
-            + records + "\n" + handle + "\n";
+        var ctx = new GenContext
+        {
+            Entities = root.Objects(), Root = root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+        return new EntityGenerator().Generate(ctx).Select(f => f.Content).Append(caller);
     }
+
+    private const string Render = """
+        global::MetaObjects.Render.Renderer.Render(new global::MetaObjects.Render.RenderRequest
+            { Ref = "prompt/strategy", Payload = payload, Format = "xml", Provider = p })
+        """;
 
     [Fact]
     public void Compile_time__a_correctly_shaped_caller_compiles()
     {
-        var source = GeneratedSource(Load()) + """
+        var errors = CompileErrors(WithGeneratedPayload(Load(), $$"""
+        using System.Collections.Generic;
+        using Acme.Generated;
+        using MetaObjects.Render;
         public static class GoodCaller
         {
             public static string Go(IProvider p)
             {
-                var good = new AuthorBrief { displayName = "Ada", postCount = 1, posts = new List<PostBrief>() };
-                return RenderHandles.RenderContentStrategyPrompt(good, p);
+                var payload = new AuthorBrief { DisplayName = "Ada", PostCount = 1, Posts = new List<PostBrief>() };
+                return {{Render}};
             }
         }
-        """;
-        var errors = CompileErrors(source);
+        """));
         Assert.True(errors.Count == 0, "expected the generated payload + a correct caller to compile, got: "
             + string.Join("; ", errors));
     }
 
     [Fact]
-    public void Compile_time__a_caller_omitting_a_DECLARED_required_member_fails_to_compile()
+    public void Compile_time__a_caller_naming_an_UNDECLARED_member_fails_to_compile()
     {
-        // The caller omits `postCount`, which the metadata marks `@required: true` — the
-        // codegen'd shape contract makes that a compile error, not a silent runtime mismatch.
-        //
-        // #309: this test previously proved the same thing about fields carrying NO
-        // `@required` at all, because the emitter marked every property `required`. It
-        // therefore pinned the defect while its comment claimed to demonstrate the design.
-        // The fixture now declares what the test asserts, so it passes for the stated reason.
-        var source = GeneratedSource(Load()) + """
+        // `title` belongs to PostBrief, not AuthorBrief — the shape a renamed or misremembered
+        // field produces. The POCO's member set is the metadata's, so this does not compile.
+        var errors = CompileErrors(WithGeneratedPayload(Load(), $$"""
+        using Acme.Generated;
+        using MetaObjects.Render;
         public static class BadCaller
         {
             public static string Go(IProvider p)
             {
-                var bad = new AuthorBrief { displayName = "Ada" };
-                return RenderHandles.RenderContentStrategyPrompt(bad, p);
+                var payload = new AuthorBrief { DisplayName = "Ada", Title = "not a member" };
+                return {{Render}};
             }
         }
-        """;
-        var errors = CompileErrors(source);
-        Assert.True(errors.Count > 0, "expected a caller omitting a required member to FAIL compilation, but it compiled clean");
+        """));
+        Assert.Contains(errors, e => e.StartsWith("CS0117", StringComparison.Ordinal));
     }
 
     [Fact]
     public void Compile_time__a_caller_omitting_an_OPTIONAL_member_compiles()
     {
-        // The other arm, which no test covered while every property was `required`: `posts`
-        // carries no `@required`, so omitting it must be legal. This is the shape #309 was
-        // filed about — an LLM response that simply does not populate an optional field.
-        var source = GeneratedSource(Load()) + """
+        // `posts` carries no `@required`, so omitting it must be legal — the shape #309 was
+        // filed about: an LLM response that simply does not populate an optional field.
+        var errors = CompileErrors(WithGeneratedPayload(Load(), $$"""
+        using Acme.Generated;
+        using MetaObjects.Render;
         public static class PartialCaller
         {
             public static string Go(IProvider p)
             {
-                var partial = new AuthorBrief { displayName = "Ada", postCount = 1 };
-                return RenderHandles.RenderContentStrategyPrompt(partial, p);
+                var payload = new AuthorBrief { DisplayName = "Ada", PostCount = 1 };
+                return {{Render}};
             }
         }
-        """;
-        var errors = CompileErrors(source);
+        """));
         Assert.True(errors.Count == 0, "expected omitting an OPTIONAL member to compile, got: "
             + string.Join("; ", errors));
     }
@@ -144,7 +153,7 @@ public class DemoTests
     [Fact]
     public void Build_time__verify_catches_a_drifted_template_variable()
     {
-        var fields = PayloadCodegen.BuildPayloadFieldTree(Load(), "AuthorBrief");
+        var fields = PayloadFieldTree.Build(Load(), "AuthorBrief");
         var drift = Verify.Check("Hi {{displayName}}, you have {{notARealField}} posts.", fields);
         Assert.Contains(Verify.ERR_VAR_NOT_ON_PAYLOAD, drift.Select(e => e.Code));
     }

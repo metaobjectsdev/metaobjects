@@ -63,7 +63,8 @@ public sealed class Fr010NestedExtractCodegenTests
     [Fact]
     public void Parser_emits_delegating_overload_and_nested_aware_mirror()
     {
-        var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(NestedModel)))).Content;
+        var files = new OutputParserGenerator().Generate(Ctx(Load(NestedModel))).ToList();
+        var src = Assert.Single(files, f => f.Path.EndsWith(".response.cs")).Content;
 
         // The delegating overload + the loader convenience overload + the baked FQN.
         Assert.Contains("public const string PAYLOAD_FQN = \"OrderPayload\";", src);
@@ -75,12 +76,15 @@ public sealed class Fr010NestedExtractCodegenTests
         Assert.DoesNotContain("ExtractLenient(string text)", src);
         Assert.DoesNotContain("ExtractSchemaDef", src);
 
+        // ADR-0056 rule 3: each mirror record is its own file, emitted once per run in the value
+        // object's namespace — never inside a template's parser file.
+        Assert.DoesNotContain("public sealed record", src);
+        var orderMirror = Assert.Single(files, f => f.Path == "OrderPayloadExtracted.g.cs").Content;
+        Assert.Contains("public sealed record AddressExtracted", Assert.Single(files, f => f.Path == "AddressExtracted.g.cs").Content);
+        Assert.Contains("public sealed record LineItemExtracted", Assert.Single(files, f => f.Path == "LineItemExtracted.g.cs").Content);
         // Nested-aware mirror typing — object fields are nested mirrors, NOT object?.
-        Assert.Contains("public AddressExtracted? shipTo { get; init; }", src);
-        Assert.Contains("public global::System.Collections.Generic.IReadOnlyList<LineItemExtracted?>? items { get; init; }", src);
-        // Nested mirror records emitted.
-        Assert.Contains("public sealed record AddressExtracted", src);
-        Assert.Contains("public sealed record LineItemExtracted", src);
+        Assert.Contains("public AddressExtracted? shipTo { get; init; }", orderMirror);
+        Assert.Contains("public global::System.Collections.Generic.IReadOnlyList<LineItemExtracted?>? items { get; init; }", orderMirror);
         // Mappers + helpers emitted.
         Assert.Contains("FromAddressExtracted(ReadProp(o, \"shipTo\"))", src);
         Assert.Contains("MapObjectList(ReadProp(o, \"items\"), FromLineItemExtracted)", src);
@@ -93,10 +97,9 @@ public sealed class Fr010NestedExtractCodegenTests
     public void Generated_delegating_extract_populates_nested_and_array_of_objects()
     {
         var root = Load(NestedModel);
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "OrderPayload");
+        var parserSrcs = new OutputParserGenerator().Generate(Ctx(root)).Select(f => f.Content);
 
-        var asm = CompileToAssembly(parserSrc, payloadSrc);
+        var asm = CompileToAssembly([.. parserSrcs, .. GeneratedValueObjects.Sources(root)]);
 
         // Resolve the runtime MetaObject and invoke the delegating ExtractLenient(MetaObject, text).
         var parserType = asm.GetType("Acme.Generated.OrderOutputParser")!;
@@ -144,9 +147,8 @@ public sealed class Fr010NestedExtractCodegenTests
     public void Loader_convenience_overload_resolves_payload_and_populates_nested()
     {
         var root = Load(NestedModel);
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "OrderPayload");
-        var asm = CompileToAssembly(parserSrc, payloadSrc);
+        var parserSrcs = new OutputParserGenerator().Generate(Ctx(root)).Select(f => f.Content);
+        var asm = CompileToAssembly([.. parserSrcs, .. GeneratedValueObjects.Sources(root)]);
 
         var parserType = asm.GetType("Acme.Generated.OrderOutputParser")!;
         var extract = parserType.GetMethod("ExtractLenient",

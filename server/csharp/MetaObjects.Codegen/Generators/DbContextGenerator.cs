@@ -738,12 +738,10 @@ public class DbContextGenerator : IGenerator
     private static string MapValueTypeRef(MetaField f, GenContext ctx)
     {
         if (f.ObjectRef is not { } oref || oref.Length == 0) return CSharpNaming.MapValueType(f);
-        var shortName = CSharpNaming.StripPkg(oref);
-        var bare = CSharpNaming.Pascal(shortName);
-        var vo = ctx.Root.FindObject(shortName);
-        if (vo is null) return bare;
-        var ns = PackageBindingResolver.Resolve(
-            ctx.Config, PackageBindingResolver.EffectivePackage(vo), vo.Name);
+        var vo = ValueObjectNames.ResolveFieldRef(f, ctx.Root);
+        if (vo is null) return CSharpNaming.Pascal(CSharpNaming.StripPkg(oref));
+        var bare = ValueObjectNames.TypeName(vo, ctx.Root);
+        var ns = ValueObjectNames.Namespace(vo, ctx.Config);
         return string.IsNullOrEmpty(ns) ? bare : ns + "." + bare;
     }
 
@@ -879,7 +877,7 @@ public class DbContextGenerator : IGenerator
         objects.Any(o => o.Fields().Any(f =>
             (f.SubType == FIELD_SUBTYPE_ENUM && IntValueMapOf(f) is not null)
             || (f.SubType == FIELD_SUBTYPE_OBJECT && f.Storage == STORAGE_FLATTENED && !f.ResolvedIsArray()
-                && f.ObjectRef is { } oref && root.FindObject(CSharpNaming.StripPkg(oref)) is { } vo
+                && ValueObjectNames.ResolveFieldRef(f, root) is { } vo
                 && vo.Fields().Any(nf =>
                     nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray() && IntValueMapOf(nf) is not null))));
 
@@ -1072,7 +1070,7 @@ public class DbContextGenerator : IGenerator
     // live provider.
     private string? OwnedTypeConfig(string owner, MetaObject entity, MetaField field, GenContext ctx)
     {
-        if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } vo)
+        if (ValueObjectNames.ResolveFieldRef(field, ctx.Root) is not { } vo)
         {
             ctx.Warn($"{Name}: object-typed field \"{entity.Name}.{field.Name}\" has an unresolved @objectRef \"{field.ObjectRef}\" — no owned-type config emitted.");
             return null;
@@ -1161,7 +1159,7 @@ public class DbContextGenerator : IGenerator
             {
                 sb.AppendLine($"            b.PrimitiveCollection(p => p.{CSharpNaming.Pascal(nf.Name)})"
                     + $".HasColumnName(\"{nestedColAny}\").ElementType()"
-                    + $".{EnumConversionCall(CSharpNaming.Pascal(vo.Name), vo, nf, ctx.Config)};");
+                    + $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)};");
                 continue;
             }
 
@@ -1171,8 +1169,7 @@ public class DbContextGenerator : IGenerator
             // own ToJson pinned to that column, plus the enum conversions its own members
             // need — the same rule one level down.
             if (nf.SubType == FIELD_SUBTYPE_OBJECT
-                && nf.ObjectRef is { } nestedRef
-                && ctx.Root.FindObject(CSharpNaming.StripPkg(nestedRef)) is { } nestedVo)
+                && ValueObjectNames.ResolveFieldRef(nf, ctx.Root) is { } nestedVo)
             {
                 var ownsCall = nf.ResolvedIsArray() ? "OwnsMany" : "OwnsOne";
                 sb.AppendLine($"            b.{ownsCall}(p => p.{CSharpNaming.Pascal(nf.Name)}, nb =>");
@@ -1214,7 +1211,7 @@ public class DbContextGenerator : IGenerator
             var nestedCol = nestedColAny;
             // The enum type nests in the value object's class (EntityGenerator's
             // EmitValueObjectPoco), so the VO is the `owner` the conversion qualifies it by.
-            var conversion = isEnum ? $".{EnumConversionCall(CSharpNaming.Pascal(vo.Name), vo, nf, ctx.Config)}" : "";
+            var conversion = isEnum ? $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)}" : "";
             sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\"){conversion};");
         }
         sb.Append("        });");

@@ -298,9 +298,10 @@ public static class CSharpNaming
 
     /// <summary>ADR-0036 Wave 3 — true when any of <paramref name="obj"/>'s own fields is a
     /// <c>field.inet</c> (so the generated file needs <c>using System.Net;</c> for the
-    /// <c>IPAddress</c> type). <c>field.uri</c> needs only <c>System</c> (always imported).</summary>
+    /// <c>IPAddress</c> type). <c>field.uri</c> needs only <c>System</c> (always imported). An inet
+    /// ARRAY counts too: its property is <c>ICollection&lt;IPAddress&gt;</c>.</summary>
     public static bool RequiresSystemNet(MetaObject obj) =>
-        obj.Fields().Any(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET && !IsLenientNet(f));
+        obj.Fields().Any(f => f.SubType == FIELD_SUBTYPE_INET && !IsLenientNet(f));
 
     /// <summary>True when the C# type is a value type (gets <c>?</c> for nullable; needs no <c>= default!</c>).</summary>
     public static bool IsValueType(string csharpType) => ValueTypes.Contains(csharpType);
@@ -311,10 +312,14 @@ public static class CSharpNaming
     /// (defaulting to <c>string</c>). Keys are always strings, so the emitted property
     /// type is <c>Dictionary&lt;string, V&gt;</c>. Mirrors the TS/Python map value mapping.
     /// </summary>
-    public static string MapValueType(MetaField field)
+    public static string MapValueType(MetaField field, MetaData? root = null)
     {
         if (field.ObjectRef is { } oref && oref.Length > 0)
-            return Pascal(StripPkg(oref));
+            // ADR-0056: the value object's emitted name (collision-qualified when two value
+            // objects share a short name) — resolved in the field's package when a root is given.
+            return root is not null && ValueObjectNames.ResolveFieldRef(field, root) is { } vo
+                ? ValueObjectNames.TypeName(vo, root)
+                : Pascal(StripPkg(oref));
         var vt = field.ValueType;
         return vt is not null ? (ScalarFor(vt) ?? "string") : "string";
     }
@@ -388,8 +393,11 @@ public static class CSharpNaming
     /// <summary>The response-parser class name for a responding prompt: <c>&lt;PromptName&gt;Parser</c>.</summary>
     public static string ParserClassName(string templateName) => templateName + "Parser";
 
-    /// <summary>The extractor class name for a payload value-object: <c>&lt;PayloadRef&gt;Extractor</c>.</summary>
-    public static string ExtractorClassName(string payloadRef) => payloadRef + "Extractor";
+    /// <summary>The extractor class name for a responding prompt: <c>&lt;PromptName&gt;Extractor</c>.
+    /// Keyed by the TEMPLATE, like the parser it delegates to (ADR-0056 rule 4): two prompts that
+    /// parse into one value object get one extractor each, and TypeScript and Kotlin name it the
+    /// same way.</summary>
+    public static string ExtractorClassName(string templateName) => templateName + "Extractor";
 
     /// <summary>The reverse-finder static query class name for an entity: <c>&lt;EntityPascal&gt;Queries</c>.</summary>
     public static string QueriesClassName(MetaObject entity) => Pascal(entity.Name) + "Queries";

@@ -56,9 +56,9 @@ public static class PackageBindingResolver
         foreach (var f in entity.Fields())
         {
             if (f.SubType != MetaObjects.Core.Field.FieldConstants.FIELD_SUBTYPE_OBJECT) continue;
-            if (f.ObjectRef is not { } oref) continue;
-            var target = root.FindObject(CSharpNaming.StripPkg(oref));
-            Consider(target);
+            // FQN-exact in the field's package (ADR-0042) — a short-name scan picks whichever
+            // same-named value object loaded first, and so the wrong namespace.
+            Consider(ValueObjectNames.ResolveFieldRef(f, root));
         }
 
         // TPH base — a subtype's `class Sub : Base` requires Base's namespace.

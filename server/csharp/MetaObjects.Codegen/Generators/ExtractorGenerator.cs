@@ -1,29 +1,26 @@
 // Cross-port Extractor codegen (C# port) — the `extract` tier over the existing tolerant extract.
 //
-// For each `template.output` (json/xml, @payloadRef resolving to a value-object with a nested
-// object / array-of-objects), emits `<Payload>Extractor.cs`: a static `<Payload>Extractor` class
-// that turns dirty LLM text into the STRICT typed payload record (PayloadCodegen's immutable
-// `sealed record` with `required init` props) in one call. It REUSES the nested-capable
-// runtime-delegating extract emitted by OutputParserGenerator — `<Template>Parser.Extract(
-// MetaObject, text[, opts])`, which assembles the FULL nested object graph via the Phase-A object
-// model — runs it, throws ExtractException iff a @required field was lost, else maps the
-// all-nullable `<Payload>Extracted` mirror onto the strict `<Payload>` via a generated recursive
-// mirror->strict mapper (recurse nested objects + arrays-of-objects; one-shot object-initializer
-// construct). `extract` is re-exposed unchanged. NO registry / binding / factory — codegen knows
-// the whole type graph statically.
+// For each responding `template.prompt` whose @responseRef value object has a nested object /
+// array-of-objects, emits `<Prompt>Extractor.cs`: a static `<Prompt>Extractor` class that turns dirty LLM
+// text into the value object's own POCO (ADR-0056 — the one EntityGenerator emits) in one call. It
+// REUSES the nested-capable runtime-delegating extract emitted by OutputParserGenerator —
+// `<Template>Parser.ExtractLenient(MetaObject, text[, opts])`, which assembles the FULL nested
+// object graph via the Phase-A object model — runs it, throws ExtractException iff a @required
+// field was lost, else maps the all-nullable `<Vo>Extracted` mirror onto the POCO via a generated
+// recursive mirror->POCO mapper (recurse nested objects + arrays-of-objects; one object-initializer
+// construct). `ExtractLenient` is re-exposed unchanged. NO registry / binding / factory — codegen
+// knows the whole type graph statically.
 //
 // Cross-port parity: mirrors the TS `renderExtractor` (templates/extractor.ts), the Python
 // ExtractorGenerator, and the Java ExtractorCodeGenerator. The C# port adds the recursive
-// mirror->strict mapper (ToStrict_<Type>) the JVM ports get for free from their flavored
+// mirror->POCO mapper (ToStrict_<Type>) the JVM ports get for free from their flavored
 // object-class binding.
 //
-// OPTIONALITY (C#-specific, no-skew). PayloadCodegen emits EVERY payload field as `required
-// {NonNullableType}` (it does not honor @required). The strict record therefore has no
-// nullable/optional props, so the mapper maps EVERY field as required: scalar -> m.F! ; single
-// nested -> ToStrict_<Nested>(m.F!) ; array-of-objects -> m.F!.Select(ToStrict_<Item>).ToList() ;
-// scalar-array -> drop-null projection. There is NO optional-null variant (there is no nullable
-// strict property to assign null to) — this matches PayloadCodegen's predicate exactly. The
-// lost-REQUIRED gate (ExtractException) fires only for fields the metadata marks @required:true.
+// OPTIONALITY follows the POCO, which follows @required: a required member is non-nullable and
+// the lost-REQUIRED gate guarantees its mirror value is present, so it maps with `!`; an optional
+// member is nullable and maps null to null. The mirror carries temporal / uuid / uri / inet values
+// as strings, so the mapper parses them into the POCO's native types (invariant culture). A member
+// with @mutability readOnly has a private setter on the POCO and is left to its default here.
 
 using System.Collections.Generic;
 using System.Linq;
@@ -37,8 +34,8 @@ using static MetaObjects.Template.TemplateConstants;
 namespace MetaObjects.Codegen.Generators;
 
 /// <summary>
-/// Emits one <c>&lt;Payload&gt;Extractor.cs</c> per nested-capable <c>template.output</c> — the
-/// <c>extract</c> tier (tolerant extract into the strict typed payload record).
+/// Emits one <c>&lt;Prompt&gt;Extractor.cs</c> per responding <c>template.prompt</c> whose response
+/// value object nests an object — the <c>extract</c> tier (tolerant extract into the value object's POCO).
 /// </summary>
 public class ExtractorGenerator : IGenerator
 {
@@ -73,18 +70,12 @@ public class ExtractorGenerator : IGenerator
     {
         string templateName = tmpl.Name;
         string parserClass = CSharpNaming.ParserClassName(templateName);
-        // ADR-0042/0044 (#228): resolve the SAME closure name-map PayloadCodegen/PayloadGenerator
-        // computed for this template's OWN @payloadRef, and name the strict/mirror/extractor types
-        // after the resolved VO's EMITTED (bare-unless-colliding) name — never the raw (possibly
-        // FQN) payloadRef attribute string, which diverges from the actual PayloadCodegen record
-        // name under a within-closure short-name collision (e.g. the closure root "Digest" stays
-        // bare, but a nested collision member resolved as a DIFFERENT template's own payload would
-        // need qualification).
-        var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-        var nameMap = PayloadCodegen.ComputeClosureAndNames(ctx.Root, payloadRef, referrerPkg).NameMap;
-        string strictType = PayloadCodegen.EmittedNameOf(vo, nameMap);
-        string rootMirror = $"{strictType}Extracted";
-        string extractorClass = CSharpNaming.ExtractorClassName(strictType);
+        string ns = ctx.Config.Namespace;
+        // ADR-0056: the strict type IS the value object's own POCO; the mirror is its <Vo>Extracted.
+        string strictType = ValueObjectNames.TypeRef(vo, ctx.Root, ctx.Config, ns);
+        string rootMirror = ExtractDelegateEmitter.MirrorRef(vo, ctx.Root, ctx.Config, ns);
+        string extractorClass = CSharpNaming.ExtractorClassName(templateName);
+        string rootMapper = MapperName(vo, ctx.Root);
 
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated/>");
@@ -93,30 +84,28 @@ public class ExtractorGenerator : IGenerator
         sb.AppendLine("using System.Linq;");
         sb.AppendLine("using MetaObjects.Render.Extract;");
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {ns};");
         sb.AppendLine();
         sb.AppendLine($"/// <summary>The <c>extract</c> tier for the <c>{templateName}</c> template.prompt — turns dirty LLM");
         sb.AppendLine($"/// text into a fully-typed <see cref=\"{strictType}\"/> graph (nested objects + arrays-of-objects");
         sb.AppendLine($"/// populated) in one call, by delegating to the nested-capable extract and mapping the all-nullable");
-        sb.AppendLine($"/// <c>{rootMirror}</c> mirror onto the strict payload. No registry / binding / factory.</summary>");
+        sb.AppendLine($"/// <c>{ExtractDelegateEmitter.MirrorName(vo, ctx.Root)}</c> mirror onto the value object. No registry / binding / factory.</summary>");
         sb.AppendLine($"public static class {extractorClass}");
         sb.AppendLine("{");
 
-        // ---- Extract(MetaObject, text) ----
         sb.AppendLine($"    /// <summary>Extract a fully-typed <see cref=\"{strictType}\"/> from dirty <paramref name=\"text\"/> using");
-        sb.AppendLine($"    /// the runtime <paramref name=\"mo\"/> (the loaded payload object). Runs the tolerant extract, then maps");
-        sb.AppendLine($"    /// the extracted mirror onto the strict payload.</summary>");
+        sb.AppendLine($"    /// the runtime <paramref name=\"mo\"/> (the loaded value object). Runs the tolerant extract, then maps");
+        sb.AppendLine($"    /// the extracted mirror onto the value object.</summary>");
         sb.AppendLine($"    /// <exception cref=\"ExtractException\">iff a <c>@required</c> field was lost (the strict opt-in gate).</exception>");
         sb.AppendLine($"    public static {strictType} Extract(global::MetaObjects.Meta.MetaObject mo, string text)");
         sb.AppendLine("    {");
         sb.AppendLine($"        var r = {parserClass}.ExtractLenient(mo, text);");
         sb.AppendLine("        if (r.Report.HasLostRequired())");
         sb.AppendLine("            throw new ExtractException(r.Report);");
-        sb.AppendLine($"        return ToStrict_{strictType}(r.Data!);");
+        sb.AppendLine($"        return {rootMapper}(r.Data!);");
         sb.AppendLine("    }");
         sb.AppendLine();
 
-        // ---- Extract(MetaObject, text, opts) ----
         sb.AppendLine($"    /// <summary>Extract with explicit <see cref=\"ExtractOptions\"/>.</summary>");
         sb.AppendLine($"    /// <exception cref=\"ExtractException\">iff a <c>@required</c> field was lost.</exception>");
         sb.AppendLine($"    public static {strictType} Extract(global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions opts)");
@@ -124,123 +113,119 @@ public class ExtractorGenerator : IGenerator
         sb.AppendLine($"        var r = {parserClass}.ExtractLenient(mo, text, opts);");
         sb.AppendLine("        if (r.Report.HasLostRequired())");
         sb.AppendLine("            throw new ExtractException(r.Report);");
-        sb.AppendLine($"        return ToStrict_{strictType}(r.Data!);");
+        sb.AppendLine($"        return {rootMapper}(r.Data!);");
         sb.AppendLine("    }");
         sb.AppendLine();
 
-        // ---- re-exposed Extract(MetaObject, text) (never throws; returns the mirror result) ----
         sb.AppendLine($"    /// <summary>Re-exposes the nested-capable tolerant extract; never throws. Inspect <c>Report</c> for");
-        sb.AppendLine($"    /// lost/defaulted fields. Returns the all-nullable <c>{rootMirror}</c> mirror (not the strict payload).</summary>");
+        sb.AppendLine($"    /// lost/defaulted fields. Returns the all-nullable mirror (not the value object).</summary>");
         sb.AppendLine($"    public static ExtractionResult<{rootMirror}> ExtractLenient(global::MetaObjects.Meta.MetaObject mo, string text) =>");
         sb.AppendLine($"        {parserClass}.ExtractLenient(mo, text);");
 
-        // ---- recursive mirror->strict mappers (payload + nested, deduped, cycle-safe) ----
-        EmitMappers(sb, vo, ctx.Root, nameMap);
+        // One mapper per value object the mirror reaches (the root included), deduped by FQN.
+        foreach (var v in ExtractDelegateEmitter.MirrorClosure(vo, ctx.Root))
+            EmitMapper(sb, v, ctx);
 
         sb.AppendLine("}");
 
         return new EmittedFile($"{extractorClass}.cs", sb.ToString());
     }
 
-    private static void EmitMappers(StringBuilder sb, MetaData vo, MetaData root, IReadOnlyDictionary<string, string> nameMap)
-    {
-        var seen = new HashSet<string>(System.StringComparer.Ordinal);
-        EmitMapper(sb, vo, root, seen, nameMap);
-    }
+    private static string MapperName(MetaData vo, MetaData root) => $"ToStrict_{ValueObjectNames.TypeName(vo, root)}";
 
-    private static void EmitMapper(StringBuilder sb, MetaData vo, MetaData root, HashSet<string> seen,
-        IReadOnlyDictionary<string, string> nameMap)
+    private static void EmitMapper(StringBuilder sb, MetaData vo, GenContext ctx)
     {
-        // Dedupe by ResolutionKey (FQN), never the bare metadata name — the #219-class defect:
-        // a bare-name dedupe would drop the SECOND cross-package same-short-named VO's mapper.
-        if (!seen.Add(vo.ResolutionKey())) return;
-        var voName = PayloadCodegen.EmittedNameOf(vo, nameMap);
+        string ns = ctx.Config.Namespace;
+        string type = ValueObjectNames.TypeRef(vo, ctx.Root, ctx.Config, ns);
+        string mirror = ExtractDelegateEmitter.MirrorRef(vo, ctx.Root, ctx.Config, ns);
         sb.AppendLine();
-        sb.AppendLine($"    /// <summary>Map the all-nullable <c>{voName}Extracted</c> mirror onto the strict <c>{voName}</c> payload. Generated.</summary>");
-        sb.AppendLine($"    private static {voName} ToStrict_{voName}({voName}Extracted m) => new {voName}");
+        sb.AppendLine($"    /// <summary>Map the all-nullable <c>{ExtractDelegateEmitter.MirrorName(vo, ctx.Root)}</c> mirror onto <c>{ValueObjectNames.TypeName(vo, ctx.Root)}</c>. Generated.</summary>");
+        sb.AppendLine($"    private static {type} {MapperName(vo, ctx.Root)}({mirror} m) => new {type}");
         sb.AppendLine("    {");
-        foreach (var f in Fr010FieldMapping.Fields(vo))
-            sb.AppendLine($"        {f.Name} = {StrictArg(vo, f, root, nameMap)},");
+        foreach (var f in Fr010FieldMapping.Fields(vo).OfType<MetaField>())
+        {
+            // A readOnly member has a private setter on the POCO: an initializer cannot set it.
+            if (f.IsReadOnlyMutability) continue;
+            sb.AppendLine($"        {CSharpNaming.Pascal(f.Name)} = {StrictArg((MetaObject)vo, f, ctx)},");
+        }
         sb.AppendLine("    };");
-
-        // Recurse into nested-object targets (single + array) for their mappers.
-        foreach (var f in Fr010FieldMapping.Fields(vo))
-            if (ExtractDelegateEmitter.IsObjectField(f) && ExtractDelegateEmitter.RefVo(f, root) is { } target)
-                EmitMapper(sb, target, root, seen, nameMap);
     }
 
-    /// <summary>
-    /// The strict-record initializer expression for one field, reading mirror member <c>m.&lt;name&gt;</c>.
-    /// Matches PayloadCodegen's predicate: every strict field is <c>required</c> + non-nullable, so every
-    /// field is mapped as required (no optional-null variant). <paramref name="owner"/> is the field's
-    /// value-object — needed to compute the nested enum type name for an enum field.
-    /// </summary>
-    private static string StrictArg(MetaData owner, MetaData field, MetaData root, IReadOnlyDictionary<string, string> nameMap)
+    /// <summary>The initializer expression mapping one mirror member onto the POCO member.</summary>
+    private static string StrictArg(MetaObject owner, MetaField field, GenContext ctx)
     {
-        string name = field.Name;
+        string m = $"m.{field.Name}";
+        bool required = CSharpNaming.IsRequired(owner, field);
 
-        // Object BEFORE array (object-before-isArray): array-of-objects maps element-wise.
         if (ExtractDelegateEmitter.IsObjectField(field))
         {
-            var target = ExtractDelegateEmitter.RefVo(field, root);
-            if (target is null)
-                // Unresolved @objectRef — PayloadCodegen types this as the bare ref name; pass through.
-                return $"m.{name}!";
-            string fn = $"ToStrict_{PayloadCodegen.EmittedNameOf(target, nameMap)}";
-            return Fr010FieldMapping.IsArray(field)
-                ? $"m.{name}!.Select({fn}).ToList()"
-                : $"{fn}(m.{name}!)";
+            if (ExtractDelegateEmitter.RefVo(field, ctx.Root) is not { } target)
+                return "default!";
+            string fn = MapperName(target, ctx.Root);
+            if (Fr010FieldMapping.IsArray(field))
+            {
+                string list = $".Where(x => x is not null).Select(x => {fn}(x!)).ToList()";
+                string elem = ExtractDelegateEmitter.MirrorRef(target, ctx.Root, ctx.Config, ctx.Config.Namespace);
+                return required
+                    ? $"({m} ?? global::System.Linq.Enumerable.Empty<{elem}?>()){list}"
+                    : $"{m}?{list}";
+            }
+            return required ? $"{fn}({m}!)" : $"{m} is null ? null : {fn}({m})";
         }
 
-        // Enum ARRAY (checked BEFORE the generic scalar-array branch): the mirror is a string list
-        // (IReadOnlyList<string?>?) and the strict payload is IReadOnlyList<<EnumType>> — drop nulls
-        // and coerce each member via Enum.Parse (Parse RETURNS <EnumType>, so the element type matches
-        // with no cast). This is the string-LIST -> enum-list bridge.
-        if (field.SubType == FIELD_SUBTYPE_ENUM && Fr010FieldMapping.IsArray(field))
+        if (field.SubType == FIELD_SUBTYPE_ENUM)
         {
-            string et = EnumTypeRef(owner, field, nameMap);
-            return $"(m.{name} ?? global::System.Linq.Enumerable.Empty<string?>()).Where(x => x is not null)" +
-                   $".Select(x => System.Enum.Parse<{et}>(x!)).ToList()";
+            string et = EnumTypeRef(owner, field, ctx);
+            if (Fr010FieldMapping.IsArray(field))
+                return $"({m} ?? global::System.Linq.Enumerable.Empty<string?>()).Where(x => x is not null)" +
+                       $".Select(x => System.Enum.Parse<{et}>(x!)).ToList()";
+            return required ? $"System.Enum.Parse<{et}>({m}!)" : $"{m} is null ? ({et}?)null : System.Enum.Parse<{et}>({m})";
         }
 
-        // Scalar ARRAY: the mirror is kind-typed IReadOnlyList<TElem?>? (int?/long?/double?/bool?/
-        // string?) and the strict payload is IReadOnlyList<TElem> — drop nulls so the element narrows
-        // to non-null, unwrapping value-type elements via `.Value` (reference-type string stays bare),
-        // matching the single-scalar unwrap below.
+        string baseType = CSharpNaming.DbColumnTypeClrOverride(field) ?? CSharpNaming.ScalarForField(field) ?? "string";
+        bool mirrorIsValue = Fr010FieldMapping.ScalarMirrorType(field.SubType) != "string?";
+
         if (Fr010FieldMapping.IsArray(field))
         {
-            string elem = Fr010FieldMapping.ScalarMirrorType(field.SubType); // e.g. "int?" / "string?"
-            string unwrap = Fr010FieldMapping.ScalarKind(field.SubType) is "Int" or "Long" or "Double" or "Boolean"
-                ? "x!.Value" : "x!";
-            return $"(m.{name} ?? global::System.Linq.Enumerable.Empty<{elem}>()).Where(x => x is not null).Select(x => {unwrap}).ToList()";
+            // The POCO's scalar list is never null (an absent array is empty), whatever @required says.
+            string elem = Fr010FieldMapping.ScalarMirrorType(field.SubType);
+            string x = Convert(mirrorIsValue ? "x!.Value" : "x!", baseType);
+            return $"({m} ?? global::System.Linq.Enumerable.Empty<{elem}>()).Where(x => x is not null).Select(x => {x}).ToList()";
         }
 
-        // Enum (single): the mirror member is string-backed (string?); the strict record is the nested
-        // enum type. Coerce via Enum.Parse<<EnumType>> (which returns <EnumType>, so no cast mismatch).
-        // Engine already validated the member, so Parse is safe.
-        if (field.SubType == FIELD_SUBTYPE_ENUM)
-            return $"System.Enum.Parse<{EnumTypeRef(owner, field, nameMap)}>(m.{name}!)";
-
-        // Scalar (single): the strict record is non-null. Value-type scalars (int/long/double/bool)
-        // are typed T? in the mirror, so `m.F!` keeps type T? — unwrap via `.Value`. Reference-type
-        // scalars (string) use the null-forgiving `!`.
-        return Fr010FieldMapping.ScalarKind(field.SubType) switch
-        {
-            "Int" or "Long" or "Double" or "Boolean" => $"m.{name}!.Value",
-            _ => $"m.{name}!",
-        };
+        if (required)
+            return Convert(mirrorIsValue ? $"{m}!.Value" : $"{m}!", baseType);
+        // Optional: null stays null. A nullable mirror value maps straight onto a nullable POCO
+        // member of the same type; anything else converts the present value.
+        string converted = Convert(mirrorIsValue ? $"{m}.Value" : m, baseType);
+        if (converted == m || converted == $"{m}.Value") return m;
+        string nullable = CSharpNaming.IsValueType(baseType) ? $"({baseType}?)null" : "null";
+        return $"{m} is null ? {nullable} : {converted}";
     }
 
     /// <summary>
-    /// The fully-qualified reference to a payload field's nested enum type. PayloadCodegen emits the
-    /// enum NESTED inside the owning <c>record &lt;Owner&gt;</c> under its ADR-0044 EMITTED (possibly
-    /// package-qualified) name — never the bare metadata name, which could collide with a sibling
-    /// collision member's own same-named enum field — so the mapper (a separate top-level class)
-    /// must qualify it as <c>&lt;EmittedOwner&gt;.&lt;EnumType&gt;</c>.
+    /// Convert a present mirror value (<paramref name="v"/>, already unwrapped for value types) to
+    /// the POCO member's CLR type. The mirror carries temporal, uuid, uri and inet values as the
+    /// strings the model wrote; the POCO holds the native types.
     /// </summary>
-    private static string EnumTypeRef(MetaData owner, MetaData field, IReadOnlyDictionary<string, string> nameMap)
+    private static string Convert(string v, string baseType) => baseType switch
     {
-        var ownerName = PayloadCodegen.EmittedNameOf(owner, nameMap);
-        return $"{ownerName}.{PayloadCodegen.EnumTypeName(ownerName, field)}";
-    }
+        "DateOnly" => $"global::System.DateOnly.Parse({v}, global::System.Globalization.CultureInfo.InvariantCulture)",
+        "TimeOnly" => $"global::System.TimeOnly.Parse({v}, global::System.Globalization.CultureInfo.InvariantCulture)",
+        "DateTimeOffset" => $"global::System.DateTimeOffset.Parse({v}, global::System.Globalization.CultureInfo.InvariantCulture)",
+        "DateTime" => $"global::System.DateTime.Parse({v}, global::System.Globalization.CultureInfo.InvariantCulture)",
+        "Guid" => $"global::System.Guid.Parse({v})",
+        "Uri" => $"new global::System.Uri({v}, global::System.UriKind.RelativeOrAbsolute)",
+        "IPAddress" => $"global::System.Net.IPAddress.Parse({v})",
+        "JsonDocument" => $"global::System.Text.Json.JsonDocument.Parse({v})",
+        "float" => $"(float){v}",
+        _ => v,
+    };
+
+    /// <summary>The enum type a POCO member is typed by, as seen from the extractor's namespace:
+    /// a shared enum (FR-019) by its own reference, an inline one nested in the value object's class.</summary>
+    private static string EnumTypeRef(MetaObject owner, MetaField field, GenContext ctx) =>
+        Fr019SharedEnum.SharedEnumForField(field) is { } shared
+            ? Fr019SharedEnum.SharedEnumTypeReference(shared, ctx.Config)
+            : $"{ValueObjectNames.TypeRef(owner, ctx.Root, ctx.Config, ctx.Config.Namespace)}.{CSharpNaming.EnumTypeName(owner, field)}";
 }

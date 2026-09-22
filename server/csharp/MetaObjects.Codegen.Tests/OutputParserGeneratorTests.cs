@@ -76,10 +76,12 @@ public sealed class OutputParserGeneratorTests
           { "template.prompt": { "name": "Beta",  "@payloadRef": "BetaPayload", "@responseRef": "BetaPayload",  "@textRef": "b/x", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
+        // Each responding prompt's parser, then (ADR-0056 rule 3) each value object's mirror.
         var files = new OutputParserGenerator().Generate(Ctx(Load(m))).OrderBy(f => f.Path).ToList();
-        Assert.Equal(2, files.Count);
-        Assert.Equal("Alpha.response.cs", files[0].Path);
-        Assert.Equal("Beta.response.cs",  files[1].Path);
+        Assert.Equal(
+            ["Alpha.response.cs", "AlphaPayloadExtracted.g.cs", "Beta.response.cs", "BetaPayloadExtracted.g.cs"],
+            files.Select(f => f.Path));
+        files = files.Where(f => f.Path.EndsWith(".response.cs")).ToList();
         Assert.Contains("public static class AlphaParser", files[0].Content);
         Assert.Contains("public static class BetaParser",  files[1].Content);
     }
@@ -97,7 +99,7 @@ public sealed class OutputParserGeneratorTests
                                   "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
-        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
+        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))), f => f.Path.EndsWith(".response.cs"));
         Assert.Equal("NpcResponseOutput.response.cs", file.Path);
 
         var src = file.Content;
@@ -121,18 +123,17 @@ public sealed class OutputParserGeneratorTests
         // Fail-closed, at BOTH doors.
         //
         // @responseRef must resolve through the SAME payload-target resolver @payloadRef
-        // obeys (object.value, or a sourceless object.projection), because PayloadGenerator
-        // emits the record this parser binds using that resolver. When FindInbound used the
-        // any-object ResolveObjectRef instead, an entity target resolved HERE, the parser
-        // emitted `static Answer Parse(string)`, and PayloadGenerator emitted no record —
-        // CS0246, generated code that cannot compile.
+        // obeys (object.value, or a sourceless object.projection) — the shapes whose POCO the
+        // parser returns (ADR-0056). When FindInbound used the any-object ResolveObjectRef
+        // instead, an entity target resolved HERE and the parser emitted `static Answer
+        // Parse(string)` over a type no value-object generator declares — CS0246, generated
+        // code that cannot compile.
         //
         // Door 1 is the LOADER, which now enforces the same target rule on @responseRef that
         // it always enforced on @payloadRef (only TypeScript did, so the same metadata failed
         // one port's load and passed four). Door 2 is this generator, kept fail-closed as
         // defence in depth: an adopter may register its own provider or loosen strictness,
-        // and codegen must not emit a parser for a target the payload tier refuses to emit a
-        // record for. The generator assertions below therefore run against the loaded root
+        // and codegen must not emit a parser for a target that is not a payload shape. The generator assertions below therefore run against the loaded root
         // DESPITE the load error, which is exactly the state door 2 exists to survive.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
@@ -160,13 +161,10 @@ public sealed class OutputParserGeneratorTests
             Root = load.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
-        // Door 2 — no record for the entity, therefore no parser bound to it. The two must
-        // agree, and agreeing on "nothing" is the only safe agreement available for a target
-        // neither can legally emit. The prompt's @payloadRef (a real value-object) still gets
-        // its request record — that is a different ref, and it resolves.
-        var payloads = new PayloadGenerator().Generate(ctx).ToList();
-        Assert.Equal("Req.payload.cs", Assert.Single(payloads).Path);
-        Assert.DoesNotContain(payloads, f => f.Content.Contains("record Answer"));
+        // Door 2 — the entity is not a payload shape, so nothing inbound binds to it. The
+        // prompt's @payloadRef (a real value object) still has its POCO — that is a different
+        // ref, and it resolves.
+        Assert.Contains(new EntityGenerator().Generate(ctx), f => f.Path == "Req.g.cs");
 
         Assert.Empty(new OutputParserGenerator().Generate(ctx));
         Assert.Empty(new OutputPromptGenerator().Generate(ctx));
@@ -190,7 +188,7 @@ public sealed class OutputParserGeneratorTests
                                  "@textRef": "ask/x", "@format": "text", "@responseFormat": "xml" } }
         ]}}
         """;
-        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
+        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))), f => f.Path.EndsWith(".response.cs"));
         Assert.Equal("AskXml.response.cs", file.Path);
 
         // No strict tier — nor any of the System.Text.Json machinery it needs.
@@ -221,7 +219,7 @@ public sealed class OutputParserGeneratorTests
                                  "@textRef": "ask/j", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
-        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
+        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))), f => f.Path.EndsWith(".response.cs"));
         Assert.Contains("public static Answer Parse(string text)", file.Content);
         Assert.Contains("public static bool TryParse(string text,", file.Content);
         Assert.Contains("using System.Text.Json;", file.Content);
@@ -232,56 +230,79 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
-    public void Emitted_source_compiles_alongside_the_payload_record()
+    public void Emitted_source_compiles_alongside_the_value_object_poco()
     {
-        // End-to-end: payload-VO codegen + output-parser codegen should compile
-        // together with no errors. Guards against C# language-level regressions
-        // in the emitted shape (required keyword, nullable annotations, etc.).
+        // End-to-end: the value-object tier (EntityGenerator — `dotnet meta gen --generators
+        // entity`) + output-parser codegen compile together with no errors. ADR-0056: the parser
+        // declares no type for the shape; it returns the @responseRef value object's POCO. So a
+        // parser that named a type the value-object tier does not emit turns this red (CS0246).
         //
-        // The payload half MUST come through PayloadGenerator.Generate — the registered
-        // generator seam `dotnet meta gen` actually runs — not through PayloadCodegen
-        // directly. Calling the codec directly with a hand-written ref proves only that a
-        // record CAN be produced for a name the test already knew; it cannot see the
-        // generator failing to emit that record at all. That is exactly the ADR-0052
-        // failure mode: the parser binds @responseRef, so if the generator does not walk
-        // @responseRef the parser references a type nobody declares. Routed through the
-        // seam, deleting the inbound walk turns this red with a CS0246.
-        //
-        // @responseRef is a DIFFERENT value-object from @payloadRef here on purpose: with
-        // the two equal, the outbound walk would emit the needed record by coincidence.
-        const string m = """
-        { "metadata.root": { "package": "acme::ai", "children": [
-          { "object.value": { "name": "NpcRequestPayload", "children": [
-            { "field.string": { "name": "setting" } }
-          ]}},
-          { "object.value": { "name": "NpcResponsePayload", "children": [
-            { "field.string": { "name": "name" } },
-            { "field.int":    { "name": "age" } }
-          ]}},
-          { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcRequestPayload", "@responseRef": "NpcResponsePayload",
-                                  "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
-        ]}}
-        """;
-        var root = Load(m);
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
-        var payloadFiles = new PayloadGenerator().Generate(Ctx(root)).ToList();
-        // The record the parser binds must be among what the generator emitted.
-        Assert.Contains(payloadFiles, f => f.Path == "NpcResponsePayload.payload.cs");
+        // @responseRef is a DIFFERENT value object from @payloadRef here on purpose: with the
+        // two equal, a generator that only walked @payloadRef would pass by coincidence.
+        var root = Load(NpcModel);
+        var asm = Compile(root);
+        var parser = asm.GetType("Acme.Generated.NpcResponseOutputParser")!;
+        Assert.Equal("NpcResponsePayload", parser.GetMethod("Parse")!.ReturnType.Name);
+    }
 
-        // PayloadGenerator already emits its own `namespace {ctx.Config.Namespace};` header,
-        // which is the same namespace the parser emits under — no wrapping needed.
-        var trees = payloadFiles
-            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12)))
-            .Prepend(CSharpSyntaxTree.ParseText(parserSrc, new CSharpParseOptions(LanguageVersion.CSharp12)))
+    [Fact]
+    public void Parse_enforces_required_fields_and_reads_enum_symbols()
+    {
+        // The POCO's members carry no `required` keyword (they are shared with the REST tier,
+        // where presence is a validation concern), so the parser marks each @required field
+        // required itself. A field.enum travels as its member symbol.
+        var root = Load(NpcModel);
+        var parse = Compile(root).GetType("Acme.Generated.NpcResponseOutputParser")!.GetMethod("Parse")!;
+
+        var npc = parse.Invoke(null, ["{ \"name\": \"Ada\", \"mood\": \"CALM\" }"])!;
+        Assert.Equal("Ada", npc.GetType().GetProperty("Name")!.GetValue(npc));
+        Assert.Equal("CALM", npc.GetType().GetProperty("Mood")!.GetValue(npc)!.ToString());
+        Assert.Null(npc.GetType().GetProperty("Age")!.GetValue(npc));   // optional, absent
+
+        // `name` is @required: omitting it fails the parse instead of yielding a null.
+        var ex = Assert.Throws<System.Reflection.TargetInvocationException>(() =>
+            parse.Invoke(null, ["{ \"mood\": \"CALM\" }"]));
+        Assert.IsType<System.Text.Json.JsonException>(ex.InnerException);
+        Assert.Contains("name", ex.InnerException!.Message);
+    }
+
+    private const string NpcModel = """
+    { "metadata.root": { "package": "acme::ai", "children": [
+      { "object.value": { "name": "NpcRequestPayload", "children": [
+        { "field.string": { "name": "setting" } }
+      ]}},
+      { "object.value": { "name": "NpcResponsePayload", "children": [
+        { "field.string": { "name": "name", "@required": true } },
+        { "field.int":    { "name": "age" } },
+        { "field.enum":   { "name": "mood", "@values": ["CALM", "ANGRY"] } }
+      ]}},
+      { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcRequestPayload", "@responseRef": "NpcResponsePayload",
+                              "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
+    ]}}
+    """;
+
+    // Compile the parser (+ the mirrors it emits) with the value objects' POCOs, and load it.
+    private static System.Reflection.Assembly Compile(MetaRoot root)
+    {
+        var sources = new OutputParserGenerator().Generate(Ctx(root)).Select(f => f.Content)
+            .Concat(GeneratedValueObjects.Sources(root));
+        var trees = sources
+            .Select(src => CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12)))
             .ToArray();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
+        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Render.Extract.ExtractSchema).Assembly.Location));
+        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObject).Assembly.Location));
+        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Codegen.Runtime.ExtractObject).Assembly.Location));
         var comp = CSharpCompilation.Create("outparse_" + Guid.NewGuid().ToString("N"),
             trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        var errors = emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
-        Assert.True(errors.Count == 0, "parser + payload should compile, got: " + string.Join("; ", errors));
+        Assert.True(errors.Count == 0, "parser + value objects should compile, got: " + string.Join("; ", errors));
+        return System.Reflection.Assembly.Load(ms.ToArray());
     }
 
     [Fact]
@@ -304,7 +325,7 @@ public sealed class OutputParserGeneratorTests
             Root = load.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
-        var file = Assert.Single(new OutputParserGenerator().Generate(ctx));
+        var file = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path.EndsWith(".response.cs"));
         Assert.Equal("SupportAnswerPrompt.response.cs", file.Path);
         // The bound type is the @responseRef shape (SupportAnswer), NOT the @payloadRef
         // request shape (SupportRequest) — the distinction ADR-0052 exists to draw.

@@ -82,8 +82,7 @@ public sealed class RenderHelperConformanceTests
 
         var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomePage.render.cs");
 
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomePageRenderHelper")!;
         var payload = MakeWelcome(asm, "Ada");
@@ -105,8 +104,7 @@ public sealed class RenderHelperConformanceTests
 
         var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
 
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!;
         var payload = MakeWelcome(asm, "Ada");
@@ -130,8 +128,7 @@ public sealed class RenderHelperConformanceTests
 
         var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
 
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!;
         var payload = MakeWelcome(asm, "<b>A & Co</b>");
@@ -162,36 +159,33 @@ public sealed class RenderHelperConformanceTests
         // The clean nested template must pass the build-time drift gate (no throw).
         var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "OrderEmail.render.cs");
 
-        // GeneratePayloadRecords(Order) emits Order + nested Customer + Item records;
-        // the Order.items property is IReadOnlyList<Item>, so the standalone payload
-        // compilation unit needs System.Collections.Generic in scope.
-        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n"
-            + PayloadCodegen.GeneratePayloadRecords(root, "Order");
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        // ADR-0056: the payload types are the value objects' own POCOs — Order, Customer and
+        // Item — which EntityGenerator emits.
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var customerType = asm.GetType("Acme.Generated.Customer")!;
         var itemType = asm.GetType("Acme.Generated.Item")!;
         var orderType = asm.GetType("Acme.Generated.Order")!;
 
         var customer = Activator.CreateInstance(customerType)!;
-        customerType.GetProperty("name")!.SetValue(customer, "Ada");
+        customerType.GetProperty("Name")!.SetValue(customer, "Ada");
 
         var itemA = Activator.CreateInstance(itemType)!;
-        itemType.GetProperty("sku")!.SetValue(itemA, "A1");
-        itemType.GetProperty("qty")!.SetValue(itemA, 2);
+        itemType.GetProperty("Sku")!.SetValue(itemA, "A1");
+        itemType.GetProperty("Qty")!.SetValue(itemA, 2);
         var itemB = Activator.CreateInstance(itemType)!;
-        itemType.GetProperty("sku")!.SetValue(itemB, "B2");
-        itemType.GetProperty("qty")!.SetValue(itemB, 1);
+        itemType.GetProperty("Sku")!.SetValue(itemB, "B2");
+        itemType.GetProperty("Qty")!.SetValue(itemB, 1);
 
-        // items property is IReadOnlyList<Item>; build a typed list via reflection.
+        // Items is an ICollection<Item>; build a typed list via reflection.
         var listType = typeof(List<>).MakeGenericType(itemType);
         var items = (System.Collections.IList)Activator.CreateInstance(listType)!;
         items.Add(itemA);
         items.Add(itemB);
 
         var order = Activator.CreateInstance(orderType)!;
-        orderType.GetProperty("customer")!.SetValue(order, customer);
-        orderType.GetProperty("items")!.SetValue(order, items);
+        orderType.GetProperty("Customer")!.SetValue(order, customer);
+        orderType.GetProperty("Items")!.SetValue(order, items);
 
         var helper = asm.GetType("Acme.Generated.OrderEmailRenderHelper")!;
         var email = (EmailDocument)helper.GetMethod("Render")!
@@ -213,14 +207,12 @@ public sealed class RenderHelperConformanceTests
     // on the wrong element type and the build-time drift gate throws
     // ERR_VAR_NOT_ON_PAYLOAD. FQN-exact resolution binds each ref to its own package.
     //
-    // ADR-0044 / #219 / #220: the payload RECORD for this fixture must be
-    // GENERATOR-emitted (fixtures/template-output-render-conformance/README.md,
-    // xpkg-collision section) — never hand-authored by the port runner. A hand-
-    // authored merged `record Note { alphaText; betaText }` (a single shape with
-    // BOTH fields) is exactly the "silently-wrong-adjacent" shape ADR-0044 rejected.
-    // PayloadCodegen.GeneratePayloadRecords resolves the SAME FQN-exact @objectRef
-    // pair, so this proves the fix end-to-end: two DISTINCT emitted records
-    // (AcmeAlphaNote / AcmeBetaNote), not one merged/first-wins shape.
+    // The payload TYPES for this fixture must be GENERATOR-emitted
+    // (fixtures/template-output-render-conformance/README.md, xpkg-collision section) — never
+    // hand-authored by the port runner. ADR-0056: they are the value objects' own POCOs, which
+    // EntityGenerator emits; two value objects sharing the short name `Note` emit under their
+    // package-qualified names (AcmeAlphaNote / AcmeBetaNote), each with only its OWN field —
+    // not one merged/first-wins shape.
     // ---------------------------------------------------------------------
 
     [Fact]
@@ -237,39 +229,41 @@ public sealed class RenderHelperConformanceTests
         // Must NOT throw: the FQN refs resolve to their own package's Note.
         var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "DigestDoc.render.cs");
 
-        // GENERATOR-emitted payload records (not hand-authored) — the corpus contract.
-        var records = PayloadCodegen.GeneratePayloadRecords(root, "acme::app::Digest");
+        // GENERATOR-emitted payload types (not hand-authored) — the corpus contract.
+        var files = new EntityGenerator().Generate(Ctx(root)).ToList();
+        var alpha = Assert.Single(files, f => f.Path == "AcmeAlphaNote.g.cs").Content;
+        var beta = Assert.Single(files, f => f.Path == "AcmeBetaNote.g.cs").Content;
+        var digestSrc = Assert.Single(files, f => f.Path == "Digest.g.cs").Content;
+        Assert.DoesNotContain(files, f => f.Path == "Note.g.cs");
 
-        // Proof of fix: two DISTINCT emitted types under their ADR-0044 package-
-        // qualified derived names, each carrying only its OWN VO's field — not a
-        // merged `{ alphaText; betaText }` shape.
-        Assert.Contains("public sealed record AcmeAlphaNote", records);
-        Assert.Contains("public sealed record AcmeBetaNote", records);
+        // Proof of fix: two DISTINCT emitted types, each carrying only its OWN VO's field — not
+        // a merged `{ alphaText; betaText }` shape.
+        Assert.Contains("public class AcmeAlphaNote", alpha);
+        Assert.Contains("public class AcmeBetaNote", beta);
         // #309 — this fixture carries BOTH arms, which is what makes it the payload tier's
         // optionality oracle as well as its collision oracle: the shared corpus declares
         // `alphaText`/`betaText` as `@required: true` (meta.alpha.json / meta.beta.json)
         // while `fromAlpha`/`fromBeta` carry no `@required` (meta.app.json). A port that
         // hardcodes either answer now fails on the other half of the same model.
-        Assert.Contains("public required string alphaText { get; init; }", records);
-        Assert.Contains("public required string betaText { get; init; }", records);
-        Assert.DoesNotContain("public sealed record Note", records);
-        // Digest's own fields point at the qualified names, not at each other's field.
-        Assert.Contains("public AcmeAlphaNote? fromAlpha { get; init; }", records);
-        Assert.Contains("public AcmeBetaNote? fromBeta { get; init; }", records);
+        Assert.Contains("public string AlphaText { get; set; } = default!;", alpha);
+        Assert.DoesNotContain("BetaText", alpha);
+        Assert.Contains("public string BetaText { get; set; } = default!;", beta);
+        // Digest's own fields point at the qualified names, and are optional.
+        Assert.Contains("public AcmeAlphaNote? FromAlpha { get; set; }", digestSrc);
+        Assert.Contains("public AcmeBetaNote? FromBeta { get; set; }", digestSrc);
 
-        var payloadSrc = "namespace Acme.Generated;\n" + records;
-        var asm = CompileToAssembly(file.Content, payloadSrc);
+        var asm = CompileToAssembly([file.Content, .. files.Select(f => f.Content)]);
 
         var alphaNoteType = asm.GetType("Acme.Generated.AcmeAlphaNote")!;
         var betaNoteType = asm.GetType("Acme.Generated.AcmeBetaNote")!;
         var digestType = asm.GetType("Acme.Generated.Digest")!;
         var fromAlpha = Activator.CreateInstance(alphaNoteType)!;
-        alphaNoteType.GetProperty("alphaText")!.SetValue(fromAlpha, "AA");
+        alphaNoteType.GetProperty("AlphaText")!.SetValue(fromAlpha, "AA");
         var fromBeta = Activator.CreateInstance(betaNoteType)!;
-        betaNoteType.GetProperty("betaText")!.SetValue(fromBeta, "BB");
+        betaNoteType.GetProperty("BetaText")!.SetValue(fromBeta, "BB");
         var digest = Activator.CreateInstance(digestType)!;
-        digestType.GetProperty("fromAlpha")!.SetValue(digest, fromAlpha);
-        digestType.GetProperty("fromBeta")!.SetValue(digest, fromBeta);
+        digestType.GetProperty("FromAlpha")!.SetValue(digest, fromAlpha);
+        digestType.GetProperty("FromBeta")!.SetValue(digest, fromBeta);
 
         var helper = asm.GetType("Acme.Generated.DigestDocRenderHelper")!;
         var outText = (string)helper.GetMethod("Render")!.Invoke(null, [digest, new FilesystemProvider(templates)])!;
@@ -305,7 +299,7 @@ public sealed class RenderHelperConformanceTests
     {
         var payloadType = asm.GetType("Acme.Generated.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
-        payloadType.GetProperty("name")!.SetValue(payload, name);
+        payloadType.GetProperty("Name")!.SetValue(payload, name);
         return payload;
     }
 

@@ -55,7 +55,10 @@ public sealed class Fr010CodegenTests
     [Fact]
     public void Parser_emits_extract_api_and_nullable_mirror_for_json()
     {
-        var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(Model)))).Content;
+        var files = new OutputParserGenerator().Generate(Ctx(Load(Model))).ToList();
+        var src = Assert.Single(files, f => f.Path.EndsWith(".response.cs")).Content;
+        // ADR-0056 rule 3: the mirror is the value object's, in its own file.
+        var mirror = Assert.Single(files, f => f.Path == "AnswerPayloadExtracted.g.cs").Content;
 
         Assert.Contains("using MetaObjects.Render.Extract;", src);
         // The single (loader-delegating) extract path — no baked snapshot.
@@ -69,13 +72,13 @@ public sealed class Fr010CodegenTests
         Assert.DoesNotContain("TryExtractLenient", src);
 
         // Nullable mirror record — no `required`, every component nullable.
-        Assert.Contains("public sealed record AnswerPayloadExtracted", src);
-        Assert.Contains("public string? text { get; init; }", src);
-        Assert.Contains("public string? confidence { get; init; }", src);
-        Assert.Contains("public int? score { get; init; }", src);
+        Assert.Contains("public sealed record AnswerPayloadExtracted", mirror);
+        Assert.Contains("public string? text { get; init; }", mirror);
+        Assert.Contains("public string? confidence { get; init; }", mirror);
+        Assert.Contains("public int? score { get; init; }", mirror);
         // Array field: nullable-element list matching ExtractMap.AsStringList's return type.
-        Assert.Contains("global::System.Collections.Generic.IReadOnlyList<string?>? tags { get; init; }", src);
-        Assert.DoesNotContain("required", src.Split("AnswerPayloadExtracted")[1]); // mirror half has no required
+        Assert.Contains("global::System.Collections.Generic.IReadOnlyList<string?>? tags { get; init; }", mirror);
+        Assert.DoesNotContain("required", mirror);
     }
 
     [Fact]
@@ -93,7 +96,7 @@ public sealed class Fr010CodegenTests
           { "template.prompt": { "name": "TextOut", "@payloadRef": "P", "@responseRef": "P", "@textRef": "t/x", "@format": "text" } }
         ]}}
         """;
-        var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m)))).Content;
+        var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))), f => f.Path.EndsWith(".response.cs")).Content;
         Assert.Contains("Parse(string text)", src);      // strict tier: the reply is json
         Assert.Contains("ExtractLenient(", src);          // tolerant tier: now unconditional
         Assert.Contains("Extracted", src);
@@ -151,11 +154,12 @@ public sealed class Fr010CodegenTests
     public void Generated_extract_and_prompt_compile_and_run()
     {
         var root = Load(Model);
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
+        // The parser file plus the mirror records it emits once per run, the fragment, and the
+        // value objects' own POCOs (ADR-0056 — the parser returns the POCO; it declares none).
+        var parserSrcs = new OutputParserGenerator().Generate(Ctx(root)).Select(f => f.Content);
         var promptSrc = Assert.Single(new OutputPromptGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "AnswerPayload");
 
-        var asm = CompileToAssembly(parserSrc, promptSrc, payloadSrc);
+        var asm = CompileToAssembly([.. parserSrcs, promptSrc, .. GeneratedValueObjects.Sources(root)]);
 
         // --- invoke Extract() on a dirty response: preamble + off-vocab alias + missing optional ---
         var parserType = asm.GetType("Acme.Generated.AnswerOutputParser")!;
@@ -209,11 +213,10 @@ public sealed class Fr010CodegenTests
     public void Generated_extract_folds_off_vocab_via_coerce_default_to_defaulted()
     {
         var root = Load(CoerceDefaultModel);
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
+        var parserSrcs = new OutputParserGenerator().Generate(Ctx(root)).Select(f => f.Content);
         var promptSrc = Assert.Single(new OutputPromptGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "TaskPayload");
 
-        var asm = CompileToAssembly(parserSrc, promptSrc, payloadSrc);
+        var asm = CompileToAssembly([.. parserSrcs, promptSrc, .. GeneratedValueObjects.Sources(root)]);
 
         var parserType = asm.GetType("Acme.Generated.TaskOutputParser")!;
         // The single (loader-delegating) extract path reads @coerceDefault/@normalize off live metadata.

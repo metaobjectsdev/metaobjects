@@ -34,6 +34,10 @@
 // @payloadRef, or a @payloadRef that doesn't resolve to an object.value or
 // sourceless object.projection (#210).
 //
+// ADR-0056: the helper's payload parameter is the value object's own POCO, which
+// EntityGenerator emits. This generator declares no payload type, so a run that wires it
+// must also wire EntityGenerator (`entity`).
+//
 // Mirrors the TS port (render-helper-file.ts + templates/render-helper.ts) and the
 // Java port (SpringRenderHelperGenerator). The drift message style matches exactly:
 //   render-helper drift: template "<Name>" ref "<ref>" — <CODE>: {{<field>}} not on payload VO
@@ -99,7 +103,7 @@ public class RenderHelperGenerator : IGenerator
             }
             // @payloadRef must resolve to an object.value or sourceless
             // object.projection (#210; same contract as the parser/prompt
-            // generators). The payload record name == payloadRef (PayloadCodegen).
+            // generators). Its POCO, emitted by EntityGenerator, is the payload type.
             // ADR-0042: a bare @payloadRef resolves in the template's package.
             var vo = ResolveValueObject(ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl));
             if (vo is null) continue;
@@ -150,7 +154,9 @@ public class RenderHelperGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var helperClass = CSharpNaming.RenderHelperName(templateName);
-        var payloadType = payloadRef; // PayloadCodegen names the record after the VO name.
+        // ADR-0056: the payload type IS the value object's own POCO (EntityGenerator), named the
+        // way every generator names it. The raw @payloadRef is not a type name: it may be an FQN.
+        var payloadType = ValueObjectNames.TypeRef(vo, ctx.Root, ctx.Config, ctx.Config.Namespace);
 
         // Payload field tree — reused by the build-time gate AND baked into the
         // emitted RenderRequest.Verify so the runtime check matches the gate.

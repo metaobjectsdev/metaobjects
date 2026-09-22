@@ -184,27 +184,11 @@ public sealed class CSharpApiModelBuilder
                 "renders the output template against a typed payload",
                 returns));
         }
-        // PAYLOAD (request) — the strict record PayloadGenerator emits from @payloadRef, for ANY
-        // template subtype. Gated by that generator's own AppliesTo, which is what keeps docs from
-        // claiming a record codegen did not emit; dropping this branch is what left a
-        // template.output's payload record emitted but documented nowhere.
-        if (PayloadGenerator.AppliesTo(tmpl, root)
-            && tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is string reqRef)
-        {
-            var reqPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-            // Name the symbol from the EMITTED name, never the authored ref: an FQN ref would
-            // otherwise print `record acme::ai::SupportAnswer`, and under an ADR-0044 collision
-            // the emitted record is package-qualified while the ref is not.
-            var reqName = PayloadCodegen.ResolveEmittedName(root, reqRef, reqPkg)
-                ?? CSharpNaming.StripPkg(reqRef);
-            var reqVo = PayloadGenerator.ResolvePayloadVo(root, reqRef, reqPkg);
-            if (reqVo is not null)
-                symbols.Add(new ApiSymbol(
-                    reqName, ApiSymbolKind.Payload, ns,
-                    $"record {reqName}",
-                    "the typed payload projection rendered INTO the template",
-                    Fields: PayloadFields(reqVo)));
-        }
+        // PAYLOAD (request) — ADR-0056: the @payloadRef value object's own POCO, which
+        // EntityGenerator emits in the value object's namespace, for ANY template subtype. The
+        // template tier declares no copy of it, so the symbol names the POCO.
+        if (PayloadShape(tmpl, root) is { } reqVo)
+            symbols.Add(PayloadSymbol(reqVo, root, "the typed payload value object rendered INTO the template"));
         // ADR-0052: the inbound symbols belong to the RESPONDING PROMPT, not to an output.
         if (OutputPromptGenerator.AppliesTo(tmpl, root))
         {
@@ -222,29 +206,33 @@ public sealed class CSharpApiModelBuilder
                 $"static class {parser}",
                 "parses a model reply back into the typed response shape"));
 
-            // PAYLOAD — the strict typed record the payload-generator emits (and the
-            // fragment/parser/extractor bind to). ADR-0052: for a responding prompt that is the
-            // `@responseRef` shape, which is what the parser above actually returns; documenting
-            // the `@payloadRef` request record here would name a type the parser never mentions.
+            // The RESPONSE value object the parser above returns — the @responseRef object's own
+            // POCO (ADR-0056), not the @payloadRef one documented higher up. When both refs name
+            // the same value object it is documented once.
             if (FindInbound.ResponseShape(root, tmpl) is { } inbound)
             {
-                // Same rule as the request record above: the EMITTED name, never the authored ref.
-                var resPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-                var resName = PayloadCodegen.ResolveEmittedName(root, inbound.Ref, resPkg)
-                    ?? CSharpNaming.StripPkg(inbound.Ref);
-                // Deduped by NAME: when @responseRef and @payloadRef name one shape, the record
-                // above IS this record — the C# convention names it for the value-object, so both
-                // walks land on one file and documenting it twice would claim two.
-                if (!symbols.Any(sym => sym.Kind == ApiSymbolKind.Payload && sym.Name == resName))
-                    symbols.Add(new ApiSymbol(
-                        resName, ApiSymbolKind.Payload, ns,
-                        $"record {resName}",
-                        "the typed response shape a model reply is parsed into",
-                        Fields: PayloadFields(inbound.Vo)));
+                var res = PayloadSymbol(inbound.Vo, root, "the typed response value object a model reply is parsed into");
+                if (!symbols.Any(sym => sym.Kind == ApiSymbolKind.Payload && sym.Name == res.Name && sym.Namespace == res.Namespace))
+                    symbols.Add(res);
             }
         }
 
         return new ApiUnit(name, PackageOf(tmpl), "template", symbols);
+    }
+
+    /// <summary>The value object a template's <c>@payloadRef</c> resolves to (ADR-0042 package-local), or null.</summary>
+    private static MetaData? PayloadShape(MetaData tmpl, MetaRoot root) =>
+        tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is string payloadRef
+            ? RenderHelperGenerator.ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))
+            : null;
+
+    /// <summary>A PAYLOAD symbol for a value object's POCO: its emitted name, in its own namespace.</summary>
+    private ApiSymbol PayloadSymbol(MetaData vo, MetaRoot root, string usage)
+    {
+        var typeName = ValueObjectNames.TypeName(vo, root);
+        return new ApiSymbol(
+            typeName, ApiSymbolKind.Payload, ValueObjectNames.Namespace(vo, _config),
+            $"class {typeName}", usage, Fields: PayloadFields(vo, root));
     }
 
     /// <summary>True when the template's effective <c>@kind</c> (default document) is <c>email</c>.
@@ -281,17 +269,30 @@ public sealed class CSharpApiModelBuilder
         return rows;
     }
 
-    // The payload record's documented field shapes: one row per field of the @payloadRef
-    // value object. Types are kept simple (the payload record is `required <type>`); enum
-    // notes carry the allowed values.
-    private static IReadOnlyList<FieldShape> PayloadFields(MetaData vo)
+    // A payload value object's documented field shapes: one row per field of its POCO, typed as
+    // the entity generator types them (ADR-0056 — the POCO IS the payload type), optional unless
+    // @required. An object field is documented by the value object it nests.
+    private static IReadOnlyList<FieldShape> PayloadFields(MetaData vo, MetaRoot root)
     {
         var rows = new List<FieldShape>();
-        foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
+        foreach (var f in vo.Children().OfType<MetaField>())
         {
-            var scalar = CSharpNaming.ScalarFor(f.SubType);
-            var type = scalar ?? (f.SubType == MetaObjects.Core.Field.FieldConstants.FIELD_SUBTYPE_OBJECT ? "object" : f.SubType);
-            rows.Add(new FieldShape(f.Name, type, Optional: false));
+            string? note = null;
+            string type;
+            if (CSharpNaming.ScalarForField(f) is { } scalar)
+                type = scalar;
+            else if (f.SubType == MetaObjects.Core.Field.FieldConstants.FIELD_SUBTYPE_ENUM && vo is MetaObject owner)
+            {
+                type = CSharpNaming.EnumTypeName(owner, f);
+                if (f.EffectiveEnumValues is { Count: > 0 } values)
+                    note = "allowed: " + string.Join(" | ", values);
+            }
+            else if (ValueObjectNames.ResolveFieldRef(f, root) is { } nested)
+                type = ValueObjectNames.TypeName(nested, root);
+            else
+                type = f.SubType;
+            if (f.ResolvedIsArray()) type = $"ICollection<{type}>";
+            rows.Add(new FieldShape(f.Name, type, !Fr010FieldMapping.IsRequired(f), note));
         }
         return rows;
     }

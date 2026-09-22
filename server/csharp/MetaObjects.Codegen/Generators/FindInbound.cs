@@ -77,18 +77,18 @@ internal static class FindInbound
         // Resolve through the SAME payload-target resolver @payloadRef obeys (object.value, or a
         // sourceless object.projection) — NOT the any-object ResolveObjectRef.
         //
-        // This must agree with PayloadGenerator, which emits the record this parser binds. It did
-        // not: ResolveObjectRef accepted an object.entity, so a @responseRef naming an entity
-        // resolved here, OutputParserGenerator emitted `static Answer Parse(string)`, and
-        // PayloadGenerator — which resolves value-only — emitted no record for it. The generated
-        // C# did not compile (CS0246). Verified: the model loads with ZERO errors, because unlike
+        // This must agree with the value-object generator, which emits the POCO this parser binds
+        // (ADR-0056). It did not: ResolveObjectRef accepted an object.entity, so a @responseRef
+        // naming an entity resolved here, OutputParserGenerator emitted `static Answer
+        // Parse(string)`, and no value-object type existed for it. The generated C# did not
+        // compile (CS0246). Verified: the model loads with ZERO errors, because unlike
         // TypeScript (validation-passes.ts:336-345) the C# loader validates @payloadRef's target
         // and never @responseRef's, so nothing upstream catches it either.
         //
-        // Java is immune by construction — its FindInbound.responseShape already resolves through
-        // SpringPayloadGenerator.resolveValueObject. This makes C# fail closed the same way: an
-        // unresolvable-or-wrong-typed ref yields no parser rather than an uncompilable one.
-        var vo = PayloadGenerator.ResolvePayloadVo(root, reference, referrerPkg);
+        // Java is immune by construction — its FindInbound.responseShape resolves value-only
+        // too. This makes C# fail closed the same way: an unresolvable-or-wrong-typed ref yields
+        // no parser rather than an uncompilable one.
+        var vo = RenderHelperGenerator.ResolveValueObject(root, reference, referrerPkg);
         if (vo is null) return null;
         return new InboundShape(vo, reference, ResponseFormatOf(tmpl));
     }

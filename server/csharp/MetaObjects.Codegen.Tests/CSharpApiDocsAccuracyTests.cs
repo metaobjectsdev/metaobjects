@@ -101,7 +101,6 @@ public sealed class CSharpApiDocsAccuracyTests
         RunGen(new DbContextGenerator());
         RunGen(new RoutesGenerator());
         RunGen(new FilterAllowlistGenerator());
-        RunGen(new PayloadGenerator());
         RunGen(new OutputParserGenerator());
         RunGen(new OutputPromptGenerator());
         RunGen(new RenderHelperGenerator(templateRoot));
@@ -347,10 +346,8 @@ public sealed class CSharpApiDocsAccuracyTests
         // fragment. api-docs claiming an OutputParser here would document a symbol codegen
         // no longer emits.
         //
-        // PAYLOAD is asserted PRESENT because PayloadGenerator emits `<VO>.payload.cs` for
-        // this template. Dropping the symbol left that record emitted but documented
-        // nowhere, contradicting PayloadGenerator's own "AppliesTo is the SINGLE SOURCE OF
-        // TRUTH the api-docs builder shares" contract.
+        // PAYLOAD is asserted PRESENT: it is the @payloadRef value object's own POCO, which
+        // EntityGenerator emits (ADR-0056) and the render helper takes as its parameter.
         var tpl = WriteTemplates();
         try
         {

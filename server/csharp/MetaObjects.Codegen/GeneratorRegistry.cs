@@ -145,14 +145,6 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Api,
                 Factory = _ => new RoutesGenerator(),
             },
-            ["payload"] = new()
-            {
-                Name = "payload",
-                Description = "Per-template strict typed payload record(s) (the prompt/parser/extractor bind type).",
-                Tier = GeneratorTier.Native,
-                Layer = GeneratorLayer.Capability,
-                Factory = _ => new PayloadGenerator(),
-            },
             ["output-parser"] = new()
             {
                 Name = "output-parser",
@@ -160,6 +152,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new OutputParserGenerator(),
+                Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
             },
             ["extractor"] = new()
             {
@@ -168,6 +161,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new ExtractorGenerator(),
+                Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
             },
             ["output-prompt"] = new()
             {
@@ -185,6 +179,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Capability,
                 Factory = RenderHelper,
                 Options = "template-root (required when selected)",
+                Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
             },
             ["filter-allowlist"] = new()
             {

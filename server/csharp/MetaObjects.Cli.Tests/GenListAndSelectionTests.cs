@@ -37,10 +37,10 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines();
-        Assert.Equal(12, lines.Count);
+        Assert.Equal(11, lines.Count);
         foreach (var name in new[]
         {
-            "entity", "db-context", "routes", "payload", "output-parser", "extractor",
+            "entity", "db-context", "routes", "output-parser", "extractor",
             "output-prompt", "render-helper", "filter-allowlist", "template",
             // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
             "callable",
@@ -108,7 +108,7 @@ public sealed class GenListAndSelectionTests : IDisposable
         var outcome = GenCommand.Run(
             MetaDir, OutDir, "Acme.Generated",
             emitAbstractShapes: false,
-            generatorNames: ["entity", "payload", "output-parser"], templateRoot: null);
+            generatorNames: ["entity", "output-parser"], templateRoot: null);
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
         Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.response.cs")));

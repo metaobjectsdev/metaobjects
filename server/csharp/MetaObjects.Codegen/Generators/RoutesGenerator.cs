@@ -633,12 +633,12 @@ public class RoutesGenerator : PerEntityGenerator
         {
             if (f.SubType != FIELD_SUBTYPE_MAP || f.ObjectRef is not { } oref) continue;
             if (f.IsDerived()) continue;   // #214 — derived columns are view-only, not writable
-            var target = root.FindObject(CSharpNaming.StripPkg(oref));
+            var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // scalar-valued maps have no bean
             list.Add(new MapVoField(
                 WireName: f.Name,
                 Nav: CSharpNaming.Pascal(f.Name),
-                DeserType: $"System.Collections.Generic.Dictionary<string, {CSharpNaming.Pascal(target.Name)}>"));
+                DeserType: $"System.Collections.Generic.Dictionary<string, {ValueObjectNames.TypeName(target, root)}>"));
         }
         return list;
     }
@@ -650,9 +650,9 @@ public class RoutesGenerator : PerEntityGenerator
         {
             if (f.SubType != FIELD_SUBTYPE_OBJECT || f.ObjectRef is not { } oref) continue;
             if (f.IsDerived()) continue;   // #214 — derived VO fields are view-only, not writable
-            var target = root.FindObject(CSharpNaming.StripPkg(oref));
+            var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // value objects only (jsonb-stored)
-            var voType = CSharpNaming.Pascal(target.Name);
+            var voType = ValueObjectNames.TypeName(target, root);
             var isArray = f.ResolvedIsArray();                    // ADR-0039: resolving array-ness
             list.Add(new VoField(
                 WireName: f.Name,

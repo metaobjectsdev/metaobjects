@@ -1,21 +1,15 @@
 // Cross-port Extractor codegen (Task 3, C#) — the compile-AND-RUN proof for the `extract` tier.
 //
 // The Extractor sits OVER the existing nested-capable runtime-delegating extract
-// (<Name>OutputParser.ExtractLenient(MetaObject, text)) and turns dirty LLM text into the STRICT typed
-// payload record (PayloadCodegen's immutable `sealed record` with `required init` props) in one
-// call: run extract, throw ExtractException iff a @required field was lost, else map the
-// all-nullable <Name>Extracted mirror onto the strict <Name> via a generated recursive
-// mirror->strict mapper (recurse nested objects + arrays-of-objects; one-shot object-initializer
-// construct). extract is re-exposed unchanged. NO registry / binding / factory.
+// (<Name>OutputParser.ExtractLenient(MetaObject, text)) and turns dirty LLM text into the value
+// object's own POCO (ADR-0056 — EntityGenerator's, never a template-tier copy) in one call: run
+// extract, throw ExtractException iff a @required field was lost, else map the all-nullable
+// <Name>Extracted mirror onto the POCO via a generated recursive mirror->POCO mapper (recurse
+// nested objects + arrays-of-objects; one object-initializer construct). extract is re-exposed
+// unchanged. NO registry / binding / factory.
 //
-// NOTE on optionality (C#-specific). PayloadCodegen emits EVERY payload field as `required
-// {NonNullableType}` (it does not honor @required) — the strict record has no nullable/optional
-// props. So the mirror->strict mapper matches that predicate exactly: every field is mapped as
-// required (m.F! / ToStrict_X(m.F!) / array maps), with NO optional-null variant (there is no
-// nullable property to assign null to). A field absent from the extracted mirror that the strict
-// record types non-null therefore must be present in the input — consistent with the strict
-// `Parse` path's `required`-keyword semantics. The lost-REQUIRED gate (ExtractException) fires
-// only for fields the metadata marks @required:true.
+// Optionality follows @required, as the POCO does: a required member maps with `!` (the
+// lost-required gate guarantees it is present), an optional one maps an absent value to null.
 
 using System.Collections;
 using System.Reflection;
@@ -93,10 +87,10 @@ public sealed class ExtractorCodegenTests
     {
         var src = Assert.Single(new ExtractorGenerator().Generate(Ctx(Load(Model)))).Content;
 
-        // Extractor class named off the strict payload type.
-        Assert.Contains("public static class OrderExtractor", src);
+        // Extractor class named off the prompt, like its parser (ADR-0056 rule 4).
+        Assert.Contains("public static class OrderOutExtractor", src);
 
-        // extract(MetaObject, text) returns the STRICT record + the opts overload.
+        // extract(MetaObject, text) returns the value object's POCO + the opts overload.
         Assert.Contains("public static Order Extract(", src);
         Assert.Contains("global::MetaObjects.Meta.MetaObject mo, string text)", src);
         Assert.Contains("ExtractOptions opts", src);
@@ -116,10 +110,13 @@ public sealed class ExtractorCodegenTests
         Assert.Contains("ToStrict_Customer(", src);
         Assert.Contains("ToStrict_Line(", src);
 
-        // scalar-array drops nulls (mirror IReadOnlyList<string?>? -> strict IReadOnlyList<string>).
+        // scalar-array drops nulls (mirror IReadOnlyList<string?>? -> POCO ICollection<string>).
         Assert.Contains(".Where(", src);
         // object-array maps element-wise via the element mapper.
-        Assert.Contains("Select(ToStrict_Line)", src);
+        Assert.Contains("Select(x => ToStrict_Line(x!))", src);
+        // an optional member maps null to null instead of dereferencing it.
+        Assert.Contains("m.shipTo is null ? null : ToStrict_Customer(m.shipTo)", src);
+        Assert.Contains("Qty = m.qty,", src);
     }
 
     // ---- compile-AND-run proof ----
@@ -130,7 +127,7 @@ public sealed class ExtractorCodegenTests
         var root = Load(Model);
         var asm = Compile(root);
 
-        var extractorType = asm.GetType("Acme.Generated.OrderExtractor")!;
+        var extractorType = asm.GetType("Acme.Generated.OrderOutExtractor")!;
         var extract = extractorType.GetMethod("Extract",
             new[] { typeof(MetaObject), typeof(string) })!;
 
@@ -153,49 +150,49 @@ public sealed class ExtractorCodegenTests
 
         var order = extract.Invoke(null, new object?[] { orderMo, dirty })!;
 
-        Assert.Equal("A-100", order.GetType().GetProperty("orderId")!.GetValue(order));
+        Assert.Equal("A-100", order.GetType().GetProperty("OrderId")!.GetValue(order));
 
         // required single nested populates + is the strict element type.
-        var customer = order.GetType().GetProperty("customer")!.GetValue(order)!;
+        var customer = order.GetType().GetProperty("Customer")!.GetValue(order)!;
         Assert.Equal("Customer", customer.GetType().Name);
-        Assert.Equal("Ada", customer.GetType().GetProperty("name")!.GetValue(customer));
+        Assert.Equal("Ada", customer.GetType().GetProperty("Name")!.GetValue(customer));
 
         // required array-of-objects populates, each element strict + populated.
-        var lines = ((IEnumerable)order.GetType().GetProperty("lines")!.GetValue(order)!).Cast<object>().ToList();
+        var lines = ((IEnumerable)order.GetType().GetProperty("Lines")!.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(2, lines.Count);
-        Assert.Equal("A", lines[0].GetType().GetProperty("sku")!.GetValue(lines[0]));
-        Assert.Equal(2, lines[0].GetType().GetProperty("qty")!.GetValue(lines[0]));
+        Assert.Equal("A", lines[0].GetType().GetProperty("Sku")!.GetValue(lines[0]));
+        Assert.Equal(2, lines[0].GetType().GetProperty("Qty")!.GetValue(lines[0]));
 
         // required scalar-array populates with NO null elements (drop-null projection).
-        var tags = ((IEnumerable)order.GetType().GetProperty("tags")!.GetValue(order)!).Cast<object>().ToList();
+        var tags = ((IEnumerable)order.GetType().GetProperty("Tags")!.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { "x", "y" }, tags.ToArray());
 
-        // required NON-STRING scalar-array (int[]) populates as IReadOnlyList<int> — proves the
+        // required NON-STRING scalar-array (int[]) populates as ICollection<int> — proves the
         // kind-typed mirror element (IReadOnlyList<int?>?) narrows to the strict int element.
-        var scoresProp = order.GetType().GetProperty("scores")!;
-        Assert.Equal(typeof(IReadOnlyList<int>), scoresProp.PropertyType);
+        var scoresProp = order.GetType().GetProperty("Scores")!;
+        Assert.Equal(typeof(ICollection<int>), scoresProp.PropertyType);
         var scores = ((IEnumerable)scoresProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { 3, 7 }, scores.ToArray());
 
         // required NON-STRING scalar-array (long[]) — proves the StrictArg `x!.Value` long unwrap
         // narrows the kind-typed mirror (IReadOnlyList<long?>?) to the strict long element. The
         // CS8619-as-error compile gate would have failed had the element type mismatched.
-        var quantitiesProp = order.GetType().GetProperty("quantities")!;
-        Assert.Equal(typeof(IReadOnlyList<long>), quantitiesProp.PropertyType);
+        var quantitiesProp = order.GetType().GetProperty("Quantities")!;
+        Assert.Equal(typeof(ICollection<long>), quantitiesProp.PropertyType);
         var quantities = ((IEnumerable)quantitiesProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { 10L, 9000000000L }, quantities.ToArray());
         Assert.IsType<long>(quantities[0]);
 
         // required NON-STRING scalar-array (double[]) — proves the double `x!.Value` unwrap.
-        var weightsProp = order.GetType().GetProperty("weights")!;
-        Assert.Equal(typeof(IReadOnlyList<double>), weightsProp.PropertyType);
+        var weightsProp = order.GetType().GetProperty("Weights")!;
+        Assert.Equal(typeof(ICollection<double>), weightsProp.PropertyType);
         var weights = ((IEnumerable)weightsProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { 1.5d, 2.25d }, weights.ToArray());
         Assert.IsType<double>(weights[0]);
 
         // required NON-STRING scalar-array (bool[]) — proves the bool `x!.Value` unwrap.
-        var flagsProp = order.GetType().GetProperty("flagsArr")!;
-        Assert.Equal(typeof(IReadOnlyList<bool>), flagsProp.PropertyType);
+        var flagsProp = order.GetType().GetProperty("FlagsArr")!;
+        Assert.Equal(typeof(ICollection<bool>), flagsProp.PropertyType);
         var flags = ((IEnumerable)flagsProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { true, false, true }, flags.ToArray());
         Assert.IsType<bool>(flags[0]);
@@ -204,7 +201,7 @@ public sealed class ExtractorCodegenTests
         // (`System.Enum.Parse<OrderPriority>(m.priority!)`) coerces the string-backed mirror member
         // into the generated NESTED enum type. The strict property type is the nested enum
         // (Order.OrderPriority), NOT `object` and NOT `string`.
-        var priorityProp = order.GetType().GetProperty("priority")!;
+        var priorityProp = order.GetType().GetProperty("Priority")!;
         Assert.True(priorityProp.PropertyType.IsEnum, "priority should be a nested enum type, not object/string");
         Assert.Equal("OrderPriority", priorityProp.PropertyType.Name);
         var priorityVal = priorityProp.GetValue(order)!;
@@ -214,7 +211,7 @@ public sealed class ExtractorCodegenTests
         // required ENUM ARRAY -> IReadOnlyList<OrderLabels> (element type IsEnum), per-element
         // Enum.Parse from the string-backed mirror list. Proves the enum-array routes through the
         // string-LIST reader (not the scalar enum reader) and each element coerces to the nested enum.
-        var labelsProp = order.GetType().GetProperty("labels")!;
+        var labelsProp = order.GetType().GetProperty("Labels")!;
         Assert.True(typeof(IEnumerable).IsAssignableFrom(labelsProp.PropertyType));
         var labelsElemType = labelsProp.PropertyType.GetGenericArguments().Single();
         Assert.True(labelsElemType.IsEnum, "labels element should be a nested enum type");
@@ -228,8 +225,8 @@ public sealed class ExtractorCodegenTests
         }, labels.ToArray());
 
         // non-@required single nested, present -> populates.
-        var shipTo = order.GetType().GetProperty("shipTo")!.GetValue(order)!;
-        Assert.Equal("Grace", shipTo.GetType().GetProperty("name")!.GetValue(shipTo));
+        var shipTo = order.GetType().GetProperty("ShipTo")!.GetValue(order)!;
+        Assert.Equal("Grace", shipTo.GetType().GetProperty("Name")!.GetValue(shipTo));
     }
 
     [Fact]
@@ -238,7 +235,7 @@ public sealed class ExtractorCodegenTests
         var root = Load(Model);
         var asm = Compile(root);
 
-        var extractorType = asm.GetType("Acme.Generated.OrderExtractor")!;
+        var extractorType = asm.GetType("Acme.Generated.OrderOutExtractor")!;
         var optsType = typeof(MetaObjects.Render.Extract.ExtractOptions);
 
         // The 3-arg overload: Extract(MetaObject, string, ExtractOptions).
@@ -248,9 +245,6 @@ public sealed class ExtractorCodegenTests
 
         MetaObject orderMo = root.FindObject("Order")!;
 
-        // NOTE: shipTo is included because PayloadCodegen types EVERY field (even non-@required ones)
-        // as `required` non-nullable, so the strict mapper maps shipTo as required — omitting it would
-        // pass null to ToStrict_Customer (the documented C#-specific optionality, see the file header).
         const string dirty =
             "Here:\n```json\n" +
             "{ \"orderId\": \"A-200\"," +
@@ -269,16 +263,37 @@ public sealed class ExtractorCodegenTests
         var order = extractWithOpts.Invoke(null, new object?[] { orderMo, dirty, opts })!;
 
         // Same populated strict graph as the 2-arg path, via the opts overload.
-        Assert.Equal("A-200", order.GetType().GetProperty("orderId")!.GetValue(order));
-        var customer = order.GetType().GetProperty("customer")!.GetValue(order)!;
-        Assert.Equal("Ada", customer.GetType().GetProperty("name")!.GetValue(customer));
+        Assert.Equal("A-200", order.GetType().GetProperty("OrderId")!.GetValue(order));
+        var customer = order.GetType().GetProperty("Customer")!.GetValue(order)!;
+        Assert.Equal("Ada", customer.GetType().GetProperty("Name")!.GetValue(customer));
 
-        var quantities = ((IEnumerable)order.GetType().GetProperty("quantities")!.GetValue(order)!)
+        var quantities = ((IEnumerable)order.GetType().GetProperty("Quantities")!.GetValue(order)!)
             .Cast<object>().ToList();
         Assert.Equal(new object[] { 42L }, quantities.ToArray());
-        var priorityProp = order.GetType().GetProperty("priority")!;
+        var priorityProp = order.GetType().GetProperty("Priority")!;
         Assert.True(priorityProp.PropertyType.IsEnum);
         Assert.Equal("HIGH", priorityProp.GetValue(order)!.ToString());
+    }
+
+    [Fact]
+    public void Generated_extract_leaves_absent_optional_members_null()
+    {
+        // `shipTo` (object) and each line's `qty` (int) carry no @required. Absent from the reply,
+        // they map to null — they used to be dereferenced (`m.qty!.Value`) and throw.
+        var root = Load(Model);
+        var asm = Compile(root);
+        var extract = asm.GetType("Acme.Generated.OrderOutExtractor")!
+            .GetMethod("Extract", new[] { typeof(MetaObject), typeof(string) })!;
+
+        const string reply =
+            "{ \"orderId\": \"A-9\", \"customer\": { \"name\": \"Ada\" }, \"lines\": [ { \"sku\": \"A\" } ]," +
+            "  \"tags\": [], \"scores\": [], \"quantities\": [], \"weights\": [], \"flagsArr\": []," +
+            "  \"priority\": \"LOW\", \"labels\": [] }";
+        var order = extract.Invoke(null, new object?[] { root.FindObject("Order")!, reply })!;
+
+        Assert.Null(order.GetType().GetProperty("ShipTo")!.GetValue(order));
+        var line = ((IEnumerable)order.GetType().GetProperty("Lines")!.GetValue(order)!).Cast<object>().Single();
+        Assert.Null(line.GetType().GetProperty("Qty")!.GetValue(line));
     }
 
     [Fact]
@@ -287,7 +302,7 @@ public sealed class ExtractorCodegenTests
         var root = Load(Model);
         var asm = Compile(root);
 
-        var extractorType = asm.GetType("Acme.Generated.OrderExtractor")!;
+        var extractorType = asm.GetType("Acme.Generated.OrderOutExtractor")!;
         var extract = extractorType.GetMethod("Extract", new[] { typeof(MetaObject), typeof(string) })!;
         MetaObject orderMo = root.FindObject("Order")!;
 
@@ -303,7 +318,7 @@ public sealed class ExtractorCodegenTests
         var root = Load(Model);
         var asm = Compile(root);
 
-        var extractorType = asm.GetType("Acme.Generated.OrderExtractor")!;
+        var extractorType = asm.GetType("Acme.Generated.OrderOutExtractor")!;
         var extractLenient = extractorType.GetMethod("ExtractLenient", new[] { typeof(MetaObject), typeof(string) })!;
         MetaObject orderMo = root.FindObject("Order")!;
 
@@ -318,20 +333,19 @@ public sealed class ExtractorCodegenTests
         Assert.False((bool)report.GetType().GetMethod("HasLostRequired")!.Invoke(report, null)!);
     }
 
-    // ---- nested-enum-typed payload: strict typing + lenient mirror stays string ----
+    // ---- nested-enum-typed payload: POCO typing + lenient mirror stays string ----
 
     [Fact]
-    public void Strict_payload_types_enum_as_nested_enum_lenient_mirror_stays_string()
+    public void Poco_types_enum_as_nested_enum_lenient_mirror_stays_string()
     {
         var root = Load(Model);
 
-        // STRICT payload: enum scalar -> nested enum type; enum array -> IReadOnlyList<NestedEnum>.
-        var payloadSrc = PayloadCodegen.GeneratePayloadRecords(root, "Order");
-        Assert.Contains("public enum OrderPriority { LOW, HIGH }", payloadSrc);
-        Assert.Contains("public enum OrderLabels { A, B }", payloadSrc);
-        Assert.Contains("public required OrderPriority priority { get; init; }", payloadSrc);
-        Assert.Contains("public required IReadOnlyList<OrderLabels> labels { get; init; }", payloadSrc);
-        Assert.DoesNotContain("public required object priority", payloadSrc);
+        // The POCO (EntityGenerator): enum scalar -> nested enum type; enum array -> a collection of it.
+        var poco = Assert.Single(new EntityGenerator().Generate(Ctx(root)), f => f.Path == "Order.g.cs").Content;
+        Assert.Contains("public enum OrderPriority { LOW, HIGH }", poco);
+        Assert.Contains("public enum OrderLabels { A, B }", poco);
+        Assert.Contains("public OrderPriority Priority { get; set; }", poco);
+        Assert.Contains("public ICollection<OrderLabels> Labels { get; set; } = new List<OrderLabels>();", poco);
 
         // The extract mapper coerces the string mirror via System.Enum.Parse<NestedEnum>.
         var extractorSrc = Assert.Single(new ExtractorGenerator().Generate(Ctx(root))).Content;
@@ -339,16 +353,15 @@ public sealed class ExtractorCodegenTests
         Assert.Contains("System.Enum.Parse<Order.OrderLabels>(", extractorSrc);
 
         // LENIENT mirror: the enum leaf stays string-backed (scalar string?, array string list).
-        var ctx = Ctx(root);
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx)).Content;
-        Assert.Contains("string? priority { get; init; }", parserSrc);
-        Assert.Contains("IReadOnlyList<string?>? labels { get; init; }", parserSrc);
+        var mirror = Assert.Single(new OutputParserGenerator().Generate(Ctx(root)), f => f.Path == "OrderExtracted.g.cs").Content;
+        Assert.Contains("string? priority { get; init; }", mirror);
+        Assert.Contains("IReadOnlyList<string?>? labels { get; init; }", mirror);
         // No nested enum type bleeds into the lenient mirror.
-        Assert.DoesNotContain("OrderPriority priority", parserSrc);
-        Assert.DoesNotContain("OrderLabels", parserSrc);
+        Assert.DoesNotContain("OrderPriority", mirror);
+        Assert.DoesNotContain("OrderLabels", mirror);
     }
 
-    // ---- shared-enum dedup proof: one abstract enum, two extending fields, ONE decl ----
+    // ---- shared-enum proof: one abstract enum, two extending fields, ONE decl ----
 
     private const string SharedEnumModel = """
     { "metadata.root": { "package": "acme::orders", "children": [
@@ -362,30 +375,29 @@ public sealed class ExtractorCodegenTests
     """;
 
     [Fact]
-    public void Shared_abstract_enum_emits_one_nested_enum_both_fields_typed_by_super()
+    public void Shared_abstract_enum_emits_one_enum_both_fields_typed_by_super()
     {
         var root = Load(SharedEnumModel);
-        var payloadSrc = PayloadCodegen.GeneratePayloadRecords(root, "Ticket");
+        var all = string.Concat(new EntityGenerator().Generate(Ctx(root)).Select(f => f.Content));
 
-        // Exactly ONE nested enum declaration, named for the super (deduped), members verbatim.
-        int enumDeclCount = System.Text.RegularExpressions.Regex.Matches(payloadSrc, @"public enum Priority \{").Count;
-        Assert.True(enumDeclCount == 1, $"expected exactly one nested enum Priority, got {enumDeclCount}");
-        Assert.Contains("public enum Priority { LOW, HIGH }", payloadSrc);
+        // Exactly ONE enum declaration (FR-019's shared-enums file), named for the super.
+        int enumDeclCount = System.Text.RegularExpressions.Regex.Matches(all, @"public enum Priority \{").Count;
+        Assert.True(enumDeclCount == 1, $"expected exactly one enum Priority, got {enumDeclCount}");
 
         // BOTH fields typed by the shared enum.
-        Assert.Contains("public required Priority currentPriority { get; init; }", payloadSrc);
-        Assert.Contains("public required Priority previousPriority { get; init; }", payloadSrc);
+        Assert.Contains("public Priority CurrentPriority { get; set; }", all);
+        Assert.Contains("public Priority PreviousPriority { get; set; }", all);
     }
 
     private static Assembly Compile(MetaRoot root)
     {
         var ctx = Ctx(root);
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx)).Content;
-        var extractorSrc = Assert.Single(new ExtractorGenerator().Generate(ctx)).Content;
-        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n"
-            + PayloadCodegen.GeneratePayloadRecords(root, "Order");
+        // The parser + its mirrors, the extractor, and the value objects' own POCOs (ADR-0056).
+        var sources = new OutputParserGenerator().Generate(ctx).Select(f => f.Content)
+            .Append(Assert.Single(new ExtractorGenerator().Generate(ctx)).Content)
+            .Concat(GeneratedValueObjects.Sources(root));
 
-        var trees = new[] { parserSrc, extractorSrc, payloadSrc }
+        var trees = sources
             .Select(s => CSharpSyntaxTree.ParseText(s, new CSharpParseOptions(LanguageVersion.CSharp12)))
             .ToArray();
 

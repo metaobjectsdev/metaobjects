@@ -125,6 +125,40 @@ public static class PayloadAccessors
             return outList;
         }
 
+        // ADR-0056 — a generated value-object POCO. Its members are PascalCase C# properties
+        // that carry the metadata field name in [JsonPropertyName], while a template names the
+        // FIELD (`{{bio}}`). So the POCO is viewed as the map of its wire names, which also gives
+        // it the derived has<Field> accessors a map payload gets. Only a type that declares wire
+        // names is viewed this way: a record or anonymous object whose members ARE the field
+        // names keeps resolving by reflection, exactly as before.
+        if (WireNamedProperties(payload.GetType()) is { } props)
+        {
+            var asMap = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var (name, prop) in props) asMap[name] = prop.GetValue(payload);
+            return WithDerivedAccessors(asMap, depth);
+        }
+
         return payload;
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (string, System.Reflection.PropertyInfo)[]?>
+        WireNameCache = new();
+
+    /// <summary>
+    /// The readable public properties of <paramref name="type"/>, each keyed by its
+    /// <c>[JsonPropertyName]</c> (or its own name when it has none) — or null when no property
+    /// declares a wire name, which leaves the type to Mustache's reflection lookup.
+    /// </summary>
+    private static (string, System.Reflection.PropertyInfo)[]? WireNamedProperties(Type type) =>
+        WireNameCache.GetOrAdd(type, static t =>
+        {
+            var props = t.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+                .ToArray();
+            string? WireName(System.Reflection.PropertyInfo p) =>
+                (p.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), inherit: true)
+                    .FirstOrDefault() as System.Text.Json.Serialization.JsonPropertyNameAttribute)?.Name;
+            if (!props.Any(p => WireName(p) is not null)) return null;
+            return props.Select(p => (WireName(p) ?? p.Name, p)).ToArray();
+        });
 }
