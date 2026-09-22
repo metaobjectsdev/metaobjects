@@ -59,10 +59,15 @@ import static org.junit.Assert.assertTrue;
  * rather than a local concession. The generated controller is compiled and booted over
  * real HTTP in {@code integration-tests}, which does have Spring on its test classpath.
  *
- * <p>The capability-tier generators (output-parser / output-prompt / render-helper /
- * extractor / trace-helper) are absent because they key off
- * {@code template.*} nodes and this corpus declares none — including them would emit
- * nothing and read as coverage that is not there.
+ * <p>The TEMPLATE capability tier (output-parser / output-prompt / render-helper) IS in
+ * scope as of 2026-09-22. It used to be excluded on the grounds that the corpus declared
+ * no {@code template.*} node, which was true and was the whole problem: the tier that
+ * ADR-0056 rewrote sat outside the one gate that asks whether emitted code builds, and a
+ * lowercase-initial template name duly shipped emitting a TypeScript extractor importing
+ * a symbol its parser exports under a different capitalization. The corpus now declares a
+ * responding {@code template.prompt} (deliberately lowercase-initial), so the exclusion no
+ * longer describes anything. {@code trace-helper} stays out: it keys off an
+ * {@code LlmCallBase} subclass, which this corpus still has none of.
  *
  * <p>The peer lanes are the same test in each port. If one port drops out, that port
  * keeps precisely the bug class this exists to catch — so a skip here is never "just this
@@ -83,8 +88,8 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
      * {@code MetaDataGeneratorMojo} opens around a real build — so a selection in which two
      * generators claim one output path fails here instead of resolving by generator order.
      */
-    private void generateAndCompile(String label, Map<String, Map<String, String>> selection)
-            throws Exception {
+    private void generateAndCompile(String label, Map<String, Map<String, String>> selection,
+            int minFiles, String... expectedTypes) throws Exception {
         String canonicalMeta = Files.readString(
             SpringTestFixtures.findCorpusRoot().resolve("canonical/meta.fitness.json"), StandardCharsets.UTF_8);
 
@@ -112,9 +117,24 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
             emitted = s.filter(p -> p.toString().endsWith(".java")).count();
         }
         assertFalse(label + ": the shared corpus generated no .java files at all", emitted == 0);
+        // The floor is PER SELECTION. It used to be a flat `> 16`, calibrated for the
+        // entity fan-out — which a template-only selection cannot reach (it emits one
+        // artifact per template plus the value objects), so the count was a floor for one
+        // selection and a trap for the next.
         assertTrue(
-            label + ": expected the tier over a 16-entity corpus, saw only " + emitted + " file(s)",
-            emitted > 16);
+            label + ": expected at least " + minFiles + " file(s) from this selection, saw " + emitted,
+            emitted >= minFiles);
+
+        // A compile gate passes trivially on an empty emit, so name what this selection
+        // must have produced. A corpus edit that drops the nodes fails here loudly rather
+        // than leaving the lane green over a model with nothing in it.
+        for (String type : expectedTypes) {
+            boolean found;
+            try (Stream<Path> s2 = Files.walk(outDir)) {
+                found = s2.anyMatch(p -> p.getFileName().toString().equals(type + ".java"));
+            }
+            assertTrue(label + ": expected " + type + ".java in the emitted tree", found);
+        }
 
         // Fails with every diagnostic plus a dump of every generated source file.
         SpringTestFixtures.compileGenerated(outDir, tempFolder.newFolder("classes-" + label).toPath());
@@ -128,12 +148,25 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
             case "repository":       return new SpringRepositoryGenerator();
             case "filter-allowlist": return new SpringFilterAllowlistGenerator();
             case "names":            return new SpringNamesGenerator();
+            case "output-parser":    return new SpringOutputParserGenerator();
+            case "output-prompt":    return new SpringOutputPromptGenerator();
+            case "render-helper":    return new SpringRenderHelperGenerator();
             default: throw new IllegalArgumentException("unmapped generator: " + stableName);
         }
     }
 
     private static final Map<String, String> PLAIN = Map.of();
     private static final Map<String, String> AS_CLASS = Map.of("type", "class", "flavor", "pojoAware");
+
+    /**
+     * The render-helper and output-prompt generators run a BUILD-TIME drift gate, so they
+     * need the on-disk mustache the corpus's {@code @textRef} points at. The corpus ships
+     * it beside the model, so every port's lane resolves the same bytes.
+     */
+    private static Map<String, String> withTemplateRoot() {
+        return Map.of("templateRoot",
+            SpringTestFixtures.findCorpusRoot().resolve("canonical/prompts").toString());
+    }
 
     /**
      * The plain Java model tier: POJO classes plus the physical-name constants they pair
@@ -144,7 +177,7 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
         Map<String, Map<String, String>> selection = new LinkedHashMap<>();
         selection.put("entity", AS_CLASS);
         selection.put("names", PLAIN);
-        generateAndCompile("model", selection);
+        generateAndCompile("model", selection, 17);
     }
 
     /**
@@ -165,6 +198,28 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
         selection.put("repository", PLAIN);
         selection.put("filter-allowlist", PLAIN);
         selection.put("names", PLAIN);
-        generateAndCompile("web", selection);
+        generateAndCompile("web", selection, 17);
+    }
+
+    /**
+     * The TEMPLATE tier, compiled as one program with the value objects it references.
+     *
+     * <p>{@code value-object} is in the selection because ADR-0056 made the template tier
+     * reference each value object's OWN record rather than a template-named copy — so the
+     * tier does not compile alone, and a selection that left it out would prove nothing
+     * about the reference. {@code entity} stays out for the same reason it does in the web
+     * tier: it and {@code value-object} both claim the output path of an
+     * {@code object.value}.
+     */
+    @Test
+    public void theTemplateTierCompiles() throws Exception {
+        Map<String, Map<String, String>> selection = new LinkedHashMap<>();
+        selection.put("value-object", PLAIN);
+        selection.put("render-helper", withTemplateRoot());
+        selection.put("output-prompt", withTemplateRoot());
+        selection.put("output-parser", withTemplateRoot());
+        generateAndCompile("template", selection, 6,
+            "CoachNoteRenderHelper", "CoachNoteResponseFormat", "CoachNoteParser",
+            "ProgramBrief", "ProgramVerdict", "WeekLabel");
     }
 }

@@ -13,7 +13,53 @@ here.**
 _`metamodelVersion` stays `1.0`. The `requirement.*` change below is a prose-only manifest
 edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was._
 
+**Upgrading — read these three before you regenerate.**
+
+1. **`meta gen` is required** (`dotnet meta gen` / `mvn metaobjects:generate` /
+   `metaobjects gen`), and for anyone using templates the diff is large: a value object is
+   now generated **once**, at its own location, and the template-named copies are gone
+   ([ADR-0056], #387). Wire the value-object generator in any run that wires a template-tier
+   generator, drop the `payload` generator, and delete the files that are no longer emitted —
+   `meta gen` never deletes one, and `meta verify --codegen` names them. Full list:
+   [migration guide](docs/features/migrations/value-object-types-are-generated-once.md).
+2. **One metadata shape stops loading**: an M:N junction whose two `identity.reference`
+   children cannot be PAIRED to the two entities it joins is now an error in every port,
+   where before it loaded clean and then behaved differently per port. If your junction
+   loads today it is unaffected; if it does not, the error names the reference.
+3. **The filter/sort 400 envelope gained a required `field` member** in every port. Consumers
+   gain a key and lose nothing, but a hand-written caller of the JVM/C# `FilterParseResult`
+   needs one edit.
+
+[ADR-0056]: spec/decisions/ADR-0056-value-object-types-are-generated-once.md
+
 ### Changed
+
+- **A responding `template.prompt` now gets a generated render helper in C#, Java, Kotlin
+  and Python — previously only TypeScript did.** Each of those four ports' `render-helper`
+  generator filtered `template.output`, so an adopter could parse a model's reply from
+  generated code but had to call the render engine by hand to produce the prompt that
+  elicited it. ADR-0052 makes the template subtype axis DIRECTION, and both directions
+  RENDER — only what comes back differs — so the filter was reading the wrong axis. The
+  generator now emits for every renderable template; a prompt carries no `@kind`, so it
+  takes the document shape and the email branch stays output-only. TypeScript is unchanged:
+  there a prompt's render handle is the separate `prompt-render` generator, and that split is
+  now stated in `fixtures/generator-registry-conformance/registry.json` rather than implied.
+  **Generated-output change — regenerate to pick it up; three-way merge preserves hand
+  edits.**
+
+- **Versioning: the generator tier is CONVENIENCE, and convenience is always a PATCH**
+  ([ADR-0035](spec/decisions/ADR-0035-one-zero-stability-commitment-and-version-unification.md)
+  **Amendment 4**). Adding a generator, changing what one emits, or rewriting a reference
+  template is a PATCH in every case, however large the diff — because scaffold-and-own means
+  an adopter holds a COPY and takes our edit only by re-running `meta gen` and accepting the
+  diff, which is precisely the opt-in a MINOR exists to signal. What still moves the package
+  number: the codegen ENGINE's surface, a runtime library's surface, CLI semantics. What
+  still moves `metamodelVersion`: registered vocabulary, the canonical/interchange format,
+  the wire contract. This supersedes three rows of `docs/RELEASING.md`'s change-class table
+  and the litmus test above it, both of which reasoned from "did generated output change".
+  The changelog convention is untouched and matters more now: an output-changing release
+  still says so, because the changelog rather than the version number is how an adopter
+  learns a regen is worth running.
 
 - **A template's payload and response types are now its value objects' own types, in every
   port — the `payload` generator is removed ([ADR-0056](spec/decisions/ADR-0056-value-object-types-are-generated-once.md),
@@ -277,6 +323,37 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   rule, not four local concessions. The fan-out found five further real defects, fixed below.
 
 ### Fixed
+
+- **TypeScript: a template whose name starts lowercase generated code that does not
+  compile.** The `extractor` generator emitted `import { extractLenient<rawName>WithLoader }`
+  while the `output-parser` generator exports `extractLenient<CapitalizedName>WithLoader`, so
+  a `template.prompt` named `shipmentRisk` produced a module importing a symbol nothing
+  declares — `meta gen` exits 0 and the adopter's `tsc` is the first thing that disagrees.
+  The cause was one split, not a typo: `render-helper`, `output-parser` and `prompt-render`
+  route the template name through `templateSymbolBase()` while `extractor`, `output-prompt`
+  and the api-docs model interpolated it raw, so a single model emitted `renderShipmentRisk`
+  beside `rendershipmentRiskFormat` and `extractshipmentRisk`. Every site now uses
+  `templateSymbolBase()`, which also stops `meta docs`' API reference naming symbols codegen
+  does not emit. A template name that already began uppercase is byte-identical.
+
+- **Kotlin: template-tier type names are capitalized, as `renderHelperName` always was.**
+  `responseFormatName`, `parserName` and `extractorName` interpolated the template name raw,
+  so a lowercase-initial template produced `object coachNoteParser` beside
+  `object CoachNoteRenderHelper` — one model, two conventions, and a Kotlin type named like a
+  variable. Java and C# capitalize all four. Found by the new compile gate below on its first
+  run. **Generated-output change** for a lowercase-initial template name only.
+
+- **The codegen-compile gate now covers the template tier, in all five ports.** Its shared
+  model, `fixtures/persistence-conformance/canonical/meta.fitness.json`, declared no
+  `template.*` node at all — so the tier ADR-0056 rewrote sat outside the one gate that asks
+  whether emitted code BUILDS, which is how both defects above shipped with every behaviour
+  corpus green. The corpus now declares a responding `template.prompt` named `coachNote`
+  (deliberately lowercase-initial, deliberately carrying `@responseRef`) plus its three value
+  objects and the mustache it renders; the nodes are sourceless, so `canonical/schema.postgres.sql`
+  is untouched and no persistence scenario sees them. The TypeScript lane was
+  mutation-checked: reintroducing the extractor defect turns it red with the original error.
+  What it deliberately does not cover, and why, is recorded in
+  `fixtures/persistence-conformance/README.md`.
 
 - **TypeScript: a `field.timestamp` reached the wire as Postgres' own text,
   `"2026-09-20 12:00:00+00"`, not ISO 8601.** `docs/features/api-contract.md` (and

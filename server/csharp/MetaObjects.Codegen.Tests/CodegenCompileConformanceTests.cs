@@ -31,10 +31,14 @@
 // compiled. Both goldens and their generator can be wrong together — and were.
 //
 // WHAT IT RUNS: entity + db-context + filter-allowlist + callable, plus names on the
-// selection that includes it. The prompt-tier generators (output-parser / output-prompt /
-// render-helper / extractor) are absent because they key off `template.*` nodes and this
-// corpus declares none — adding them would emit nothing and read as coverage that is not
-// there.
+// selection that includes it. The PROMPT tier (output-parser / output-prompt /
+// render-helper / extractor) is in scope as of 2026-09-22, as its own selection. It used to
+// be excluded on the grounds that the corpus declared no `template.*` node, which was true
+// and was the whole problem: the tier ADR-0056 rewrote sat outside the one gate that asks
+// whether emitted code compiles, and a lowercase-initial template name duly shipped
+// emitting a TypeScript extractor importing a symbol its parser exports under a different
+// capitalization. The corpus now declares a responding `template.prompt`, deliberately
+// lowercase-initial.
 //
 // WHAT IT EXCLUDES: RoutesGenerator, the one generator here whose output imports the
 // ASP.NET Core shared framework, which is not in the TRUSTED_PLATFORM_ASSEMBLIES sandbox
@@ -85,6 +89,11 @@ public class CodegenCompileConformanceTests
     {
         { "entity,db-context,filter-allowlist,callable,names", true },
         { "entity,db-context,filter-allowlist,callable", false },
+        // The template tier. `entity` rides with it because ADR-0056 made the tier
+        // reference each value object's OWN POCO rather than a template-named copy, so it
+        // does not compile alone and a selection without it would prove nothing about the
+        // reference.
+        { "entity,db-context,filter-allowlist,callable,names,render-helper,output-prompt,output-parser,extractor", true },
     };
 
     [Theory]
@@ -120,8 +129,45 @@ public class CodegenCompileConformanceTests
         };
         if (includeNames) generators.Add(new NamesGenerator());
 
+        // The template tier is ADDED to the coherent base selection, never substituted for
+        // it. Clearing the list and generating the tier alone reproduced precisely the
+        // CS0103 this gate exists to catch — `entity` references `<Owner>Names` under
+        // IncludeNames, and the query helpers reference AppDbContext from `db-context`, so
+        // a tier-only run is an incoherent selection rather than a narrower one.
+        var isTemplateTier = selection.Contains("render-helper", StringComparison.Ordinal);
+        if (isTemplateTier)
+        {
+            generators.Add(new RenderHelperGenerator(CorpusPaths.FitnessTemplateRoot));
+            generators.Add(new OutputPromptGenerator());
+            generators.Add(new OutputParserGenerator());
+            generators.Add(new ExtractorGenerator());
+        }
+
         var files = generators.SelectMany(g => g.Generate(ctx)).ToList();
         Assert.True(files.Count > 0, $"selection '{selection}' generated no files at all");
+
+        if (isTemplateTier)
+        {
+            // A compile gate passes trivially on an empty emit, so name what this selection
+            // must have produced rather than trusting a file count.
+            var emitted = files.Select(f => Path.GetFileName(f.Path)).ToHashSet(StringComparer.Ordinal);
+            // This port names a template artifact `<templateName>.<tier>.cs` — the authored
+            // template name as the stem, as the TS port does, while the JVM ports use
+            // `<CapitalizedName><Tier>` because a JVM file name must match its public type.
+            // That split is idiomatic per-port file naming, not a divergence: the CLASS
+            // names inside are capitalized in every port.
+            foreach (var expected in new[]
+                     {
+                         "coachNote.render.cs", "coachNote.response.cs",
+                         "coachNote.responseFormat.cs",
+                         "ProgramBrief.g.cs", "ProgramVerdict.g.cs", "WeekLabel.g.cs",
+                         "ProgramVerdictExtracted.g.cs",
+                     })
+            {
+                Assert.True(emitted.Contains(expected),
+                    $"expected {expected} in the emitted tree; saw {string.Join(", ", emitted.OrderBy(x => x, StringComparer.Ordinal))}");
+            }
+        }
 
         var trees = files
             .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))

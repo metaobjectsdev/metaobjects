@@ -39,6 +39,10 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { namesFile } from "../src/generators/names-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { barrel } from "../src/generators/barrel.js";
+import { promptRender } from "../src/generators/prompt-render-file.js";
+import { outputPrompt } from "../src/generators/output-prompt-file.js";
+import { outputParser } from "../src/generators/output-parser-file.js";
+import { extractor } from "../src/generators/extractor-file.js";
 import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
@@ -103,12 +107,38 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
           entityFile({ allowlists: false }),
           namesFile(),
           queriesFile(),
+          // The TEMPLATE tier. It was absent until 2026-09-22, and its absence is how a
+          // lowercase-initial template name shipped emitting an extractor that imported
+          // `extractLenient<raw>WithLoader` while the parser exports
+          // `extractLenient<Base>WithLoader` — the emit parses, `gen` exits 0, and only a
+          // compiler disagrees. That is precisely this gate's job, so the tier belongs in
+          // it. The corpus's `coachNote` is deliberately lowercase-initial.
+          promptRender(),
+          outputPrompt(),
+          outputParser(),
+          extractor(),
           barrel(),
         ];
         const files = (
           await Promise.all(generators.map((g) => g.generate(genCtx(g))))
         ).flat();
         expect(files.length).toBeGreaterThan(0);
+        // A compile gate passes trivially when nothing is emitted, so assert the TIER is
+        // present by name rather than trusting a file count. If a corpus edit ever drops
+        // the template nodes, this fails loudly instead of the gate quietly measuring a
+        // model with no prompts in it.
+        const emitted = new Set(files.map((f) => f.path));
+        for (const expected of [
+          "coachNote.response.ts",
+          "coachNote.responseFormat.ts",
+          "coachNote.extractor.ts",
+          "prompts.ts",
+          "ProgramBrief.ts",
+          "ProgramVerdict.ts",
+          "WeekLabel.ts",
+        ]) {
+          expect([...emitted]).toContain(expected);
+        }
         for (const f of files) writeFileSync(join(dir, f.path), f.content);
 
         const program = ts.createProgram(

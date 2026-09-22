@@ -84,7 +84,12 @@ class CodegenCompileConformanceTest {
      * mojo opens around a real build — so a selection in which two generators claim one
      * output path fails here instead of resolving by generator order.
      */
-    private fun generateAndCompile(label: String, generators: List<Pair<String, Generator>>) {
+    private fun generateAndCompile(
+        label: String,
+        generators: List<Pair<String, Generator>>,
+        minFiles: Int,
+        expectedFiles: List<String> = emptyList(),
+    ) {
         val canonical = findCorpusRoot().resolve("canonical")
         val outDir = Files.createTempDirectory("codegen-compile-$label-")
         try {
@@ -103,18 +108,35 @@ class CodegenCompileConformanceTest {
                     gen.setArgs(mapOf(
                         "outputDir" to outDir.toString(),
                         "packageName" to "fitness",
+                        // The render-helper and output-prompt generators run a BUILD-TIME
+                        // drift gate, so they need the on-disk mustache the corpus's
+                        // @textRef points at; inert for every other generator here.
+                        "templateRoot" to canonical.resolve("prompts").toString(),
                     ))
                     gen.execute(loader)
                 }
             }
 
-            val sources = Files.walk(outDir)
+            // Collect the PATHS first: the emitted file names are asserted below, and
+            // reading them back off SourceFile loses the element type through the Java
+            // stream's toList().
+            val emittedPaths: List<java.nio.file.Path> = Files.walk(outDir)
                 .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
-                .map { SourceFile.kotlin(it.fileName.toString(), it.readText()) }
                 .toList()
+            val emittedNames: Set<String> = emittedPaths.map { it.fileName.toString() }.toSet()
+            val sources = emittedPaths.map { SourceFile.kotlin(it.fileName.toString(), it.readText()) }
 
-            assertTrue(sources.size > 16,
-                "$label: expected the tier over a 16-entity corpus, saw only ${sources.size} file(s)")
+            // The floor is PER SELECTION. It used to be a flat `> 16`, calibrated for the
+            // entity fan-out — a template-only selection cannot reach that, so the count
+            // was a floor for one selection and a trap for the next.
+            assertTrue(sources.size >= minFiles,
+                "$label: expected at least $minFiles file(s) from this selection, saw ${sources.size}")
+            // A compile gate passes trivially on an empty emit, so name what this
+            // selection must have produced.
+            for (expected in expectedFiles) {
+                assertTrue(expected in emittedNames,
+                    "$label: expected $expected in the emitted tree; saw $emittedNames")
+            }
 
             val result = KotlinCompilation().apply {
                 this.sources = sources
@@ -139,6 +161,31 @@ class CodegenCompileConformanceTest {
             "KotlinRelationsGenerator" to KotlinRelationsGenerator(),
             "KotlinFilterAllowlistGenerator" to KotlinFilterAllowlistGenerator(),
             "KotlinValidatorGenerator" to KotlinValidatorGenerator(),
+        ), minFiles = 17)
+    }
+
+    /**
+     * The TEMPLATE tier, compiled as one program with the value objects it references.
+     *
+     * This selection did not exist until 2026-09-22: the corpus declared no `template.*`
+     * node, so the tier ADR-0056 rewrote sat outside the one gate that asks whether
+     * emitted code BUILDS. `KotlinEntityGenerator` is in the selection because ADR-0056
+     * made the template tier reference each value object's OWN type rather than a
+     * template-named copy — the tier does not compile without it, and a selection that
+     * left it out would prove nothing about the reference.
+     */
+    @Test
+    fun `the Kotlin template tier compiles`() {
+        generateAndCompile("template", listOf(
+            "KotlinEntityGenerator" to KotlinEntityGenerator(),
+            "KotlinRenderHelperGenerator" to KotlinRenderHelperGenerator(),
+            "KotlinOutputPromptGenerator" to KotlinOutputPromptGenerator(),
+            "KotlinOutputParserGenerator" to KotlinOutputParserGenerator(),
+            "KotlinExtractorGenerator" to KotlinExtractorGenerator(),
+        ), minFiles = 6, expectedFiles = listOf(
+            "CoachNoteRenderHelper.kt", "CoachNoteResponseFormat.kt",
+            "CoachNoteParser.kt", "CoachNoteExtractor.kt",
+            "ProgramBrief.kt", "ProgramVerdict.kt", "WeekLabel.kt",
         ))
     }
 }

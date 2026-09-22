@@ -39,12 +39,17 @@ RoutesGenerator, Java omits SpringControllerGenerator) — the framework tier is
 the api-contract integration lane, which boots the generated router over real HTTP. It
 also keeps this file runnable without ``--extra integration``.
 
-The prompt-tier generators (output-parser / output-prompt / render-helper / extractor /
-trace-helper) are absent because they key off ``template.*`` nodes and this corpus
-declares none — including them would emit nothing and read as coverage that is not
-there. That tier imports the entity tier's value-object models (ADR-0056); the pair is
-generated, imported and run together by ``test_extract_tier_collision.py`` and
-``test_render_helper_conformance.py``.
+The PROMPT tier (output-parser / output-prompt / render-helper / extractor) IS in scope
+as of 2026-09-22. It used to be excluded on the grounds that the corpus declared no
+``template.*`` node, which was true and was the whole problem: the tier ADR-0056 rewrote
+sat outside the one gate that asks whether emitted code runs, and a lowercase-initial
+template name duly shipped emitting a TypeScript extractor importing a symbol its parser
+exports under a different capitalization. The corpus now declares a responding
+``template.prompt`` (deliberately lowercase-initial). The tier imports the entity tier's
+value-object models (ADR-0056), so ``entity_model`` is generated with it — the pair is
+additionally exercised by ``test_extract_tier_collision.py`` and
+``test_render_helper_conformance.py``. ``trace-helper`` stays out: it keys off an
+``LlmCallBase`` subclass, which this corpus still has none of.
 
 The peer lanes are the same test in each port. If one port drops out, that port keeps
 precisely the bug class this exists to catch — so a skip here is never "just this lane".
@@ -63,6 +68,10 @@ from metaobjects.codegen.generators.filter_allowlist_generator import (
     filter_allowlist_generator,
 )
 from metaobjects.codegen.generators.names_generator import names_generator
+from metaobjects.codegen.generators.output_parser_generator import output_parser_generator
+from metaobjects.codegen.generators.output_prompt_generator import output_prompt_generator
+from metaobjects.codegen.generators.render_helper_generator import render_helper_generator
+from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.runner import run_gen
 
 # tests/codegen/ -> tests -> python -> server -> repo root
@@ -93,13 +102,38 @@ def _generate(out_dir: Path) -> list[Path]:
     an importable package. A harness that skipped it would measure itself.
     """
     config = GenConfig(out_dir=str(out_dir), emit_package_init=True)
+    # render-helper runs a BUILD-TIME drift gate, so it needs the on-disk mustache the
+    # corpus's @textRef points at; it ships beside the model so every port's lane resolves
+    # the same bytes. On this port output-prompt takes no template_root — it bakes the
+    # fragment from the payload field tree and reads no text.
+    template_root = str(CORPUS.parent / "prompts")
     result = run_gen(
         config,
         _load_corpus(),
-        generators=[entity_model(), names_generator(), filter_allowlist_generator()],
+        generators=[
+            entity_model(),
+            names_generator(),
+            filter_allowlist_generator(),
+            render_helper_generator(template_root=template_root),
+            output_prompt_generator(),
+            output_parser_generator(),
+            extractor_generator(),
+        ],
     )
     written = sorted(out_dir.rglob("*.py"))
     assert written, f"the corpus generated no Python modules at all: {result.warnings}"
+    # A gate that imports whatever was emitted passes trivially on an empty prompt tier,
+    # so name what the corpus must have produced.
+    names = {p.name for p in written}
+    for expected in (
+        "ProgramBrief.py",
+        "ProgramVerdict.py",
+        "WeekLabel.py",
+        "coach_note_response_parser.py",
+        "coach_note_response_format.py",
+        "coach_note_extractor.py",
+    ):
+        assert expected in names, f"expected {expected} in the emitted tree; saw {sorted(names)}"
     return written
 
 

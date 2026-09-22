@@ -33,4 +33,12 @@ internal static class CorpusPaths
     /// <summary>The shared fitness corpus every codegen gate generates from.</summary>
     internal static string FitnessMetadata =>
         Path.Combine(RepoRoot(), "fixtures", "persistence-conformance", "canonical", "meta.fitness.json");
+
+    /// <summary>
+    /// The on-disk mustache the corpus's <c>@textRef</c> points at. The render-helper
+    /// generator runs a build-time drift gate against it, and it ships beside the model so
+    /// every port's lane resolves the same bytes.
+    /// </summary>
+    internal static string FitnessTemplateRoot =>
+        Path.Combine(RepoRoot(), "fixtures", "persistence-conformance", "canonical", "prompts");
 }

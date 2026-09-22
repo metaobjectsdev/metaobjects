@@ -272,6 +272,42 @@
           { "field.object":    { "name": "labels", "@objectRef": "Label", "@storage": "jsonb", "isArray": true } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } }
         ]
+      }},
+
+
+      { "object.value": {
+        "name": "WeekLabel",
+        "children": [
+          { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } }
+        ]
+      }},
+
+      { "object.value": {
+        "name": "ProgramBrief",
+        "children": [
+          { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+          { "field.int":    { "name": "weekCount" } },
+          { "field.object": { "name": "weekLabels", "@objectRef": "WeekLabel", "isArray": true } }
+        ]
+      }},
+
+      { "object.value": {
+        "name": "ProgramVerdict",
+        "children": [
+          { "field.enum":   { "name": "verdict", "@required": true, "@values": ["GOOD", "OK", "POOR"] } },
+          { "field.string": { "name": "rationale", "@required": true, "@maxLength": 480 } }
+        ]
+      }},
+
+
+      { "template.prompt": {
+        "name": "coachNote",
+        "@payloadRef": "ProgramBrief",
+        "@responseRef": "ProgramVerdict",
+        "@textRef": "fitness/coach-note",
+        "@format": "text",
+        "@responseFormat": "json",
+        "@promptStyle": "guide"
       }}
     ]
   }

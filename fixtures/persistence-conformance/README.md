@@ -50,6 +50,39 @@ test (`schema-artifact.test.ts`) **drift-checks** the committed file against wha
 the generator would produce, so CI fails if the artifact diverges from the
 metadata — this dog-foods the "TS owns schema" contract.
 
+## The template tier in `meta.fitness.json` (added 2026-09-22)
+
+The corpus also declares a responding `template.prompt` named **`coachNote`** with its
+three value objects (`ProgramBrief`, its nested `WeekLabel`, and the `ProgramVerdict`
+response), plus the mustache it renders at `canonical/prompts/fitness/coach-note.mustache`.
+These nodes are **sourceless**, so they add no table and leave `canonical/schema.postgres.sql`
+untouched — nothing in the persistence scenarios sees them.
+
+They are here for the **codegen-compile gate**, which generates from this model in all five
+ports and compiles the result. Until this landed, the corpus declared no `template.*` node at
+all, so the entire prompt tier — the tier ADR-0056 rewrote — sat outside the one gate that
+asks whether emitted code BUILDS. That is how a lowercase-initial template name shipped in
+1.0.5 emitting a TypeScript extractor that imported `extractLenient<raw>WithLoader` while
+its parser exports `extractLenient<Capitalized>WithLoader`: `gen` exits 0, every behaviour
+corpus stays green, and the adopter's compiler is the first thing that disagrees. A second
+defect of the same shape turned up in Kotlin on the first run (`coachNoteParser` beside
+`CoachNoteRenderHelper`).
+
+**Two properties of the declaration are load-bearing, so do not "tidy" them:**
+
+- **The name starts lowercase.** Every port derives symbols from a template's name, and a
+  port that interpolates it raw where its siblings capitalize emits a tier that does not
+  compile. A corpus whose template names all start uppercase cannot see that.
+- **`@responseRef` is present,** which makes it a *responding* prompt (FR-006) and is what
+  activates the whole inbound tier — response type, output-format fragment, strict parser,
+  tolerant extractor. Drop it and the gate covers the outbound half only.
+
+**What it deliberately does NOT cover:** a nested value object shared by templates in **two
+packages** (#387's shape). This corpus is single-package, and giving it a second package is a
+structural change the persistence runners would feel for no gain here — that case is gated by
+each port's own unit tests (e.g. Kotlin's `KotlinTemplateTierValueObjectTest`) and by the
+adopter estate. Stated so the boundary is a decision rather than an omission.
+
 ## Two scenario kinds
 
 ### Migration scenarios (`migrations/*.yaml`)
