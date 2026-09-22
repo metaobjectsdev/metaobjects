@@ -143,7 +143,10 @@ public final class GeneratorRegistry {
         register(m, "routes", SpringControllerGenerator.class.getName(),
                 "Per-entity Spring @RestController endpoint surface.", Tier.NATIVE, Layer.API);
         register(m, "output-parser", SpringOutputParserGenerator.class.getName(),
-                "Per-template tolerant output parser (recover-on-receipt).", Tier.NATIVE, Layer.CAPABILITY);
+                "Per-template tolerant output parser (recover-on-receipt). [Emitted code imports "
+                    + "com.metaobjects.object.extract, so the consuming module needs a "
+                    + "`metaobjects-om` dependency — without it the generated parser does not "
+                    + "compile and nothing in the build says why.]", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "output-prompt", SpringOutputPromptGenerator.class.getName(),
                 "Per-template output-format prompt fragment generator.", Tier.NATIVE, Layer.CAPABILITY);
         register(m, "render-helper", SpringRenderHelperGenerator.class.getName(),

@@ -117,7 +117,10 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
     ),
     "output-parser" to GeneratorInfo(
         name = "output-parser",
-        description = "Per-template tolerant output parser (recover-on-receipt).",
+        description = "Per-template tolerant output parser (recover-on-receipt). [Emitted code " +
+            "imports com.metaobjects.object.extract, so the consuming module needs a " +
+            "`metaobjects-om` dependency — without it the generated parser does not compile " +
+            "and nothing in the build says why.]",
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinOutputParserGenerator,
