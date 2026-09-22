@@ -903,10 +903,15 @@ def _int_value_map(field: MetaField) -> dict[Any, Any] | None:
 def _decode_read_value(field: MetaField, value: Any) -> Any:
     """Decode a stored value back to its authoring form on read.
 
-    The inverse of :func:`_coerce_write_value`'s int-backed-enum branch, and
-    today its only case: the column holds the member's integer, callers expect
-    the member SYMBOL. Every other field subtype is returned verbatim, keeping
-    ADR-0019's "runtime returns native in-process types" contract intact.
+    Two cases. The inverse of :func:`_coerce_write_value`'s int-backed-enum branch:
+    the column holds the member's integer, callers expect the member SYMBOL. And
+    ``field.currency``, whose native type is ``int`` minor units: a table column is
+    BIGINT and already reads back as an ``int``, but a VIEW column need not be —
+    ``SUM`` over BIGINT is Postgres ``numeric``, read back as a ``Decimal``, which a
+    FastAPI route then serializes as a JSON STRING. An integral ``Decimal`` is
+    decoded to ``int``; a fractional one (an ``avg`` over minor units) has no honest
+    ``int`` and is returned as read. Every other field subtype is returned verbatim,
+    keeping ADR-0019's "runtime returns native in-process types" contract intact.
 
     An int with no member RAISES. The database then holds a value the model says
     is impossible — a hand-written INSERT, or a member removed without a
@@ -918,6 +923,10 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
     """
     if value is None:
         return None
+    if field.sub_type == fc.FIELD_SUBTYPE_CURRENCY:
+        if isinstance(value, _decimal.Decimal) and value == value.to_integral_value():
+            return int(value)
+        return value
     if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
         return value
     int_map = _int_value_map(field)

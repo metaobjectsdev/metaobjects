@@ -937,7 +937,12 @@ class RouterGenerator:
         # Subtype-keyed repository Protocol (None == the polymorphic base).
         parts.append(f"class {repo_class}(Protocol):")
         parts.append('    """GENERATED — TPH seam. `subtype` is the @discriminatorValue, or None for')
-        parts.append('    the polymorphic base; the consumer scopes the single table accordingly."""')
+        parts.append('    the polymorphic base; the consumer scopes the single table accordingly.')
+        parts.append("")
+        parts.append("    For `subtype=None` the base collection is the discriminated union: each row")
+        parts.append("    carries its OWN subtype's fields, and `find_by_id(None, id)` likewise. The")
+        parts.append("    route returns what this returns. ObjectManager's base read projects only the")
+        parts.append("    base's columns, so read a base row through its own subtype entity.\"\"\"")
         parts.append("    def list(")
         parts.append("        self,")
         parts.append("        subtype: str | None,")

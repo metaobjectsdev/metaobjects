@@ -130,6 +130,18 @@ def test_base_router_polymorphic_plus_per_subtype(entities, index) -> None:
 # ---- filter allowlist: base folds in subtype-only filterable columns -------
 
 
+def test_base_seam_states_the_discriminated_union_obligation(entities, index) -> None:
+    # The router returns whatever the consumer's repository returns, and the natural
+    # repository — ObjectManager — reads a TPH BASE with the base's columns only (the
+    # persistence contract in every port). An adopter wiring one to the other served
+    # `GET /<base>` without any subtype field and nothing errored. The seam says so.
+    src = render_router(entities["Auth"], index)
+    assert src is not None
+    prose = " ".join(src.split())  # the docstring wraps; assert on its words
+    assert "each row carries its OWN subtype's fields" in prose
+    assert "ObjectManager's base read projects only the base's columns" in prose
+
+
 def test_base_allowlist_unions_subtype_fields(entities, index) -> None:
     src = render_filter_allowlist(entities["Auth"], index)
     assert src is not None

@@ -302,6 +302,26 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   reference server and the Python in-memory seam ignored the filter and returned every row,
   and the TS reference server's allowlist gave the discriminator no operators.
 
+- **Python runtime: a `field.currency` read from a view answered as a JSON STRING, not
+  integer minor units.** A table's currency column is BIGINT, which the driver already hands
+  back as an `int`. A view's need not be: `SUM` over BIGINT is Postgres `numeric`, read back
+  as a `Decimal`, and a FastAPI route serializes a `Decimal` as a string — so
+  `GET /api/shipment_summaries` answered `"totalRate": "100000"` where the contract says
+  `100000`, while the entity routes beside it were right. The value's wire form depended on
+  the physical column type instead of the declared field. `ObjectManager`'s read codec now
+  decodes an integral currency value to `int` whatever the column type; a fractional one (an
+  `avg` over minor units) has no honest integer and is returned as read. Found by an adopter
+  estate's Python port once its read-only projection router existed (1.0.5's F22 fix).
+
+- **Python codegen: the generated TPH repository Protocol now states what the base
+  collection must return.** The router returns whatever the consumer's repository returns,
+  and the natural repository — `ObjectManager` — reads a TPH base with the base's columns
+  only (the persistence contract in every port). An adopter wiring one to the other served
+  `GET /api/<base>` with every subtype field missing and nothing erroring. The Protocol's
+  docstring now says that for `subtype=None` each row carries its OWN subtype's fields, and
+  how to get them. **Generated output changes (a docstring only)** — run `metaobjects gen`
+  to pick it up.
+
 - **Maven plugin: a relative `<sourceDir>` resolved against the shell's working directory,
   not the module.** The documented `<sourceDir>src/main/metaobjects</sourceDir>` therefore
   failed `SourceDir [src/main/metaobjects] does not exist` in any multi-module reactor build
