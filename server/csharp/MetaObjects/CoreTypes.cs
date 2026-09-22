@@ -59,6 +59,12 @@ public static class CoreTypes
         // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core
         // field types. Mirrors Java's CoreDBMetaDataProvider and TS's dbProvider.
         MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
+        // The documentation common attrs (@description / @title / @summary / @notes / ...).
+        // Every other port composes this by default (TS docProvider, Python doc_provider,
+        // Java DocumentationMetaDataProvider). C# omitted it here while the conformance
+        // tests composed it explicitly, so strict loads through this registry — which is
+        // what `dotnet meta verify` does — rejected @description on every node.
+        MetaObjects.Core.Documentation.DocumentationTypes.DocTypesProvider,
         // FR-033 concern providers — re-home the UI / prompt PROJECTIONS out of the core
         // type classes (read spec/metamodel/ui.json + prompt.json): field.* / field.enum /
         // object.value vocabulary that is optional wherever it lands, including the

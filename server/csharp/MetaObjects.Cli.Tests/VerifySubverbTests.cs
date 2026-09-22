@@ -328,4 +328,24 @@ public sealed class VerifySubverbTests : IDisposable
             snap[Path.GetRelativePath(dir, f)] = File.ReadAllText(f);
         return snap;
     }
+
+    // A load failure under --codegen must say WHICH attr on WHICH node. It used to print
+    // the error codes alone ("ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, ...") — 27 of them on one
+    // adopter estate — and nothing an author could act on without rebuilding the CLI.
+    [Fact]
+    public void Codegen_load_failure_names_the_offending_attr_and_node()
+    {
+        File.Delete(Path.Combine(MetaDir, "meta.ai.json"));
+        File.WriteAllText(Path.Combine(MetaDir, "meta.bad.json"), """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Thing", "@noSuchAttr": "x",
+            "children": [ { "field.string": { "name": "label" } } ] } }
+        ]}}
+        """);
+        var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
+        Assert.Equal(2, r.ExitCode);
+        Assert.NotNull(r.Codegen?.Error);
+        Assert.Contains("noSuchAttr", r.Codegen!.Error);
+        Assert.Contains("Thing", r.Codegen!.Error);
+    }
 }

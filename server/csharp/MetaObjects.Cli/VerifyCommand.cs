@@ -249,7 +249,7 @@ public static class VerifyCommand
             {
                 Clean = false,
                 Error = "verify --codegen: metadata did not load cleanly (" +
-                        string.Join(", ", load.Errors.Select(e => e.Code.ToString())) + ").",
+                        string.Join("; ", load.Errors.Select(e => e.Code + ": " + e.Message)) + ").",
             };
 
         // `verify --codegen` re-runs the SELECTION and compares. With no default suite

@@ -330,6 +330,23 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **C#: `dotnet meta verify` rejected `@description` on every node, including the shipped
+  `iam` and `ai` libraries' own metadata.** The loader's default registry
+  (`CoreTypes.LibraryProviders`) never composed the documentation provider, so the common
+  attrs it registers — `@description`, `@title`, `@summary`, `@notes`, `@deprecated`,
+  `@replacedBy`, `@seeAlso`, `@aliases` — were unknown to it. `dotnet meta gen` loads lax
+  and let them through unvalidated; `verify` loads strict and failed with
+  `ERR_UNKNOWN_ATTR`, so any project opting into a library could not run the C# drift gate
+  at all. The conformance corpora never saw it: every C# test composed the full bundle
+  explicitly, including the documentation provider, while the comment on that bundle said
+  it was "the same composition the loader's default registry uses". It was not, and a test
+  now fails if the two differ. Every other port already composed the provider by default.
+  Found by running `dotnet meta verify --codegen` against an adopter estate.
+- **C#: a `verify --codegen` load failure now says what failed.** It printed the error
+  CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
+  27 of them on the estate above — with no attribute, node or file. It now prints each
+  error's message, which names all three.
+
 - **Python: the `render-helper` generator could not be pointed at your templates.**
   `GeneratorEntry.factory` took no arguments and the registry's render-helper factory
   hardcoded `template_root="templates"`, so `metaobjects gen`'s `--templates <dir>`
