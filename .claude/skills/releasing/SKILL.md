@@ -82,7 +82,16 @@ done
 
 `forge` / `conformance` are `private` (never publish). Confirm each candidate is
 actually on npm (`npm view <pkg> dist-tags`). Patch bump unless a public API
-changed; this repo bumps the whole set in lockstep (pre-1.0).
+changed; this repo bumps the whole set in lockstep.
+
+**The generator tier never forces a MINOR — it is always a PATCH** (ADR-0035
+**Amendment 4**). A new generator, a generator emitting different output, a reference
+template rewritten: PATCH, however large the diff. Adopters own a COPY of each
+generator under scaffold-and-own and take our edit only by re-running `meta gen`, so
+the opt-in a MINOR would signal is already in the mechanism. What still moves the
+package number is the codegen **ENGINE**'s surface, a runtime library's surface, or
+CLI semantics; vocabulary moves `metamodelVersion` instead. Do NOT reason from
+"generated output changed" — ask whose surface moved.
 
 **Registry vocabulary does not force a MINOR** — a new *attribute* is a PATCH, a new
 top-level *type* is a MINOR, and a new *subtype* is a PATCH when inert. See

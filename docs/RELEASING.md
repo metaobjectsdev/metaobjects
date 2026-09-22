@@ -217,24 +217,30 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
 consumer on a routine `npm update`; MINOR requires a deliberate bump of their range.**
 That — not semver §8 — is the contract you are versioning against pre-1.0.
 
-**Litmus test.** Can a consumer on `^prev` run `npm update && meta gen` and (1) still
-typecheck their owned generators + hand-written imports, and (2) get output that is
-byte-identical *or only corrects previously-wrong output*? **Yes to both → PATCH.
-Otherwise → MINOR.**
+**Litmus test.** **Whose surface moved?** If the answer is "a generator, or what one
+emits", it is a **PATCH** and the test ends there. Otherwise: can a consumer on `^prev` run
+`npm update` and still compile against the codegen ENGINE, the runtime libraries and the CLI
+they call? **Yes → PATCH. No → MINOR.** (Vocabulary is a third axis entirely and moves
+`metamodelVersion`, not this number.)
 
-Do NOT reach for MINOR merely because "generated output changed." Scaffold-and-own
-(ADR-0034) does not firewall consumers from engine-output changes — the copied
-generators are thin compositions; the `render*` primitives + defaults live in the
-package and re-propagate on the next `meta gen`. So the axis is **API/default vs.
-bytes**, not "did output change."
+**Generated output is never the axis (ADR-0035 Amendment 4).** An adopter owns a COPY of
+each generator and gets our edit only by re-running `meta gen` and accepting the diff, so a
+generator change cannot reach a build that did not opt into it — the property a MINOR would
+signal is already provided by the mechanism. Every generator-tier change is a PATCH, however
+large the diff. The axis that remains is **whose surface moved**: the codegen ENGINE, a
+runtime library, the CLI's semantics, or the metamodel.
+
+(This paragraph used to argue the opposite — that scaffold-and-own "does not firewall
+consumers from engine-output changes" because the `render*` primitives re-propagate. It
+conflated two surfaces: the primitives ARE engine API and still move the engine's number;
+what they render is generator output and does not.)
 
 | Change class | Example | Pre-1.0 | Post-1.0 |
 |---|---|---|---|
-| Public API **additive** (new export / optional param / CLI flag) | new `render*` primitive | PATCH (MINOR if it headlines a feature release) | MINOR |
-| Public API **breaking** (required param, removed/renamed export, changed CLI semantics) | `relativeModuleSpecifier` +required param | **MINOR** | MAJOR |
-| Output change = **pure bugfix** (wrong output corrected; correct output byte-identical) | 0.19.3 payload naming, 0.19.4 TPH stamping | **PATCH** | PATCH |
-| Output change alters **shape/default of *correct* output** (renamed generated export, changed default, dropped artifact) | `extStyle` `"none"→"js"` default flip | **MINOR** + a "Generated-output change" changelog flag + an opt-out where feasible | MAJOR if consumer code referencing the output breaks; else MINOR |
-| New **opt-in** codegen feature, default output byte-identical | new generator defaulting off | PATCH | MINOR |
+| **Anything in the generator tier** — a new generator, a generator emitting different/added/removed output, a reference template rewritten | ADR-0056's payload-tier rewrite; `extStyle` `"none"→"js"`; a new generator | **PATCH** | **PATCH** — always (ADR-0035 **Amendment 4**) |
+| Codegen **ENGINE** public surface **additive** (new `render*` primitive, new `GenContext` field, optional param) | new `render*` primitive | PATCH (MINOR if it headlines a feature release) | MINOR |
+| Codegen **ENGINE** public surface **breaking**, or changed **CLI semantics** | `relativeModuleSpecifier` +required param | **MINOR** | MAJOR |
+| A **runtime library**'s public surface (`runtime-ts`, `render`, OMDB, ObjectManager, web client) — additive / breaking | a new mount option / a removed export | PATCH / **MINOR** | MINOR / MAJOR |
 | New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | MINOR |
 | New **subtype** of an existing type | `field.uri`, `index.lookup`, `attr.intMap` | **PATCH** when inert (see the vocabulary rule below); **MINOR** when it changes existing metadata's meaning/output, narrows something previously permitted, or headlines a feature | MINOR |
 | New top-level metadata **type** | `requirement.*`, `index.*`, `api.*` | **MINOR** | MINOR |

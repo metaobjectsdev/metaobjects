@@ -317,6 +317,48 @@ population.
 still load-bearing, but it is now the ratified half of a **scope statement** (readiness G3a),
 not a way to "make the quiet period achievable."
 
+## Amendment 4 (2026-09-22) — the generator tier is CONVENIENCE, and convenience is always PATCH
+
+**The versioned surface is the metamodel, the core libraries and the codegen ENGINE. The
+generators and what they emit are not on it.** Adding a generator, changing what one emits,
+or replacing a reference template wholesale is a **PATCH**, in every case, with no appeal to
+the tables below.
+
+**Why this is a property of the design and not a concession.** Scaffold-and-own (ADR-0034)
+means an adopter takes a COPY of a generator and owns it. Nothing in their build follows our
+edit unless they re-run `meta gen` and accept the diff, and a hand-edited generated file is
+refused by name rather than overwritten. So a generator change cannot reach an adopter who
+has not opted into it — which is exactly the property a MINOR exists to signal, already
+provided by the mechanism. Spending a MINOR on it buys nothing and costs the gate: a project
+that renumbers for every template improvement has no version left to raise when the
+metamodel actually moves. Owner ruling, 2026-09-22, in these words: *"codegen is something
+each app makes a copy of and they can choose to take the new versions or not. it's pure
+convenience not part of the framework."*
+
+**Where the line falls.** The test is whether the change reaches code an adopter did not
+choose to take:
+
+| Change | Move |
+|---|---|
+| a new generator; a generator emitting different, added or removed output; a reference template rewritten | **PATCH** — always |
+| the codegen **ENGINE**'s public surface: the `Generator` interface, `GenContext`/`EmittedFile`, the `render*` primitives, target/config resolution, the three-way-merge and gen-state contract | MINOR (breaking: MAJOR) |
+| CLI command or flag **semantics**; the scaffold-and-own contract itself | MINOR (breaking: MAJOR) |
+| a runtime library's public surface (`runtime-ts`, `render`, OMDB, ObjectManager, the web client) | MINOR (breaking: MAJOR) |
+| registered metamodel vocabulary, the canonical/interchange format, the wire contract | **`metamodelVersion`** (Amendment 2) — package number unaffected |
+
+**This supersedes three rows of `docs/RELEASING.md`'s change-class table** — "Public API
+additive" read as covering a generator factory, "Output change alters shape/default of
+*correct* output", and "New opt-in codegen feature". Those rows were written when the
+generators were library surface; under scaffold-and-own they are not. The **changelog
+convention survives intact and matters more now**: an output-changing release still carries
+"Generated-output change — regenerate to pick it up; three-way merge preserves hand edits,"
+because the changelog, not the version number, is how an adopter learns a regen is worth
+running.
+
+**What does NOT change.** The metamodel axis is untouched — `metamodelVersion` still moves on
+vocabulary, and `check-metamodel-version.mjs` still gates it. Convergent publishing is
+untouched: a port with no changed product file still sits the release out.
+
 ## Consequences
 
 - After 1.0, a breaking change to the CLI surface or the scaffold-and-own contract
