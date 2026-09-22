@@ -83,7 +83,7 @@ requests:
       name: "..."
     expect:
       status: 200          # exact HTTP status to assert
-      body:                # one of: equals | row | rows | length | envelope | error | empty | hasId | ids | names
+      body:                # one of: equals | row | rows | length | envelope | error (+field) | empty | hasId | ids | names
         ...
 ```
 
@@ -99,6 +99,7 @@ requests:
 | `hasId`      | the response body is an object containing a numeric `id`               |
 | `envelope`   | the response body is `{ rows, total }` (set `rowsLength` + `total`)    |
 | `error`      | the response body has `error: "<value>"`                               |
+| `field`      | **only meaningful alongside `error`** — the envelope's `field` names the rejected filter/sort field. Declared as a sibling of `error` and checked inside that branch, because the `error` branch returns; a runner that checked it as an independent key would skip it whenever `error` matched first. |
 | `empty`      | the response body is empty / null (204 No Content)                     |
 | `fieldsEqual`| the response body is an object; assert the listed field names are all equal to **each other** (raw, field-vs-field — no literal, so timestamp non-determinism is a non-issue). Used by the `@autoSet` gate (#203/ADR-0045). |
 | `fieldsNotEqual`| the response body is an object; assert the two listed fields **differ** from each other. Used by the `@autoSet` gate (e.g. after a PATCH, `autoCreatedAt` (onCreate, preserved) != `autoUpdatedAt` (onUpdate, bumped)). |

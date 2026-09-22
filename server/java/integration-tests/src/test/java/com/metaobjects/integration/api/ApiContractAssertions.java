@@ -73,6 +73,16 @@ final class ApiContractAssertions {
             if (!wantErr.equals(actual))
                 throw new AssertionError(scenarioName + " / " + request.id()
                     + ": expected error=\"" + wantErr + "\", got: " + body);
+            // `field` rides INSIDE this branch, not beside it: the branch returns, so a
+            // scenario declaring both would have its `field` silently skipped — the same
+            // un-gateable shape F20 closed one layer down.
+            if (want.get("field") instanceof String wantField) {
+                String actualField = null;
+                if (body instanceof Map<?, ?> fbm && fbm.get("field") instanceof String fs) actualField = fs;
+                if (!wantField.equals(actualField))
+                    throw new AssertionError(scenarioName + " / " + request.id()
+                        + ": expected field=\"" + wantField + "\", got: " + body);
+            }
             return;
         }
         Object lenObj = want.get("length");

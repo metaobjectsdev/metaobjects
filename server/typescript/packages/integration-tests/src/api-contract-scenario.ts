@@ -37,6 +37,7 @@ export interface ExpectBody {
   rowsLength?: number;
   total?: number;
   error?: string;
+  field?: string;
   empty?: boolean;
 }
 
@@ -130,6 +131,16 @@ export function assertResponse(
     const e = (body as { error?: string }).error;
     if (e !== want.error)
       throw new Error(`${scenarioName} / ${request.id}: expected error="${want.error}", got: ${stringify(body)}`);
+    // `field` is part of the error envelope for the four filter/sort codes and is
+    // REQUIRED there (docs/features/api-contract.md, "Error response"). It is
+    // asserted inside the `error` branch rather than as a sibling key because that
+    // branch RETURNS — a scenario that declared both would otherwise have its
+    // `field` silently skipped, which is the same un-gateable shape F20 closed.
+    if (want.field !== undefined) {
+      const f = (body as { field?: string }).field;
+      if (f !== want.field)
+        throw new Error(`${scenarioName} / ${request.id}: expected field="${want.field}", got: ${stringify(body)}`);
+    }
     return;
   }
   if (want.length !== undefined) {

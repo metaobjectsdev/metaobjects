@@ -1,7 +1,7 @@
 """Assertion engine for api-contract-conformance scenarios.
 
 The vocabulary (``equals`` / ``length`` / ``ids`` / ``names`` / ``row`` /
-``hasId`` / ``envelope`` / ``error`` / ``empty``) is the cross-port contract —
+``hasId`` / ``envelope`` / ``error`` / ``field`` / ``empty``) is the cross-port contract —
 every per-port runner must implement these keys identically. See
 ``fixtures/api-contract-conformance/README.md``.
 
@@ -81,6 +81,16 @@ def assert_response(
             raise AssertionError(
                 f"{scenario_name} / {request_id}: expected error=\"{want_err}\", got: {body!r}"
             )
+        # `field` rides INSIDE this branch, not beside it: the branch returns, so a
+        # scenario declaring both would have its `field` silently skipped — the same
+        # un-gateable shape F20 closed one layer down.
+        if "field" in expect_body:
+            want_field = expect_body["field"]
+            actual_field = body.get("field") if isinstance(body, dict) else None
+            if actual_field != want_field:
+                raise AssertionError(
+                    f"{scenario_name} / {request_id}: expected field=\"{want_field}\", got: {body!r}"
+                )
         return
 
     if "length" in expect_body:

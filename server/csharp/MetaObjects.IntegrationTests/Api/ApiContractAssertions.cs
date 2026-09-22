@@ -72,6 +72,18 @@ internal static class ApiContractAssertions
             if (!wantErr.Equals(actual))
                 throw new Xunit.Sdk.XunitException(
                     $"{scenarioName} / {request.Id}: expected error=\"{wantErr}\", got: {Render(body)}");
+            // `field` rides INSIDE this branch, not beside it: the branch returns, so a
+            // scenario declaring both would have its `field` silently skipped — the same
+            // un-gateable shape F20 closed one layer down.
+            if (want.TryGetValue("field", out var fieldObj) && fieldObj is string wantField)
+            {
+                string? actualField = null;
+                if (body is Dictionary<string, object?> fbm
+                    && fbm.TryGetValue("field", out var fv) && fv is string fs) actualField = fs;
+                if (!wantField.Equals(actualField))
+                    throw new Xunit.Sdk.XunitException(
+                        $"{scenarioName} / {request.Id}: expected field=\"{wantField}\", got: {Render(body)}");
+            }
             return;
         }
         if (want.TryGetValue("length", out var lenObj) && lenObj is not null)

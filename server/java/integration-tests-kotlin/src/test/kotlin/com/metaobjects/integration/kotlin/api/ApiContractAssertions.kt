@@ -53,6 +53,14 @@ object ApiContractAssertions {
             val actual = map?.get("error") as? String
             if (actual != wantErr)
                 throw AssertionError("$scenarioName / ${request.id}: expected error=\"$wantErr\", got: $body")
+            // `field` rides INSIDE this branch, not beside it: the branch returns, so a
+            // scenario declaring both would have its `field` silently skipped — the same
+            // un-gateable shape F20 closed one layer down.
+            (want["field"] as? String)?.let { wantField ->
+                val actualField = map?.get("field") as? String
+                if (actualField != wantField)
+                    throw AssertionError("$scenarioName / ${request.id}: expected field=\"$wantField\", got: $body")
+            }
             return
         }
         (want["length"] as? Number)?.toInt()?.let { wantLen ->
