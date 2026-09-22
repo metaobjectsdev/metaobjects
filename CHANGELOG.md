@@ -22,10 +22,16 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
    generator, drop the `payload` generator, and delete the files that are no longer emitted —
    `meta gen` never deletes one, and `meta verify --codegen` names them. Full list:
    [migration guide](docs/features/migrations/value-object-types-are-generated-once.md).
-2. **One metadata shape stops loading**: an M:N junction whose two `identity.reference`
-   children cannot be PAIRED to the two entities it joins is now an error in every port,
-   where before it loaded clean and then behaved differently per port. If your junction
-   loads today it is unaffected; if it does not, the error names the reference.
+2. **Two metadata shapes stop loading.** (a) An M:N junction whose two
+   `identity.reference` children cannot be PAIRED to the two entities it joins is now an
+   error in every port, where before it loaded clean and then behaved differently per port.
+   If your junction loads today it is unaffected; if it does not, the error names the
+   reference. (b) A child wrapper whose body is not an object —
+   `{ "field.string": "label" }`, or a `{ "$comment": "…" }` entry used as a comment — is
+   now `ERR_CHILD_NOT_OBJECT`. It never built a node in any port; it was a warning in two,
+   an slf4j line in one and silence in Python, so the field was simply absent from the
+   generated code. The error names the wrapper and its JSON path; give it a node body or
+   remove the entry.
 3. **The filter/sort 400 envelope gained a required `field` member** in every port. Consumers
    gain a key and lose nothing, but a hand-written caller of the JVM/C# `FilterParseResult`
    needs one edit.
@@ -323,6 +329,53 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   rule, not four local concessions. The fan-out found five further real defects, fixed below.
 
 ### Fixed
+
+- **A `children` entry that is not a node no longer loads — four ports, four answers,
+  now one** (new `ERR_CHILD_NOT_OBJECT`). Every child is one
+  `{ "<type>.<subType>": { …node body… } }` pair, so `{ "field.string": "label" }` has no
+  node in it. No port ever built one; they merely disagreed about saying so. TypeScript and
+  C# raised a WARNING (under `ERR_TOP_LEVEL_NOT_OBJECT`, a code about the document root),
+  Java wrote an slf4j line that never reached the loader's error envelope at all, and Python
+  coerced the body to `{}` and reported nothing whatsoever for a registered type. In every
+  case the declared field was **dropped and the load succeeded**, so `meta gen` emitted the
+  table without its column — while `meta verify`, which loads strict (ADR-0023, #96),
+  refused the same file. The two commands disagreed about whether the document was valid.
+  It is now a hard error in every port, in lax mode as well as strict: lax tolerates an
+  *unenforced type*, which it still does, and has never meant "accept input with no node in
+  it". Gated by `fixtures/conformance/error-child-not-object`, `error-attr-child-not-object`
+  (the attr door is a separate branch in every port and a separate function in Python, where
+  fixing only the structural one left it answering `ERR_MISSING_REQUIRED_ATTR` — the
+  consequence, not the cause) and a per-port lax-mode test, because the corpus runs strict
+  and would not have caught the rule being re-gated on `strict`.
+
+  **This refuses input that used to load, in a PATCH**, under
+  [the correction bar](docs/compatibility-policy.md#correcting-input-we-wrongly-accepted-the-one-narrow-exception),
+  whose three-part test it meets: the form was never validly expressible (the canonical
+  format defines a child as that one pair); it produced no correct outcome for anyone (the
+  node was discarded on every port, and the ports disagreed about whether you were told);
+  and the repair is exactly named (the error gives the wrapper key, its JSON path, the JSON
+  kind found, and the two ways out — give it a node body, or remove the entry). It is not
+  mechanical, so there is no `meta upgrade --apply` for it, which the bar permits when the
+  load error names the fix.
+
+- **An unregistered bare child key said the type existed.** `{ "madeup": { … } }` under an
+  entity reported `ERR_MISSING_SUBTYPE` — "write the full `madeup.<subType>`", advice about
+  a type that does not exist — in TypeScript, C# and Java. The ROOT door has resolved
+  registration first since FR5a, and Java pins it there with a test; the CHILD door never
+  got the same guard, so one rule was true at one of its two entry points in three of four
+  ports. Python was correct and is unchanged. Now `ERR_UNKNOWN_TYPE` at both doors, while a
+  REGISTERED type that declares no default (`identity`, `index`, `requirement`) keeps
+  `ERR_MISSING_SUBTYPE` — that advice is correct for those. Gated by
+  `fixtures/conformance/error-unknown-bare-child-type`, with the existing
+  `error-bare-key-type-without-base` as its control. Input that already failed now fails
+  with a different code and a true message; nothing that loaded stops loading.
+
+- **Java raised a null error code for a non-object root body**, which surfaces as
+  `ERR_UNKNOWN`. Every other port already said `ERR_TOP_LEVEL_NOT_OBJECT`. Both doors in
+  all four ports now resolve the wrapper KEY before judging its BODY — the order that makes
+  `{ "$comment": "prose" }` an unknown TYPE rather than a body-shape complaint about prose
+  that was never a node. Gated by `fixtures/conformance/error-root-not-object`, which no
+  fixture covered before.
 
 - **TypeScript: a template whose name starts lowercase generated code that does not
   compile.** The `extractor` generator emitted `import { extractLenient<rawName>WithLoader }`

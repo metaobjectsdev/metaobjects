@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_CHILD_NOT_OBJECT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.accounts.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['field.string']"
+      }
+    }
+  ],
+  "warnings": []
+}

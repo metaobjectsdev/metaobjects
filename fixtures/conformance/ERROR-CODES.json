@@ -4,6 +4,7 @@
     "ERR_MALFORMED_JSON": "The input is not valid JSON (parse failure before structural checks).",
     "ERR_TOP_LEVEL_NOT_OBJECT": "The metadata document root is not a JSON object.",
     "ERR_UNKNOWN_TYPE": "A node uses a type not registered in the registry.",
+    "ERR_CHILD_NOT_OBJECT": "A child wrapper's body is not a JSON object. Every child in a `children` array is one `{ \"<type>.<subType>\": { …node body… } }` pair; a string, number, boolean, array or null body carries no node to read. Reported AFTER the wrapper key's type resolves, so a bad key is still diagnosed as a bad key (ERR_UNKNOWN_TYPE / ERR_UNKNOWN_SUBTYPE / ERR_MISSING_SUBTYPE) rather than as a body-shape problem. Distinct from ERR_TOP_LEVEL_NOT_OBJECT, which is about the DOCUMENT root.",
     "ERR_UNKNOWN_SUBTYPE": "A node uses a subType not valid for its type.",
     "ERR_ABSTRACT_SUBTYPE_AUTHORED": "A document authors a `<type>.base` node. Every registered `base` subtype is an abstract registry anchor that concrete subtypes inherit from — it has no runtime semantics and is never authored directly. Declare a concrete subtype instead.",
     "ERR_MISSING_SUBTYPE": "A node omits subType and the type has no default subType.",

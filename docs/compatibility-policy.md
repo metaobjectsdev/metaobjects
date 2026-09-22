@@ -128,6 +128,13 @@ silently thrown away ([#342](https://github.com/metaobjectsdev/metaobjects/issue
 ([#335](https://github.com/metaobjectsdev/metaobjects/issues/335)). Refusing those two is not
 a new rule. It is the documented rule finally being enforced.
 
+Post-1.0 it has been applied twice more, both in `1.0.5`: an M:N junction whose two
+`identity.reference` children cannot be paired to the entities it joins, and a `children`
+entry whose body is not an object (`ERR_CHILD_NOT_OBJECT`). The second is the cleanest
+example the doctrine has: the form built no node on any port, so nobody's declaration ever
+took effect — the four ports differed only in whether they *told* you, from a warning down
+to complete silence.
+
 Under ADR-0023 the registry is strict and sealed, so there is no deprecation shim: a
 refusal takes effect on the release that ships it. That makes it important to say
 exactly when this is allowed, because a category this shape can be abused to smuggle a

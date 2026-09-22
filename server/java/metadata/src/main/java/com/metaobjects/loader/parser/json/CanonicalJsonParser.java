@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
@@ -608,9 +609,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
             JsonElement rootBodyEl = canonical.get(rootKey);
             if (!rootBodyEl.isJsonObject()) {
+                // ERR_TOP_LEVEL_NOT_OBJECT, not a null code (1.0.5). A null code surfaces as
+                // ERR_UNKNOWN, so this port answered the same malformed document with a
+                // different code from every other — and one that says nothing about what is
+                // wrong. The check itself already ran AFTER the root key resolves, which is
+                // the order the other ports now share at both doors.
                 throw new MetaDataException(
-                    "Root wrapper '" + rootKey + "' must contain an object in file [" + getFilename() + "]",
-                    null, currentSourceEnvelope());
+                    "Root wrapper '" + rootKey + "' must contain an object in file ["
+                        + getFilename() + "], and holds " + describeJsonKind(rootBodyEl),
+                    ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, currentSourceEnvelope());
             }
             JsonObject rootBody = rootBodyEl.getAsJsonObject();
 
@@ -697,12 +704,6 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 String childKey = childWrapper.keySet().iterator().next();
                 JsonElement childBodyEl = childWrapper.get(childKey);
 
-                if (!childBodyEl.isJsonObject()) {
-                    log.warn("Child wrapper '{}' must contain an object in file [{}]", childKey, getFilename());
-                    continue;
-                }
-                JsonObject childBody = childBodyEl.getAsJsonObject();
-
                 // Split fused key → type + subType
                 SplitKey split = splitTypeKey(childKey);
                 String type = split.type;
@@ -726,8 +727,19 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     // door is above). Gated on the subType being EXPLICIT: `base` is also
                     // this parser's fallback for a BARE key, and refusing that here would
                     // change a separate, pre-existing behaviour rather than close this gap.
-                    if ((MetaData.SUBTYPE_BASE.equals(subType) && isAbstractAnchorFor(type))
-                            || (!split.explicitSubType && subType.isEmpty())) {
+                    //
+                    // Registration first, exactly as the ROOT door does it (and as
+                    // AbstractSubtypeAuthoredTest.anUnregisteredBareRootTypeIsStillAnUnknownType
+                    // pins there): an UNREGISTERED type has no declared default either, so
+                    // without this guard a typo'd child key (`madeup`) lands in this branch and
+                    // is told to "write the full 'madeup.<subType>'" — advice about a type that
+                    // does not exist. The child door never carried the guard its root door has,
+                    // here, in TypeScript and in C# alike, while Python reported
+                    // ERR_UNKNOWN_TYPE. The registration check below owns the unregistered case
+                    // and phrases it correctly.
+                    if (getTypeRegistry().hasType(type)
+                            && ((MetaData.SUBTYPE_BASE.equals(subType) && isAbstractAnchorFor(type))
+                                || (!split.explicitSubType && subType.isEmpty()))) {
                         getLoader().addError(split.explicitSubType
                             ? new MetaDataException(
                                 abstractSubtypeMessage(type) + " [" + getFilename() + "]",
@@ -746,15 +758,43 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                                 ? ErrorCode.ERR_UNKNOWN_SUBTYPE
                                 : ErrorCode.ERR_UNKNOWN_TYPE;
                             getLoader().addError(new MetaDataException(
-                                "Unknown type '" + type + "." + subType + "' in canonical JSON file ["
-                                    + getFilename() + "] — not declared by any registered provider",
+                                "Unknown type '" + typeDisplayName(type, subType)
+                                    + "' in canonical JSON file [" + getFilename()
+                                    + "] — not declared by any registered provider",
                                 code, currentSourceEnvelope()));
                             continue;
                         }
-                        log.warn("Unknown type '{}.{}' in canonical JSON file [{}] — skipping",
-                            type, subType, getFilename());
+                        log.warn("Unknown type '{}' in canonical JSON file [{}] — skipping",
+                            typeDisplayName(type, subType), getFilename());
                         continue;
                     }
+
+                    // --- The wrapper's BODY must be an object ---
+                    // AFTER the key resolves, deliberately. A child is one
+                    // { "<type>.<subType>": { …body… } } pair, so a string/number/boolean/
+                    // array/null body carries no node to read — but running this check FIRST
+                    // answers { "$comment": "prose" } with "must contain an object", which
+                    // sends the author to wrap prose that was never a node in the first place.
+                    // Key first, body second.
+                    //
+                    // A recorded ERROR, and NOT gated on isStrictLoad() (1.0.5). Until then
+                    // this was an slf4j warn that never reached the loader's envelope at all,
+                    // so the child was DROPPED and the load succeeded clean — a declared field
+                    // simply not there, on the port that reported it least of the four. Lax
+                    // mode tolerates an UNENFORCED TYPE (the branch above); it has never meant
+                    // "accept input with no node in it". See docs/compatibility-policy.md,
+                    // "Correcting input we wrongly accepted".
+                    if (!childBodyEl.isJsonObject()) {
+                        getLoader().addError(new MetaDataException(
+                            "Child wrapper '" + childKey + "' must contain an object in file ["
+                                + getFilename() + "] — a child is one "
+                                + "{ \"<type>.<subType>\": { …node body… } } pair, and this one holds "
+                                + describeJsonKind(childBodyEl)
+                                + ". Give it a node body, or remove the entry.",
+                            ErrorCode.ERR_CHILD_NOT_OBJECT, currentSourceEnvelope()));
+                        continue;
+                    }
+                    JsonObject childBody = childBodyEl.getAsJsonObject();
 
                     // Attr child nodes: { "attr.<subType>": { "name": "...", "value": <v> } }
                     if (MetaAttribute.TYPE_ATTR.equals(type)) {
@@ -1518,6 +1558,32 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     private boolean isAbstractAnchorFor(String type) {
         return getTypeRegistry().allSubTypesOf(type).stream()
             .anyMatch(sub -> !MetaData.SUBTYPE_BASE.equals(sub));
+    }
+
+    /**
+     * How a (type, subType) pair is named back to the author in an error.
+     *
+     * <p>A bare wrapper key for an UNREGISTERED type has no subType to resolve, so the naive
+     * {@code type + "." + subType} renders {@code "madeup."} — a trailing dot that reads like
+     * the author wrote one. Print the type alone in that case; it is what they actually
+     * wrote.</p>
+     */
+    private static String typeDisplayName(String type, String subType) {
+        return subType.isEmpty() ? type : type + "." + subType;
+    }
+
+    /**
+     * The JSON kind of a value, for an error that has to say what the author wrote instead.
+     */
+    private static String describeJsonKind(JsonElement value) {
+        if (value == null || value.isJsonNull()) return "null";
+        if (value.isJsonArray()) return "an array";
+        if (value.isJsonObject()) return "an object";
+        JsonPrimitive prim = value.getAsJsonPrimitive();
+        if (prim.isString()) return "a string";
+        if (prim.isNumber()) return "a number";
+        if (prim.isBoolean()) return "a boolean";
+        return "a non-object value";
     }
 
     /**

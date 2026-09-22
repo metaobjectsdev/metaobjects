@@ -39,6 +39,15 @@ public enum ErrorCode {
     /** The metadata document root is not a JSON object. */
     ERR_TOP_LEVEL_NOT_OBJECT,
 
+    /**
+     * A child wrapper's BODY is not a JSON object. Distinct from
+     * {@link #ERR_TOP_LEVEL_NOT_OBJECT}, which is about the document root — a code named
+     * TOP_LEVEL cannot honestly describe a field three levels down, and this one was
+     * borrowed for that until 1.0.5. Raised AFTER the wrapper key's type resolves, so a
+     * bad key is still diagnosed as a bad key.
+     */
+    ERR_CHILD_NOT_OBJECT,
+
     /** A node uses a type not registered in the registry. */
     ERR_UNKNOWN_TYPE,
 

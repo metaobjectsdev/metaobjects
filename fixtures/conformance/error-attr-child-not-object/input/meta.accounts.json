@@ -1,0 +1,35 @@
+{
+  "metadata.root": {
+    "package": "acme::accounts",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "attr.string": "a note"
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": ["id"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

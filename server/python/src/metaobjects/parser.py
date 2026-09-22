@@ -186,12 +186,57 @@ def _parse_document_inner(doc: object, registry: TypeRegistry, source: str) -> P
     root_yaml_position = get_yaml_position(doc, wrapper)
     node = _build(
         wrapper, body, registry, source, result, builder,
-        yaml_position=root_yaml_position,
+        yaml_position=root_yaml_position, is_root=True,
     )
     builder.pop()
     if isinstance(node, MetaData):
         result.root = node
     return result
+
+
+def _describe_json_kind(value: object) -> str:
+    """The JSON kind of a value, for an error that has to say what the author wrote.
+
+    Named for the JSON vocabulary the author is reading, not Python's: a metadata file
+    holds ``null``/``true``, never ``None``/``True``, and an error that answers in the
+    host language's type names makes the reader translate.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "a boolean"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, list):
+        return "an array"
+    return f"a {type(value).__name__}"
+
+
+def _child_not_object_error(
+    wrapper: str,
+    body: object,
+    source: str,
+    builder: JsonPathBuilder,
+    yaml_position: YamlPosition | None,
+) -> MetaError:
+    """The refusal for a child wrapper whose body is not an object.
+
+    One function for both child doors — the structural one in ``_build`` and the attr one
+    in ``_parse_attr_child``. They were separate bodies of near-identical code once, which
+    is how the attr door kept coercing a non-dict body to ``{}`` after the structural door
+    stopped: the attr child then answered ERR_MISSING_REQUIRED_ATTR (no ``name`` in an
+    empty dict) where every other port said ERR_CHILD_NOT_OBJECT.
+    """
+    return MetaError(
+        f"child wrapper '{wrapper}' must contain an object — a child is one "
+        f'{{ "<type>.<subType>": {{ …node body… }} }} pair, and this one holds '
+        f"{_describe_json_kind(body)}. Give it a node body, or remove the entry.",
+        ErrorCode.ERR_CHILD_NOT_OBJECT,
+        source,
+        envelope=_current_envelope(source, builder, yaml_position),
+    )
 
 
 def _is_abstract_anchor_for(type_: str, registry: TypeRegistry) -> bool:
@@ -249,6 +294,7 @@ def _build(
     ctx_pkg: str = "",
     parent_type: str = "",
     yaml_position: YamlPosition | None = None,
+    is_root: bool = False,
 ) -> MetaData | None:
     """Build a node from a fused-key wrapper and its body dict.
 
@@ -309,7 +355,33 @@ def _build(
         ))
         return None
 
-    body_dict: dict[str, object] = body if isinstance(body, dict) else {}
+    if not isinstance(body, dict):
+        # The wrapper's BODY must be an object. AFTER the key resolves, deliberately: a
+        # child is one ``{"<type>.<subType>": {…node body…}}`` pair, so checking the body
+        # first answers ``{"$comment": "prose"}`` with "must contain an object" and sends
+        # the author to wrap prose that was never a node. Key first, body second.
+        #
+        # Until 1.0.5 this port coerced a non-dict body to ``{}`` and built the node from
+        # it — so a registered type with a string body (``{"field.string": "label"}``) was
+        # dropped in total silence, and only an UNKNOWN type was caught, by the check above
+        # rather than by any rule about bodies. The other three ports refused it in strict
+        # mode and warned in lax, under ERR_TOP_LEVEL_NOT_OBJECT — a code about the document
+        # root. See docs/compatibility-policy.md, "Correcting input we wrongly accepted".
+        #
+        # Both doors run the rule; only the CODE differs, because the root's body-shape
+        # problem IS a top-level problem and ERR_TOP_LEVEL_NOT_OBJECT already names it.
+        result.errors.append(MetaError(
+            f"top-level wrapper '{wrapper}' must contain an object, and holds "
+            f"{_describe_json_kind(body)}",
+            ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT,
+            source,
+            envelope=_current_envelope(source, builder, yaml_position),
+        ) if is_root else _child_not_object_error(
+            wrapper, body, source, builder, yaml_position,
+        ))
+        return None
+
+    body_dict: dict[str, object] = body
     name = str(body_dict.get(KEY_NAME, "") or "")
     # Config-driven default name for a SINGLETON child type (max_occurs == 1 with
     # a default_name, e.g. identity.primary -> "primary"). Safe by construction —
@@ -426,7 +498,7 @@ def _build(
             child_yaml_pos = get_yaml_position(entry_dict, cw)
             if child_type == TYPE_ATTR:
                 _parse_attr_child(
-                    node, child_sub, cbody, registry, source, result, builder,
+                    node, cw, child_sub, cbody, registry, source, result, builder,
                     yaml_position=child_yaml_pos,
                 )
             else:
@@ -446,6 +518,7 @@ def _build(
 
 def _parse_attr_child(
     parent: MetaData,
+    wrapper: str,
     sub_type: str,
     body: object,
     registry: TypeRegistry,
@@ -489,7 +562,15 @@ def _parse_attr_child(
             envelope=_current_envelope(source, builder, yaml_position),
         ))
         return
-    body_dict: dict[str, object] = body if isinstance(body, dict) else {}
+    # The wrapper's BODY must be an object — the same rule the structural child door runs
+    # in ``_build``, and in the same place relative to subtype resolution (key first, body
+    # second). This door coerced a non-dict body to ``{}`` and then reported the missing
+    # ``name`` that produced, which names a consequence instead of the cause.
+    if not isinstance(body, dict):
+        result.errors.append(
+            _child_not_object_error(wrapper, body, source, builder, yaml_position))
+        return
+    body_dict: dict[str, object] = body
     attr_name = body_dict.get(KEY_NAME)
     if not isinstance(attr_name, str) or not attr_name:
         result.errors.append(

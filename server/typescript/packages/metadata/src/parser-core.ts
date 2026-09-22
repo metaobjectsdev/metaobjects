@@ -302,6 +302,24 @@ function isAbstractAnchorFor(type: string, registry: TypeRegistry): boolean {
   return registry.allSubTypesOf(type).some((sub) => sub !== SUBTYPE_BASE);
 }
 
+/**
+ * How a (type, subType) pair is named back to the author in an error.
+ *
+ * A bare wrapper key for an UNREGISTERED type has no subType to resolve, so the naive
+ * `${type}.${subType}` renders `"madeup."` — a trailing dot that reads like the author
+ * wrote one. Print the type alone in that case; it is what they actually wrote.
+ */
+function typeDisplayName(type: string, subType: string): string {
+  return subType === "" ? type : `${type}${TYPE_SUBTYPE_SEPARATOR}${subType}`;
+}
+
+/** The JSON kind of a value, for an error that has to say what the author wrote instead. */
+function describeJsonKind(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  return `a ${typeof value}`;
+}
+
 function abstractSubtypeMessage(type: string): string {
   return (
     `"${type}.${SUBTYPE_BASE}" may not be authored — every "${SUBTYPE_BASE}" subtype is an ` +
@@ -596,19 +614,6 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     const rootKey = wrapperKeys[0]!;
     const rootData = topLevel[rootKey];
 
-    if (typeof rootData !== "object" || rootData === null || Array.isArray(rootData)) {
-      // The error context references the rootKey wrapper; push it so the
-      // envelope's jsonPath includes it (matches the legacy `path` slot).
-      _currentPath!.pushKey(rootKey);
-      const src = errSource();
-      _currentPath!.pop();
-      throw new ParseError(
-        `Top-level wrapper "${rootKey}" must contain an object`,
-        { code: "ERR_TOP_LEVEL_NOT_OBJECT", source: src },
-      );
-    }
-
-    const rootDataObj = rootData as Record<string, unknown>;
     const { type: rootType, subType: rootSubType, explicit: rootExplicit } =
       splitTypeKey(rootKey, opts.registry);
 
@@ -649,7 +654,7 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       // other" is how a rule ends up half-true and passing every probe.
       const retiredRoot = retiredSubType(rootType, rootSubType);
       throw new ParseError(
-        `Unknown root type "${rootType}.${rootSubType}" — ` +
+        `Unknown root type "${typeDisplayName(rootType, rootSubType)}" — ` +
           (retiredRoot !== undefined ? retirementHint(retiredRoot) : "not registered"),
         {
           code: rootTypeCode,
@@ -660,6 +665,26 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
         },
       );
     }
+
+    // --- The root wrapper's BODY must be an object ---
+    // AFTER the key resolves — the same order as the CHILD door (see processChildren).
+    // One rule, both doors, in the same order at both: until 1.0.5 this door ran the body
+    // check first, the child door ran it first too but under a DIFFERENT code, and the JVM
+    // root door ran it last with no error code at all.
+    if (typeof rootData !== "object" || rootData === null || Array.isArray(rootData)) {
+      // The error context references the rootKey wrapper; push it so the
+      // envelope's jsonPath includes it (matches the legacy `path` slot).
+      _currentPath!.pushKey(rootKey);
+      const src = errSource();
+      _currentPath!.pop();
+      throw new ParseError(
+        `Top-level wrapper "${rootKey}" must contain an object, and holds ` +
+          `${describeJsonKind(rootData)}`,
+        { code: "ERR_TOP_LEVEL_NOT_OBJECT", source: src },
+      );
+    }
+
+    const rootDataObj = rootData as Record<string, unknown>;
 
     // FR5a — push the wrapper-key segment onto the JSONPath stack so all
     // descendants emit jsonPath strings rooted at "$.<rootKey>". The merge-mode
@@ -762,7 +787,7 @@ function parseNodeFresh(
     if (registry.has(type, SUBTYPE_BASE)) {
       subType = SUBTYPE_BASE;
     } else {
-      const msg = `Unknown type "${type}.${subType}" — not registered`;
+      const msg = `Unknown type "${typeDisplayName(type, subType)}" — not registered`;
       errors.push(new ParseError(msg, { code: "ERR_UNKNOWN_TYPE", source: errSource() }));
       const rawName = nodeData[RESERVED_KEY_NAME];
       const name = typeof rawName === "string" ? rawName : "";
@@ -1666,18 +1691,6 @@ function processChildren(
       _currentYamlPosition = getYamlPosition(childRecord, childKey);
     }
 
-    if (typeof childData !== "object" || childData === null || Array.isArray(childData)) {
-      reportProblem(
-        `Child wrapper "${childKey}" at ${childNodePath} must contain an object`,
-        strict, warnings, "ERR_TOP_LEVEL_NOT_OBJECT",
-      );
-      _currentPath?.pop(); // pop child wrapper key
-      _currentPath?.pop(); // pop array index
-      _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
-      continue;
-    }
-
-    const childDataObj = childData as Record<string, unknown>;
     const { type: childType, subType: childSubTypeRaw, explicit } = splitTypeKey(childKey, registry);
 
     let childSubType = childSubTypeRaw;
@@ -1687,8 +1700,17 @@ function processChildren(
     // (identity, index, requirement) falls into that check's else-arm first and is reported as
     // an UNKNOWN TYPE — a message asserting the type does not exist, about a type that does,
     // with its name mangled to `"identity."`. Order is the whole rule here.
-    if ((childSubType === SUBTYPE_BASE && isAbstractAnchorFor(childType, registry))
-      || (!explicit && childSubType === "")) {
+    //
+    // Registration first, exactly as the ROOT door does it: an UNREGISTERED type has no
+    // declared default either, so without this guard a typo'd child key (`madeup`) lands in
+    // this branch and is told to "write the full `madeup.<subType>`" — advice about a type
+    // that does not exist. The root door has carried the guard since FR5a and Java pins it
+    // with a root-door test; the child door never got it, so one rule was true at one of its
+    // two doors in TypeScript, C# and Java, while Python reported ERR_UNKNOWN_TYPE. The
+    // registration check below owns the unregistered case and phrases it correctly.
+    if (registry.allSubTypesOf(childType).length > 0
+      && ((childSubType === SUBTYPE_BASE && isAbstractAnchorFor(childType, registry))
+        || (!explicit && childSubType === ""))) {
       errors.push(
         explicit
           ? new ParseError(abstractSubtypeMessage(childType), {
@@ -1723,7 +1745,7 @@ function processChildren(
         const retiredChild = retiredSubType(childType, childSubType);
         errors.push(
           new ParseError(
-            `Unknown type "${childType}.${childSubType}" — ` +
+            `Unknown type "${typeDisplayName(childType, childSubType)}" — ` +
               (retiredChild !== undefined ? retirementHint(retiredChild) : "not registered"),
             { code: childTypeCode, source: errSource() },
           ),
@@ -1734,6 +1756,35 @@ function processChildren(
         continue; // skip this child
       }
     }
+
+    // --- The wrapper's BODY must be an object ---
+    // AFTER the key resolves, deliberately. A child is one `{ "<type>.<subType>": { …body… } }`
+    // pair, so a string/number/boolean/array/null body carries no node to read — but running
+    // this check FIRST answers `{ "$comment": "prose" }` with "must contain an object", which
+    // sends the author to wrap prose that was never a node in the first place. Key first, body
+    // second: each mistake gets the message about itself.
+    //
+    // A hard ERROR, not `reportProblem`'s lax warning (1.0.5). Under a warning the child was
+    // DROPPED from the tree on every port and the load still succeeded — a declared field
+    // simply not there, with `meta gen` emitting a table without its column. Four ports
+    // disagreed about it besides: TypeScript and C# warned, Java logged to slf4j and put
+    // nothing in the envelope at all, and Python dropped a registered type's bad body in
+    // silence. See docs/compatibility-policy.md, "Correcting input we wrongly accepted".
+    if (typeof childData !== "object" || childData === null || Array.isArray(childData)) {
+      errors.push(
+        new ParseError(
+          `Child wrapper "${childKey}" at ${childNodePath} must contain an object — ` +
+            `a child is one { "<type>.<subType>": { …node body… } } pair, and this one holds ` +
+            `${describeJsonKind(childData)}. Give it a node body, or remove the entry.`,
+          { code: "ERR_CHILD_NOT_OBJECT", source: errSource() },
+        ),
+      );
+      _currentPath?.pop(); // pop child wrapper key
+      _currentPath?.pop(); // pop array index
+      _currentYamlPosition = savedYamlPosition; // FR5b — restore parent's pos
+      continue; // skip this child
+    }
+    const childDataObj = childData as Record<string, unknown>;
 
     // A `<type>.base` child may not be AUTHORED — the CHILD door (the root door is above).
     // Gated on `explicit`, deliberately: `base` is also this parser's fallback for an

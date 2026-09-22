@@ -396,6 +396,30 @@ public static class Parser
     private static bool IsAbstractAnchorFor(string type, TypeRegistry registry) =>
         registry.AllSubTypesOf(type).Any(sub => sub != SUBTYPE_BASE);
 
+    /// <summary>
+    /// How a (type, subType) pair is named back to the author in an error.
+    /// <para>
+    /// A bare wrapper key for an UNREGISTERED type has no subType to resolve, so the naive
+    /// <c>type.subType</c> renders <c>"madeup."</c> — a trailing dot that reads like the
+    /// author wrote one. Print the type alone in that case; it is what they actually wrote.
+    /// </para>
+    /// </summary>
+    private static string TypeDisplayName(string type, string subType) =>
+        subType.Length == 0 ? type : $"{type}{TYPE_SUBTYPE_SEPARATOR}{subType}";
+
+    /// <summary>
+    /// The JSON kind of a value, for an error that has to say what the author wrote instead.
+    /// </summary>
+    private static string DescribeJsonKind(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null or JsonValueKind.Undefined => "null",
+        JsonValueKind.Array => "an array",
+        JsonValueKind.String => "a string",
+        JsonValueKind.Number => "a number",
+        JsonValueKind.True or JsonValueKind.False => "a boolean",
+        _ => "a non-object value",
+    };
+
     private static string AbstractSubtypeMessage(string type) =>
         $"\"{type}.{SUBTYPE_BASE}\" may not be authored — every \"{SUBTYPE_BASE}\" subtype " +
         "is an abstract registry anchor that concrete subtypes inherit from, with no " +
@@ -531,14 +555,6 @@ public static class Parser
         // here on.
         st.Builder.PushKey(rootKey);
 
-        if (rootData.ValueKind != JsonValueKind.Object)
-        {
-            throw new ParseException(
-                $"Top-level wrapper \"{rootKey}\" must contain an object",
-                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, st.Builder.ToString(),
-                st.CurrentSource());
-        }
-
         SplitKey rootSplit = SplitTypeKey(rootKey, opts.Registry);
         string rootType = rootSplit.Type;
         string rootSubType = rootSplit.SubType;
@@ -572,8 +588,22 @@ public static class Parser
                 ? ErrorCode.ERR_UNKNOWN_SUBTYPE
                 : ErrorCode.ERR_UNKNOWN_TYPE;
             throw new ParseException(
-                $"Unknown root type \"{rootType}.{rootSubType}\" — not registered",
+                $"Unknown root type \"{TypeDisplayName(rootType, rootSubType)}\" — not registered",
                 rootTypeCode, st.Source, st.Builder.ToString(),
+                st.CurrentSource());
+        }
+
+        // --- The root wrapper's BODY must be an object ---
+        // AFTER the key resolves — the same order as the CHILD door (see the child loop
+        // below). One rule, both doors, in the same order at both: until 1.0.5 this door ran
+        // the body check first, the child door ran it first too but under a DIFFERENT code,
+        // and the JVM root door ran it last with no error code at all.
+        if (rootData.ValueKind != JsonValueKind.Object)
+        {
+            throw new ParseException(
+                $"Top-level wrapper \"{rootKey}\" must contain an object, and holds "
+                + DescribeJsonKind(rootData),
+                ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT, st.Source, st.Builder.ToString(),
                 st.CurrentSource());
         }
 
@@ -1677,14 +1707,6 @@ public static class Parser
                     {
                         string childNodePath = st.Builder.ToString();
 
-                        if (childData.ValueKind != JsonValueKind.Object)
-                        {
-                            ReportProblem(
-                                $"Child wrapper \"{singleChildKey}\" at {childNodePath} must contain an object",
-                                st, ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
-                            continue;
-                        }
-
                         SplitKey childSplit = SplitTypeKey(singleChildKey, st.Registry);
                         string childType = childSplit.Type;
                         string childSubType = childSplit.SubType;
@@ -1697,9 +1719,19 @@ public static class Parser
                         // requirement) falls into that check's else-arm first and is reported
                         // as an UNKNOWN TYPE — a message asserting the type does not exist,
                         // about a type that does. Order is the whole rule here.
-                        if ((childSubType == SUBTYPE_BASE
-                                && IsAbstractAnchorFor(childType, st.Registry))
-                            || (!explicitSubType && childSubType.Length == 0))
+                        //
+                        // Registration first, exactly as the ROOT door does it: an
+                        // UNREGISTERED type has no declared default either, so without this
+                        // guard a typo'd child key (`madeup`) lands in this branch and is
+                        // told to "write the full `madeup.<subType>`" — advice about a type
+                        // that does not exist. The child door never carried the guard its
+                        // root door has, in this port, TypeScript and Java alike, while
+                        // Python reported ERR_UNKNOWN_TYPE. The registration check below owns
+                        // the unregistered case and phrases it correctly.
+                        if (st.Registry.AllSubTypesOf(childType).Count > 0
+                            && ((childSubType == SUBTYPE_BASE
+                                    && IsAbstractAnchorFor(childType, st.Registry))
+                                || (!explicitSubType && childSubType.Length == 0)))
                         {
                             st.Errors.Add(explicitSubType
                                 ? new MetaError(
@@ -1730,11 +1762,34 @@ public static class Parser
                                         ? ErrorCode.ERR_UNKNOWN_SUBTYPE
                                         : ErrorCode.ERR_UNKNOWN_TYPE;
                                 st.Errors.Add(new MetaError(
-                                    $"Unknown type \"{childType}.{childSubType}\" — not registered",
+                                    $"Unknown type \"{TypeDisplayName(childType, childSubType)}\" — not registered",
                                     childTypeCode, st.Source, childNodePath,
                                     st.CurrentSource()));
                                 continue; // skip this child
                             }
+                        }
+
+                        // --- The wrapper's BODY must be an object ---
+                        // AFTER the key resolves, deliberately. A child is one
+                        // `{ "<type>.<subType>": { …body… } }` pair, so a string/number/
+                        // boolean/array/null body carries no node to read — but running this
+                        // check FIRST answers `{ "$comment": "prose" }` with "must contain an
+                        // object", which sends the author to wrap prose that was never a node
+                        // in the first place. Key first, body second.
+                        //
+                        // A hard ERROR, not ReportProblem's lax warning (1.0.5). Under a
+                        // warning the child was DROPPED and the load still succeeded — a
+                        // declared field simply not there. See docs/compatibility-policy.md,
+                        // "Correcting input we wrongly accepted".
+                        if (childData.ValueKind != JsonValueKind.Object)
+                        {
+                            st.Errors.Add(new MetaError(
+                                $"Child wrapper \"{singleChildKey}\" at {childNodePath} must contain an object — "
+                                + "a child is one { \"<type>.<subType>\": { …node body… } } pair, and this one holds "
+                                + $"{DescribeJsonKind(childData)}. Give it a node body, or remove the entry.",
+                                ErrorCode.ERR_CHILD_NOT_OBJECT, st.Source, childNodePath,
+                                st.CurrentSource()));
+                            continue; // skip this child
                         }
 
                         // A `<type>.base` child may not be AUTHORED — the CHILD door (the

@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_TOP_LEVEL_NOT_OBJECT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.accounts.json"
+        ],
+        "jsonPath": "$['metadata.root']"
+      }
+    }
+  ],
+  "warnings": []
+}

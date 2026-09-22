@@ -11,6 +11,11 @@ if TYPE_CHECKING:  # avoid runtime import cycles
 class ErrorCode(str, Enum):
     ERR_MALFORMED_JSON = "ERR_MALFORMED_JSON"
     ERR_TOP_LEVEL_NOT_OBJECT = "ERR_TOP_LEVEL_NOT_OBJECT"
+    # A child wrapper's BODY is not a JSON object. Distinct from ERR_TOP_LEVEL_NOT_OBJECT,
+    # which is about the document root — a code named TOP_LEVEL cannot honestly describe a
+    # field three levels down, and the other ports borrowed it for that until 1.0.5. Raised
+    # AFTER the wrapper key's type resolves, so a bad key is still diagnosed as a bad key.
+    ERR_CHILD_NOT_OBJECT = "ERR_CHILD_NOT_OBJECT"
     ERR_UNKNOWN_TYPE = "ERR_UNKNOWN_TYPE"
     ERR_UNKNOWN_SUBTYPE = "ERR_UNKNOWN_SUBTYPE"
     # A document AUTHORS a `<type>.base` node. Every registered `base` subtype is an

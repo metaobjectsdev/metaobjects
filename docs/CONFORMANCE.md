@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 330 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 334 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -176,7 +176,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (330)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (334)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -330,7 +330,7 @@ Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 330 + yaml 16 + verify 31
+The fixtures in the nine corpora mapped above (metamodel 334 + yaml 16 + verify 31
 + render 15 + persistence 33 + api-contract 61 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

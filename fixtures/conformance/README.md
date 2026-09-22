@@ -80,6 +80,34 @@ API-surface checks; a fixture may have both.
 Fixtures assert error *codes*, never message prose. Codes are registered in
 `ERROR-CODES.json`. Adding a code is an additive edit to that file.
 
+## A wrapper key, and the body under it (1.0.5)
+
+Four fixtures pin the two halves of "is this entry a node at all", because the four
+ports answered them four different ways:
+
+- `error-unknown-bare-child-type` — a bare child key naming an UNREGISTERED type
+  (`{ "madeup": { … } }`) is `ERR_UNKNOWN_TYPE`, not `ERR_MISSING_SUBTYPE`. The root
+  door has always resolved registration first; the child door did not, so three ports
+  answered a type that does not exist with "write the full `madeup.<subType>`". The
+  control lives next door in `error-bare-key-type-without-base`: `identity` IS
+  registered and declares no default, so it keeps `ERR_MISSING_SUBTYPE`.
+- `error-child-not-object` — a child wrapper whose body is not an object
+  (`{ "field.string": "label" }`) is `ERR_CHILD_NOT_OBJECT`. It used to be a warning
+  in two ports, an slf4j line in one, and nothing at all in Python, so the declared
+  field was dropped and the load succeeded.
+- `error-attr-child-not-object` — the same rule on the ATTR child door, which is a
+  separate branch in every port and a separate FUNCTION in Python. Fixing only the
+  structural door left Python answering `ERR_MISSING_REQUIRED_ATTR` there (no `name` in
+  the `{}` it coerced the body to) — naming a consequence instead of the cause, and
+  disagreeing with the other three. A rule with two branches needs a fixture per branch.
+- `error-root-not-object` — the same rule at the ROOT door, under
+  `ERR_TOP_LEVEL_NOT_OBJECT`, which is the code that names it there. Java raised this
+  one with a NULL error code until 1.0.5.
+
+The KEY is judged before the BODY, at both doors. That order is what makes
+`{ "$comment": "prose" }` an unknown TYPE rather than a body-shape complaint about
+prose that was never a node.
+
 ## Array fields through the filter/sort tier (#335)
 
 - `error-filterable-array-field` — a `field.string @isArray @filterable` fails

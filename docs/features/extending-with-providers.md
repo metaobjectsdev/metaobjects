@@ -248,8 +248,9 @@ Composition surfaces these codes consistently across all ports (see
 
 | Code | When | Conformance fixture |
 |---|---|---|
-| `ERR_UNKNOWN_TYPE` | YAML/JSON references a `type` not registered by any provider | (covered by core fixtures) |
+| `ERR_UNKNOWN_TYPE` | YAML/JSON references a `type` not registered by any provider — including a BARE wrapper key naming an unregistered type, which is an unknown type and not a missing subType | `error-unknown-bare-child-type` |
 | `ERR_UNKNOWN_SUBTYPE` | `type` is known but `subType` is not | `provider-extension-missing-provider-fails` |
+| `ERR_CHILD_NOT_OBJECT` | A `children` entry's body is not an object, so there is no node to read — checked AFTER the wrapper key resolves | `error-child-not-object` |
 | `ERR_PROVIDER_DUPLICATE_ID` | Two provider objects report the same `id` | `provider-extension-duplicate-id` |
 | `ERR_PROVIDER_MISSING_DEPENDENCY` | Provider declares dep on an unregistered id | `provider-extension-missing-dependency` |
 | `ERR_PROVIDER_DEPENDENCY_CYCLE` | Provider dependencies form a cycle | `provider-extension-dependency-cycle` |
