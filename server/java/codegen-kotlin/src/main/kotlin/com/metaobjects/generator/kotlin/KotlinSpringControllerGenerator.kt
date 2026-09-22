@@ -286,7 +286,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import org.springframework.web.bind.annotation.RequestMethod\n")
             append("import org.springframework.web.bind.annotation.RequestParam\n")
             append("import org.springframework.web.bind.annotation.RestController\n")
-            append("import java.net.URLDecoder\n")
+            append("import jakarta.servlet.http.HttpServletRequest\n")
+            append("import java.io.ByteArrayOutputStream\n")
             append("import java.nio.charset.StandardCharsets\n")
             append("import java.sql.Timestamp\n")
             // ADR-0036 Wave 2: a default field.timestamp column maps to java.time.Instant
@@ -318,8 +319,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // FR-009 filter pipeline. Three stages:
             //   1. data class ${shortName}FilterPredicate — parsed + validated one
             //      filter[<f>][<op>]=<v> entry (value already coerced to a Kotlin type).
-            //   2. parse${shortName}Filter — walks the raw key→value map (each key is
-            //      URL-decoded by Spring), matching the bracketed grammar against
+            //   2. parse${shortName}Filter — walks the raw query string (decoded per
+            //      component, tolerating a malformed escape), matching the grammar against
             //      ${allowlistName}.FIELDS + .OPS_BY_FIELD. Returns either predicates or
             //      one of the cross-port error envelope keys.
             //   3. ${shortName}WhereOp — converts the predicate list into an Exposed
@@ -599,9 +600,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // not a scalar filter target; its element type is an un-imported kotlinx JsonElement). Mirrors
         // the allowlist's exclusions, so the dispatch never references a cast the generic pipeline
         // can't coerce. (scalarFields itself is left intact — rowTo<Base> reuses it to map every column.)
+        // The discriminator stays IN: the base allowlist admits it (FR-017), so it needs a
+        // coercion + WHERE arm like any filterable enum column.
         val filterSpecs = scalarFields
-            .filter { it.name != plan.discriminatorField && it !is com.metaobjects.field.DecimalField &&
-                !KotlinTypeMapper.isJsonbOpenBag(it) }
+            .filter { it !is com.metaobjects.field.DecimalField && !KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
         // #203/ADR-0045: @autoSet columns on the union table are stamped by the controller, never bound
         // from the per-subtype create body. Same computation as the vanilla emit() (lines ~195-207); the
@@ -694,7 +696,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import org.springframework.web.bind.annotation.RequestParam\n")
             append("import org.springframework.web.bind.annotation.RestController\n")
             // FR-009 filter pipeline support (mirrors the vanilla controller's import set).
-            append("import java.net.URLDecoder\n")
+            append("import jakarta.servlet.http.HttpServletRequest\n")
+            append("import java.io.ByteArrayOutputStream\n")
             append("import java.nio.charset.StandardCharsets\n")
             append("import java.sql.Timestamp\n")
             // ADR-0036 Wave 2: import java.time.Instant only when a default field.timestamp
@@ -709,9 +712,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if (pkParamType == "UUID" || filterSpecs.any { it.elementType == "UUID" }) {
                 append("import java.util.UUID\n")
             }
-            // FR-009 (#179): a non-discriminator filterable enum in the union is compared as its
-            // stored string via `col.castTo<String>(TextColumnType())` — same conditional imports
-            // as the vanilla controller. (The discriminator enum is excluded from filterSpecs.)
+            // FR-009 (#179): a filterable enum in the union — the discriminator included — is
+            // compared as its stored string via `col.castTo<String>(TextColumnType())`; same
+            // conditional imports as the vanilla controller.
             if (filterSpecs.any { it.subType == EnumField.SUBTYPE_ENUM }) {
                 append("import org.jetbrains.exposed.sql.TextColumnType\n")
                 append("import org.jetbrains.exposed.sql.castTo\n")
@@ -771,9 +774,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        @RequestParam(required = false) offset: Int?,\n")
             append("        @RequestParam(required = false) sort: String?,\n")
             append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
-            append("        @RequestParam allParams: Map<String, String>,\n")
+            append("        request: HttpServletRequest,\n")
             append("    ): ResponseEntity<Any> = transaction {\n")
-            append("        val filterResult = parse${shortName}Filter(allParams)\n")
+            append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
             append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
             append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
             append("        var q = if (whereOp != null) $table.selectAll().where { whereOp } else $table.selectAll()\n")
@@ -827,9 +830,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("        @RequestParam(required = false) limit: Int?,\n")
                 append("        @RequestParam(required = false) offset: Int?,\n")
                 append("        @RequestParam(required = false) sort: String?,\n")
-                append("        @RequestParam allParams: Map<String, String>,\n")
+                append("        request: HttpServletRequest,\n")
                 append("    ): ResponseEntity<Any> = transaction {\n")
-                append("        val filterResult = parse${shortName}Filter(allParams)\n")
+                append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
                 append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
                 append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
                 append("        var q = $table.selectAll().where {\n")
@@ -1103,19 +1106,53 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // straight into the 400 body.
         out.append("private data class ${shortName}FilterResult(val predicates: List<${shortName}FilterPredicate>, val error: String?, val field: String? = null)\n\n")
 
-        // Parser — walks the URL-decoded Map<String, String> and matches each
-        // filter[<f>][<op>]=<v> key against the per-entity FIELDS + OPS_BY_FIELD
-        // allowlist. coerce<X>Value() lookups own the per-subtype value coercion.
+        // Parser — walks the RAW query string (not Spring's decoded parameter map) and
+        // matches each filter[<f>][<op>]=<v> key against the per-entity FIELDS +
+        // OPS_BY_FIELD allowlist. coerce<X>Value() lookups own the per-subtype value
+        // coercion. Raw, because Tomcat DROPS a parameter whose value holds a malformed
+        // escape ("Character decoding failed ... has been ignored") — so a browser's
+        // `?filter[name][like]=A%` reached the map without its filter and the list came
+        // back unfiltered with a 200. Same input as the Java port's FilterParser.parse.
         out.append("/**\n")
-        out.append(" * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded\n")
-        out.append(" * {@code allParams} map. Returns either a list of validated predicates or one of\n")
+        out.append(" * GENERATED — decode one query component, keeping a malformed escape as written:\n")
+        out.append(" * {@code %XX} is a byte (runs decode as UTF-8), {@code +} is a space, and a {@code %}\n")
+        out.append(" * not followed by two hex digits stays a literal {@code %} — what the TypeScript, C#\n")
+        out.append(" * and Python servers do, where {@code URLDecoder} would throw.\n")
+        out.append(" */\n")
+        out.append("private fun decodeQueryComponent(raw: String): String {\n")
+        out.append("    if ('%' !in raw && '+' !in raw) return raw\n")
+        out.append("    val out = StringBuilder(raw.length)\n")
+        out.append("    val bytes = ByteArrayOutputStream()\n")
+        out.append("    var i = 0\n")
+        out.append("    while (i < raw.length) {\n")
+        out.append("        val c = raw[i]\n")
+        out.append("        if (c == '%' && i + 2 < raw.length && raw[i + 1].isHexDigitAscii() && raw[i + 2].isHexDigitAscii()) {\n")
+        out.append("            bytes.write(raw.substring(i + 1, i + 3).toInt(16))\n")
+        out.append("            i += 3\n")
+        out.append("            continue\n")
+        out.append("        }\n")
+        out.append("        if (bytes.size() > 0) { out.append(bytes.toString(StandardCharsets.UTF_8)); bytes.reset() }\n")
+        out.append("        out.append(if (c == '+') ' ' else c)\n")
+        out.append("        i++\n")
+        out.append("    }\n")
+        out.append("    if (bytes.size() > 0) out.append(bytes.toString(StandardCharsets.UTF_8))\n")
+        out.append("    return out.toString()\n")
+        out.append("}\n\n")
+        out.append("private fun Char.isHexDigitAscii(): Boolean = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'\n\n")
+        out.append("/**\n")
+        out.append(" * GENERATED — parse the bracketed-qs FR-009 filter grammar from the raw query\n")
+        out.append(" * string. Returns either a list of validated predicates or one of\n")
         out.append(" * the cross-port error envelope keys ({@code invalid_filter_field /\n")
         out.append(" * invalid_filter_op / invalid_filter_value / filter.in_too_large}) plus the\n")
         out.append(" * field each one is about.\n")
         out.append(" */\n")
-        out.append("private fun parse${shortName}Filter(allParams: Map<String, String>): ${shortName}FilterResult {\n")
+        out.append("private fun parse${shortName}Filter(rawQuery: String?): ${shortName}FilterResult {\n")
         out.append("    val out = mutableListOf<${shortName}FilterPredicate>()\n")
-        out.append("    for ((rawKey, value) in allParams) {\n")
+        out.append("    for (pair in rawQuery.orEmpty().split('&')) {\n")
+        out.append("        if (pair.isEmpty()) continue\n")
+        out.append("        val eq = pair.indexOf('=')\n")
+        out.append("        val rawKey = decodeQueryComponent(if (eq < 0) pair else pair.substring(0, eq))\n")
+        out.append("        val value = decodeQueryComponent(if (eq < 0) \"\" else pair.substring(eq + 1))\n")
         out.append("        if (!rawKey.startsWith(\"filter[\")) continue\n")
         out.append("        val firstClose = rawKey.indexOf(']', 7)\n")
         out.append("        if (firstClose < 0) continue\n")
@@ -1613,7 +1650,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             append("import org.springframework.web.bind.annotation.RequestParam\n")
             append("import org.springframework.web.bind.annotation.RestController\n")
-            append("import java.net.URLDecoder\n")
+            append("import jakarta.servlet.http.HttpServletRequest\n")
+            append("import java.io.ByteArrayOutputStream\n")
             append("import java.nio.charset.StandardCharsets\n")
             append("import java.sql.Timestamp\n")
             if (scalarFields.any { it.elementType == "Instant" }) {
@@ -1753,22 +1791,19 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     ) = with(sb) {
         // List handler — pagination + sort + withCount + FR-009 filter operators.
         //
-        // `allParams: Map<String, String>` is Spring's collapsed view of every query
-        // parameter; the bracketed filter keys survive (Spring does not strip [ ] /
-        // they are URL-decoded but otherwise opaque). Same-key collisions in repeat
-        // params would only retain one value — none of the cross-port FR-009
-        // scenarios exercise that case (each filter[<f>][<op>] occurs at most once
-        // per request).
+        // The filter reads `request.queryString` raw rather than Spring's parameter map:
+        // Tomcat drops a parameter holding a malformed escape, which silently unfiltered
+        // the list (see parse<Entity>Filter).
         append("    @GetMapping\n")
         append("    fun list(\n")
         append("        @RequestParam(required = false) limit: Int?,\n")
         append("        @RequestParam(required = false) offset: Int?,\n")
         append("        @RequestParam(required = false) sort: String?,\n")
         append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
-        append("        @RequestParam allParams: Map<String, String>,\n")
+        append("        request: HttpServletRequest,\n")
         append("    ): ResponseEntity<Any> = transaction {\n")
         append("        // FR-009 filter operators — short-circuit 400 on invalid field/op/value.\n")
-        append("        val filterResult = parse${shortName}Filter(allParams)\n")
+        append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
         append("        if (filterResult.error != null) {\n")
         append("            return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
         append("        }\n")

@@ -77,14 +77,21 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val className = KotlinNaming.filterAllowlistName(shortName)
 
-        // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns,
-        // but EXCLUDES (a) the discriminator — addressable via the per-subtype route segment, and
-        // (b) decimal columns — outside the cross-port HTTP filter/value contract. Keeps the Java +
-        // Kotlin filter surface identical (see the Java SpringFilterAllowlistGenerator).
+        // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns
+        // and keeps the discriminator, so `GET /<base>?filter[<disc>][in]=A,B` narrows the
+        // polymorphic list (FR-017 "Filter allowlists"; TS, C# and Python admit it too). It
+        // EXCLUDES decimal columns — outside the cross-port HTTP filter/value contract. Keeps the
+        // Java + Kotlin filter surface identical (see the Java SpringFilterAllowlistGenerator).
+        //
+        // The per-subtype routes share this one allowlist, so `/<base>/<seg>` also accepts the
+        // discriminator (AND'd with the route's own, a no-op or an empty list) and another
+        // subtype's columns (an empty list). FR-017 gives each subtype its own allowlist that
+        // rejects both; only TypeScript emits that. Answers stay truthful either way, so it is
+        // left to an adopter who wants the 400 to own this generator: subclass it and name the
+        // subclass in the Maven plugin's `<generator><classname>`.
         val opsByField = if (KotlinTphPlan.isTphBase(entity, loader)) {
-            val disc = KotlinTphPlan.planFor(entity, loader)!!.discriminatorField
             val union = (entity.metaFields + KotlinTphPlan.collectSubtypeFields(entity, loader))
-                .filter { it.name != disc && it !is com.metaobjects.field.DecimalField }
+                .filter { it !is com.metaobjects.field.DecimalField }
             computeFilterableOps(union)
         } else {
             computeFilterableOps(entity)

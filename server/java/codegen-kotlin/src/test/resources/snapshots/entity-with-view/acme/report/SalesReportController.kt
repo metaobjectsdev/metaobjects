@@ -14,7 +14,8 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.net.URLDecoder
+import jakarta.servlet.http.HttpServletRequest
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.sql.Timestamp
 import java.time.LocalDate
@@ -57,15 +58,47 @@ private data class SalesReportFilterPredicate(val field: String, val op: String,
 private data class SalesReportFilterResult(val predicates: List<SalesReportFilterPredicate>, val error: String?, val field: String? = null)
 
 /**
- * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded
- * {@code allParams} map. Returns either a list of validated predicates or one of
+ * GENERATED — decode one query component, keeping a malformed escape as written:
+ * {@code %XX} is a byte (runs decode as UTF-8), {@code +} is a space, and a {@code %}
+ * not followed by two hex digits stays a literal {@code %} — what the TypeScript, C#
+ * and Python servers do, where {@code URLDecoder} would throw.
+ */
+private fun decodeQueryComponent(raw: String): String {
+    if ('%' !in raw && '+' !in raw) return raw
+    val out = StringBuilder(raw.length)
+    val bytes = ByteArrayOutputStream()
+    var i = 0
+    while (i < raw.length) {
+        val c = raw[i]
+        if (c == '%' && i + 2 < raw.length && raw[i + 1].isHexDigitAscii() && raw[i + 2].isHexDigitAscii()) {
+            bytes.write(raw.substring(i + 1, i + 3).toInt(16))
+            i += 3
+            continue
+        }
+        if (bytes.size() > 0) { out.append(bytes.toString(StandardCharsets.UTF_8)); bytes.reset() }
+        out.append(if (c == '+') ' ' else c)
+        i++
+    }
+    if (bytes.size() > 0) out.append(bytes.toString(StandardCharsets.UTF_8))
+    return out.toString()
+}
+
+private fun Char.isHexDigitAscii(): Boolean = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'
+
+/**
+ * GENERATED — parse the bracketed-qs FR-009 filter grammar from the raw query
+ * string. Returns either a list of validated predicates or one of
  * the cross-port error envelope keys ({@code invalid_filter_field /
  * invalid_filter_op / invalid_filter_value / filter.in_too_large}) plus the
  * field each one is about.
  */
-private fun parseSalesReportFilter(allParams: Map<String, String>): SalesReportFilterResult {
+private fun parseSalesReportFilter(rawQuery: String?): SalesReportFilterResult {
     val out = mutableListOf<SalesReportFilterPredicate>()
-    for ((rawKey, value) in allParams) {
+    for (pair in rawQuery.orEmpty().split('&')) {
+        if (pair.isEmpty()) continue
+        val eq = pair.indexOf('=')
+        val rawKey = decodeQueryComponent(if (eq < 0) pair else pair.substring(0, eq))
+        val value = decodeQueryComponent(if (eq < 0) "" else pair.substring(eq + 1))
         if (!rawKey.startsWith("filter[")) continue
         val firstClose = rawKey.indexOf(']', 7)
         if (firstClose < 0) continue
@@ -252,10 +285,10 @@ class SalesReportController {
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) sort: String?,
         @RequestParam(required = false, name = "withCount") withCount: Int?,
-        @RequestParam allParams: Map<String, String>,
+        request: HttpServletRequest,
     ): ResponseEntity<Any> = transaction {
         // FR-009 filter operators — short-circuit 400 on invalid field/op/value.
-        val filterResult = parseSalesReportFilter(allParams)
+        val filterResult = parseSalesReportFilter(request.queryString)
         if (filterResult.error != null) {
             return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         }

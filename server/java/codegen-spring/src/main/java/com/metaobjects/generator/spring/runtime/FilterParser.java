@@ -1,6 +1,6 @@
 package com.metaobjects.generator.spring.runtime;
 
-import java.net.URLDecoder;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,8 +73,8 @@ public final class FilterParser {
             int eq = pair.indexOf('=');
             String rawKey = eq < 0 ? pair : pair.substring(0, eq);
             String rawValue = eq < 0 ? "" : pair.substring(eq + 1);
-            String key = URLDecoder.decode(rawKey, StandardCharsets.UTF_8);
-            String value = URLDecoder.decode(rawValue, StandardCharsets.UTF_8);
+            String key = decode(rawKey);
+            String value = decode(rawValue);
             if (!key.startsWith("filter[")) continue;
 
             int firstClose = key.indexOf(']', 7);
@@ -103,6 +103,42 @@ public final class FilterParser {
             out.add(new FilterPredicate(field, op, coerced));
         }
         return FilterParseResult.ok(out);
+    }
+
+    /**
+     * Decode one {@code application/x-www-form-urlencoded} component, keeping a malformed
+     * escape as written. {@code %XX} (two hex digits) is a byte, runs of bytes decode as
+     * UTF-8, {@code +} is a space, and a {@code %} not followed by two hex digits stays a
+     * literal {@code %}. {@link java.net.URLDecoder} throws on that last case instead, which
+     * made {@code ?filter[name][like]=A%} — what a browser sends for a typed {@code %} — a
+     * 500. Tolerating it is what the TypeScript, C# and Python servers and the WHATWG URL
+     * standard's percent-decode do.
+     */
+    static String decode(String raw) {
+        if (raw.indexOf('%') < 0 && raw.indexOf('+') < 0) return raw;
+        StringBuilder out = new StringBuilder(raw.length());
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        int i = 0;
+        while (i < raw.length()) {
+            char c = raw.charAt(i);
+            if (c == '%' && i + 2 < raw.length() && isHex(raw.charAt(i + 1)) && isHex(raw.charAt(i + 2))) {
+                bytes.write(Character.digit(raw.charAt(i + 1), 16) << 4 | Character.digit(raw.charAt(i + 2), 16));
+                i += 3;
+                continue;
+            }
+            if (bytes.size() > 0) {
+                out.append(bytes.toString(StandardCharsets.UTF_8));
+                bytes.reset();
+            }
+            out.append(c == '+' ? ' ' : c);
+            i++;
+        }
+        if (bytes.size() > 0) out.append(bytes.toString(StandardCharsets.UTF_8));
+        return out.toString();
+    }
+
+    private static boolean isHex(char c) {
+        return Character.digit(c, 16) >= 0 && c < 128;
     }
 
     /**

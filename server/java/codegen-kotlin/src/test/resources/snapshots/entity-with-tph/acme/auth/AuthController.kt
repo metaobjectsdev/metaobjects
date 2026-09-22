@@ -26,9 +26,12 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestMethod
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.net.URLDecoder
+import jakarta.servlet.http.HttpServletRequest
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.sql.Timestamp
+import org.jetbrains.exposed.sql.TextColumnType
+import org.jetbrains.exposed.sql.castTo
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -69,15 +72,47 @@ private data class AuthFilterPredicate(val field: String, val op: String, val va
 private data class AuthFilterResult(val predicates: List<AuthFilterPredicate>, val error: String?, val field: String? = null)
 
 /**
- * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded
- * {@code allParams} map. Returns either a list of validated predicates or one of
+ * GENERATED — decode one query component, keeping a malformed escape as written:
+ * {@code %XX} is a byte (runs decode as UTF-8), {@code +} is a space, and a {@code %}
+ * not followed by two hex digits stays a literal {@code %} — what the TypeScript, C#
+ * and Python servers do, where {@code URLDecoder} would throw.
+ */
+private fun decodeQueryComponent(raw: String): String {
+    if ('%' !in raw && '+' !in raw) return raw
+    val out = StringBuilder(raw.length)
+    val bytes = ByteArrayOutputStream()
+    var i = 0
+    while (i < raw.length) {
+        val c = raw[i]
+        if (c == '%' && i + 2 < raw.length && raw[i + 1].isHexDigitAscii() && raw[i + 2].isHexDigitAscii()) {
+            bytes.write(raw.substring(i + 1, i + 3).toInt(16))
+            i += 3
+            continue
+        }
+        if (bytes.size() > 0) { out.append(bytes.toString(StandardCharsets.UTF_8)); bytes.reset() }
+        out.append(if (c == '+') ' ' else c)
+        i++
+    }
+    if (bytes.size() > 0) out.append(bytes.toString(StandardCharsets.UTF_8))
+    return out.toString()
+}
+
+private fun Char.isHexDigitAscii(): Boolean = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'
+
+/**
+ * GENERATED — parse the bracketed-qs FR-009 filter grammar from the raw query
+ * string. Returns either a list of validated predicates or one of
  * the cross-port error envelope keys ({@code invalid_filter_field /
  * invalid_filter_op / invalid_filter_value / filter.in_too_large}) plus the
  * field each one is about.
  */
-private fun parseAuthFilter(allParams: Map<String, String>): AuthFilterResult {
+private fun parseAuthFilter(rawQuery: String?): AuthFilterResult {
     val out = mutableListOf<AuthFilterPredicate>()
-    for ((rawKey, value) in allParams) {
+    for (pair in rawQuery.orEmpty().split('&')) {
+        if (pair.isEmpty()) continue
+        val eq = pair.indexOf('=')
+        val rawKey = decodeQueryComponent(if (eq < 0) pair else pair.substring(0, eq))
+        val value = decodeQueryComponent(if (eq < 0) "" else pair.substring(eq + 1))
         if (!rawKey.startsWith("filter[")) continue
         val firstClose = rawKey.indexOf(']', 7)
         if (firstClose < 0) continue
@@ -117,6 +152,7 @@ private fun coerceAuthValue(field: String, op: String, raw: String): AuthCoerced
     }
     return when (field) {
         "id" -> coerceAuthLong(op, raw)
+        "type" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         "reference" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         "quantity" -> coerceAuthInt(op, raw)
         "priorAuthNumber" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
@@ -220,6 +256,14 @@ private fun AuthWhereOp(predicates: List<AuthFilterPredicate>): Op<Boolean>? {
                     "isNull" -> if (p.value as Boolean) AuthTable.id.isNull() else AuthTable.id.isNotNull()
                     else -> throw IllegalStateException("unsupported op for id: " + p.op)
                 }
+                "type" -> when (p.op) {
+                    "eq" -> AuthTable.type.castTo<String>(TextColumnType()) eq (p.value as String)
+                    "ne" -> AuthTable.type.castTo<String>(TextColumnType()) neq (p.value as String)
+                    "in" -> AuthTable.type.castTo<String>(TextColumnType()) inList (p.value as List<String>)
+                    "like" -> AuthTable.type.castTo<String>(TextColumnType()) like (p.value as String)
+                    "isNull" -> if (p.value as Boolean) AuthTable.type.isNull() else AuthTable.type.isNotNull()
+                    else -> throw IllegalStateException("unsupported op for type: " + p.op)
+                }
                 "reference" -> when (p.op) {
                     "eq" -> AuthTable.reference eq (p.value as String)
                     "ne" -> AuthTable.reference neq (p.value as String)
@@ -276,9 +320,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) sort: String?,
         @RequestParam(required = false, name = "withCount") withCount: Int?,
-        @RequestParam allParams: Map<String, String>,
+        request: HttpServletRequest,
     ): ResponseEntity<Any> = transaction {
-        val filterResult = parseAuthFilter(allParams)
+        val filterResult = parseAuthFilter(request.queryString)
         if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = if (whereOp != null) AuthTable.selectAll().where { whereOp } else AuthTable.selectAll()
@@ -312,9 +356,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam(required = false) limit: Int?,
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) sort: String?,
-        @RequestParam allParams: Map<String, String>,
+        request: HttpServletRequest,
     ): ResponseEntity<Any> = transaction {
-        val filterResult = parseAuthFilter(allParams)
+        val filterResult = parseAuthFilter(request.queryString)
         if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {
@@ -397,9 +441,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam(required = false) limit: Int?,
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) sort: String?,
-        @RequestParam allParams: Map<String, String>,
+        request: HttpServletRequest,
     ): ResponseEntity<Any> = transaction {
-        val filterResult = parseAuthFilter(allParams)
+        val filterResult = parseAuthFilter(request.queryString)
         if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {
@@ -482,9 +526,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         @RequestParam(required = false) limit: Int?,
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) sort: String?,
-        @RequestParam allParams: Map<String, String>,
+        request: HttpServletRequest,
     ): ResponseEntity<Any> = transaction {
-        val filterResult = parseAuthFilter(allParams)
+        val filterResult = parseAuthFilter(request.queryString)
         if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {

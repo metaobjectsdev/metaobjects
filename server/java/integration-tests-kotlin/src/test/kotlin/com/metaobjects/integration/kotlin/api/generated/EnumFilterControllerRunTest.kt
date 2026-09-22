@@ -55,7 +55,46 @@ class EnumFilterControllerRunTest {
     }""".trimIndent()
 
     @Test
-    fun `generated controller filters a field-enum column (eq, like, in) over HTTP`() {
+    fun `generated controller filters a field-enum column (eq, like, in) over HTTP`() = withWidgetController("enum_filter") { exchange ->
+        fun colorsAt(path: String): List<String> = colorsOf(exchange("GET", URI.create(path), null))
+
+        assertEquals(listOf("GREEN"), colorsAt("/api/widgets?filter[color][eq]=GREEN"))
+        assertEquals(listOf("BLUE", "RED"), colorsAt("/api/widgets?filter[color][ne]=GREEN"))
+        assertEquals(listOf("BLUE", "RED"), colorsAt("/api/widgets?filter[color][in]=RED,BLUE"))
+        assertEquals(listOf("GREEN"), colorsAt("/api/widgets?filter[color][like]=%25EE%25")) // %EE% url-encoded
+        assertEquals(listOf("BLUE", "GREEN", "RED"), colorsAt("/api/widgets"))
+    }
+
+    /**
+     * A browser sends a typed `%` unencoded, so `?filter[name][like]=w-G%` arrives with a
+     * malformed escape. Tomcat then DROPS that parameter from the servlet parameter map
+     * ("Character decoding failed ... has been ignored"), and a controller reading the map
+     * returned every row with a 200. MockMvc parses parameters itself, so the request here is
+     * built the way Tomcat hands it over: the raw query string present, the parameter absent.
+     */
+    @Test
+    fun `a raw percent in a like value still filters, as Tomcat delivers it`() = withWidgetController("raw_percent") { exchange ->
+        fun colorsOfRaw(rawQuery: String): List<String> =
+            colorsOf(exchange("GET", URI.create("/api/widgets"), rawQuery))
+
+        assertEquals(listOf("GREEN"), colorsOfRaw("filter[name][like]=w-G%"))
+        // the stray `%` must not swallow the `&` that starts the next filter
+        assertEquals(listOf("BLUE", "GREEN"), colorsOfRaw("filter[name][like]=w-%&filter[color][in]=BLUE,GREEN"))
+    }
+
+    private fun colorsOf(response: Pair<Int, String>): List<String> {
+        val (status, body) = response
+        assertEquals(200, status, "GET -> $body")
+        @Suppress("UNCHECKED_CAST")
+        val rows = mapper.readValue(body, List::class.java) as List<Map<String, Any?>>
+        return rows.map { it["color"] as String }.sorted()
+    }
+
+    /** Generate, compile, load and seed the Widget controller; [block] gets `exchange(method, uri, rawQuery?)`. */
+    private fun withWidgetController(
+        dbName: String,
+        block: (exchange: (String, URI, String?) -> Pair<Int, String>) -> Unit,
+    ) {
         val outDir = Files.createTempDirectory("enum-filter-")
         try {
             val loader = loadString("enum-filter", fixture)
@@ -86,7 +125,7 @@ class EnumFilterControllerRunTest {
                 .getDeclaredField("INSTANCE").get(null) as Table
 
             val db = Database.connect(
-                "jdbc:h2:mem:enum_filter;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
+                "jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
             transaction(db) { SchemaUtils.create(widgetTable) }
 
             // FR-036: the generated controller ctor now also takes a jakarta Validator.
@@ -95,30 +134,20 @@ class EnumFilterControllerRunTest {
             val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
             val mvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
 
-            fun exchange(method: String, path: String, body: Any?): Pair<Int, String> {
-                val builder = request(HttpMethod.valueOf(method), URI.create(path))
+            fun send(method: String, uri: URI, body: Any?, rawQuery: String?): Pair<Int, String> {
+                val builder = request(HttpMethod.valueOf(method), uri)
                 if (body != null) builder.contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body))
+                if (rawQuery != null) builder.with { it.queryString = rawQuery; it }
                 val res = mvc.perform(builder).andReturn().response
                 return res.status to res.getContentAsString(StandardCharsets.UTF_8)
             }
-            fun colorsOf(path: String): List<String> {
-                val (status, body) = exchange("GET", path, null)
-                assertEquals(200, status, "GET $path -> $body")
-                @Suppress("UNCHECKED_CAST")
-                val rows = mapper.readValue(body, List::class.java) as List<Map<String, Any?>>
-                return rows.map { it["color"] as String }.sorted()
-            }
 
             for (color in listOf("RED", "GREEN", "BLUE")) {
-                val (status, body) = exchange("POST", "/api/widgets", mapOf("name" to "w-$color", "color" to color))
+                val (status, body) = send("POST", URI.create("/api/widgets"), mapOf("name" to "w-$color", "color" to color), null)
                 assertEquals(201, status, "seed POST $color -> $body")
             }
 
-            assertEquals(listOf("GREEN"), colorsOf("/api/widgets?filter[color][eq]=GREEN"))
-            assertEquals(listOf("BLUE", "RED"), colorsOf("/api/widgets?filter[color][ne]=GREEN"))
-            assertEquals(listOf("BLUE", "RED"), colorsOf("/api/widgets?filter[color][in]=RED,BLUE"))
-            assertEquals(listOf("GREEN"), colorsOf("/api/widgets?filter[color][like]=%25EE%25")) // %EE% url-encoded
-            assertEquals(listOf("BLUE", "GREEN", "RED"), colorsOf("/api/widgets"))
+            block { method, uri, rawQuery -> send(method, uri, null, rawQuery) }
         } finally {
             outDir.toFile().deleteRecursively()
         }

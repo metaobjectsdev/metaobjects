@@ -264,6 +264,34 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   still send raw brackets; the Java and Kotlin runtime references now name the one property
   that admits them (`server.tomcat.relaxed-query-chars=[,]`).
 
+- **Java and Kotlin: a raw `%` in a filter value — a browser's typed wildcard,
+  `?filter[name][like]=A%` — was a 500 on Java and a silently UNFILTERED 200 on Kotlin.**
+  A `%` not followed by two hex digits is not a valid escape, and a browser's URL parser
+  sends it as written. Java's `FilterParser` decoded with `java.net.URLDecoder`, which throws
+  on it; the exception reached the servlet as a 500 — on ANY such pair in the query, filter or
+  not. Kotlin's generated controller read Spring's parameter map, and Tomcat drops a
+  parameter holding a malformed escape from that map (`Character decoding failed … has been
+  ignored`), so the filter vanished and every row came back. Both now parse the raw query
+  string and keep a malformed escape literal (`%XX` is still a byte, `+` still a space),
+  which is what the TypeScript, C# and Python servers already did. Found by the adopter estate:
+  11 of its 12 remaining Java contract failures. The in-repo corpus sends `%25`, and the JVM
+  lanes run no Tomcat, so neither could see it; pinned by `FilterParserDecodingTest` and a
+  Kotlin controller run test that hands the request over the way Tomcat does. **Kotlin
+  adopters with committed generated code should run `mvn metaobjects:generate`** — the list
+  handlers now take `HttpServletRequest` instead of `@RequestParam allParams`. Java needs no
+  regen: the fix is in the `codegen-spring` runtime.
+
+- **Java and Kotlin: a TPH base's list route now filters by the discriminator.**
+  `GET /api/parties?filter[partyType][in]=CARRIER,BROKER` answered
+  `400 invalid_filter_field` on the JVM ports and 200 on the other three. FR-017's
+  design says the base allowlist includes the discriminator; the JVM generators excluded it
+  on the reasoning that the per-subtype route already scopes it, which misses `in` and `ne`
+  across subtypes. Additive — a filter that was refused now works. The JVM per-subtype routes
+  still share the base's allowlist, so they also accept the discriminator (a no-op or an
+  empty list) and another subtype's columns (an empty list), where FR-017 has each subtype
+  reject both; the answers are truthful, and an adopter who wants the 400 owns that generator.
+  **Adopters with committed generated code should run `mvn metaobjects:generate`.**
+
 - **TypeScript: two `@metaobjectsdev/runtime-ts` writable mounts answered `PUT` with a 404.**
   The cross-port REST contract (FR-008) makes the update verb reachable via BOTH `PATCH`
   and `PUT`, routed to one handler, and every other port's controller maps both. The

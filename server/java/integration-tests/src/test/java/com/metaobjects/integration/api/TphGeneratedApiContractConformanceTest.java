@@ -128,5 +128,12 @@ final class TphGeneratedApiContractConformanceTest {
         org.junit.jupiter.api.Assertions.assertEquals(400, r4.status());
         org.junit.jupiter.api.Assertions.assertEquals("invalid_filter_field",
             ((Map<String, Object>) HARNESS.parseBody(r4.body())).get("error"));
+        // (e) polymorphic list filtered by the DISCRIMINATOR (FR-017 "Filter allowlists": the base
+        // allowlist includes it). Java excluded it until 1.0.5 and answered this with (d)'s 400.
+        var r5 = HARNESS.exchange("GET", "/api/auths?filter[type][in]=Bridge,Copay&sort=id:asc", null);
+        org.junit.jupiter.api.Assertions.assertEquals(200, r5.status(), r5.body());
+        var rows5 = (List<Map<String, Object>>) HARNESS.parseBody(r5.body());
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(1, 2),
+            rows5.stream().map(r -> ((Number) r.get("id")).intValue()).toList());
     }
 }

@@ -140,19 +140,26 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         String shortName = split[1];
         String className = SpringNaming.filterAllowlistName(shortName);
 
-        // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns,
-        // but EXCLUDES (a) the discriminator — it's addressable via the per-subtype route segment
-        // (/<base>/<value>), not a free-form filter column — and (b) decimal columns, which are
-        // outside the cross-port HTTP filter/value contract (decimal wire formatting differs per
-        // port, so a portable operand can't be guaranteed). Keeps the Java + Kotlin filter surface
-        // identical. Other columns (id/string/int/bool/date/...) filter via the FR-009 pipeline.
+        // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns
+        // and keeps the discriminator, so `GET /<base>?filter[<disc>][in]=A,B` narrows the
+        // polymorphic list (FR-017 "Filter allowlists"; TS, C# and Python admit it too). It
+        // EXCLUDES decimal columns, which are outside the cross-port HTTP filter/value contract
+        // (decimal wire formatting differs per port, so a portable operand can't be guaranteed).
+        // Keeps the Java + Kotlin filter surface identical. Other columns
+        // (id/string/int/bool/date/...) filter via the FR-009 pipeline.
+        //
+        // The per-subtype routes share this one allowlist, so /<base>/<seg> also accepts the
+        // discriminator (AND'd with the route's own: a no-op or an empty list) and another
+        // subtype's columns (an empty list). FR-017 gives each subtype its own allowlist that
+        // rejects both; only TypeScript emits that. Answers stay truthful either way, so it is
+        // left to an adopter who wants the 400 to own this generator: subclass it and name the
+        // subclass in the Maven plugin's <generator><classname>.
         Map<String, Set<String>> opsByField;
         if (TphPlan.isTphBase(entity, loader)) {
-            String disc = TphPlan.planFor(entity, loader).discriminatorField();
             java.util.List<MetaField> union = new java.util.ArrayList<>();
             entity.getMetaFields().forEach(union::add);
             union.addAll(TphPlan.collectSubtypeFields(entity, loader));
-            union.removeIf(f -> f.getName().equals(disc) || f instanceof com.metaobjects.field.DecimalField);
+            union.removeIf(f -> f instanceof com.metaobjects.field.DecimalField);
             opsByField = computeFilterableOps(union);
         } else {
             opsByField = computeFilterableOps(entity);

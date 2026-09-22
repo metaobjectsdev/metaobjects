@@ -8,6 +8,7 @@ package acme.auth
 object AuthFilterAllowlist {
     val FIELDS: Set<String> = setOf(
         "id",
+        "type",
         "reference",
         "quantity",
         "priorAuthNumber",
@@ -15,6 +16,7 @@ object AuthFilterAllowlist {
 
     val OPS_BY_FIELD: Map<String, Set<String>> = mapOf(
         "id" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
+        "type" to setOf("eq", "ne", "in", "like", "isNull"),
         "reference" to setOf("eq", "ne", "in", "like", "isNull"),
         "quantity" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
         "priorAuthNumber" to setOf("eq", "ne", "in", "like", "isNull")

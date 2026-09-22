@@ -4,6 +4,7 @@ import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 /**
  * Tests for [KotlinSpringControllerGenerator]. Covers the cross-port API contract
@@ -223,13 +224,14 @@ class KotlinSpringControllerGeneratorTest {
             gen.execute(loadString("ctrl-filter", authorFixture))
 
             val src = Files.readString(outDir.resolve("acme/blog/AuthorController.kt"))
-            // List handler now accepts a `Map<String,String>` of all params so the
-            // bracketed filter keys reach the parser intact.
-            assertTrue("@RequestParam allParams: Map<String, String>" in src,
-                "expected the list handler to accept allParams; saw:\n$src")
-            // Filter parse call (generated function name is parse<Entity>Filter).
-            assertTrue("parseAuthorFilter(allParams)" in src,
-                "expected list handler to call parseAuthorFilter(allParams); saw:\n$src")
+            // The list handler parses the RAW query string, not Spring's parameter map:
+            // Tomcat drops a parameter whose value holds a malformed escape, so a map-fed
+            // parser silently lost `filter[name][like]=A%` and returned every row.
+            assertTrue("request: HttpServletRequest" in src,
+                "expected the list handler to take the servlet request; saw:\n$src")
+            assertTrue("parseAuthorFilter(request.queryString)" in src,
+                "expected list handler to call parseAuthorFilter(request.queryString); saw:\n$src")
+            assertFalse("allParams" in src, "no handler may read the Tomcat-filtered parameter map; saw:\n$src")
             // 400 envelope path on any of invalid_filter_field / invalid_filter_op /
             // invalid_filter_value — the parser puts the envelope KEY in `filterResult.error`
             // and the REJECTED FIELD in `filterResult.field`, and the controller threads

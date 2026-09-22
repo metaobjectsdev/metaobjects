@@ -129,6 +129,13 @@ test, another team's frontend — needs the server to allow them:
 server.tomcat.relaxed-query-chars=[,]
 ```
 
+A stray `%` is the other raw character browsers send — `?filter[name][like]=A%` for a
+typed wildcard. It is not a valid escape, and Tomcat DROPS a parameter holding one from the
+servlet parameter map (`Character decoding failed … has been ignored`), so a filter read
+from `@RequestParam` would vanish and the list would come back unfiltered. The generated
+controller parses the raw query string instead and keeps the `%` literal, as the other
+ports' servers do. Keep it that way if you edit the list handler.
+
 ## Physical names in your repository implementation
 
 OMDB resolves columns itself — `setString("name", …)` and `getObjects` key by field — and
