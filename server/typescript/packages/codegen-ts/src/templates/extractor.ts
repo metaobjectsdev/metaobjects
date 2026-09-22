@@ -33,6 +33,7 @@ import {
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { responseShape } from "./find-inbound.js";
+import { templateSymbolBase } from "../naming.js";
 import { fields, isArray } from "./fr010-field-mapping.js";
 import { mirrorName } from "./extract-delegate-emitter.js";
 import { enumUnionAliasName } from "./inferred-types.js";
@@ -329,9 +330,16 @@ export function renderExtractor(
   // `valueObjectEmittedName`) — the SAME name entityFile() declared the interface under, so a
   // cross-package short-name collision emits e.g. `AcmeAlphaNote`, matching `./AcmeAlphaNote.js`.
   const strictType = emittedVoName(ctx, vo);
-  const extractLenientWithName = `extractLenient${templateName}WithLoader`; // the nested-capable lenient extract (output-parser)
-  const extractLenientPublic = `extractLenient${templateName}`; // re-exposed never-throws lenient tier name
-  const extractName = `extract${templateName}`;
+  // Every template-derived SYMBOL goes through templateSymbolBase(); only prose keeps the
+  // authored name. output-parser.ts EXPORTS extractLenient<Base>WithLoader, so interpolating
+  // the raw name here emitted an import of a symbol nothing declares whenever a template name
+  // began lowercase — `meta gen` exited 0 and the adopter's tsc was the first thing to
+  // disagree. The two names below are this file's own exports, and they were `extractfoo` /
+  // `extractLenientfoo` beside a `renderFoo` from render-helper: one model, two conventions.
+  const symbolBase = templateSymbolBase(templateName);
+  const extractLenientWithName = `extractLenient${symbolBase}WithLoader`; // the nested-capable lenient extract (output-parser)
+  const extractLenientPublic = `extractLenient${symbolBase}`; // re-exposed never-throws lenient tier name
+  const extractName = `extract${symbolBase}`;
   const rootMapper = mapperName(vo, ctx);
 
   const rootMirror = mirrorName(vo, ctx);

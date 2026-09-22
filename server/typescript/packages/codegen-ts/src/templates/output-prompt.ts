@@ -18,6 +18,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { specLiteral } from "./output-format-spec-emitter.js";
 import { responseShape } from "./find-inbound.js";
+import { templateSymbolBase } from "../naming.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -54,8 +55,12 @@ export function renderOutputPrompt(root: MetaData, templateName: string): string
 
   // rootName == response VO name so the fragment and extract() agree.
   const spec = specLiteral(vo, tmpl, payloadRef);
-  const specName = `${templateName}FormatSpec`;
-  const fnName = `render${templateName}Format`;
+  // templateSymbolBase, as render-helper.ts and output-parser.ts do: a lowercase-initial
+  // template name emitted `rendershipmentRiskFormat` beside `renderShipmentRisk` from
+  // prompt-render, so one model produced two conventions for two sibling functions.
+  const symbolBase = templateSymbolBase(templateName);
+  const specName = `${symbolBase}FormatSpec`;
+  const fnName = `render${symbolBase}Format`;
 
   return `import {
   renderOutputFormat,

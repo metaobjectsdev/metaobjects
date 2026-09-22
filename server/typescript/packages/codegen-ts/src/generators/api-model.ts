@@ -113,6 +113,7 @@ import {
   updateFnName,
   deleteByIdFnName,
   routesHandlerName,
+  templateSymbolBase,
   variableNameFromEntity,
 } from "../naming.js";
 import { getPkInfo } from "../templates/queries.js";
@@ -864,6 +865,10 @@ function templateOutputs(root: MetaRoot): MetaData[] {
 
 function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout): ApiUnitDoc {
   const name = tmpl.name;
+  // The emitters name every template-derived symbol through templateSymbolBase(); the
+  // reference has to agree or it documents a symbol nothing exports. `name` stays the
+  // authored name for prose, node ids and the FLAT file paths below, which are raw.
+  const symbolBase = templateSymbolBase(name);
   const symbols: ApiSymbol[] = [];
   // The render-helper generator emits a FLAT `<Name>.render.ts` (no package
   // folding), so importPath ignores layout.
@@ -886,7 +891,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
   //     (matches render-helper.ts's @kind branch). Render is emitted for any
   //     @format (the helper wraps render() regardless), so it is NOT format-gated. ---
   if (payload) {
-    const render = `render${name}`;
+    const render = `render${symbolBase}`;
     const isEmail = kind === TEMPLATE_KIND_EMAIL;
     const returns = isEmail ? "EmailDocument" : "string";
     const renderSym: ApiSymbol = {
@@ -915,7 +920,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
     nodeKind: "template",
     symbols,
   };
-  const example = templateExample(name, symbols);
+  const example = templateExample(symbolBase, symbols);
   if (example !== undefined) unit.example = example;
   return unit;
 }
@@ -955,6 +960,7 @@ function valueObjectTypeName(root: MetaRoot, tmpl: MetaData, ref: string): strin
  */
 function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
   const name = tmpl.name;
+  const symbolBase = templateSymbolBase(name);
   const symbols: ApiSymbol[] = [];
   // promptRender writes the aggregated handles to `outFile` (default "prompts.ts").
   const promptsMod = templateModulePath("prompts");
@@ -964,7 +970,7 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
   const payload = typeof payloadRef === "string" ? payloadRef : undefined;
 
   if (payload) {
-    const render = `render${name}`;
+    const render = `render${symbolBase}`;
     const payloadType = valueObjectTypeName(root, tmpl, payload);
     const sym: ApiSymbol = {
       name: render,
@@ -989,8 +995,8 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
     const { vo, ref: responseRef, format } = shape;
     // The extractor generator emits a FLAT `<Name>.extractor.ts`.
     const extractorMod = templateModulePath(`${name}.extractor`);
-    const extract = `extract${name}`;
-    const extractLenient = `extractLenient${name}`;
+    const extract = `extract${symbolBase}`;
+    const extractLenient = `extractLenient${symbolBase}`;
     // The strict return IS the @responseRef value-object's own interface (ADR-0056) —
     // document its field shape so an agent sees what `extract<Name>` yields, not just a
     // type name. `vo` is the resolved node; `responseRef` is the authored ref.
@@ -1028,7 +1034,7 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
   // with them. Without this the page documents `extract<Name>(root, …)` but the
   // setup preamble never introduces `root`, because the preamble derives its
   // handles from the rendered EXAMPLE text.
-  const example = templateExample(name, symbols);
+  const example = templateExample(symbolBase, symbols);
   if (example !== undefined) unit.example = example;
   return unit;
 }
@@ -1130,9 +1136,9 @@ function entityExample(name: string, pkName: string, symbols: ApiSymbol[]): Unit
 
 /** A worked extract / render example for a template unit, over whichever of the
  *  two surfaces the template actually exposes (extract is json/xml-gated). */
-function templateExample(name: string, symbols: ApiSymbol[]): UnitExample | undefined {
-  const extract = symbols.find((s) => s.kind === "extractor" && s.name === `extract${name}`);
-  const renderSym = symbols.find((s) => s.kind === "render" && s.name === `render${name}`);
+function templateExample(symbolBase: string, symbols: ApiSymbol[]): UnitExample | undefined {
+  const extract = symbols.find((s) => s.kind === "extractor" && s.name === `extract${symbolBase}`);
+  const renderSym = symbols.find((s) => s.kind === "render" && s.name === `render${symbolBase}`);
   if (extract === undefined && renderSym === undefined) return undefined;
 
   const picks: { name: string; importPath: string }[] = [];
