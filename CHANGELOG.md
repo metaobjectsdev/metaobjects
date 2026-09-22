@@ -258,9 +258,12 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   it — the WHATWG URL parser leaves brackets in a query unencoded too. The brackets are now
   percent-encoded (`filter%5Bemail%5D%5Blike%5D=…`); every port's server decodes before it
   parses, so the request means exactly what it did. No corpus could see this: the Java
-  and Kotlin generated lanes drive the controller over MockMvc, and their reference lanes
-  serve over the JDK's own HTTP server — none has Tomcat in the path. An adopter estate running the
-  generated controller in a real Spring Boot app found it. Clients you do not control can
+  and Kotlin generated lanes drove the controller over MockMvc, and their reference lanes
+  serve over the JDK's own HTTP server — none had Tomcat in the path. An adopter estate running the
+  generated controller in a real Spring Boot app found it. **The JVM generated lanes now run
+  on an embedded Tomcat** (`TomcatHost`, a real socket, the unmodified generated
+  controller), so this class and the raw-`%` class below are gated in-repo: with Tomcat's
+  default strict query characters, 13 of the 31 base scenarios fail. Clients you do not control can
   still send raw brackets; the Java and Kotlin runtime references now name the one property
   that admits them (`server.tomcat.relaxed-query-chars=[,]`).
 
@@ -275,11 +278,11 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   string and keep a malformed escape literal (`%XX` is still a byte, `+` still a space),
   which is what the TypeScript, C# and Python servers already did. Found by the adopter estate:
   11 of its 12 remaining Java contract failures. The in-repo corpus sent only `%25`, and the JVM
-  lanes run no Tomcat, so neither could see it; pinned by `FilterParserDecodingTest`, a
+  lanes ran no Tomcat, so neither could see it; pinned by `FilterParserDecodingTest`, a
   Kotlin controller run test that hands the request over the way Tomcat does, and now the
   api-contract corpus's `filter-like-raw-percent` scenario in both lanes of all five ports
   (the C# runners put the raw `%` on the wire — .NET's `Uri` had been rewriting it to `%25`
-  — and the JVM generated lanes hand it to the controller the way Tomcat does). **Kotlin
+  — and the JVM generated lanes send it verbatim to an embedded Tomcat). **Kotlin
   adopters with committed generated code should run `mvn metaobjects:generate`** — the list
   handlers now take `HttpServletRequest` instead of `@RequestParam allParams`. Java needs no
   regen: the fix is in the `codegen-spring` runtime.

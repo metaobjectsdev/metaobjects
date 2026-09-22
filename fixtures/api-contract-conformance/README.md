@@ -157,9 +157,9 @@ Every per-port runner:
    - Truncates + re-seeds `authors` from `seed.json` (or empties it when
      `setup.truncate: true`).
    - Walks `requests[]` in order, issuing each over HTTP via the port's
-     standard test-client (Fastify inject, ASP.NET `WebApplicationFactory`,
-     Spring `MockMvc`, FastAPI `TestClient`, or a raw HTTP client against
-     a local-bound port).
+     test client (`fetch` against a listening Fastify, `HttpClient` against
+     Kestrel, a raw HTTP/1.0 socket against an embedded Tomcat on the JVM,
+     FastAPI `TestClient`).
    - Asserts the response status + body matches `expect`.
 4. Tears down (postgres testcontainer, in-memory DB, etc.).
 
@@ -180,11 +180,22 @@ errors, Python error envelopes wrapped as `{"detail": ...}`.)
 
 | Port | Generated artifact | Generated-lane harness | DB |
 |---|---|---|---|
-| TypeScript | `Author.routes.ts` + `drizzle-fastify` | `runGen` → dynamic-import → Fastify `inject` | Testcontainers PG |
+| TypeScript | `Author.routes.ts` + `drizzle-fastify` | `runGen` → dynamic-import → Fastify listening on a port + `fetch` | Testcontainers PG |
 | C# (ASP.NET) | minimal-API routes + `AppDbContext` | Roslyn-compile → Kestrel `WebApplication` + `HttpClient` | Testcontainers PG |
-| Java (Spring) | `@RestController` (`codegen-spring`) | `ToolProvider`-compile → `MockMvc` standaloneSetup + in-memory repo behind the generated repo interface | in-memory |
-| Kotlin (Spring) | `@RestController` (`codegen-kotlin`) | kotlin-compile-testing → `MockMvc` standaloneSetup + in-memory H2 behind the generated `Table` | in-memory |
+| Java (Spring) | `@RestController` (`codegen-spring`) | `ToolProvider`-compile → embedded Tomcat (`TomcatHost`) over a real socket + in-memory repo behind the generated repo interface | in-memory |
+| Kotlin (Spring) | `@RestController` (`codegen-kotlin`) | kotlin-compile-testing → embedded Tomcat (`TomcatHost`) over a real socket + in-memory H2 behind the generated `Table` | in-memory |
 | Python (FastAPI) | `APIRouter` (`router_generator`) | `render_router` → import → `TestClient` + in-memory repo behind the generated DI dependency | in-memory |
+
+**Why the JVM generated lanes run a real Tomcat.** They used to drive the controller
+through MockMvc, which hands it a request no servlet container ever built — and three
+real defects lived exactly in that gap, invisible to every lane: Tomcat 400s a raw `[`
+or `]` in a query before the controller runs; Tomcat drops a parameter holding a
+malformed escape from the parameter map, so a Kotlin handler reading that map lost the
+filter; and `java.net.URLDecoder` throws on the same raw `%`. `TomcatHost` (one per JVM
+test module) serves the unmodified generated controller from an embedded Tomcat with
+`relaxedQueryChars="[]"` — the documented adopter wiring for clients that send raw
+brackets — and sends each scenario path verbatim over a raw HTTP/1.0 socket, because
+`java.net.URI` cannot hold a raw `%`.
 
 **Why some ports use a real DB and others in-memory:** TS and C# generate a
 *complete* server (routes + generated persistence — Drizzle / `AppDbContext`), so

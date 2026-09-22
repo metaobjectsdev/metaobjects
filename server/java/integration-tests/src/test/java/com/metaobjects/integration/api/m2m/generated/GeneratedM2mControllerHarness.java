@@ -1,6 +1,7 @@
 package com.metaobjects.integration.api.m2m.generated;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.metaobjects.integration.api.TomcatHost;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
@@ -12,11 +13,6 @@ import com.metaobjects.loader.uri.URIHelper;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 
-import org.springframework.http.HttpMethod;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -36,12 +32,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 /**
  * FR-018 Unit 11 — host the GENERATED Java Spring {@code @RestController}s for the
  * shared M:N corpus ({@code Post}/{@code Person}/{@code Account}) over HTTP
- * (in-process via Spring MockMvc) and drive the M:N traversal scenarios against them.
+ * (a real embedded Tomcat, {@link TomcatHost}) and drive the M:N traversal scenarios against them.
  *
  * <p>FW-8 (FR-018 x FR-017): {@code Account} is the TPH discriminator base
  * ({@code MemberAccount}/{@code GuestAccount} concrete subtypes, {@code ScopedAccount}
@@ -75,12 +70,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  *   <li>compile everything with the system Java compiler; load via a child-of-test
  *       {@link URLClassLoader};</li>
  *   <li>seed the in-memory repos from {@code seed.json}, instantiate each generated
- *       controller, and host on a {@code MockMvc} {@code standaloneSetup} (no Spring
- *       Boot context, no socket).</li>
+ *       controller, and serve all of them from ONE embedded Tomcat over a real socket
+ *       ({@link TomcatHost}).</li>
  * </ol>
  *
- * <p>The harness is built ONCE (generate→compile→load is expensive); all three
- * controllers' MockMvc are rebuilt from a fresh seed in {@link #reset()} per scenario.</p>
+ * <p>The harness is built ONCE (generate→compile→load is expensive); the
+ * controllers and their Tomcat are rebuilt from a fresh seed in {@link #reset()} per scenario.</p>
  */
 public final class GeneratedM2mControllerHarness implements AutoCloseable {
 
@@ -102,10 +97,7 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
     private final Constructor<?> postCategoryControllerCtor; // (PostCategoryRepository)
     private final Constructor<?> postCategoryRepoCtor;       // (List blogCategories)
 
-    private MockMvc postMvc;
-    private MockMvc personMvc;
-    private MockMvc accountMvc;
-    private MockMvc postCategoryMvc;
+    private TomcatHost host;
 
     public GeneratedM2mControllerHarness(Path corpusRoot, Path genDir,
                                          Map<String, List<Map<String, Object>>> seed) throws Exception {
@@ -169,7 +161,7 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
             .getDeclaredConstructor(List.class);
     }
 
-    /** Rebuild all three controllers' MockMvc from a fresh seed (per-scenario isolation). */
+    /** Rebuild the controllers and their Tomcat from a fresh seed (per-scenario isolation). */
     public void reset() throws Exception {
         Object postRepo = postRepoCtor.newInstance(
             M2mSeedRows.rows(seed, "tags"), M2mSeedRows.rows(seed, "post_tags"),
@@ -182,42 +174,33 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
             M2mSeedRows.rows(seed, "account_tags"), M2mSeedRows.rows(seed, "scoped_account_tags"),
             M2mSeedRows.rows(seed, "member_account_tags"));
 
-        this.postMvc = standalone(postControllerCtor.newInstance(postRepo, mapper, validator));
-        this.personMvc = standalone(personControllerCtor.newInstance(personRepo, mapper, validator));
-        this.accountMvc = standalone(accountControllerCtor.newInstance(accountRepo, mapper, validator));
-
         Object postCategoryRepo = postCategoryRepoCtor.newInstance(
             M2mSeedRows.rows(seed, "blog_categories"));
-        this.postCategoryMvc = standalone(
+
+        // All four controllers on ONE server: Spring's own request mappings route between
+        // them, as they would in an adopter's app.
+        if (host != null) host.close();
+        this.host = TomcatHost.start(mapper,
+            postControllerCtor.newInstance(postRepo, mapper, validator),
+            personControllerCtor.newInstance(personRepo, mapper, validator),
+            accountControllerCtor.newInstance(accountRepo, mapper, validator),
             postCategoryControllerCtor.newInstance(postCategoryRepo, mapper, validator));
     }
 
-    /**
-     * Issue an M:N traversal request. Dispatches to the controller owning the
-     * source URL segment ({@code /api/posts/...} → PostController,
-     * {@code /api/persons/...} → PersonController,
-     * {@code /api/accounts/...} → AccountController).
-     */
+    /** Issue an M:N traversal request; Spring routes it to the controller owning the path. */
     public Response exchange(String method, String path) throws Exception {
-        // post_categories is checked FIRST and explicitly. It does not in fact match
-        // "/api/posts" ('_' != 's'), but relying on that near-miss would be a trap for
-        // the next entity whose name happens to share a prefix.
-        MockMvc mvc = path.startsWith("/api/post_categories") ? postCategoryMvc
-            : path.startsWith("/api/posts") ? postMvc
-            : path.startsWith("/api/accounts") ? accountMvc
-            : personMvc;
-        MvcResult result = mvc.perform(
-            request(HttpMethod.valueOf(method), URI.create(path))).andReturn();
-        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        return new Response(result.getResponse().getStatus(), body);
+        TomcatHost.Response res = host.exchange(method, path, null);
+        return new Response(res.status(), res.body());
     }
 
-    public Object parseBody(String body) throws Exception {
-        if (body == null || body.isEmpty()) return null;
-        return mapper.readValue(body, Object.class);
+    public Object parseBody(String body) {
+        return TomcatHost.parseBody(mapper, body);
     }
 
-    @Override public void close() throws Exception { classLoader.close(); }
+    @Override public void close() throws Exception {
+        if (host != null) host.close();
+        classLoader.close();
+    }
 
     public record Response(int status, String body) {}
 
@@ -225,11 +208,6 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
     // setup helpers
     // -----------------------------------------------------------------------
 
-    private MockMvc standalone(Object controller) {
-        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
-        converter.setObjectMapper(mapper);
-        return MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build();
-    }
 
     private static MetaDataLoader loadCorpus(Path metaJson) {
         URI uri = URIHelper.toURI(

@@ -113,7 +113,7 @@ booted over HTTP) are wired and green for:
   generated (`render_router` emitted router + in-memory seam).
 - **Kotlin** — reference (`DocumentApiServer`, Exposed `jsonb` column over a
   Postgres testcontainer) + generated (`KotlinSpringControllerGenerator` →
-  emitted `DocumentController` hosted on MockMvc over a Postgres testcontainer).
+  emitted `DocumentController` served from an embedded Tomcat over a Postgres testcontainer).
   The generated lane caught + fixed a real codegen bug — a `field.string
   @dbColumnType=jsonb` field produced a controller that referenced the kotlinx
   `JsonElement` cast in its (dead) filter dispatch without importing it, so the
@@ -132,7 +132,7 @@ booted over HTTP) are wired and green for:
   binds with no string validator and round-trips parsed.
 - **Java** — reference (`JsonbReferenceServer`: JDK `HttpServer` + Postgres
   testcontainer) + generated (`GeneratedJsonbControllerHarness`: codegen-spring
-  `DocumentController`/`DocumentDto` compiled and booted over MockMvc behind the
+  `DocumentController`/`DocumentDto` compiled and served from an embedded Tomcat behind the
   in-memory repo seam). The generated DTO types the bag as `Object` (#103). The
   runtime/OMDB write half is gated separately by
   `integration-tests/.../OpenJsonbWriteRoundtripTest` (writes the open bag

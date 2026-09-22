@@ -24,7 +24,7 @@ import java.util.stream.Stream
  *
  * Drives the **generated** Kotlin Spring `AuthController` (the polymorphic collection + per-subtype
  * CRUD set emitted by `codegen-kotlin` for the discriminator base) over HTTP via
- * [GeneratedTphControllerHarness] (generate→compile→MockMvc). It proves the deployed Kotlin TPH
+ * [GeneratedTphControllerHarness] (generate→compile→embedded Tomcat). It proves the deployed Kotlin TPH
  * routing artifact — discriminator injection from the URL, subtype-scoped reads/writes, and the
  * cross-subtype 404 — implements the cross-port contract, not just a hand-written stand-in.
  *
@@ -34,7 +34,7 @@ import java.util.stream.Stream
  * `persistence-conformance`'s `tph-*` query scenarios. Same 4 scenarios, same [ApiContractAssertions]
  * as every other port's TPH lane.
  */
-@DisplayName("API contract TPH — GENERATED Kotlin Spring controller (codegen-kotlin) over MockMvc")
+@DisplayName("API contract TPH — GENERATED Kotlin Spring controller (codegen-kotlin) over embedded Tomcat")
 internal class TphGeneratedApiContractConformanceTest {
 
     @ParameterizedTest(name = "{0}")

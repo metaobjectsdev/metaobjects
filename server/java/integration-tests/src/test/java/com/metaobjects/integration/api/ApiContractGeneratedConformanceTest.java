@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  * <p>Where the sibling {@link ApiContractConformanceTest} drives a hand-rolled
  * reference server, this lane drives the <strong>generated</strong> Spring
  * {@code @RestController} (emitted by {@code codegen-spring}) over HTTP via
- * {@link GeneratedAuthorControllerHarness} (generate→compile→MockMvc). It proves
+ * {@link GeneratedAuthorControllerHarness} (generate→compile→embedded Tomcat). It proves
  * the deployed Java API artifact — the generated controller — implements the
  * cross-port contract, not just a hand-written stand-in.</p>
  *
@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  *     test -Dtest=ApiContractGeneratedConformanceTest
  * }</pre>
  */
-@DisplayName("API contract — GENERATED Spring controller (codegen-spring) over MockMvc")
+@DisplayName("API contract — GENERATED Spring controller (codegen-spring) over embedded Tomcat")
 final class ApiContractGeneratedConformanceTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -71,7 +71,7 @@ final class ApiContractGeneratedConformanceTest {
      * The generate→compile→load step is expensive, so the harness is built ONCE
      * per class (the generated artifacts + classloader are reused). Per-scenario
      * isolation comes from {@link GeneratedAuthorControllerHarness#reset(boolean)}
-     * rebuilding a freshly-seeded repo + controller + MockMvc.
+     * rebuilding a freshly-seeded repo + controller + Tomcat.
      */
     private static GeneratedAuthorControllerHarness HARNESS;
 

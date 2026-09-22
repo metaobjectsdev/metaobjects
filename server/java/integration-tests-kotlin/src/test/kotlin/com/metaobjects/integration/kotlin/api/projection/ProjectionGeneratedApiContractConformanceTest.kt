@@ -18,7 +18,7 @@ import java.util.stream.Stream
 
 /**
  * F22 — the Kotlin GENERATED-controller lane for the view-only-projection api-contract
- * sub-corpus. Drives the generated read-only `InvoiceSummaryController` over MockMvc:
+ * sub-corpus. Drives the generated read-only `InvoiceSummaryController` over an embedded Tomcat:
  * GET list + GET by id with the FR-009 filter and sort allowlists, and every write verb
  * answering `405 {"error": "method_not_allowed"}`.
  *
@@ -28,7 +28,7 @@ import java.util.stream.Stream
  * every scenario by construction, because writing one IS the decision to serve the
  * projection, and it would prove nothing about the emitted artifact.
  */
-@DisplayName("API contract projection (F22) — GENERATED Kotlin Spring controller over MockMvc")
+@DisplayName("API contract projection (F22) — GENERATED Kotlin Spring controller over embedded Tomcat")
 internal class ProjectionGeneratedApiContractConformanceTest {
 
     @ParameterizedTest(name = "{0}")

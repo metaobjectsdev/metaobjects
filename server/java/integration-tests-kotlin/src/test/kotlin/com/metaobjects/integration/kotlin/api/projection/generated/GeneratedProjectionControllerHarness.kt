@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.metaobjects.integration.kotlin.api.TomcatHost
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
@@ -17,14 +18,7 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.springframework.http.HttpMethod
-import org.springframework.http.MediaType
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.net.URI
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
@@ -33,7 +27,7 @@ import kotlin.io.path.readText
 
 /**
  * F22 — host the GENERATED Kotlin Spring `InvoiceSummaryController` for the view-only
- * projection corpus over HTTP (Spring MockMvc) and drive the `projection/` scenarios
+ * projection corpus over real HTTP (an embedded Tomcat) and drive the `projection/` scenarios
  * against it. Mirrors [com.metaobjects.integration.kotlin.api.writethrough.generated.GeneratedWriteThroughControllerHarness].
  *
  * Mechanism:
@@ -47,7 +41,7 @@ import kotlin.io.path.readText
  *  4. Per scenario: fresh in-memory H2 (PostgreSQL mode), `SchemaUtils.create(InvoiceTable)`,
  *     then HAND-EXEC `CREATE VIEW v_invoice_summary` (Exposed cannot create a view — the
  *     generated `InvoiceSummaryTable` is a SELECT-only binding), then seed `invoices`.
- *  5. Host the controller on a Spring `MockMvc` `standaloneSetup`.
+ *  5. Serve the controller from an embedded Tomcat over a real socket ([TomcatHost]).
  *
  * The view is `SELECT *` over `invoices` on purpose. The projection declares exactly the base
  * entity's four fields, so both generated Exposed objects derive the same physical column
@@ -69,7 +63,7 @@ class GeneratedProjectionControllerHarness(
     private val controllerClass: Class<*>
     private val invoiceTable: Table
     private val dbSeq = AtomicInteger(0)
-    private var mockMvc: MockMvc? = null
+    private var host: TomcatHost? = null
 
     init {
         val metaJson = corpusRoot.resolve("projection/meta.json")
@@ -119,7 +113,7 @@ class GeneratedProjectionControllerHarness(
             .getDeclaredField("INSTANCE").get(null) as Table
     }
 
-    /** Rebuild a fresh in-memory H2 + view + seed + controller + MockMvc. */
+    /** Rebuild a fresh in-memory H2 + view + seed + controller + Tomcat. */
     fun reset() {
         val dbName = "projection_invoice_${dbSeq.incrementAndGet()}"
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
@@ -135,8 +129,8 @@ class GeneratedProjectionControllerHarness(
         }
 
         val controller = controllerClass.getDeclaredConstructor().newInstance()
-        val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
+        host?.close()
+        host = TomcatHost.start(mapper, controller)
     }
 
     /**
@@ -152,19 +146,16 @@ class GeneratedProjectionControllerHarness(
             )
 
     fun exchange(method: String, path: String, jsonBody: Any?): Response {
-        val mvc = mockMvc ?: error("reset() must be called before exchange(...)")
-        val builder = request(HttpMethod.valueOf(method), URI.create(path))
-        if (jsonBody != null) {
-            builder.contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(jsonBody))
-        }
-        val res = mvc.perform(builder).andReturn().response
-        return Response(res.status, res.getContentAsString(StandardCharsets.UTF_8))
+        val server = host ?: error("reset() must be called before exchange(...)")
+        val res = server.exchange(method, path, jsonBody?.let { mapper.writeValueAsString(it) })
+        return Response(res.status, res.body)
     }
 
-    fun parseBody(body: String?): Any? =
-        if (body.isNullOrEmpty()) null else mapper.readValue(body, Any::class.java)
+    fun parseBody(body: String?): Any? = TomcatHost.parseBody(mapper, body)
 
-    override fun close() { /* H2 in-mem reclaimed at JVM exit (DB_CLOSE_DELAY=-1). */ }
+    override fun close() {
+        host?.close() // H2 in-mem is reclaimed at JVM exit (DB_CLOSE_DELAY=-1).
+    }
 
     data class Response(val status: Int, val body: String)
 

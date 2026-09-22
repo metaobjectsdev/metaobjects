@@ -19,7 +19,7 @@ import java.util.stream.Stream
  * drives a hand-rolled reference server, this lane drives the GENERATED Kotlin Spring
  * `@RestController`s (`PostController`/`PersonController`/`AccountController`, emitted
  * by codegen-kotlin) over HTTP via [GeneratedM2mControllerHarness]
- * (generate→compile→MockMvc). It proves
+ * (generate→compile→embedded Tomcat). It proves
  * the deployed Kotlin M:N traversal artifact — the generated `GET /{id}/<relation>`
  * sub-resources delegating to the emitted Exposed join helpers — implements the
  * cross-port contract.

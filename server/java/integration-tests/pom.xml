@@ -27,6 +27,8 @@
     <snakeyaml.version>2.3</snakeyaml.version>
     <jackson.version>2.18.2</jackson.version>
     <spring.version>6.2.11</spring.version>
+    <!-- The Tomcat line Spring Boot 3.5 pairs with Spring 6.2. -->
+    <tomcat.version>10.1.46</tomcat.version>
   </properties>
 
   <dependencies>
@@ -61,8 +63,11 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Spring Web MVC + Spring Test (MockMvc standaloneSetup hosts the generated
-         controller in-process — no Spring Boot context, no socket). -->
+    <!-- Spring Web MVC hosts the generated controllers. The api-contract GENERATED lanes
+         serve them from an embedded Tomcat (TomcatHost) over a real socket, because a
+         servlet container is where raw brackets 400, a malformed escape drops a parameter,
+         and a raw % reaches the parser — none of which MockMvc reproduces. Spring Test's
+         MockMvc remains for the non-corpus controller run tests. -->
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-webmvc</artifactId>
@@ -73,6 +78,12 @@
       <groupId>org.springframework</groupId>
       <artifactId>spring-test</artifactId>
       <version>${spring.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.tomcat.embed</groupId>
+      <artifactId>tomcat-embed-core</artifactId>
+      <version>${tomcat.version}</version>
       <scope>test</scope>
     </dependency>
 

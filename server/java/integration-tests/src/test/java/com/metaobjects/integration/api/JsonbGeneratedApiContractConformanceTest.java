@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 /**
  * #98 — the GENERATED-controller lane for the jsonb open-bag api-contract corpus.
  * Boots the GENERATED Spring {@code DocumentController} (with its {@code Object}
- * payload DTO, #103) over MockMvc behind the in-memory repository seam and drives
+ * payload DTO, #103) over an embedded Tomcat behind the in-memory repository seam and drives
  * the same scenarios as {@link JsonbApiContractConformanceTest}. This LOCKS the
  * deployed-controller half of the open-bag contract: a posted JSON object binds
  * to the generated DTO and reads back PARSED, never a JSON-encoded string.

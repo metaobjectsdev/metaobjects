@@ -8,12 +8,12 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.metaobjects.integration.kotlin.api.TomcatHost
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
 import com.metaobjects.generator.kotlin.KotlinNamesGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
-import com.metaobjects.integration.kotlin.api.ApiContractWire
 import com.metaobjects.loader.uri.URIHelper
 import com.metaobjects.metadata.ktx.loadUris
 import com.tschuchort.compiletesting.KotlinCompilation
@@ -24,13 +24,7 @@ import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.springframework.http.HttpMethod
-import org.springframework.http.MediaType
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.net.URI
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -40,7 +34,7 @@ import kotlin.io.path.readText
 
 /**
  * SP-F Unit 2 — host the GENERATED Kotlin Spring `@RestController` for the
- * `Author` corpus entity over HTTP (in-process via Spring MockMvc) and drive
+ * `Author` corpus entity over real HTTP (an embedded Tomcat, [TomcatHost]) and drive
  * the api-contract scenarios against it.
  *
  * Mechanism (the SP-C / SP-E generate→compile→load pattern, mirroring the Java
@@ -66,12 +60,12 @@ import kotlin.io.path.readText
  *     persistence-conformance). The generated controller's own qs→predicate→Exposed
  *     query translation (all FR-009 ops, sort, paging) runs genuinely end-to-end
  *     against it.
- *  5. Instantiate the generated controller and host it on a Spring `MockMvc`
- *     `standaloneSetup` (no Spring Boot context, no socket — same in-process
- *     fidelity as the TS lane's `fastify.inject`).
+ *  5. Instantiate the generated controller and serve it from an embedded Tomcat over a
+ *     real socket ([TomcatHost]) — the servlet container is where raw brackets, malformed
+ *     escapes and a raw `%` are decided, and MockMvc reproduces none of it.
  *
  * The harness is re-seeded per scenario (fresh H2 database + controller +
- * MockMvc), matching the per-scenario isolation the hand-rolled lane gets from
+ * Tomcat), matching the per-scenario isolation the hand-rolled lane gets from
  * TRUNCATE/seed.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
@@ -82,7 +76,7 @@ class GeneratedAuthorControllerHarness(
 ) : AutoCloseable {
 
     /**
-     * Jackson mapper used by MockMvc's converter and to (de)serialize bodies.
+     * Jackson mapper used by the served controller's converter and to (de)serialize bodies.
      *
      * ADR-0036 Wave 2: the generated `Author.createdAt` is a `java.time.Instant`. Corpus
      * scenario/seed bodies are offset-less wall-clock (yyyy-MM-ddTHH:mm:ss), which Jackson's
@@ -110,7 +104,7 @@ class GeneratedAuthorControllerHarness(
 
     /** Each scenario gets a fresh in-memory H2 database (isolation). */
     private val dbSeq = AtomicInteger(0)
-    private var mockMvc: MockMvc? = null
+    private var host: TomcatHost? = null
 
     init {
         // 1. Load the corpus metadata.
@@ -189,11 +183,8 @@ class GeneratedAuthorControllerHarness(
         // present-PATCH-value enforcement) — supply a real hibernate-validator instance.
         val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java)
             .newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator)
-        val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
-        val mvc = MockMvcBuilders.standaloneSetup(controller)
-            .setMessageConverters(converter)
-            .build()
-        mockMvc = mvc
+        host?.close()
+        host = TomcatHost.start(mapper, controller)
 
         if (seed) {
             // #203/ADR-0045: seed via a DIRECT Exposed insert against the GENERATED AuthorTable —
@@ -249,23 +240,18 @@ class GeneratedAuthorControllerHarness(
 
     /** Issue a scenario request and return the (status, body-string) pair. */
     fun exchange(method: String, path: String, jsonBody: Any?): Response {
-        val mvc = mockMvc ?: error("reset(...) must be called before exchange(...)")
-        val builder = ApiContractWire.mockMvcRequest(HttpMethod.valueOf(method), path)
-        if (jsonBody != null) {
-            builder.contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(jsonBody))
-        }
-        val res = mvc.perform(builder).andReturn().response
-        return Response(res.status, res.getContentAsString(StandardCharsets.UTF_8))
+        val server = host ?: error("reset() must be called before exchange(...)")
+        val res = server.exchange(method, path, jsonBody?.let { mapper.writeValueAsString(it) })
+        return Response(res.status, res.body)
     }
 
     /** Parse a response body string into Map/List/scalar/null (the assertion shape). */
-    fun parseBody(body: String?): Any? =
-        if (body.isNullOrEmpty()) null else mapper.readValue(body, Any::class.java)
+    fun parseBody(body: String?): Any? = TomcatHost.parseBody(mapper, body)
 
     override fun close() {
+        host?.close()
         // H2 in-memory databases are released when the last connection closes; DB_CLOSE_DELAY=-1
-        // keeps them for the test lifetime, reclaimed at JVM exit. Nothing to close explicitly.
+        // keeps them for the test lifetime, reclaimed at JVM exit.
     }
 
     /** HTTP status + raw body string. */

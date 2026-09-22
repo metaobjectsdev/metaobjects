@@ -2,6 +2,7 @@ package com.metaobjects.integration.kotlin.api.m2m.generated
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.metaobjects.integration.kotlin.api.TomcatHost
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
@@ -17,13 +18,7 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.springframework.http.HttpMethod
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.net.URI
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
@@ -31,8 +26,8 @@ import kotlin.io.path.readText
 
 /**
  * FR-018 Unit 11 (Kotlin) — host the GENERATED Kotlin Spring `@RestController`s for
- * the shared M:N corpus (`Post`/`Person`/`Account`) over HTTP (in-process via Spring
- * MockMvc) and drive the M:N traversal scenarios against them.
+ * the shared M:N corpus (`Post`/`Person`/`Account`) over real HTTP (an embedded Tomcat,
+ * [TomcatHost]) and drive the M:N traversal scenarios against them.
  *
  * FW-8 (FR-018 x FR-017): `Account` is the TPH discriminator base
  * (`MemberAccount`/`GuestAccount` concrete subtypes, `ScopedAccount` an abstract mid
@@ -70,10 +65,10 @@ import kotlin.io.path.readText
  *     genuinely end-to-end against it. The testcontainer DB bootstrap is the ONLY hand-written
  *     piece — test scaffolding, not a conformance subject (real DB behavior is gated by
  *     persistence-conformance).
- *  5. Instantiate the generated controllers and host them on a Spring MockMvc
- *     `standaloneSetup` (no Spring Boot context, no socket).
+ *  5. Instantiate the generated controllers and serve all of them from ONE embedded
+ *     Tomcat over a real socket ([TomcatHost]).
  *
- * The harness is built ONCE; all three controllers' MockMvc are rebuilt from a fresh
+ * The harness is built ONCE; the controllers and their Tomcat are rebuilt from a fresh
  * Postgres database in [reset] per scenario (isolation).
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
@@ -96,10 +91,7 @@ class GeneratedM2mControllerHarness(
     /** The generated `<Entity>Table` singletons, in dependency-safe create order. */
     private val tables: List<Table>
 
-    private var postMvc: MockMvc? = null
-    private var personMvc: MockMvc? = null
-    private var accountMvc: MockMvc? = null
-    private var postCategoryMvc: MockMvc? = null
+    private var host: TomcatHost? = null
     private var activeContainer: PostgresContainer? = null
 
     init {
@@ -165,7 +157,7 @@ class GeneratedM2mControllerHarness(
     }
 
     /**
-     * Rebuild both controllers' MockMvc against a fresh, freshly-seeded Postgres
+     * Rebuild the controllers and their Tomcat against a fresh, freshly-seeded Postgres
      * database (one Testcontainers container per scenario, for isolation). Postgres
      * (not H2) is used here because the corpus is Postgres-only (ADR-0015) AND because
      * Postgres preserves the generated Exposed tables' quoted lowercase identifiers
@@ -183,33 +175,31 @@ class GeneratedM2mControllerHarness(
         }
         // FR-036: the generated controller ctors now also take a jakarta Validator.
         val validator = jakarta.validation.Validation.buildDefaultValidatorFactory().validator
-        postMvc = standalone(postControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
-        personMvc = standalone(personControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
         // FW-8: the TPH base controller takes the SAME (ObjectMapper, Validator) shape —
         // it embeds its own Exposed queries, so there is no repository ctor arg to widen.
-        accountMvc = standalone(accountControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
-        postCategoryMvc = standalone(postCategoryControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
+        fun controller(cls: Class<*>): Any =
+            cls.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator)
+        // All four controllers on ONE server: Spring's own request mappings route between
+        // them, as they would in an adopter's app.
+        host?.close()
+        host = TomcatHost.start(mapper,
+            controller(postControllerClass), controller(personControllerClass),
+            controller(accountControllerClass), controller(postCategoryControllerClass))
     }
 
-    /** Dispatch to the controller owning the source URL segment. */
+    /** Issue an M:N traversal request; Spring routes it to the controller owning the path. */
     fun exchange(method: String, path: String): Response {
-        val mvc = (
-            // post_categories is checked FIRST and explicitly. It does not actually match
-            // "/api/posts" ('_' != 's'), but relying on that near-miss would be a trap for
-            // the next entity whose name shares a prefix.
-            if (path.startsWith("/api/post_categories")) postCategoryMvc
-            else if (path.startsWith("/api/posts")) postMvc
-            else if (path.startsWith("/api/accounts")) accountMvc
-            else personMvc
-            ) ?: error("reset() must be called before exchange()")
-        val res = mvc.perform(request(HttpMethod.valueOf(method), URI.create(path))).andReturn().response
-        return Response(res.status, res.getContentAsString(StandardCharsets.UTF_8))
+        val server = host ?: error("reset() must be called before exchange()")
+        val res = server.exchange(method, path, null)
+        return Response(res.status, res.body)
     }
 
-    fun parseBody(body: String?): Any? =
-        if (body.isNullOrEmpty()) null else mapper.readValue(body, Any::class.java)
+    fun parseBody(body: String?): Any? = TomcatHost.parseBody(mapper, body)
 
-    override fun close() { activeContainer?.close() }
+    override fun close() {
+        host?.close()
+        activeContainer?.close()
+    }
 
     data class Response(val status: Int, val body: String)
 
@@ -287,10 +277,6 @@ class GeneratedM2mControllerHarness(
     private fun loadTable(simpleName: String): Table =
         classLoader.loadClass("$ENTITY_PKG.$simpleName").getDeclaredField("INSTANCE").get(null) as Table
 
-    private fun standalone(controller: Any): MockMvc {
-        val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
-        return MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
-    }
 
     private companion object {
         const val ENTITY_PKG = "acme.social"

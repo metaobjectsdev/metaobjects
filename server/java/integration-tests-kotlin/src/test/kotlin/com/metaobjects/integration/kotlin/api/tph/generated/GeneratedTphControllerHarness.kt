@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.metaobjects.integration.kotlin.api.TomcatHost
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
@@ -19,14 +20,7 @@ import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.springframework.http.HttpMethod
-import org.springframework.http.MediaType
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.net.URI
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -36,7 +30,7 @@ import kotlin.io.path.readText
 
 /**
  * FR-017 Tier 4/5 — host the GENERATED Kotlin Spring `@RestController` for the TPH corpus
- * (`Auth` base + `Bridge`/`Copay`/`PriorAuth` subtypes) over HTTP (in-process via Spring MockMvc)
+ * (`Auth` base + `Bridge`/`Copay`/`PriorAuth` subtypes) over real HTTP (an embedded Tomcat)
  * and drive the polymorphic-CRUD scenarios against it.
  *
  * Mechanism (the SP-F generate→compile→load pattern, mirroring [com.metaobjects.integration.kotlin.api.generated.GeneratedAuthorControllerHarness]):
@@ -49,7 +43,7 @@ import kotlin.io.path.readText
  *     fresh in-memory H2 (PostgreSQL mode) per scenario, create the GENERATED table's schema, and
  *     seed the 3 corpus rows via a DIRECT Exposed insert against the GENERATED `AuthTable` — the
  *     ONLY hand-written piece, test scaffolding not a conformance subject.
- *  5. Host the controller on a Spring `MockMvc` `standaloneSetup`.
+ *  5. Serve the controller from an embedded Tomcat over a real socket ([TomcatHost]).
  *
  * Re-seeded per scenario (each TPH scenario mutates the single table).
  */
@@ -69,7 +63,7 @@ class GeneratedTphControllerHarness(
     private val authTable: Table
     private val authTypeClass: Class<*>
     private val dbSeq = AtomicInteger(0)
-    private var mockMvc: MockMvc? = null
+    private var host: TomcatHost? = null
 
     init {
         val metaJson = corpusRoot.resolve("tph/meta.json")
@@ -118,7 +112,7 @@ class GeneratedTphControllerHarness(
         this.authTypeClass = result.classLoader.loadClass(TYPE_FQCN)
     }
 
-    /** Rebuild a fresh in-memory H2 + controller + MockMvc, then seed via a direct Exposed insert. */
+    /** Rebuild a fresh in-memory H2 + controller + Tomcat, then seed via a direct Exposed insert. */
     fun reset() {
         val dbName = "tph_auth_${dbSeq.incrementAndGet()}"
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
@@ -129,8 +123,8 @@ class GeneratedTphControllerHarness(
         // mirroring the vanilla generated-controller harness.
         val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java)
             .newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator)
-        val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
+        host?.close()
+        host = TomcatHost.start(mapper, controller)
 
         // #203/ADR-0045: seed via a DIRECT Exposed insert against the GENERATED AuthTable — NOT the
         // controller's per-subtype POST. The generated controller now STAMPS @autoSet columns on
@@ -187,19 +181,16 @@ class GeneratedTphControllerHarness(
     }
 
     fun exchange(method: String, path: String, jsonBody: Any?): Response {
-        val mvc = mockMvc ?: error("reset() must be called before exchange(...)")
-        val builder = request(HttpMethod.valueOf(method), URI.create(path))
-        if (jsonBody != null) {
-            builder.contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(jsonBody))
-        }
-        val res = mvc.perform(builder).andReturn().response
-        return Response(res.status, res.getContentAsString(StandardCharsets.UTF_8))
+        val server = host ?: error("reset() must be called before exchange(...)")
+        val res = server.exchange(method, path, jsonBody?.let { mapper.writeValueAsString(it) })
+        return Response(res.status, res.body)
     }
 
-    fun parseBody(body: String?): Any? =
-        if (body.isNullOrEmpty()) null else mapper.readValue(body, Any::class.java)
+    fun parseBody(body: String?): Any? = TomcatHost.parseBody(mapper, body)
 
-    override fun close() { /* H2 in-mem reclaimed at JVM exit (DB_CLOSE_DELAY=-1). */ }
+    override fun close() {
+        host?.close() // H2 in-mem is reclaimed at JVM exit (DB_CLOSE_DELAY=-1).
+    }
 
     data class Response(val status: Int, val body: String)
 

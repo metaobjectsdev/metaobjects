@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  *
  * <p>Drives the <strong>generated</strong> Spring {@code AuthController} (the polymorphic collection
  * routes + per-subtype CRUD set emitted by {@code codegen-spring} for the discriminator base) over
- * HTTP via {@link GeneratedTphControllerHarness} (generate→compile→MockMvc). It proves the deployed
+ * HTTP via {@link GeneratedTphControllerHarness} (generate→compile→embedded Tomcat). It proves the deployed
  * Java TPH routing artifact — discriminator injection from the URL, subtype-scoped reads/writes, and
  * the cross-subtype 404 — implements the cross-port contract, not just a hand-written stand-in.</p>
  *
@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  *     test -Dtest=TphGeneratedApiContractConformanceTest
  * }</pre>
  */
-@DisplayName("API contract TPH — GENERATED Spring controller (codegen-spring) over MockMvc")
+@DisplayName("API contract TPH — GENERATED Spring controller (codegen-spring) over embedded Tomcat")
 final class TphGeneratedApiContractConformanceTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

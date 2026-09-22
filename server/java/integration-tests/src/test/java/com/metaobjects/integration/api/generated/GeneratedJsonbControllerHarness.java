@@ -1,6 +1,7 @@
 package com.metaobjects.integration.api.generated;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.metaobjects.integration.api.TomcatHost;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
@@ -13,11 +14,6 @@ import com.metaobjects.loader.uri.URIHelper;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -39,12 +35,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 /**
  * #98 — host the GENERATED Java Spring {@code @RestController} for the
- * {@code Document} (open-bag jsonb) corpus entity over HTTP (in-process via
- * Spring MockMvc) and drive the api-contract scenarios against it. Mirror of
+ * {@code Document} (open-bag jsonb) corpus entity over real HTTP (an embedded
+ * Tomcat, {@link TomcatHost}) and drive the api-contract scenarios against it. Mirror of
  * {@link GeneratedAuthorControllerHarness} for the single-entity jsonb corpus.
  *
  * <p>The artifact under test is the GENERATED {@code DocumentController} +
@@ -69,7 +64,7 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
     // FR-036: the generated controller now injects a jakarta Validator (3-arg ctor).
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
-    private MockMvc mockMvc;
+    private TomcatHost host;
 
     public GeneratedJsonbControllerHarness(Path corpusRoot, Path genDir, List<Map<String, Object>> seedRows)
             throws Exception {
@@ -112,39 +107,29 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
         this.repoCtor = repoImplClass.getDeclaredConstructor(List.class);
     }
 
-    /** Re-seed for a scenario: fresh repo + controller + MockMvc from the corpus seed. */
+    /** Re-seed for a scenario: fresh repo + controller + Tomcat from the corpus seed. */
     public void reset() throws Exception {
         List<Object> dtos = new ArrayList<>();
         for (Map<String, Object> row : seedRows) dtos.add(dtoFromRow(row));
         Object repo = repoCtor.newInstance(dtos);
         Object controller = controllerCtor.newInstance(repo, mapper, validator);
 
-        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
-        converter.setObjectMapper(mapper);
-        this.mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setMessageConverters(converter)
-            .build();
+        if (host != null) host.close();
+        this.host = TomcatHost.start(mapper, controller);
     }
 
     public Response exchange(String method, String path, Object jsonBody) throws Exception {
-        MockHttpServletRequestBuilder builder = request(
-            org.springframework.http.HttpMethod.valueOf(method), URI.create(path));
-        if (jsonBody != null) {
-            builder.contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                   .content(mapper.writeValueAsString(jsonBody));
-        }
-        MvcResult result = mockMvc.perform(builder).andReturn();
-        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        return new Response(result.getResponse().getStatus(), body);
+        TomcatHost.Response res = host.exchange(method, path, jsonBody == null ? null : mapper.writeValueAsString(jsonBody));
+        return new Response(res.status(), res.body());
     }
 
-    public Object parseBody(String body) throws Exception {
-        if (body == null || body.isEmpty()) return null;
-        return mapper.readValue(body, Object.class);
+    public Object parseBody(String body) {
+        return TomcatHost.parseBody(mapper, body);
     }
 
     @Override
     public void close() throws Exception {
+        if (host != null) host.close();
         classLoader.close();
     }
 

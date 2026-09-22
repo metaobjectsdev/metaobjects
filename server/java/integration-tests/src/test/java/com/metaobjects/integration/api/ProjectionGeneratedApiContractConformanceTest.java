@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /**
  * F22 — the Java GENERATED-controller lane for the view-only-projection api-contract
- * sub-corpus. Boots the GENERATED Spring {@code InvoiceSummaryController} over MockMvc
+ * sub-corpus. Boots the GENERATED Spring {@code InvoiceSummaryController} over an embedded Tomcat
  * behind the read-only in-memory repository seam and drives all seven scenarios.
  *
  * <p>Generated lane ONLY, on purpose and on every port (see the sub-corpus README). What
@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  * <p>Run on-demand:
  * {@code mvn -f server/java/integration-tests/pom.xml test -Dtest=ProjectionGeneratedApiContractConformanceTest}</p>
  */
-@DisplayName("API contract projection — GENERATED Spring controller (codegen-spring) over MockMvc")
+@DisplayName("API contract projection — GENERATED Spring controller (codegen-spring) over embedded Tomcat")
 final class ProjectionGeneratedApiContractConformanceTest {
 
     private static final List<ApiScenario> SCENARIOS =

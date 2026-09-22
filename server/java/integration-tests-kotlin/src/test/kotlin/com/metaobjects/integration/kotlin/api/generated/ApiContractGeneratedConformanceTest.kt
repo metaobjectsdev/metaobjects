@@ -21,7 +21,7 @@ import java.util.stream.Stream
  * Where the sibling [com.metaobjects.integration.kotlin.api.ApiContractConformanceTest]
  * drives a hand-rolled reference server, this lane drives the **generated** Kotlin
  * Spring `@RestController` (emitted by `codegen-kotlin`'s [com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator])
- * over HTTP via [GeneratedAuthorControllerHarness] (generate→compile→MockMvc). It proves
+ * over HTTP via [GeneratedAuthorControllerHarness] (generate→compile→embedded Tomcat). It proves
  * the deployed Kotlin API artifact — the generated controller — implements the cross-port
  * contract, not just a hand-written stand-in.
  *
@@ -35,14 +35,14 @@ import java.util.stream.Stream
  *   mvn -f server/java/integration-tests-kotlin/pom.xml \
  *     test -Dtest=ApiContractGeneratedConformanceTest
  */
-@DisplayName("API contract — GENERATED Kotlin Spring controller (codegen-kotlin) over MockMvc")
+@DisplayName("API contract — GENERATED Kotlin Spring controller (codegen-kotlin) over embedded Tomcat")
 internal class ApiContractGeneratedConformanceTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("scenarios")
     fun scenario(name: String, scenario: ApiScenario) {
         assertDoesNotThrow {
-            // Per-scenario isolation: a freshly-seeded H2 database + controller + MockMvc.
+            // Per-scenario isolation: a freshly-seeded H2 database + controller + Tomcat.
             HARNESS.reset(!scenario.truncate)
             for (req in scenario.requests) {
                 val res = HARNESS.exchange(req.method, req.path, req.body)
@@ -67,7 +67,7 @@ internal class ApiContractGeneratedConformanceTest {
          * The generate→compile→load step is expensive, so the harness is built ONCE per
          * class (the compiled artifacts + classloader are reused). Per-scenario isolation
          * comes from [GeneratedAuthorControllerHarness.reset] rebuilding a freshly-seeded
-         * H2 database + controller + MockMvc.
+         * H2 database + controller + Tomcat.
          */
         private lateinit var HARNESS: GeneratedAuthorControllerHarness
 

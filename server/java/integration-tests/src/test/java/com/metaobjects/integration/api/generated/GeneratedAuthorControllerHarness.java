@@ -11,7 +11,7 @@ import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
-import com.metaobjects.integration.api.ApiContractWire;
+import com.metaobjects.integration.api.TomcatHost;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
@@ -19,11 +19,6 @@ import com.metaobjects.loader.uri.URIHelper;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -48,7 +43,7 @@ import java.util.stream.Stream;
 
 /**
  * SP-F Unit 1 — host the GENERATED Java Spring {@code @RestController} for the
- * {@code Author} corpus entity over HTTP (in-process via Spring MockMvc) and
+ * {@code Author} corpus entity over real HTTP (an embedded Tomcat, {@link TomcatHost}) and
  * drive the api-contract scenarios against it.
  *
  * <p>Mechanism (the SP-C / SP-E generate→compile→load pattern):</p>
@@ -68,13 +63,14 @@ import java.util.stream.Stream;
  *       the test classpath, so {@code FilterPredicate} etc. resolve); load via a
  *       child-first-of-test {@link URLClassLoader}.</li>
  *   <li>Instantiate the in-memory repo (seeded from {@code seed.json}) and the
- *       generated controller (constructor-injecting the repo), build a
- *       {@code MockMvc} via {@code standaloneSetup} (no Spring Boot context, no
- *       socket — same in-process fidelity as the TS lane's {@code fastify.inject}).</li>
+ *       generated controller (constructor-injecting the repo), and serve it from an
+ *       embedded Tomcat ({@link TomcatHost}) over a real socket — the servlet container
+ *       is where raw brackets, malformed escapes and raw {@code %} are decided, and
+ *       MockMvc reproduces none of it.</li>
  * </ol>
  *
  * <p>The harness is re-seeded per scenario (a fresh repo + controller +
- * MockMvc), matching the per-scenario isolation the hand-rolled lane gets from
+ * Tomcat), matching the per-scenario isolation the hand-rolled lane gets from
  * TRUNCATE/seed.</p>
  */
 public final class GeneratedAuthorControllerHarness implements AutoCloseable {
@@ -90,7 +86,7 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
     // interpreted as UTC (the cross-port instant wire contract — mirrors the C# lane).
     private static final String UTC_SUFFIX = "Z";
 
-    /** Jackson mapper used both by MockMvc's converter and to (de)serialize bodies. */
+    /** Jackson mapper used both by the served controller's converter and to (de)serialize bodies. */
     private final ObjectMapper mapper;
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;
@@ -102,12 +98,12 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
     // enforce the DTO's field constraints over HTTP. One reference-impl validator for the harness.
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
-    private MockMvc mockMvc;
+    private TomcatHost host;
 
     /**
      * One-time setup shared by all scenarios: generate, compile, load. The
      * compiled artifacts + classloader are reused; only the seeded repo +
-     * controller + MockMvc are rebuilt per scenario.
+     * controller + Tomcat are rebuilt per scenario.
      *
      * @param corpusRoot fixtures/api-contract-conformance
      * @param genDir     a temp dir (sources + classes are written under it)
@@ -191,34 +187,25 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
         Object repo = repoCtor.newInstance(dtos);
         Object controller = controllerCtor.newInstance(repo, mapper, validator);
 
-        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
-        converter.setObjectMapper(mapper);
-        this.mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setMessageConverters(converter)
-            .build();
+        if (host != null) host.close();
+        this.host = TomcatHost.start(mapper, controller);
     }
 
     /** Issue a scenario request and return the (status, body-string) pair. */
     public Response exchange(String method, String path, Object jsonBody) throws Exception {
-        MockHttpServletRequestBuilder builder = ApiContractWire.mockMvcRequest(
-            org.springframework.http.HttpMethod.valueOf(method), path);
-        if (jsonBody != null) {
-            builder.contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                   .content(mapper.writeValueAsString(jsonBody));
-        }
-        MvcResult result = mockMvc.perform(builder).andReturn();
-        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        return new Response(result.getResponse().getStatus(), body);
+        TomcatHost.Response res = host.exchange(
+            method, path, jsonBody == null ? null : mapper.writeValueAsString(jsonBody));
+        return new Response(res.status(), res.body());
     }
 
     /** Parse a response body string into Map/List/scalar/null (the assertion shape). */
-    public Object parseBody(String body) throws Exception {
-        if (body == null || body.isEmpty()) return null;
-        return mapper.readValue(body, Object.class);
+    public Object parseBody(String body) {
+        return TomcatHost.parseBody(mapper, body);
     }
 
     @Override
     public void close() throws Exception {
+        if (host != null) host.close();
         classLoader.close();
     }
 

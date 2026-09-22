@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.metaobjects.integration.api.TomcatHost;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
@@ -18,13 +19,6 @@ import com.metaobjects.loader.uri.URIHelper;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -48,12 +42,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 /**
  * FR-017 Tier 4/5 — host the GENERATED Java Spring {@code @RestController} for the TPH corpus
  * ({@code Auth} base + {@code Bridge}/{@code Copay}/{@code PriorAuth} subtypes) over HTTP
- * (in-process via Spring MockMvc) and drive the polymorphic-CRUD scenarios against it.
+ * (a real embedded Tomcat, {@link TomcatHost}) and drive the polymorphic-CRUD scenarios against it.
  *
  * <p>Mechanism (the SP-F generate→compile→load pattern, mirroring
  * {@code GeneratedAuthorControllerHarness} / {@code GeneratedM2mControllerHarness}):</p>
@@ -66,11 +59,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  *   <li>compile everything with the system Java compiler; load via a child-of-test
  *       {@link URLClassLoader};</li>
  *   <li>seed the in-memory repo from {@code tph/seed.json} (one row per subtype), instantiate the
- *       generated controller, and host on a {@code MockMvc} {@code standaloneSetup} (no Spring Boot
- *       context, no socket).</li>
+ *       generated controller, and serve it from an embedded Tomcat over a real socket
+ *       ({@link TomcatHost}).</li>
  * </ol>
  *
- * <p>The harness is built ONCE (generate→compile→load is expensive); the controller's MockMvc is
+ * <p>The harness is built ONCE (generate→compile→load is expensive); the controller and its Tomcat are
  * rebuilt from a fresh seed in {@link #reset()} per scenario (each TPH scenario mutates the table).</p>
  */
 public final class GeneratedTphControllerHarness implements AutoCloseable {
@@ -100,7 +93,7 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
     // validator for the harness (mirrors GeneratedAuthorControllerHarness).
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
-    private MockMvc mockMvc;
+    private TomcatHost host;
 
     public GeneratedTphControllerHarness(Path corpusRoot, Path genDir, List<Map<String, Object>> seedRows)
             throws Exception {
@@ -167,36 +160,32 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         this.repoCtor = classLoader.loadClass(InMemoryAuthRepositorySource.FQCN).getDeclaredConstructor(List.class);
     }
 
-    /** Rebuild the controller's MockMvc from a fresh seed (per-scenario isolation). */
+    /** Rebuild the controller and its Tomcat from a fresh seed (per-scenario isolation). */
     public void reset() throws Exception {
         List<Object> dtos = new ArrayList<>();
         for (Map<String, Object> row : seedRows) dtos.add(dtoFromRow(row));
         Object repo = repoCtor.newInstance(dtos);
         Object controller = controllerCtor.newInstance(repo, mapper, validator);
 
-        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
-        converter.setObjectMapper(mapper);
-        this.mockMvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build();
+        if (host != null) host.close();
+        this.host = TomcatHost.start(mapper, controller);
     }
 
     /** Issue a scenario request and return the (status, body-string) pair. */
     public Response exchange(String method, String path, Object jsonBody) throws Exception {
-        MockHttpServletRequestBuilder builder = request(HttpMethod.valueOf(method), URI.create(path));
-        if (jsonBody != null) {
-            builder.contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(jsonBody));
-        }
-        MvcResult result = mockMvc.perform(builder).andReturn();
-        String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        return new Response(result.getResponse().getStatus(), body);
+        TomcatHost.Response res = host.exchange(method, path, jsonBody == null ? null : mapper.writeValueAsString(jsonBody));
+        return new Response(res.status(), res.body());
     }
 
     /** Parse a response body string into Map/List/scalar/null (the assertion shape). */
-    public Object parseBody(String body) throws Exception {
-        if (body == null || body.isEmpty()) return null;
-        return mapper.readValue(body, Object.class);
+    public Object parseBody(String body) {
+        return TomcatHost.parseBody(mapper, body);
     }
 
-    @Override public void close() throws Exception { classLoader.close(); }
+    @Override public void close() throws Exception {
+        if (host != null) host.close();
+        classLoader.close();
+    }
 
     public record Response(int status, String body) {}
 

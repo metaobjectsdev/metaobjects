@@ -20,13 +20,13 @@ import java.util.stream.Stream
  * #214 write-through read-your-writes api-contract conformance — Kotlin GENERATED-controller lane.
  *
  * Drives the **generated** Kotlin Spring `OrderController` (writes → OrderTable, reads/re-reads →
- * OrderView) over HTTP via [GeneratedWriteThroughControllerHarness] (generate→compile→MockMvc + a
+ * OrderView) over HTTP via [GeneratedWriteThroughControllerHarness] (generate→compile→embedded Tomcat + a
  * hand-created H2 `v_order_with_customer` view). Proves the deployed Kotlin write-through artifact
  * returns the derived `customerName` on read-your-writes (POST create's re-read + GET through the
  * view). Generated lane only — a hand-rolled reference controller would re-implement the join and
  * prove nothing about the emitted artifact.
  */
-@DisplayName("API contract write-through (#214) — GENERATED Kotlin Spring controller over MockMvc")
+@DisplayName("API contract write-through (#214) — GENERATED Kotlin Spring controller over embedded Tomcat")
 internal class WriteThroughGeneratedApiContractConformanceTest {
 
     @ParameterizedTest(name = "{0}")

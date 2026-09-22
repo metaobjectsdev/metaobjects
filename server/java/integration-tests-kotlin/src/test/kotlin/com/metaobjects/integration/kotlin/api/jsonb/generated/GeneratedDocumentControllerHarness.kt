@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializerProvider
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.metaobjects.integration.kotlin.api.TomcatHost
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
@@ -26,14 +27,7 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.springframework.http.HttpMethod
-import org.springframework.http.MediaType
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.net.URI
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
@@ -41,7 +35,7 @@ import kotlin.io.path.readText
 
 /**
  * Issue #98 — host the GENERATED Kotlin Spring `@RestController` for the `jsonb/`
- * corpus `Document` entity over HTTP (in-process via Spring MockMvc) and drive the
+ * corpus `Document` entity over real HTTP (an embedded Tomcat, [TomcatHost]) and drive the
  * jsonb open-bag api-contract scenario against it.
  *
  * Mechanism (the SP-F generate→compile→load pattern, mirroring the base Kotlin
@@ -90,7 +84,7 @@ class GeneratedDocumentControllerHarness(
     private val controllerClass: Class<*>
     private val documentTable: Table
 
-    private var mockMvc: MockMvc? = null
+    private var host: TomcatHost? = null
     private var activeContainer: PostgresContainer? = null
 
     init {
@@ -158,7 +152,8 @@ class GeneratedDocumentControllerHarness(
         transaction(db) { SchemaUtils.create(documentTable) }
 
         // FR-036: the generated controller ctor now also takes a jakarta Validator.
-        mockMvc = standalone(controllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java)
+        host?.close()
+        host = TomcatHost.start(mapper, controllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java)
             .newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator))
 
         if (seed) {
@@ -182,31 +177,21 @@ class GeneratedDocumentControllerHarness(
 
     /** Issue a scenario request and return the (status, body-string) pair. */
     fun exchange(method: String, path: String, jsonBody: Any?): Response {
-        val mvc = mockMvc ?: error("reset(...) must be called before exchange(...)")
-        val builder = request(HttpMethod.valueOf(method), URI.create(path))
-        if (jsonBody != null) {
-            builder.contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(jsonBody))
-        }
-        val res = mvc.perform(builder).andReturn().response
-        return Response(res.status, res.getContentAsString(StandardCharsets.UTF_8))
+        val server = host ?: error("reset() must be called before exchange(...)")
+        val res = server.exchange(method, path, jsonBody?.let { mapper.writeValueAsString(it) })
+        return Response(res.status, res.body)
     }
 
     /** Parse a response body string into Map/List/scalar/null (the assertion shape). */
-    fun parseBody(body: String?): Any? =
-        if (body.isNullOrEmpty()) null else mapper.readValue(body, Any::class.java)
+    fun parseBody(body: String?): Any? = TomcatHost.parseBody(mapper, body)
 
     override fun close() {
+        host?.close()
         activeContainer?.close()
     }
 
     /** HTTP status + raw body string. */
     data class Response(val status: Int, val body: String)
-
-    private fun standalone(controller: Any): MockMvc =
-        MockMvcBuilders.standaloneSetup(controller)
-            .setMessageConverters(MappingJackson2HttpMessageConverter().apply { objectMapper = mapper })
-            .build()
 
     private companion object {
         const val ENTITY_PKG = "acme.store"

@@ -21,7 +21,7 @@ import java.util.stream.Stream
  * Where the sibling [com.metaobjects.integration.kotlin.api.jsonb.JsonbApiContractConformanceTest]
  * drives a hand-rolled reference server, this lane drives the **generated** Kotlin Spring
  * `@RestController` (emitted by `codegen-kotlin`'s `KotlinSpringControllerGenerator`) over
- * HTTP via [GeneratedDocumentControllerHarness] (generate→compile→MockMvc, Testcontainers
+ * HTTP via [GeneratedDocumentControllerHarness] (generate→compile→embedded Tomcat, Testcontainers
  * Postgres for the real JSONB column). It proves the deployed Kotlin API artifact accepts a
  * posted JSON object on the `field.string @dbColumnType=jsonb` open bag and surfaces a parsed
  * value over the wire — locking the #98 fix (`payload: JsonElement`) at the API boundary.
@@ -30,7 +30,7 @@ import java.util.stream.Stream
  *   mvn -f server/java/integration-tests-kotlin/pom.xml \
  *     test -Dtest=JsonbGeneratedApiContractConformanceTest
  */
-@DisplayName("jsonb open-bag api contract — GENERATED Kotlin Spring controller (codegen-kotlin) over MockMvc")
+@DisplayName("jsonb open-bag api contract — GENERATED Kotlin Spring controller (codegen-kotlin) over embedded Tomcat")
 internal class JsonbGeneratedApiContractConformanceTest {
 
     @ParameterizedTest(name = "{0}")
@@ -63,7 +63,7 @@ internal class JsonbGeneratedApiContractConformanceTest {
          * The generate→compile→load step is expensive, so the harness is built ONCE per class
          * (compiled artifacts + classloader reused). Per-scenario isolation comes from
          * [GeneratedDocumentControllerHarness.reset] rebuilding a freshly-seeded Postgres
-         * container + controller + MockMvc.
+         * container + controller + Tomcat.
          */
         private lateinit var HARNESS: GeneratedDocumentControllerHarness
 

@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  * {@code @RestController}s ({@code PostController}/{@code PersonController}/
  * {@code AccountController}, emitted by {@code codegen-spring}) over HTTP via
  * {@link GeneratedM2mControllerHarness}
- * (generate→compile→MockMvc). It proves the deployed Java M:N traversal artifact —
+ * (generate→compile→embedded Tomcat). It proves the deployed Java M:N traversal artifact —
  * the generated {@code GET /{id}/<relation>} sub-resources — implements the
  * cross-port contract, not just a hand-written stand-in.</p>
  *
@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  *     test -Dtest=M2mGeneratedApiContractConformanceTest
  * }</pre>
  */
-@DisplayName("API contract M:N — GENERATED Spring controllers (codegen-spring) over MockMvc")
+@DisplayName("API contract M:N — GENERATED Spring controllers (codegen-spring) over embedded Tomcat")
 final class M2mGeneratedApiContractConformanceTest {
 
     private static final Path CORPUS = M2mScenarios.findM2mCorpus();
