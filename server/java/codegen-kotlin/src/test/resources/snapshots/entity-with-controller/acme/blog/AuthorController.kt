@@ -362,8 +362,8 @@ class AuthorController(private val objectMapper: ObjectMapper, private val valid
      * same metadata this controller already validates against. Anything else is
      * rethrown, so the operator keeps the diagnostic and the caller gets none of it.
      */
-    @ExceptionHandler(RuntimeException::class)
-    fun handleConstraintViolation(e: RuntimeException): ResponseEntity<Any> {
+    @ExceptionHandler(RuntimeException::class, java.sql.SQLException::class)
+    fun handleConstraintViolation(e: Exception): ResponseEntity<Any> {
         val text = generateSequence<Throwable>(e) { if (it.cause === it) null else it.cause }
             .take(8)
             .flatMap { t -> sequenceOf((t as? java.sql.SQLException)?.sqlState, t.message) }

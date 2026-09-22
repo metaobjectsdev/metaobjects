@@ -198,7 +198,16 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             // An ASSIGNED primary key is create-REQUIRED whatever @required says — the
             // caller is its only source (KotlinGenUtil.isAssignedPrimaryKeyField), so the
             // property stays non-null and a create body omitting it cannot bind.
-            val nullable = tphBase || derivedReadOnly ||
+            // A SERVER-OWNED-on-create field — the key an increment/uuid identity generates, or an
+            // @autoSet column the CRUD path stamps — is never the caller's to send, and this one data
+            // class is also the create @RequestBody. As a non-null param with no default it fails
+            // jackson-module-kotlin deserialization on a body that correctly omits it, so EVERY
+            // create answered 400 on an entity whose BaseEntity declares `id` @required — the shape
+            // real models have. (A missing `Long` silently binds 0, which is how an increment key
+            // hid it; a `UUID` cannot.) Same relaxation as a derived field on a write-through
+            // entity: nullable, default null, no @field:NotNull. Rows read back always carry it.
+            val serverOwned = KotlinGenUtil.isServerOwnedOnCreate(field, obj)
+            val nullable = tphBase || derivedReadOnly || serverOwned ||
                 (!KotlinGenUtil.isRequiredField(field) && !KotlinGenUtil.originGuaranteedNonNull(field)
                     && !KotlinGenUtil.isAssignedPrimaryKeyField(field))
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
@@ -208,7 +217,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 .build()
             ctorBuilder.addParameter(param)
             val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
-            if (!tphBase && !derivedReadOnly) {
+            if (!tphBase && !derivedReadOnly && !serverOwned) {
                 for (annotation in validationAnnotations(field)) {
                     propBuilder.addAnnotation(annotation)
                 }

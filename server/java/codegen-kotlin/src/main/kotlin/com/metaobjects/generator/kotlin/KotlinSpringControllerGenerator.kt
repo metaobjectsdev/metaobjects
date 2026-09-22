@@ -242,7 +242,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // reference an un-imported type and produce a controller that does not compile.
         val scalarFields: List<ScalarFieldSpec> = entity.metaFields
             .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
-            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
+            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it), intBackedEnumType(it, entity)) }
 
         val allowlistName = "${shortName}FilterAllowlist"
         // FR-018: M:N navs declared on this entity (derived junction FK fields via the
@@ -361,6 +361,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
             for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
             append("        val newId = ${tableObjectName}.insert {\n")
+            // A `@generation: uuid` key is minted HERE, not left to the column's database default:
+            // Exposed hands back `[Table.id]` only for a value it inserted or an autoIncrement
+            // column, so a DB-defaulted uuid key read back as "id is not in record set" on every
+            // driver that will not return it. Minting app-side is what the TS runtime does too.
+            if (uuidGeneratedPk(entity, pkFieldName)) append("            it[${pkFieldName}] = java.util.UUID.randomUUID()\n")
             for (field in entity.metaFields) {
                 // Program D: a field.object value-object jsonb column IS written on create — the
                 // DTO property is the typed VO (record / List<VO>) and the Exposed Column<VO> codec
@@ -604,7 +609,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // coercion + WHERE arm like any filterable enum column.
         val filterSpecs = scalarFields
             .filter { it !is com.metaobjects.field.DecimalField && !KotlinTypeMapper.isJsonbOpenBag(it) }
-            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
+            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it), intBackedEnumType(it, base)) }
         // #203/ADR-0045: @autoSet columns on the union table are stamped by the controller, never bound
         // from the per-subtype create body. Same computation as the vanilla emit() (lines ~195-207); the
         // columns live on the BASE (shared by every subtype row in the single table) — a TPH subtype
@@ -875,6 +880,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
                 append("        val newId = $table.insert {\n")
                 append("            it[${plan.discriminatorField}] = $disc\n")
+                // `@generation: uuid` key minted app-side — see the vanilla create.
+                if (uuidGeneratedPk(base, pkFieldName)) append("            it[$pkFieldName] = java.util.UUID.randomUUID()\n")
                 for (f in writableFields) {
                     // A column is non-null in the union table iff it is a BASE @required field
                     // (subtype-only columns are folded NULLABLE). For a non-null column the union
@@ -1038,8 +1045,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("     * same metadata this controller already validates against. Anything else is\n")
         append("     * rethrown, so the operator keeps the diagnostic and the caller gets none of it.\n")
         append("     */\n")
-        append("    @ExceptionHandler(RuntimeException::class)\n")
-        append("    fun handleConstraintViolation(e: RuntimeException): ResponseEntity<Any> {\n")
+        // java.sql.SQLException TOO, not RuntimeException alone: Exposed raises a violation as
+        // ExposedSQLException, which extends the CHECKED java.sql.SQLException, so a handler for
+        // RuntimeException never matched and Spring answered every conflict with a 500.
+        append("    @ExceptionHandler(RuntimeException::class, java.sql.SQLException::class)\n")
+        append("    fun handleConstraintViolation(e: Exception): ResponseEntity<Any> {\n")
         // Depth-bounded and self-reference-guarded: a wrapper whose cause is itself is legal.
         // SQLState is read via the JDK's own java.sql.SQLException (FQN inline — the #179 guard
         // forbids surfacing an un-imported type), so no driver is referenced.
@@ -1308,7 +1318,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("        var combined: Op<Boolean>? = null\n")
         out.append("        for (p in predicates) {\n")
         out.append("            val op: Op<Boolean> = when (p.field) {\n")
-        for ((fname, subType, elementType) in scalarFields) {
+        for ((fname, subType, elementType, intBackedEnumType) in scalarFields) {
             val isStringLike = (subType == StringField.SUBTYPE_STRING || subType == EnumField.SUBTYPE_ENUM)
             val isBoolean = (subType == BooleanField.SUBTYPE_BOOLEAN)
             emitPerFieldDispatchArm(
@@ -1319,6 +1329,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 isStringLike = isStringLike,
                 isBoolean = isBoolean,
                 isEnum = (subType == EnumField.SUBTYPE_ENUM),
+                intBackedEnumType = intBackedEnumType,
             )
         }
         out.append("                else -> continue\n")
@@ -1344,7 +1355,26 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         isStringLike: Boolean,
         isBoolean: Boolean,
         isEnum: Boolean,
+        intBackedEnumType: String? = null,
     ) {
+        // An INT-BACKED enum (@intValueMap) stores the member's declared INTEGER, so the CAST(col AS
+        // text) comparison below — right for a string-backed enum — compared '30' to 'DELIVERED':
+        // eq/in matched nothing and ne matched everything, all with a 200. Compare through the
+        // enum-typed column instead, whose codec writes the declared integer. A symbol that names no
+        // member matches no row (ne: every non-null row), as the string comparison did. The
+        // int-backed band has no `like` (the allowlist omits it), so no arm is emitted for it.
+        if (intBackedEnumType != null) {
+            val member = "$intBackedEnumType.entries.firstOrNull { it.name == (p.value as String) }"
+            val col = "${tableObjectName}.${fieldName}"
+            out.append("                \"$fieldName\" -> when (p.op) {\n")
+            out.append("                    \"eq\" -> $member?.let { $col eq it } ?: Op.FALSE\n")
+            out.append("                    \"ne\" -> $member?.let { $col neq it } ?: $col.isNotNull()\n")
+            out.append("                    \"in\" -> $col inList (p.value as List<String>).mapNotNull { s -> $intBackedEnumType.entries.firstOrNull { it.name == s } }\n")
+            out.append("                    \"isNull\" -> if (p.value as Boolean) $col.isNull() else $col.isNotNull()\n")
+            out.append("                    else -> throw IllegalStateException(\"unsupported op for $fieldName: \" + p.op)\n")
+            out.append("                }\n")
+            return
+        }
         // Exposed's typed `Column<T>.eq(t: T)` / `.neq` / `.inList(Iterable<T>)` reject a
         // bare `Any?` — cast each predicate value to the column's element Kotlin type so
         // the comparison resolves. (Surfaced by the SP-F generated-controller HTTP lane:
@@ -1508,7 +1538,20 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * type name, used to cast each predicate value in the `Column<T>.eq/neq/inList` calls
      * (Exposed's typed comparison ops reject a bare `Any?`).
      */
-    protected data class ScalarFieldSpec(val name: String, val subType: String?, val elementType: String)
+    /**
+     * [intBackedEnumType] is the fully-qualified Kotlin enum class of an INT-BACKED `field.enum`
+     * (`@intValueMap`) — null for every other field, including a string-backed enum.
+     */
+    protected data class ScalarFieldSpec(
+        val name: String,
+        val subType: String?,
+        val elementType: String,
+        val intBackedEnumType: String? = null,
+    )
+
+    /** The enum class an int-backed [field] maps to, or null — see [ScalarFieldSpec]. */
+    private fun intBackedEnumType(field: com.metaobjects.field.MetaField<*>, owner: MetaObject): String? =
+        if (KotlinGenUtil.isIntBackedEnum(field)) KotlinTypeMapper.enumTypeName(field, owner)?.canonicalName else null
 
     /**
      * The element Kotlin type the generated `<Entity>Table`'s column for [field] holds —
@@ -1835,6 +1878,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
         append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
         append("    }\n\n")
+    }
+
+    /** A single-field `identity.primary @generation: uuid` key — the one the create handler mints. */
+    private fun uuidGeneratedPk(entity: MetaObject, pkFieldName: String): Boolean {
+        val pk = entity.primaryIdentity ?: return false
+        return pk.isUuid && pk.fields.singleOrNull() == pkFieldName
     }
 
     private companion object {

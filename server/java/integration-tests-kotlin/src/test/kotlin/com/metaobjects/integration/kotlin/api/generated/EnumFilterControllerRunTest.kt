@@ -42,6 +42,11 @@ class EnumFilterControllerRunTest {
 
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
 
+    private companion object {
+        /** The int-backed `size` each seeded colour carries. */
+        val SIZE_OF = mapOf("RED" to "S", "GREEN" to "M", "BLUE" to "L")
+    }
+
     private val fixture = """{
       "metadata.root": { "package": "acme::widget", "children": [
         { "object.entity": { "name": "Widget", "children": [
@@ -49,6 +54,7 @@ class EnumFilterControllerRunTest {
             { "field.long":   { "name": "id" } },
             { "field.string": { "name": "name", "@maxLength": 40, "@filterable": true } },
             { "field.enum":   { "name": "color", "@values": ["RED", "GREEN", "BLUE"], "@filterable": true } },
+            { "field.enum":   { "name": "size", "@values": ["S", "M", "L"], "@intValueMap": { "S": 1, "M": 5, "L": 9 }, "@filterable": true } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } }
         ] } }
       ] }
@@ -63,6 +69,22 @@ class EnumFilterControllerRunTest {
         assertEquals(listOf("BLUE", "RED"), colorsAt("/api/widgets?filter[color][in]=RED,BLUE"))
         assertEquals(listOf("GREEN"), colorsAt("/api/widgets?filter[color][like]=%25EE%25")) // %EE% url-encoded
         assertEquals(listOf("BLUE", "GREEN", "RED"), colorsAt("/api/widgets"))
+    }
+
+    /**
+     * An INT-BACKED enum (`@intValueMap`) stores the member's declared integer, and the
+     * generated filter compared the column as TEXT against the member symbol — '5' against
+     * 'M' — so eq/in matched nothing and ne matched everything, each with a 200.
+     */
+    @Test
+    fun `generated controller filters an int-backed enum column by member symbol`() = withWidgetController("int_enum_filter") { exchange ->
+        fun colorsAt(path: String): List<String> = colorsOf(exchange("GET", URI.create(path), null))
+
+        assertEquals(listOf("GREEN"), colorsAt("/api/widgets?filter[size][eq]=M"))
+        assertEquals(listOf("BLUE", "RED"), colorsAt("/api/widgets?filter[size][ne]=M"))
+        assertEquals(listOf("BLUE", "RED"), colorsAt("/api/widgets?filter[size][in]=S,L"))
+        // A symbol that names no member matches no row.
+        assertEquals(emptyList<String>(), colorsAt("/api/widgets?filter[size][eq]=XL"))
     }
 
     /**
@@ -143,7 +165,7 @@ class EnumFilterControllerRunTest {
             }
 
             for (color in listOf("RED", "GREEN", "BLUE")) {
-                val (status, body) = send("POST", URI.create("/api/widgets"), mapOf("name" to "w-$color", "color" to color), null)
+                val (status, body) = send("POST", URI.create("/api/widgets"), mapOf("name" to "w-$color", "color" to color, "size" to SIZE_OF.getValue(color)), null)
                 assertEquals(201, status, "seed POST $color -> $body")
             }
 

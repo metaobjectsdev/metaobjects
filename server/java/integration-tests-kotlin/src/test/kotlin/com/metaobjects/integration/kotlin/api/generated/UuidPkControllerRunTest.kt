@@ -60,10 +60,11 @@ class UuidPkControllerRunTest {
       "metadata.root": { "package": "acme::demo", "children": [
         { "object.entity": { "name": "Author", "children": [
             { "source.rdb":   { "@table": "authors" } },
-            { "field.uuid":   { "name": "id", "@filterable": true } },
+            { "field.uuid":   { "name": "id", "@required": true, "@filterable": true } },
             { "field.string": { "name": "name", "@required": true, "@maxLength": 80, "@filterable": true } },
             { "relationship.composition": { "name": "comments", "@objectRef": "Comment", "@cardinality": "many" } },
-            { "identity.primary": { "@fields": "id", "@generation": "uuid" } }
+            { "identity.primary": { "@fields": "id", "@generation": "uuid" } },
+            { "identity.secondary": { "name": "byName", "@fields": "name" } }
         ] } },
         { "object.entity": { "name": "Post", "children": [
             { "source.rdb":   { "@table": "posts" } },
@@ -122,7 +123,7 @@ class UuidPkControllerRunTest {
             // `name` must be created quoted-lowercase: Exposed quotes it in generated SQL
             // (it is a keyword in some dialects), and H2 uppercases unquoted identifiers.
             transaction(db) {
-                exec("""CREATE TABLE authors (id uuid PRIMARY KEY, "name" varchar(80) NOT NULL)""")
+                exec("""CREATE TABLE authors (id uuid DEFAULT RANDOM_UUID() PRIMARY KEY, "name" varchar(80) NOT NULL UNIQUE)""")
                 exec("""INSERT INTO authors (id, "name") VALUES ('$aliceId', 'Alice')""")
             }
 
@@ -152,6 +153,23 @@ class UuidPkControllerRunTest {
             val (filterStatus, filterBody) = exchange("GET", "/api/authors?filter[id][eq]=$aliceId", null)
             assertEquals(200, filterStatus, "filter[id][eq] -> $filterBody")
             assertTrue("\"Alice\"" in filterBody, "expected Alice from uuid filter; saw $filterBody")
+
+            // POST without the key — the shape every real model has: a shared BaseEntity declares
+            // `id` @required, and the uuid identity means the SERVER supplies it. The data class
+            // is also the create @RequestBody, so a non-null `id` with no default failed
+            // jackson-module-kotlin deserialization and every create answered 400.
+            val (postStatus, postBody) = exchange("POST", "/api/authors", mapOf("name" to "Grace"))
+            assertEquals(201, postStatus, "POST omitting the server-generated uuid key -> $postBody")
+            assertTrue(Regex("\"id\"\\s*:\\s*\"[0-9a-f-]{36}\"").containsMatchIn(postBody),
+                "expected a generated uuid id in the create echo; saw $postBody")
+
+            // A unique violation is the caller's conflict, not a 500. Exposed raises it as
+            // ExposedSQLException, a java.sql.SQLException — a CHECKED exception — so a handler
+            // declared for RuntimeException alone never saw it and Spring answered 500.
+            val (dupStatus, dupBody) = exchange("POST", "/api/authors", mapOf("name" to "Grace"))
+            assertEquals(409, dupStatus, "POST duplicating a unique key -> $dupBody")
+            assertTrue("\"constraint_violation\"" in dupBody && "\"unique\"" in dupBody,
+                "expected the constraint envelope; saw $dupBody")
 
             // PATCH by uuid id — update binds + writes.
             val (patchStatus, patchBody) = exchange(

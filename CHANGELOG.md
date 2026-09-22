@@ -302,6 +302,46 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   reference server and the Python in-memory seam ignored the filter and returned every row,
   and the TS reference server's allowlist gave the discriminator no operators.
 
+- **Kotlin: no POST could create an entity whose server-generated key is `@required` — and
+  a uuid key could not be created at all.** The generated data class is also the create
+  `@RequestBody`, and a `@required` key made it a non-null constructor parameter with no
+  default, so jackson-module-kotlin rejected every body that (correctly) omitted it: HTTP 400
+  on every create, for the shape every real model has (a shared `BaseEntity` declares `id`
+  required). An `increment` key hid it — a missing `Long` binds 0 — but a `UUID` cannot.
+  Behind that sat a second defect: the create handler read a `@generation: uuid` key back
+  from the insert, and Exposed returns only a value it inserted or an autoIncrement column,
+  so the key "is not in record set" on any driver that does not hand the database default
+  back. Now a SERVER-OWNED-on-create field — a generated key, or an `@autoSet` column the
+  handler stamps — is a nullable, default-null property with no `@field:NotNull` (the same
+  relaxation a derived field on a write-through entity already had), and the create handler
+  mints a uuid key itself, as the TypeScript runtime does. Rows read back always carry the
+  key. **Kotlin adopters with committed generated code should run `mvn metaobjects:generate`**;
+  code that read `entity.id` as non-null on such an entity now needs `!!` or a null check.
+  Found by an adopter estate's Kotlin backend.
+
+- **Kotlin: a database constraint violation answered 500, not the contract's 409.** The
+  generated `handleConstraintViolation` was declared for `RuntimeException`, and Exposed raises
+  a violation as `ExposedSQLException`, which extends the CHECKED `java.sql.SQLException` — so
+  the handler never matched and Spring answered every duplicate key and dangling reference with
+  a 500. It now handles `java.sql.SQLException` too. Nothing had run the handler: it existed
+  only in snapshots. **Run `mvn metaobjects:generate`.**
+
+- **Kotlin: filters on an int-backed enum (`@intValueMap`) returned the wrong rows with a
+  200.** The generated filter compared every enum column as TEXT against the member symbol,
+  which is right for a string-backed enum; an int-backed column stores the declared integer,
+  so `filter[status][eq]=DELIVERED` compared `'30'` to `'DELIVERED'` — `eq` and `in` matched
+  nothing and `ne` matched everything. The filter now compares through the enum-typed column,
+  whose codec writes the declared integer; a symbol naming no member matches no row. **Run
+  `mvn metaobjects:generate`.**
+
+- **Kotlin docs: the documented install block could not build a running app.** The generated
+  tables import `exposed-java-time` and `exposed-json`, and `Database.connect(...)` needs
+  `exposed-jdbc` at runtime; `docs/ports/kotlin.md` listed only `exposed-core`. Its generator
+  table now lists all three, and says the controller needs `KotlinRelationsGenerator` whenever
+  the model has a M:N relationship (the traversal routes call helpers only that generator
+  emits). A `KotlinSpringConfigGenerator` run with `validatorEnabled=false` no longer emits a
+  KDoc claiming the validator runs.
+
 - **Python runtime: a `field.currency` read from a view answered as a JSON STRING, not
   integer minor units.** A table's currency column is BIGINT, which the driver already hands
   back as an `int`. A view's need not be: `SUM` over BIGINT is Postgres `numeric`, read back

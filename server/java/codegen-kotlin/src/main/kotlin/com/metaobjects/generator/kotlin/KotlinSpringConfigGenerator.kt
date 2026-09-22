@@ -60,10 +60,17 @@ open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         val typeBuilder = TypeSpec.classBuilder(className)
             .addKdoc(
-                "GENERATED — wires Exposed's `Database.connect()` from the Spring " +
-                    "[DataSource] bean\nand runs [MetadataStartupValidator.validate] at " +
-                    "app startup.\n\nIf you don't want the validator auto-call, set " +
-                    "`metaobjects.validator.enabled=false`.\n"
+                if (validatorEnabled) {
+                    "GENERATED — wires Exposed's `Database.connect()` from the Spring " +
+                        "[DataSource] bean\nand runs [MetadataStartupValidator.validate] at " +
+                        "app startup.\n\nIf you don't want the validator auto-call, set " +
+                        "`metaobjects.validator.enabled=false`.\n"
+                } else {
+                    // Generated with validatorEnabled=false: no validator hook is emitted, so the
+                    // KDoc must not say one runs.
+                    "GENERATED — wires Exposed's `Database.connect()` from the Spring " +
+                        "[DataSource] bean.\n"
+                }
             )
             .addAnnotation(CONFIGURATION)
             .primaryConstructor(

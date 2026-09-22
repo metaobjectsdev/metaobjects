@@ -39,6 +39,25 @@ Two modules:
     <artifactId>exposed-core</artifactId>
     <version>${exposed.version}</version>
   </dependency>
+  <!-- The generated tables import these two: instant (tz-aware timestamp) columns come from
+       exposed-java-time, jsonb columns from exposed-json. exposed-jdbc is what
+       `Database.connect(...)` needs at RUNTIME — without it the app starts and the first
+       query fails. -->
+  <dependency>
+    <groupId>org.jetbrains.exposed</groupId>
+    <artifactId>exposed-jdbc</artifactId>
+    <version>${exposed.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>org.jetbrains.exposed</groupId>
+    <artifactId>exposed-java-time</artifactId>
+    <version>${exposed.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>org.jetbrains.exposed</groupId>
+    <artifactId>exposed-json</artifactId>
+    <version>${exposed.version}</version>
+  </dependency>
   <!-- Generated typed `field.object @storage:jsonb` / `field.map` columns serialize through a
        generated per-package `MetaJsonbMapper.kt` Jackson `ObjectMapper` (no kotlinx-serialization
        compiler plugin required). -->
@@ -87,7 +106,7 @@ The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
-| `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract) | entities with `source.rdb @kind="table"` |
+| `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract). **Select `KotlinRelationsGenerator` with it** when the model has a M:N relationship: the traversal routes call the `<rel>Query` helpers only that generator emits, and without it the controller does not compile | entities with `source.rdb @kind="table"` |
 
 Maven wiring:
 
