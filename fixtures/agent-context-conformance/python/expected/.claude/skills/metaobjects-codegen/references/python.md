@@ -69,8 +69,19 @@ a renamed physical column).
 | `template` | the generic Mustache `template` primitive. |
 
 **Projections + entity read-views.** An `object.projection` (read-only `source.rdb`
-`@kind: view` child) gets a read-only Pydantic model from the `entity` generator; its
-`CREATE VIEW` DDL is emitted by the Node `meta migrate` from the projection's `origin.*`
+`@kind: view` child) gets a read-only Pydantic model from the `entity` generator.
+
+Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the same
+`?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
+projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
+answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
+path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
+at all, so it refuses only the collection verb.
+The read-only router is a separate assembly from the writable one, sharing only the
+emitters they genuinely have in common; `router_generator` and
+`filter_allowlist_generator` ask one shared `emits_router()` predicate.
+
+Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the projection's `origin.*`
 children (`passthrough` / `aggregate` / `computed` / `first`) — never
 hand-write the view SQL for a shape origins can express. An `object.entity` that adds a
 `@role: replica` `@kind: view` source alongside its writable `table` is a write-through

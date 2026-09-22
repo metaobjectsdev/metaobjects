@@ -126,7 +126,19 @@ All live in `metaobjects-codegen-kotlin` under
 
 **Projections (read-only views).** For an `object.projection` (read-only `source.rdb`
 `@kind: view` child), `KotlinExposedTableGenerator` emits a read-only Exposed `Table`
-wrapper (same column mapping, no write path). The `CREATE VIEW` DDL is emitted by the
+wrapper (same column mapping, no write path).
+
+Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the same
+`?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
+projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
+answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
+path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
+at all, so it refuses only the collection verb.
+The controller takes no constructor parameters — nothing binds a request body, so it
+injects neither an `ObjectMapper` nor a `Validator`. `KotlinFilterAllowlistGenerator`
+moves with it on one shared predicate: the emitted controller names the allowlist.
+
+The `CREATE VIEW` DDL is emitted by the
 Node `meta migrate` from the projection's `origin.*` children — `origin.passthrough`,
 `origin.aggregate` (`@agg` `count`/`sum`/`avg`/`min`/`max`, plus the #195 `any`/`all`
 quantifiers over a `@filter` and `collect` array-rollup with `@distinct`/`@orderBy`),

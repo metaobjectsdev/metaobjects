@@ -111,8 +111,20 @@ separate `metaobjects-codegen-base` module instead.)
 
 **Projections (read-only views).** An `object.projection` (read-only `source.rdb`
 `@kind: view` child) is served read-only through OMDB at the ObjectManager layer
-(mutating ops throw); no controller is generated (controllers cover writable entities
-only). Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the
+(mutating ops throw).
+
+Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the same
+`?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
+projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
+answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
+path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
+at all, so it refuses only the collection verb.
+`SpringControllerGenerator`, `SpringRepositoryGenerator` and `SpringFilterAllowlistGenerator`
+move together here — they share one emit predicate, because the generated controller names
+the other two. The repository interface a projection gets is the read-only one:
+`list` / `count` / `findById` and nothing that writes.
+
+Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the
 projection's `origin.*` children — `origin.passthrough`, `origin.aggregate` (`@agg`
 `count`/`sum`/`avg`/`min`/`max`, plus the #195 `any`/`all` quantifiers over a `@filter`
 and `collect` array-rollup with `@distinct`/`@orderBy`),

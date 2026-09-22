@@ -60,6 +60,19 @@ Metadata lives under `metaobjects/` (or wherever you point `--metadata-dir`) in 
 same canonical JSON every port reads — fused-key form, `source.rdb` + `@table`,
 `@column` for a renamed physical column.
 
+**Projections (read-only views).** An `object.projection` (read-only `source.rdb`
+`@kind: view` child) gets an EF entity mapped with `.ToView(...)` and no `[Table]`.
+
+Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the same
+`?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
+projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
+answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
+path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
+at all, so it refuses only the collection verb.
+
+Those refusals are mounted EXPLICITLY, not left to ASP.NET: unmounted, the framework
+answers its own 405 with an EMPTY body, which is a wire shape no other port sends.
+
 **Entity read-view (write-through).** An `object.entity` that keeps its writable `table`
 primary source and adds a `@role: replica` `@kind: view` source is a write-through
 read-view (#214): the generated EF entity carries the derived `origin.*` fields read-only
