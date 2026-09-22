@@ -327,9 +327,42 @@ log-only.
 |---|---|---|
 | TypeScript | shipped — `@metaobjectsdev/codegen-ts` `routesFile()` → Fastify (`@metaobjectsdev/runtime-ts/drizzle-fastify`) AND `routesFileHono()` → Hono (`@metaobjectsdev/runtime-ts/hono`) | Reference implementation; full filter/sort + `withCount` support. Both flavors emit byte-identical on-the-wire responses for the same metadata (same envelopes, same status codes, same filter operator parser), so consumers can pick the server framework that matches their runtime (Fastify for long-lived Node, Hono for Workers / Bun / edge). |
 | C# | shipped — `MetaObjects.Codegen` `RoutesGenerator` → ASP.NET Minimal API | `MapGet` / `MapPost` / `MapPut` / `MapDelete` mounted under `apiPrefix`; full CRUD. |
-| Java | shipped — `metaobjects-codegen-spring` `SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator` → Spring `@RestController` (Spring Boot 3.x / Spring Web MVC) | One controller per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Java 21 record DTOs for request/response; a stubbed `<Entity>Repository` interface the consumer implements against their persistence layer (JPA / jOOQ / JDBC). Filter operators (`eq/ne/gt/gte/lt/lte/in/like/isNull`) ship via the generated `<Entity>FilterAllowlist` (`SpringFilterAllowlistGenerator`) + the runtime `FilterParser`, wired directly into the list handler. |
-| Kotlin | shipped — `metaobjects-codegen-kotlin` `KotlinSpringControllerGenerator` → Spring `@RestController` | One controller per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators ship via the generated `<Entity>FilterAllowlist` (`KotlinFilterAllowlistGenerator`) + an inline `parse<Entity>Filter` helper emitted in the controller. |
-| Python | shipped — `metaobjects.codegen.generators.router_generator` → FastAPI `APIRouter` | One router per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Consumer wires the repository via FastAPI `app.dependency_overrides`; the generator emits a `Protocol` interface so the persistence layer (SQLAlchemy / asyncpg / etc.) is the consumer's choice. Filter operators ship via the generated `<entity>_filter_allowlist.py` (`filter_allowlist_generator.py`) + the shared `filter_parser` helper, wired into the list handler. |
+| Java | shipped — `metaobjects-codegen-spring` `SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator` → Spring `@RestController` (Spring Boot 3.x / Spring Web MVC) | One controller per writable entity (`source.rdb @kind="table"`) plus a READ-ONLY one per view-kind `object.projection` (F22, see "Read-only projections" below); 5 CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Java 21 record DTOs for request/response; a stubbed `<Entity>Repository` interface the consumer implements against their persistence layer (JPA / jOOQ / JDBC). Filter operators (`eq/ne/gt/gte/lt/lte/in/like/isNull`) ship via the generated `<Entity>FilterAllowlist` (`SpringFilterAllowlistGenerator`) + the runtime `FilterParser`, wired directly into the list handler. |
+| Kotlin | shipped — `metaobjects-codegen-kotlin` `KotlinSpringControllerGenerator` → Spring `@RestController` | One controller per writable entity (`source.rdb @kind="table"`) plus a READ-ONLY one per view-kind `object.projection` (F22, see "Read-only projections" below); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators ship via the generated `<Entity>FilterAllowlist` (`KotlinFilterAllowlistGenerator`) + an inline `parse<Entity>Filter` helper emitted in the controller. |
+| Python | shipped — `metaobjects.codegen.generators.router_generator` → FastAPI `APIRouter` | One router per writable entity (`source.rdb @kind="table"`) plus a READ-ONLY one per view-kind `object.projection` (F22, see "Read-only projections" below); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Consumer wires the repository via FastAPI `app.dependency_overrides`; the generator emits a `Protocol` interface so the persistence layer (SQLAlchemy / asyncpg / etc.) is the consumer's choice. Filter operators ship via the generated `<entity>_filter_allowlist.py` (`filter_allowlist_generator.py`) + the shared `filter_parser` helper, wired into the list handler. |
+
+## Read-only projections
+
+**All five ports serve an `object.projection` whose only source is a read-only
+view.** This used to be a 2-vs-3 split — TypeScript and C# mounted routes for one,
+Java, Kotlin and Python emitted nothing — and the split was *documented* rather than
+decided, because no corpus scenario ever asked. F22 ruled it: a projection's routes
+are derivable from declared metadata exactly as a table entity's are, so they are
+codegen, and scoping them out would have dropped a capability two ports shipped.
+
+The surface:
+
+- `GET /<plural>` and `GET /<plural>/{id}` are mounted, the latter through whatever
+  identity the projection declares or inherits.
+- `?filter[...]` and `?sort=` apply, against allowlists generated from the
+  **projection's own** declared field set — not the base entity's.
+- **Every write verb answers `405` with `{"error": "method_not_allowed"}`** — `POST`
+  on the collection, `PATCH` / `PUT` / `DELETE` on the item. 405 rather than 404
+  because the resource plainly exists: the same path answers `GET`. `message` is free
+  prose and is not part of the contract.
+- A **keyless** projection (no `identity.primary`) mounts no `/{id}` route at all, so
+  it refuses only the collection verb — refusing an item verb would advertise an
+  address the port never serves.
+
+Every port mounts those refusals **explicitly**. Left to the framework, ASP.NET and
+Spring each answer an unmatched method on a matched path with an empty-bodied 405 and
+FastAPI with `{"detail": ...}` — three more body shapes on a wire the contract spells
+one way.
+
+Gated by [`fixtures/api-contract-conformance/projection/`](../../fixtures/api-contract-conformance/projection/),
+which runs the **generated lane only, on all five ports**: what is under test is
+whether a port's generator emits the routes, and a hand-rolled reference server would
+answer every scenario by construction.
 
 ## Hand-writing a conforming controller (if you outgrow the generated one)
 
