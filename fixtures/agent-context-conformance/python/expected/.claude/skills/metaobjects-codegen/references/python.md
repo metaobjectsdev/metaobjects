@@ -11,7 +11,10 @@ through the Node `meta` tool — the Python CLI has **no `migrate` subcommand** 
 ```bash
 pip install metaobjects                 # provides the `metaobjects` console-script
 # consumer runtime deps (you provide these — codegen does not pin them):
-pip install "pydantic>=2" fastapi
+pip install "pydantic[email]>=2" fastapi
+# the [email] extra is required as soon as any field carries @stringFormat email
+# (including the shipped iam library's User.email): the entity generator types it as
+# EmailStr, which imports email-validator when the model class is defined
 ```
 
 ## Run

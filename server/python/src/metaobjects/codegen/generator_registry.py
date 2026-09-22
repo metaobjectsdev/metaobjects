@@ -149,7 +149,12 @@ def _render_helper_default(ctx: GeneratorBuildContext) -> Generator:
 GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     "entity": GeneratorEntry(
         name="entity",
-        description="Per-entity model/class — the entity module (table-backed or value object).",
+        description=(
+            "Per-entity model/class — the entity module (table-backed or value object). "
+            "[A field with @stringFormat email is typed pydantic EmailStr, which imports "
+            "email-validator when the class is defined, so the consuming project needs "
+            "`pydantic[email]` — without it the generated module fails at import.]"
+        ),
         tier="native",
         layer="model",
         factory=lambda _ctx: entity_model(),

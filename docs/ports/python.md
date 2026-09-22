@@ -567,8 +567,11 @@ itself, with one mirror per nested value object. Two parsers over the same respo
 carry their own copy; a Python module scopes it.
 
 **Consumer dependency.** Both generators emit code that imports `pydantic` (v2).
-Add it via `pip install pydantic>=2` or `uv add pydantic` if you don't
-already have it.
+Add it via `pip install "pydantic[email]>=2"` or `uv add "pydantic[email]"` if you don't
+already have it. The `[email]` extra is needed as soon as any field carries
+`@stringFormat: email` — the shipped `iam` library's `User.email` does — because the entity
+generator types that field `EmailStr`, which imports `email-validator` when the class is
+defined. Without it the generated module fails at import, not at `gen`.
 
 **Note on emitted output.** Both generators run `ruff_format(content)` on the
 file before writing, so the literal emitted layout may reflow whitespace

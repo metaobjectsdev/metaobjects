@@ -342,6 +342,23 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   it was "the same composition the loader's default registry uses". It was not, and a test
   now fails if the two differ. Every other port already composed the provider by default.
   Found by running `dotnet meta verify --codegen` against an adopter estate.
+- **`gen` no longer records output written outside the project in the project's
+  `.hashes.json` — TypeScript, Python and C#.** The manifest keys every generated file by its
+  path relative to the project root, so an output directory outside it (a scratch preview,
+  a sibling checkout) was committed as `../../<elsewhere>/X` — 118 such keys on one adopter
+  estate, from preview runs nobody remembered. In TypeScript it was worse: the snapshot body
+  is stored at `<gen-state>/<key>`, so the `../..` walked out of `.gen-state/` and wrote a
+  second full copy of the output into the project tree. Such a file is now written with the
+  rules a run with no project already had (no manifest entry, no snapshot under the
+  project), and `gen` says so in one warning. Delete any `../`-keyed entries from a
+  committed manifest by hand; nothing reads them.
+- **Python: the `entity` generator's catalog entry and the install docs now name
+  `pydantic[email]`.** A field with `@stringFormat: email` — the shipped `iam` library's
+  `User.email` is one — is typed `EmailStr`, which imports `email-validator` when the model
+  class is defined. The documented install was `pip install "pydantic>=2" fastapi`, so a
+  clean install of a project using `iam` failed at import with nothing pointing at the
+  cause. Found building a second virtualenv for an adopter estate whose first one had the
+  package installed by hand.
 - **C#: a `verify --codegen` load failure now says what failed.** It printed the error
   CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
   27 of them on the estate above — with no attribute, node or file. It now prints each
