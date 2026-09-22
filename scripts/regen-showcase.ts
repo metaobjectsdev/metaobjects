@@ -217,8 +217,10 @@ const PORTS: Port[] = [
  * lists for the same reason (`server/python/tests/codegen/gen_suite.py`,
  * `server/csharp/MetaObjects.Cli.Tests/GenSuiteForTests.cs`).
  */
-const PYTHON_SUITE = "entity,routes,filter-allowlist,names,payload,output-parser,output-prompt,extractor";
-const CSHARP_SUITE = "entity,names,db-context,routes,filter-allowlist,payload,output-parser,output-prompt,extractor";
+// ADR-0056 removed `payload` from both: a template's payload and response types are the value
+// objects' own models, which `entity` already emits.
+const PYTHON_SUITE = "entity,routes,filter-allowlist,names,output-parser,output-prompt,extractor";
+const CSHARP_SUITE = "entity,names,db-context,routes,filter-allowlist,output-parser,output-prompt,extractor";
 
 function selectPorts(): Port[] {
   if (BUN_ONLY) {
