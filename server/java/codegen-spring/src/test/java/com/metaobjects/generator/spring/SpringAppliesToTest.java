@@ -4,6 +4,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
 import org.junit.Test;
@@ -23,7 +24,8 @@ import static org.junit.Assert.assertTrue;
  * <p>One fixture carries every shape the predicates discriminate on:</p>
  * <ul>
  *   <li>{@code Author} — a concrete table entity (writable).</li>
- *   <li>{@code SalesReport} — a {@code @kind="view"} entity (read-only).</li>
+ *   <li>{@code SalesReport} — a {@code @kind="view"} {@code object.projection}
+ *       (read-only, and KEYLESS: it declares no {@code identity.primary}).</li>
  *   <li>{@code AbstractEntity} — an {@code abstract} entity.</li>
  *   <li>{@code Address} — an {@code object.value} (not an entity).</li>
  *   <li>{@code SummaryOutput} — a {@code template.output @format=json} with a
@@ -132,7 +134,7 @@ public class SpringAppliesToTest {
     // === entity-based predicates =============================================
 
     @Test
-    public void repositoryAppliesToTableEntityOnly() throws Exception {
+    public void repositoryAppliesToPersistedReadSurfaces() throws Exception {
         MetaDataLoader loader = loader();
         MetaObject author = loader.getMetaObjectByName("acme::shop::Author");
         MetaObject report = loader.getMetaObjectByName("acme::shop::SalesReport");
@@ -140,13 +142,19 @@ public class SpringAppliesToTest {
         MetaObject address = loader.getMetaObjectByName("acme::shop::Address");
 
         assertTrue("table entity emits a repository", SpringRepositoryGenerator.appliesTo(author));
-        assertFalse("view-kind entity has no writable repository", SpringRepositoryGenerator.appliesTo(report));
+        // F22: INVERTED, and the SHAPE of the repository inverted with it. A view-kind
+        // projection has a list route, so it has a consumer seam — a READ-ONLY one
+        // (list/count/findById, nothing that writes). It used to emit nothing, which is
+        // why a projection got no REST surface in Java at all.
+        assertTrue("view-kind projection emits a read-only repository",
+            SpringRepositoryGenerator.appliesTo(report));
         assertFalse("abstract entity emits nothing", SpringRepositoryGenerator.appliesTo(abstractEntity));
-        assertFalse("value object is not an entity", SpringRepositoryGenerator.appliesTo(address));
+        assertFalse("value object is neither an entity nor a projection",
+            SpringRepositoryGenerator.appliesTo(address));
     }
 
     @Test
-    public void controllerAppliesToTableEntityOnly() throws Exception {
+    public void controllerAppliesToPersistedReadSurfaces() throws Exception {
         MetaDataLoader loader = loader();
         MetaObject author = loader.getMetaObjectByName("acme::shop::Author");
         MetaObject report = loader.getMetaObjectByName("acme::shop::SalesReport");
@@ -154,13 +162,18 @@ public class SpringAppliesToTest {
         MetaObject address = loader.getMetaObjectByName("acme::shop::Address");
 
         assertTrue(SpringControllerGenerator.appliesTo(author));
-        assertFalse(SpringControllerGenerator.appliesTo(report));
+        // F22: INVERTED — a view-kind projection now gets a READ-ONLY controller (reads
+        // served, every write verb answering 405). WHICH of the two shapes is emitted is
+        // RestSurfaceGate.isReadOnly's answer, not this predicate's.
+        assertTrue(SpringControllerGenerator.appliesTo(report));
+        assertTrue(RestSurfaceGate.isReadOnly(report));
+        assertFalse(RestSurfaceGate.isReadOnly(author));
         assertFalse(SpringControllerGenerator.appliesTo(abstractEntity));
         assertFalse(SpringControllerGenerator.appliesTo(address));
     }
 
     @Test
-    public void filterAllowlistAppliesToTableEntityOnly() throws Exception {
+    public void filterAllowlistAppliesToPersistedReadSurfaces() throws Exception {
         MetaDataLoader loader = loader();
         MetaObject author = loader.getMetaObjectByName("acme::shop::Author");
         MetaObject report = loader.getMetaObjectByName("acme::shop::SalesReport");
@@ -168,7 +181,11 @@ public class SpringAppliesToTest {
         MetaObject address = loader.getMetaObjectByName("acme::shop::Address");
 
         assertTrue(SpringFilterAllowlistGenerator.appliesTo(author));
-        assertFalse(SpringFilterAllowlistGenerator.appliesTo(report));
+        // F22: INVERTED — the filter grammar does not care that the source cannot be
+        // written, and the emitted read-only controller IMPORTS this allowlist by name.
+        // Leaving this one behind is what a half-widened gate looks like: a controller
+        // referencing a type nothing generated, with the build still exiting 0.
+        assertTrue(SpringFilterAllowlistGenerator.appliesTo(report));
         assertFalse(SpringFilterAllowlistGenerator.appliesTo(abstractEntity));
         assertFalse(SpringFilterAllowlistGenerator.appliesTo(address));
     }

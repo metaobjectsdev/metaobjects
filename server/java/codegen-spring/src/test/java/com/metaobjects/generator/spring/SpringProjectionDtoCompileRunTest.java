@@ -103,14 +103,19 @@ public class SpringProjectionDtoCompileRunTest extends SharedRegistryTestBase {
         MetaObject summary = loader.getMetaObjectByName("acme::commerce::ProgramSummary");
         assertNotNull("view-kind projection entity must load", summary);
 
-        // --- consistency: the read DTO applies; every write surface SKIPS the view ---
+        // --- consistency: the read DTO applies, and so does the READ-ONLY REST trio ---
+        // F22: INVERTED. These three used to assert absence; a view-kind projection now
+        // gets a controller / repository / filter allowlist, all read-only. What is still
+        // absent is any WRITE surface, asserted on the emitted strings below rather than
+        // on the gate — the gate can no longer tell the two apart, and the emitted code is
+        // where the distinction actually lives.
         assertTrue("a concrete entity (even view-kind) gets a read DTO",
                 SpringDtoGenerator.appliesTo(summary));
-        assertFalse("view-kind entity has no writable repository",
+        assertTrue("view-kind projection gets a read-only repository",
                 SpringRepositoryGenerator.appliesTo(summary));
-        assertFalse("view-kind entity has no write controller",
+        assertTrue("view-kind projection gets a read-only controller",
                 SpringControllerGenerator.appliesTo(summary));
-        assertFalse("view-kind entity has no filter allowlist (no query/write surface)",
+        assertTrue("view-kind projection gets a filter allowlist (its list route filters)",
                 SpringFilterAllowlistGenerator.appliesTo(summary));
 
         // --- generate the read DTO (only the generator that applies to a projection) ---
@@ -140,11 +145,33 @@ public class SpringProjectionDtoCompileRunTest extends SharedRegistryTestBase {
         assertFalse("read DTO must not reference a Repository write surface; saw:\n" + src,
                 src.contains("Repository"));
 
-        // No write surface files were emitted alongside the read DTO.
-        assertFalse("no repository should be emitted for a view-kind entity",
-                Files.exists(gen.resolve("acme/commerce/ProgramSummaryRepository.java")));
-        assertFalse("no controller should be emitted for a view-kind entity",
-                Files.exists(gen.resolve("acme/commerce/ProgramSummaryController.java")));
+        // F22 — the repository and controller ARE emitted now, so asserting their absence
+        // would be vacuous (only the DTO generator ran above). Run them, and assert on what
+        // they emit: a read-only surface with no write method and no write handler.
+        SpringRepositoryGenerator repoGen = new SpringRepositoryGenerator();
+        repoGen.setArgs(args);
+        repoGen.execute(loader);
+        SpringControllerGenerator ctrlGen = new SpringControllerGenerator();
+        ctrlGen.setArgs(args);
+        ctrlGen.execute(loader);
+        // The allowlist is not optional here: the emitted controller NAMES
+        // <Entity>FilterAllowlist, so leaving it out makes compile(gen) below fail with
+        // "cannot find symbol" — which is precisely the half-widened-gate failure the
+        // shared RestSurfaceGate exists to make impossible in the generators.
+        SpringFilterAllowlistGenerator allowGen = new SpringFilterAllowlistGenerator();
+        allowGen.setArgs(args);
+        allowGen.execute(loader);
+
+        String repoSrc = Files.readString(gen.resolve("acme/commerce/ProgramSummaryRepository.java"));
+        assertFalse("read-only seam must offer no create", repoSrc.contains(" create("));
+        assertFalse("read-only seam must offer no update", repoSrc.contains(" update("));
+        assertFalse("read-only seam must offer no delete", repoSrc.contains(" delete("));
+
+        String ctrlSrc = Files.readString(gen.resolve("acme/commerce/ProgramSummaryController.java"));
+        assertFalse("no create handler", ctrlSrc.contains("repository.create("));
+        assertFalse("no delete handler", ctrlSrc.contains("repository.delete("));
+        assertTrue("writes answer the cross-port 405 envelope",
+                ctrlSrc.contains("Map.of(\"error\", \"method_not_allowed\""));
 
         // --- strongest proof: the generated read DTO actually COMPILES ---
         compile(gen);

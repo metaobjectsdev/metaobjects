@@ -275,28 +275,53 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
             containsIdentifier(allGenerated, "AddressRepository"));
     }
 
+    /**
+     * F22: INVERTED. A concrete {@code object.projection} over a read-only source used to
+     * be documented as MODEL + read DTO only, because the controller / repository / filter
+     * generators all skipped it. They no longer do — it gets a READ-ONLY REST surface — so
+     * the docs gain DATA_ACCESS / REST / FILTER, and the forward-confirmations flip with
+     * them. VALIDATION and TRACE stay out: nothing here binds a request body, and the
+     * projection is not an LLM call.
+     *
+     * <p>The point of this test is unchanged and is the reason it must flip rather than be
+     * relaxed: what is DOCUMENTED must be what is GENERATED. A gate widened in the
+     * generators and not in the model builder would leave the docs describing a
+     * non-existent {@code POST} — which is exactly what the builder's per-generator
+     * {@code appliesTo} delegation exists to prevent.</p>
+     */
     @Test
-    public void projectionIsDocumentedAsReadModelAndReadDtoOnly() {
-        // A concrete object.projection (read-only-kind source) → MODEL + DTO only.
-        // SpringDtoGenerator.appliesTo emits a read DTO for a projection; the write +
-        // queryable surfaces (controller/repository/filter/trace) gate on a writable
-        // table entity and skip it — so NO VALIDATION/DATA_ACCESS/REST/FILTER/TRACE.
+    public void projectionIsDocumentedAsAReadOnlyRestSurface() {
         ApiUnit summary = unit("AuthorSummary");
         assertEquals("object.projection AuthorSummary → projection unit kind",
             "projection", summary.kind());
-        assertEquals("object.projection AuthorSummary → MODEL + read DTO only",
-            EnumSet.of(ApiSymbolKind.MODEL, ApiSymbolKind.DTO), kinds(summary));
+        assertEquals("object.projection AuthorSummary → read model + read-only REST surface",
+            EnumSet.of(ApiSymbolKind.MODEL, ApiSymbolKind.DTO, ApiSymbolKind.DATA_ACCESS,
+                ApiSymbolKind.REST, ApiSymbolKind.FILTER),
+            kinds(summary));
 
-        // Forward-confirm the documented read DTO is really generated...
+        // Forward-confirm every documented artifact is really generated.
         assertTrue("documented AuthorSummaryDto must appear in generated Java",
             containsIdentifier(allGenerated, "AuthorSummaryDto"));
-        // ...and the skipped write/query surfaces are NOT generated for a projection.
-        assertFalse("no AuthorSummaryController should be generated",
+        assertTrue("documented AuthorSummaryController must appear in generated Java",
             containsIdentifier(allGenerated, "AuthorSummaryController"));
-        assertFalse("no AuthorSummaryRepository should be generated",
+        assertTrue("documented AuthorSummaryRepository must appear in generated Java",
             containsIdentifier(allGenerated, "AuthorSummaryRepository"));
-        assertFalse("no AuthorSummaryFilter should be generated",
-            containsIdentifier(allGenerated, "AuthorSummaryFilter"));
+        assertTrue("documented AuthorSummaryFilterAllowlist must appear in generated Java",
+            containsIdentifier(allGenerated, "AuthorSummaryFilterAllowlist"));
+
+        // The documented REST surface must be the READ-ONLY one. Documenting a projection
+        // with the writable verb list is the precise drift this suite exists to catch:
+        // the emitted controller has no create path to reach.
+        java.util.Set<String> rest = new java.util.TreeSet<>();
+        for (ApiSymbol sym : summary.symbols()) {
+            if (sym.kind() == ApiSymbolKind.REST) rest.add(sym.name());
+        }
+        assertTrue("list route documented: " + rest, rest.contains("GET /api/author_summaries"));
+        assertTrue("every write verb documented as refused: " + rest,
+            summary.symbols().stream()
+                .filter(sym -> sym.kind() == ApiSymbolKind.REST)
+                .filter(sym -> !sym.name().startsWith("GET "))
+                .allMatch(sym -> sym.usage().contains("method_not_allowed")));
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
@@ -77,23 +78,14 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     }
 
     /**
-     * True iff this generator emits a filter allowlist for {@code entity}: a
-     * concrete (non-abstract) {@code object.entity} whose first {@code source.rdb}
-     * child is {@code @kind="table"} (writable). Same table guard as
-     * {@link SpringControllerGenerator#appliesTo(MetaObject)} — the controller's
-     * list handler reads this allowlist. Extracted verbatim from the
-     * {@link #execute(MetaDataLoader)} per-node guard.
+     * True iff this generator emits a filter allowlist for {@code entity} — the same
+     * shared {@link RestSurfaceGate#emitsRestSurface} decision the controller makes,
+     * because the controller's list handler READS this allowlist by name. A read-only
+     * view-kind {@code object.projection} (F22) has a list route, so it has an
+     * allowlist; the filter grammar does not care that the source cannot be written.
      */
     public static boolean appliesTo(MetaObject entity) {
-        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
-        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
-        RdbSource sourceRdb = firstRdbSource(entity);
-        if (sourceRdb == null) return false;
-        // FR-024 §7 (#214): a write-through entity read-view owns BOTH a writable table
-        // source and a read-only replica view source — it is writable and MUST emit its
-        // write surfaces regardless of source declaration order (firstRdbSource is
-        // order-dependent). A vanilla table entity emits; a projection (read-only-only) skips.
-        return entity.isWriteThrough() || MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
+        return RestSurfaceGate.emitsRestSurface(entity);
     }
 
     /**

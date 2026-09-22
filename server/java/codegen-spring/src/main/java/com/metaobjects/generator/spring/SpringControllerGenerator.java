@@ -7,6 +7,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
@@ -99,7 +100,6 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
             if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
             // FR-017 TPH: a subtype is folded into its base's single table + base controller —
             // it emits no standalone controller (it carries no own source.rdb either, so the
@@ -108,9 +108,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             RdbSource sourceRdb = firstRdbSource(entity);
             if (sourceRdb == null) continue;
             if (!appliesTo(entity)) {
-                // Same shape (entity / non-abstract / has rdb source) but a non-table
-                // kind — log why no controller is emitted, then skip.
+                // Same shape (persisted, non-abstract, has an rdb source) but a kind with no
+                // controller story — log why no controller is emitted, then skip.
                 logSkip(entity.getName(), sourceRdb.getEffectiveKind());
+                continue;
+            }
+            // F22 — a view-only projection gets a READ-ONLY controller: reads served, every
+            // write verb answering the cross-port 405 envelope.
+            if (RestSurfaceGate.isReadOnly(entity)) {
+                emitReadOnly(entity, outRoot);
                 continue;
             }
             // FR-017 TPH: a discriminator base emits ONE controller mounting the polymorphic
@@ -122,26 +128,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /**
-     * True iff this generator emits a {@code @RestController} for {@code entity}:
-     * a concrete (non-abstract) {@code object.entity} whose first {@code source.rdb}
-     * child is {@code @kind="table"} (writable). Identical inclusion rule to
-     * {@link SpringRepositoryGenerator#appliesTo(MetaObject)} — the controller
-     * delegates to that repository, so the two emit sets coincide. View /
-     * materializedView / storedProc / tableFunction kinds (and entities with no
-     * {@code source.rdb}) are excluded. There is no {@code @emitRoutes}-style
-     * opt-out attribute today — emission is driven purely by the table guard.
-     * Extracted verbatim from the {@link #execute(MetaDataLoader)} per-node guard.
+     * True iff this generator emits a {@code @RestController} for {@code entity} —
+     * a WRITABLE object (a concrete table-kind {@code object.entity}, or a write-through
+     * entity) or a READ-ONLY view-kind {@code object.projection} (F22). Ask
+     * {@link RestSurfaceGate#isReadOnly(MetaObject)} which of the two shapes is emitted.
+     *
+     * <p>The predicate itself lives in {@link RestSurfaceGate} and is SHARED with
+     * {@link SpringRepositoryGenerator#appliesTo(MetaObject)} and
+     * {@link SpringFilterAllowlistGenerator#appliesTo(MetaObject)} — not merely equal to
+     * them. The controller NAMES the repository and the allowlist, so a gate widened in
+     * one copy and not the others emits a controller importing types nothing generated,
+     * and {@code generate} still exits 0. There is no {@code @emitRoutes}-style opt-out
+     * attribute today — emission is driven purely by the shape.</p>
      */
     public static boolean appliesTo(MetaObject entity) {
-        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
-        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
-        RdbSource sourceRdb = firstRdbSource(entity);
-        if (sourceRdb == null) return false;
-        // FR-024 §7 (#214): a write-through entity read-view owns BOTH a writable table
-        // source and a read-only replica view source — it is writable and MUST emit its
-        // write surfaces regardless of source declaration order (firstRdbSource is
-        // order-dependent). A vanilla table entity emits; a projection (read-only-only) skips.
-        return entity.isWriteThrough() || MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
+        return RestSurfaceGate.emitsRestSurface(entity);
     }
 
     protected void logSkip(String entityName, String kind) {
@@ -176,11 +177,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // (object and map are the band-less subtypes today: a map is one jsonb column holding
         // a JSON object, so ORDER BY over it sorts by jsonb collation — meaningless as an
         // ordering, and a 400 on the ports that reject it.)
-        List<String> sortFields = new ArrayList<>();
-        for (MetaField field : entity.getMetaFields()) {
-            if (!FilterOps.supportsFiltering(field.getSubType())) continue;
-            sortFields.add(field.getName());
-        }
+        List<String> sortFields = sortableFields(entity);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {
@@ -221,13 +218,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         // Sort allowlist — static per-entity Set. Field-prefixed inner constant keeps it
         // private to this controller (no cross-file collision risk).
-        src.append("    private static final Set<String> SORT_ALLOWLIST = Set.of(");
-        for (int i = 0; i < sortFields.size(); i++) {
-            if (i > 0) src.append(", ");
-            src.append('"').append(sortFields.get(i)).append('"');
-        }
-        src.append(");\n\n");
-        appendSortDefaultOrders(src, entity, sortFields);
+        appendSortAllowlist(src, entity, sortFields);
         appendServerOwnedOnCreate(src, entity);
 
         // Repository wiring — constructor injection (Spring's recommended idiom; avoids
@@ -251,49 +242,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // HttpServletRequest carries the raw query string so the bracketed
         // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
         // (Spring's @RequestParam would collapse same-key occurrences).
-        String allowlistName = SpringNaming.filterAllowlistName(shortName);
-        src.append("    @GetMapping\n");
-        src.append("    public ResponseEntity<?> list(\n");
-        src.append("            @RequestParam(required = false) Integer limit,\n");
-        src.append("            @RequestParam(required = false) Integer offset,\n");
-        src.append("            @RequestParam(required = false) String sort,\n");
-        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
-        src.append("            HttpServletRequest request) {\n");
-        src.append("        int actualLimit = limit != null ? limit : 50;\n");
-        src.append("        int actualOffset = offset != null ? offset : 0;\n");
-        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
-        src.append("        if (sort != null) {\n");
-        src.append("            sortClause = parseSort(sort);\n");
-        src.append("            if (sortClause == null) {\n");
-        // `field` names the rejected sort field — required on every cross-port
-        // invalid_sort envelope. `sort` is non-null in this branch and split()
-        // always yields at least one element, so the index is safe.
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
-        src.append("            }\n");
-        src.append("        }\n");
-        src.append("        FilterParseResult filter = FilterParser.parse(\n");
-        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD);\n");
-        src.append("        if (filter.error() != null) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
-        src.append("        }\n");
-        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
-        src.append("        List<").append(dtoName)
-           .append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
-        src.append("        if (withCount != null && withCount == 1) {\n");
-        src.append("            long total = repository.count(filters);\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
-        src.append("        }\n");
-        src.append("        return ResponseEntity.ok(rows);\n");
-        src.append("    }\n\n");
+        appendListHandler(src, shortName, dtoName, repoName);
 
         // GET /{id} — single by primary key.
-        src.append("    @GetMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
-        src.append("        return repository.findById(id)\n");
-        src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
-        src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
-        src.append("    }\n\n");
+        appendGetByIdHandler(src, pkType);
 
         // POST — create. FR-036: bind the raw DTO (no @Valid, whose default 400 body is NOT the
         // cross-port envelope and does not even fire under the standaloneSetup test harness) and
@@ -422,17 +374,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // list handler emit the 400 envelope itself rather than throwing — cleaner
         // separation. The DEFAULT_PK_FIELD constant below is referenced from the per-entity
         // controller so this helper is package-internal to each generated file.
-        src.append("    private static ").append(repoName).append(".SortClause parseSort(String raw) {\n");
-        src.append("        String[] parts = raw.split(\":\", 2);\n");
-        src.append("        if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;\n");
-        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
-        // The "asc" fallback stays HERE, at the read, so it is spelled once per port and
-        // SORT_DEFAULT_ORDER carries declarations only.
-        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase()\n");
-        src.append("            : SORT_DEFAULT_ORDER.getOrDefault(parts[0], \"asc\");\n");
-        src.append("        if (!dir.equals(\"asc\") && !dir.equals(\"desc\")) return null;\n");
-        src.append("        return new ").append(repoName).append(".SortClause(parts[0], dir);\n");
-        src.append("    }\n");
+        appendParseSortHelper(src, repoName);
         src.append("}\n");
 
         try {
@@ -527,6 +469,250 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("                }\n");
         src.append("            }\n");
         src.append("        }\n");
+    }
+
+
+    /**
+     * F22 — emit the READ-ONLY {@code @RestController} for a view-only
+     * {@code object.projection}: GET list + GET by id, with {@code POST} on the collection
+     * and {@code PATCH} / {@code PUT} / {@code DELETE} on the item each answering
+     * {@code 405 {"error": "method_not_allowed"}}.
+     *
+     * <p>405 and not 404: the resource plainly exists — the same path answers GET — and a
+     * 404 would tell a caller the collection is absent when it is merely not writable. The
+     * verbs are mounted EXPLICITLY rather than left to Spring, which answers an unmatched
+     * method on a matched path with its own error body and would put a fifth body shape on
+     * a wire the other four ports spell one way. PUT is among them because the writable
+     * controller serves it; the verb a projection forgets to refuse is the one that falls
+     * through to a 404 — which is exactly what TypeScript did until this corpus caught it.
+     * {@code message} is free prose and is deliberately not part of the asserted contract.</p>
+     *
+     * <p>A SEPARATE assembly rather than {@code if (writable)} branches through
+     * {@link #emit(MetaObject, Path)}. That method carries create/update DTO validation, the
+     * FR-035 present-key tristate, {@code @autoSet} stamping, the FR-037 frozen-field strip
+     * and constraint-error classification — every one of which is meaningless here, and
+     * threading a flag through all of them is how a read-only surface drifts into carrying
+     * write machinery it can never run. What the two genuinely share (the list + get
+     * handlers, the sort allowlist, parseSort) they share by calling the same emitters.</p>
+     *
+     * <p>The item verbs follow the item GET. A projection's identity is OPTIONAL
+     * (ADR-0028), and a keyless one mounts no {@code /{id}} read — so it refuses only the
+     * collection verb, rather than advertising an address it never serves.</p>
+     */
+    protected void emitReadOnly(MetaObject entity, Path outRoot) {
+        String[] split = SpringNaming.splitFqn(entity.getName());
+        String pkg = split[0];
+        String shortName = split[1];
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
+        String controllerName = SpringNaming.controllerName(shortName);
+        String routeBase = SpringNaming.controllerPath(shortName);
+        boolean hasItem = RestSurfaceGate.hasItemRoute(entity);
+        String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
+
+        List<String> sortFields = sortableFields(entity);
+
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) {
+            src.append("package ").append(pkg).append(";\n\n");
+        }
+        src.append("import org.springframework.http.HttpStatus;\n");
+        src.append("import org.springframework.http.ResponseEntity;\n");
+        src.append("import org.springframework.web.bind.annotation.GetMapping;\n");
+        if (hasItem) {
+            src.append("import org.springframework.web.bind.annotation.PathVariable;\n");
+        }
+        src.append("import org.springframework.web.bind.annotation.PostMapping;\n");
+        src.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
+        if (hasItem) {
+            src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
+        }
+        src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
+        src.append("import org.springframework.web.bind.annotation.RestController;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterParseResult;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import jakarta.servlet.http.HttpServletRequest;\n");
+        src.append("import java.util.List;\n");
+        src.append("import java.util.Map;\n");
+        src.append("import java.util.Set;\n\n");
+
+        src.append("/**\n");
+        src.append(" * GENERATED — READ-ONLY REST controller for the ").append(shortName)
+           .append(" projection.\n");
+        src.append(" * Implements the cross-port API contract: GET list + GET by id; every write\n");
+        src.append(" * verb answers 405 {\"error\": \"method_not_allowed\"}.\n");
+        src.append(" */\n");
+        src.append("@RestController\n");
+        src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
+        src.append("public class ").append(controllerName).append(" {\n\n");
+
+        appendSortAllowlist(src, entity, sortFields);
+
+        // Repository wiring — constructor injection, the read-only seam only. No
+        // ObjectMapper and no Validator: nothing here binds a request body, so injecting
+        // either would make a consumer wire beans this controller can never use.
+        src.append("    private final ").append(repoName).append(" repository;\n\n");
+        src.append("    public ").append(controllerName).append("(").append(repoName)
+           .append(" repository) {\n");
+        src.append("        this.repository = repository;\n");
+        src.append("    }\n\n");
+
+        appendListHandler(src, shortName, dtoName, repoName);
+        if (hasItem) {
+            appendGetByIdHandler(src, pkType);
+        }
+
+        src.append("    @PostMapping\n");
+        src.append("    public ResponseEntity<?> create() {\n");
+        src.append("        return methodNotAllowed(\"POST\");\n");
+        src.append("    }\n\n");
+        if (hasItem) {
+            // One mapping for all three item verbs: the bodies are identical and only the
+            // verb NAME differs, which the request carries. Stacking @PatchMapping +
+            // @PutMapping on one method does NOT register both in Spring MVC (see emit()),
+            // so the method= list is the form that works.
+            src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT, RequestMethod.DELETE })\n");
+            src.append("    public ResponseEntity<?> rejectItemWrite(@PathVariable ").append(pkType)
+               .append(" id, HttpServletRequest request) {\n");
+            src.append("        return methodNotAllowed(request.getMethod());\n");
+            src.append("    }\n\n");
+        }
+        src.append("    private static ResponseEntity<?> methodNotAllowed(String verb) {\n");
+        src.append("        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)\n");
+        src.append("                .body(Map.of(\"error\", \"method_not_allowed\",\n");
+        src.append("                        \"message\", verb + \" is not supported on a projection (read-only).\"));\n");
+        src.append("    }\n\n");
+
+        appendParseSortHelper(src, repoName);
+        src.append("}\n");
+
+        try {
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
+            GeneratedFileWriter.write(outFile, src.toString());
+        } catch (IOException e) {
+            throw new GeneratorException(
+                "failed writing " + controllerName + ".java for projection " + entity.getName() + ": " + e, e);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Emitters shared by the WRITABLE controller (emit) and the READ-ONLY one
+    // (emitReadOnly). Extracted verbatim from emit(), split at exactly the points
+    // that keep its output byte-identical: a read-only projection serves the same
+    // list + get + sort surface a table entity does, and the F22 change must not be
+    // able to reword one of them and not the other.
+    //
+    // emitTph() keeps its own copies. A TPH base's list and get are DISCRIMINATOR-
+    // scoped and its parseSort names a different repository type, so they are not the
+    // same emitter wearing a flag.
+    // -----------------------------------------------------------------------
+
+    /**
+     * The sortable field names: those whose subtype can be ORDERED at all.
+     * {@code FilterOps.supportsFiltering} is the canonical cross-port answer — the same
+     * band {@code @sortable} borrows and the loader checks in
+     * {@code ValidationPhase.validateSortableHasSupportedSubtype} — so the generated
+     * allowlist cannot drift from what the loader accepts, and a new band-less subtype
+     * needs no edit here. (object and map are the band-less subtypes today: a map is one
+     * jsonb column holding a JSON object, so ORDER BY over it sorts by jsonb collation —
+     * meaningless as an ordering, and a 400 on the ports that reject it.)
+     */
+    private static List<String> sortableFields(MetaObject entity) {
+        List<String> sortFields = new ArrayList<>();
+        for (MetaField field : entity.getMetaFields()) {
+            if (!FilterOps.supportsFiltering(field.getSubType())) continue;
+            sortFields.add(field.getName());
+        }
+        return sortFields;
+    }
+
+    /**
+     * The static per-controller SORT_ALLOWLIST set plus its SORT_DEFAULT_ORDER map.
+     * Field-prefixed inner constants keep them private to this controller (no
+     * cross-file collision risk).
+     */
+    private static void appendSortAllowlist(StringBuilder src, MetaObject entity, List<String> sortFields) {
+        src.append("    private static final Set<String> SORT_ALLOWLIST = Set.of(");
+        for (int i = 0; i < sortFields.size(); i++) {
+            if (i > 0) src.append(", ");
+            src.append('"').append(sortFields.get(i)).append('"');
+        }
+        src.append(");\n\n");
+        appendSortDefaultOrders(src, entity, sortFields);
+    }
+
+    /**
+     * GET (list) — pagination + sort + withCount + FR-009 filter operators.
+     * HttpServletRequest carries the raw query string so the bracketed
+     * filter[&lt;field&gt;][&lt;op&gt;]=&lt;value&gt; grammar reaches FilterParser intact
+     * (Spring's {@code @RequestParam} would collapse same-key occurrences).
+     */
+    private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName) {
+        String allowlistName = SpringNaming.filterAllowlistName(shortName);
+        src.append("    @GetMapping\n");
+        src.append("    public ResponseEntity<?> list(\n");
+        src.append("            @RequestParam(required = false) Integer limit,\n");
+        src.append("            @RequestParam(required = false) Integer offset,\n");
+        src.append("            @RequestParam(required = false) String sort,\n");
+        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
+        src.append("            HttpServletRequest request) {\n");
+        src.append("        int actualLimit = limit != null ? limit : 50;\n");
+        src.append("        int actualOffset = offset != null ? offset : 0;\n");
+        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
+        src.append("        if (sort != null) {\n");
+        src.append("            sortClause = parseSort(sort);\n");
+        src.append("            if (sortClause == null) {\n");
+        // `field` names the rejected sort field — required on every cross-port
+        // invalid_sort envelope. `sort` is non-null in this branch and split()
+        // always yields at least one element, so the index is safe.
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
+        src.append("            }\n");
+        src.append("        }\n");
+        src.append("        FilterParseResult filter = FilterParser.parse(\n");
+        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
+           .append(allowlistName).append(".OPS_BY_FIELD);\n");
+        src.append("        if (filter.error() != null) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
+        src.append("        }\n");
+        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
+        src.append("        List<").append(dtoName)
+           .append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
+        src.append("        if (withCount != null && withCount == 1) {\n");
+        src.append("            long total = repository.count(filters);\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
+        src.append("        }\n");
+        src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("    }\n\n");
+    }
+
+    /** GET /{id} — single by primary key, 404 envelope on a miss. */
+    private static void appendGetByIdHandler(StringBuilder src, String pkType) {
+        src.append("    @GetMapping(\"/{id}\")\n");
+        src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
+        src.append("        return repository.findById(id)\n");
+        src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+        src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
+        src.append("    }\n\n");
+    }
+
+    /**
+     * parseSort — returns null on malformed/disallowed input. Returning null lets the
+     * list handler emit the 400 envelope itself rather than throwing — cleaner
+     * separation. Package-internal to each generated file.
+     */
+    private static void appendParseSortHelper(StringBuilder src, String repoName) {
+        src.append("    private static ").append(repoName).append(".SortClause parseSort(String raw) {\n");
+        src.append("        String[] parts = raw.split(\":\", 2);\n");
+        src.append("        if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;\n");
+        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
+        // The "asc" fallback stays HERE, at the read, so it is spelled once per port and
+        // SORT_DEFAULT_ORDER carries declarations only.
+        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase()\n");
+        src.append("            : SORT_DEFAULT_ORDER.getOrDefault(parts[0], \"asc\");\n");
+        src.append("        if (!dir.equals(\"asc\") && !dir.equals(\"desc\")) return null;\n");
+        src.append("        return new ").append(repoName).append(".SortClause(parts[0], dir);\n");
+        src.append("    }\n");
     }
 
     /**

@@ -15,12 +15,12 @@ import static org.junit.Assert.assertTrue;
  * backed by any store, so the DB-bound generators must emit nothing for it.
  *
  * <p>This is the shape #210 makes common: a prompt payload becomes a sourceless
- * projection. {@code appliesTo} rejects it twice over — a leading
- * {@code SUBTYPE_ENTITY} check, and then #248's source-presence guard. Only the
- * SOURCELESS ENTITY below reaches the second one, so it is what actually pins the
- * #248 contract here; the projection assertion pins the subtype gate. Deleting the
- * source guard would emit a repository interface over a table that does not exist,
- * and the failure would surface at Spring wiring time rather than at codegen.</p>
+ * projection. Since F22 the gate admits view-kind projections, so #248's
+ * source-presence guard is the ONLY thing keeping this one out — a sourceless
+ * projection has no view either, and the read-only arm requires one. Deleting that
+ * guard would emit a repository interface over a table that does not exist, and the
+ * failure would surface at Spring wiring time rather than at codegen. The SOURCELESS
+ * ENTITY below pins the same contract from the writable side.</p>
  *
  * <p>The projection reuses the entity's field SHAPE via field-level {@code extends},
  * which carries field properties and NOT object children — so it inherits no source.

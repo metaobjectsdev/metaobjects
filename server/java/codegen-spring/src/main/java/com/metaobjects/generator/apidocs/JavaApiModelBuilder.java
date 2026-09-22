@@ -14,6 +14,7 @@ import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
 import com.metaobjects.template.OutputTemplate;
@@ -205,6 +206,24 @@ public final class JavaApiModelBuilder {
         String controllerFqn = fqn(javaPkg, SpringNaming.controllerName(shortName));
         String base = SpringNaming.controllerPath(shortName);
         addRest(symbols, controllerFqn, "GET " + base, "list with pagination / sort / filters");
+
+        // F22 — a read-only projection's controller serves the reads and REFUSES every write
+        // verb with 405. Documenting it with the writable verb list would be the precise
+        // drift this builder exists to prevent: the emitted controller has no create path,
+        // and a keyless projection has no /{id} route to document at all.
+        if (RestSurfaceGate.isReadOnly(obj)) {
+            boolean hasItem = RestSurfaceGate.hasItemRoute(obj);
+            if (hasItem) addRest(symbols, controllerFqn, "GET " + base + "/{id}", "fetch one by id");
+            String refused = "405 {\"error\": \"method_not_allowed\"} — read-only projection";
+            addRest(symbols, controllerFqn, "POST " + base, refused);
+            if (hasItem) {
+                addRest(symbols, controllerFqn, "PATCH " + base + "/{id}", refused);
+                addRest(symbols, controllerFqn, "PUT " + base + "/{id}", refused);
+                addRest(symbols, controllerFqn, "DELETE " + base + "/{id}", refused);
+            }
+            return;   // a projection declares no M:N relationships to traverse
+        }
+
         addRest(symbols, controllerFqn, "GET " + base + "/{id}", "fetch one by id");
         addRest(symbols, controllerFqn, "POST " + base, "create");
         addRest(symbols, controllerFqn, "PATCH " + base + "/{id}", "update");
@@ -226,6 +245,16 @@ public final class JavaApiModelBuilder {
         sb.append("interface ").append(repo).append(" {\n");
         sb.append("    List<").append(dto).append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
         sb.append("    long count(List<FilterPredicate> filters);\n");
+        // F22 — the read-only seam a projection actually gets: findById only when it is
+        // addressable, and nothing that writes. Listing create/update/delete here would
+        // document four methods the emitted interface does not declare.
+        if (RestSurfaceGate.isReadOnly(obj)) {
+            if (RestSurfaceGate.hasItemRoute(obj)) {
+                sb.append("    Optional<").append(dto).append("> findById(Long id);\n");
+            }
+            sb.append("}");
+            return sb.toString();
+        }
         sb.append("    Optional<").append(dto).append("> findById(Long id);\n");
         sb.append("    ").append(dto).append(" create(").append(dto).append(" dto);\n");
         sb.append("    Optional<").append(dto).append("> update(Long id, ").append(dto).append(" dto);\n");

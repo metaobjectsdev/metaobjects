@@ -6,6 +6,7 @@ import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.identity.ReferenceIdentity;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
@@ -63,30 +64,25 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         for (MetaObject entity : loader.getMetaObjects()) {
             if (TphPlan.isTphSubtype(entity)) continue; // folded into the base — no own repository
             if (!appliesTo(entity)) continue;
+            // F22 — a view-only projection gets a READ-ONLY seam: nothing that writes.
+            if (RestSurfaceGate.isReadOnly(entity)) emitReadOnly(entity, outRoot);
             // FR-017 TPH: the discriminator base gets a polymorphic + per-subtype-scoped repository.
-            if (TphPlan.isTphBase(entity, loader)) emitTph(entity, outRoot);
+            else if (TphPlan.isTphBase(entity, loader)) emitTph(entity, outRoot);
             else emit(entity, outRoot);
         }
     }
 
     /**
-     * True iff this generator emits a repository for {@code entity}: a concrete
-     * (non-abstract) {@code object.entity} whose first {@code source.rdb} child
-     * is {@code @kind="table"} (writable). View / materializedView / storedProc /
-     * tableFunction kinds — and entities with no {@code source.rdb} at all — are
-     * excluded. Extracted verbatim from the {@link #execute(MetaDataLoader)}
-     * per-node guard so the api-docs IR builder can reuse the same decision.
+     * True iff this generator emits a repository interface for {@code entity} — the same
+     * shared {@link RestSurfaceGate#emitsRestSurface} decision the controller and the
+     * filter allowlist make, because the controller delegates to this interface by name.
+     *
+     * <p>A READ-ONLY view-kind {@code object.projection} (F22) emits a repository too, but
+     * a read-only one: list / count / findById and nothing that writes. See
+     * {@link #emitReadOnly(MetaObject, Path)}.</p>
      */
     public static boolean appliesTo(MetaObject entity) {
-        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
-        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
-        RdbSource sourceRdb = firstRdbSource(entity);
-        if (sourceRdb == null) return false;
-        // FR-024 §7 (#214): a write-through entity read-view owns BOTH a writable table
-        // source and a read-only replica view source — it is writable and MUST emit its
-        // write surfaces regardless of source declaration order (firstRdbSource is
-        // order-dependent). A vanilla table entity emits; a projection (read-only-only) skips.
-        return entity.isWriteThrough() || MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
+        return RestSurfaceGate.emitsRestSurface(entity);
     }
 
     protected void emit(MetaObject entity, Path outRoot) {
@@ -178,6 +174,70 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
+        }
+    }
+
+
+    /**
+     * F22 — emit the READ-ONLY consumer seam for a view-only {@code object.projection}:
+     * {@code list} / {@code count} / {@code findById} and nothing else.
+     *
+     * <p>Deliberately NOT {@link #emit(MetaObject, Path)} with the write methods elided.
+     * An interface is a contract offered to a consumer, and a projection cannot honour
+     * {@code create} / {@code update} / {@code patch} / {@code delete} against a SQL view
+     * under any implementation — emitting them would ask every adopter to write four
+     * methods that must throw. The matching read-only controller calls exactly these
+     * three, so the pair stays closed.</p>
+     *
+     * <p>{@code findById} appears only when the projection is addressable by a
+     * single-column primary key, matching the controller's {@code /{id}} routes
+     * ({@link RestSurfaceGate#hasItemRoute}).</p>
+     */
+    protected void emitReadOnly(MetaObject entity, Path outRoot) {
+        String[] split = SpringNaming.splitFqn(entity.getName());
+        String pkg = split[0];
+        String shortName = split[1];
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
+        boolean hasItem = RestSurfaceGate.hasItemRoute(entity);
+        String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
+
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) {
+            src.append("package ").append(pkg).append(";\n\n");
+        }
+        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import java.util.List;\n");
+        if (hasItem) {
+            src.append("import java.util.Optional;\n");
+        }
+        src.append("\n");
+        src.append("/**\n");
+        src.append(" * GENERATED interface — consumer implements with their preferred persistence layer\n");
+        src.append(" * (Spring Data JPA / jOOQ / plain JDBC). The matching ")
+           .append(shortName).append("Controller delegates to this interface.\n");
+        src.append(" *\n");
+        src.append(" * <p>READ-ONLY: ").append(shortName)
+           .append(" is a projection over a database view, so there is no write method to\n");
+        src.append(" * implement. Its controller answers every write verb with 405.</p>\n");
+        src.append(" */\n");
+        src.append("public interface ").append(repoName).append(" {\n\n");
+        src.append("    /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */\n");
+        src.append("    record SortClause(String field, String direction) {}\n\n");
+        src.append("    List<").append(dtoName)
+           .append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
+        src.append("    long count(List<FilterPredicate> filters);\n");
+        if (hasItem) {
+            src.append("    Optional<").append(dtoName).append("> findById(").append(pkType).append(" id);\n");
+        }
+        src.append("}\n");
+
+        try {
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
+            GeneratedFileWriter.write(outFile, src.toString());
+        } catch (IOException e) {
+            throw new GeneratorException(
+                "failed writing " + repoName + ".java for projection " + entity.getName() + ": " + e, e);
         }
     }
 

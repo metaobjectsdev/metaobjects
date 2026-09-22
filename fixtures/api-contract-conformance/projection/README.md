@@ -79,7 +79,7 @@ nothing about the emitted artifact, which is the thing that was missing.
 | TypeScript | **wired, green (7/7)** | `test/api-contract-projection.test.ts` |
 | Python | **wired, green (7/7)** | `tests/integration/test_api_contract_projection.py` |
 | C# | **wired, green (7/7)** | `MetaObjects.IntegrationTests/Api/ApiContractProjectionConformanceTest.cs` |
-| Java | not yet wired | `SpringControllerGenerator.appliesTo` admits neither `object.projection` nor a read-only `@kind` — emits nothing. Its repository + filter-allowlist generators carry the same gate and must move with it |
+| Java | **wired, green (7/7)** | `integration-tests/.../ProjectionGeneratedApiContractConformanceTest.java` |
 | Kotlin | not yet wired | same gate as Java (`!writeThrough && kind != KIND_TABLE`) |
 
 The corpus was committed ahead of the remaining ports deliberately: it is

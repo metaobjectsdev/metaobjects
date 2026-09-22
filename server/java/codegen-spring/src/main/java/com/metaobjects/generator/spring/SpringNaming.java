@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.generator.util.RouteNaming;
 import com.metaobjects.MetaData;
 import com.metaobjects.loader.MetaDataLoader;
@@ -28,12 +29,13 @@ public final class SpringNaming {
 
     private SpringNaming() { /* no instances */ }
 
-    /** First {@link RdbSource} child of {@code entity}, or {@code null} when absent. */
+    /**
+     * First {@link RdbSource} child of {@code entity}, or {@code null} when absent.
+     * Delegates to {@link RestSurfaceGate#firstRdbSource} — the emit gate reads the same
+     * source and the two must not be able to disagree about which one is "first".
+     */
     public static RdbSource firstRdbSource(MetaObject entity) {
-        for (MetaData child : entity.getChildren()) {
-            if (child instanceof RdbSource) return (RdbSource) child;
-        }
-        return null;
+        return RestSurfaceGate.firstRdbSource(entity);
     }
 
     /** Convert metadata package separator {@code ::} to Java {@code .}. */

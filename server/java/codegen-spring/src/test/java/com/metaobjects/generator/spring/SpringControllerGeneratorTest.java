@@ -234,9 +234,19 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
             src.contains("public static final Map<String, Set<String>> OPS_BY_FIELD"));
     }
 
+    /**
+     * F22: INVERTED. A view-kind projection used to produce NO controller — so a
+     * projection had no REST surface in Java at all, while TypeScript and C# served one.
+     * It now produces a READ-ONLY controller: reads served, every write verb answering
+     * {@code 405 {"error": "method_not_allowed"}}.
+     *
+     * <p>{@code SalesReport} is KEYLESS (no {@code identity.primary}), so it is also the
+     * arm that pins the no-item-route shape: no {@code /{id}} read, and therefore no
+     * {@code /{id}} refusal either — refusing one would advertise an address the port
+     * never serves.</p>
+     */
     @Test
-    public void viewKindEntitiesAreSkipped() throws Exception {
-        // SalesReport has @kind="view" — must NOT produce a controller (read-only).
+    public void viewKindProjectionsGetAReadOnlyController() throws Exception {
         Path outDir = tempFolder.newFolder("ctrl-view").toPath();
         Path workspace = tempFolder.newFolder("ctrl-view-fx").toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "view-skip", VIEW_FIXTURE);
@@ -248,8 +258,14 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         gen.execute(loader);
 
         Path controller = outDir.resolve("acme/report/SalesReportController.java");
-        assertFalse("view-kind entities must NOT produce a controller; saw " + controller + " present",
-            Files.exists(controller));
+        assertTrue("a view-kind projection must produce a read-only controller; saw "
+                + controller + " absent", Files.exists(controller));
+        String src = Files.readString(controller);
+        assertTrue("reads are served", src.contains("public ResponseEntity<?> list("));
+        assertTrue("the collection write is refused with the cross-port envelope",
+            src.contains("Map.of(\"error\", \"method_not_allowed\""));
+        assertFalse("keyless — no item read", src.contains("@GetMapping(\"/{id}\")"));
+        assertFalse("keyless — no item refusal", src.contains("RequestMethod.PATCH"));
     }
 
     /**
