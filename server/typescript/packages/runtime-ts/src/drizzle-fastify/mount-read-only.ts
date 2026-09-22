@@ -3,18 +3,11 @@ import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
-import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral } from "./util.js";
+import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
+import { timestampWire } from "../timestamp-wire.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
-
-/**
- * Drizzle v0.45 stores view config under this well-known Symbol.
- * Accessing `view._` on a proxy-wrapped view (empty-column .existing()) throws
- * because the proxy tries to spread `subquery._.selectedFields` which is undefined.
- * Using the symbol bypasses the proxy entirely.
- */
-const VIEW_BASE_CONFIG = Symbol.for("drizzle:ViewBaseConfig");
 
 export interface MountReadOnlyOptions {
   readonly fastify: FastifyInstance;
@@ -49,18 +42,8 @@ const REJECT_MUTATION = async (
     .send({ error: "method_not_allowed", message: `${request.method} is not supported on a projection (read-only).` });
 };
 
-function getViewConfig(view: AnyView): Record<string, unknown> | undefined {
-  try {
-    const cfg = (view as Record<symbol, unknown>)[VIEW_BASE_CONFIG];
-    if (cfg && typeof cfg === "object") return cfg as Record<string, unknown>;
-  } catch {
-    // ignore — proxy handler may throw on unexpected shapes
-  }
-  return undefined;
-}
-
 function resolveViewName(view: AnyView): string | undefined {
-  const cfg = getViewConfig(view);
+  const cfg = viewBaseConfig(view);
   if (cfg) {
     if (typeof cfg["name"] === "string") return cfg["name"] as string;
   }
@@ -78,7 +61,7 @@ function resolveViewName(view: AnyView): string | undefined {
  * `SELECT  FROM ...` (invalid SQL), and we must fall back to raw SQL.
  */
 function isEmptyColumnView(view: AnyView): boolean {
-  const cfg = getViewConfig(view);
+  const cfg = viewBaseConfig(view);
   if (cfg) {
     const fields = cfg["selectedFields"] as Record<string, unknown> | undefined;
     return fields !== undefined && Object.keys(fields).length === 0;
@@ -139,6 +122,8 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
+  // The raw-SQL branch has no declared columns, so nothing names a timestamp there.
+  const toWire = timestampWire(view);
 
   // ── List ──────────────────────────────────────────────────────────────────
   fastify.get(path, ro, async (req, reply) => {
@@ -189,7 +174,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       // node-postgres builder is thenable. (The useRawSql branch above keeps
       // db.all(sql.raw(...)) because that is the libsql raw-exec API, only
       // reachable for `.existing()` empty-column views which are sqlite-only.)
-      const rows = await q;
+      const rows = (await q as unknown[]).map(toWire);
 
       if (!withCount) return rows;
 
@@ -231,7 +216,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       colRef !== undefined ? eq(colRef, idValue) : undefined
     ).limit(1);
     const row = (rows as unknown[])[0];
-    return row ?? reply.code(404).send({ error: "not_found" });
+    return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
   });
 
   // ── Mutations explicitly rejected (405) ───────────────────────────────────

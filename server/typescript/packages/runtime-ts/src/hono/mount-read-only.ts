@@ -10,19 +10,13 @@ import type {
   FilterAllowlist,
   SortAllowlist,
 } from "../drizzle-fastify/filter-allowlist.js";
-import { isTruthyFlag, coerceIdForColumn, rawIdLiteral, contractErrorCode } from "../drizzle-fastify/util.js";
+import { isTruthyFlag, coerceIdForColumn, rawIdLiteral, contractErrorCode, viewBaseConfig } from "../drizzle-fastify/util.js";
+import { timestampWire } from "../timestamp-wire.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
 // biome-ignore lint/suspicious/noExplicitAny: generic Hono app
 type AnyHono = Hono<any, any, any>;
-
-/**
- * Drizzle v0.45 stores view config under this well-known Symbol. Mirrors
- * the same workaround the Fastify mount uses — accessing `view._` on a
- * proxy-wrapped view throws.
- */
-const VIEW_BASE_CONFIG = Symbol.for("drizzle:ViewBaseConfig");
 
 export interface MountReadOnlyOptions {
   readonly app: AnyHono;
@@ -37,18 +31,8 @@ export interface MountReadOnlyOptions {
   readonly idColumn?: string;
 }
 
-function getViewConfig(view: AnyView): Record<string, unknown> | undefined {
-  try {
-    const cfg = (view as Record<symbol, unknown>)[VIEW_BASE_CONFIG];
-    if (cfg && typeof cfg === "object") return cfg as Record<string, unknown>;
-  } catch {
-    // ignore — proxy handler may throw on unexpected shapes
-  }
-  return undefined;
-}
-
 function resolveViewName(view: AnyView): string | undefined {
-  const cfg = getViewConfig(view);
+  const cfg = viewBaseConfig(view);
   if (cfg) {
     if (typeof cfg["name"] === "string") return cfg["name"] as string;
   }
@@ -60,7 +44,7 @@ function resolveViewName(view: AnyView): string | undefined {
 }
 
 function isEmptyColumnView(view: AnyView): boolean {
-  const cfg = getViewConfig(view);
+  const cfg = viewBaseConfig(view);
   if (cfg) {
     const fields = cfg["selectedFields"] as Record<string, unknown> | undefined;
     return fields !== undefined && Object.keys(fields).length === 0;
@@ -119,6 +103,8 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
+  // The raw-SQL branch has no declared columns, so nothing names a timestamp there.
+  const toWire = timestampWire(view);
 
   // ── List ──────────────────────────────────────────────────────────────────
   app.get(path, async (c) => {
@@ -172,7 +158,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       // better-sqlite3-only API). Awaiting works on BOTH dialects — this is what
       // makes the Hono helpers genuinely Postgres-capable, matching the Fastify
       // adapter, which carried this fix while Hono did not (#286).
-      const rows = await q;
+      const rows = (await q as unknown[]).map(toWire);
 
       if (!withCount) return c.json(rows);
 
@@ -215,7 +201,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       .where(colRef !== undefined ? eq(colRef, idValue) : undefined)
       .limit(1);
     const row = (rows as unknown[])[0];
-    return row ? c.json(row) : c.json({ error: "not_found" }, 404);
+    return row ? c.json(toWire(row)) : c.json({ error: "not_found" }, 404);
   });
 
   // ── Mutations explicitly rejected (405) ───────────────────────────────────

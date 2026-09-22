@@ -35,10 +35,12 @@ export type {
   FilterAllowlist,
   SortAllowlist,
 } from "../drizzle-fastify/filter-allowlist.js";
-import { isTruthyFlag, coerceIdForColumn } from "../drizzle-fastify/util.js";
+import { isTruthyFlag, coerceIdForColumn, firstRow } from "../drizzle-fastify/util.js";
+import { timestampWire } from "../timestamp-wire.js";
 // Back-compat re-export — the unsafe local copy was consolidated onto the one
 // shared (deprecated) helper so the three adapters can't silently diverge.
 export { parseId } from "../drizzle-fastify/util.js";
+export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -130,6 +132,24 @@ function readSource(opts: VerbOptions): AnyTable {
   return opts.readView ?? opts.table;
 }
 
+/**
+ * Wire mapper for rows READ through `readSource` — canonicalized against
+ * exactly that source, since a view may shadow a table column with a
+ * non-timestamp of the same name.
+ */
+function readWire(opts: VerbOptions): (row: unknown) => unknown {
+  return timestampWire(readSource(opts));
+}
+
+/**
+ * Wire mapper for a WRITE ECHO: `reReadThroughView` answers with the replica
+ * view's row but falls back to the table row, so the echo is canonicalized
+ * against the union of both sources.
+ */
+function echoWire(opts: VerbOptions): (row: unknown) => unknown {
+  return timestampWire(opts.table, opts.readView);
+}
+
 /** Re-read a just-written row through the replica view so the response carries the
  *  derived columns. Writes always target the TABLE; only the echo changes. With no
  *  `readView`, returns the write row unchanged. */
@@ -149,6 +169,7 @@ async function reReadThroughView(
 }
 
 export function mountListRoute(opts: VerbOptions): void {
+  const toWire = readWire(opts);
   opts.app.get(opts.path, async (c) => {
     try {
       const listSrc = readSource(opts);
@@ -184,7 +205,7 @@ export function mountListRoute(opts: VerbOptions): void {
       // better-sqlite3-only API). Awaiting works on BOTH dialects — this is what
       // makes the Hono helpers genuinely Postgres-capable, matching the Fastify
       // adapter, which carried this fix while Hono did not (#286).
-      const rows = await q;
+      const rows = (await q as unknown[]).map(toWire);
 
       if (!withCount) return c.json(rows);
 
@@ -208,6 +229,7 @@ export function mountListRoute(opts: VerbOptions): void {
 }
 
 export function mountGetRoute(opts: VerbOptions): void {
+  const toWire = readWire(opts);
   opts.app.get(`${opts.path}/:id`, async (c) => {
     const id = c.req.param("id") ?? "";
     // Compare against the PK's real type — a numeric-LOOKING id on a TEXT pk
@@ -215,19 +237,13 @@ export function mountGetRoute(opts: VerbOptions): void {
     const getSrc = readSource(opts);
     const idValue = coerceIdForColumn(getSrc.id, id);
     if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
-    // `.get()` is likewise libsql/better-sqlite3-only; `.limit(1)` + await + [0]
-    // is the portable single-row read (#286).
-    const rows = await opts.db
-      .select()
-      .from(getSrc)
-      .where(eq(getSrc.id, idValue))
-      .limit(1);
-    const row = (rows as unknown[])[0];
-    return row ? c.json(row) : c.json({ error: "not_found" }, 404);
+    const row = await firstRow(opts.db, getSrc, eq(getSrc.id, idValue));
+    return row ? c.json(toWire(row)) : c.json({ error: "not_found" }, 404);
   });
 }
 
 export function mountCreateRoute(opts: VerbOptions): void {
+  const toWire = echoWire(opts);
   opts.app.post(opts.path, async (c) => {
     const body = await c.req.json().catch(() => undefined);
     const parsed = opts.insertSchema.safeParse(body);
@@ -247,17 +263,27 @@ export function mountCreateRoute(opts: VerbOptions): void {
     }
     const row = (result as unknown[])[0];
     // Echo the row through the replica view so derived columns are present (#214).
-    return c.json(await reReadThroughView(opts, row), 201);
+    return c.json(toWire(await reReadThroughView(opts, row)), 201);
   });
 }
 
 export function mountUpdateRoute(opts: VerbOptions): void {
+  const toWire = echoWire(opts);
   const handler = async (c: Context) => {
     const id = c.req.param("id") ?? "";
     const body = await c.req.json().catch(() => undefined);
     const parsed = opts.updateSchema.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: "validation", issues: parsed.error.issues }, 400);
+    }
+    // An empty patch is a no-op update, answered as a read — the Fastify mount's
+    // rule; its block in drizzle-fastify/index.ts carries the full rationale.
+    if (Object.keys(parsed.data as Record<string, unknown>).length === 0) {
+      const src = readSource(opts);
+      const noopId = coerceIdForColumn(src.id, id);
+      if (noopId === undefined) return c.json({ error: "invalid_id" }, 400);
+      const row = await firstRow(opts.db, src, eq(src.id, noopId));
+      return row ? c.json(toWire(row)) : c.json({ error: "not_found" }, 404);
     }
     // Compare against the PK's real type (see mountGetRoute) — a numeric-
     // LOOKING id on a TEXT pk would otherwise UPDATE the wrong row.
@@ -276,7 +302,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
       return c.json(f.body, f.status as 400 | 409);
     }
     const row = (result as unknown[])[0];
-    return row ? c.json(await reReadThroughView(opts, row)) : c.json({ error: "not_found" }, 404);
+    return row ? c.json(toWire(await reReadThroughView(opts, row))) : c.json({ error: "not_found" }, 404);
   };
   const path = `${opts.path}/:id`;
   // Cross-port REST contract (FR-008): the update verb is reachable via BOTH PATCH

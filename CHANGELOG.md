@@ -248,6 +248,42 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Fixed
 
+- **TypeScript: a `field.timestamp` reached the wire as Postgres' own text,
+  `"2026-09-20 12:00:00+00"`, not ISO 8601.** `docs/features/api-contract.md` (and
+  `normalization.md` behind it) promise `YYYY-MM-DDTHH:MM:SS[.fff]Z`, always UTC, and the
+  other four ports answer the same row that way. Codegen maps a Postgres `field.timestamp` to
+  `timestamp(…, { mode: "string" })`, and in string mode Drizzle returns exactly what
+  node-postgres received: Postgres' OUTPUT format, with a space for the `T` and the offset of
+  whatever time zone the session runs in. A strict ISO 8601 client rejects it, and under a
+  non-UTC session it is not even a UTC value. The comment in `column-mapper.ts` claimed the
+  column "round-trips ISO-8601 strings"; it never did. `@metaobjectsdev/runtime-ts`'s Fastify
+  and Hono mounts — list, get, create, update, the TPH base and subtype routes, projections
+  and M:N traversal — now put every timestamp column in the contract's spelling before they
+  send a row. The offset is converted to UTC, the fraction is truncated to milliseconds with
+  trailing zeros stripped, a zero fraction is omitted, and an `@localTime` column keeps its
+  wall clock with no `Z`. Which columns count is read from the Drizzle column objects, never
+  guessed from a value, so a text column holding timestamp-shaped text is left alone. Under
+  `timestampMode: "date"` the same code drops the `.000` that `Date#toJSON` pads.
+  **No regen needed**: the generated routes delegate to these mounts. A hand-written route
+  that sends a row itself can map it through the newly exported `timestampWire(table)`
+  (`@metaobjectsdev/runtime-ts/drizzle-fastify` or `/hono`). Two limits, stated: SQLite and
+  D1 store a `field.timestamp` in a plain `text` column, so the value goes back as it was
+  written; and a projection over an opaque `@sql` view has no declared columns to read.
+  No api-contract scenario could see this: none asserts a timestamp literally, and the
+  runners normalize `createdAt` before comparing. An adopter estate's strict client found
+  it. It is now gated on a real Postgres whose session runs in `America/New_York`, so
+  relabelling `+00` as `Z` would not pass. The test covers both adapters and both entry
+  points (`runtime-ts/test/timestamp-wire-pg.test.ts`). `ci-local.sh`'s `ts-slow` lane now
+  runs that file and `read-only-raw-sql-pg.test.ts`. The second file needed a database and
+  had skipped everywhere.
+
+- **TypeScript (Hono): an empty `PATCH` body was a 500.** `@metaobjectsdev/runtime-ts/hono`'s
+  update handler passed `{}` straight to Drizzle's `.set()`, which throws `No values to set`.
+  The redaction path turned that into `500 {"error":"database error"}`. The Fastify mount has
+  answered an empty patch as a read (200 with the row, or 404) since the TPH discriminator
+  work, and Hono now does the same. The generated api-contract lane runs on Fastify, so the
+  corpus's `patch-empty-noop` scenario never reached Hono.
+
 - **Web client: every filtered request 400'd against a Spring Boot backend.**
   `@metaobjectsdev/runtime-web`'s `buildFilterQs` — which every generated TanStack hook
   calls — sent the filter grammar with raw brackets (`filter[email][like]=…`). RFC 3986

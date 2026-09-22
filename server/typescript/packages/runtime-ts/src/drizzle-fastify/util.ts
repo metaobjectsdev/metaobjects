@@ -81,3 +81,36 @@ export function contractErrorCode(internal: string): string {
       return internal;
   }
 }
+
+/**
+ * Drizzle v0.45 stores view config under this well-known Symbol. Accessing
+ * `view._` on a proxy-wrapped view (empty-column `.existing()`) throws because
+ * the proxy tries to spread `subquery._.selectedFields` which is undefined; the
+ * symbol read bypasses the proxy. The proxy handler can still throw on
+ * unexpected shapes, so the read is guarded. One reader for the private shape —
+ * the two read-only mounts and the timestamp-wire column lookup share it.
+ */
+const VIEW_BASE_CONFIG = Symbol.for("drizzle:ViewBaseConfig");
+
+export function viewBaseConfig(view: unknown): Record<string, unknown> | undefined {
+  try {
+    const cfg = (view as Record<symbol, unknown>)[VIEW_BASE_CONFIG];
+    if (cfg && typeof cfg === "object") return cfg as Record<string, unknown>;
+  } catch {
+    // ignore — proxy handler may throw on unexpected shapes
+  }
+  return undefined;
+}
+
+/**
+ * The portable one-row read: `.limit(1)` + await + first element. Awaiting is
+ * what makes this work on both dialects — the node-postgres query builder is
+ * thenable but has no `.get()` (that is a libsql/better-sqlite3-only API, #286).
+ * The caller builds the WHERE (including any TPH discriminator), so the
+ * condition stays with the mount that owns it.
+ */
+export async function firstRow(db: unknown, src: unknown, cond: unknown): Promise<unknown> {
+  // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over the user's Drizzle client
+  const rows: unknown = await (db as any).select().from(src).where(cond).limit(1);
+  return (rows as unknown[])[0];
+}

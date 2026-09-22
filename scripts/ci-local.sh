@@ -469,8 +469,14 @@ gate_migrate_ts_pg() { bun_install && ( cd server/typescript/packages/migrate-ts
 # while Fastify (fixed for the same thing) stayed green (#286). Runs here because ts-slow is
 # the lane with the sidecar; METAOBJECTS_TEST_PG_URL + RUNTIME_TS_PG_EXPECT=1 come from the
 # CI job, and without them the suite self-skips exactly as before.
+#
+# Every PG-gated runtime-ts file is listed here, because ts-unit has no database and a
+# file this lane does not name is a file that only ever skips: read-only-raw-sql-pg ran
+# nowhere with a database until it was added. timestamp-wire-pg is the only gate on the
+# field.timestamp wire spelling — the api-contract runners normalize `createdAt` first.
 gate_runtime_ts_pg() {
-  bun_install && ( cd server/typescript/packages/runtime-ts && bun test test/dialect-matrix-pg.test.ts )
+  bun_install && ( cd server/typescript/packages/runtime-ts && bun test \
+    test/dialect-matrix-pg.test.ts test/read-only-raw-sql-pg.test.ts test/timestamp-wire-pg.test.ts )
 }
 
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────

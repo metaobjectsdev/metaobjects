@@ -22,8 +22,10 @@ import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
-import { isTruthyFlag, contractErrorCode, coerceIdForColumn } from "./util.js";
+import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow } from "./util.js";
+import { timestampWire } from "../timestamp-wire.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
+export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -106,6 +108,24 @@ function readSource(opts: VerbOptions): AnyTable {
   return opts.readView ?? opts.table;
 }
 
+/**
+ * Wire mapper for rows READ through `readSource` — canonicalized against
+ * exactly that source, since a view may shadow a table column with a
+ * non-timestamp of the same name.
+ */
+function readWire(opts: VerbOptions): (row: unknown) => unknown {
+  return timestampWire(readSource(opts));
+}
+
+/**
+ * Wire mapper for a WRITE ECHO: `reReadThroughView` answers with the replica
+ * view's row but falls back to the table row, so the echo is canonicalized
+ * against the union of both sources.
+ */
+function echoWire(opts: VerbOptions): (row: unknown) => unknown {
+  return timestampWire(opts.table, opts.readView);
+}
+
 /** #214 — after a write to the base table, re-read the row THROUGH the replica
  *  view by PK so the response carries derived (origin.passthrough) columns. When
  *  there is no `readView`, return the write row unchanged (current behaviour). */
@@ -141,6 +161,7 @@ function routeOpts(opts: VerbOptions): RouteShorthandOptions {
 }
 
 export function mountListRoute(opts: VerbOptions): void {
+  const toWire = readWire(opts);
   opts.fastify.get(opts.path, routeOpts(opts), async (req, reply) => {
     try {
       // #214 — a write-through entity reads through its replica view.
@@ -196,7 +217,7 @@ export function mountListRoute(opts: VerbOptions): void {
       // drizzle-orm node-postgres query builder is thenable but has no `.all()`
       // method (that is a libsql/better-sqlite3-only API). Awaiting works on
       // both dialects and is what makes this helper genuinely Postgres-capable.
-      const rows = await q;
+      const rows = (await q as unknown[]).map(toWire);
 
       if (!withCount) return rows;
 
@@ -216,6 +237,7 @@ export function mountListRoute(opts: VerbOptions): void {
 }
 
 export function mountGetRoute(opts: VerbOptions): void {
+  const toWire = readWire(opts);
   opts.fastify.get(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
     const discCond = discriminatorCond(opts);
@@ -228,20 +250,13 @@ export function mountGetRoute(opts: VerbOptions): void {
       return reply.code(400).send({ error: "invalid_id" });
     }
     const idCond = eq(src.id, idValue);
-    // Await + take the first row rather than `.get()` — `.get()` is a
-    // libsql/better-sqlite3-only method; the node-postgres builder is thenable
-    // but has no `.get()`. Awaiting works on both dialects.
-    const rows = await opts.db
-      .select()
-      .from(src)
-      .where(discCond ? and(idCond, discCond) : idCond)
-      .limit(1);
-    const row = (rows as unknown[])[0];
-    return row ?? reply.code(404).send({ error: "not_found" });
+    const row = await firstRow(opts.db, src, discCond ? and(idCond, discCond) : idCond);
+    return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
   });
 }
 
 export function mountCreateRoute(opts: VerbOptions): void {
+  const toWire = echoWire(opts);
   opts.fastify.post(opts.path, routeOpts(opts), async (req, reply) => {
     const parsed = opts.insertSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -265,11 +280,12 @@ export function mountCreateRoute(opts: VerbOptions): void {
     const row = (result as unknown[])[0];
     // #214 — read-your-writes: re-read through the replica view so the response
     // carries derived (origin.passthrough) columns the base table excludes.
-    return reply.code(201).send(await reReadThroughView(opts, row));
+    return reply.code(201).send(toWire(await reReadThroughView(opts, row)));
   });
 }
 
 export function mountUpdateRoute(opts: VerbOptions): void {
+  const toWire = echoWire(opts);
   const handler = async (
     req: { params: unknown; body: unknown },
     reply: { code: (n: number) => { send: (b: unknown) => unknown } },
@@ -304,13 +320,8 @@ export function mountUpdateRoute(opts: VerbOptions): void {
         return reply.code(400).send({ error: "invalid_id" });
       }
       const noopCond = eq(src.id, noopId);
-      const rows = await opts.db
-        .select()
-        .from(src)
-        .where(discCond ? and(noopCond, discCond) : noopCond)
-        .limit(1);
-      const row = (rows as unknown[])[0];
-      return row ?? reply.code(404).send({ error: "not_found" });
+      const row = await firstRow(opts.db, src, discCond ? and(noopCond, discCond) : noopCond);
+      return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
     }
     // Compare against the PK's real type (see mountGetRoute) — a numeric-
     // LOOKING id on a TEXT pk would otherwise UPDATE the wrong row.
@@ -334,7 +345,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     const row = (result as unknown[])[0];
     if (row == null) return reply.code(404).send({ error: "not_found" });
     // #214 — re-read through the replica view so the response carries derived columns.
-    return await reReadThroughView(opts, row);
+    return toWire(await reReadThroughView(opts, row));
   };
   const path = `${opts.path}/:id`;
   const ro = routeOpts(opts);

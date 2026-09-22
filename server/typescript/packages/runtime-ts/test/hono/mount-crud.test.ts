@@ -217,6 +217,21 @@ describe("Hono mountCrudRoutes — get / create / update / delete", () => {
     expect((r.body as { error: string }).error).toBe("not_found");
   });
 
+  // An empty patch reached Drizzle's `.set({})`, which throws `No values to set`, and the
+  // redaction path turned it into a 500. The Fastify mount already answered it as a read.
+  test("patch with an empty body — 200 with the row unchanged, not a 500", async () => {
+    const before = (await get("/subscribers/1")).body;
+    const r = await patch("/subscribers/1", {});
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual(before);
+  });
+
+  test("patch with an empty body — 404 envelope when missing", async () => {
+    const r = await patch("/subscribers/9999", {});
+    expect(r.status).toBe(404);
+    expect((r.body as { error: string }).error).toBe("not_found");
+  });
+
   test("delete — 204 with empty body", async () => {
     // Create then delete to isolate from other tests.
     const created = await post("/subscribers", { email: "ephemeral@x.com", firstName: "Eph" });

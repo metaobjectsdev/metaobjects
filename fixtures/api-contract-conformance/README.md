@@ -109,6 +109,14 @@ Runners are responsible for normalizing `createdAt` (and any other
 non-deterministic fields) before comparison. The keys listed above are
 the only ones a runner must understand to be conformant.
 
+A consequence worth stating: this corpus does **not** gate the SPELLING of a
+`field.timestamp` on the wire (`docs/features/api-contract.md`, "Type
+encodings"). No scenario asserts a timestamp literally, and the reference
+servers store `createdAt` in whatever column type each port chose. The TS
+generated routes shipped Postgres' output text (`2026-09-20 12:00:00+00`)
+through a fully green corpus for that reason. TS now gates the spelling in
+`server/typescript/packages/runtime-ts/test/timestamp-wire-pg.test.ts`.
+
 ## Filter operator coverage (FR-009)
 
 The `filter-*` scenarios pin the 9 cross-port filter operators declared in

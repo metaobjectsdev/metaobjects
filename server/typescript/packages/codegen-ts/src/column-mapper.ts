@@ -589,13 +589,19 @@ export function mapColumnType(
           // value opts out with @localTime:true → timestamp({ withTimezone:
           // false }) = `timestamp without time zone`.
           //
-          // mode:"string" so the column round-trips ISO-8601 strings — the
+          // mode:"string" so the column binds and returns STRINGS — the
           // generated Zod schema validates timestamp fields as z.string() and
           // the cross-port wire format carries timestamps as JSON strings.
           // Drizzle's default timestamp mode is "date" (expects/returns a JS
           // Date and calls value.toISOString() on write), which is internally
           // inconsistent with the string-typed schema + wire contract and
           // throws on a string write. See SP-B api-contract-generated lane.
+          //
+          // A string read back is NOT ISO 8601: it is Postgres' output text,
+          // `2026-09-20 12:00:00+00`, in the session's time zone. The runtime-ts
+          // mounts the generated routes delegate to put it in the wire spelling;
+          // a hand-written route that sends a row itself should map it through
+          // `timestampWire(table)` from the same runtime-ts entry point.
           fnName = "timestamp";
           fnOptions = {
             mode: timestampMode,
