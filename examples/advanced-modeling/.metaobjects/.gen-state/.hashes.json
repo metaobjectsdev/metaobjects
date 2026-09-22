@@ -24,6 +24,5 @@
   "src/generated/Purchase.routes.ts": "fd93a50609205bce5172f633de91d6ec30fed5f72f3a40beb7216390be340c5d",
   "src/generated/Purchase.ts": "b56544198c92d3c2fe1271ecba505a0c712e4b300a7f4b55b34ef12eb05d3e2a",
   "src/generated/SyllabusSection.ts": "99da028967924a7352d9b144ba35c726d17cb1fd4b33cecb6bfe91711dce8851",
-  "src/generated/index.ts": "0f7e35f89de3edcb69227aec7341fdf400f8627799fe562d52d4f8cb8ce8451f",
-  "src/generated/prompts.ts": "16f0650d11b95b23bec0a8547f26bdac399fa73a330868f18e43c845b0cdf8ab"
+  "src/generated/index.ts": "0f7e35f89de3edcb69227aec7341fdf400f8627799fe562d52d4f8cb8ce8451f"
 }

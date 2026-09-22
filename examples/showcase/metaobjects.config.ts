@@ -7,8 +7,10 @@ import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";
 import { barrel } from "./codegen/generators/barrel";
-// The prompt/render tier is NOT ownable — it is upstream-owned and this subpath stays
-// its supported public home.
+// The prompt/render tier has no reference template to eject yet, so it is imported from
+// the package. To own one, replace it in `generators` with your own Generator. It
+// references the value-object types entityFile() emits (ADR-0056), so it needs
+// entityFile() in the same run.
 import {
   promptRender,
   renderHelper,

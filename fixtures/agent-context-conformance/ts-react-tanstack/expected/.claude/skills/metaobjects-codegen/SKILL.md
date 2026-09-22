@@ -122,7 +122,7 @@ it there, in the same change, and keep going:
 
 | Port | Where the fix goes |
 |---|---|
-| **TypeScript** | Your ejected copy under `codegen/generators/`. If you are running a generator you never ejected, `meta eject <name>` it first. |
+| **TypeScript** | Your ejected copy under `codegen/generators/`. If you are running a generator you never ejected, `meta eject <name>` it first. A generator that `meta eject --list` does not name (the prompt tier, for one) has no reference template yet: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
 | **Java / Kotlin** | Your own generator class. Subclass the reference generator and override the `protected` method that emits the wrong piece; when that piece is `private`, copy the reference generator's source (Apache-2.0) into your own package and edit it. Put the class in a codegen module that the module running `metaobjects:generate` depends on — the plugin loads `<classname>` from that module's compile classpath, and `provided` scope keeps it out of your packaged app — then point `<classname>` at it. Full steps: the Java and Kotlin references. |
 | **C# / Python** | Your template spec (`--template-spec`): stop selecting the built-in generator for that artifact and emit it from your own template instead. These two ports have no generator-registration seam, so a template is the whole path. |
 

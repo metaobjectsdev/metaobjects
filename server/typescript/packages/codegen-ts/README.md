@@ -182,10 +182,11 @@ non-`.returning()` replacement in your own sibling module (`<Entity>.extra.ts`) 
 import **that** at the call sites — nothing overrides the generated function for you —
 or switch to an async SQLite driver.
 
-## `outputParser()` — typed parsers for `template.output`
+## `outputParser()` — typed parsers for a responding `template.prompt`
 
-For every `template.output` declared in your metadata, `outputParser()` emits
-`<TemplateName>.output.ts` containing a Zod schema + dual-API parser:
+For every `template.prompt` that declares `@responseRef` (ADR-0052 — the inbound tier keys off
+`@responseRef`; a `template.output` is outbound-only and gets no parser), `outputParser()` emits
+`<PromptName>.response.ts` containing a Zod schema, a dual-API parser, and a tolerant `extract`:
 
 ```ts
 // metaobjects.config.ts
@@ -194,53 +195,51 @@ import { defineConfig } from "@metaobjectsdev/cli";
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { barrel } from "./codegen/generators/barrel";
-// Prompt/output generators have no reference template yet — package import.
 import { promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
+  // entityFile() is required: it emits the value-object interfaces the parser returns.
   generators: [entityFile(), queriesFile(), barrel(), promptRender(), outputParser()],
 });
 ```
 
-For a `template.output` named `NpcResponseOutput` with `@payloadRef: "NpcResponsePayload"`:
+For a `template.prompt` named `SupportAnswerPrompt` with `@responseRef: "SupportAnswer"`:
 
 ```ts
-// Generated NpcResponseOutput.output.ts — self-contained, no cross-file imports
+// Generated SupportAnswerPrompt.response.ts
 import { z } from "zod";
+import type { SupportAnswer } from "./SupportAnswer.js";   // emitted by entityFile()
 
-const NpcResponseOutputSchema = z.object({
-  name: z.string(),
-  age: z.number().int(),
+const SupportAnswerPromptSchema = z.object({
+  text: z.string(),
+  confidence: z.enum(["HIGH", "OK", "LOW"]),
+  note: z.string().optional(),
 });
 
-export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;
-export type NpcResponseOutputValidationError = z.ZodError;
+export type SupportAnswerPromptValidationError = z.ZodError;
 
 /** Throws ZodError on validation failure. */
-export function parseNpcResponseOutput(text: string): NpcResponseOutputData { ... }
+export function parseSupportAnswerPrompt(text: string): SupportAnswer { ... }
 
 /** Result-style; never throws. */
-export function safeParseNpcResponseOutput(text: string):
-  | { success: true; data: NpcResponseOutputData }
-  | { success: false; error: NpcResponseOutputValidationError } { ... }
+export function safeParseSupportAnswerPrompt(text: string):
+  | { success: true; data: SupportAnswer }
+  | { success: false; error: SupportAnswerPromptValidationError } { ... }
 ```
 
-`parseXxx` and `safeParseXxx` return the local `<Name>Data` type, derived from
-the schema via `z.infer<>`. It is structurally identical to the payload-VO
-interface emitted by `promptRender()` (e.g., `NpcResponsePayload` in
-`prompts.ts`) — consumers who wire both generators can assign back and forth
-between `NpcResponseOutputData` and `NpcResponsePayload` interchangeably. The
-output-parser file is intentionally self-contained so it compiles standalone
-even when `promptRender()` is not wired in.
+The parsers return the `@responseRef` value object's own interface — the one `entityFile()`
+writes to `SupportAnswer.ts` — not a type of their own (ADR-0056). The tolerant path returns
+`SupportAnswerExtracted`, the value object's all-nullable mirror, which the file declares
+beside the parser and names after the value object.
 
 Consumer usage:
 
 ```ts
-import { parseNpcResponseOutput, safeParseNpcResponseOutput } from "./generated/NpcResponseOutput.output";
+import { parseSupportAnswerPrompt, safeParseSupportAnswerPrompt } from "./generated/SupportAnswerPrompt.response";
 
-const npc = parseNpcResponseOutput(llmResponseText);   // throws on bad shape
+const answer = parseSupportAnswerPrompt(llmResponseText);   // throws on bad shape
 
-const r = safeParseNpcResponseOutput(llmResponseText);
+const r = safeParseSupportAnswerPrompt(llmResponseText);
 if (!r.success) { /* handle r.error (a ZodError) */ } else { /* use r.data */ }
 ```
 
@@ -248,10 +247,11 @@ if (!r.success) { /* handle r.error (a ZodError) */ } else { /* use r.data */ }
 
 | Field subtype | Emitted Zod |
 |---|---|
-| `field.string`, `field.class` | `z.string()` |
+| `field.string` | `z.string()` |
 | `field.int`, `field.long` | `z.number().int()` |
 | `field.double`, `field.float` | `z.number()` |
 | `field.boolean` | `z.boolean()` |
+| `field.enum` | `z.enum([...])` |
 | `field.object` (with `@objectRef`) | nested `z.object({ ... })` |
 | `isArray: true` on any of the above | wrapped in `z.array(...)` |
 
@@ -264,9 +264,10 @@ outputParser({
 })
 ```
 
-**`meta verify` integration:** when `meta verify` runs, every `template.output`'s
-`@payloadRef` resolution is checked. Unresolved refs fail the build (`exit 1`)
-with a `(output)` prefix on the diagnostic. See [ADR-0010](../../../../spec/decisions/ADR-0010-template-output-parser-codegen.md)
+**`meta verify` integration:** when `meta verify` runs, every `@payloadRef` and `@responseRef`
+resolution is checked. Unresolved refs fail the build (`exit 1`). See
+[ADR-0010](../../../../spec/decisions/ADR-0010-template-output-parser-codegen.md) and
+[ADR-0052](../../../../spec/decisions/ADR-0052-template-direction-outbound-vs-inbound.md)
 for the cross-language design rationale.
 
 ## Naming conventions: camelCase TS ↔ snake_case SQL
