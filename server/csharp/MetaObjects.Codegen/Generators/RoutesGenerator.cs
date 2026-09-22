@@ -16,6 +16,8 @@
 //     array to { rows, total }. The grid hook always sends withCount=1.
 //   - Update accepts BOTH PATCH and PUT (TS reference exposes both; we match).
 //   - 404 responses carry a JSON envelope: { "error": "not_found" }.
+//   - A read-only projection mounts the reads AND every write verb, each answering
+//     405 { "error": "method_not_allowed" } (F22) — see AppendProjectionRejects.
 //
 // Filter operators (eq/ne/gt/gte/lt/lte/in/like/isNull) ship via FR-009 — the
 // generated list handler calls FilterParser.Parse against the per-entity
@@ -289,6 +291,10 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            return Results.NoContent();");
             sb.AppendLine("        });");
         }
+        else if (isProjection)
+        {
+            AppendProjectionRejects(sb, route, pkType, hasItem);
+        }
 
         // FR-018 M:N traversal — GET /<source-plural>/{id}/<relationName> through the
         // junction. Only on a single-PK source (the route addresses the source by id).
@@ -323,6 +329,41 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("}");
 
         return new EmittedFile($"{cls}Routes.g.cs", sb.ToString());
+    }
+
+    // F22 — the write verbs on a read-only projection, each answering the cross-port
+    // 405 envelope { "error": "method_not_allowed" }.
+    //
+    // 405 and not 404: the resource plainly exists — the same path answers GET — and a
+    // 404 would tell a caller the collection is absent when it is merely not writable.
+    // Mounted EXPLICITLY rather than left to ASP.NET, which answers an unmatched method
+    // on a matched path with its own EMPTY-bodied 405 and so puts a body shape on the
+    // wire that no other port spells. PUT is among them because the writable mount
+    // serves it; the verb a projection forgets to refuse is the one that falls through
+    // to a 404 — which is exactly what TypeScript did until this corpus caught it.
+    //
+    // The item verbs follow the item GET: a keyless projection mounts no /{id} route at
+    // all, so refusing a PATCH there would claim an address the port does not serve.
+    // `message` is free prose and is deliberately not part of the asserted contract.
+    private static void AppendProjectionRejects(StringBuilder sb, string route, string? pkType, bool hasItem)
+    {
+        sb.AppendLine();
+        AppendReject(sb, "MapPost", "/" + route, "POST", null);
+        if (!hasItem) return;
+        AppendReject(sb, "MapPatch", "/" + route + "/{id}", "PATCH", pkType);
+        AppendReject(sb, "MapPut", "/" + route + "/{id}", "PUT", pkType);
+        AppendReject(sb, "MapDelete", "/" + route + "/{id}", "DELETE", pkType);
+    }
+
+    // The item handlers take the route's `id` even though they ignore it: a typed
+    // parameter makes an unparsable id a 404 from routing rather than a 405 claiming
+    // the write was refused on a row that could never have been addressed.
+    private static void AppendReject(StringBuilder sb, string map, string path, string verb, string? pkType)
+    {
+        var parms = pkType is null ? "()" : "(" + pkType + " id)";
+        sb.AppendLine("        app." + map + "(prefix + \"" + path + "\", " + parms + " =>");
+        sb.AppendLine("            Results.Json(new { error = \"method_not_allowed\", message = \"" + verb
+            + " is not supported on a projection (read-only).\" }, statusCode: 405));");
     }
 
     // FR-017 TPH routes for a discriminator base. Mirrors the TS routes-file TPH branch:

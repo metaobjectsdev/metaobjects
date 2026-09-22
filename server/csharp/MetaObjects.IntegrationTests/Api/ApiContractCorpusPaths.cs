@@ -43,6 +43,14 @@ internal static class ApiContractCorpusPaths
     public static readonly string JsonbSeedFile = Path.Combine(JsonbDir, "seed.json");
     public static readonly string JsonbMetaJson = Path.Combine(JsonbDir, "meta.json");
 
+    // F22 view-only projection subcorpus — a writable Invoice table plus an
+    // InvoiceSummary object.projection whose only source is a read-only view. Reads
+    // are served; every write verb answers the cross-port 405 envelope.
+    public static readonly string ProjectionDir = Path.Combine(Corpus, "projection");
+    public static readonly string ProjectionScenariosDir = Path.Combine(ProjectionDir, "scenarios");
+    public static readonly string ProjectionSeedFile = Path.Combine(ProjectionDir, "seed.json");
+    public static readonly string ProjectionMetaJson = Path.Combine(ProjectionDir, "meta.json");
+
     // #214 write-through read-your-writes subcorpus.
     public static readonly string WriteThroughDir = Path.Combine(Corpus, "write-through");
     public static readonly string WriteThroughScenariosDir = Path.Combine(WriteThroughDir, "scenarios");

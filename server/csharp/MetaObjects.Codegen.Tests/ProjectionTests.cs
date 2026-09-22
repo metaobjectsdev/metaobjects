@@ -97,9 +97,44 @@ public class ProjectionTests
         // GET list takes HttpContext (qs handling per api-contract.md).
         Assert.Contains("app.MapGet(prefix + \"/program_summaries\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("app.MapGet(prefix + \"/program_summaries/{id}\"", src); // keyed -> readable by id
-        Assert.DoesNotContain("app.MapPost", src);    // read-only: no writes
-        Assert.DoesNotContain("app.MapPut", src);
+        // No write HANDLER anywhere: the verbs are mounted (see the test below), but
+        // every one of them is a refusal, so nothing in this file can persist a row.
+        Assert.DoesNotContain("SaveChangesAsync", src);
+        Assert.DoesNotContain("Results.Created", src);
+        Assert.DoesNotContain(".Remove(", src);
+    }
+
+    // F22 — the write verbs are MOUNTED on a projection, and every one answers the
+    // cross-port 405 envelope. Mounting them is the point: left unmounted, ASP.NET
+    // answers a POST on a path it knows with its own empty-bodied 405, which is a
+    // fifth body shape on a wire the other four ports spell one way.
+    [Fact]
+    public void Projection_write_verbs_answer_the_405_envelope()
+    {
+        var ctx = Ctx(Load());
+        var src = new RoutesGenerator().Generate(ctx)
+            .Single(f => f.Path == "ProgramSummaryRoutes.g.cs").Content;
+        Assert.Contains("app.MapPost(prefix + \"/program_summaries\", () =>", src);
+        Assert.Contains("app.MapPatch(prefix + \"/program_summaries/{id}\", (long id) =>", src);
+        Assert.Contains("app.MapPut(prefix + \"/program_summaries/{id}\", (long id) =>", src);
+        Assert.Contains("app.MapDelete(prefix + \"/program_summaries/{id}\", (long id) =>", src);
+        // Four refusals, each carrying the asserted envelope member.
+        Assert.Equal(4, src.Split("error = \"method_not_allowed\"").Length - 1);
+        Assert.Equal(4, src.Split("statusCode: 405").Length - 1);
+    }
+
+    // A KEYLESS projection mounts no /{id} read, so it refuses only the collection
+    // verb: a PATCH /{id} refusal would advertise an address the port never serves.
+    [Fact]
+    public void Keyless_projection_refuses_only_the_collection_verb()
+    {
+        var ctx = Ctx(Load());
+        var src = new RoutesGenerator().Generate(ctx)
+            .Single(f => f.Path == "TagCountRoutes.g.cs").Content;
+        Assert.DoesNotContain("app.MapGet(prefix + \"/tag_counts/{id}\"", src);
+        Assert.Contains("app.MapPost(prefix + \"/tag_counts\", () =>", src);
         Assert.DoesNotContain("app.MapPatch", src);
+        Assert.DoesNotContain("app.MapPut", src);
         Assert.DoesNotContain("app.MapDelete", src);
     }
 }

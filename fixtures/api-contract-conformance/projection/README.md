@@ -54,10 +54,11 @@ projection/
 ```
 
 `seed.json` seeds the base `invoices` table. The view is created by each port's
-harness after the table, because the two lanes use different physical column
-spellings (the generated artifact reads snake_case columns; a hand-rolled
-reference server reads literal ones), so there is no single view DDL both could
-share.
+harness after the table, because the ports do not agree on physical column
+spelling: TypeScript and Kotlin default to snake_case (`amount_cents`) while C#,
+Java and Python default to literal (`amountCents`). A view's column aliases have
+to match whatever the port's generated read model expects, so there is no single
+view DDL the five could share.
 
 ## Lane coverage — the GENERATED lane, on all five ports (accepted design)
 
@@ -77,11 +78,11 @@ nothing about the emitted artifact, which is the thing that was missing.
 |---|---|---|
 | TypeScript | **wired, green (7/7)** | `test/api-contract-projection.test.ts` |
 | Python | **wired, green (7/7)** | `tests/integration/test_api_contract_projection.py` |
-| C# | not yet wired | already emits read-only routes, but mounts no write verbs, so a write falls to the framework's own 405 with no envelope |
+| C# | **wired, green (7/7)** | `MetaObjects.IntegrationTests/Api/ApiContractProjectionConformanceTest.cs` |
 | Java | not yet wired | `SpringControllerGenerator.appliesTo` admits neither `object.projection` nor a read-only `@kind` — emits nothing. Its repository + filter-allowlist generators carry the same gate and must move with it |
 | Kotlin | not yet wired | same gate as Java (`!writeThrough && kind != KIND_TABLE`) |
 
-The corpus is committed ahead of the four remaining ports deliberately: it is
+The corpus was committed ahead of the remaining ports deliberately: it is
 the contract those ports are being changed to satisfy, and it has already
 earned its place by failing against a port that was supposed to pass. On its
 first run it caught TypeScript rejecting `POST`, `PATCH` and `DELETE` with a
