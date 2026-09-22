@@ -151,6 +151,7 @@ def run_gen(
 
     refused: list[str] = []
     adopted: list[str] = []
+    untracked = 0
     for full, (content, _by) in emitted.items():
         # The out-dir-relative name: what the manifest used to be keyed by, and still
         # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
@@ -173,11 +174,17 @@ def run_gen(
             if config.project_root
             else rel
         )
+        # A file written OUTSIDE the project has no place in the project's manifest: its
+        # key would be `../`-relative and committed into `.hashes.json`. It gets the
+        # manifest-less rule a run with no project gets — written, never recorded.
+        outside = bool(config.project_root) and (key.startswith("..") or os.path.isabs(key))
+        if outside:
+            untracked += 1
         status = decide_and_write(
             full,
             content,
             merge_strategy,
-            gen_state_dir=config.gen_state_dir,
+            gen_state_dir=None if outside else config.gen_state_dir,
             rel_path=key,
             legacy_rel_path=rel if key != rel else None,
             baseline=config.baseline,
@@ -187,6 +194,13 @@ def run_gen(
             refused.append(rel)
         elif status == "adopted":
             adopted.append(rel)
+
+    if untracked:
+        result.warnings.append(
+            f"{untracked} generated file(s) were written outside the project root and are "
+            f"not recorded in .metaobjects/.gen-state/.hashes.json, so hand-edit protection "
+            f"does not apply to them beyond the @generated header rule."
+        )
 
     if refused:
         if not tracking_hashes:

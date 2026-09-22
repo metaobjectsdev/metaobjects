@@ -284,6 +284,35 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     : (projectRoot !== undefined
         ? join(projectRoot, ".metaobjects", ".gen-state")
         : join(tmpdir(), `meta-gen-state-${process.pid}`));
+  // A file written OUTSIDE the project has no place in the project's gen-state: its
+  // manifest key would be `../..`-relative, committed into `.hashes.json`, and its snapshot
+  // body — stored at `<gen-state>/<key>` — would walk out of `.gen-state/` and land a second
+  // copy of the output in the project tree. Such files get the process-isolated state a run
+  // with no project gets: written, never recorded.
+  const untrackedGenStateDir = join(tmpdir(), `meta-gen-state-${process.pid}`);
+  const outsideProject = (fullPath: string): boolean => {
+    if (projectRoot === undefined) return false;
+    const rel = relative(projectRoot, fullPath);
+    return rel.startsWith("..") || isAbsolute(rel);
+  };
+  let untrackedCount = 0;
+  const policyFor = (fullPath: string): DecideAndWriteOpts => {
+    if (outsideProject(fullPath)) {
+      untrackedCount++;
+      return { strategy, genStateDir: untrackedGenStateDir, baseline };
+    }
+    const o: DecideAndWriteOpts = { strategy, genStateDir, baseline };
+    if (projectRoot !== undefined) o.outputRelPath = relative(projectRoot, fullPath);
+    return o;
+  };
+  const noteUntracked = (): void => {
+    if (untrackedCount === 0) return;
+    warnings.push(
+      `${untrackedCount} generated file(s) were written outside the project root and are not ` +
+      `recorded in .metaobjects/.gen-state/.hashes.json, so hand-edit protection does not apply ` +
+      `to them: a later run overwrites them without checking for edits.`,
+    );
+  };
 
   // #232 — make an unexplained regen diff explained: if the codegen engine changed
   // since the last gen, note it (generated output may legitimately differ). Purely
@@ -968,20 +997,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       // as "overwrite" while the real run refused it — the one case the preview most
       // needs to be right about. A merge outcome is still coarse (see
       // previewWriteStatus), because clean-vs-conflicted is unknowable without merging.
-      const policyOpts: DecideAndWriteOpts = {
-        strategy,
-        genStateDir,
-        baseline,
-      };
-      if (projectRoot !== undefined) {
-        policyOpts.outputRelPath = relative(projectRoot, file.fullPath);
-      }
+      const policyOpts = policyFor(file.fullPath);
       writes.push({
         path: file.fullPath,
         status: previewWriteStatus(file.fullPath, file.content, policyOpts),
       });
     }
     reportRefusals();
+    noteUntracked();
     reportAdoptions();
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
@@ -994,15 +1017,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
     // Without an explicit projectRoot we let decideAndWrite derive a stable
     // hash-of-path key — fine for ephemeral test runs.
-    const policyOpts: DecideAndWriteOpts = {
-      strategy,
-      genStateDir,
-      baseline,
-    };
-    if (projectRoot !== undefined) {
-      policyOpts.outputRelPath = relative(projectRoot, file.fullPath);
-    }
-    const result = decideAndWrite(file.fullPath, file.content, policyOpts);
+    const result = decideAndWrite(file.fullPath, file.content, policyFor(file.fullPath));
     writes.push(result);
     if (result.status === "conflict") {
       conflicts.push(result);
@@ -1016,6 +1031,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
 
   reportRefusals();
+  noteUntracked();
   reportAdoptions();
 
   // Sweep AFTER the writes: writing is the primary job, and a deletion that runs

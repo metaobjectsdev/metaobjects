@@ -181,3 +181,37 @@ def test_a_project_reached_through_a_symlink_keeps_its_jurisdiction(
     # And the gate still convicts stale output reached through the link.
     meta_file.write_text('{"metadata.root": {"package": "fitness", "children": []}}')
     assert main(["verify", "--codegen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")]) == 1
+
+
+def test_output_outside_the_project_is_not_recorded_in_its_manifest(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A ``--out`` outside the project root has no place in the project's manifest.
+
+    Its key is ``../``-relative, so it was committed into the project's ``.hashes.json``
+    — 118 such entries on one adopter estate, left behind by preview runs into a scratch
+    directory. Such a file is now written with the manifest-less rule a run with no
+    project gets, and ``gen`` says so once.
+    """
+    proj = tmp_path / "proj"
+    (proj / "metaobjects").mkdir(parents=True)
+    fixture = (
+        Path(__file__).parents[4]
+        / "fixtures"
+        / "persistence-conformance"
+        / "canonical"
+        / "meta.fitness.json"
+    )
+    (proj / "metaobjects" / "meta.fitness.json").write_text(fixture.read_text(), encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+
+    from metaobjects.cli import main
+
+    monkeypatch.chdir(proj)
+    assert main(["gen", "--generators", GEN_SUITE, str(proj / "metaobjects"), "--out", str(elsewhere)]) == 0
+    assert any(elsewhere.iterdir())
+
+    hashes = proj / ".metaobjects" / ".gen-state" / ".hashes.json"
+    keys = list(json.loads(hashes.read_text(encoding="utf-8"))) if hashes.exists() else []
+    assert not any(k.startswith("..") for k in keys), sorted(keys)[:3]
+    assert "outside the project" in capsys.readouterr().out
