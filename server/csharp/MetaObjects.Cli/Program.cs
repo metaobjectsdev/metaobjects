@@ -107,7 +107,7 @@ static int RunGen(string[] rest)
     // `--list` — discoverability surface (ADR-0021 D3). Print and exit 0, no codegen.
     if (list)
     {
-        Console.WriteLine("available generators (select with --generators <name,...>):");
+        Console.WriteLine(GenCommand.ListHeader);
         foreach (var line in GenCommand.ListLines()) Console.WriteLine(line);
         return 0;
     }

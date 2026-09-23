@@ -283,6 +283,16 @@ public static class GenCommand
     }
 
     /// <summary>
+    /// The heading `dotnet meta gen --list` prints above the entries. ADR-0034 Amendment 3:
+    /// generators are reference helpers, and this port has no eject yet, so they are preview.
+    /// </summary>
+    public const string ListHeader =
+        "available generators — reference helpers, preview in this port: there is no\n" +
+        "`dotnet meta eject` yet, so a generator cannot be copied into your repo and owned here.\n" +
+        "What MetaObjects guarantees (verify, render) is not a generator and is not listed.\n" +
+        "Select with --generators <name,...>:";
+
+    /// <summary>
     /// The lines `dotnet meta gen --list` prints: one `&lt;stable-name&gt; — &lt;description&gt;`
     /// per registered generator, native first. Pure (no console I/O) for testing.
     /// </summary>

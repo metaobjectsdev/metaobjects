@@ -76,4 +76,16 @@ describe("meta gen --list (ADR-0021 D3)", () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test("says every generator is a reference helper you own (ADR-0034 Amendment 3)", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "meta-gen-list-"));
+    try {
+      await genCommand(["--list"], tmp);
+      const text = out();
+      expect(text).toContain("reference helper, not a guarantee");
+      expect(text).toContain("`meta eject <name>`");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

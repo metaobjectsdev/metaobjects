@@ -1,7 +1,8 @@
 # Codegen concepts
 
 The durable design ideas behind MetaObjects codegen. Generators are disposable;
-the metamodel is the spine. This guide is the *why* — the tradeoffs and techniques
+the metamodel is the spine. The generators MetaObjects ships are reference helpers you
+copy and own, not guarantees — see [Own your codegen](own-your-codegen.md). This guide is the *why* — the tradeoffs and techniques
 you reach for when "it works" needs to become "it works at scale, and the next
 person (or LLM) can change it safely."
 

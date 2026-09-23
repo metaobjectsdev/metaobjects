@@ -324,10 +324,21 @@ const LAYER_BLURB: Record<Layer, string> = {
   capability: "chosen by your MODEL, not by browsing — run --probe",
 };
 
+/**
+ * ADR-0034 Amendment 3: every generator is a reference helper, not a guarantee. Said at
+ * the top of the catalog because this is where an adopter decides what to depend on.
+ */
+export const REFERENCE_HELPER_NOTE: readonly string[] = [
+  "Each generator is a reference helper, not a guarantee: `meta eject <name>` copies it into",
+  "your repo and the copy is yours to change. What MetaObjects guarantees (migrate, verify,",
+  "render) is not a generator and is not listed here.",
+];
+
 /** The human rendering: grouped by layer, because layer is the axis you select by. */
 export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   const lines: string[] = [];
   lines.push("Generator catalog — nothing runs until you wire it in `generators: [...]`.");
+  lines.push(...REFERENCE_HELPER_NOTE);
   lines.push("");
 
   const generators = rows.filter((r): r is GeneratorCatalogRow => r.kind === "generator");

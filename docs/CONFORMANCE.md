@@ -56,6 +56,27 @@ library-vs-pipeline divergences (see the `_comment` block in each port's
 are tracked as known-gaps rather than silently patched — the runner treats listed
 fixtures as passing, but a future port-level reconciliation pass would close them.
 
+### Core corpora and template quality checks
+
+Since [ADR-0034 Amendment 3](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees),
+the corpora above do two different jobs. Only the first is a promise to adopters.
+
+- **Core — the contract.** `conformance/`, `yaml-conformance/`, `registry-conformance/`,
+  `validation-conformance/`, `provider-composition-conformance/`,
+  `source-resolution-conformance/`, `scope-conformance/`, `dependency-conformance/`,
+  `object-model-conformance/`, `render-conformance/`, `template-codegen-conformance/` (the
+  Mustache engine), `template-output-render-conformance/`, `output-prompt-conformance/`,
+  `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
+  `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
+  scenarios), `agent-context-conformance/` and `metamodel-docs/`. A red cell here is a
+  MetaObjects bug.
+- **Template quality checks — not a promise.** The generated lane of
+  `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names)
+  and the codegen-compile gate. They check that the reference generators are correct
+  starting points; an adopter's ejected copy is theirs and is not gated. The hand-rolled
+  reference-server lane of `api-contract-conformance/` still pins the wire contract that
+  the runtimes and the client speak, which is core.
+
 ### Split coverage: where a feature is gated, and where it deliberately is not
 
 The matrix is corpus-shaped, so a feature whose coverage splits — across several

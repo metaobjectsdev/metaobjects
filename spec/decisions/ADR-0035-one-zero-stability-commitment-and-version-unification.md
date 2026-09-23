@@ -151,7 +151,10 @@ still want, then freeze. Before cutting 1.0:
   would restart the quiet-period clock; that gate is retired — Amendment 3. Removing the
   export at the major is still right, because it is a breaking change either way.)* Consumers migrate to the `meta init`-scaffolded owned
   copies under `codegen/generators/*`.
-- **Cross-port "own your codegen" — [RATIFIED: idiomatic + document].** The per-port
+- **Cross-port "own your codegen" — [RATIFIED: idiomatic + document; SUPERSEDED 2026-09-22 by
+  ADR-0034 Amendment 3 — every port gets an eject command, and until it does its generators
+  are labelled preview. An adopter estate showed that subclassing and selection do not let an
+  adopter own a generator's emit logic.]** The per-port
   split is intentional and *not* a parity gap to close: TS uses `meta init`
   scaffold-and-own; the JVM/Python/C# ports own their codegen via build config
   (Maven `metaobjects:gen`, `metaobjects gen`, `dotnet meta gen`). Documented in

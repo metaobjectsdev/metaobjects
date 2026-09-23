@@ -152,3 +152,48 @@ change — the scaffold-and-own promise is the LAYOUT and the INTERFACES, not wh
 generators a fresh scaffold happens to wire.
 
 Design: `docs/superpowers/specs/2026-09-12-opt-in-codegen-and-generator-catalog-design.md`.
+
+### Amendment 3 (2026-09-22) — generators are reference helpers; the core is what MetaObjects guarantees
+
+**Clarifies:** Decision 4 ("conformance gates the reference templates … they must be
+correct starting points") and the positioning that lists codegen as the first capability.
+
+**Ruling.** MetaObjects has two layers, and only the first is a product promise.
+
+| Layer | What it is | Promise |
+|---|---|---|
+| **Core** | The metamodel, loader, canonical format and registry; runtime metadata access; schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Conformance-gated, identical behaviour in every port that ships it, covered by `docs/compatibility-policy.md`. A defect here is a MetaObjects bug. |
+| **Helpers** | Every generator that writes application code into the adopter's repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks, filter allowlists | Reference starting points. They compile and pass the reference fixtures; the adopter copies them with `meta eject` and owns the copy. A defect in the reference is fixed there, and an adopter's copy is theirs to fix. |
+
+The line is a mechanical test: **what the tool guarantees is core; what it writes into
+your repo is a helper.** Migrations are written into the repo too, but `meta migrate`
+guarantees that its output applies and converges, so it is core. A generated route makes
+no such guarantee beyond its own reference fixtures, so it is a helper.
+
+**What changes.**
+
+1. **Conformance splits in two.** The metamodel, registry, YAML, render, extract, verify
+   and persistence corpora gate the core. The codegen-compile gate and the generated lane
+   of `api-contract-conformance` keep running, but as quality checks on the reference
+   templates, not as a promise about any adopter's generated code.
+2. **The catalog says so.** `meta gen --list` (and each port's equivalent) labels every
+   generator a reference helper and says how to own it.
+3. **Positioning follows.** Codegen stays the first of the six pillars — the vocabulary is
+   not churned — but it is described as reference generators you own, with a maturity
+   label per port.
+
+**What does not change.** The engine, the `Generator` interface, the layout and the
+scaffold-and-own contract stay covered by the compatibility policy exactly as before;
+generated output already was not. The three-way merge and `.hashes.json` behaviour are
+unchanged.
+
+**The condition this depends on.** "Yours to fix" is only true where the adopter can own
+the generator. Today only the TypeScript toolchain has `meta eject`. Until C#, the JVM
+ports and Python gain an eject command, their generators are labelled **preview** in the
+catalog and the docs, and their defects are fixed in the reference as before.
+
+**Why.** From 2026-09-15 to 2026-09-22, 73 of 169 commits were fixes, and most were in
+generated application code: one URL-naming rule fixed four times, one 409 envelope fixed
+in four ports, TPH × M:N traversal fixed in every port. Every feature times every port
+times every target framework was being promised as core. Decision 4 already said the
+reference is scaffolding; this amendment stops describing it as anything else.

@@ -10,7 +10,7 @@
 
 ## What MetaObjects is
 
-**One typed model of your app** — data, API, UI, prompt payloads, and what it's supposed to do — that your agent reads and writes. Two things happen to it. **Generate:** the boring parts are derived from it, in TypeScript, Java, Kotlin, C# and Python — at build time as code you own, or at runtime from the live model. **Verify:** the build fails when generated code drifts from the model and when a prompt's payload no longer matches what it's told — and it fails or warns when a feature someone marked done has nothing implementing it. That last one has no equivalent in a test suite: a test exercises code that exists, so nothing flags a claimed capability that was never built. It checks that the claim points at something real, not that the something is correct. It protects what the model declares; your hand-written logic is still yours.
+**One typed model of your app** — data, API, UI, prompt payloads, and what it's supposed to do — that your agent reads and writes. Two things happen to it. **Generate:** the boring parts are derived from it, in TypeScript, Java, Kotlin, C# and Python — at build time by reference generators you copy into your repo and own, or at runtime from the live model. **Verify:** the build fails when generated code drifts from the model and when a prompt's payload no longer matches what it's told — and it fails or warns when a feature someone marked done has nothing implementing it. That last one has no equivalent in a test suite: a test exercises code that exists, so nothing flags a claimed capability that was never built. It checks that the claim points at something real, not that the something is correct. It protects what the model declares; your hand-written logic is still yours.
 
 Underneath those two verbs, the model is a cross-language metadata standard for declaring typed entity models. From a single metadata definition, MetaObjects drives six capabilities. The first four **ship in all five ports** (TypeScript, Java, Kotlin, C#, Python), though not uniformly deep (field ranking: drift > codegen > prompts > runtime metadata); the fifth loads in every port, runs its `meta verify` checks in the Node `meta` CLI and scaffolds tests in TypeScript only; the sixth ships two libraries at their own stability labels:
 
@@ -51,7 +51,9 @@ The pillars are views on the same metadata, not separate products, and each carr
 
 ### Codegen
 
-Emit idiomatic per-language code from a single metadata model.
+Reference generators you own: ejectable in TypeScript; preview in Java, Kotlin, C# and Python until those ports can eject. They emit per-language code from a single metadata model.
+
+**What is guaranteed, and what is yours** (ADR-0034 Amendment 3). The core is the promise: the metamodel, loader, canonical format and registry; runtime metadata access; schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser. Every generator that writes application code into the repo is a reference helper — a starting point that compiles and passes its reference fixtures, which the adopter copies with `meta eject` and owns. A defect in the core is a MetaObjects bug; a defect in a generator is fixed in the reference, and the adopter's copy is theirs. The test is mechanical: what the tool guarantees is core; what it writes into your repo is a helper.
 
 - TypeScript: Drizzle + Zod + Fastify integration (and React / TanStack on the client side)
 - Java: Spring REST + DTO + repository interfaces (the persistence impl is consumer-supplied) via `codegen-spring`

@@ -12,6 +12,14 @@ durable spine; the generated code is a disposable artifact. It runs at runtime
 **without any MetaObjects dependency** — if the libraries disappeared tomorrow, you
 keep working code.
 
+**Generators are reference helpers, not guarantees** (ADR-0034 Amendment 3). The core —
+metamodel, loader, `migrate`, `verify`, prompt render — is what MetaObjects guarantees.
+A generator is a starting point that compiles and passes its reference fixtures; the
+adopter copies it with `meta eject` and owns the copy. When a generated file is wrong,
+fix the adopter's own generator — do not hand-edit around it, and do not treat it as a
+broken core guarantee. Only the TypeScript toolchain can eject today; in Java, Kotlin, C#
+and Python the generators are **preview** until those ports can.
+
 This skill is the port-agnostic procedure. The exact config file, generator names,
 and command for *this* project's server language live in a reference fragment
 (pointed to at the bottom).

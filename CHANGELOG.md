@@ -40,6 +40,20 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Changed
 
+- **Generators are reference helpers, not guarantees** ([ADR-0034 Amendment 3]). What
+  MetaObjects promises is the core: the metamodel, loader, canonical format and registry;
+  runtime metadata access; `meta migrate`; `meta verify`; prompt render and the reply
+  parser. Every generator that writes application code into your repo is a starting point
+  that compiles and passes its reference fixtures, which you copy and own. The catalog now
+  says so at the top of `meta gen --list`, `dotnet meta gen --list` and `metaobjects gen
+  --list`; the README, the docs and the shipped `metaobjects-codegen` skill say so too.
+  Only the TypeScript toolchain can eject a generator today, so the C#, Java, Kotlin and
+  Python generators are labelled **preview** until those ports gain an eject command. That
+  supersedes ADR-0035 §3's ruling that owning codegen through build configuration was
+  enough. Nothing an existing project runs changes.
+
+[ADR-0034 Amendment 3]: spec/decisions/ADR-0034-codegen-scaffold-and-own.md
+
 - **A responding `template.prompt` now gets a generated render helper in C#, Java, Kotlin
   and Python — previously only TypeScript did.** Each of those four ports' `render-helper`
   generator filtered `template.output`, so an adopter could parse a model's reply from

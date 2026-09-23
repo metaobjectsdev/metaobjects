@@ -526,6 +526,12 @@ red run as a blocker:
    ```
 6. **Boot** the app on that database and exercise its API.
 
+**Every core change in the batch needs an estate scenario** (ADR-0034 Amendment 3). A corpus
+fixture proves the ports agree; only a scenario in a real application proves the change is
+usable. A core change with no scenario in the estate holds the promote until one exists. A
+change to a reference generator does not need one: a generator is a helper, and its fixtures
+are its check.
+
 ### 3. Promote to `latest`
 
 **Before `bun publish`: run the FULL local CI on the release commit and confirm it is

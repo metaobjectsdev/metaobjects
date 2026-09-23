@@ -5,17 +5,25 @@ the **durable spine**. You own the generated code in your repo — it runs witho
 MetaObjects runtime dependency, and if `@metaobjectsdev/*` (or the Maven/PyPI/NuGet
 packages) disappeared, you keep working code.
 
-"Own your codegen" means two related things, and how far each goes is **idiomatic per
-port** — this is intentional (ADR-0035 §3, ratified), not a parity gap:
+**Generators are reference helpers, not guarantees** ([ADR-0034 Amendment 3](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees)).
+What MetaObjects guarantees is the core — the metamodel and loader, runtime metadata
+access, `meta migrate`, `meta verify`, prompt render and the reply parser. Every generator
+that writes application code into your repo is a starting point: it compiles and passes
+its reference fixtures, and you copy it and own it. A defect in the reference is fixed
+there; your copy is yours.
+
+"Own your codegen" means two related things:
 
 1. **You own the invocation** — codegen runs through your own build, on your terms,
    in every port.
-2. **You own the templates** — in TypeScript, `meta eject <name>...` copies the reference
-   generators *into your repo* so you can edit them (ADR-0034 scaffold-and-own). The
-   JVM/Python/C# ports own codegen through **build configuration** rather than copied
-   template files; template customization there is via the declarative
-   template-codegen surface (`--template-spec` / Mustache) and the generator-selection
-   SPI.
+2. **You own the templates** — `meta eject <name>...` copies the reference generators
+   *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **Today only the
+   TypeScript toolchain can eject.** The JVM, Python and C# ports get an eject command of
+   their own; until they do, their generators are labelled **preview**, and customization
+   there is limited to the declarative template-codegen surface (`--template-spec` /
+   Mustache) and choosing which generators run. (ADR-0035 §3 once ruled this split
+   intentional; Amendment 3 supersedes that, because subclassing and selection do not let
+   an adopter own a generator's emit logic.)
 
 Either way, hand-edits inside a generated file survive regeneration — but *how* they
 survive depends on what the toolchain can see, and it is worth knowing which case you

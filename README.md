@@ -17,8 +17,8 @@ model. Your hand-written logic stays yours.
 supposed to do — that your agent reads and writes. Two things happen to it:
 
 - **Generate.** The boring parts are derived from it, in TypeScript, Java, Kotlin, C#
-  and Python — at build time as code you own, or at runtime from the live model.
-  Nothing proprietary in the output.
+  and Python — at build time by reference generators you copy into your repo and own,
+  or at runtime from the live model. Nothing proprietary in the output.
 - **Verify.** The build fails when generated code drifts from the model and when a
   prompt's payload no longer matches what it's told — and it fails or warns when a
   feature someone marked done has nothing implementing it.
@@ -145,11 +145,14 @@ first-week wedge plan — and `meta init` picks up from there.
 | Metadata dependencies (`dependencies`) | Yes (`meta deps sync`, `path` transport) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
 | React / Angular UI client (browser) | React: **published** (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`), codegen + runtime. Angular 18: **source-only by decision** ([ADR-0048](spec/decisions/ADR-0048-angular-tier-source-only.md)) — `@metaobjectsdev/angular` + `@metaobjectsdev/codegen-ts-angular` build in-repo on their own `0.6.x` line but are deliberately not on npm (`npm i @metaobjectsdev/angular` will 404) until they meet the ADR's promotion bar. Consume them from source. | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
-| Cross-port REST routes for the client | Generated (`routesFile()` → Fastify) | Generated (`SpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`KotlinSpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Generated (`router_generator` → FastAPI `APIRouter`, incl. filter/sort) |
+| Own a generator (`eject`) | Yes (`meta eject`) | Not yet — generators are preview | Not yet — generators are preview | Not yet — generators are preview | Not yet — generators are preview |
+| Cross-port REST routes for the client (reference generators) | Generated (`routesFile()` → Fastify) | Generated (`SpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`KotlinSpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Generated (`router_generator` → FastAPI `APIRouter`, incl. filter/sort) |
 
 A "Yes" means the feature is covered by the shared conformance corpora at
 [`fixtures/`](fixtures/) for that port, or by a port-local test of equivalent
-scope. A "partial" means the loader recognizes the metamodel feature but the
+scope. For rows that describe generated code, the coverage is of the reference
+generators on their fixtures — a quality check on the starting point, not a promise
+about the code in your repo. A "partial" means the loader recognizes the metamodel feature but the
 codegen / runtime tier doesn't fully exercise it yet.
 
 The React and Angular UI clients are TypeScript-only by construction (the
@@ -159,6 +162,21 @@ URL grammar + wire format the client speaks, and
 [`docs/ports/typescript-client.md`](docs/ports/typescript-client.md) for
 the consumer-side wiring (React + TanStack, and the
 [Angular 18 tier](docs/ports/typescript-client.md#angular-18)).
+
+## What is guaranteed, and what is yours
+
+MetaObjects has two layers, and only the first is a promise
+([ADR-0034 Amendment 3](spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees)):
+
+| | Core — guaranteed | Helpers — yours |
+|---|---|---|
+| **What** | The metamodel, loader, canonical format and registry; runtime metadata access; schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Every generator that writes application code into your repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks |
+| **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Reference starting points that compile and pass their reference fixtures. Copy one with `meta eject` and change it freely |
+| **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
+
+The test is mechanical: what the tool guarantees is core; what it writes into your repo
+is a helper. Owning a generator needs `meta eject`, which ships in TypeScript today. In
+Java, Kotlin, C# and Python the generators are **preview** until those ports can eject.
 
 ## Six pillars
 
@@ -171,10 +189,13 @@ complete in all five ports; MCP exposure of declared prompts/tools is the one re
 roadmap item. The fifth has been dogfooded on maintainer-owned projects only, and the
 sixth ships two libraries at their own stability labels:
 
-1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
-   Spring REST + DTO + repository for Java, `data class` + Exposed for Kotlin, EF Core
-   record + ASP.NET routes for C#, Pydantic + FastAPI for Python). Hand-edit-preserving
-   regen via three-way merge.
+1. **Codegen** *(reference generators you own: ejectable in TypeScript; preview in Java,
+   Kotlin, C# and Python until they can eject)* — starting points that emit per-language
+   code (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java,
+   `data class` + Exposed for Kotlin, EF Core record + ASP.NET routes for C#, Pydantic +
+   FastAPI for Python). Copy the ones you need, change them, and regenerate with
+   hand-edit-preserving three-way merge. The engine that runs them is core; their output
+   is yours.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically
    (CRUD, validation, relationships, dynamic admin UIs; typed tool payloads are
    declared today, with MCP exposure on the roadmap).
@@ -286,8 +307,10 @@ scripts/integration-test.sh python     # just Python
 scripts/integration-test.sh kotlin     # just Kotlin
 ```
 
-The persistence corpus + the cross-port test harness are the contract: identical
-normalized results across every port, or it's a port bug. See
+The core corpora (metamodel, registry, YAML, render, extract, verify, persistence)
+are the contract: identical normalized results across every port, or it's a port bug.
+The codegen-compile gate and the generated lane of the API-contract corpus check the
+reference generators, which are helpers you own rather than a promise. See
 [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) for the per-corpus + per-port pass status.
 
 ## How to contribute

@@ -34,6 +34,14 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
     [Fact]
+    public void ListHeader_says_generators_are_reference_helpers_and_preview_here()
+    {
+        // ADR-0034 Amendment 3: no eject in this port yet, so the helpers are preview.
+        Assert.Contains("reference helpers", GenCommand.ListHeader);
+        Assert.Contains("preview in this port", GenCommand.ListHeader);
+    }
+
+    [Fact]
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines();
