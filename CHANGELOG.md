@@ -47,9 +47,9 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   that compiles and passes its reference fixtures, which you copy and own. The catalog now
   says so at the top of `meta gen --list`, `dotnet meta gen --list` and `metaobjects gen
   --list`; the README, the docs and the shipped `metaobjects-codegen` skill say so too.
-  TypeScript (`meta eject`), Python (`metaobjects eject`) and the JVM (`mvn
-  metaobjects:eject`) can eject a generator — the last two new in this release — so the C#
-  generators are labelled **preview** until C# gains an eject command. That
+  Every port can now eject a generator: `meta eject` (TypeScript), and new in this release
+  `metaobjects eject` (Python), `mvn metaobjects:eject` (Java and Kotlin) and `dotnet meta
+  eject` (C#). That
   supersedes ADR-0035 §3's ruling that owning codegen through build configuration was
   enough. Nothing an existing project runs changes.
 
@@ -247,6 +247,15 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Added
 
+- **C#: `dotnet meta eject <name>...`** copies a reference generator's source (shipped
+  embedded in `MetaObjects.Codegen`) into `codegen/generators/`, renaming only its namespace,
+  and on first use scaffolds an owned `codegen/` console project that lists the generators
+  and calls a new public runner (`CodegenCli`), which `GenCommand` now uses too. Once that
+  project exists, `dotnet meta gen` and `dotnet meta verify --codegen` hand off to it. Eject
+  never overwrites a copy without `--force` and never edits the scaffold after writing it;
+  `--list` marks owned copies. The helpers a copy needs are now public (`Fr010FieldMapping`,
+  `FindInbound`, `ExtractDelegateEmitter`, `OutputFormatSpecEmitter`,
+  `ValueObjectNames.Names` and others).
 - **Java and Kotlin: `mvn metaobjects:eject -Dnames=<a,b>`** copies reference generators
   into a `codegen/` Maven module under your own package, since the plugin's own class wins
   over a same-named one and nothing in the module being generated is compiled yet at

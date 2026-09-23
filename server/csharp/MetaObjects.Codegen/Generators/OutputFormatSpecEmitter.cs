@@ -14,7 +14,9 @@ using static MetaObjects.Template.TemplateConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
-internal static class OutputFormatSpecEmitter
+// Eject (ADR-0034 Amendment 3): not itself ejectable, but OutputPromptGenerator (which
+// IS) calls into it, so it must be public API for an ejected copy to resolve it.
+public static class OutputFormatSpecEmitter
 {
     /// <summary>
     /// Emit <c>new OutputFormatSpec(Format.X, "rootName", PromptStyle.X, new PromptField[] { … })</c>.

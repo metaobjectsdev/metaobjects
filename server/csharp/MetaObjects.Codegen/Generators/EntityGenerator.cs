@@ -470,7 +470,10 @@ public class EntityGenerator : IGenerator
     // relationship at all). Those navs are [NotMapped] — the REST route + runtime
     // resolver traverse the junction explicitly (the cross-port contract is the
     // route behavior, not EF eager-loading).
-    protected static string M2mNavProperty(M2MNavigation nav)
+    //
+    // Eject (ADR-0034 Amendment 3): public so an owned copy of another generator can
+    // emit the SAME M:N nav-property shape this one does, rather than re-deriving it.
+    public static string M2mNavProperty(M2MNavigation nav)
     {
         var target = CSharpNaming.Pascal(nav.Target.Name);
         var prop = CSharpNaming.Pascal(nav.Name);

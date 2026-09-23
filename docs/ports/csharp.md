@@ -81,6 +81,8 @@ for a worked example.
 
 ## Generate
 
+**Own a generator.** `dotnet meta eject <name>...` copies a reference generator into `codegen/generators/` and scaffolds an owned `codegen/` console project that `dotnet meta gen` then runs. See [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
+
 ```bash
 # Generate EF Core entities + AppDbContext + CRUD minimal-API routes
 dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog

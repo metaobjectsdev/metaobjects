@@ -79,8 +79,14 @@ public static class ValueObjectNames
                 root, oref, field.Parent is { } p ? global::MetaObjects.NamingRefs.EffectivePackage(p) : "") as MetaObject
             : null;
 
-    /// <summary>The value-object name map: <c>ResolutionKey()</c> → emitted C# name.</summary>
-    internal static IReadOnlyDictionary<string, string> Names(MetaData root) =>
+    /// <summary>
+    /// The value-object name map: <c>ResolutionKey()</c> → emitted C# name.
+    ///
+    /// Eject (ADR-0034 Amendment 3): public so an owned generator copy — compiled into
+    /// the adopter's own assembly — can look up the same collision-aware name map every
+    /// packaged generator uses, rather than re-deriving it.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Names(MetaData root) =>
         Cache.GetValue(root, Assign);
 
     private static IReadOnlyDictionary<string, string> Assign(MetaData root)

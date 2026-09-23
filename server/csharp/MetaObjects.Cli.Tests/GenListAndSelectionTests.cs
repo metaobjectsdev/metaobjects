@@ -34,17 +34,19 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
     [Fact]
-    public void ListHeader_says_generators_are_reference_helpers_and_preview_here()
+    public void ListHeader_says_generators_are_owned_via_eject()
     {
-        // ADR-0034 Amendment 3: no eject in this port yet, so the helpers are preview.
-        Assert.Contains("reference helpers", GenCommand.ListHeader);
-        Assert.Contains("preview in this port", GenCommand.ListHeader);
+        // ADR-0034 Amendment 3: this port has `dotnet meta eject` now, so the header
+        // points at it rather than calling the generators preview.
+        Assert.Contains("Reference generators", GenCommand.ListHeader);
+        Assert.Contains("eject", GenCommand.ListHeader);
+        Assert.DoesNotContain("preview in this port", GenCommand.ListHeader);
     }
 
     [Fact]
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
-        var lines = GenCommand.ListLines();
+        var lines = GenCommand.ListLines(_tmp);
         Assert.Equal(11, lines.Count);
         foreach (var name in new[]
         {

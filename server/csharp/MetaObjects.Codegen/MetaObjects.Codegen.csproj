@@ -22,4 +22,33 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
   </ItemGroup>
+  <!--
+    ADR-0034 Amendment 3 — eject: each EJECTABLE generator's own .cs source is embedded
+    as an assembly resource (AOT-safe: Assembly.GetManifestResourceStream, no filesystem
+    scan of the installed tool), the same pattern MetaObjects/MetaObjects.csproj already
+    uses for spec/metamodel/*.json. `dotnet meta eject <name>` reads these — never the
+    file on disk — to write codegen/generators/<file> in the adopter's repo. A byte-
+    identity gate test (MetaObjects.Codegen.Tests/EjectableGeneratorsEmbedTests) asserts
+    each embedded copy equals its Generators/<file> source, so they cannot drift; a set-
+    equality test asserts this list matches GeneratorRegistry's SourceFileName entries.
+    The default MSBuild logical resource name (RootNamespace + folder + file, dots for
+    separators — RootNamespace is `MetaObjects.Codegen` here) makes each one
+    `MetaObjects.Codegen.Generators.<file>`. The `template` primitive is deliberately NOT
+    here — it has no emit logic of its own to own (see GeneratorRegistry.cs's registry
+    entries: every OTHER Native entry sets SourceFileName; `template` does not).
+    ADD A NEW EJECTABLE GENERATOR: add its Include line here AND its SourceFileName in
+    GeneratorRegistry.cs — the embed-set-equality test fails until both are done.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Generators/EntityGenerator.cs" />
+    <EmbeddedResource Include="Generators/DbContextGenerator.cs" />
+    <EmbeddedResource Include="Generators/RoutesGenerator.cs" />
+    <EmbeddedResource Include="Generators/OutputParserGenerator.cs" />
+    <EmbeddedResource Include="Generators/ExtractorGenerator.cs" />
+    <EmbeddedResource Include="Generators/OutputPromptGenerator.cs" />
+    <EmbeddedResource Include="Generators/RenderHelperGenerator.cs" />
+    <EmbeddedResource Include="Generators/FilterAllowlistGenerator.cs" />
+    <EmbeddedResource Include="Generators/NamesGenerator.cs" />
+    <EmbeddedResource Include="Generators/CallableGenerator.cs" />
+  </ItemGroup>
 </Project>

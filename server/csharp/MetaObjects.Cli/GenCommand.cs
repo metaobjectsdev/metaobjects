@@ -7,10 +7,7 @@
 using System.IO;
 using System.Text.Json;
 using MetaObjects.Codegen;
-using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.TemplateCodegen;
 using MetaObjects.Loader;
-using MetaObjects.Render;
 
 namespace MetaObjects.Cli;
 
@@ -82,101 +79,37 @@ public static class GenCommand
     public static string ProjectRootFor(string metadataDir) =>
         Path.GetDirectoryName(Path.GetFullPath(metadataDir)) ?? Directory.GetCurrentDirectory();
 
-    /// <summary>
-    /// The conventional declarative-template-spec file (SP-1 §4), discovered when
-    /// <c>--template-spec</c> is not passed. VISIBLE and at the project root on
-    /// purpose: this project splits author input (visible) from tool state (hidden
-    /// <c>.metaobjects/</c>), a spec is authored rather than generated, and it belongs
-    /// beside the <c>templates/</c> dir its refs resolve under. Same name and same
-    /// anchor as the Python port.
-    /// </summary>
-    public const string TemplateSpecFileName = "template-spec.json";
+    // ------------------------------------------------------------------------
+    // SP-1 declarative template-spec resolution. The implementation now lives in
+    // MetaObjects.Codegen.CodegenCli (ADR-0034 Amendment 3 / the eject design doc's C#
+    // section) — an ejected codegen/Program.cs needs to discover a project's
+    // template-spec.json exactly as `dotnet meta gen` does, and MetaObjects.Codegen
+    // cannot depend on MetaObjects.Cli. These forward to it so this port keeps ONE
+    // implementation, not two, while this class's own public surface (and the tests
+    // pinned to it) stays put.
+    // ------------------------------------------------------------------------
 
-    /// <summary>
-    /// The template-spec to use, or <c>null</c> for "no template generators".
-    /// An explicit <c>--template-spec</c> always wins and is used verbatim (a flag
-    /// naming a missing file stays a hard error at read time — silently ignoring a
-    /// path the user typed would be worse). Otherwise
-    /// <c>&lt;projectRoot&gt;/template-spec.json</c> is used IF it exists.
-    ///
-    /// <para>EVERY path that builds a generator list must call this. The defect it
-    /// exists to prevent is <c>gen</c> and <c>verify --codegen</c> resolving the spec
-    /// differently: <c>gen</c> honoured the flag while <c>verify</c> built its own list
-    /// and never looked, so verify regenerated WITHOUT the template generators and
-    /// reported their committed output as stale — with a remedy that loops, since
-    /// regenerating cannot produce files the regen does not know about.</para>
-    /// </summary>
-    public static string? TemplateSpecPathFor(string? projectRoot, string? explicitPath)
-    {
-        if (!string.IsNullOrEmpty(explicitPath)) return explicitPath;
-        if (string.IsNullOrEmpty(projectRoot)) return null;
-        var candidate = Path.Combine(projectRoot, TemplateSpecFileName);
-        return File.Exists(candidate) ? candidate : null;
-    }
+    /// <summary>See <see cref="MetaObjects.Codegen.CodegenCli.TemplateSpecFileName"/>.</summary>
+    public const string TemplateSpecFileName = MetaObjects.Codegen.CodegenCli.TemplateSpecFileName;
 
-    /// <summary>
-    /// The declarative Mustache generators for this project — empty when there is no
-    /// spec at all. Throws the same exception set <see cref="Run(LoadResult, string,
-    /// string, bool, IReadOnlyList{string}?, string?, string?, string?,
-    /// ColumnNamingStrategy)"/> already catches, so a malformed spec surfaces as a
-    /// clean error rather than an unhandled throw.
-    /// </summary>
+    /// <summary>See <see cref="MetaObjects.Codegen.CodegenCli.TemplateSpecPathFor"/>.</summary>
+    public static string? TemplateSpecPathFor(string? projectRoot, string? explicitPath) =>
+        MetaObjects.Codegen.CodegenCli.TemplateSpecPathFor(projectRoot, explicitPath);
+
+    /// <summary>See <see cref="MetaObjects.Codegen.CodegenCli.TemplateSpecGenerators"/>.</summary>
     public static IReadOnlyList<IGenerator> TemplateSpecGenerators(
-        string? projectRoot, string? explicitPath, string? templateRoot)
-    {
-        var specPath = TemplateSpecPathFor(projectRoot, explicitPath);
-        if (specPath is null) return [];
-        using var doc = JsonDocument.Parse(File.ReadAllText(specPath));
-        var spec = TemplateSpec.Parse(doc.RootElement);
-        var provider = new FilesystemProvider(templateRoot ?? DefaultTemplateRoot());
-        return TemplateSpec.ToGenerators(spec, provider).ToList();
-    }
+        string? projectRoot, string? explicitPath, string? templateRoot) =>
+        MetaObjects.Codegen.CodegenCli.TemplateSpecGenerators(projectRoot, explicitPath, templateRoot);
 
-    /// <summary>The canonical directory name for authored template bodies.</summary>
-    /// <remarks>
-    /// Named <c>prompts</c> because that is what the Node CLI has always called it
-    /// (<c>DEFAULT_PROMPTS_DIR</c>), and the Node CLI is the schema door every project
-    /// meets first.
-    /// </remarks>
-    public const string DefaultPromptsDir = "prompts";
+    /// <summary>See <see cref="MetaObjects.Codegen.CodegenCli.DefaultPromptsDir"/>.</summary>
+    public const string DefaultPromptsDir = MetaObjects.Codegen.CodegenCli.DefaultPromptsDir;
 
-    /// <summary>
-    /// The name this port defaulted to before 1.0.5, kept as the FALLBACK rather than
-    /// replaced.
-    /// </summary>
-    public const string LegacyTemplatesDir = "templates";
+    /// <summary>See <see cref="MetaObjects.Codegen.CodegenCli.LegacyTemplatesDir"/>.</summary>
+    public const string LegacyTemplatesDir = MetaObjects.Codegen.CodegenCli.LegacyTemplatesDir;
 
-    /// <summary>
-    /// The template root to use when the caller named none: <c>prompts</c> when that
-    /// directory exists, else <c>templates</c>.
-    /// </summary>
-    /// <remarks>
-    /// The two halves of the toolchain disagreed about this. The Node CLI has always
-    /// defaulted to <c>prompts</c>, while this port and the Python one defaulted to
-    /// <c>templates</c>, so a project following the Node CLI's layout — which this
-    /// repo's own adopter estate does — had a <c>gen</c> looking somewhere its
-    /// <c>prompts/</c> was not.
-    /// <para>A FALLBACK, never a flip: a project whose bodies are in <c>templates/</c>
-    /// behaves exactly as it did, because <c>prompts/</c> has to exist before it wins.
-    /// Flipping outright would move where an existing project's refs resolve from and
-    /// could have it silently find nothing.</para>
-    /// <para>Probed against, and returned relative to, the CURRENT DIRECTORY — the
-    /// same base <c>templateRoot ?? "templates"</c> resolved against before, and the
-    /// same base the Python port probes. Anchoring the probe on the project root while
-    /// the provider still resolved relative to the process directory would let this
-    /// answer "prompts" for a directory the provider then fails to find.</para>
-    /// </remarks>
-    /// <param name="baseDir">
-    /// The directory to probe, for tests. Defaults to the current directory, which is
-    /// what every caller uses. It exists so a test can exercise the rule WITHOUT
-    /// changing the process directory — xUnit runs collections in parallel, so a test
-    /// that moved the CWD would be changing it under every other class at once.
-    /// </param>
+    /// <summary>See <see cref="MetaObjects.Codegen.CodegenCli.DefaultTemplateRoot"/>.</summary>
     public static string DefaultTemplateRoot(string? baseDir = null) =>
-        Directory.Exists(
-            Path.Combine(baseDir ?? Directory.GetCurrentDirectory(), DefaultPromptsDir))
-            ? DefaultPromptsDir
-            : LegacyTemplatesDir;
+        MetaObjects.Codegen.CodegenCli.DefaultTemplateRoot(baseDir);
 
     /// <summary>
     /// Same as the <c>metadataDir</c> overload above, but starting from an
@@ -225,79 +158,43 @@ public static class GenCommand
             return new Outcome([ex.Message], null);
         }
 
-        // The hash manifest lives beside the project's other tool state, matching the TS
-        // and Python layout. Supplying it here is what gives a real `dotnet meta gen`
-        // hand-edit detection: without it the write path falls back to the legacy
-        // <auto-generated/>-marker rule, which cannot tell an edited generated file from a
-        // pristine one (an edited file keeps its marker). COMMIT `.gen-state/.hashes.json`.
-        //
-        // `projectRoot` is the PROJECT, never the process's cwd — see ProjectRootFor.
-        // It falls back to cwd only for a caller that passes an already-loaded model and
-        // names no project, which is the one case where there is nothing better to use.
-        var genStateDir = Path.Combine(
-            projectRoot ?? Directory.GetCurrentDirectory(), ".metaobjects", ".gen-state");
-        var config = new GenConfig
-        {
-            OutDir = outDir,
-            Namespace = ns,
-            EmitAbstractShapes = emitAbstractShapes,
-            GenStateDir = genStateDir,
-            // The anchor the manifest keys are relative to — the same project genStateDir
-            // was derived from. Without it, generating a second port into a second --out
-            // under this project would record over the first port's entries.
-            ProjectRoot = projectRoot ?? Directory.GetCurrentDirectory(),
-            // How a field with no explicit `@column` becomes a column name. Defaults to
-            // Literal (EF's property=column convention) — this port's historical
-            // behaviour — and is selected per project with `--column-naming`.
-            ColumnNamingStrategy = columnNaming,
-            // `--baseline=adopt`: record what is on disk and write nothing. The refusal it
-            // exists for is the pre-manifest one, which is exactly where `gen` runs — so it
-            // is threaded here and nowhere near `verify --codegen`, which regenerates into a
-            // throwaway directory and records nothing at all.
-            Baseline = baseline,
-            // C1 — the presence gate: is `names` actually part of THIS resolved suite
-            // (`names` above — whatever `--generators` selected; there is no default)?
-            // Computed the one way GeneratorRegistry.IncludesNames defines, so `gen` and
-            // `verify --codegen` (VerifyCommand.RunCodegenDrift) cannot independently
-            // drift on the answer.
-            IncludeNames = GeneratorRegistry.IncludesNames(names),
-        };
-        CodegenRunner.RunResult result;
-        try
-        {
-            result = CodegenRunner.Run(config, load.Root, generators);
-        }
-        catch (RenderException ex)
-        {
-            // A bad template ref / wrong --template-root surfaces as a clean error, not a stack trace.
-            return new Outcome([$"template render failed: {ex.Message}"], null);
-        }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-        {
-            // An output-pattern error (unknown placeholder, or {name}/{Name} under a
-            // perPackage/perModel scope) or a duplicate output-path collision surfaces
-            // lazily during the walk — a clean error, not a stack trace.
-            return new Outcome([$"codegen failed: {ex.Message}"], null);
-        }
-        return new Outcome(loadErrors, result);
+        // Build-config + CodegenRunner.Run + hash-manifest / overwrite-policy / merge, and
+        // the RenderException / ArgumentException-to-clean-error translation, all live in
+        // ONE place now (ADR-0034 Amendment 3 / the eject design doc's C# section):
+        // MetaObjects.Codegen.CodegenCli.RunGen. It is the exact pipeline an ejected
+        // `codegen/Program.cs` calls too, with its own compile-time-bound generator list
+        // in place of the name-resolved one built above — one implementation, not two.
+        // `names` resolution (GeneratorRegistry, above) stays here: selecting BY STABLE
+        // NAME is a CLI-only concern an ejected project has no use for.
+        var apiOutcome = MetaObjects.Codegen.CodegenCli.RunGen(
+            load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline);
+        return new Outcome(apiOutcome.LoadErrors, apiOutcome.Result);
     }
 
     /// <summary>
     /// The heading `dotnet meta gen --list` prints above the entries. ADR-0034 Amendment 3:
-    /// generators are reference helpers, and this port has no eject yet, so they are preview.
+    /// generators are reference helpers you own with `dotnet meta eject` — mirrors the
+    /// Python port's header now that this port has eject too.
     /// </summary>
     public const string ListHeader =
-        "available generators — reference helpers, preview in this port: there is no\n" +
-        "`dotnet meta eject` yet, so a generator cannot be copied into your repo and owned here.\n" +
-        "What MetaObjects guarantees (verify, render) is not a generator and is not listed.\n" +
+        "Reference generators — each is a helper, not a guarantee: `dotnet meta eject <name>`\n" +
+        "copies it into codegen/generators/ and the copy is yours to change. What MetaObjects\n" +
+        "guarantees (verify, render) is not a generator and is not listed.\n" +
         "Select with --generators <name,...>:";
 
     /// <summary>
     /// The lines `dotnet meta gen --list` prints: one `&lt;stable-name&gt; — &lt;description&gt;`
-    /// per registered generator, native first. Pure (no console I/O) for testing.
+    /// per registered generator, native first, marked `[owned — identical]` / `[owned —
+    /// DIFFERS: N behind, M of your own]` when <paramref name="cwd"/> already has an
+    /// ejected copy (<see cref="OwnedCopy.Status"/>). Pure (no console I/O) for testing.
     /// </summary>
-    public static IReadOnlyList<string> ListLines() =>
+    public static IReadOnlyList<string> ListLines(string cwd) =>
         GeneratorRegistry.List()
-            .Select(e => $"  {e.Name} — {e.Description}" + (e.Note is not null ? $" [{e.Note}]" : ""))
+            .Select(e =>
+            {
+                var owned = OwnedCopy.Status(cwd, e);
+                var ownedMark = owned is not null ? $" [owned — {owned}]" : "";
+                return $"  {e.Name} — {e.Description}" + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark;
+            })
             .ToList();
 }

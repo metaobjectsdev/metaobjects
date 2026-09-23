@@ -31,7 +31,10 @@ using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
-internal static class ExtractDelegateEmitter
+// Eject (ADR-0034 Amendment 3): not itself ejectable, but ExtractorGenerator /
+// OutputParserGenerator (which ARE) call into it, so it — and the members below that
+// used to be internal-only — must be public API for an ejected copy to resolve them.
+public static class ExtractDelegateEmitter
 {
     // =========================================================================
     // VO / field discovery (object-before-isArray order — the cross-port fix)
@@ -44,7 +47,7 @@ internal static class ExtractDelegateEmitter
     /// a bare-tail match binds WHICHEVER same-named object happens to load first, regardless of
     /// which package <paramref name="name"/> actually points at).
     /// </summary>
-    internal static MetaData? FindObject(MetaData root, string name, string referrerPkg) =>
+    public static MetaData? FindObject(MetaData root, string name, string referrerPkg) =>
         global::MetaObjects.NamingRefs.ResolveObjectRef(root, name, referrerPkg);
 
     /// <summary>
@@ -54,7 +57,7 @@ internal static class ExtractDelegateEmitter
     /// from an abstract VO declared in a different package). Shared with
     /// <see cref="ExtractorGenerator"/> (the extract tier walks the same VO graph).
     /// </summary>
-    internal static MetaData? RefVo(MetaData field, MetaData root)
+    public static MetaData? RefVo(MetaData field, MetaData root)
     {
         // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
         if (field.Attr(FIELD_ATTR_OBJECT_REF) is not string objectRef) return null;
@@ -70,7 +73,7 @@ internal static class ExtractDelegateEmitter
     /// IsArray (the object-before-isArray order) so an array-of-objects maps to nested mirrors,
     /// not a string list.
     /// </summary>
-    internal static bool IsObjectField(MetaData field) => field.SubType == FIELD_SUBTYPE_OBJECT;
+    public static bool IsObjectField(MetaData field) => field.SubType == FIELD_SUBTYPE_OBJECT;
 
     /// <summary>The extracted-mirror record name for a value object: <c>&lt;TypeName&gt;Extracted</c>,
     /// where <c>TypeName</c> is the value object's own emitted name (ADR-0056 — the mirror is keyed

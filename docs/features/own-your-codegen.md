@@ -17,11 +17,11 @@ there; your copy is yours.
 1. **You own the invocation** — codegen runs through your own build, on your terms,
    in every port.
 2. **You own the templates** — `meta eject <name>...` copies the reference generators
-   *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **TypeScript,
-   Python and the JVM can eject today** — see [Python](#python-metaobjects-eject) and
-   [Java and Kotlin](#java-and-kotlin-mvn-metaobjectseject) below. C# gets an eject command of
-   its own; until it does, its generators are labelled **preview**, and customization
-   there is limited to the declarative template-codegen surface (`--template-spec` /
+   *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **Every port
+   can eject** — see [Python](#python-metaobjects-eject),
+   [Java and Kotlin](#java-and-kotlin-mvn-metaobjectseject) and
+   [C#](#c-dotnet-meta-eject) below. Before eject existed outside TypeScript, customization
+   there was limited to the declarative template-codegen surface (`--template-spec` /
    Mustache) and choosing which generators run. (ADR-0035 §3 once ruled this split
    intentional; Amendment 3 supersedes that, because subclassing and selection do not let
    an adopter own a generator's emit logic.)
@@ -392,4 +392,27 @@ or `DIFFERS: N behind, M of your own`.
 do not say which. Every Kotlin generator is ejectable. In Java, `entity`, `extractor` and
 `template` are not: `entity` shares internal writer classes with `extractor`, and
 `template` is the Mustache primitive, which has no emit logic of its own to own.
+
+## C#: `dotnet meta eject`
+
+```bash
+dotnet meta eject entity routes     # copies into codegen/generators/, scaffolds codegen/ once
+dotnet meta gen --list              # the catalog, with owned copies marked
+```
+
+The .NET tool ships compiled, so there is no generator source on disk to copy. Each
+ejectable generator's `.cs` file ships embedded in `MetaObjects.Codegen`, and a test keeps it
+byte-identical to the file the package compiles. Eject writes it to
+`codegen/generators/<Name>Generator.cs`, renaming its namespace to `Codegen.Generators` and
+adding the `using` lines that rename needs; nothing else changes.
+
+On first use eject also writes `codegen/Codegen.csproj`, a console project referencing
+`MetaObjects.Codegen` at the tool's version, and `codegen/Program.cs`, which lists your
+generators with `new` and calls the public runner. After that, both files are yours: eject
+never touches them again, even with `--force`, and prints what to add instead. Once
+`codegen/Codegen.csproj` exists, `dotnet meta gen` and `dotnet meta verify --codegen` hand
+off to `dotnet run --project codegen` with the same arguments, so your owned generators
+run everywhere the tool did. Eject never overwrites a copy without `--force`, and
+`dotnet meta gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
+own`. The `template` primitive is not ejectable; it has no emit logic of its own.
 

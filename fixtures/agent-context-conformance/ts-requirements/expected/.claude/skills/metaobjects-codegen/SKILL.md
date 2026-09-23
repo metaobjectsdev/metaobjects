@@ -17,8 +17,8 @@ metamodel, loader, `migrate`, `verify`, prompt render — is what MetaObjects gu
 A generator is a starting point that compiles and passes its reference fixtures; the
 adopter copies it with `meta eject` and owns the copy. When a generated file is wrong,
 fix the adopter's own generator — do not hand-edit around it, and do not treat it as a
-broken core guarantee. TypeScript (`meta eject`), Python (`metaobjects eject`) and the JVM
-(`mvn metaobjects:eject`) can eject today; in C# the generators are **preview** until it can.
+broken core guarantee. Every port can eject: `meta eject` (TypeScript), `metaobjects eject` (Python),
+`mvn metaobjects:eject` (Java/Kotlin) and `dotnet meta eject` (C#).
 
 This skill is the port-agnostic procedure. The exact config file, generator names,
 and command for *this* project's server language live in a reference fragment

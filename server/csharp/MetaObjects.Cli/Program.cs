@@ -31,6 +31,9 @@ if (args.Length == 0)
         "                                                     emit the generated C# SDK api reference\n" +
         "                                                     (the api/csharp surface: one page per\n" +
         "                                                     entity + template, README, AGENT-API)\n" +
+        "    eject <name>... [--force] [--root <dir>]        copy a reference generator into\n" +
+        "                                                     codegen/generators/ to own (ADR-0034);\n" +
+        "                                                     see `dotnet meta gen --list`\n" +
         "    agent-docs                                           see `npx meta agent-docs`");
     return 2;
 }
@@ -40,6 +43,7 @@ return args[0] switch
     "gen" => RunGen(args[1..]),
     "verify" => RunVerify(args[1..]),
     "docs" => RunDocs(args[1..]),
+    "eject" => RunEject(args[1..]),
     "agent-docs" => AgentDocsRedirect(),
     _ => Unknown(args[0]),
 };
@@ -108,7 +112,7 @@ static int RunGen(string[] rest)
     if (list)
     {
         Console.WriteLine(GenCommand.ListHeader);
-        foreach (var line in GenCommand.ListLines()) Console.WriteLine(line);
+        foreach (var line in GenCommand.ListLines(Directory.GetCurrentDirectory())) Console.WriteLine(line);
         return 0;
     }
 
@@ -148,6 +152,12 @@ static int RunGen(string[] rest)
     var projectRoot = metadataDir is not null
         ? GenCommand.ProjectRootFor(metadataDir)
         : Directory.GetCurrentDirectory();
+
+    // ADR-0034 Amendment 3 hand-off: once `dotnet meta eject` has scaffolded
+    // codegen/Codegen.csproj, THAT project's generator list — not the packaged
+    // registry — is authoritative. Forward the exact args this command received.
+    if (CodegenHandoff.TryRun(projectRoot, ["gen", .. rest], out var handoffExit))
+        return handoffExit;
 
     // FR-043 — `resolvedMeta.Libraries` is threaded into whichever load path ran
     // (ladder or explicit <metadataDir>; see ResolveMetadataDirOrExit), so both
@@ -245,6 +255,34 @@ static int RunDocs(string[] rest)
     foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
     Console.WriteLine($"dotnet meta docs: {outcome.WrittenPaths.Count} api page(s) written");
     return 0;
+}
+
+// `dotnet meta eject <name>...` — ADR-0034 Amendment 3. Parses --force / --root and
+// delegates to EjectCommand.Run (pure logic); prints its report and returns its exit
+// code. Deliberately does NOT run the metadataDir ladder (ResolveMetadataDirOrExit):
+// eject touches only codegen/, never metadata.
+static int RunEject(string[] rest)
+{
+    var names = new List<string>();
+    bool force = false;
+    string? root = null;
+    for (int i = 0; i < rest.Length; i++)
+    {
+        if (rest[i] == "--force") force = true;
+        else if (rest[i] == "--root" && i + 1 < rest.Length) root = rest[++i];
+        else if (!rest[i].StartsWith('-')) names.Add(rest[i]);
+        else
+        {
+            Console.Error.WriteLine($"dotnet meta eject: unknown option \"{rest[i]}\"");
+            Console.Error.WriteLine("usage: dotnet meta eject <name>... [--force] [--root <dir>]");
+            return 2;
+        }
+    }
+
+    var result = EjectCommand.Run(names, root ?? Directory.GetCurrentDirectory(), force);
+    foreach (var line in result.Out) Console.WriteLine(line);
+    foreach (var line in result.Err) Console.Error.WriteLine($"error: {line}");
+    return result.ExitCode;
 }
 
 // The metadata-location ladder's rungs 3-4 (source-resolution design doc §3):
@@ -501,6 +539,25 @@ static int RunVerify(string[] rest)
     var generators = generatorsCsv
         ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    // ADR-0034 Amendment 3 hand-off, scoped to JUST the --codegen gate: once
+    // codegen/Codegen.csproj exists, THAT project's generator list is authoritative for
+    // codegen drift. --templates / --db are unaffected — an ejected project has no
+    // template-drift machinery of its own — so they still run in-process below
+    // (opts.Codegen is cleared only when the hand-off actually ran; a missing --out
+    // falls through to VerifyCommand's own "no --out" usage message unchanged).
+    var codegenHandedOff = false;
+    var codegenHandoffExit = 0;
+    if (codegen && outDir is not null)
+    {
+        var projectRoot = metadataDir is not null
+            ? GenCommand.ProjectRootFor(metadataDir)
+            : Directory.GetCurrentDirectory();
+        List<string> codegenArgs = ["verify", "--codegen", metadataDir ?? resolvedMeta.Directory, "--out", outDir];
+        if (nsExplicit) codegenArgs.AddRange(["--namespace", ns]);
+        if (columnNamingRaw is not null) codegenArgs.AddRange(["--column-naming", columnNamingRaw]);
+        codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
+    }
+
     var opts = new VerifyCommand.Options
     {
         MetadataDir = resolvedMeta.Directory,
@@ -518,7 +575,7 @@ static int RunVerify(string[] rest)
         Generators = generators,
         TemplateRoot = templateRoot,
         Templates = templates,
-        Codegen = codegen,
+        Codegen = codegen && !codegenHandedOff,
         Db = db,
         // #96 / ADR-0023: verify is strict-by-default; --lax restores the legacy load.
         Strict = !lax,
@@ -571,7 +628,10 @@ static int RunVerify(string[] rest)
     if (result.DbRejectionMessage is not null)
         Console.Error.WriteLine($"  {result.DbRejectionMessage}");
 
-    return result.ExitCode;
+    // The handed-off codegen gate already printed its own verdict (inherited console);
+    // fold its exit code into the aggregate the same way every other subverb does — max,
+    // non-zero on any drift.
+    return codegenHandedOff ? Math.Max(result.ExitCode, codegenHandoffExit) : result.ExitCode;
 }
 
 // See the doc comment on ResolveMetadataDirOrExit above.

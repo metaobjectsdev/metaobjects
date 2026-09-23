@@ -91,6 +91,15 @@ public sealed record GeneratorRegistryEntry
     public string? Options { get; init; }
     /// <summary>Optional note — e.g. pointing neutral entries at their door.</summary>
     public string? Note { get; init; }
+    /// <summary>
+    /// The <c>Generators/&lt;file&gt;</c> source file <c>dotnet meta eject</c> copies for
+    /// this entry (ADR-0034 Amendment 3) — also its embedded-resource file name (see
+    /// <c>MetaObjects.Codegen.csproj</c>'s <c>EmbeddedResource</c> item group) and the
+    /// name the copy is written under in the adopter's <c>codegen/generators/</c>.
+    /// <c>null</c> = not ejectable. Only the <c>template</c> primitive has no source of
+    /// its own to own — every other Native entry names its file here.
+    /// </summary>
+    public string? SourceFileName { get; init; }
 }
 
 /// <summary>
@@ -128,6 +137,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Model,
                 Factory = _ => new EntityGenerator(),
+                SourceFileName = "EntityGenerator.cs",
             },
             ["db-context"] = new()
             {
@@ -136,6 +146,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Persistence,
                 Factory = _ => new DbContextGenerator(),
+                SourceFileName = "DbContextGenerator.cs",
             },
             ["routes"] = new()
             {
@@ -144,6 +155,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Api,
                 Factory = _ => new RoutesGenerator(),
+                SourceFileName = "RoutesGenerator.cs",
             },
             ["output-parser"] = new()
             {
@@ -153,6 +165,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new OutputParserGenerator(),
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
+                SourceFileName = "OutputParserGenerator.cs",
             },
             ["extractor"] = new()
             {
@@ -162,6 +175,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new ExtractorGenerator(),
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
+                SourceFileName = "ExtractorGenerator.cs",
             },
             ["output-prompt"] = new()
             {
@@ -170,6 +184,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new OutputPromptGenerator(),
+                SourceFileName = "OutputPromptGenerator.cs",
             },
             ["render-helper"] = new()
             {
@@ -180,6 +195,7 @@ public static class GeneratorRegistry
                 Factory = RenderHelper,
                 Options = "template-root (required when selected)",
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
+                SourceFileName = "RenderHelperGenerator.cs",
             },
             ["filter-allowlist"] = new()
             {
@@ -188,6 +204,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Api,
                 Factory = _ => new FilterAllowlistGenerator(),
+                SourceFileName = "FilterAllowlistGenerator.cs",
             },
             ["names"] = new()
             {
@@ -196,6 +213,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Model,
                 Factory = _ => new NamesGenerator(),
+                SourceFileName = "NamesGenerator.cs",
             },
             ["template"] = new()
             {
@@ -216,6 +234,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new CallableGenerator(),
+                SourceFileName = "CallableGenerator.cs",
             },
         };
 

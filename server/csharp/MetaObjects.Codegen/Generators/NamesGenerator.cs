@@ -81,7 +81,7 @@ public sealed class NamesGenerator : PerEntityGenerator
     // ctx.Config.ColumnNamingStrategy. The divergence refusal is not this generator's to
     // own and never was — it lives in MetaObjects.Meta.SourceResolution, which every
     // caller that resolves a physical name goes through, codegen and runtime alike.
-    protected override bool Filter(MetaObject entity) => CSharpNaming.HasPrimarySource(entity);
+    public override bool Filter(MetaObject entity) => CSharpNaming.HasPrimarySource(entity);
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx) =>
         Render(entity, ctx, fragment: false)

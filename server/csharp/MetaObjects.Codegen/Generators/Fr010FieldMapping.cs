@@ -16,7 +16,10 @@ using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
-internal static class Fr010FieldMapping
+// Eject (ADR-0034 Amendment 3): this class itself is NOT ejectable — it is a shared
+// helper the FR-010 emitters call — but ExtractorGenerator/OutputParserGenerator ARE,
+// so a copy compiled into an adopter's own assembly needs to reach it as public API.
+public static class Fr010FieldMapping
 {
     /// <summary>The field children of a payload value-object, in declaration order.</summary>
     public static IEnumerable<MetaData> Fields(MetaData vo) =>

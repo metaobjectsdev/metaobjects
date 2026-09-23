@@ -33,7 +33,7 @@ public class CallableGenerator : PerEntityGenerator
     public override string Name => "callable-generator";
 
     /// <summary>Only entities whose primary source is a callable kind (storedProc / tableFunction).</summary>
-    protected override bool Filter(MetaObject entity) => CallableSource(entity) is not null;
+    public override bool Filter(MetaObject entity) => CallableSource(entity) is not null;
 
     // The callable source = the first OWN source whose effective kind is callable. A
     // callable entity is a read-only projection (no writable table), so the source is

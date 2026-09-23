@@ -282,8 +282,17 @@ public abstract class PerEntityGenerator : IGenerator
 {
     public abstract string Name { get; }
 
-    /// <summary>Per-entity opt-in; defaults to all entities.</summary>
-    protected virtual bool Filter(MetaObject entity) => true;
+    /// <summary>
+    /// Per-entity opt-in; defaults to all entities.
+    ///
+    /// Public (ADR-0034 Amendment 3 eject): an owned copy of one <see
+    /// cref="PerEntityGenerator"/> subclass may want to reuse ANOTHER's applicability
+    /// predicate (e.g. a customized routes generator asking "would filter-allowlist emit
+    /// for this entity?") rather than re-deriving it. C# requires an override's
+    /// accessibility to match its base exactly, so every subclass override below is
+    /// public too.
+    /// </summary>
+    public virtual bool Filter(MetaObject entity) => true;
 
     protected abstract EmittedFile GenerateOne(MetaObject entity, GenContext ctx);
 

@@ -28,7 +28,7 @@ public class FilterAllowlistGenerator : PerEntityGenerator
 {
     public override string Name => "filter-allowlist-generator";
 
-    protected override bool Filter(MetaObject entity) => AppliesTo(entity);
+    public override bool Filter(MetaObject entity) => AppliesTo(entity);
 
     /// <summary>
     /// True iff this entity gets a generated filter allowlist: any persisted,
@@ -144,7 +144,12 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     /// (<c>@intValueMap</c>, design D5) persists as an INTEGER column, so <c>like</c> —
     /// a substring match — is dropped.
     /// </para>
+    /// <para>
+    /// Eject (ADR-0034 Amendment 3): public so an owned copy of another generator can
+    /// derive the same per-field operator set this one emits into the allowlist, rather
+    /// than re-deriving it against <c>QueryConstants</c> directly.
+    /// </para>
     /// </summary>
-    internal static IReadOnlyList<string> OpsForField(MetaField field) =>
+    public static IReadOnlyList<string> OpsForField(MetaField field) =>
         MetaObjects.Core.Query.QueryConstants.OpsForField(field);
 }

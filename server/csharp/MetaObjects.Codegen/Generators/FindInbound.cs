@@ -31,10 +31,16 @@ namespace MetaObjects.Codegen.Generators;
 /// The syntax of the REPLY (ADR-0053) — never the template's <c>@format</c>, which is the syntax of
 /// the rendered prompt BODY. The two genuinely differ.
 /// </param>
-internal readonly record struct InboundShape(MetaData Vo, string Ref, string Format);
+public readonly record struct InboundShape(MetaData Vo, string Ref, string Format);
 
-/// <summary>The single place the ADR-0052 "which templates are inbound" rule lives.</summary>
-internal static class FindInbound
+/// <summary>
+/// The single place the ADR-0052 "which templates are inbound" rule lives.
+///
+/// Eject (ADR-0034 Amendment 3): not itself ejectable, but ExtractorGenerator /
+/// OutputParserGenerator / OutputPromptGenerator ARE, and each calls into this — so it
+/// (and <see cref="InboundShape"/>, its return shape) must be public API.
+/// </summary>
+public static class FindInbound
 {
     /// <summary>
     /// Every <c>template.prompt</c> that declares a response shape, ordinal by name.
