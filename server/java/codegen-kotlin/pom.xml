@@ -206,6 +206,50 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire.plugin.version}</version>
       </plugin>
+      <!-- `mvn metaobjects:eject` (FR — eject in every port, JVM section) ships the
+           verbatim source of every ejectable generator inside the jar that owns it, as a
+           classpath resource under META-INF/metaobjects/reference/kotlin/. Copied at BUILD
+           TIME from the same src/main/kotlin files kotlinc just compiled — never a second,
+           hand-maintained copy — so there is nothing to drift: the resource IS the source,
+           one file, one owner. See
+           com.metaobjects.generator.kotlin.GeneratorRegistry.kt's EJECT_RESOURCE_ROOT. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>ship-eject-reference-source</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/kotlin</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>src/main/kotlin/com/metaobjects/generator/kotlin</directory>
+                  <includes>
+                    <include>KotlinEntityGenerator.kt</include>
+                    <include>KotlinSpringControllerGenerator.kt</include>
+                    <include>KotlinRepositoryGenerator.kt</include>
+                    <include>KotlinOutputParserGenerator.kt</include>
+                    <include>KotlinOutputPromptGenerator.kt</include>
+                    <include>KotlinRenderHelperGenerator.kt</include>
+                    <include>KotlinExtractorGenerator.kt</include>
+                    <include>KotlinFilterAllowlistGenerator.kt</include>
+                    <include>KotlinNamesGenerator.kt</include>
+                    <include>KotlinExposedTableGenerator.kt</include>
+                    <include>KotlinRelationsGenerator.kt</include>
+                    <include>KotlinSpringConfigGenerator.kt</include>
+                    <include>KotlinStoredProcGenerator.kt</include>
+                    <include>KotlinValidatorGenerator.kt</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.jetbrains.dokka</groupId>
         <artifactId>dokka-maven-plugin</artifactId>

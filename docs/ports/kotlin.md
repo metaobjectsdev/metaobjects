@@ -151,6 +151,8 @@ Maven wiring:
 </plugin>
 ```
 
+**Own a generator.** `mvn metaobjects:eject -Dnames=<name,...>` copies a reference generator into a `codegen/` Maven module under your own package, and prints the module, dependency and `<classname>` to wire. See [Own your codegen → Java and Kotlin](../features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject).
+
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
 The 15 generators above are a starting point, not the ceiling. When you need a shape

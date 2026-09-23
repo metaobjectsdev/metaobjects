@@ -19,7 +19,7 @@ import com.squareup.kotlinpoet.ClassName
  * enum's declaring metadata package via a package→namespace map + a single fallback, both
  * generator args.
  */
-internal object Fr019SharedEnum {
+object Fr019SharedEnum {
 
     /** Per-port config for resolving a `@provided` enum's Kotlin namespace. Generator args only. */
     data class ProvidedEnumConfig(val fallbackNamespace: String?, val packageNamespaces: Map<String, String>) {

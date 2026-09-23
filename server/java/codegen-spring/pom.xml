@@ -127,6 +127,51 @@
 
     <build>
         <plugins>
+            <!-- `mvn metaobjects:eject` (FR — eject in every port, JVM section) ships the
+                 verbatim source of every ejectable generator inside the jar that owns it,
+                 as a classpath resource under META-INF/metaobjects/reference/java/. Copied
+                 at BUILD TIME from the same src/main/java files the compiler just compiled
+                 — never a second, hand-maintained copy — so there is nothing to drift: the
+                 resource IS the source, one file, one owner. See
+                 com.metaobjects.generator.GeneratorRegistry.EJECT_RESOURCE_ROOT.
+
+                 Deliberately excludes "extractor" (ExtractorCodeGenerator — fused into
+                 "entity", not separately wirable) and "template" (TemplateScopeGenerator —
+                 a generic declarative primitive with no emit logic to own); see
+                 GeneratorRegistry's javadoc on those two entries. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ship-eject-reference-source</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/java</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/spring</directory>
+                                    <includes>
+                                        <include>SpringControllerGenerator.java</include>
+                                        <include>SpringOutputParserGenerator.java</include>
+                                        <include>SpringOutputPromptGenerator.java</include>
+                                        <include>SpringRenderHelperGenerator.java</include>
+                                        <include>SpringFilterAllowlistGenerator.java</include>
+                                        <include>SpringRepositoryGenerator.java</include>
+                                        <include>SpringDtoGenerator.java</include>
+                                        <include>SpringValueObjectGenerator.java</include>
+                                        <include>LlmTraceHelperGenerator.java</include>
+                                        <include>SpringNamesGenerator.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

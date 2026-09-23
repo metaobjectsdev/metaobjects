@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
  * enforced at validation time, so the builder admits exactly what the constructor admits. That
  * differs from Kotlin, where a non-null constructor parameter forces {@code requireNotNull}.</p>
  */
-final class SpringRecordBuilder {
+public final class SpringRecordBuilder {
 
     /** The static factory's name, which a component of the same name would collide with. */
     private static final String FACTORY = "builder";
@@ -43,7 +43,7 @@ final class SpringRecordBuilder {
      * @param recordName the record's simple name
      * @param components {@code [type, name]} pairs in canonical-constructor order
      */
-    static String members(String recordName, List<String[]> components) {
+    public static String members(String recordName, List<String[]> components) {
         if (components.isEmpty() || BUILDER_CLASS.equals(recordName)) return "";
         for (String[] c : components) {
             if (FACTORY.equals(c[1]) || MENTIONS_BUILDER_CLASS.matcher(c[0]).find()) return "";

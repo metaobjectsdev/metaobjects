@@ -17,10 +17,10 @@ there; your copy is yours.
 1. **You own the invocation** — codegen runs through your own build, on your terms,
    in every port.
 2. **You own the templates** — `meta eject <name>...` copies the reference generators
-   *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **TypeScript and
-   Python can eject today** — see [Python](#python-metaobjects-eject) below. The JVM and C#
-   ports get an eject command of their own; until they do, their generators are labelled
-   **preview**, and customization
+   *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **TypeScript,
+   Python and the JVM can eject today** — see [Python](#python-metaobjects-eject) and
+   [Java and Kotlin](#java-and-kotlin-mvn-metaobjectseject) below. C# gets an eject command of
+   its own; until it does, its generators are labelled **preview**, and customization
    there is limited to the declarative template-codegen surface (`--template-spec` /
    Mustache) and choosing which generators run. (ADR-0035 §3 once ruled this split
    intentional; Amendment 3 supersedes that, because subclassing and selection do not let
@@ -366,4 +366,30 @@ Eject prints the exact entry for each copy. It never overwrites an existing copy
 can see when an upgrade changed the generator you copied. A copy imports the same
 `metaobjects.codegen.*` modules the packaged one does, and those module paths are the
 surface an owned generator builds on.
+
+## Java and Kotlin: `mvn metaobjects:eject`
+
+```bash
+mvn metaobjects:eject -Dnames=routes,names -Dport=java    # or -Dport=kotlin
+mvn metaobjects:eject -Dlist                               # the catalog, with owned copies marked
+```
+
+The JVM plugin loads generator classes from your project's classpath, but only from
+classes compiled **before** `generate-sources` runs, and the plugin's own copy of a class
+always wins over one with the same name. So eject puts each copy into a separate
+`codegen/` Maven module, under your own package (`-Dpackage`, default
+`<groupId>.codegen`). The package declaration is the only line it changes. On first use
+it writes `codegen/pom.xml`, which depends on `metaobjects-codegen-spring` or
+`metaobjects-codegen-kotlin` at the plugin's version.
+
+Eject never edits an existing pom. It prints the three things to wire: the `<module>`
+entry for your parent pom, a plugin `<dependency>` on the codegen module for the module
+that runs `metaobjects:generate`, and the new `<classname>` for each `<generator>`. It
+never overwrites a copy without `-Dforce`, and `-Dlist` marks each owned copy `identical`
+or `DIFFERS: N behind, M of your own`.
+
+`-Dport` is needed only when a name exists in both ports and your project's dependencies
+do not say which. Every Kotlin generator is ejectable. In Java, `entity`, `extractor` and
+`template` are not: `entity` shares internal writer classes with `extractor`, and
+`template` is the Mustache primitive, which has no emit logic of its own to own.
 

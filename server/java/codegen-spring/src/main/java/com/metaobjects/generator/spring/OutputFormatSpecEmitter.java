@@ -44,7 +44,7 @@ import java.util.Properties;
  * <p>This class is package-private; the Spring prompt-fragment generator will delegate here.
  * Isolating this logic makes it unit-testable without running the full generator pipeline.
  */
-final class OutputFormatSpecEmitter {
+public final class OutputFormatSpecEmitter {
 
     private OutputFormatSpecEmitter() { /* no instances */ }
 
@@ -70,7 +70,7 @@ final class OutputFormatSpecEmitter {
      * @return Java source snippet, e.g.
      *         {@code new OutputFormatSpec(Format.JSON, "Foo", PromptStyle.GUIDE, java.util.List.of(...))}
      */
-    static String specLiteral(MetaObject vo, MetaTemplate template, String rootName) {
+    public static String specLiteral(MetaObject vo, MetaTemplate template, String rootName) {
         String formatEnum = resolveFormatEnum(template);
         String promptStyleEnum = resolvePromptStyleEnum(template);
 

@@ -82,7 +82,20 @@ data class GeneratorInfo(
     val layer: GeneratorLayer,
     /** Constructs the generator with sensible defaults. Calling it must not throw. */
     val factory: () -> MultiFileDirectGeneratorBase<*>,
+    /**
+     * Classpath location of this generator's reference source, as shipped inside this jar
+     * (e.g. `META-INF/metaobjects/reference/kotlin/KotlinEntityGenerator.kt`), or `null`
+     * when not ejectable. `mvn metaobjects:eject` reads this to resolve `-Dnames`. See
+     * `docs/superpowers/specs/2026-09-22-eject-in-every-port-design.md` (JVM section).
+     */
+    val ejectResourcePath: String? = null,
 )
+
+/** Classpath root every ejectable Kotlin generator's reference source is shipped under. */
+const val EJECT_RESOURCE_ROOT: String = "META-INF/metaobjects/reference/kotlin/"
+
+/** `<EJECT_RESOURCE_ROOT>/<simple class name>.kt` for an ejectable generator. */
+private fun ejectPath(simpleClassName: String): String = EJECT_RESOURCE_ROOT + simpleClassName + ".kt"
 
 /**
  * The stable-name generator registry. Registers every Kotlin generator that
@@ -100,6 +113,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.MODEL,
         factory = ::KotlinEntityGenerator,
+        ejectResourcePath = ejectPath("KotlinEntityGenerator"),
     ),
     "routes" to GeneratorInfo(
         name = "routes",
@@ -107,6 +121,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.API,
         factory = ::KotlinSpringControllerGenerator,
+        ejectResourcePath = ejectPath("KotlinSpringControllerGenerator"),
     ),
     "repository" to GeneratorInfo(
         name = "repository",
@@ -114,6 +129,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinRepositoryGenerator,
+        ejectResourcePath = ejectPath("KotlinRepositoryGenerator"),
     ),
     "output-parser" to GeneratorInfo(
         name = "output-parser",
@@ -124,6 +140,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinOutputParserGenerator,
+        ejectResourcePath = ejectPath("KotlinOutputParserGenerator"),
     ),
     "output-prompt" to GeneratorInfo(
         name = "output-prompt",
@@ -131,6 +148,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinOutputPromptGenerator,
+        ejectResourcePath = ejectPath("KotlinOutputPromptGenerator"),
     ),
     "render-helper" to GeneratorInfo(
         name = "render-helper",
@@ -138,6 +156,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinRenderHelperGenerator,
+        ejectResourcePath = ejectPath("KotlinRenderHelperGenerator"),
     ),
     "extractor" to GeneratorInfo(
         name = "extractor",
@@ -145,6 +164,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinExtractorGenerator,
+        ejectResourcePath = ejectPath("KotlinExtractorGenerator"),
     ),
     "filter-allowlist" to GeneratorInfo(
         name = "filter-allowlist",
@@ -152,6 +172,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.API,
         factory = ::KotlinFilterAllowlistGenerator,
+        ejectResourcePath = ejectPath("KotlinFilterAllowlistGenerator"),
     ),
     "names" to GeneratorInfo(
         name = "names",
@@ -159,6 +180,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.MODEL,
         factory = ::KotlinNamesGenerator,
+        ejectResourcePath = ejectPath("KotlinNamesGenerator"),
     ),
     "exposed-table" to GeneratorInfo(
         name = "exposed-table",
@@ -166,6 +188,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinExposedTableGenerator,
+        ejectResourcePath = ejectPath("KotlinExposedTableGenerator"),
     ),
     "relations" to GeneratorInfo(
         name = "relations",
@@ -173,6 +196,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinRelationsGenerator,
+        ejectResourcePath = ejectPath("KotlinRelationsGenerator"),
     ),
     "spring-config" to GeneratorInfo(
         name = "spring-config",
@@ -180,6 +204,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.API,
         factory = ::KotlinSpringConfigGenerator,
+        ejectResourcePath = ejectPath("KotlinSpringConfigGenerator"),
     ),
     "stored-proc" to GeneratorInfo(
         name = "stored-proc",
@@ -187,6 +212,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinStoredProcGenerator,
+        ejectResourcePath = ejectPath("KotlinStoredProcGenerator"),
     ),
     "validator" to GeneratorInfo(
         name = "validator",
@@ -194,6 +220,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.API,
         factory = ::KotlinValidatorGenerator,
+        ejectResourcePath = ejectPath("KotlinValidatorGenerator"),
     ),
 )
 

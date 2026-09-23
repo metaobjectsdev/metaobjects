@@ -18,7 +18,7 @@ import java.nio.file.Path
  * the TS union emitter, and the Python `Literal` emitter — all of which reuse the entity
  * enum naming/members for the payload path.</p>
  */
-internal object KotlinEnumEmitter {
+object KotlinEnumEmitter {
 
     /**
      * Emit a top-level `@Serializable enum class` for an [field.enum] hung off [owner] into

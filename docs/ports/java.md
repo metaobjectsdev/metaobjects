@@ -428,6 +428,9 @@ strategy string to both, by hand (see
 
 ### Authoring your own — two paths
 
+**Own a generator.** `mvn metaobjects:eject -Dnames=<name,...>` copies a reference generator into a `codegen/` Maven module under your own package, and prints the module, dependency and `<classname>` to wire. See [Own your codegen → Java and Kotlin](../features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject).
+
+
 The built-in set above is a starting point, not the ceiling. When you need a shape
 it does not emit, the JVM port gives you **both** authoring paths, and which one to
 reach for is a real decision — see the tradeoff table in

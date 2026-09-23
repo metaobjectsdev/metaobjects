@@ -33,7 +33,7 @@ import java.util.Properties
  *
  * This object is internal; generators delegate here.
  */
-internal object KotlinOutputFormatSpecEmitter {
+object KotlinOutputFormatSpecEmitter {
 
     // -------------------------------------------------------------------------
     // Public API

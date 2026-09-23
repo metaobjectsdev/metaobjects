@@ -263,7 +263,7 @@ public final class SpringTypeMapper {
      * {@code text} DB column). ADR-0039: RESOLVING read ({@code getMetaAttr}) so an abstract
      * {@code field.uri @lenient} inherited via {@code extends} degrades the concrete field too.
      */
-    static boolean isLenientNetField(MetaField<?> field) {
+    public static boolean isLenientNetField(MetaField<?> field) {
         if (!(field instanceof UriField || field instanceof InetField)) return false;
         if (!field.hasMetaAttr(UriField.ATTR_LENIENT)) return false;
         Object raw = field.getMetaAttr(UriField.ATTR_LENIENT).getValue();

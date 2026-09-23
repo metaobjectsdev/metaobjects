@@ -44,7 +44,7 @@ import java.util.Properties
  * <p>The metadata is read off the live [MetaField] (inheritance-aware), so there is no baked
  * snapshot to drift. This object is internal; generators delegate here.
  */
-internal object KotlinExtractSchemaEmitter {
+object KotlinExtractSchemaEmitter {
 
     // -------------------------------------------------------------------------
     // Mirror files
@@ -304,7 +304,7 @@ internal object KotlinExtractSchemaEmitter {
      * for deterministic output. Kotlin's `mapOf` has no arity cap (unlike `java.util.Map.of`).
      * Shared with [KotlinOutputFormatSpecEmitter].
      */
-    internal fun buildMapOfLiteral(props: Properties): String {
+    fun buildMapOfLiteral(props: Properties): String {
         val keys = props.keys.map { it.toString() }.sorted()
         val entries = keys.joinToString(", ") { k ->
             val v = props.getProperty(k)
@@ -318,7 +318,7 @@ internal object KotlinExtractSchemaEmitter {
      * field type is not a known scalar. Matches the same instanceof order as
      * [KotlinTypeMapper.kotlinTypeName]. Shared with [KotlinOutputFormatSpecEmitter].
      */
-    internal fun scalarKind(field: MetaField<*>): String? = when (field) {
+    fun scalarKind(field: MetaField<*>): String? = when (field) {
         is StringField  -> "STRING"
         is IntegerField -> "INT"
         is LongField    -> "LONG"
@@ -333,7 +333,7 @@ internal object KotlinExtractSchemaEmitter {
      * (mirrors [KotlinGenUtil.isRequiredField] and the Java `ExtractSchemaEmitter`).
      * Shared with [KotlinOutputFormatSpecEmitter].
      */
-    internal fun isRequired(field: MetaField<*>): Boolean =
+    fun isRequired(field: MetaField<*>): Boolean =
         field.hasMetaAttr(MetaField.ATTR_REQUIRED)
             && "true".equals(field.getMetaAttr(MetaField.ATTR_REQUIRED).valueAsString, ignoreCase = true)
 
@@ -345,7 +345,7 @@ internal object KotlinExtractSchemaEmitter {
      * would cause an unresolved-reference compile error in the consumer's code.
      * Order: `\` must be first so its own replacement backslash is not re-escaped.
      */
-    internal fun kotlinStringLiteral(s: String): String =
+    fun kotlinStringLiteral(s: String): String =
         s.replace("\\", "\\\\")
          .replace("\"", "\\\"")
          .replace("$", "\\$")
@@ -359,7 +359,7 @@ internal object KotlinExtractSchemaEmitter {
      * `field.map @objectRef` is deliberately NOT a nested object here: it is a keyed map of value
      * objects, which the lenient extract does not populate (see [mirrorPropertyType]).
      */
-    internal fun objectRefValueObject(field: MetaField<*>): MetaObject? {
+    fun objectRefValueObject(field: MetaField<*>): MetaObject? {
         if (field !is ObjectField) return null
         val target = try {
             field.objectRef

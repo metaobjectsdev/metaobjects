@@ -47,9 +47,9 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   that compiles and passes its reference fixtures, which you copy and own. The catalog now
   says so at the top of `meta gen --list`, `dotnet meta gen --list` and `metaobjects gen
   --list`; the README, the docs and the shipped `metaobjects-codegen` skill say so too.
-  TypeScript (`meta eject`) and Python (`metaobjects eject`, new in this release) can eject a
-  generator, so the C#, Java and Kotlin generators are labelled **preview** until those
-  ports gain an eject command. That
+  TypeScript (`meta eject`), Python (`metaobjects eject`) and the JVM (`mvn
+  metaobjects:eject`) can eject a generator — the last two new in this release — so the C#
+  generators are labelled **preview** until C# gains an eject command. That
   supersedes ADR-0035 §3's ruling that owning codegen through build configuration was
   enough. Nothing an existing project runs changes.
 
@@ -247,6 +247,16 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
 
 ### Added
 
+- **Java and Kotlin: `mvn metaobjects:eject -Dnames=<a,b>`** copies reference generators
+  into a `codegen/` Maven module under your own package, since the plugin's own class wins
+  over a same-named one and nothing in the module being generated is compiled yet at
+  `generate-sources`. It writes `codegen/pom.xml` on first use, never edits an existing pom,
+  and prints the `<module>`, plugin dependency and `<classname>` to wire. `-Dlist` prints the
+  catalog with owned copies marked. Every Kotlin generator is ejectable; Java's `entity`,
+  `extractor` and `template` are not. To make every copy compile against published
+  artifacts, `SpringRecordBuilder`, `OutputFormatSpecEmitter`,
+  `SpringTypeMapper.isLenientNetField`, `KotlinEnumEmitter`, `Fr019SharedEnum`,
+  `KotlinExtractSchemaEmitter` and `KotlinOutputFormatSpecEmitter` are now public.
 - **Python: `metaobjects eject <name>...`** copies a reference generator into
   `codegen/generators/` to own and edit. Wire the copy in `generators` (or `--generators`) as
   `module:symbol`, the form `providers` already takes; `gen` and `verify --codegen` then run
@@ -385,6 +395,11 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
   27 of them on the estate above — with no attribute, node or file. It now prints each
   error's message, which names all three.
+- **Maven: `metaobjects:generate` registers its output as a compile source root.** It never
+  did, so `mvn compile` in an adopter module compiled none of the generated classes unless
+  the adopter also wired build-helper-maven-plugin. A generator's output directory is now
+  added as a compile root (a test root under `generate-test-sources`) when the run wrote
+  Java or Kotlin sources into it. Found by an adopter estate.
 - **A missing DB driver says where to install it.** `meta migrate` / `verify --db` printed
   `dialect 'postgres' requires 'pg'; install it: 'npm install pg'`, but the driver must
   resolve from where `@metaobjectsdev/cli` is installed — in a monorepo, the package that

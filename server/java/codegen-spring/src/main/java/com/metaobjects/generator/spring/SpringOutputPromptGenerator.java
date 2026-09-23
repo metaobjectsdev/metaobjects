@@ -1,5 +1,13 @@
 package com.metaobjects.generator.spring;
 
+// Eject note (ADR-0034, JVM eject design): these siblings stay in
+// com.metaobjects.generator.spring when this generator is copied out via
+// `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
+// same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.FindInbound;
+import com.metaobjects.generator.spring.OutputFormatSpecEmitter;
+import com.metaobjects.generator.spring.SpringNaming;
+
 import com.metaobjects.MetaData;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;

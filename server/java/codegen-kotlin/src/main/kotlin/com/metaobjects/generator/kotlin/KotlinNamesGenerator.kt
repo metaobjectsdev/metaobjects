@@ -1,5 +1,13 @@
 package com.metaobjects.generator.kotlin
 
+// Eject note (ADR-0034, JVM eject design): these siblings stay in
+// com.metaobjects.generator.kotlin when this generator is copied out via
+// `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
+// same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.KotlinGenUtil
+import com.metaobjects.generator.kotlin.KotlinNaming
+import com.metaobjects.generator.kotlin.PackageMapping
+
 import com.metaobjects.generator.EmitsPhysicalNameConstants
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
@@ -255,9 +263,14 @@ open class KotlinNamesGenerator :
             // an empty string would read as "declared blank" rather than "undeclared".
             s.schema?.let { out += NameConst("${prefix}SCHEMA", it, path, "sources") }
             // No alias means a @kind carrying no physical-name slot. Omitting keeps a future
-            // @kind from emitting a member holding "null".
-            if (s.alias != null && s.physicalName != null) {
-                out += NameConst("$prefix${KotlinNaming.namesMember(s.alias)}", s.physicalName, path, "sources")
+            // @kind from emitting a member holding "null". Captured into locals rather than
+            // smart-cast on `s.alias`/`s.physicalName` directly: those are Java getters on a
+            // type from another module (metadata/codegen-base), and a cross-module property
+            // is not always safe for the compiler to smart-cast.
+            val alias = s.alias
+            val physicalName = s.physicalName
+            if (alias != null && physicalName != null) {
+                out += NameConst("$prefix${KotlinNaming.namesMember(alias)}", physicalName, path, "sources")
             }
         }
 

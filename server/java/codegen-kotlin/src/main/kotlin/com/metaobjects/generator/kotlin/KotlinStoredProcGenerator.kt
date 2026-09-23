@@ -1,5 +1,14 @@
 package com.metaobjects.generator.kotlin
 
+// Eject note (ADR-0034, JVM eject design): these siblings stay in
+// com.metaobjects.generator.kotlin when this generator is copied out via
+// `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
+// same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.KotlinGenUtil
+import com.metaobjects.generator.kotlin.KotlinNaming
+import com.metaobjects.generator.kotlin.KotlinTypeMapper
+import com.metaobjects.generator.kotlin.PackageMapping
+
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField

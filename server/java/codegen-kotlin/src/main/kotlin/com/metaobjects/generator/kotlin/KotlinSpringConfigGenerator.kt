@@ -1,5 +1,11 @@
 package com.metaobjects.generator.kotlin
 
+// Eject note (ADR-0034, JVM eject design): this sibling stays in
+// com.metaobjects.generator.kotlin when this generator is copied out via
+// `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
+// same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.KotlinPoetFileWriter
+
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase

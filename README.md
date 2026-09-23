@@ -145,7 +145,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Metadata dependencies (`dependencies`) | Yes (`meta deps sync`, `path` transport) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
 | React / Angular UI client (browser) | React: **published** (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`), codegen + runtime. Angular 18: **source-only by decision** ([ADR-0048](spec/decisions/ADR-0048-angular-tier-source-only.md)) — `@metaobjectsdev/angular` + `@metaobjectsdev/codegen-ts-angular` build in-repo on their own `0.6.x` line but are deliberately not on npm (`npm i @metaobjectsdev/angular` will 404) until they meet the ADR's promotion bar. Consume them from source. | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
-| Own a generator (`eject`) | Yes (`meta eject`) | Not yet — generators are preview | Not yet — generators are preview | Not yet — generators are preview | Yes (`metaobjects eject`) |
+| Own a generator (`eject`) | Yes (`meta eject`) | Yes (`mvn metaobjects:eject`; `entity` is not ejectable) | Yes (`mvn metaobjects:eject`) | Not yet — generators are preview | Yes (`metaobjects eject`) |
 | Cross-port REST routes for the client (reference generators) | Generated (`routesFile()` → Fastify) | Generated (`SpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`KotlinSpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Generated (`router_generator` → FastAPI `APIRouter`, incl. filter/sort) |
 
 A "Yes" means the feature is covered by the shared conformance corpora at
@@ -175,9 +175,9 @@ MetaObjects has two layers, and only the first is a promise
 | **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
 
 The test is mechanical: what the tool guarantees is core; what it writes into your repo
-is a helper. Owning a generator needs an eject command, which ships in TypeScript (`meta eject`) and
-Python (`metaobjects eject`) today. In Java, Kotlin and C# the generators are **preview**
-until those ports can eject.
+is a helper. Owning a generator needs an eject command, which ships in TypeScript (`meta eject`),
+Python (`metaobjects eject`) and the JVM (`mvn metaobjects:eject`) today. In C# the
+generators are **preview** until `dotnet meta eject` ships.
 
 ## Six pillars
 
@@ -190,8 +190,8 @@ complete in all five ports; MCP exposure of declared prompts/tools is the one re
 roadmap item. The fifth has been dogfooded on maintainer-owned projects only, and the
 sixth ships two libraries at their own stability labels:
 
-1. **Codegen** *(reference generators you own: ejectable in TypeScript and Python; preview in
-   Java, Kotlin and C# until they can eject)* — starting points that emit per-language
+1. **Codegen** *(reference generators you own: ejectable in TypeScript, Python, Java and Kotlin;
+   preview in C# until it can eject)* — starting points that emit per-language
    code (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java,
    `data class` + Exposed for Kotlin, EF Core record + ASP.NET routes for C#, Pydantic +
    FastAPI for Python). Copy the ones you need, change them, and regenerate with

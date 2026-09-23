@@ -51,7 +51,7 @@ The pillars are views on the same metadata, not separate products, and each carr
 
 ### Codegen
 
-Reference generators you own: ejectable in TypeScript and Python; preview in Java, Kotlin and C# until those ports can eject. They emit per-language code from a single metadata model.
+Reference generators you own: ejectable in TypeScript, Python, Java and Kotlin; preview in C# until it can eject. They emit per-language code from a single metadata model.
 
 **What is guaranteed, and what is yours** (ADR-0034 Amendment 3). The core is the promise: the metamodel, loader, canonical format and registry; runtime metadata access; schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser. Every generator that writes application code into the repo is a reference helper — a starting point that compiles and passes its reference fixtures, which the adopter copies with `meta eject` and owns. A defect in the core is a MetaObjects bug; a defect in a generator is fixed in the reference, and the adopter's copy is theirs. The test is mechanical: what the tool guarantees is core; what it writes into your repo is a helper.
 
