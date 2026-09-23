@@ -385,6 +385,11 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
   27 of them on the estate above — with no attribute, node or file. It now prints each
   error's message, which names all three.
+- **`meta export` loads the libraries a project opts into.** It loaded the resolved file
+  list alone, so under `export` every reference into an opted-in library (for example
+  `metaobjects::iam::User`) failed with "does not resolve to an object" while `gen`,
+  `verify` and `migrate` loaded the same model clean. It now takes its load options from
+  the same helper every other command uses. Found by an adopter estate.
 - **`meta migrate`: a table rename no longer re-creates the indexes and constraints the
   table already carries.** With `--on-ambiguous rename`, the create-table half of the
   drop/create pair became `ALTER TABLE … RENAME TO`, but its `CREATE INDEX` and

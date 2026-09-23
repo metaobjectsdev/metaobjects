@@ -5,6 +5,7 @@ import { log } from "../lib/log.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { TypeRegistry, registerCoreTypes, MetaDataLoader, canonicalSerialize } from "@metaobjectsdev/metadata";
 import { registerForgeTypes, resolveCollection } from "@metaobjectsdev/sdk";
+import { collectionLoadOptions } from "../lib/collection-load-options.js";
 
 export async function exportCommand(args: string[], cwd: string): Promise<number> {
   let flags;
@@ -29,9 +30,9 @@ export async function exportCommand(args: string[], cwd: string): Promise<number
   // resolveCollection failure (no declared sources, no default metaobjects/,
   // or a malformed config.json) is the same class of problem and is reported
   // the same way, to keep that contract exactly as it was.
-  let files: readonly string[];
+  let collection: Awaited<ReturnType<typeof resolveCollection>>;
   try {
-    files = (await resolveCollection(projectRoot)).files;
+    collection = await resolveCollection(projectRoot);
   } catch (err) {
     log.error((err as Error).message);
     return 1;
@@ -41,9 +42,21 @@ export async function exportCommand(args: string[], cwd: string): Promise<number
   // `resolveCollection` already resolved the file SET (declared `sources`, or the
   // `metaobjects/` default), so load that list directly via the same loader +
   // serializer `loadAndExportJson` composes, rather than re-deriving a directory.
-  const loadResult = await new MetaDataLoader({ registry }).load(
-    files.map((f) => new FileSource(f)),
-  );
+  //
+  // Everything the collection contributes to a load comes from `collectionLoadOptions`,
+  // the helper every other command uses: `export` loaded `files` alone, so the libraries
+  // a project opts into never loaded here and every reference into one failed to resolve.
+  const load = collectionLoadOptions(collection);
+  const libSources = load.libraries.length > 0
+    ? (await import("@metaobjectsdev/metadata/library")).librarySources([...load.libraries])
+    : [];
+  const loadResult = await new MetaDataLoader({ registry }).load([
+    ...libSources,
+    ...load.files.map((f) => {
+      const id = load.fileIds.get(f);
+      return id === undefined ? new FileSource(f) : new FileSource(f, { id });
+    }),
+  ]);
   const result = {
     json: canonicalSerialize(loadResult.root),
     errors: loadResult.errors,
