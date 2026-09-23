@@ -230,6 +230,10 @@ public class MetaDataEjectMojo extends AbstractMojo {
         return true;
     }
 
+    /** The Java level the MetaObjects JVM artifacts are built for (the reactor's
+     *  {@code java.version}); an ejected copy compiles against them. */
+    static final String JAVA_RELEASE = "21";
+
     private String codegenPom(String artifactId, Set<EjectSupport.Port> ports) {
         String version = pluginVersion();
         StringBuilder deps = new StringBuilder();
@@ -254,6 +258,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
               + "      <plugin>\n"
               + "        <groupId>org.jetbrains.kotlin</groupId>\n"
               + "        <artifactId>kotlin-maven-plugin</artifactId>\n"
+              + "        <version>" + kotlin.KotlinVersion.CURRENT + "</version>\n"
               + "        <executions>\n"
               + "          <execution>\n"
               + "            <id>compile</id>\n"
@@ -275,6 +280,15 @@ public class MetaDataEjectMojo extends AbstractMojo {
             + "  <artifactId>" + escape(artifactId) + "</artifactId>\n"
             + "  <version>" + escape(project.getVersion()) + "</version>\n"
             + "  <packaging>jar</packaging>\n"
+            // This module usually builds standalone, so nothing inherits a Java level. The
+            // copies use Java 16+ syntax and compile against Java 21 jars; Maven's own
+            // default is -source 8, and Kotlin's default JVM target is older still.
+            + "  <properties>\n"
+            + "    <maven.compiler.release>" + JAVA_RELEASE + "</maven.compiler.release>\n"
+            + (ports.contains(EjectSupport.Port.KOTLIN)
+                ? "    <kotlin.compiler.jvmTarget>" + JAVA_RELEASE + "</kotlin.compiler.jvmTarget>\n"
+                : "")
+            + "  </properties>\n"
             + "  <dependencies>\n"
             + deps
             + "  </dependencies>\n"

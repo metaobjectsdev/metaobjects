@@ -133,6 +133,9 @@ public class MetaDataEjectMojoTest {
         assertTrue(pomText.contains("metaobjects-codegen-spring"));
         assertFalse("a java-only eject must not pull in the kotlin codegen dependency",
                 pomText.contains("metaobjects-codegen-kotlin"));
+        // A standalone module gets Maven's default -source 8, and the ejected copies use
+        // Java 16+ syntax: without a release the unedited copy does not compile.
+        assertTrue(pomText.contains("<maven.compiler.release>21</maven.compiler.release>"));
     }
 
     @Test
@@ -191,6 +194,10 @@ public class MetaDataEjectMojoTest {
         String pomText = Files.readString(pom, StandardCharsets.UTF_8);
         assertTrue(pomText.contains("metaobjects-codegen-kotlin"));
         assertTrue(pomText.contains("kotlin-maven-plugin"));
+        // Outside a parent that manages it, a versionless plugin does not resolve, and
+        // Kotlin's default JVM target is older than the jars the copy compiles against.
+        assertTrue(pomText.contains("<version>" + kotlin.KotlinVersion.CURRENT + "</version>"));
+        assertTrue(pomText.contains("<kotlin.compiler.jvmTarget>21</kotlin.compiler.jvmTarget>"));
     }
 
     @Test
