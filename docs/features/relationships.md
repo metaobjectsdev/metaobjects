@@ -315,6 +315,16 @@ entries stay keyed per declaring entity so routes can mount them per-subtype; on
 cardinality-one entries — which render in the shared relations() block on the base —
 are re-keyed to the base.
 
+**Known limit of the reference generators: an entity navigation for an M:N on a TPH
+subtype.** Every port mounts the traversal route for an M:N declared on a TPH subtype, at
+the same URL (`/<base-plural>/<subtype>/{id}/<relation>`). Only the Python `entity`
+generator also emits a navigation property for it on the generated model; the TypeScript,
+C#, Java and Kotlin entity generators do not, and nothing observable over HTTP differs.
+This is a limit of the reference generators, not a core guarantee ([ADR-0034 Amendment
+3](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md)): if you need the navigation,
+add it to your own ejected copy. (In C#, adding it naively to a subtype of a
+bidirectional junction conflicts with EF Core's TPH relationship model.)
+
 ## Inheriting an M:N relationship through `extends`
 
 An M:N relationship declared on an abstract base is visible on every entity that

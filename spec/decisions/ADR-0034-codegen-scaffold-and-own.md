@@ -197,3 +197,18 @@ generated application code: one URL-naming rule fixed four times, one 409 envelo
 in four ports, TPH × M:N traversal fixed in every port. Every feature times every port
 times every target framework was being promised as core. Decision 4 already said the
 reference is scaffolding; this amendment stops describing it as anything else.
+
+**Rulings made under this amendment (2026-09-22).**
+
+- **Generated REST templates outside TypeScript are frozen.** The C#, Java, Kotlin and
+  Python route/controller generators keep working and keep their quality checks, and
+  defects in them are fixed, but they take no new features. They are not deleted: an
+  adopter estate runs all five, and the api-contract generated lane checks them. New REST
+  surface goes into the TypeScript reference first, and into another port's reference
+  only when an adopter of that port needs it.
+- **Cross-port parity is not required of helpers.** Where reference generators differ in
+  what they emit and nothing observable over the wire differs, the difference is
+  documented as a known limit rather than closed in every port. First case: an entity
+  navigation for an M:N declared on a TPH subtype is emitted by the Python `entity`
+  generator only (`docs/features/relationships.md`).
+
