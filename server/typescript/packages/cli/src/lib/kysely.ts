@@ -1,6 +1,42 @@
 import { Kysely } from "kysely";
 import { BunSqliteDialect, isBun } from "./bun-sqlite-dialect.js";
+import { sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { installCommand } from "./pm-detect.js";
+
+/**
+ * The directory a dynamic `import()` of a DB driver resolves from: the project whose
+ * `node_modules` holds `@metaobjectsdev/cli`. `undefined` when the CLI is not running from
+ * an installed package (a source checkout), where there is no one place to name.
+ */
+export function cliInstallRoot(moduleUrl: string): string | undefined {
+  const path = moduleUrl.startsWith("file:") ? fileURLToPath(moduleUrl) : moduleUrl;
+  const marker = `${sep}node_modules${sep}@metaobjectsdev${sep}`;
+  const i = path.lastIndexOf(marker);
+  return i === -1 ? undefined : path.slice(0, i);
+}
+
+/**
+ * A missing driver says WHERE it must be installed. In a monorepo the package that
+ * depends on the CLI need not be the one that runs the app, and installing the driver in
+ * the wrong one changes nothing.
+ */
+export function missingDriverMessage(
+  dialect: string, pkg: string, root: string | undefined, cmd: string,
+): string {
+  const where = root === undefined
+    ? "where @metaobjectsdev/cli is installed"
+    : `where @metaobjectsdev/cli is installed (${root})`;
+  return `dialect '${dialect}' requires '${pkg}', resolvable from ${where} — in a monorepo, ` +
+    `the package that depends on the CLI, not necessarily the one that runs your app. ` +
+    `Install it there: '${cmd}'`;
+}
+
+async function missingDriver(dialect: string, pkg: string): Promise<Error> {
+  const root = cliInstallRoot(import.meta.url);
+  const cmd = await installCommand(pkg, root ?? process.cwd());
+  return new Error(missingDriverMessage(dialect, pkg, root, cmd));
+}
 
 export type Dialect = "sqlite" | "postgres" | "d1";
 
@@ -81,10 +117,7 @@ export async function buildKyselyFromUrl(
         const mod = await import("@libsql/kysely-libsql");
         LibsqlDialect = mod.LibsqlDialect as unknown as LibsqlDialectCtor;
       } catch {
-        const cmd = await installCommand("@libsql/kysely-libsql", process.cwd());
-        throw new Error(
-          `dialect 'sqlite' requires '@libsql/kysely-libsql'; install it: '${cmd}'`,
-        );
+        throw await missingDriver("sqlite", "@libsql/kysely-libsql");
       }
       sqliteDialect = new LibsqlDialect({ url });
     }
@@ -110,10 +143,7 @@ export async function buildKyselyFromUrl(
     pg = await import("pg") as unknown as PgPoolModule;
     ({ PostgresDialect } = await import("kysely"));
   } catch {
-    const cmd = await installCommand("pg", process.cwd());
-    throw new Error(
-      `dialect 'postgres' requires 'pg'; install it: '${cmd}'`,
-    );
+    throw await missingDriver("postgres", "pg");
   }
   const PoolCtor = pg.Pool ?? pg.default?.Pool;
   if (PoolCtor === undefined) {

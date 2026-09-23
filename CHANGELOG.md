@@ -385,6 +385,12 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
   27 of them on the estate above — with no attribute, node or file. It now prints each
   error's message, which names all three.
+- **A missing DB driver says where to install it.** `meta migrate` / `verify --db` printed
+  `dialect 'postgres' requires 'pg'; install it: 'npm install pg'`, but the driver must
+  resolve from where `@metaobjectsdev/cli` is installed — in a monorepo, the package that
+  depends on the CLI, not necessarily the one that runs the app. The message now names that
+  directory and gives the command to run there, and the migration reference lists the
+  drivers in its install block. Found by an adopter estate.
 - **An invalid `.metaobjects/config.json` now says what is wrong, in words.** A bad entry
   printed Zod's raw union dump — the same issue three times, no file name, and no hint of
   the accepted shape. The error now names the file, gives one line per problem with its

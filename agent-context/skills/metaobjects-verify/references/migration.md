@@ -18,7 +18,14 @@ stays native to the language.
 
 ```bash
 npm install --save-dev @metaobjectsdev/cli @metaobjectsdev/migrate-ts
+npm install --save-dev pg                       # Postgres
+npm install --save-dev @libsql/kysely-libsql    # SQLite under Node (Bun needs nothing)
 ```
+
+Install the driver in the **same package** as `@metaobjectsdev/cli`: the CLI loads it
+from its own install location. In a monorepo that is the package that depends on the CLI,
+not necessarily the one that runs your app. D1 needs no driver here (it goes through
+Wrangler).
 
 You point the tool at the **same database your server connects to** — its
 connection is independent of your runtime tier.
