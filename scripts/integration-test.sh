@@ -60,7 +60,12 @@ run_ts() {
 
 run_csharp() {
   echo "==> C# persistence conformance"
-  dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj || FAIL=1
+  # Each generated-server test boots an ASP.NET host, and every host's config watcher
+  # takes an inotify instance. Run in parallel on a desktop that already holds most of the
+  # per-user limit (128), they fail with "The configured user limit (128) on the number of
+  # inotify instances has been reached". The tests never reload config; poll instead.
+  DOTNET_USE_POLLING_FILE_WATCHER=1 \
+    dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj || FAIL=1
 }
 
 run_java() {
