@@ -50,6 +50,25 @@ export class D1CyclicForeignKeyError extends Error {
   }
 }
 
+/**
+ * Thrown when a D1 FK-cascade rebuild would touch a table that the same migration
+ * renames. The cascade rebuilds under the table's NEW name, while the rename itself
+ * flows through the native path that runs after the cascade — so the rebuild would
+ * read a table that does not exist yet. Refused rather than emitted out of order.
+ */
+export class D1RenamedTableRebuildError extends Error {
+  constructor(public readonly renames: { from: string; to: string }[]) {
+    super(
+      `Cannot rename and rebuild the same table in one migration on Cloudflare D1: ` +
+      renames.map((r) => `"${r.from}" → "${r.to}"`).join(", ") + `.\n\n` +
+      `The table is rebuilt as part of an FK cascade, and ` +
+      `that cascade cannot also carry the rename. Split it into two migrations: first ` +
+      `migrate the rename alone (metadata change: the table name only), then the rest.`,
+    );
+    this.name = "D1RenamedTableRebuildError";
+  }
+}
+
 function formatCycleMessage(cycle: string[]): string {
   const members = cycle.map((n) => `"${n}"`).join(", ");
   return (

@@ -80,3 +80,27 @@ describe("diff — #258 primary-key move detect-and-refuse", () => {
     expect(r.changes.some((c) => c.kind === "drop-column")).toBe(true);
   });
 });
+
+describe("diff — #258 applies to a table renamed in the same migration", () => {
+  const TEXT = { kind: "text" } as const;
+  const cols = (): ColumnDescriptor[] =>
+    [col("id", UUID), col("code", TEXT), col("a", TEXT), col("b", TEXT), col("c", TEXT)];
+  const snap = (name: string, pk: string[]): SchemaSnapshot => ({ tables: [table(name, cols(), pk)], views: [] });
+
+  test("REFUSES a PK move on the renamed table", async () => {
+    await expect(
+      diff({
+        expected: snap("shipment_leg", ["code"]), actual: snap("leg", ["id"]),
+        onAmbiguous: async () => "rename", refusePrimaryKeyChange: true,
+      }),
+    ).rejects.toBeInstanceOf(PrimaryKeyChangeError);
+  });
+
+  test("allows the rename when the PK is unchanged", async () => {
+    const r = await diff({
+      expected: snap("shipment_leg", ["id"]), actual: snap("leg", ["id"]),
+      onAmbiguous: async () => "rename", refusePrimaryKeyChange: true,
+    });
+    expect(r.changes.map((c) => c.kind)).toEqual(["rename-table"]);
+  });
+});

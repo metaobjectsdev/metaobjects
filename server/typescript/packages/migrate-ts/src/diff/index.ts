@@ -3,7 +3,7 @@ import type {
   ViewDescriptor,
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
-  CheckDescriptor,
+  CheckDescriptor, NameChange,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
@@ -231,22 +231,18 @@ export async function diff(
     }
   }
 
+  // Pass 1c: table renames, resolved BEFORE Pass 2. A renamed table is then diffed like
+  // any table present on both sides (diffRenamedTables), and its columns are never
+  // scanned as orphaned drop/add pairs by the column heuristic in Pass 3.
+  await detectTableRenames(changes, args.onAmbiguous);
+  const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect);
+
   // Pass 2: tables in both → compare columns/indexes/FKs
   for (const [id, expectedTable] of expectedTables) {
     const actualTable = actualTables.get(id);
     if (!actualTable) continue;
-    diffTableColumns(expectedTable, actualTable, changes, args.dialect);
-    diffTableIndexes(expectedTable, actualTable, changes);
-    diffTableForeignKeys(expectedTable, actualTable, changes, args.dialect);
-    // CHECK constraints on existing tables are evolved whenever a dialect is
-    // known (postgres: ALTER ADD/DROP CONSTRAINT; sqlite/d1: the emitter routes
-    // the check change through recreate-and-copy — checks are create-time-only
-    // inline there). Requires `actual.checks` to be populated: pg_constraint
-    // introspection, sqlite_master DDL parsing, or the offline snapshot. With
-    // no dialect (legacy positional callers) checks stay un-diffed — those
-    // callers may hold hand-built snapshots with empty check lists, and
-    // diffing them would re-propose every modeled check forever.
-    if (args.dialect !== undefined) diffTableChecks(expectedTable, actualTable, changes, args.dialect);
+    // An FK onto a renamed table follows the rename in the engine — compare it as such.
+    diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect);
   }
 
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
@@ -275,9 +271,7 @@ export async function diff(
   // that is exactly the object a cascade must not destroy silently.
   annotateViewDropDependents(args.actual.views, changes);
 
-  // Pass 3: detect table renames BEFORE column renames — so a renamed table's
-  // columns are not scanned as orphaned drop/add pairs.
-  await detectTableRenames(changes, args.onAmbiguous);
+  // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous);
 
   // Strip the rename-detection side-channel fields before status assignment / return.
@@ -295,8 +289,10 @@ export async function diff(
   // preserved by the engine) is not mistaken for a move. Gated by refusePrimaryKeyChange
   // so only migration generation refuses; the read-only drift/verify path is unchanged.
   if (args.refusePrimaryKeyChange === true) {
+    // A renamed table is checked against its live predecessor (Pass 1c's `predecessors`):
+    // its columns are diffed too.
     for (const [id, expectedTable] of expectedTables) {
-      const actualTable = actualTables.get(id);
+      const actualTable = actualTables.get(id) ?? predecessors.get(id);
       if (actualTable === undefined) continue; // create-table: PK is inline, not a move
       assertPrimaryKeyUnchanged(expectedTable, actualTable, changes);
     }
@@ -304,6 +300,145 @@ export async function diff(
 
   applyStatus(changes, args.allow ?? {});
   return { changes, blocked: changes.filter((c) => c.status.state === "blocked") };
+}
+
+/**
+ * A resolved table rename replaced its drop/create pair, but two things are still wrong:
+ * Pass 1 queued the new name's indexes and FKs as if the table were being created, and
+ * nothing has compared the table itself. `ALTER TABLE … RENAME TO` carries every index,
+ * FK and CHECK the table owns, so re-creating them fails the apply (`relation … already
+ * exists`) and dropping them in the down loses them.
+ *
+ * So: discard those queued adds, diff the renamed table against its declaration exactly
+ * as Pass 2 diffs a table present on both sides, and — on Postgres — fold a constraint or
+ * index whose only difference is its NAME (the table-derived `<table>_<col>_fk` / `_chk`)
+ * into the rename-table change as a rename. SQLite/D1 fold nothing: they key FKs by column
+ * set and CHECKs by expression, so neither surfaces a name-only difference, and an index
+ * renamed alongside the table stays a native DROP INDEX + CREATE INDEX (SQLite has no
+ * index rename).
+ *
+ * Returns `renamed` (qualified old name → new name) for FKs onto a renamed table, and
+ * `predecessors` (new identity → live table) for the #258 PK refusal — so neither
+ * consumer re-derives what this pass already looked up.
+ */
+function diffRenamedTables(
+  changes: Change[],
+  expectedTables: ReadonlyMap<string, TableDescriptor>,
+  actualTables: ReadonlyMap<string, TableDescriptor>,
+  dialect: Dialect | undefined,
+): { renamed: Map<string, string>; predecessors: Map<string, TableDescriptor> } {
+  const renames = changes.filter(
+    (c): c is Extract<Change, { kind: "rename-table" }> => c.kind === "rename-table",
+  );
+  const renamed = new Map(
+    renames.map((r) => [tableIdentity({ name: r.from, ...schemaSpread(r.schema) }), r.to] as const),
+  );
+  const predecessors = new Map<string, TableDescriptor>();
+  if (renames.length === 0) return { renamed, predecessors };
+  // ONE pass discards Pass 1's queued creates for every renamed table, before the
+  // per-rename diffs below push into `changes` — so the scan sees only what Pass 1 queued.
+  const newIds = new Set<string>();
+  for (const r of renames) newIds.add(tableIdentity({ name: r.to, ...schemaSpread(r.schema) }));
+  for (let i = changes.length - 1; i >= 0; i--) {
+    const c = changes[i]!;
+    if ((c.kind === "add-index" || c.kind === "add-fk")
+        && newIds.has(tableIdentity({ name: c.table, ...schemaSpread(c.schema) }))) {
+      changes.splice(i, 1);
+    }
+  }
+  for (const r of renames) {
+    const newId = tableIdentity({ name: r.to, ...schemaSpread(r.schema) });
+    const expected = expectedTables.get(newId)!;
+    const actual = actualTables.get(tableIdentity({ name: r.from, ...schemaSpread(r.schema) }))!;
+    predecessors.set(newId, actual);
+    const carried = withRenamedRefTables({ ...actual, name: r.to }, renamed);
+    const tableChanges: Change[] = [];
+    diffTablePair(expected, carried, tableChanges, dialect);
+    changes.push(...(dialect === "postgres" ? foldNameOnlyChanges(r, tableChanges) : tableChanges));
+  }
+  return { renamed, predecessors };
+}
+
+/**
+ * The per-table diff tier — run by Pass 2 for tables present on both sides and by
+ * Pass 1c for tables carried through a rename. One sequence on purpose: a resolved
+ * rename IS a table present on both sides, and a dimension added here lands on both
+ * paths at once (they were near-copies, which is how the rename path came to skip
+ * the comparison entirely). `actual`'s FK refTables are expected already rename-mapped.
+ */
+function diffTablePair(
+  expected: TableDescriptor,
+  actual: TableDescriptor,
+  changes: Change[],
+  dialect: Dialect | undefined,
+): void {
+  diffTableColumns(expected, actual, changes, dialect);
+  diffTableIndexes(expected, actual, changes);
+  diffTableForeignKeys(expected, actual, changes, dialect);
+  // CHECK constraints on existing tables are evolved whenever a dialect is
+  // known (postgres: ALTER ADD/DROP CONSTRAINT; sqlite/d1: the emitter routes
+  // the check change through recreate-and-copy — checks are create-time-only
+  // inline there). Requires `actual.checks` to be populated: pg_constraint
+  // introspection, sqlite_master DDL parsing, or the offline snapshot. With
+  // no dialect (legacy positional callers) checks stay un-diffed — those
+  // callers may hold hand-built snapshots with empty check lists, and
+  // diffing them would re-propose every modeled check forever.
+  if (dialect !== undefined) diffTableChecks(expected, actual, changes, dialect);
+}
+
+/** `t` with each FK's `refTable` mapped through the table renames (refs share `t`'s schema). */
+function withRenamedRefTables(t: TableDescriptor, renamed: ReadonlyMap<string, string>): TableDescriptor {
+  if (renamed.size === 0) return t;
+  return {
+    ...t,
+    foreignKeys: t.foreignKeys.map((fk) => {
+      const to = renamed.get(tableIdentity({ name: fk.refTable, ...schemaSpread(t.schema) }));
+      return to === undefined ? fk : { ...fk, refTable: to };
+    }),
+  };
+}
+
+/**
+ * Replace each drop+add pair in `tableChanges` that differs only by name with a rename on
+ * `r`, and return the changes to keep. A pair only exists when the names differ (name is
+ * the Postgres identity), so an equal shape means a pure rename.
+ *
+ * Only NON-DESTRUCTIVE name-only pairs may be folded: the resulting `rename-table` change
+ * sits in the always-allowed status bucket, so a fold over a pair that differed in shape
+ * would silently bypass the gate.
+ */
+function foldNameOnlyChanges(r: Extract<Change, { kind: "rename-table" }>, tableChanges: Change[]): Change[] {
+  const constraintRenames: NameChange[] = [];
+  const indexRenames: NameChange[] = [];
+  const folded = new Set<Change>();
+  for (const d of tableChanges) {
+    if (folded.has(d)) continue;
+    if (d.kind === "drop-fk" && d.restore !== undefined) {
+      const restore = d.restore;
+      const a = tableChanges.find((c): c is Extract<Change, { kind: "add-fk" }> =>
+        c.kind === "add-fk" && !folded.has(c) && fkEquals(c.fk, restore));
+      if (a) { folded.add(d).add(a); constraintRenames.push({ from: d.fk, to: a.fk.name }); }
+    } else if (d.kind === "drop-check" && d.restore !== undefined) {
+      const restore = d.restore;
+      const a = tableChanges.find((c): c is Extract<Change, { kind: "add-check" }> =>
+        c.kind === "add-check" && !folded.has(c) && checkExprEquals(c.check.expression, restore.expression));
+      if (a) { folded.add(d).add(a); constraintRenames.push({ from: d.check, to: a.check.name }); }
+    } else if (d.kind === "drop-index" && d.restore !== undefined) {
+      const restore = d.restore;
+      const a = tableChanges.find((c): c is Extract<Change, { kind: "add-index" }> =>
+        c.kind === "add-index" && !folded.has(c) && indexEquals(c.index, restore));
+      if (a) {
+        folded.add(d).add(a);
+        // Renaming a UNIQUE constraint renames its backing index with it.
+        (restore.constraint !== undefined ? constraintRenames : indexRenames)
+          .push({ from: d.index, to: a.index.name });
+      }
+    }
+  }
+  if (folded.size === 0) return tableChanges;
+  if (constraintRenames.length > 0) r.constraintRenames = constraintRenames;
+  if (indexRenames.length > 0) r.indexRenames = indexRenames;
+  return tableChanges.filter((c) => !folded.has(c));
 }
 
 /**

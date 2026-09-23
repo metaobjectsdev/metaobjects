@@ -1,6 +1,6 @@
 import type {
   Change, EmitResult, ColumnDescriptor, IndexDescriptor, FkDescriptor,
-  TableDescriptor, ViewDescriptor, ColumnDefault, FkAction,
+  TableDescriptor, ViewDescriptor, ColumnDefault, FkAction, NameChange,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
@@ -30,14 +30,19 @@ import { columnDefaultsEqual } from "../diff/index.js";
 // class of error, one level removed — "constraint … depends on index …".
 // drop-index therefore gets its own stage (1.5) strictly between drop-fk/
 // drop-check/create-table (1) and column mutation (2).
+//
+// rename-table runs FIRST among table changes (0.5): every other change on a renamed
+// table is keyed by its NEW name, so the table must already carry it. drop-view stays
+// ahead of it; a view follows a rename on its own.
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "drop-view": 0,
+  "rename-table": 0.5,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "drop-index": 1.5,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
-  "rename-column": 3, "rename-table": 3,
+  "rename-column": 3,
   "add-index": 4,
   "add-fk": 5,
   "add-check": 5,
@@ -110,7 +115,7 @@ function renderUp(c: Change): string {
     // guarded: `rollbackTo` runs down.sql and the ledger delete in ONE transaction,
     // so a no-op down would still record the rollback as done.
     case "drop-table":             return `DROP TABLE IF EXISTS ${quoteQualified(c.table, c.schema)};`;
-    case "rename-table":           return `ALTER TABLE ${quoteQualified(c.from, c.schema)} RENAME TO ${quote(c.to)};`;
+    case "rename-table":           return renderRenameTable(c, "up");
     case "add-column": {
       const base = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
       if (!c.column.description) return base;
@@ -173,6 +178,24 @@ function renderUp(c: Change): string {
   }
 }
 
+/**
+ * The table rename plus the carried constraints and indexes whose names follow it. The
+ * down is the exact mirror: names back first, while the table still has its new name.
+ */
+function renderRenameTable(c: Extract<Change, { kind: "rename-table" }>, dir: "up" | "down"): string {
+  const up = dir === "up";
+  const table = `ALTER TABLE ${quoteQualified(up ? c.from : c.to, c.schema)} RENAME TO ${quote(up ? c.to : c.from)};`;
+  const flip = (r: NameChange): NameChange => (up ? r : { from: r.to, to: r.from });
+  const carried = [
+    ...(c.constraintRenames ?? []).map(flip).map((r) =>
+      `ALTER TABLE ${quoteQualified(c.to, c.schema)} RENAME CONSTRAINT ${quote(r.from)} TO ${quote(r.to)};`),
+    ...(c.indexRenames ?? []).map(flip).map((r) =>
+      `ALTER INDEX ${quoteIndexQualified(r.from, c.schema)} RENAME TO ${quote(r.to)};`),
+  ];
+  const lines = [table, ...carried];
+  return (up ? lines : [...lines].reverse()).join("\n\n");
+}
+
 function renderDown(c: Change): string {
   switch (c.kind) {
     case "create-table":           return `DROP TABLE ${quoteQualified(c.table.name, c.table.schema)};`;
@@ -193,7 +216,7 @@ function renderDown(c: Change): string {
       parts.push("-- NOTE: table data is not restored by this down migration.");
       return parts.join("\n");
     }
-    case "rename-table":           return `ALTER TABLE ${quoteQualified(c.to, c.schema)} RENAME TO ${quote(c.from)};`;
+    case "rename-table":           return renderRenameTable(c, "down");
     case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":
       return c.restore

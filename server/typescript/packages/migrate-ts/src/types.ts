@@ -117,6 +117,9 @@ export interface CheckDescriptor {
   expression: string;
 }
 
+/** An object renamed in place: `from` is the live name, `to` the declared one. */
+export interface NameChange { from: string; to: string; }
+
 export interface FkDescriptor {
   name: string;
   columns: string[];
@@ -228,7 +231,19 @@ export interface ViewDescriptor {
 export type Change =
   | { kind: "create-table"; table: TableDescriptor; schema?: string; status: ChangeStatus }
   | { kind: "drop-table"; table: string; schema?: string; restore?: TableDescriptor; status: ChangeStatus }
-  | { kind: "rename-table"; from: string; to: string; schema?: string; status: ChangeStatus }
+  | {
+      kind: "rename-table"; from: string; to: string; schema?: string;
+      /**
+       * Constraints (FK / CHECK / constraint-backed index) the renamed table carries whose
+       * NAME changes with it — typically the table-derived `<table>_<col>_fk` / `_chk`.
+       * `ALTER TABLE … RENAME TO` keeps the constraint, so it is renamed, never re-created.
+       * Postgres only; the diff never produces it for sqlite/d1.
+       */
+      constraintRenames?: NameChange[];
+      /** Plain indexes the renamed table carries whose name changes with it. Postgres only. */
+      indexRenames?: NameChange[];
+      status: ChangeStatus;
+    }
   | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
   | { kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus }
   | { kind: "rename-column"; table: string; schema?: string; from: string; to: string; status: ChangeStatus }

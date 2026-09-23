@@ -363,6 +363,21 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
   27 of them on the estate above — with no attribute, node or file. It now prints each
   error's message, which names all three.
+- **`meta migrate`: a table rename no longer re-creates the indexes and constraints the
+  table already carries.** With `--on-ambiguous rename`, the create-table half of the
+  drop/create pair became `ALTER TABLE … RENAME TO`, but its `CREATE INDEX` and
+  `ADD CONSTRAINT` statements stayed in the migration, so applying it failed with
+  `relation "<index>" already exists`. Nothing compared the renamed table against its new
+  declaration, so three further things went wrong with it: a constraint named after the
+  table (`<table>_<col>_fk`, `<table>_<col>_chk`) kept its old name and the next diff
+  offered to drop it; the down migration dropped the table's original indexes; and an FK on
+  another table that points at the renamed one was re-created, which is refused by default
+  as a `drop-fk`. The renamed table is now diffed like any other table. A constraint or index
+  whose only change is its name is renamed in place (`RENAME CONSTRAINT`, `ALTER INDEX …
+  RENAME TO`) on Postgres, and the down reverses each step. The rename also runs before any
+  other change to that table, so a column added in the same migration no longer targets a
+  table that does not exist yet. On Cloudflare D1, renaming a table that the same migration must also rebuild while another table references it is now refused with `D1RenamedTableRebuildError`, which says to migrate the rename on its own first; emitted, it failed at apply. Found by an adopter estate renaming an entity's table;
+  the regenerated migration matches the one its author wrote by hand.
 
 - **Python: the `render-helper` generator could not be pointed at your templates.**
   `GeneratorEntry.factory` took no arguments and the registry's render-helper factory

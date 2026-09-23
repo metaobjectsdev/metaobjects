@@ -37,7 +37,7 @@ import { emit } from "../../src/emit/index.js";
 import { renderSqlite } from "../../src/emit/sqlite.js";
 import { applyD1SafetyPass } from "../../src/emit/d1-safety-pass.js";
 // Imported from the PACKAGE ROOT to prove the #241 re-export of the cycle error.
-import { D1CyclicForeignKeyError } from "../../src/index.js";
+import { D1CyclicForeignKeyError, D1RenamedTableRebuildError } from "../../src/index.js";
 import type { AllowOptions, Change, SchemaSnapshot, TableDescriptor } from "../../src/types.js";
 
 // D1 is SQLite at the SQL level; snake_case matches the runtime ObjectManager strategy.
@@ -582,5 +582,45 @@ describe("#241 D1 FK-cascade — real-engine gate (libSQL, one transaction = rem
 
     // Convergence — the whole point: a mixed migration re-diffs EMPTY too.
     expect(await reDiffChanges(expected2)).toEqual([]);
+  });
+
+  // Scenario 9 --------------------------------------------------------------
+  test("a table renamed AND rebuilt while referenced: refused, not emitted in the wrong order", async () => {
+    // Emitted, this rebuilt only the child in the cascade and then the renamed parent
+    // natively with `PRAGMA foreign_keys = OFF` — a no-op inside D1's transaction, so the
+    // parent's DROP TABLE fails exactly as #226 did. Refused with a split-it instruction.
+    const parentV = (table: string, withEnum: boolean): unknown => ({
+      "object.entity": {
+        name: "Parent",
+        children: [
+          { "source.rdb": { "@table": table } },
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "name", "@required": true } },
+          { "field.string": { name: "a" } },
+          { "field.string": { name: "b" } },
+          { "field.string": { name: "c" } },
+          ...(withEnum ? [ENUM_KIND] : []),
+          ID_PK,
+        ],
+      },
+    });
+    const child = entity("Note", [
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "parentId", "@required": true } },
+      ID_PK,
+      { "identity.reference": { name: "ref_parent", "@fields": ["parentId"], "@references": "Parent" } },
+    ]);
+    await applyV1(rootMeta([parentV("parents", false), child]));
+
+    const expected2 = await build(rootMeta([parentV("folders", true), child]));
+    const actual = await introspectDb();
+    const d = await diff({ expected: expected2, actual, dialect: "d1", onAmbiguous: async () => "rename" });
+    expect(d.changes.some((c) => c.kind === "rename-table")).toBe(true);
+    expect(() => emit(d.changes, {
+      dialect: "d1",
+      expectedSchema: expected2,
+      actualSchema: actual,
+      ...(actual.meta ? { actualMeta: actual.meta } : {}),
+    })).toThrow(D1RenamedTableRebuildError);
   });
 });

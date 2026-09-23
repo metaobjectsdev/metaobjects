@@ -57,7 +57,7 @@ export type { SqlType } from "./sql-type.js";
 export type {
   SchemaSnapshot, SnapshotMeta,
   TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor, ColumnDefault,
-  ViewDescriptor, FkAction,
+  ViewDescriptor, FkAction, NameChange,
   Change, ChangeKind, ChangeStatus,
   AllowOptions, AmbiguousChange, AmbiguousResolution, AmbiguousCallback,
   DiffResult, EmitResult, Dialect,
@@ -80,7 +80,9 @@ export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
 // independently without going through emit().
 export { renderD1 } from "./emit/d1.js";
 export { applyD1SafetyPass, D1UnsupportedStatementError } from "./emit/d1-safety-pass.js";
-export { findReferencedRebuilds, D1ReferencedTableRebuildError, D1CyclicForeignKeyError } from "./emit/d1-fk-refuse.js";
+export {
+  findReferencedRebuilds, D1ReferencedTableRebuildError, D1CyclicForeignKeyError, D1RenamedTableRebuildError,
+} from "./emit/d1-fk-refuse.js";
 export type { D1RebuildRefusal } from "./emit/d1-fk-refuse.js";
 
 // D1 introspection

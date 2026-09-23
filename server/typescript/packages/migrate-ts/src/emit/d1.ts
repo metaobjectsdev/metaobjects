@@ -5,6 +5,7 @@ import {
   findReferencedRebuilds,
   D1ReferencedTableRebuildError,
   D1CyclicForeignKeyError,
+  D1RenamedTableRebuildError,
 } from "./d1-fk-refuse.js";
 import { buildFkEdges, unionEdges } from "./fk-graph.js";
 import { emitD1Cascade } from "./d1-cascade.js";
@@ -65,6 +66,14 @@ export function renderD1(
   // persists across the whole implicit transaction, so FK checks defer to commit
   // where the final state is consistent.
   const { up: cascadeUp, downWarning, affected, handledViews } = cascade;
+  const renamedInCascade = changes.filter(
+    (c): c is Extract<Change, { kind: "rename-table" }> =>
+      c.kind === "rename-table"
+      && [c.from, c.to].some((t) => affected.has(t) || referenced.includes(t)),
+  );
+  if (renamedInCascade.length > 0) {
+    throw new D1RenamedTableRebuildError(renamedInCascade.map(({ from, to }) => ({ from, to })));
+  }
   // A diff-injected view drop/recreate for a view the cascade already owns must NOT
   // also flow through `rest` — the cascade emits it in the correct order (drop before
   // the table dance, create after), whereas `rest` runs after the whole cascade (#243).

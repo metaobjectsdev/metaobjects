@@ -38,12 +38,15 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   // SQLite's rename re-parses the dependent view and can error mid-recreate. The
   // diff's Pass 2c injects exactly this drop(before)/create(after) pair.
   "drop-view": 0,
+  // rename-table runs before every other table change (mirrors postgres): changes on a
+  // renamed table — including its recreate-and-copy — are keyed by the NEW name.
+  "rename-table": 0.5,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "drop-index": 1.5,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
-  "rename-column": 3, "rename-table": 3,
+  "rename-column": 3,
   "add-index": 4,
   "add-fk": 5,
   "add-check": 5,
@@ -213,6 +216,18 @@ function renderRecreate(
   return { up: lines.join("\n"), down };
 }
 
+/**
+ * The diff folds name-only constraint/index renames on POSTGRES ONLY (sqlite keys FKs by
+ * column set and CHECKs by expression, so it surfaces no name-only pair). A `rename-table`
+ * reaching this emitter with carried renames means that branch was bypassed — fail loudly
+ * rather than emit `ALTER INDEX … RENAME`, which SQLite cannot parse.
+ */
+function assertNoCarriedRenames(c: Extract<Change, { kind: "rename-table" }>): void {
+  if (c.constraintRenames !== undefined || c.indexRenames !== undefined) {
+    throw new Error("rename-table carries constraintRenames/indexRenames — the sqlite/d1 diff never produces these (postgres-only fold)");
+  }
+}
+
 function renderUpNative(c: Change): string {
   switch (c.kind) {
     case "create-table":   return renderCreateTable(c.table);
@@ -224,7 +239,10 @@ function renderUpNative(c: Change): string {
     // just INSERT…SELECTed from, where IF EXISTS turns a caught corruption into a
     // silent one.
     case "drop-table":     return `DROP TABLE IF EXISTS ${quote(c.table)};`;
-    case "rename-table":   return `ALTER TABLE ${quote(c.from)} RENAME TO ${quote(c.to)};`;
+    case "rename-table": {
+      assertNoCarriedRenames(c);
+      return `ALTER TABLE ${quote(c.from)} RENAME TO ${quote(c.to)};`;
+    }
     case "add-column":     return `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumnInline(c.column)};`;
     case "drop-column":    return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
@@ -262,7 +280,10 @@ function renderDownNative(c: Change): string {
   switch (c.kind) {
     case "create-table":   return `DROP TABLE ${quote(c.table.name)};`;
     case "drop-table":     return `-- WARNING: down migration cannot restore data\n-- TODO: restore table "${c.table}" structure manually`;
-    case "rename-table":   return `ALTER TABLE ${quote(c.to)} RENAME TO ${quote(c.from)};`;
+    case "rename-table": {
+      assertNoCarriedRenames(c);
+      return `ALTER TABLE ${quote(c.to)} RENAME TO ${quote(c.from)};`;
+    }
     case "add-column":     return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":    return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually`;
     case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
