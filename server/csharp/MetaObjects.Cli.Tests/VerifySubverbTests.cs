@@ -95,6 +95,26 @@ public sealed class VerifySubverbTests : IDisposable
         Assert.NotEqual(0, r.ExitCode);
     }
 
+    // An ejected project's `verify --codegen` runs in its owned runner, so the in-process
+    // gate sees Codegen=false. That must not read as a BARE verify: it used to fall through
+    // to the templates default with no root and crash in FilesystemProvider.
+    [Fact]
+    public void Codegen_handed_off_is_not_a_bare_verify()
+    {
+        var handedOff = new VerifyCommand.Options
+        {
+            MetadataDir = MetaDir,
+            OutDir = OutDir,
+            CodegenHandedOff = true,
+        };
+
+        var r = VerifyCommand.RunSubverbs(handedOff);
+
+        Assert.Equal(0, r.ExitCode);
+        Assert.False(r.RanTemplates);
+        Assert.False(r.EmittedDefaultNote);
+    }
+
     // -------------------- bare verify = templates + note (back-compat) -------
 
     [Fact]

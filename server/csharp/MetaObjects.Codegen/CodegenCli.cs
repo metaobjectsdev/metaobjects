@@ -6,13 +6,14 @@
 // pipeline the built-in CLI runs, with its own compile-time-bound IGenerator list in
 // place of a name-resolved one.
 //
-// MetaObjects.Cli.GenCommand.Run is refactored to CALL RunGen below rather than
-// reimplement it: it resolves stable NAMES to generator instances (a CLI-only concern —
-// an ejected Program.cs has no names, only `new`-built instances) and then hands the
-// resolved list here.
+// MetaObjects.Cli.GenCommand.Run CALLS RunGen below rather than reimplementing it: it
+// resolves stable NAMES to generator instances and hands the resolved list here. An
+// ejected Program.cs binds its owned generators with `new`; ComposeGenerators fills the
+// rest of its `--generators` selection from the registry.
 
 using System.Text.Json;
 using MetaObjects.Codegen.TemplateCodegen;
+using MetaObjects.Config;
 using MetaObjects.Loader;
 using MetaObjects.Render;
 
@@ -88,8 +89,7 @@ public static class CodegenCli
     /// <c>Directory.GetCurrentDirectory()</c> instead would scatter a stray
     /// <c>.metaobjects/</c> into whatever directory the process happens to sit in.
     /// </summary>
-    public static string ProjectRootFor(string metadataDir) =>
-        Path.GetDirectoryName(Path.GetFullPath(metadataDir)) ?? Directory.GetCurrentDirectory();
+    public static string ProjectRootFor(string metadataDir) => MetadataLocation.ProjectRootFor(metadataDir);
 
     /// <summary>
     /// Load metadata from <paramref name="metadataDir"/> and run <paramref
@@ -101,8 +101,8 @@ public static class CodegenCli
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators,
         ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default")
-        => RunGen(MetaDataLoader.FromDirectory(metadataDir), outDir, ns, emitAbstractShapes, generators,
-            ProjectRootFor(metadataDir), columnNaming, baseline);
+        => RunGen(MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory()).Load(), outDir, ns,
+            emitAbstractShapes, generators, ProjectRootFor(metadataDir), columnNaming, baseline);
 
     /// <summary>
     /// Build a <see cref="GenConfig"/> from the given knobs and run <paramref
@@ -115,9 +115,8 @@ public static class CodegenCli
     /// <param name="generators">
     /// The resolved generator instances to run — an adopter's own <c>new</c>-built list
     /// (an ejected <c>codegen/Program.cs</c>), or the CLI's name-resolved list
-    /// (<c>MetaObjects.Cli.GenCommand</c>, via <see cref="GeneratorRegistry"/>). This API
-    /// does no name resolution of its own: selecting BY STABLE NAME is a CLI-only
-    /// concern, since an ejected project binds its generators at compile time.
+    /// (<c>MetaObjects.Cli.GenCommand</c>, via <see cref="GeneratorRegistry"/>), or the two
+    /// composed by <see cref="ComposeGenerators"/>. This overload resolves no names.
     /// </param>
     /// <param name="projectRoot">
     /// Anchors <c>.metaobjects/.gen-state/</c> and the manifest's relative keys. Defaults
@@ -195,11 +194,11 @@ public static class CodegenCli
         if (args.Length == 0)
         {
             Console.Error.WriteLine(
-                "usage: gen <metadataDir> --out <dir> [--namespace <ns>] [--emit-abstract-shapes]\n" +
-                "           [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
-                "           [--template-root <dir>] [--template-spec <json>]\n" +
-                "     | verify --codegen <metadataDir> --out <dir> [--namespace <ns>]\n" +
-                "           [--column-naming literal|snake_case|kebab-case]");
+                "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
+                "           [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case]\n" +
+                "           [--baseline default|adopt] [--template-root <dir>] [--template-spec <json>]\n" +
+                "     | verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
+                "           [--column-naming literal|snake_case|kebab-case] [--template-root <dir>] [--lax]");
             return 2;
         }
         return args[0] switch
@@ -227,56 +226,118 @@ public static class CodegenCli
         }
     }
 
-    private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> generators)
+    /// <summary>
+    /// The suite an owned project runs: the <c>--generators</c> selection, in its order,
+    /// with each generator the project owns taking the packaged one's place, then any owned
+    /// generator the selection did not name. With no selection, just <paramref name="owned"/>.
+    /// An owned copy is matched by its <c>IGenerator.Name</c>, which eject leaves unchanged;
+    /// that is not always the stable selection name (<c>entity</c> builds
+    /// <c>entity-generator</c>), so each selected name is resolved first and compared by
+    /// the packaged instance's <c>Name</c>.
+    /// Ejecting one generator must not drop the others a project selects: before this, an
+    /// owned runner ignored <c>--generators</c> and regenerated only its own copies.
+    /// Throws <see cref="ArgumentException"/> for an unknown name.
+    /// </summary>
+    public static IReadOnlyList<IGenerator> ComposeGenerators(
+        IReadOnlyList<IGenerator> owned, IReadOnlyList<string>? selection, string templateRoot)
     {
-        string? metadataDir = null, outDir = null, templateRoot = null, templateSpecPath = null, columnNamingRaw = null;
-        string ns = "Generated";
-        bool emitAbstractShapes = false;
-        string baseline = "default";
-        for (int i = 0; i < rest.Length; i++)
+        if (selection is not { Count: > 0 }) return owned;
+        var ctx = new GeneratorBuildContext(templateRoot);
+        var suite = new List<IGenerator>();
+        var replaced = new HashSet<IGenerator>(ReferenceEqualityComparer.Instance);
+        foreach (var packaged in GeneratorRegistry.Resolve(selection, ctx))
         {
-            if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
-            else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
-            else if (rest[i] == "--emit-abstract-shapes") emitAbstractShapes = true;
-            else if (rest[i] == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
-            else if (rest[i] == "--baseline" && i + 1 < rest.Length) baseline = rest[++i];
-            else if (rest[i] == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
-            else if (rest[i] == "--template-spec" && i + 1 < rest.Length) templateSpecPath = rest[++i];
-            // --generators names a STABLE-NAME selection — meaningless here, since this
-            // project's suite is the compile-time `generators` list Program.cs built with
-            // `new`. Consumed (not applied) so a forwarded `dotnet meta gen --generators
-            // a,b` does not misparse as a positional / unknown flag.
-            else if (rest[i] == "--generators" && i + 1 < rest.Length) i++;
-            else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+            var mine = owned.FirstOrDefault(g => g.Name == packaged.Name);
+            if (mine is not null) replaced.Add(mine);
+            suite.Add(mine ?? packaged);
         }
+        suite.AddRange(owned.Where(g => !replaced.Contains(g)));
+        return suite;
+    }
 
-        var columnNaming = ColumnNamingStrategy.Literal;
-        if (columnNamingRaw is not null && !TryParseColumnNaming(columnNamingRaw, out columnNaming))
-        {
-            Console.Error.WriteLine($"error: unknown --column-naming \"{columnNamingRaw}\"");
-            return 2;
-        }
-        if (metadataDir is null || outDir is null)
-        {
-            Console.Error.WriteLine("usage: gen <metadataDir> --out <dir> [--namespace <ns>] [...]");
-            return 2;
-        }
+    /// <summary>The flags both owned commands share, parsed once.</summary>
+    private sealed class OwnedArgs
+    {
+        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
+        public string Namespace = "Generated";
+        public string Baseline = "default";
+        public bool NamespaceExplicit, EmitAbstractShapes, Codegen, Lax;
 
-        var projectRoot = ProjectRootFor(metadataDir);
-        var load = MetaDataLoader.FromDirectory(metadataDir);
-        var allGenerators = new List<IGenerator>(generators);
+        public IReadOnlyList<string>? Selection => GeneratorsCsv
+            ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        public static OwnedArgs Parse(string[] rest)
+        {
+            var a = new OwnedArgs();
+            for (int i = 0; i < rest.Length; i++)
+            {
+                if (rest[i] == "--out" && i + 1 < rest.Length) a.OutDir = rest[++i];
+                else if (rest[i] == "--namespace" && i + 1 < rest.Length) { a.Namespace = rest[++i]; a.NamespaceExplicit = true; }
+                else if (rest[i] == "--emit-abstract-shapes") a.EmitAbstractShapes = true;
+                else if (rest[i] == "--column-naming" && i + 1 < rest.Length) a.ColumnNamingRaw = rest[++i];
+                else if (rest[i] == "--baseline" && i + 1 < rest.Length) a.Baseline = rest[++i];
+                else if (rest[i] == "--template-root" && i + 1 < rest.Length) a.TemplateRoot = rest[++i];
+                else if (rest[i] == "--template-spec" && i + 1 < rest.Length) a.TemplateSpecPath = rest[++i];
+                else if (rest[i] == "--generators" && i + 1 < rest.Length) a.GeneratorsCsv = rest[++i];
+                else if (rest[i] == "--codegen") a.Codegen = true;
+                else if (rest[i] == "--lax") a.Lax = true;
+                else if (!rest[i].StartsWith('-')) a.MetadataDir ??= rest[i];
+            }
+            return a;
+        }
+    }
+
+    /// <summary>Resolve the metadata location through the same ladder as <c>dotnet meta</c>,
+    /// or print why not. <c>null</c> means the caller exits 2.</summary>
+    private static ResolvedMetadata? ResolveOrReport(string? metadataDir)
+    {
         try
         {
-            allGenerators.AddRange(TemplateSpecGenerators(projectRoot, templateSpecPath, templateRoot));
+            return MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory());
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        catch (MetaModelException e)
         {
-            Console.Error.WriteLine($"  load error: {ex.Message}");
-            Console.Error.WriteLine("codegen (owned): FAILED");
+            Console.Error.WriteLine($"error: {e.Code}: {e.Message}");
+        }
+        catch (MetadataLocationException e)
+        {
+            Console.Error.WriteLine($"error: {e.Message}");
+        }
+        return null;
+    }
+
+    private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> owned)
+    {
+        var a = OwnedArgs.Parse(rest);
+        var columnNaming = ColumnNamingStrategy.Literal;
+        if (a.ColumnNamingRaw is not null && !TryParseColumnNaming(a.ColumnNamingRaw, out columnNaming))
+        {
+            Console.Error.WriteLine($"error: unknown --column-naming \"{a.ColumnNamingRaw}\"");
+            return 2;
+        }
+        if (a.OutDir is null)
+        {
+            Console.Error.WriteLine("usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [...]");
+            return 2;
+        }
+        if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
+
+        var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
+        var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
+        List<IGenerator> suite;
+        try
+        {
+            suite = [.. ComposeGenerators(owned, a.Selection, templateRoot)];
+            suite.AddRange(TemplateSpecGenerators(projectRoot, a.TemplateSpecPath, a.TemplateRoot));
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
+        {
+            Console.Error.WriteLine($"  error: {ex.Message}");
+            Console.Error.WriteLine("codegen (owned) gen: FAILED");
             return 1;
         }
 
-        var outcome = RunGen(load, outDir, ns, emitAbstractShapes, allGenerators, projectRoot, columnNaming, baseline);
+        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline);
         if (!outcome.Ok)
         {
             foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
@@ -298,21 +359,10 @@ public static class CodegenCli
         return 0;
     }
 
-    private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> generators)
+    private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> owned)
     {
-        string? metadataDir = null, outDir = null, columnNamingRaw = null;
-        string ns = "Generated";
-        bool nsExplicit = false, codegen = false;
-        for (int i = 0; i < rest.Length; i++)
-        {
-            if (rest[i] == "--codegen") codegen = true;
-            else if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
-            else if (rest[i] == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
-            else if (rest[i] == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
-            else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
-        }
-
-        if (!codegen)
+        var a = OwnedArgs.Parse(rest);
+        if (!a.Codegen)
         {
             Console.Error.WriteLine(
                 "codegen (owned) verify: this owned runner only handles `verify --codegen` — " +
@@ -322,37 +372,55 @@ public static class CodegenCli
         }
 
         var columnNaming = ColumnNamingStrategy.Literal;
-        if (columnNamingRaw is not null && !TryParseColumnNaming(columnNamingRaw, out columnNaming))
+        if (a.ColumnNamingRaw is not null && !TryParseColumnNaming(a.ColumnNamingRaw, out columnNaming))
         {
-            Console.Error.WriteLine($"error: unknown --column-naming \"{columnNamingRaw}\"");
+            Console.Error.WriteLine($"error: unknown --column-naming \"{a.ColumnNamingRaw}\"");
             return 2;
         }
-        if (metadataDir is null || outDir is null)
+        if (a.OutDir is null)
         {
-            Console.Error.WriteLine("usage: verify --codegen <metadataDir> --out <dir> [--namespace <ns>]");
+            Console.Error.WriteLine("usage: verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]");
             return 2;
         }
+        if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
 
-        var load = MetaDataLoader.FromDirectory(metadataDir);
+        // Strict unless --lax, as `dotnet meta verify` is (ADR-0023).
+        var load = meta.Load(strict: !a.Lax);
         if (load.Errors.Count > 0)
         {
-            foreach (var e in load.Errors) Console.Error.WriteLine($"  load error: {e.Code}");
+            foreach (var e in load.Errors) Console.Error.WriteLine($"  load error: {e.Code}: {e.Message}");
             Console.Error.WriteLine("codegen (owned) verify --codegen: FAILED (metadata did not load cleanly)");
             return 1;
+        }
+
+        // The same suite `gen` builds, template-spec generators included: verify must
+        // regenerate what gen wrote, or it convicts gen's own output as drift.
+        var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
+        var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
+        List<IGenerator> suite;
+        try
+        {
+            suite = [.. ComposeGenerators(owned, a.Selection, templateRoot)];
+            suite.AddRange(TemplateSpecGenerators(projectRoot, null, templateRoot));
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
+        {
+            Console.Error.WriteLine($"  error: {ex.Message}");
+            return 2;
         }
 
         // Same inference rule `dotnet meta verify --codegen` uses: an explicit
         // --namespace always wins; otherwise infer from the committed output so a regen
         // matches output produced with any namespace (avoids spurious drift).
-        var effectiveNs = nsExplicit ? ns : (CodegenDrift.InferNamespace(outDir) ?? ns);
+        var effectiveNs = a.NamespaceExplicit ? a.Namespace : (CodegenDrift.InferNamespace(a.OutDir) ?? a.Namespace);
         var config = new GenConfig
         {
-            OutDir = outDir,
+            OutDir = a.OutDir,
             Namespace = effectiveNs,
             ColumnNamingStrategy = columnNaming,
-            IncludeNames = generators.Any(g => g.Name == "names"),
+            IncludeNames = suite.Any(g => g.Name == "names"),
         };
-        var result = CodegenDrift.Compute(config, load.Root, generators);
+        var result = CodegenDrift.Compute(config, load.Root, suite);
         if (result.Error is not null)
         {
             Console.Error.WriteLine($"  {result.Error}");

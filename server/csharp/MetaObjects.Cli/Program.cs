@@ -8,6 +8,7 @@
 
 using MetaObjects.Cli;
 using MetaObjects.Codegen;
+using MetaObjects.Config;
 
 if (args.Length == 0)
 {
@@ -164,9 +165,7 @@ static int RunGen(string[] rest)
     // branches now build a LoadResult up front and share the single
     // GenCommand.Run(LoadResult, ...) overload, exactly as VerifyCommand.LoadMetadata
     // already does.
-    var load = resolvedMeta.Files is { } files
-        ? MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), resolvedMeta.Libraries)
-        : MetaObjects.Loader.MetaDataLoader.FromDirectory(resolvedMeta.Directory, resolvedMeta.Libraries);
+    var load = resolvedMeta.Load();
     var outcome = GenCommand.Run(
         load, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
         columnNaming, baseline);
@@ -236,9 +235,7 @@ static int RunDocs(string[] rest)
     // via its already-resolved, `_pending`-excluded file list, never a second
     // (unfiltered) directory walk. FR-043 — `resolvedMeta.Libraries` is threaded
     // in the same way RunGen does.
-    var load = resolvedMeta.Files is { } files
-        ? MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), resolvedMeta.Libraries)
-        : MetaObjects.Loader.MetaDataLoader.FromDirectory(resolvedMeta.Directory, resolvedMeta.Libraries);
+    var load = resolvedMeta.Load();
     var outcome = DocsCommand.Run(load, outDir, project, ns, modelBaseUrl: modelBaseUrl);
     if (!outcome.Ok)
     {
@@ -285,33 +282,6 @@ static int RunEject(string[] rest)
     return result.ExitCode;
 }
 
-// The metadata-location ladder's rungs 3-4 (source-resolution design doc §3):
-// rung 1 is the explicit positional argument the caller already tried; rung 2
-// (a port-native config surface) doesn't exist in C#; rungs 3 (a declared
-// `sources` in .metaobjects/config.json) and 4 (the default "metaobjects"
-// directory) live in MetaObjects.Config.SourceResolver.ResolveCollection,
-// which this wraps. Called from all three metadataDir-taking commands (gen,
-// docs, verify) so an omitted positional argument is never a hard requirement
-// wherever a project's config can name the location instead.
-//
-// The metadata-location ladder's result: always a directory (explicit-arg
-// back-compat, and cosmetic labeling even on the ladder path), and — when
-// resolution went through the .metaobjects/config.json ladder rather than an
-// explicit CLI argument — the ladder's OWN already-resolved, `_pending`-draft-
-// excluded file list too. A caller with a non-null Files must load via
-// MetaDataLoader.FromUris(Files) rather than FromDirectory(Directory): the
-// latter would both re-walk a tree this function already walked once (via
-// SourceResolver) AND silently lose the `_pending` exclusion, since
-// DirectorySource.Options.ExcludePending defaults to false at the loader
-// level (SourceResolver is the one place that turns it on). Declared at file
-// scope below the entry point (top-level-statement files require type
-// declarations to follow every top-level statement / local function).
-
-// Never exits without a usable result: either hands back a real directory
-// (+ file list, when ladder-resolved), or prints a diagnostic and terminates
-// the process — callers may treat the result as always-present and keep
-// their existing (now-unreachable-when-omitted) null checks for the OTHER
-// positional/option they still require.
 /// <summary>
 /// Parse a <c>--column-naming</c> value into its <see cref="ColumnNamingStrategy"/>.
 /// The spellings are the cross-port ones (TS <c>metaobjects.config.ts</c>
@@ -329,78 +299,24 @@ static bool TryParseColumnNaming(string raw, out ColumnNamingStrategy strategy)
     }
 }
 
+// The metadata-location ladder's rungs 3-4 (source-resolution design doc §3):
+// rung 1 is the explicit positional argument the caller already tried; rung 2
+// (a port-native config surface) doesn't exist in C#; rungs 3 (a declared
+// `sources` in .metaobjects/config.json) and 4 (the default "metaobjects"
+// directory) live in MetaObjects.Config.MetadataLocation.Resolve,
+// which this wraps. Called from all three metadataDir-taking commands (gen,
+// docs, verify) so an omitted positional argument is never a hard requirement
+// wherever a project's config can name the location instead.
+//
+// Never exits without a usable result: either hands back the resolved location or
+// prints a diagnostic and terminates the process.
 static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
 {
-    if (metadataDir is not null)
-    {
-        // Libraries are read from the port-neutral config REGARDLESS of an explicit
-        // positional <metadataDir> — mirrors the "dependencies is read at every rung"
-        // rule (docs/features/metadata-sources.md) extended to `libraries`, since this
-        // port has no rung-2 native config surface to fall back on. The project root
-        // is the directory HOLDING the explicit dir (GenCommand.ProjectRootFor — the
-        // same anchor `.gen-state` uses), which is where `.metaobjects/config.json`
-        // sits beside the metadata directory in the conventional layout.
-        var explicitLibs = ReadLibrariesOrExit(GenCommand.ProjectRootFor(metadataDir));
-        return new ResolvedMetadata(metadataDir, null, explicitLibs);
-    }
-
-    var cwd = Directory.GetCurrentDirectory();
+    // The ladder itself lives in MetaObjects.Config.MetadataLocation, shared with an
+    // ejected codegen/Program.cs; this wrapper only turns its refusals into exit 2.
     try
     {
-        var cfg = MetaObjects.Config.NeutralConfig.Read(cwd);
-        var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
-        var libraries = cfg?.Libraries ?? Array.Empty<string>();
-
-        if (specs.Count == 0)
-        {
-            // No declared sources — resolve + apply the DEFAULT directory through
-            // the same ladder the shared conformance corpus gates (raises
-            // ERR_COLLECTION_NOT_FOUND when the default is also absent). The
-            // returned file list IS the load — no second walk needed.
-            var defaultFiles = MetaObjects.Config.SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(
-                Path.Combine(cwd, MetaObjects.Config.NeutralConfig.DefaultMetadataDir), defaultFiles, libraries);
-        }
-
-        if (specs.Count > 1)
-        {
-            // MetaDataLoader.FromDirectory takes ONE directory — it cannot express a
-            // multi-source SET. Fail loudly rather than silently loading just one of
-            // the declared sources; MetaDataLoader.Load(IReadOnlyList<IMetaDataSource>)
-            // (MetaDataLoader.cs:334) is the documented follow-up that lifts this.
-            Console.Error.WriteLine(
-                $"error: {cwd}: .metaobjects/config.json declares {specs.Count} metadata sources, but " +
-                "this CLI's loader accepts only one directory at a time. Pass <metadataDir> explicitly, " +
-                "or reduce \"sources\" to a single entry.");
-            Environment.Exit(2);
-            throw new InvalidOperationException("unreachable");
-        }
-
-        // Exactly one declared source. Resolve + validate it through the same
-        // kind/existence checks ResolveSources applies (ERR_SOURCE_KIND_UNSUPPORTED /
-        // ERR_SOURCE_UNRESOLVED) — its return value IS the (already `_pending`-
-        // excluded) file list to load, not just a validation signal to discard.
-        var files = MetaObjects.Config.SourceResolver.ResolveSources(cwd, specs);
-        var rawPath = specs[0]["path"]; // guaranteed present: ResolveSources above
-                                         // would already have thrown otherwise.
-        var resolved = Path.IsPathRooted(rawPath) ? rawPath : Path.GetFullPath(Path.Combine(cwd, rawPath));
-
-        if (!Directory.Exists(resolved))
-        {
-            // ResolveSources above already proved `resolved` exists, so this means
-            // it is a FILE. MetaDataLoader.FromDirectory below takes a directory —
-            // handing it a file path used to fail deep inside DirectorySource with
-            // an opaque ERR_UNKNOWN instead of naming the actual limit. Refuse
-            // clearly here instead, the same way the multi-source branch above does.
-            Console.Error.WriteLine(
-                $"error: {cwd}: .metaobjects/config.json's single \"sources\" entry (\"{rawPath}\") is a FILE, " +
-                "but this CLI's loader only accepts a directory source. Pass <metadataDir> explicitly, or point " +
-                "\"sources\" at the file's containing directory.");
-            Environment.Exit(2);
-            throw new InvalidOperationException("unreachable");
-        }
-
-        return new ResolvedMetadata(resolved, files, libraries);
+        return MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory());
     }
     catch (MetaObjects.MetaModelException e)
     {
@@ -408,24 +324,9 @@ static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
         Environment.Exit(2);
         throw;
     }
-}
-
-// The `libraries` read for an EXPLICIT <metadataDir> (see ResolveMetadataDirOrExit
-// above) — a malformed .metaobjects/config.json (unknown "libraries" token included,
-// ERR_UNKNOWN_LIBRARY) exits 2 with the same diagnostic shape the ladder path's own
-// catch block prints, rather than throwing past the CLI's usual error handling. An
-// ABSENT config (or one with no "libraries" key) is not an error — most projects with
-// an explicit <metadataDir> declare no libraries at all — so this returns empty rather
-// than exiting.
-static IReadOnlyList<string> ReadLibrariesOrExit(string configDir)
-{
-    try
+    catch (MetadataLocationException e)
     {
-        return MetaObjects.Config.NeutralConfig.Read(configDir)?.Libraries ?? Array.Empty<string>();
-    }
-    catch (MetaObjects.MetaModelException e)
-    {
-        Console.Error.WriteLine($"error: {e.Code}: {e.Message}");
+        Console.Error.WriteLine($"error: {e.Message}");
         Environment.Exit(2);
         throw;
     }
@@ -552,9 +453,17 @@ static int RunVerify(string[] rest)
         var projectRoot = metadataDir is not null
             ? GenCommand.ProjectRootFor(metadataDir)
             : Directory.GetCurrentDirectory();
-        List<string> codegenArgs = ["verify", "--codegen", metadataDir ?? resolvedMeta.Directory, "--out", outDir];
+        // Forward everything the owned runner's regen depends on. It resolves an omitted
+        // <metadataDir> through the same ladder, so only an explicit one is passed on.
+        // --generators matters because the owned runner fills the names it does not own
+        // from the packaged registry; dropping it regenerated only the owned copies.
+        List<string> codegenArgs = ["verify", "--codegen", "--out", outDir];
+        if (metadataDir is not null) codegenArgs.Insert(2, metadataDir);
         if (nsExplicit) codegenArgs.AddRange(["--namespace", ns]);
         if (columnNamingRaw is not null) codegenArgs.AddRange(["--column-naming", columnNamingRaw]);
+        if (generatorsCsv is not null) codegenArgs.AddRange(["--generators", generatorsCsv]);
+        if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
+        if (lax) codegenArgs.Add("--lax");
         codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
     }
 
@@ -576,6 +485,7 @@ static int RunVerify(string[] rest)
         TemplateRoot = templateRoot,
         Templates = templates,
         Codegen = codegen && !codegenHandedOff,
+        CodegenHandedOff = codegenHandedOff,
         Db = db,
         // #96 / ADR-0023: verify is strict-by-default; --lax restores the legacy load.
         Strict = !lax,
@@ -634,9 +544,3 @@ static int RunVerify(string[] rest)
     return codegenHandedOff ? Math.Max(result.ExitCode, codegenHandoffExit) : result.ExitCode;
 }
 
-// See the doc comment on ResolveMetadataDirOrExit above.
-// `Libraries` — FR-043's `.metaobjects/config.json` `libraries` selection, read
-// REGARDLESS of whether `Directory` came from the ladder or an explicit CLI
-// argument (see ResolveMetadataDirOrExit). Empty (never null) when none declared,
-// so every caller can pass it straight to a loader overload without a null check.
-readonly record struct ResolvedMetadata(string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries);

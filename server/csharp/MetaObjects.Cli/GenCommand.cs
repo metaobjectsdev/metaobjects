@@ -162,10 +162,8 @@ public static class GenCommand
         // the RenderException / ArgumentException-to-clean-error translation, all live in
         // ONE place now (ADR-0034 Amendment 3 / the eject design doc's C# section):
         // MetaObjects.Codegen.CodegenCli.RunGen. It is the exact pipeline an ejected
-        // `codegen/Program.cs` calls too, with its own compile-time-bound generator list
-        // in place of the name-resolved one built above — one implementation, not two.
-        // `names` resolution (GeneratorRegistry, above) stays here: selecting BY STABLE
-        // NAME is a CLI-only concern an ejected project has no use for.
+        // `codegen/Program.cs` calls too, with its owned generators composed into the same
+        // selection (CodegenCli.ComposeGenerators) — one implementation, not two.
         var apiOutcome = MetaObjects.Codegen.CodegenCli.RunGen(
             load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline);
         return new Outcome(apiOutcome.LoadErrors, apiOutcome.Result);

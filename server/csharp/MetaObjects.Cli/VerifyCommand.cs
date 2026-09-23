@@ -141,8 +141,14 @@ public static class VerifyCommand
         /// </summary>
         public ColumnNamingStrategy ColumnNaming { get; init; } = ColumnNamingStrategy.Literal;
 
+        /// <summary>True when <c>--codegen</c> was requested but ran in an ejected
+        /// project's owned runner instead (<see cref="CodegenHandoff"/>). It still counts
+        /// as an explicit subverb: without it, <c>verify --codegen</c> in an ejected project
+        /// fell through to the bare-verify templates default with no templates root.</summary>
+        public bool CodegenHandedOff { get; init; }
+
         /// <summary>True when no explicit subverb flag was passed (bare verify).</summary>
-        public bool NoExplicitSubverb => !Templates && !Codegen && !Db;
+        public bool NoExplicitSubverb => !Templates && !Codegen && !Db && !CodegenHandedOff;
     }
 
     /// <summary>The aggregate outcome of a subverb dispatch (pure; no console I/O).</summary>

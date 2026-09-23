@@ -14,6 +14,7 @@
 //     adopter's owned config, exactly like metaobjects.config.ts on the TS side, and
 //     eject REPORTS what to wire rather than editing it.
 
+using System.Reflection;
 using MetaObjects.Codegen;
 
 namespace MetaObjects.Cli;
@@ -48,8 +49,27 @@ public static class EjectCommand
     /// <summary>The MetaObjects.Cli tool's own version — the version `dotnet meta eject`
     /// pins the scaffolded Codegen.csproj's <c>MetaObjects.Codegen</c> PackageReference
     /// to, per the eject design doc's C# section ("at the tool's own version").</summary>
-    public static string ToolVersion() =>
-        typeof(EjectCommand).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+    public static string ToolVersion()
+    {
+        var asm = typeof(EjectCommand).Assembly;
+        return PackageVersion(
+            asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
+            asm.GetName().Version);
+    }
+
+    /// <summary>The NuGet version a tool build was published as: the informational version
+    /// minus its <c>+sha</c> build metadata, so a release candidate keeps its <c>-rc.N</c>
+    /// suffix. The bare assembly version drops that suffix and would pin a package that is
+    /// not published yet; it is only the fallback when no informational version exists.</summary>
+    public static string PackageVersion(string? informational, Version? assembly)
+    {
+        if (!string.IsNullOrEmpty(informational))
+        {
+            var plus = informational.IndexOf('+');
+            return plus < 0 ? informational : informational[..plus];
+        }
+        return assembly?.ToString(3) ?? "1.0.0";
+    }
 
     private static string ProgramCsContent(IEnumerable<string> classNames)
     {

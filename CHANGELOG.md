@@ -251,7 +251,13 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   embedded in `MetaObjects.Codegen`) into `codegen/generators/`, renaming only its namespace,
   and on first use scaffolds an owned `codegen/` console project that lists the generators
   and calls a new public runner (`CodegenCli`), which `GenCommand` now uses too. Once that
-  project exists, `dotnet meta gen` and `dotnet meta verify --codegen` hand off to it. Eject
+  project exists, `dotnet meta gen` and `dotnet meta verify --codegen` hand off to it. The
+  owned project keeps the rest of your selection: an owned copy replaces the packaged
+  generator of the same name, and every other name in `--generators` still runs from the
+  package. It finds metadata the way the tool does, `libraries` included, and the scaffold
+  pins `MetaObjects.Codegen` at the tool's published version, pre-release suffix included.
+  (The metadata-location ladder moved into `MetaObjects.Config.MetadataLocation` so the tool
+  and an owned project share it.) Eject
   never overwrites a copy without `--force` and never edits the scaffold after writing it;
   `--list` marks owned copies. The helpers a copy needs are now public (`Fr010FieldMapping`,
   `FindInbound`, `ExtractDelegateEmitter`, `OutputFormatSpecEmitter`,
@@ -261,7 +267,10 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   over a same-named one and nothing in the module being generated is compiled yet at
   `generate-sources`. It writes `codegen/pom.xml` on first use, never edits an existing pom,
   and prints the `<module>`, plugin dependency and `<classname>` to wire. `-Dlist` prints the
-  catalog with owned copies marked. Every Kotlin generator is ejectable; Java's `entity`,
+  catalog with owned copies marked. The written pom builds on its own: it sets Java 21 (and
+  Kotlin's JVM target 21) and pins `kotlin-maven-plugin` to the Kotlin version the plugin
+  was built with, so an unedited copy compiles without a parent pom managing either. Every
+  Kotlin generator is ejectable; Java's `entity`,
   `extractor` and `template` are not. To make every copy compile against published
   artifacts, `SpringRecordBuilder`, `OutputFormatSpecEmitter`,
   `SpringTypeMapper.isLenientNetField`, `KotlinEnumEmitter`, `Fr019SharedEnum`,

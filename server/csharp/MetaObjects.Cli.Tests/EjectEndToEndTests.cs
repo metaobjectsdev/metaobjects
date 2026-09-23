@@ -111,9 +111,18 @@ public sealed class EjectEndToEndTests : IDisposable
             { "source.rdb": { "@table": "widgets" } },
             { "field.uuid":   { "name": "id", "@required": true } },
             { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } },
-            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "uuid" } }
+            { "field.uuid":   { "name": "ownerId" } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "uuid" } },
+            { "identity.reference": { "name": "ownerRef", "@fields": "ownerId", "@references": "metaobjects::iam::User" } }
           ]}}
         ]}}
+        """);
+        // The project opts into a library and references into it, as a real estate does.
+        // The owned runner used to load a bare directory, lose `libraries`, and fail
+        // ERR_INVALID_REFERENCE on this model before running a single generator.
+        Directory.CreateDirectory(Path.Combine(_root, ".metaobjects"));
+        File.WriteAllText(Path.Combine(_root, ".metaobjects", "config.json"), """
+        { "schema_version": 1, "sources": [], "libraries": ["iam", "iam/db"] }
         """);
 
         // 1. Eject — writes codegen/generators/EntityGenerator.cs, codegen/Codegen.csproj,
@@ -147,17 +156,22 @@ public sealed class EjectEndToEndTests : IDisposable
         File.WriteAllText(GeneratorCopy, edited);
 
         // 4. `dotnet run --project codegen -- gen ...` — a REAL compile of the edited copy.
-        var (genExit, genOutput) = RunCodegenProject("gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated");
+        //    The selection names the owned `entity` AND the packaged `names`: ejecting one
+        //    generator must not drop the others a project selects.
+        var (genExit, genOutput) = RunCodegenProject(
+            "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", "entity,names");
         Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
 
         var generated = Directory.GetFiles(OutDir, "*.cs", SearchOption.AllDirectories);
         Assert.NotEmpty(generated);
         Assert.Contains(generated, f => File.ReadAllText(f).Contains("EJECTED-E2E-MARKER"));
+        Assert.Contains(generated, f => Path.GetFileName(f) == "WidgetNames.g.cs");
 
         // 5. `dotnet run --project codegen -- verify --codegen ...` — the committed output
         //    (produced by the SAME edited copy) must read as in sync with a fresh regen.
         var (verifyExit, verifyOutput) = RunCodegenProject(
-            "verify", "--codegen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated");
+            "verify", "--codegen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated",
+            "--generators", "entity,names");
         Assert.True(verifyExit == 0, $"verify --codegen failed (exit {verifyExit}):\n{verifyOutput}");
         Assert.Contains("OK", verifyOutput);
     }

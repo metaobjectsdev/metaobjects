@@ -412,7 +412,14 @@ generators with `new` and calls the public runner. After that, both files are yo
 never touches them again, even with `--force`, and prints what to add instead. Once
 `codegen/Codegen.csproj` exists, `dotnet meta gen` and `dotnet meta verify --codegen` hand
 off to `dotnet run --project codegen` with the same arguments, so your owned generators
-run everywhere the tool did. Eject never overwrites a copy without `--force`, and
+run everywhere the tool did.
+
+`Program.cs` lists only what you own; keep naming the whole suite in `--generators`. Each
+owned copy replaces the packaged generator of the same name, every other selected name
+still runs from the package, and an owned generator the selection does not name runs after
+them. So ejecting `names` from a nine-generator selection changes one generator's output,
+not the other eight. The owned project finds metadata exactly as the tool does, including
+`.metaobjects/config.json`'s `sources` and `libraries`. Eject never overwrites a copy without `--force`, and
 `dotnet meta gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
 own`. The `template` primitive is not ejectable; it has no emit logic of its own.
 

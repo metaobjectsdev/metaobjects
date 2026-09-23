@@ -111,9 +111,9 @@ The codegen emits:
 ### `<Entity>Names` — the physical names, as constants
 
 `names` is opt-in — select it with `--generators names` on `dotnet meta gen`
-(`dotnet meta gen --list` names the whole catalog). This port ships no `eject`
-verb — ejecting belongs to the Node `meta` CLI, and it is about OWNING a
-generator's source, never about selecting one for a run. When selected, a project gets
+(`dotnet meta gen --list` names the whole catalog). Selecting a generator is not
+owning it: to change what `names` emits, `dotnet meta eject names` copies its source
+into `codegen/generators/` (see "Own a generator" above). When selected, a project gets
 `<Entity>Names.g.cs`. It carries the physical
 database names for one object as `const string`s:
 

@@ -18,6 +18,23 @@ public sealed class EjectCommandTests : IDisposable
     public EjectCommandTests() => Directory.CreateDirectory(_root);
     public void Dispose() { try { Directory.Delete(_root, recursive: true); } catch { } }
 
+    // The scaffold pins MetaObjects.Codegen to the version that is actually PUBLISHED, which
+    // for a release candidate carries its prerelease suffix. Pinning the bare
+    // AssemblyVersion (1.0.5 for 1.0.5-rc.3) points an RC user at a package that does not
+    // exist yet, so `dotnet run --project codegen` fails at restore.
+    [Theory]
+    [InlineData("1.0.5-rc.3+8ef72c361abc", "1.0.5.0", "1.0.5-rc.3")]
+    [InlineData("1.0.5", "1.0.5.0", "1.0.5")]
+    [InlineData("1.0.5+8ef72c361abc", "1.0.5.0", "1.0.5")]
+    [InlineData(null, "1.0.5.0", "1.0.5")]
+    [InlineData("", null, "1.0.0")]
+    public void Scaffold_pins_the_published_package_version(string? informational, string? assembly, string expected)
+    {
+        var version = EjectCommand.PackageVersion(informational, assembly is null ? null : Version.Parse(assembly));
+
+        Assert.Equal(expected, version);
+    }
+
     [Fact]
     public void Unknown_name_exits_2_and_writes_nothing()
     {
