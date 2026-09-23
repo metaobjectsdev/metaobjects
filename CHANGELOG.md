@@ -10,6 +10,12 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-09-23
+
+_Maven Central `8.0.6` only. npm, PyPI and NuGet have no product change and stay at `1.0.5`
+(convergent publishing: a registry takes a number only when it publishes). `metamodelVersion`
+stays `1.0`._
+
 ### Fixed
 
 - **Maven plugin: a relative path in a generator's `<args>` resolved against the shell, not the

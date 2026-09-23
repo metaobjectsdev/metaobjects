@@ -760,7 +760,7 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
 
 The 14 `com.metaobjects:*` modules (15 artifacts, counting the parent POM) ship to **Maven Central via the Sonatype Central Portal**,
 versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` and `8.x` from the
-1.0 cut (currently `8.0.5`) — in the parent + module poms. Signed with the maintainer's GPG key.
+1.0 cut (currently `8.0.6`) — in the parent + module poms. Signed with the maintainer's GPG key.
 
 ## Procedure
 

@@ -39,10 +39,10 @@ because a conformance corpus gates the ports against each other and never agains
 in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
-**Where the versions are.** `latest` is **`1.0.5`** on npm, **`8.0.5`** on Maven Central,
+**Where the versions are.** `latest` is **`1.0.5`** on npm, **`8.0.6`** on Maven Central,
 **`1.0.5`** on PyPI and **`1.0.5`** on NuGet (the Maven major is always **npm major + 7**, so
-1.0.5 is 8.0.5). All four moved at 1.0.5, as they did at 1.0.3 and 1.0.4: every port had changed
-product code. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8` candidates, 1.0.4's `rc.1` and
+1.0.6 is 8.0.6). All four moved at 1.0.5; Maven alone took 1.0.6 (8.0.6), a plugin fix, and the
+other three sat it out, which is the convergent-publishing rule working as intended. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8` candidates, 1.0.4's `rc.1` and
 1.0.5's `rc.1` through `rc.11` are
 superseded, and npm's `next` tag is REPOINTED onto each release — not deleted, because
 `dist-tag rm` 403s for every token we hold (`docs/RELEASING.md` §4).
@@ -82,7 +82,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + the nine filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
 
-**Latest release: 1.0.5** (2026-09-23) — npm `1.0.5`, Maven Central `8.0.5`, PyPI `1.0.5`, NuGet `1.0.5`; a coordinated PATCH with changed product code in every port, gated by `1.0.5-rc.11` on the adopter estate (`rc-gate.sh` 7/7, contract suite 43/43 in all five ports). Carries the **core vs helpers** reframe (ADR-0034 Amendment 3 — every generator is a reference helper, and **eject ships in every port**: `metaobjects eject`, `mvn metaobjects:eject`, `dotnet meta eject`), the REST collection URL renamed to the entity name (breaking for generated routes), an unpairable M:N junction made a load error in every port, a view-only projection's REST surface in all five ports, the codegen-compile gate in every port, and the `migrate` table-rename fix. **It changes generated output**: adopters with committed generated code must run `meta gen` (see the CHANGELOG's upgrading notes).
+**Latest release: 1.0.5** (2026-09-23), plus Maven Central `8.0.6` the same day (a Maven-plugin fix; the other registries sat it out) — npm `1.0.5`, Maven Central `8.0.5`, PyPI `1.0.5`, NuGet `1.0.5`; a coordinated PATCH with changed product code in every port, gated by `1.0.5-rc.11` on the adopter estate (`rc-gate.sh` 7/7, contract suite 43/43 in all five ports). Carries the **core vs helpers** reframe (ADR-0034 Amendment 3 — every generator is a reference helper, and **eject ships in every port**: `metaobjects eject`, `mvn metaobjects:eject`, `dotnet meta eject`), the REST collection URL renamed to the entity name (breaking for generated routes), an unpairable M:N junction made a load error in every port, a view-only projection's REST surface in all five ports, the codegen-compile gate in every port, and the `migrate` table-rename fix. **It changes generated output**: adopters with committed generated code must run `meta gen` (see the CHANGELOG's upgrading notes).
 
 See `spec/roadmap.md` for the active + planned work picture.
 
