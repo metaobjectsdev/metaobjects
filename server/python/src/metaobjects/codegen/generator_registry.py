@@ -108,6 +108,21 @@ class GeneratorEntry:
     #: Not gated cross-port (the manifest carries no such column); surfaced by ``--list``
     #: and warned about by :func:`unsatisfied_requires`.
     requires: tuple[str, ...] = ()
+    #: The packaged factory an adopter copies with ``metaobjects eject`` (ADR-0034
+    #: Amendment 3). Its module is the file copied; its name is the ``module:symbol``
+    #: symbol the copy is wired by. ``None`` = not ejectable (the ``template`` primitive
+    #: has no emit logic of its own to own).
+    source: Callable[..., Generator] | None = None
+
+    @property
+    def source_module(self) -> str | None:
+        """Dotted module path of the file ``eject`` copies, or ``None``."""
+        return self.source.__module__ if self.source is not None else None
+
+    @property
+    def symbol(self) -> str | None:
+        """The factory name an owned copy exports, or ``None``."""
+        return self.source.__name__ if self.source is not None else None
 
 
 def _template_primitive(_ctx: GeneratorBuildContext) -> Generator:
@@ -158,6 +173,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="model",
         factory=lambda _ctx: entity_model(),
+        source=entity_model,
     ),
     "routes": GeneratorEntry(
         name="routes",
@@ -165,6 +181,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="api",
         factory=lambda _ctx: router_generator(),
+        source=router_generator,
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",
@@ -173,6 +190,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="capability",
         factory=lambda _ctx: output_parser_generator(),
         requires=("entity",),
+        source=output_parser_generator,
     ),
     "output-prompt": GeneratorEntry(
         name="output-prompt",
@@ -180,6 +198,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="capability",
         factory=lambda _ctx: output_prompt_generator(),
+        source=output_prompt_generator,
     ),
     "render-helper": GeneratorEntry(
         name="render-helper",
@@ -188,6 +207,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="capability",
         factory=_render_helper_default,
         requires=("entity",),
+        source=render_helper_generator,
     ),
     "extractor": GeneratorEntry(
         name="extractor",
@@ -196,6 +216,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="capability",
         factory=lambda _ctx: extractor_generator(),
         requires=("entity",),
+        source=extractor_generator,
     ),
     "template": GeneratorEntry(
         name="template",
@@ -210,6 +231,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="api",
         factory=lambda _ctx: filter_allowlist_generator(),
+        source=filter_allowlist_generator,
     ),
     "names": GeneratorEntry(
         name="names",
@@ -217,6 +239,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="model",
         factory=lambda _ctx: names_generator(),
+        source=names_generator,
     ),
     "trace-helper": GeneratorEntry(
         name="trace-helper",
@@ -224,6 +247,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="capability",
         factory=lambda _ctx: trace_helper_generator(),
+        source=trace_helper_generator,
     ),
 }
 

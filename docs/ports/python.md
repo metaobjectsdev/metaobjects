@@ -465,6 +465,11 @@ each as `<Name>.py`. So the prompt+parse story is two generators:
   `@responseRef` value object's model from its `<Name>.py`. `template.output` gets no
   parser at all — it renders outbound.
 
+**Own a generator.** Every generator is a reference helper you can copy and change:
+`metaobjects eject <name>` copies it into `codegen/generators/`, and you wire the copy as
+`module:symbol` in place of its name. See
+[Own your codegen → Python](../features/own-your-codegen.md#python-metaobjects-eject).
+
 Every template-tier generator that imports a model (`output-parser`, `extractor`,
 `render-helper`) needs `entity` in the same run: `metaobjects gen --list` marks them
 `(requires: entity)`, and `--generators` warns when `entity` is missing.

@@ -17,9 +17,10 @@ there; your copy is yours.
 1. **You own the invocation** — codegen runs through your own build, on your terms,
    in every port.
 2. **You own the templates** — `meta eject <name>...` copies the reference generators
-   *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **Today only the
-   TypeScript toolchain can eject.** The JVM, Python and C# ports get an eject command of
-   their own; until they do, their generators are labelled **preview**, and customization
+   *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **TypeScript and
+   Python can eject today** — see [Python](#python-metaobjects-eject) below. The JVM and C#
+   ports get an eject command of their own; until they do, their generators are labelled
+   **preview**, and customization
    there is limited to the declarative template-codegen surface (`--template-spec` /
    Mustache) and choosing which generators run. (ADR-0035 §3 once ruled this split
    intentional; Amendment 3 supersedes that, because subclassing and selection do not let
@@ -341,3 +342,28 @@ Importing the built-in generators from `@metaobjectsdev/codegen-ts/generators`
 (`entityFile`, `queriesFile`, `routesFile`, `barrel`) is **deprecated** (ADR-0034) and
 **removed at the 1.0/8.0 release**. Use the owned copies `meta eject` writes into
 `codegen/generators/*` and import those from your `metaobjects.config.ts`.
+
+## Python: `metaobjects eject`
+
+```bash
+metaobjects eject entity routes        # copies into codegen/generators/entity.py, routes.py
+```
+
+Each copy is the packaged generator module, verbatim. Wire it in `metaobjects.config.yaml`
+(or `--generators`) as `module:symbol`, the same form `providers` accepts, in place of the
+packaged name:
+
+```yaml
+targets:
+  api:
+    outDir: src/gen
+    generators: [codegen.generators.entity:entity_model, codegen.generators.routes:router_generator]
+```
+
+Eject prints the exact entry for each copy. It never overwrites an existing copy without
+`--force` and never edits your config. `metaobjects gen --list` marks each owned copy
+`identical` or `DIFFERS: N behind, M of your own` against the packaged reference, so you
+can see when an upgrade changed the generator you copied. A copy imports the same
+`metaobjects.codegen.*` modules the packaged one does, and those module paths are the
+surface an owned generator builds on.
+

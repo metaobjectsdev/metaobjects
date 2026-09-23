@@ -33,6 +33,9 @@ def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
     rc = main(["gen", "--generators", GEN_SUITE, "--list"])
     assert rc == 0
     out = capsys.readouterr().out
+    # ADR-0034 Amendment 3: the listing says these are reference helpers you own by eject.
+    assert out.startswith("Reference generators — each is a helper, not a guarantee")
+    assert "metaobjects eject <name>" in out
     # Every registered stable name appears in the listing.
     for name in GENERATOR_REGISTRY:
         assert name in out, f"--list omitted {name!r}"

@@ -47,8 +47,9 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   that compiles and passes its reference fixtures, which you copy and own. The catalog now
   says so at the top of `meta gen --list`, `dotnet meta gen --list` and `metaobjects gen
   --list`; the README, the docs and the shipped `metaobjects-codegen` skill say so too.
-  Only the TypeScript toolchain can eject a generator today, so the C#, Java, Kotlin and
-  Python generators are labelled **preview** until those ports gain an eject command. That
+  TypeScript (`meta eject`) and Python (`metaobjects eject`, new in this release) can eject a
+  generator, so the C#, Java and Kotlin generators are labelled **preview** until those
+  ports gain an eject command. That
   supersedes ADR-0035 §3's ruling that owning codegen through build configuration was
   enough. Nothing an existing project runs changes.
 
@@ -245,6 +246,13 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   validates in all five, and the checks run in the Node `meta` CLI.
 
 ### Added
+
+- **Python: `metaobjects eject <name>...`** copies a reference generator into
+  `codegen/generators/` to own and edit. Wire the copy in `generators` (or `--generators`) as
+  `module:symbol`, the form `providers` already takes; `gen` and `verify --codegen` then run
+  your copy. Eject never overwrites a copy without `--force` and never edits the config, and
+  `metaobjects gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
+  own`. An unchanged copy generates byte-identical output to the packaged generator.
 
 - **A view-only projection has a REST surface in all five ports.** An `object.projection`
   whose only source is a read-only view used to get routes in TypeScript and C# and nothing

@@ -105,6 +105,7 @@ from metaobjects.codegen.generator_registry import (
     unsatisfied_requires,
 )
 from metaobjects.codegen.runner import run_gen
+from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generators.render_helper_generator import (
     _derive_payload_field_tree,
 )
@@ -501,9 +502,13 @@ def _template_root_for(args: argparse.Namespace) -> str:
 
 
 def _resolve_generators(
-    names: str, ctx: GeneratorBuildContext | None = None,
+    names: str, ctx: GeneratorBuildContext | None = None, owned_root: Path | None = None,
 ) -> tuple[list[Generator], list[str]]:
     """Resolve a comma-separated list of STABLE generator names via the registry.
+
+    An entry of the form ``module:symbol`` is an adopter-owned copy (``metaobjects
+    eject``), imported with *owned_root* (default: the working directory) on ``sys.path``
+    — the config directory in config mode, so a copy beside the config resolves.
 
     Returns ``(generators, errors)``. An unknown name produces a clear error and
     no generators (so the caller can fail with exit code != 0).
@@ -519,17 +524,27 @@ def _resolve_generators(
     requested = [n.strip() for n in names.split(",") if n.strip()]
     gens: list[Generator] = []
     errors: list[str] = []
+    selected: list[str] = []
     for n in requested:
         entry = get_generator(n)
+        if entry is None and (":" in n or "." in n):
+            gen, err = owned.build_owned(n, owned_root or Path.cwd(), ctx)
+            if err is not None:
+                errors.append(err)
+                continue
+            gens.append(gen)
+            selected.append(gen.name)
+            continue
         if entry is None:
             known = ", ".join(sorted(GENERATOR_REGISTRY))
             errors.append(f"unknown generator {n!r}; known: {known}")
             continue
         gens.append(entry.factory(ctx))
+        selected.append(n)
     if not errors and not gens:
         errors.append("no generators selected (empty --generators list)")
     if not errors:
-        for warning in unsatisfied_requires(requested):
+        for warning in unsatisfied_requires(selected):
             print(f"warning: {warning}", file=sys.stderr)
     return gens, errors
 
@@ -968,15 +983,40 @@ def _cmd_docs(args: argparse.Namespace) -> int:
     return 0
 
 
+#: ADR-0034 Amendment 3: generators are reference helpers you own with ``metaobjects
+#: eject``. Printed above the ``--list`` entries.
+LIST_HEADER = (
+    "Reference generators — each is a helper, not a guarantee: `metaobjects eject <name>`\n"
+    "copies it into codegen/generators/ and the copy is yours to change. What MetaObjects\n"
+    "guarantees (verify, render) is not a generator and is not listed.\n"
+    "Select with --generators <name,...>:"
+)
+
+
 def _cmd_list(_args: argparse.Namespace) -> int:
     """Print each registered generator ``<stable-name> — <description>`` and exit 0.
 
     Does NOT run codegen — pure discoverability (ADR-0021 D3).
     """
+    print(LIST_HEADER)
+    root = Path.cwd()
     for entry in list_generators():
         requires = f" (requires: {', '.join(entry.requires)})" if entry.requires else ""
-        print(f"{entry.name} — {entry.description}{requires}")
+        status = owned.owned_status(root, entry)
+        mark = f" [owned — {status}]" if status is not None else ""
+        print(f"{entry.name} — {entry.description}{requires}{mark}")
     return 0
+
+
+def _cmd_eject(args: argparse.Namespace) -> int:
+    """Copy reference generators into ``codegen/generators/`` to own (ADR-0034 Am. 3)."""
+    root = Path(args.root) if args.root else Path.cwd()
+    result = owned.eject(args.names, root, force=args.force)
+    for line in result.out:
+        print(line)
+    for line in result.err:
+        print(f"error: {line}", file=sys.stderr)
+    return result.code
 
 
 def _warn_if_agent_context_stale() -> None:
@@ -1161,7 +1201,8 @@ def _run_gen_targets(
         gens: list[Generator] | None = None
         if t.generators is not None:
             gens, gen_errors = _resolve_generators(
-                ",".join(t.generators), build_ctx or GeneratorBuildContext())
+                ",".join(t.generators), build_ctx or GeneratorBuildContext(),
+                owned_root=config.config_dir)
             if gen_errors:
                 errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
                 continue
@@ -2364,6 +2405,16 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     verify.set_defaults(func=_cmd_verify)
+
+    eject_p = sub.add_parser(
+        "eject",
+        help="copy reference generators into codegen/generators/ to own and edit",
+    )
+    eject_p.add_argument("names", nargs="+", metavar="NAME", help="stable generator names")
+    eject_p.add_argument("--force", action="store_true",
+                         help="replace an existing owned copy with the reference")
+    eject_p.add_argument("--root", default=None, help="project root (default: cwd)")
+    eject_p.set_defaults(func=_cmd_eject)
 
     agent_docs = sub.add_parser(
         "agent-docs",
