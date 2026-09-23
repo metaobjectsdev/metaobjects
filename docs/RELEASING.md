@@ -599,7 +599,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `1.0.4`):
+Four packages, version-locked at the C# port version (currently `1.0.5`):
 
 | Package | Contents |
 |---|---|
@@ -700,7 +700,7 @@ a pre-release you have not committed.
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `1.0.4`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `1.0.5`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: a tag-triggered workflow (API token)
 
@@ -760,7 +760,7 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
 
 The 14 `com.metaobjects:*` modules (15 artifacts, counting the parent POM) ship to **Maven Central via the Sonatype Central Portal**,
 versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` and `8.x` from the
-1.0 cut (currently `8.0.4`) — in the parent + module poms. Signed with the maintainer's GPG key.
+1.0 cut (currently `8.0.5`) — in the parent + module poms. Signed with the maintainer's GPG key.
 
 ## Procedure
 

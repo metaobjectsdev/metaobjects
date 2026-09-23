@@ -1,6 +1,6 @@
 # MetaObjects
 
-> Coding agents get context — rules files, memories, MCP servers — and context is advisory: nothing fails when the code stops matching it. MetaObjects gives your agent one typed model of your application — data, API, UI, prompt payloads, and what the software is supposed to do — generates each layer's code from it in TypeScript, Java, Kotlin, C# and Python with no proprietary runtime in the output, and fails your build when generated code, a prompt, or a claimed capability drifts from that model. Your hand-written logic stays yours. Apache 2.0. Shipping at `1.0.4` on npm and `8.0.4` on Maven Central.
+> Coding agents get context — rules files, memories, MCP servers — and context is advisory: nothing fails when the code stops matching it. MetaObjects gives your agent one typed model of your application — data, API, UI, prompt payloads, and what the software is supposed to do — generates each layer's code from it in TypeScript, Java, Kotlin, C# and Python with no proprietary runtime in the output, and fails your build when generated code, a prompt, or a claimed capability drifts from that model. Your hand-written logic stays yours. Apache 2.0. Shipping at `1.0.5` on npm and `8.0.5` on Maven Central.
 
 **One typed model of your app** — data, API, UI, prompt payloads, and what it's supposed to do — that your agent reads and writes. Two things happen to it. **Generate:** the boring parts are derived from it, in TypeScript, Java, Kotlin, C# and Python — at build time by reference generators you copy into your repo and own, or at runtime from the live model. **Verify:** the build fails when generated code drifts from the model and when a prompt's payload no longer matches what it's told — and it fails or warns when a feature someone marked done has nothing implementing it. That last one has no equivalent in a test suite: a test exercises code that exists, so nothing flags a claimed capability that was never built. It checks that the claim points at something real, not that the something is correct.
 
@@ -20,7 +20,7 @@ If you are an AI assistant helping someone adopt MetaObjects in their project, d
 
 1. **Install the port's package** for the project's stack:
    - **TypeScript / Node**: `npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts`
-   - **Java / Kotlin**: add the Maven dependencies `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and the `com.metaobjects:metaobjects-maven-plugin`, all at `8.0.4`.
+   - **Java / Kotlin**: add the Maven dependencies `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and the `com.metaobjects:metaobjects-maven-plugin`, all at `8.0.5`.
    - **Python**: `pip install metaobjects`
    - **C#**: install the MetaObjects .NET tool (`dotnet tool install` the MetaObjects CLI tool; invoked as `dotnet meta`).
 
@@ -57,10 +57,10 @@ MetaObjects pillars are capabilities of the same metadata spine, not separate pr
 
 **Sharing a model across your own projects** — today the TypeScript toolchain publishes and TypeScript and Python projects consume, over a `path` dependency (a sibling checkout or submodule); Java, Kotlin and C# arrive in Phase 2. One project publishes part of its model with the `sharedModelFile()` generator; another declares it under `dependencies` in `.metaobjects/config.json`, runs `meta deps sync` to commit a hash-locked snapshot, and builds on it with `extends` and references. When the publisher's model moves, `meta verify --deps` reports it instead of two copies drifting apart.
 
-## Implementations (npm `1.0.4` / Maven Central `8.0.4`)
+## Implementations (npm `1.0.5` / Maven Central `8.0.5`)
 
-- [TypeScript](https://github.com/metaobjectsdev/metaobjects/tree/main/server/typescript): the reference implementation. Published to npm at `1.0.4` across 14 `@metaobjectsdev/*` packages on the `latest` tag. 2500+ tests passing across the workspace. Bun-first dev workflow. Owns the canonical schema-migration toolchain used by every port (ADR-0015).
-- [Java](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java): 14 publishable Maven modules under `com.metaobjects:*` at `8.0.4` on Maven Central (15 artifacts with the parent POM). Spring REST + DTO + repository-interface codegen, OMDB runtime persistence (pure data-access) with Spring-tx, full FR-003 + FR-006 + FR-010/011 + FR-018 + FR5 family. Fully green across all conformance corpora.
+- [TypeScript](https://github.com/metaobjectsdev/metaobjects/tree/main/server/typescript): the reference implementation. Published to npm at `1.0.5` across 14 `@metaobjectsdev/*` packages on the `latest` tag. 2500+ tests passing across the workspace. Bun-first dev workflow. Owns the canonical schema-migration toolchain used by every port (ADR-0015).
+- [Java](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java): 14 publishable Maven modules under `com.metaobjects:*` at `8.0.5` on Maven Central (15 artifacts with the parent POM). Spring REST + DTO + repository-interface codegen, OMDB runtime persistence (pure data-access) with Spring-tx, full FR-003 + FR-006 + FR-010/011 + FR-018 + FR5 family. Fully green across all conformance corpora.
 - [Kotlin](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java/codegen-kotlin): a Kotlin codegen pipeline on KotlinPoet plus `metadata-ktx` — a Kotlin facade over the Java MetaObjects core. Ships via the Java reactor (`metaobjects-metadata-ktx`, `metaobjects-codegen-kotlin`). Persistence-conformance runs against Testcontainers Postgres through Exposed.
 - [C#](https://github.com/metaobjectsdev/metaobjects/tree/main/server/csharp): loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. The `dotnet meta` tool ships `gen` and the codegen-side `verify` subverbs (`--codegen`, `--templates`); schema migration is Node `meta` only (ADR-0015).
 - [Python](https://github.com/metaobjectsdev/metaobjects/tree/main/server/python): loader + canonical serializer + conformance + render + verify + codegen + an `ObjectManager` runtime layer. The `metaobjects` console-script ships `gen` and codegen-side `verify`. Fully green across all conformance corpora.
@@ -74,7 +74,7 @@ MetaObjects deliberately does **not** ship one universal binary. Schema operatio
 - Codegen is **opt-in**: no port ships a default generator suite, `meta init` scaffolds `generators: []`, and `meta gen --list` is the catalog (`--probe` reports how many files each generator would emit for your model)
 - Project marker directory: `.metaobjects/`
 - Install (TypeScript reference): `npm install -D @metaobjectsdev/cli` (or `bun add @metaobjectsdev/cli`)
-- Install (Java): `<dependency><groupId>com.metaobjects</groupId><artifactId>metaobjects-metadata</artifactId><version>8.0.4</version></dependency>` plus per-concern artifacts (`metaobjects-codegen-spring`, `metaobjects-omdb`, `metaobjects-maven-plugin`, etc.)
+- Install (Java): `<dependency><groupId>com.metaobjects</groupId><artifactId>metaobjects-metadata</artifactId><version>8.0.5</version></dependency>` plus per-concern artifacts (`metaobjects-codegen-spring`, `metaobjects-omdb`, `metaobjects-maven-plugin`, etc.)
 - Install (Kotlin): same Maven coordinates — add `metaobjects-metadata-ktx` and `metaobjects-codegen-kotlin` to a JVM/Kotlin project.
 - Install (Python): `pip install metaobjects`
 - Install (C#): the MetaObjects .NET tool, invoked as `dotnet meta`.
@@ -120,7 +120,7 @@ Universal web-client under `client/web/packages/`:
 
 ## Java / Kotlin Maven coordinates
 
-All published to Maven Central under `com.metaobjects:*` at `8.0.4`:
+All published to Maven Central under `com.metaobjects:*` at `8.0.5`:
 
 - `metaobjects-metadata`, `metaobjects-metadata-ktx`
 - `metaobjects-codegen-base`, `metaobjects-codegen-mustache`, `metaobjects-codegen-spring`, `metaobjects-codegen-kotlin`, `metaobjects-codegen-plantuml`
