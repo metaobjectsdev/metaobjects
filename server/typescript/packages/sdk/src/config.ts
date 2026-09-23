@@ -187,8 +187,42 @@ export const DEFAULT_CONFIG: Config = ConfigSchema.parse({ schema_version: 1 });
 export const CONFIG_FILE = "config.json";
 
 export async function loadConfig(metaRoot: string): Promise<Config> {
-  const raw = await readFile(join(metaRoot, CONFIG_FILE), "utf8");
-  return ConfigSchema.parse(JSON.parse(raw));
+  const path = join(metaRoot, CONFIG_FILE);
+  const raw = await readFile(path, "utf8");
+  const result = ConfigSchema.safeParse(JSON.parse(raw));
+  if (result.success) return result.data;
+  throw new Error(describeConfigError(path, result.error));
+}
+
+/**
+ * A config error in words: the file, one line per distinct problem, and — for a `sources`
+ * entry — the shape that works. Zod's own message is a JSON dump of every union arm, which
+ * printed the same issue three times and never named the accepted form.
+ */
+export function describeConfigError(path: string, error: z.ZodError): string {
+  const lines = new Set<string>();
+  const visit = (issues: readonly z.ZodIssue[]): void => {
+    for (const issue of issues) {
+      if (issue.code === "invalid_union") {
+        visit(issue.unionErrors.flatMap((e) => e.issues));
+        continue;
+      }
+      const at = issue.path.reduce<string>(
+        (acc, seg) => (typeof seg === "number" ? `${acc}[${seg}]` : acc === "" ? seg : `${acc}.${seg}`),
+        "",
+      );
+      lines.add(`  ${at === "" ? "(top level)" : at}: ${issue.message}`);
+    }
+  };
+  visit(error.issues);
+  const touchesSources = error.issues.some((i) => i.path[0] === "sources");
+  return [
+    `${path} is not a valid MetaObjects config:`,
+    ...lines,
+    ...(touchesSources
+      ? ['Each `sources` entry is an object, for example { "path": "model" }, never a bare string.']
+      : []),
+  ].join("\n");
 }
 
 export async function saveConfig(metaRoot: string, config: Config): Promise<void> {

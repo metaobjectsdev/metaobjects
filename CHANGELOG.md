@@ -385,6 +385,11 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
   27 of them on the estate above — with no attribute, node or file. It now prints each
   error's message, which names all three.
+- **An invalid `.metaobjects/config.json` now says what is wrong, in words.** A bad entry
+  printed Zod's raw union dump — the same issue three times, no file name, and no hint of
+  the accepted shape. The error now names the file, gives one line per problem with its
+  path (`sources[0]: Expected object, received string`), and for a `sources` entry shows
+  the form that works: `{ "path": "model" }`. Found by an adopter estate.
 - **`meta export` loads the libraries a project opts into.** It loaded the resolved file
   list alone, so under `export` every reference into an opted-in library (for example
   `metaobjects::iam::User`) failed with "does not resolve to an object" while `gen`,

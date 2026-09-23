@@ -50,6 +50,29 @@ describe("DEFAULT_CONFIG", () => {
   });
 });
 
+describe("loadConfig — an invalid config says what is wrong, in words", () => {
+  // An adopter estate wrote `"sources": ["model"]` and got a raw Zod union dump: three
+  // copies of one issue, no file name, and no hint of the accepted `{"path": ...}` form.
+  test("a bare-string source names the file, the entry, and the shape that works", async () => {
+    await Bun.write(join(metaRoot, "config.json"), JSON.stringify({ schema_version: 1, sources: ["model"] }));
+    const err = await loadConfig(metaRoot).then(() => undefined, (e: unknown) => e as Error);
+    expect(err).toBeInstanceOf(Error);
+    const msg = err!.message;
+    expect(msg).toContain("config.json");
+    expect(msg).toContain("sources[0]");
+    expect(msg).toContain('{ "path": "model" }');
+    expect(msg).not.toContain("unionErrors");
+    expect(msg.split("sources[0]").length - 1).toBe(1);
+  });
+
+  test("a missing schema_version is one plain line", async () => {
+    await Bun.write(join(metaRoot, "config.json"), JSON.stringify({ sources: [] }));
+    const err = await loadConfig(metaRoot).then(() => undefined, (e: unknown) => e as Error);
+    expect(err!.message).toContain("schema_version");
+    expect(err!.message).not.toContain('"code"');
+  });
+});
+
 describe("loadConfig / saveConfig", () => {
   test("round-trips defaults", async () => {
     await saveConfig(metaRoot, DEFAULT_CONFIG);
