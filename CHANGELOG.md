@@ -12,7 +12,9 @@ here.**
 
 ## [1.0.5] — 2026-09-23
 
-_npm `1.0.5` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_All four registries publish: npm `1.0.5` (full lockstep across all 14 `@metaobjectsdev/*`
+publish candidates), Maven Central `8.0.5`, PyPI `1.0.5`, NuGet `1.0.5` — every port has changed
+product code._
 
 _`metamodelVersion` stays `1.0`. The `requirement.*` change below is a prose-only manifest
 edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was._
