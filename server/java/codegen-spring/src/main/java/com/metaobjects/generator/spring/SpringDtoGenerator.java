@@ -581,7 +581,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append(") {}\n");
         } else {
             src.append(") {\n");
-            for (String decl : enumDecls) src.append("    ").append(decl).append('\n');
+            for (String decl : enumDecls) src.append("    ").append(decl.replace("\n", "\n    ")).append('\n');
             for (String member : extraBodyMembers) src.append(member);
             src.append(builder);
             src.append("}\n");
@@ -881,8 +881,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             }
             src.append("/** GENERATED — shared enum ").append(shared.name())
                .append(". Do not hand-edit; regenerated from metadata. */\n");
-            src.append("public enum ").append(shared.name()).append(" { ")
-               .append(String.join(", ", shared.values())).append(" }\n");
+            src.append(SpringTypeMapper.enumDeclaration(shared.name(), shared.values(), shared.intValueMap()))
+               .append("\n");
             writeSharedEnumFile(shared, outRoot, src.toString());
         }
     }
@@ -1063,7 +1063,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);
             if (!seen.add(typeName)) continue; // dedup shared abstract-enum types
             List<String> values = SpringTypeMapper.effectiveEnumValues(ef);
-            decls.add("public enum " + typeName + " { " + String.join(", ", values) + " }");
+            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef)));
         }
         return decls;
     }

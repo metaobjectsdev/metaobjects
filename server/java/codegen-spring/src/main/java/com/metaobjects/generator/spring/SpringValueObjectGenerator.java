@@ -158,7 +158,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             src.append(") {}\n");
         } else {
             src.append(") {\n");
-            for (String decl : enumDecls) src.append("    ").append(decl).append('\n');
+            for (String decl : enumDecls) src.append("    ").append(decl.replace("\n", "\n    ")).append('\n');
             src.append(builder);
             src.append("}\n");
         }
@@ -186,7 +186,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             if (values.isEmpty()) continue;
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);
             if (!seen.add(typeName)) continue;
-            decls.add("public enum " + typeName + " { " + String.join(", ", values) + " }");
+            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef)));
         }
         return decls;
     }

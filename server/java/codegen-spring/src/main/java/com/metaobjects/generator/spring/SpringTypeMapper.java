@@ -356,6 +356,53 @@ public final class SpringTypeMapper {
      * Returns an empty list when absent (defensive — the loader requires non-empty {@code @values}).
      */
     @SuppressWarnings("unchecked")
+    /**
+     * The declared {@code @intValueMap} (member symbol → stored integer) of an int-backed enum,
+     * in declaration order, or {@code null} when the enum is string-backed or the map does not
+     * cover every member. Read resolving (ADR-0039), like the OMDB codec and the Kotlin Exposed
+     * column that store the same integers.
+     */
+    public static java.util.Map<String, Integer> intValueMap(EnumField field) {
+        if (!field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return null;
+        Object raw = field.getMetaAttr(EnumField.ATTR_INT_VALUE_MAP).getValue();
+        if (!(raw instanceof java.util.Map<?, ?> m)) return null;
+        java.util.Map<String, Integer> out = new java.util.LinkedHashMap<>();
+        for (String member : effectiveEnumValues(field)) {
+            if (!(m.get(member) instanceof Number n)) return null;
+            out.put(member, n.intValue());
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /**
+     * A Java {@code enum} declaration for {@code typeName}. With an {@code @intValueMap} the enum
+     * carries each member's declared stored integer ({@code dbValue()}) and the reverse lookup
+     * ({@code fromDbValue}), which throws on an unmapped stored value. The mapping is declared
+     * metadata, so it is generated rather than left to a hand-written repository, where the
+     * obvious {@code ordinal()} compiles, round-trips within one process, and writes rows no
+     * other port agrees with.
+     */
+    public static String enumDeclaration(String typeName, List<String> values, java.util.Map<String, Integer> intValueMap) {
+        if (intValueMap == null) {
+            return "public enum " + typeName + " { " + String.join(", ", values) + " }";
+        }
+        StringBuilder sb = new StringBuilder("public enum ").append(typeName).append(" {\n");
+        List<String> members = new java.util.ArrayList<>();
+        for (String v : values) members.add("    " + v + "(" + intValueMap.get(v) + ")");
+        sb.append(String.join(",\n", members)).append(";\n\n");
+        sb.append("    private final int dbValue;\n\n");
+        sb.append("    ").append(typeName).append("(int dbValue) { this.dbValue = dbValue; }\n\n");
+        sb.append("    /** The stored integer this member maps to, from the declared @intValueMap. */\n");
+        sb.append("    public int dbValue() { return dbValue; }\n\n");
+        sb.append("    /** The member a stored integer maps to; throws on a value the map does not declare. */\n");
+        sb.append("    public static ").append(typeName).append(" fromDbValue(int value) {\n");
+        sb.append("        for (").append(typeName).append(" e : values()) if (e.dbValue == value) return e;\n");
+        sb.append("        throw new IllegalArgumentException(\"unmapped stored value \" + value + \" for ")
+          .append(typeName).append("\");\n");
+        sb.append("    }\n}");
+        return sb.toString();
+    }
+
     public static List<String> effectiveEnumValues(EnumField field) {
         if (!field.hasMetaAttr(EnumField.ATTR_VALUES)) return List.of();
         Object raw = field.getMetaAttr(EnumField.ATTR_VALUES).getValue();

@@ -395,6 +395,13 @@ edit (two registered `description` strings) and was ruled a hold, as 1.0.4's was
   CODES alone — `metadata did not load cleanly (ERR_UNKNOWN_ATTR, ERR_UNKNOWN_ATTR, …)`,
   27 of them on the estate above — with no attribute, node or file. It now prints each
   error's message, which names all three.
+- **Java: an int-backed `field.enum` generates its declared value map.** The Java DTO,
+  value-object and shared-enum generators emitted the member symbols and nothing else, so an
+  adopter's repository had to restate an `@intValueMap` the metadata already declares — and
+  the obvious `ordinal()` compiles, round-trips within one process, and writes rows no other
+  port agrees with. An int-backed enum now carries `dbValue()` and `fromDbValue(int)`, which
+  throws on an unmapped stored value; a string-backed enum is unchanged. Found by an adopter
+  estate.
 - **Maven: `metaobjects:generate` registers its output as a compile source root.** It never
   did, so `mvn compile` in an adopter module compiled none of the generated classes unless
   the adopter also wired build-helper-maven-plugin. A generator's output directory is now

@@ -61,7 +61,8 @@ public final class Fr019SharedEnum {
      * @param javaPackage the same package in Java dotted form (e.g. {@code "acme.shop"})
      */
     public record SharedEnum(String name, List<String> values, boolean provided,
-                             String metaPackage, String javaPackage) { }
+                             String metaPackage, String javaPackage,
+                             Map<String, Integer> intValueMap) { }
 
     /** Per-port codegen config for resolving a {@code @provided} enum's Java namespace (ADR-0001).
      * Generator args, never metadata: a package&rarr;namespace map (keyed by metadata package in
@@ -119,7 +120,8 @@ public final class Fr019SharedEnum {
         String javaPackage = split[0];
         String name = SpringNaming.capitalize(split[1]);
         String metaPackage = metaPackageOf(decl.getName());
-        return new SharedEnum(name, values, isProvided((EnumField) decl), metaPackage, javaPackage);
+        return new SharedEnum(name, values, isProvided((EnumField) decl), metaPackage, javaPackage,
+            SpringTypeMapper.intValueMap((EnumField) decl));
     }
 
     /** The declaration's metadata package in {@code ::} form, stripped of the trailing {@code ::Name}
