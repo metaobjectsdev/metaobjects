@@ -1,0 +1,4 @@
+The format is {"topic": "<slug>"}.
+```json
+{"topic":"real","worth_forming":true,"reason":"r"}
+```

@@ -4,7 +4,7 @@ namespace MetaObjects.Render.Extract;
 
 /// <summary>
 /// Stages 2–3: isolate and select the payload root span.
-/// Selection rule: first-closed-else-first-open.
+/// JSON: the engine picks among JsonCandidates by the schema (fenced first, first object carrying a declared field); Json() (first-closed-else-first-open) is its fallback.
 /// </summary>
 public static class Locate
 {
@@ -33,6 +33,34 @@ public static class Locate
     /// <summary>
     /// Returns the index of the matching <c>}</c>, or -1 if unterminated. String-aware.
     /// </summary>
+    /// <summary>
+    /// Every top-level object span in <paramref name="text"/>, in order: each balanced {...}
+    /// (nested objects are part of their parent, not separate spans), and, for a '{' that never
+    /// closes, the text from it to the end.
+    /// </summary>
+    public static IReadOnlyList<string> JsonCandidates(string? text)
+    {
+        var output = new List<string>();
+        if (text == null) return output;
+        bool tailAdded = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '{') continue;
+            int end = ScanBalanced(text, i);
+            if (end >= 0)
+            {
+                output.Add(text.Substring(i, end - i + 1));
+                i = end;
+            }
+            else if (!tailAdded)
+            {
+                output.Add(text[i..]);
+                tailAdded = true;
+            }
+        }
+        return output;
+    }
+
     private static int ScanBalanced(string s, int open)
     {
         int depth = 0;

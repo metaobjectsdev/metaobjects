@@ -17,6 +17,14 @@ public static class Strip
     /// Returns the fence body (with surrounding prose) trimmed, or the trimmed raw input if no fence.
     /// Returns <c>""</c> for null input.
     /// </summary>
+    /// <summary>The body of every fenced block, in order. Locate searches these before the
+    /// whole text, because a model told to fence its answer puts the answer there.</summary>
+    public static IReadOnlyList<string> FencedBodies(string? raw)
+    {
+        if (raw == null) return Array.Empty<string>();
+        return Fence.Matches(raw).Select(m => m.Groups[1].Value).ToList();
+    }
+
     public static string Apply(string? raw)
     {
         if (raw == null) return "";

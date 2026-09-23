@@ -18,3 +18,11 @@ def strip(raw: str | None) -> str:
     if m:
         return (raw[: m.start()] + m.group(1) + raw[m.end():]).strip()
     return raw.strip()
+
+
+def fenced_bodies(raw: str | None) -> list[str]:
+    """The body of every fenced block, in order. Locate searches these before the whole
+    text, because a model told to fence its answer puts the answer there."""
+    if raw is None:
+        return []
+    return [m.group(1) for m in _FENCE.finditer(raw)]

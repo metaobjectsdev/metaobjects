@@ -1,0 +1,4 @@
+{"topic":"draft_idea"}
+```json
+{"topic":"real","worth_forming":true,"reason":"r"}
+```

@@ -1,9 +1,11 @@
 package com.metaobjects.render.extract;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Stages 2–3: isolate and select the payload root span. Selection rule: first-closed-else-first-open. */
+/** Stages 2–3: isolate and select the payload root span. JSON: Extract picks among jsonCandidates by the schema (fenced first, first object carrying a declared field); json() (first-closed-else-first-open) is its fallback. */
 public final class Locate {
     private Locate() {}
 
@@ -22,6 +24,29 @@ public final class Locate {
     }
 
     /** Returns index of the matching '}', or -1 if unterminated. String-aware. */
+    /**
+     * Every top-level object span in {@code text}, in order: each balanced {...} (nested objects
+     * are part of their parent, not separate spans), and, for a '{' that never closes, the text
+     * from it to the end.
+     */
+    public static List<String> jsonCandidates(String text) {
+        List<String> out = new ArrayList<>();
+        if (text == null) return out;
+        boolean tailAdded = false;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) != '{') continue;
+            int end = scanBalanced(text, i);
+            if (end >= 0) {
+                out.add(text.substring(i, end + 1));
+                i = end;
+            } else if (!tailAdded) {
+                out.add(text.substring(i));
+                tailAdded = true;
+            }
+        }
+        return out;
+    }
+
     private static int scanBalanced(String s, int open) {
         int depth = 0;
         boolean inStr = false;

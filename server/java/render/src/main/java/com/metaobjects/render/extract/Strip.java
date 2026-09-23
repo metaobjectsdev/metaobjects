@@ -1,5 +1,7 @@
 package com.metaobjects.render.extract;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -11,6 +13,16 @@ public final class Strip {
     private static final Pattern FENCE = Pattern.compile(
             "```[a-zA-Z0-9_-]*\\s*\\r?\\n(.*?)\\r?\\n?```",
             Pattern.DOTALL);
+
+    /** The body of every fenced block, in order. Locate searches these before the whole text,
+     *  because a model told to fence its answer puts the answer there. */
+    public static List<String> fencedBodies(String raw) {
+        List<String> out = new ArrayList<>();
+        if (raw == null) return out;
+        Matcher m = FENCE.matcher(raw);
+        while (m.find()) out.add(m.group(1));
+        return out;
+    }
 
     public static String strip(String raw) {
         if (raw == null) return "";

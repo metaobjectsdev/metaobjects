@@ -1,6 +1,7 @@
 """Stages 2-3: isolate and select the payload root span.
 
-Selection rule: first-closed-else-first-open.
+JSON: extract picks among json_candidates by the schema (fenced first, first object carrying a
+declared field); json() (first-closed-else-first-open) is its fallback.
 """
 from __future__ import annotations
 
@@ -20,6 +21,28 @@ def json(text: str | None) -> str | None:
             if end >= 0:
                 return text[i : end + 1]
     return None if first_open < 0 else text[first_open:]
+
+
+def json_candidates(text: str | None) -> list[str]:
+    """Every top-level object span in ``text``, in order: each balanced {...} (nested objects
+    are part of their parent, not separate spans), and, for a '{' that never closes, the text
+    from it to the end."""
+    out: list[str] = []
+    if text is None:
+        return out
+    tail_added = False
+    i = 0
+    while i < len(text):
+        if text[i] == "{":
+            end = _scan_balanced(text, i)
+            if end >= 0:
+                out.append(text[i : end + 1])
+                i = end
+            elif not tail_added:
+                out.append(text[i:])
+                tail_added = True
+        i += 1
+    return out
 
 
 def _scan_balanced(s: str, open_idx: int) -> int:

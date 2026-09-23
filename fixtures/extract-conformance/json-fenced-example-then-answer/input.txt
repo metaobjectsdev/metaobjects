@@ -1,0 +1,5 @@
+The shape looks like this:
+```json
+{"example": 1}
+```
+My answer: {"topic":"real","worth_forming":true,"reason":"r"}

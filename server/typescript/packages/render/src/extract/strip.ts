@@ -15,3 +15,13 @@ export function strip(raw: string | null | undefined): string {
   }
   return raw.trim();
 }
+
+/** The body of every fenced block, in order. Locate searches these before the whole text,
+ *  because a model told to fence its answer puts the answer there. */
+export function fencedBodies(raw: string | null | undefined): string[] {
+  if (raw == null) return [];
+  const all = new RegExp(FENCE.source, "g");
+  const out: string[] = [];
+  for (let m = all.exec(raw); m != null; m = all.exec(raw)) out.push(m[1] ?? "");
+  return out;
+}

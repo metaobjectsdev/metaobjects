@@ -9,8 +9,8 @@ import {
 } from "./types.js";
 import type { FieldSpec, ExtractOptions, ExtractionOutcome, ExtractSchema } from "./types.js";
 import { ExtractionReport } from "./types.js";
-import { strip } from "./strip.js";
-import { locateJson, locateXml } from "./locate.js";
+import { strip, fencedBodies } from "./strip.js";
+import { jsonCandidates, locateJson, locateXml } from "./locate.js";
 import { readJson, TRUNCATED, NULL_LITERAL } from "./json-forgiving-reader.js";
 import { readXml, readXmlRootless, TEXT_KEY } from "./xml-forgiving-reader.js";
 import { coerceValue, scalarCoerce, MALFORMED } from "./coerce.js";
@@ -34,8 +34,7 @@ export function extract(
   let span: string | null;
   let raw: Record<string, unknown>;
   if (schema.format === Format.JSON) {
-    span = locateJson(stripped);
-    raw = span == null ? {} : readJson(span);
+    ({ span, raw } = selectJson(text, stripped, schema.fields, ci));
   } else if (o.rootless) {
     span = stripped.length === 0 ? null : stripped;
     raw = span == null ? {} : readXmlRootless(stripped, ci);
@@ -50,6 +49,32 @@ export function extract(
 
   extractFields(schema.fields, raw, "", data, report, o, ci);
   return { data, report };
+}
+
+/**
+ * Pick the JSON object that answers the schema. Fenced blocks are searched first, then the
+ * whole reply, and the first object carrying at least one declared field wins, so a draft
+ * object, an echoed format example or a brace in prose no longer shadows the real answer
+ * (#363). A fenced object with none of the declared fields falls through the same way. When
+ * nothing carries a declared field, the first-object rule (locateJson) decides, as before.
+ */
+function selectJson(
+  text: string | null | undefined,
+  stripped: string,
+  fields: readonly FieldSpec[],
+  ci: boolean,
+): { span: string | null; raw: Record<string, unknown> } {
+  const regions = [...fencedBodies(text), stripped];
+  for (const region of regions) {
+    for (const candidate of jsonCandidates(region)) {
+      const parsed = readJson(candidate);
+      if (fields.some((f) => lookup(parsed, f.name, ci) !== undefined)) {
+        return { span: candidate, raw: parsed };
+      }
+    }
+  }
+  const span = locateJson(stripped);
+  return { span, raw: span == null ? {} : readJson(span) };
 }
 
 function extractFields(

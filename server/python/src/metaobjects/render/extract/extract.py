@@ -45,7 +45,7 @@ def extract(
     span: str | None
     raw: dict[str, object]
     if schema.format == Format.JSON:
-        span = _locate.json(stripped)
+        span = _select_json(text, stripped, schema.fields, ci)
         raw = {} if span is None else JsonForgivingReader().read(span)
     elif o.rootless:
         span = None if stripped == "" else stripped
@@ -203,6 +203,29 @@ def _extract_value(
         present = present[TEXT_KEY]
     raw_str = present if isinstance(present, str) else str(present)
     return _coerce.value(raw_str, f, o, path, report)
+
+
+def _select_json(
+    text: str | None, stripped: str, fields: list[FieldSpec], ci: bool
+) -> str | None:
+    """Pick the JSON object that answers the schema. Fenced blocks are searched first, then
+    the whole reply, and the first object carrying at least one declared field wins, so a
+    draft object, an echoed format example or a brace in prose no longer shadows the real
+    answer (#363). A fenced object with none of the declared fields falls through the same
+    way. When nothing carries a declared field, the first-object rule (``locate.json``)
+    decides."""
+    for region in [*_strip.fenced_bodies(text), stripped]:
+        for candidate in _locate.json_candidates(region):
+            parsed = JsonForgivingReader().read(candidate)
+            if any(_carries(parsed, f.name, ci) for f in fields):
+                return candidate
+    return _locate.json(stripped)
+
+
+def _carries(raw: dict[str, object], name: str, ci: bool) -> bool:
+    if name in raw:
+        return True
+    return ci and any(k.lower() == name.lower() for k in raw)
 
 
 def _lookup(raw: dict[str, object], name: str, ci: bool) -> object | None:

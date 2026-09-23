@@ -28,7 +28,7 @@ public static class ExtractEngine
         Dictionary<string, object?> raw;
         if (schema.Format == Format.Json)
         {
-            span = Locate.Json(stripped);
+            span = SelectJson(text, stripped, schema.Fields, ci);
             raw = span == null ? new Dictionary<string, object?>() : new JsonForgivingReader().Read(span);
         }
         else if (o.Rootless)
@@ -230,6 +230,31 @@ public static class ExtractEngine
     }
 
     /// <summary>Case-folding lookup honoring tolerance.</summary>
+    /// <summary>
+    /// Pick the JSON object that answers the schema. Fenced blocks are searched first, then the
+    /// whole reply, and the first object carrying at least one declared field wins, so a draft
+    /// object, an echoed format example or a brace in prose no longer shadows the real answer
+    /// (#363). A fenced object with none of the declared fields falls through the same way. When
+    /// nothing carries a declared field, the first-object rule (<see cref="Locate.Json"/>) decides.
+    /// </summary>
+    private static string? SelectJson(string? text, string stripped, IReadOnlyList<FieldSpec> fields, bool ci)
+    {
+        var regions = new List<string>(Strip.FencedBodies(text)) { stripped };
+        foreach (var region in regions)
+        {
+            foreach (var candidate in Locate.JsonCandidates(region))
+            {
+                var parsed = new JsonForgivingReader().Read(candidate);
+                if (fields.Any(f => Carries(parsed, f.Name, ci))) return candidate;
+            }
+        }
+        return Locate.Json(stripped);
+    }
+
+    private static bool Carries(Dictionary<string, object?> raw, string name, bool ci) =>
+        raw.ContainsKey(name)
+        || (ci && raw.Keys.Any(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase)));
+
     private static object? Lookup(Dictionary<string, object?> raw, string name, bool ci)
     {
         if (raw.TryGetValue(name, out object? found)) return found;

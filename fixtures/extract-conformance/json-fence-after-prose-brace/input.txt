@@ -1,0 +1,4 @@
+Consider {a set} of options.
+```json
+{"topic":"real","worth_forming":true,"reason":"r"}
+```

@@ -10,6 +10,22 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **`extract` no longer discards a fenced answer that follows an earlier object or a brace in
+  prose ([#363]), in every port.** The JSON locator took the first object that parsed, so a
+  draft object in the model's reasoning, an echoed format example (`{"topic": "<slug>"}`) or
+  plain prose with a brace (`{a set}`) won, and the complete answer in the following
+  ```` ```json ```` fence was never read; with its `@required` fields missing, the reply
+  was reported unusable. The locator now searches fenced blocks first, then the whole reply,
+  and takes the first object that carries at least one declared field. A fenced object with
+  none of them (a fenced example) falls through the same way. When no object carries a
+  declared field, the old first-object rule decides, so every reply that parsed before parses
+  the same. Five new `extract-conformance` cases pin the behaviour in all four engines
+  (Kotlin runs the Java one).
+
+[#363]: https://github.com/metaobjectsdev/metaobjects/issues/363
+
 ## [1.0.6] — 2026-09-23
 
 _Maven Central `8.0.6` only. npm, PyPI and NuGet have no product change and stay at `1.0.5`

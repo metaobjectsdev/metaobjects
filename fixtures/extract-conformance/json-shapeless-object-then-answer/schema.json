@@ -1,0 +1,4 @@
+{ "format": "JSON", "rootName": "gate", "fields": [
+  { "name": "topic",         "kind": "STRING",  "required": false },
+  { "name": "worth_forming", "kind": "BOOLEAN", "required": true },
+  { "name": "reason",        "kind": "STRING",  "required": true } ] }

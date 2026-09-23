@@ -44,3 +44,8 @@ Each `fields[]` entry: `name`, `kind` (`STRING|INT|LONG|DOUBLE|BOOLEAN|ENUM|OBJE
 
 FR-011 added the `enum-*`, `nested-object-*`, `array-of-objects`, `xml-nested`, and
 `multi-malformation` cases on top of the original FR-010 ten.
+
+#363 added the three `json-fence-after-*` cases, `json-fenced-example-then-answer` and
+`json-shapeless-object-then-answer` cases: JSON selection searches fenced blocks first, then
+the whole reply, and takes the first object carrying at least one declared field; only when
+none does is the first object taken.

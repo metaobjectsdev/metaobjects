@@ -23,7 +23,7 @@ public final class Extract {
         String span;
         Map<String, Object> raw;
         if (schema.format() == Format.JSON) {
-            span = Locate.json(stripped);
+            span = selectJson(text, stripped, schema.fields(), ci);
             raw = span == null ? Map.of() : new JsonForgivingReader().read(span);
         } else if (o.rootless()) {
             span = stripped.isEmpty() ? null : stripped;
@@ -177,6 +177,27 @@ public final class Extract {
     private static Map<String, Object> castMap(Map<?, ?> m) { return (Map<String, Object>) m; }
 
     /** Case-folding lookup honoring tolerance. */
+    /**
+     * Pick the JSON object that answers the schema. Fenced blocks are searched first, then the
+     * whole reply, and the first object carrying at least one declared field wins, so a draft
+     * object, an echoed format example or a brace in prose no longer shadows the real answer
+     * (#363). A fenced object with none of the declared fields falls through the same way. When
+     * nothing carries a declared field, the first-object rule ({@link Locate#json}) decides.
+     */
+    private static String selectJson(String text, String stripped, List<FieldSpec> fields, boolean ci) {
+        List<String> regions = new ArrayList<>(Strip.fencedBodies(text));
+        regions.add(stripped);
+        for (String region : regions) {
+            for (String candidate : Locate.jsonCandidates(region)) {
+                Map<String, Object> parsed = new JsonForgivingReader().read(candidate);
+                for (FieldSpec f : fields) {
+                    if (lookup(parsed, f.name(), ci) != null) return candidate;
+                }
+            }
+        }
+        return Locate.json(stripped);
+    }
+
     private static Object lookup(Map<String, Object> raw, String name, boolean ci) {
         if (raw.containsKey(name)) return raw.get(name);
         if (ci) {

@@ -1,5 +1,6 @@
 // Stages 2-3: isolate and select the payload root span.
-// Selection rule: first-closed-else-first-open. Mirrors Java Locate.
+// JSON: Extract picks among jsonCandidates by the schema (fenced first, first object carrying a
+// declared field); locateJson (first-closed-else-first-open) is its fallback. Mirrors Java Locate.
 
 /** Escape regex metacharacters (equivalent of Java Pattern.quote). */
 function quote(s: string): string {
@@ -18,6 +19,29 @@ export function locateJson(text: string | null | undefined): string | null {
     }
   }
   return firstOpen < 0 ? null : text.substring(firstOpen);
+}
+
+/**
+ * Every top-level object span in `text`, in order: each balanced {...} (nested objects are
+ * part of their parent, not separate spans), and, for a '{' that never closes, the text from
+ * it to the end.
+ */
+export function jsonCandidates(text: string | null | undefined): string[] {
+  if (text == null) return [];
+  const out: string[] = [];
+  let tailAdded = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charAt(i) !== "{") continue;
+    const end = scanBalanced(text, i);
+    if (end >= 0) {
+      out.push(text.substring(i, end + 1));
+      i = end;
+    } else if (!tailAdded) {
+      out.push(text.substring(i));
+      tailAdded = true;
+    }
+  }
+  return out;
 }
 
 /** Returns index of the matching '}', or -1 if unterminated. String-aware. */
