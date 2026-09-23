@@ -6,6 +6,10 @@ import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
+import com.metaobjects.generator.GeneratorBase;
+import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
+import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
+import com.metaobjects.generator.template.TemplateScopeGenerator;
 import com.metaobjects.loader.LoaderConfigurable;
 import com.metaobjects.loader.LoaderConfigurationConstants;
 import com.metaobjects.loader.LoaderOptions;
@@ -31,6 +35,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public abstract class AbstractMetaDataMojo extends AbstractMojo
 {
@@ -196,11 +201,33 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         return generatorImpls;
     }
 
+    /**
+     * Generator args that name a filesystem path. A relative one is resolved against the
+     * module basedir, as {@code <sourceDir>} is ({@link #getSourceDir}): left alone, the JVM
+     * resolves it against the shell's working directory, so {@code mvn -f <module>/pom.xml}
+     * run from anywhere else read templates from, and wrote output to, the wrong place.
+     */
+    static final Set<String> PATH_ARGS = Set.of(
+            GeneratorBase.ARG_OUTPUTDIR,
+            MultiFileDirectGeneratorBase.ARG_FINALOUTPUTDIR,
+            TemplateScopeGenerator.ARG_TEMPLATES_DIR,
+            // Kotlin's render helper reads the same key (KotlinRenderHelperGenerator.ARG_TEMPLATE_ROOT).
+            SpringRenderHelperGenerator.ARG_TEMPLATE_ROOT);
+
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {
 
         Map<String,String> allargs = new HashMap<>();
         if ( globals != null ) allargs.putAll(globals);
         if ( g.getArgs() != null ) allargs.putAll(g.getArgs());
+
+        File basedir = project != null ? project.getBasedir() : null;
+        if ( basedir != null ) {
+            for ( String key : PATH_ARGS ) {
+                String value = allargs.get(key);
+                if ( value == null || value.isEmpty() || new File(value).isAbsolute() ) continue;
+                allargs.put(key, basedir.toPath().resolve(value).normalize().toString());
+            }
+        }
 
         // Dump the args to debug
         getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");

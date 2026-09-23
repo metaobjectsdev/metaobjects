@@ -10,6 +10,16 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **Maven plugin: a relative path in a generator's `<args>` resolved against the shell, not the
+  module.** 1.0.5 fixed this for the loader's `<sourceDir>` and left `<outputDir>`,
+  `<finalOutputDir>`, `<templatesDir>` and `<templateRoot>` on the JVM's working directory. So
+  `mvn -f <module>/pom.xml` run from any other directory failed with `render-helper drift: ...
+  unresolved (provider returned no text)`, and a generator's output landed beside the shell
+  instead of in the module. They now resolve against the module basedir; absolute paths are
+  unchanged, and a build run from the module's own directory behaves as before.
+
 ## [1.0.5] — 2026-09-23
 
 _All four registries publish: npm `1.0.5` (full lockstep across all 14 `@metaobjectsdev/*`
