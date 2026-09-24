@@ -162,3 +162,31 @@ export class PrimaryKeyChangeError extends Error {
 export class DeclaredRenameError extends Error {
   override readonly name = "DeclaredRenameError";
 }
+
+// ---------------------------------------------------------------------------
+// Guards for the refusal errors above — exported so a CLI that CATCHES them
+// matches by name beside the class that sets the name, never by `instanceof`
+// or by a re-implemented string check of its own. Two physical copies of
+// `@metaobjectsdev/migrate-ts` in one process (a global `meta` beside a
+// project-local dependency) give the class and the instance different
+// identities, so `instanceof` alone returns false for a real error and a
+// refusal degrades into an unhandled throw — the same class-identity defect
+// that split ts-poet's `Code` objects in 0.21.6, and the reason `metadata`
+// exports node guards. A rename of a `name` field above breaks the matching
+// guard here, in the same file, not silently three files away.
+// ---------------------------------------------------------------------------
+
+/** Is `err` the {@link BlockedChangesError} from a gated change in an emitted plan? */
+export function isBlockedChangesError(err: unknown): err is BlockedChangesError {
+  return err instanceof Error && err.name === "BlockedChangesError";
+}
+
+/** Is `err` the {@link PrimaryKeyChangeError} from a refused primary-key move? */
+export function isPrimaryKeyChangeError(err: unknown): err is PrimaryKeyChangeError {
+  return err instanceof Error && err.name === "PrimaryKeyChangeError";
+}
+
+/** Is `err` the {@link DeclaredRenameError} from a declared rename that does not apply? */
+export function isDeclaredRenameError(err: unknown): err is DeclaredRenameError {
+  return err instanceof Error && err.name === "DeclaredRenameError";
+}

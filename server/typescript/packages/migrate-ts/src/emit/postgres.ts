@@ -7,7 +7,7 @@ import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { renderFingerprintMarker, viewFingerprint } from "../view-fingerprint.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
 import { columnDefaultsEqual } from "../column-default.js";
-import { dataHazardOf } from "../diff/index.js";
+import { dataHazardOf } from "../hazards.js";
 
 // Stages run low → high. drop-view runs BEFORE drop-table so a view that
 // depends on a soon-to-be-dropped table is removed first. create-view runs

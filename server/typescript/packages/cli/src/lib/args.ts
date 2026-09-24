@@ -616,29 +616,33 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
 
 /** `--rename-table [schema.]old=new` — the new name is bare: a rename never moves schemas. */
 function parseTableRename(v: string): DeclaredRename {
-  const { path, to } = splitRename(v, "--rename-table", "[schema.]old=new");
-  if (path.length > 2) throw new Error(`invalid --rename-table '${v}'; expected [schema.]old=new`);
+  const { path, to } = splitRename(v, "--rename-table", "[schema.]old=new", 1, 2);
   const from = path[path.length - 1]!;
   return path.length === 2 ? { kind: "table", schema: path[0]!, from, to } : { kind: "table", from, to };
 }
 
 /** `--rename-column [schema.]table.old=new` — `table` is the table's name in the metadata. */
 function parseColumnRename(v: string): DeclaredRename {
-  const { path, to } = splitRename(v, "--rename-column", "[schema.]table.old=new");
-  if (path.length < 2 || path.length > 3) {
-    throw new Error(`invalid --rename-column '${v}'; expected [schema.]table.old=new`);
-  }
+  const { path, to } = splitRename(v, "--rename-column", "[schema.]table.old=new", 2, 3);
   const [from, table] = [path[path.length - 1]!, path[path.length - 2]!];
   return path.length === 3
     ? { kind: "column", schema: path[0]!, table, from, to }
     : { kind: "column", table, from, to };
 }
 
-function splitRename(v: string, flag: string, shape: string): { path: string[]; to: string } {
+/**
+ * Split `<path>=<new>` into the dotted path and the new name, refusing anything the
+ * flag's grammar cannot hold — including a path of [minPath, maxPath] segments, so the
+ * `invalid <flag>` message has the one construction site its callers also use.
+ */
+function splitRename(
+  v: string, flag: string, shape: string, minPath: number, maxPath: number,
+): { path: string[]; to: string } {
   const eq = v.indexOf("=");
   const path = eq < 0 ? [] : v.slice(0, eq).split(".");
   const to = eq < 0 ? "" : v.slice(eq + 1);
-  if (to === "" || to.includes(".") || to.includes("=") || path.some((p) => p === "")) {
+  if (to === "" || to.includes(".") || to.includes("=") || path.some((p) => p === "")
+      || path.length < minPath || path.length > maxPath) {
     throw new Error(`invalid ${flag} '${v}'; expected ${shape}`);
   }
   return { path, to };

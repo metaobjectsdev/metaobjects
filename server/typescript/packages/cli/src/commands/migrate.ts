@@ -17,6 +17,9 @@ import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
   allowOptionFor,
+  isBlockedChangesError,
+  isPrimaryKeyChangeError,
+  isDeclaredRenameError,
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
   scopedDiffInputs,
@@ -33,7 +36,6 @@ import {
   writeSnapshot,
   qualifiedDbName,
   type BlockedChangesError,
-  type PrimaryKeyChangeError,
   renderD1,
   writeMigrationD1,
   writeMigrationFlyway,
@@ -280,26 +282,21 @@ function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution
 }
 
 /**
- * Is `err` the migrate engine's `name` error? By NAME, not `instanceof`: two physical
- * copies of `@metaobjectsdev/migrate-ts` in one process (a global `meta` beside a
- * project-local dependency) give the class and the instance different identities, so
- * `instanceof` alone returns false for a real error and its refusal falls through to an
- * unhandled throw. Same defect and remedy as `isApplyError` (replay-remedy.ts).
+ * The report-and-exit for an engine refusal whose message the engine already made
+ * actionable — the sibling of `refuseScopeMismatch` above, which is the same decision
+ * for scope. The engine's guards (`isPrimaryKeyChangeError` et al.) narrow at the catch
+ * site; only the hint varies by refusal, so each hint is written once.
  */
-function isEngineError<T extends Error>(err: unknown, name: T["name"]): err is T {
-  return err instanceof Error && err.name === name;
-}
-
-/** Refuse a declared rename that does not apply; the message names the side that is wrong. */
-function refuseDeclaredRename(err: Error, fmt: OutputFormat): number {
+function refuseEngineError(err: Error, hint: string, fmt: OutputFormat): number {
   log.error(`migrate: ${err.message}`);
-  emitStructuredError(
-    `migrate: ${err.message}`,
-    "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)",
-    fmt,
-  );
+  emitStructuredError(`migrate: ${err.message}`, hint, fmt);
   return 1;
 }
+
+const PK_CHANGE_HINT =
+  "align the primary key manually, or reconcile the metadata identity to match the live table";
+const DECLARED_RENAME_HINT =
+  "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)";
 
 /**
  * Warn about changes that apply to an empty table and fail on a populated one. Warn, not
@@ -781,15 +778,14 @@ export async function migrateCommand(
       });
     } catch (err) {
       // #258 — a primary-key move has no expressible migration; refuse loudly.
-      if (isEngineError<PrimaryKeyChangeError>(err, "PrimaryKeyChangeError")) {
-        log.error(`migrate: ${err.message}`);
-        emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
+      if (isPrimaryKeyChangeError(err)) {
+        const rc = refuseEngineError(err, PK_CHANGE_HINT, fmt);
         await kysely.close();
-        return 1;
+        return rc;
       }
-      if (isEngineError(err, "DeclaredRenameError")) {
+      if (isDeclaredRenameError(err)) {
         await kysely.close();
-        return refuseDeclaredRename(err, fmt);
+        return refuseEngineError(err, DECLARED_RENAME_HINT, fmt);
       }
       // diff() throws when onAmbiguous returns "abort" — surface as exit 1
       // with the collected ambiguity list.
@@ -876,7 +872,7 @@ export async function migrateCommand(
           ...(actual.meta !== undefined ? { actualMeta: actual.meta } : {}),
         });
       } catch (err) {
-        if (isEngineError<BlockedChangesError>(err, "BlockedChangesError")) {
+        if (isBlockedChangesError(err)) {
           blocked = blockedToEntries(err);
           exitCode = 1;
         } else {
@@ -1339,12 +1335,8 @@ export async function runOfflineGenerate(
     });
   } catch (err) {
     // #258 — a primary-key move has no expressible migration; refuse loudly.
-    if (isEngineError<PrimaryKeyChangeError>(err, "PrimaryKeyChangeError")) {
-      log.error(`migrate: ${err.message}`);
-      emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
-      return 1;
-    }
-    if (isEngineError(err, "DeclaredRenameError")) return refuseDeclaredRename(err, fmt);
+    if (isPrimaryKeyChangeError(err)) return refuseEngineError(err, PK_CHANGE_HINT, fmt);
+    if (isDeclaredRenameError(err)) return refuseEngineError(err, DECLARED_RENAME_HINT, fmt);
     if ((err as Error).message.includes("aborted by onAmbiguous")) {
       log.error(`migrate: ambiguous rename/drop detected; re-run with --on-ambiguous rename|drop-add`);
       return 1;
@@ -1602,12 +1594,8 @@ async function runD1Migrate(
     });
   } catch (err) {
     // #258 — a primary-key move has no expressible migration; refuse loudly.
-    if (isEngineError<PrimaryKeyChangeError>(err, "PrimaryKeyChangeError")) {
-      log.error(`migrate: ${err.message}`);
-      emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
-      return 1;
-    }
-    if (isEngineError(err, "DeclaredRenameError")) return refuseDeclaredRename(err, fmt);
+    if (isPrimaryKeyChangeError(err)) return refuseEngineError(err, PK_CHANGE_HINT, fmt);
+    if (isDeclaredRenameError(err)) return refuseEngineError(err, DECLARED_RENAME_HINT, fmt);
     if ((err as Error).message.includes("aborted by onAmbiguous")) {
       const entries = ambiguousToEntries(collectedAmbiguous);
       for (const e of entries) {
@@ -1642,7 +1630,7 @@ async function runD1Migrate(
   try {
     emitResult = renderD1(diffResult.changes, expected, actual.meta, actual);
   } catch (err) {
-    if (isEngineError<BlockedChangesError>(err, "BlockedChangesError")) {
+    if (isBlockedChangesError(err)) {
       const entries = blockedToEntries(err);
       for (const e of entries) {
         log.error(`migrate: blocked '${e.kind}' on ${e.description} (allow with --allow ${e.allowFlag})`);

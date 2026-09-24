@@ -7,6 +7,7 @@ import { sqlTypeEquals } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { DeclaredRenameError } from "../errors.js";
 import { columnDefaultsEqual } from "../column-default.js";
+import { schemaSpread } from "../schema-spread.js";
 
 const TABLE_RENAME_OVERLAP_THRESHOLD = 0.8;
 
@@ -28,41 +29,17 @@ export async function detectTableRenames(
   const indicesToRemove = new Set<number>();
   const renamesToInsert: { afterIdx: number; change: Change }[] = [];
 
-  // Declared renames first: the author has said these ARE renames, so the pair is resolved
-  // without the overlap test and without asking, and the heuristic never sees either half.
-  for (const d of declared) {
-    if (d.kind !== "table") continue;
-    // A half an earlier declaration already consumed is not pending: two declarations
-    // sharing a name would otherwise both claim it, and one create would vanish.
-    const dropIdx = changes.findIndex((c, i) => !indicesToRemove.has(i)
-      && c.kind === "drop-table" && c.table === d.from && sameSchema(c.schema, d.schema));
-    const createIdx = changes.findIndex((c, i) => !indicesToRemove.has(i)
-      && c.kind === "create-table" && c.table.name === d.to && sameSchema(c.table.schema, d.schema));
-    if (dropIdx < 0 || createIdx < 0) {
-      throw new DeclaredRenameError(
-        `declared table rename ${d.from} → ${d.to} does not apply: `
-        + unresolvedReason(`table "${d.from}"`, dropIdx >= 0, `table "${d.to}"`, createIdx >= 0),
-      );
-    }
-    const schema = changes[dropIdx]!.schema;
-    indicesToRemove.add(dropIdx).add(createIdx);
-    renamesToInsert.push({
-      afterIdx: dropIdx,
-      change: {
-        kind: "rename-table", from: d.from, to: d.to,
-        ...(schema !== undefined ? { schema } : {}),
-        status: { state: "allowed" },
-      },
-    });
-  }
-
+  // The pending drop/create halves, collected ONCE — as the column pass collects its
+  // dropsByTable/addsByTable first: declared renames and the heuristic resolve against
+  // the same list, so "is this half pairable" has one definition (including the
+  // `_columns` side-channel gate). Side-channel: diff() attaches `_columns` to
+  // drop-table changes so the overlap test has the dropped table's column list.
   const drops: {
     idx: number; tableName: string; schema: string | undefined; columns: ColumnDescriptor[];
   }[] = [];
   const creates: { idx: number; table: TableDescriptor }[] = [];
 
   changes.forEach((c, idx) => {
-    if (indicesToRemove.has(idx)) return;
     if (c.kind === "drop-table") {
       const aug = c as Change & { _columns?: ColumnDescriptor[] };
       if (aug._columns) drops.push({ idx, tableName: c.table, schema: c.schema, columns: aug._columns });
@@ -71,7 +48,35 @@ export async function detectTableRenames(
     }
   });
 
+  // Declared renames first: the author has said these ARE renames, so the pair is resolved
+  // without the overlap test and without asking, and the heuristic never sees either half.
+  for (const d of declared) {
+    if (d.kind !== "table") continue;
+    // A half an earlier declaration already consumed is not pending: two declarations
+    // sharing a name would otherwise both claim it, and one create would vanish.
+    const drop = drops.find((x) => !indicesToRemove.has(x.idx)
+      && x.tableName === d.from && sameSchema(x.schema, d.schema));
+    const create = creates.find((x) => !indicesToRemove.has(x.idx)
+      && x.table.name === d.to && sameSchema(x.table.schema, d.schema));
+    if (drop === undefined || create === undefined) {
+      throw new DeclaredRenameError(
+        `declared table rename ${d.from} → ${d.to} does not apply: `
+        + unresolvedReason(`table "${d.from}"`, drop !== undefined, `table "${d.to}"`, create !== undefined),
+      );
+    }
+    indicesToRemove.add(drop.idx).add(create.idx);
+    renamesToInsert.push({
+      afterIdx: drop.idx,
+      change: {
+        kind: "rename-table", from: d.from, to: d.to,
+        ...schemaSpread(drop.schema),
+        status: { state: "allowed" },
+      },
+    });
+  }
+
   for (const drop of drops) {
+    if (indicesToRemove.has(drop.idx)) continue; // consumed by a declared rename
     let bestOverlap = 0;
     let bestCreate: typeof creates[number] | undefined;
     for (const create of creates) {
@@ -106,7 +111,7 @@ export async function detectTableRenames(
         kind: "rename-table",
         from: drop.tableName,
         to: bestCreate.table.name,
-        ...(drop.schema !== undefined ? { schema: drop.schema } : {}),
+        ...schemaSpread(drop.schema),
         status: { state: "allowed" },
       };
       renamesToInsert.push({ afterIdx: drop.idx, change: renameChange });
@@ -198,6 +203,9 @@ export async function detectColumnRenames(
   type DropEntry = {
     idx: number; table: string; schema: string | undefined;
     column: string; sqlType: SqlType; nullable: boolean;
+    // The live descriptor, carried so the declared loop can compare shapes without a
+    // cast back into `changes`.
+    restore: ColumnDescriptor | undefined;
   };
   type AddEntry = {
     idx: number; table: string; schema: string | undefined;
@@ -219,6 +227,7 @@ export async function detectColumnRenames(
         arr.push({
           idx, table: c.table, schema: c.schema,
           column: c.column, sqlType: aug._sqlType, nullable: aug._nullable,
+          restore: c.restore,
         });
       }
     } else if (c.kind === "add-column") {
@@ -246,8 +255,7 @@ export async function detectColumnRenames(
         `column "${d.table}.${d.from}"`, drop !== undefined, `column "${d.table}.${d.to}"`, add !== undefined,
       ));
     }
-    const live = changes[drop.idx] as Extract<Change, { kind: "drop-column" }>;
-    const shapeChange = shapeDifference(live.restore, add.column);
+    const shapeChange = shapeDifference(drop.restore, add.column);
     if (shapeChange !== undefined) {
       throw new DeclaredRenameError(
         `${label} also changes its ${shapeChange}. One migration cannot rename a column and `
@@ -260,7 +268,7 @@ export async function detectColumnRenames(
       afterIdx: drop.idx,
       change: {
         kind: "rename-column", table: drop.table,
-        ...(drop.schema !== undefined ? { schema: drop.schema } : {}),
+        ...schemaSpread(drop.schema),
         from: d.from, to: d.to, status: { state: "allowed" },
       },
     });
@@ -307,7 +315,7 @@ export async function detectColumnRenames(
         const renameChange: Change = {
           kind: "rename-column",
           table: drop.table,
-          ...(drop.schema !== undefined ? { schema: drop.schema } : {}),
+          ...schemaSpread(drop.schema),
           from: drop.column,
           to: winner.column.name,
           status: { state: "allowed" },
